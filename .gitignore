@@ -46,3 +46,13 @@ env/
 # 操作系统
 .DS_Store
 Thumbs.db
+
+# 不需要上传的文件
+config/
+dist/
+temp_icons/
+nuitka-crash-report.xml
+upx.exe
+.claude/
+1.5.5更新说明.txt
+1.5.6更新说明.txt
