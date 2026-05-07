@@ -56,3 +56,6 @@ upx.exe
 .claude/
 1.5.5更新说明.txt
 1.5.6更新说明.txt
+tests/
+pytest.ini
+tools/
