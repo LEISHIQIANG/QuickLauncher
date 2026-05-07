@@ -1,0 +1,62 @@
+# 证书和密钥文件
+*.pfx
+*.p12
+*.cer
+*.crt
+*.key
+sign_config.txt
+
+# Python
+__pycache__/
+tests/.tmp/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+.venv/
+.venv*/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 不需要上传的文件
+config/
+dist/
+temp_icons/
+nuitka-crash-report.xml
+upx.exe
+.claude/
+1.5.5更新说明.txt
+1.5.6更新说明.txt
+tests/
+pytest.ini
+tools/
+docs/

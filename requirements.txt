@@ -1,0 +1,7 @@
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.2
+pywin32>=305
+Pillow>=9.0.0
+psutil>=5.9.0
+pynput>=1.7.6
+watchdog>=3.0.0
