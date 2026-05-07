@@ -60,3 +60,4 @@ tests/
 pytest.ini
 tools/
 docs/
+PerformanceMonitor/
