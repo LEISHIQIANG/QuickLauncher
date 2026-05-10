@@ -117,13 +117,6 @@ scripts\build_win11_setup.bat
 scripts\
 ```
 
-## 文档
-
-- [架构文档](docs/architecture.md)
-- [开发指南](docs/CONTRIBUTING.md)
-- [优化总结](docs/OPTIMIZATION_SUMMARY.md)
-- [完整报告](docs/IMPLEMENTATION_REPORT.md)
-
 ## 系统要求
 
 ### 运行环境
