@@ -47,6 +47,22 @@ env/
 .DS_Store
 Thumbs.db
 
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.log
+
+# 类型检查
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# 代码质量工具
+.ruff_cache/
+bandit-report.json
+
 # 不需要上传的文件
 config/
 dist/
@@ -56,8 +72,5 @@ upx.exe
 .claude/
 1.5.5更新说明.txt
 1.5.6更新说明.txt
-tests/
-pytest.ini
 tools/
-docs/
 PerformanceMonitor/
