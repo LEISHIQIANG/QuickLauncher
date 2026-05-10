@@ -55,15 +55,11 @@ QuickLauncher 是一款 Windows 平台的快速启动工具。在任意位置按
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/QuickLauncher.git
+git clone https://github.com/LEISHIQIANG/QuickLauncher.git
 cd QuickLauncher
 
 # 安装依赖
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
-
-# 设置 pre-commit hooks
-pre-commit install
 
 # 运行程序
 python main.py
