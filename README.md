@@ -130,8 +130,18 @@ scripts\
 
 ## 系统要求
 
-- Windows 7 及以上版本
-- Python 3.8+ (开发环境)
+### 运行环境
+
+- **推荐系统**：Windows 11（主要适配和测试平台）
+- **兼容系统**：Windows 10 / Windows 7（理论支持，未完全测试）
+- **内存要求**：至少 100MB 可用内存
+- **磁盘空间**：安装版约 50MB，绿色版约 30MB
+
+### 开发环境
+
+- Python 3.8+
+- PyQt5 5.15+
+- 其他依赖见 [requirements.txt](requirements.txt)
 
 ## 贡献
 
