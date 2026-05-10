@@ -24,7 +24,7 @@ class BuiltinIconsManager:
         else:
             # 开发环境
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base_dir, 'builtin_icons')
+        return os.path.join(base_dir, 'assets', 'builtin_icons')
 
     def _load_builtin_items(self):
         """加载内置图标配置"""
