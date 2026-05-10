@@ -66,6 +66,7 @@ bandit-report.json
 # 不需要上传的文件
 config/
 dist/
+docs/
 temp_icons/
 nuitka-crash-report.xml
 upx.exe
