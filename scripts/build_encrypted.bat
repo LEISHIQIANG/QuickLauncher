@@ -180,7 +180,6 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
-    --include-data-dir=builtin_icons=builtin_icons ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
     --include-package=core ^
