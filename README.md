@@ -19,13 +19,37 @@ QuickLauncher 是一款 Windows 平台的快速启动工具。在任意位置按
 - **自定义外观**：支持明暗主题、透明度调节、图标大小等个性化设置
 - **配置导入导出**：方便备份和迁移配置
 
-## 安装
+## 下载安装
 
-### 用户安装
+### 📦 方式一：安装版（推荐）
 
-1. 从 [Releases](../../releases) 下载最新版本的安装包
-2. 运行 `QuickLauncher_Setup_x.x.x.exe`
-3. 按照安装向导完成安装
+适合需要开机自启动和系统集成的用户。
+
+1. 访问 [Releases 页面](https://github.com/LEISHIQIANG/QuickLauncher/releases/latest)
+2. 下载 `QuickLauncher_Setup_x.x.x.exe`
+3. 运行安装程序，按照向导完成安装
+4. 安装后自动启动，托盘图标显示运行状态
+
+**特点**：
+- ✅ 支持开机自启动
+- ✅ 自动创建桌面快捷方式
+- ✅ 支持通过控制面板卸载
+- ✅ 自动关联文件类型
+
+### 💚 方式二：绿色版（免安装）
+
+适合便携使用或不想安装到系统的用户。
+
+1. 访问 [Releases 页面](https://github.com/LEISHIQIANG/QuickLauncher/releases/latest)
+2. 下载 `QuickLauncher_Portable_x.x.x.zip`
+3. 解压到任意目录
+4. 运行 `QuickLauncher.exe` 即可使用
+
+**特点**：
+- ✅ 无需安装，解压即用
+- ✅ 便于携带和备份
+- ✅ 配置文件保存在程序目录
+- ✅ 删除文件夹即可完全卸载
 
 ### 开发环境
 
