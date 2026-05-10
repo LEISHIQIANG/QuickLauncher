@@ -1,0 +1,31 @@
+# Requirements Lock File
+# 用于确保可重现的构建环境
+# 生成方式: pip freeze > requirements.lock
+
+# 核心依赖 (从 requirements.txt)
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.2
+pywin32==306
+Pillow==10.2.0
+psutil==5.9.8
+pynput==1.7.6
+watchdog==4.0.0
+
+# 开发依赖 (从 requirements-dev.txt)
+pytest==8.1.1
+pytest-cov==4.1.0
+pytest-qt==4.3.1
+pytest-mock==3.12.0
+mypy==1.9.0
+types-Pillow==10.2.0.20240213
+types-psutil==5.9.5.20240205
+ruff==0.3.4
+black==24.3.0
+pre-commit==3.6.2
+bandit==1.7.8
+
+# 注意:
+# 1. 此文件锁定了精确版本，确保构建可重现
+# 2. 定期更新此文件以获取安全补丁
+# 3. 使用 pip install -r requirements.lock 安装锁定版本
+# 4. 使用 pip install -r requirements.txt 安装最新兼容版本

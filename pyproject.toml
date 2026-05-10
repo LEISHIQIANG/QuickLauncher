@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "QuickLauncher"
+version = "1.5.6.5"
+description = "快速启动器 - 鼠标中键快速启动工具"
+authors = [{name = "NAYTON"}]
+requires-python = ">=3.8"
+dependencies = [
+    "PyQt5==5.15.11",
+    "PyQt5-Qt5==5.15.2",
+    "pywin32>=305,<400",
+    "Pillow>=9.0.0,<11.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "pynput>=1.7.6,<2.0.0",
+    "watchdog>=3.0.0,<5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-qt>=4.2.0",
+    "pytest-mock>=3.12.0",
+    "mypy>=1.8.0",
+    "types-Pillow",
+    "types-psutil",
+    "ruff>=0.3.0",
+    "black>=24.0.0",
+    "pre-commit>=3.6.0",
+    "bandit>=1.7.5",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PT"]
+ignore = ["E501", "N802", "N803", "N806"]
+exclude = [".venv", "build", "dist", ".git", "__pycache__", "*.egg-info"]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["PT"]
+
+[tool.black]
+line-length = 120
+target-version = ['py38']
+exclude = '''
+/(
+    \.venv
+  | \.git
+  | \.mypy_cache
+  | \.pytest_cache
+  | build
+  | dist
+)/
+'''
