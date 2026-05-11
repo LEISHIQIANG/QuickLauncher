@@ -54,6 +54,7 @@ constexpr double ALT_TAP_MAX_HOLD_TIME = 0.25;
 constexpr double ALT_DOUBLE_TAP_COOLDOWN = 0.50;
 constexpr double ALT_LCLICK_DOUBLE_INTERVAL = 0.40;
 constexpr double ALT_LCLICK_COOLDOWN = 0.50;
+constexpr double BLOCKED_STATE_TIMEOUT = 2.0;  // 2秒超时自动释放
 
 inline double GetTime() {
     return GetTickCount64() / 1000.0;
@@ -153,6 +154,18 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
     MSLLHOOKSTRUCT* pMouse = (MSLLHOOKSTRUCT*)lParam;
     double now = GetTime();
+
+    // Physical state priority - sync logical state with hardware
+    SHORT mbState = GetAsyncKeyState(VK_MBUTTON);
+    bool mbPhysicallyPressed = (mbState & 0x8000) != 0;
+    if (!mbPhysicallyPressed && g_blockedDown) {
+        g_blockedDown = false;
+    }
+
+    // Timeout protection - auto-reset if blocked for too long
+    if (g_blockedDown && (now - g_lastBlockTime) > BLOCKED_STATE_TIMEOUT) {
+        g_blockedDown = false;
+    }
 
     // Alt+左键双击检测
     if (wParam == WM_LBUTTONDOWN && g_altHeld) {

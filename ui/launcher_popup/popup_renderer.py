@@ -218,32 +218,40 @@ class PopupRendererMixin:
 
         painter.setFont(self._label_font)
 
-        # 翻页滑动动画
-        if self._page_slide_progress < 1.0:
-            # easing: ease-out cubic
-            t = self._page_slide_progress
-            ease = 1.0 - (1.0 - t) ** 3
+        # 翻页滑动动画 - 基于 _page_offset 的平滑过渡
+        page_offset = getattr(self, '_page_offset', float(self.current_page))
+
+        # 计算当前显示的页面和过渡进度
+        current_page_float = page_offset
+        page_base = int(current_page_float)
+        page_fraction = current_page_float - page_base  # 0.0 到 1.0
+
+        # 如果有过渡动画（fraction > 0.01）
+        if page_fraction > 0.01 and page_base < len(self.pages) - 1:
+            # 正在从 page_base 向 page_base+1 过渡
             w = self.width()
-            offset_new = int(w * (1.0 - ease) * self._page_slide_dir)
-            offset_old = int(-w * ease * self._page_slide_dir)
+            offset_current = int(-w * page_fraction)  # 当前页向左移
+            offset_next = int(w * (1.0 - page_fraction))  # 下一页从右进入
 
-            # 绘制旧页（滑出）
-            if 0 <= self._prev_page < len(self.pages):
-                painter.save()
-                painter.translate(offset_old, 0)
-                self._draw_page_items(painter, self._prev_page, text_color, hover_color,
-                                      drop_highlight_color, bg_mode, is_prev=True)
-                painter.restore()
-
-            # 绘制新页（滑入）
+            # 绘制当前页（向左滑出）
             painter.save()
-            painter.translate(offset_new, 0)
-            self._draw_page_items(painter, self.current_page, text_color, hover_color,
+            painter.translate(offset_current, 0)
+            self._draw_page_items(painter, page_base, text_color, hover_color,
+                                  drop_highlight_color, bg_mode, is_prev=True)
+            painter.restore()
+
+            # 绘制下一页（从右滑入）
+            painter.save()
+            painter.translate(offset_next, 0)
+            self._draw_page_items(painter, page_base + 1, text_color, hover_color,
                                   drop_highlight_color, bg_mode, is_prev=False)
             painter.restore()
             return
 
-        self._draw_page_items(painter, self.current_page, text_color, hover_color,
+        # 无动画或动画完成：直接显示当前页
+        display_page = round(page_offset)
+        display_page = max(0, min(display_page, len(self.pages) - 1))
+        self._draw_page_items(painter, display_page, text_color, hover_color,
                               drop_highlight_color, bg_mode, is_prev=False)
     def _draw_page_items(self, painter: QPainter, page_index: int, text_color: QColor,
                          hover_color: QColor, drop_highlight_color: QColor,
@@ -370,6 +378,9 @@ class PopupRendererMixin:
 
             painter.restore()
     def _tick_indicator(self):
+        """动画tick - 平滑过渡到目标页面"""
+
+        # 指示器位置动画（保持不变）
         target = float(self.current_page)
         diff = target - self._indicator_pos
         if abs(diff) < 0.01:
@@ -377,15 +388,27 @@ class PopupRendererMixin:
         else:
             self._indicator_pos += diff * 0.25
 
-        # 推进翻页滑动动画（spring easing）
-        if self._page_slide_progress < 1.0:
-            remaining = 1.0 - self._page_slide_progress
-            self._page_slide_progress += remaining * 0.28
-            if self._page_slide_progress > 0.995:
-                self._page_slide_progress = 1.0
+        # 页面偏移动画 - 平滑过渡
+        target_offset = float(self._target_page)
+        offset_diff = target_offset - self._page_offset
 
-        if self._page_slide_progress >= 1.0 and abs(diff) < 0.01:
-            self._indicator_timer.stop()
+        if abs(offset_diff) < 0.01:
+            # 到达目标
+            self._page_offset = target_offset
+            self._wheel_speed = 1.0  # 重置速度
+
+            if abs(diff) < 0.01:
+                self._indicator_timer.stop()
+        else:
+            # 动态速度：根据滚动速度调整
+            base_speed = 0.35  # 基础速度（比原来的0.28快）
+            speed_factor = base_speed * self._wheel_speed
+            speed_factor = min(0.6, speed_factor)  # 最大速度限制
+
+            self._page_offset += offset_diff * speed_factor
+
+            # 衰减滚动速度
+            self._wheel_speed = max(1.0, self._wheel_speed * 0.92)
 
         self.update()
     def _draw_indicator(self, painter: QPainter, text_color: QColor, accent_color: QColor):

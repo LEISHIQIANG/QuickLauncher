@@ -31,15 +31,44 @@ log_dir = get_log_dir()
 log_file, logger = setup_logging(log_dir)
 setup_faulthandler(log_dir)
 
-try:
-    os.environ.setdefault("PYTHONUTF8", "1")
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
-    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
-    os.environ["QT_SCALE_FACTOR_ROUNDING_POLICY"] = "PassThrough"
-    os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.fonts.warning=false")
-except Exception as e:
-    logger.debug("ignored startup exception %s: %s", 1, e)
+from core.error_handler import safe_execute
+
+safe_execute(
+    lambda: os.environ.setdefault("PYTHONUTF8", "1"),
+    "设置PYTHONUTF8环境变量失败",
+    exceptions=(OSError, ValueError),
+    log_level="debug"
+)
+safe_execute(
+    lambda: os.environ.setdefault("PYTHONIOENCODING", "utf-8"),
+    "设置PYTHONIOENCODING环境变量失败",
+    exceptions=(OSError, ValueError),
+    log_level="debug"
+)
+safe_execute(
+    lambda: os.environ.__setitem__("QT_AUTO_SCREEN_SCALE_FACTOR", "0"),
+    "设置QT_AUTO_SCREEN_SCALE_FACTOR失败",
+    exceptions=(OSError, ValueError),
+    log_level="debug"
+)
+safe_execute(
+    lambda: os.environ.__setitem__("QT_ENABLE_HIGHDPI_SCALING", "1"),
+    "设置QT_ENABLE_HIGHDPI_SCALING失败",
+    exceptions=(OSError, ValueError),
+    log_level="debug"
+)
+safe_execute(
+    lambda: os.environ.__setitem__("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough"),
+    "设置QT_SCALE_FACTOR_ROUNDING_POLICY失败",
+    exceptions=(OSError, ValueError),
+    log_level="debug"
+)
+safe_execute(
+    lambda: os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.fonts.warning=false"),
+    "设置QT_LOGGING_RULES失败",
+    exceptions=(OSError, ValueError),
+    log_level="debug"
+)
 
 
 _tray_app = None

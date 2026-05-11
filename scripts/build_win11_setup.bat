@@ -137,7 +137,7 @@ REM Nuitka build command - Win11 optimized (max size optimization mode)
     --noinclude-dlls=qt5location.dll,qt5positioning.dll,qt5sensors.dll,qt5texttospeech.dll,qt5websockets.dll ^
     --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml*.dll,qt5networkauth.dll,qt5purchasing.dll ^
     --noinclude-dlls=qt5remoteobjects.dll,qt5script*.dll,qt5scxml.dll,qt5virtualkeyboard.dll,qt5charts.dll,qt5datavisualization.dll ^
-    --noinclude-dlls=qt5svg.dll,qt5printsupport.dll ^
+    --noinclude-dlls=qt5svg.dll,qt5printsupport.dll,qt5network.dll ^
     --noinclude-dlls=mfc140u.dll,mfc140*.dll ^
     --noinclude-dlls=msvcp140.dll,msvcp140_1.dll,msvcp140_2.dll ^
     --noinclude-dlls=vcruntime140.dll,vcruntime140_1.dll ^

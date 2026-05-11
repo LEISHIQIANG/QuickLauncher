@@ -138,6 +138,12 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         self._page_slide_progress = 1.0  # 1.0 = 动画完成
         self._page_slide_dir = 1  # +1 向左滑, -1 向右滑
 
+        # 平滑滚动状态
+        self._page_offset = float(self.current_page)  # 当前页面偏移量（浮点数）
+        self._target_page = self.current_page  # 目标页面
+        self._last_wheel_time = 0.0
+        self._wheel_speed = 1.0  # 滚动速度系数
+
         # 动画进度 (0.0 到 1.0)
         self._reveal_progress = 0.0
         self._is_hiding = False
@@ -989,7 +995,15 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         if data_structure_changed:
             self._visible_icons_preloaded = False
             self._first_show_ready = False
-        
+
+        # 修正 current_page 边界（页面数量可能变化）
+        if self.pages:
+            self.current_page = min(self.current_page, len(self.pages) - 1)
+            self.current_page = max(0, self.current_page)
+            # 重置滚动动画状态以匹配新的 current_page
+            self._page_offset = float(self.current_page)
+            self._target_page = self.current_page
+
         # 1. 立即清空旧状态
         if refresh_selection:
             self._clear_selected_files_context()
@@ -1421,21 +1435,34 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         """滚轮事件"""
         modifiers = event.modifiers()
         delta = event.angleDelta().y()
-        
+
         if modifiers == QtCompat.NoModifier:
             if len(self.pages) <= 1:
                 event.accept()
                 return
-            old_page = self.current_page
+
+            import time
+            now = time.time()
+
+            # 计算滚动速度
+            time_delta = now - self._last_wheel_time
+            if time_delta < 0.15:  # 150ms内视为快速滚动
+                self._wheel_speed = min(2.5, self._wheel_speed + 0.3)
+            else:
+                self._wheel_speed = 1.0
+            self._last_wheel_time = now
+
+            # 更新目标页面（不重置进度）
             direction = -1 if delta > 0 else 1
+            old_page = self.current_page
             self.current_page = (self.current_page + direction) % len(self.pages)
 
             if self.current_page != old_page:
-                self._prev_page = old_page
-                self._page_slide_dir = direction
-                self._page_slide_progress = 0.0
+                self._target_page = self.current_page
                 self.data_manager.update_settings(last_page_index=self.current_page)
-                self._indicator_timer.start()
+                if not self._indicator_timer.isActive():
+                    self._indicator_timer.start()
+
             self.hover_index = -1
             self.update()
             event.accept()
@@ -1482,11 +1509,11 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         old_page = self.current_page
         self.current_page = (self.current_page + direction) % len(self.pages)
         if self.current_page != old_page:
-            self._prev_page = old_page
-            self._page_slide_dir = direction
-            self._page_slide_progress = 0.0
+            # 更新目标页面（与 wheelEvent 逻辑一致）
+            self._target_page = self.current_page
             self.data_manager.update_settings(last_page_index=self.current_page)
-            self._indicator_timer.start()
+            if not self._indicator_timer.isActive():
+                self._indicator_timer.start()
         self.hover_index = -1
         self.update()
     
