@@ -1,6 +1,6 @@
 """核心模块"""
 
-APP_VERSION = "1.5.6.7"
+APP_VERSION = "1.5.6.8"
 
 from .data_models import (
     ShortcutType, ShortcutItem, Folder, AppSettings, AppData,

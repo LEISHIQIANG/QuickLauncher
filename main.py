@@ -131,6 +131,12 @@ def main():
         from bootstrap.deps import bootstrap_requirements
         bootstrap_requirements(root_dir, logger, _native_error_box)
 
+        try:
+            from core.windows_uipi import format_process_elevation_status
+            logger.info("启动权限状态: %s", format_process_elevation_status())
+        except Exception as e:
+            logger.debug("启动权限状态检测失败（可忽略）: %s", e)
+
         from qt_compat import QApplication, QLocalServer, QLocalSocket, setup_high_dpi, QT_LIB, QTimer, exec_app
         logger.info(f"Qt binding: {QT_LIB}")
 
@@ -226,12 +232,16 @@ def main():
 
         if getattr(sys, "frozen", False):
             try:
-                from core.auto_start_manager import is_auto_start_enabled
-                _ts_enabled = is_auto_start_enabled()
+                from core.auto_start_manager import get_auto_start_check_result
+                _ts_enabled, _ts_reason = get_auto_start_check_result()
                 _cfg_settings = _tray_app.data_manager.get_settings()
-                if getattr(_cfg_settings, 'auto_start', False) != _ts_enabled:
-                    _tray_app.data_manager.update_settings(auto_start=_ts_enabled)
-                    logger.info(f"同步自启动状态: {_ts_enabled}")
+                _cfg_auto_start = bool(getattr(_cfg_settings, 'auto_start', False))
+                if _ts_enabled and not _cfg_auto_start:
+                    _tray_app.data_manager.update_settings(auto_start=True)
+                    logger.info("检测到有效自启动任务，已同步配置为开启: %s", _ts_reason)
+                elif _cfg_auto_start and not _ts_enabled:
+                    _tray_app.data_manager.update_settings(auto_start=False)
+                    logger.warning("配置要求开机自启，但任务缺失或定义已过期；已同步配置为关闭，避免误导用户: %s", _ts_reason)
             except Exception as e:
                 logger.debug(f"同步自启动状态失败（可忽略）: {e}")
 
@@ -311,6 +321,12 @@ if __name__ == "__main__":
             if not action:
                 sys.exit(HELPER_EXIT_BAD_ARGS)
             sys.exit(run_autostart_helper(action, target_exe, target_args, target_cwd))
+        elif sys.argv[1] == "--autostart-launch":
+            from core.auto_start_manager import HELPER_EXIT_BAD_ARGS, run_autostart_launcher
+            target_exe, target_args, target_cwd = _parse_autostart_cli_args(2)
+            if not target_exe:
+                sys.exit(HELPER_EXIT_BAD_ARGS)
+            sys.exit(run_autostart_launcher(target_exe, target_args, target_cwd))
         elif sys.argv[1] == "--uninstall-service":
             from core.service_manager import disable_service_autostart
             success, msg = disable_service_autostart()

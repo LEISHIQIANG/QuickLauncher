@@ -4,10 +4,9 @@
 
 import logging
 from qt_compat import QTimer
+from core import APP_VERSION
 
 logger = logging.getLogger(__name__)
-
-APP_VERSION = "1.5.6.7"
 
 
 def show_welcome_if_first_run(parent, data_manager):

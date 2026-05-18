@@ -14,9 +14,9 @@ echo.
 
 REM === Version configuration ===
 set "APP_PUBLISHER=Layton"
-set "DEFAULT_APP_VERSION=1.5.6.0"
+set "DEFAULT_APP_VERSION=1.5.6.8"
 set "APP_VERSION="
-set /p APP_VERSION=Enter version [1.5.6.0]:
+set /p APP_VERSION=Enter version [1.5.6.8]:
 if not defined APP_VERSION set "APP_VERSION=%DEFAULT_APP_VERSION%"
 
 echo.
@@ -29,10 +29,12 @@ REM ====================
 REM 1. Check Python 3.10+ (recommended)
 echo [0/4] Stopping any running QuickLauncher process...
 taskkill /IM QuickLauncher.exe /T /F >nul 2>&1
+timeout /t 3 /nobreak >nul
+taskkill /IM QuickLauncher.exe /F >nul 2>&1
 timeout /t 2 /nobreak >nul
-tasklist /FI "IMAGENAME eq QuickLauncher.exe" | find /I "QuickLauncher.exe" >nul
+tasklist /FI "IMAGENAME eq QuickLauncher.exe" 2>nul | find /I "QuickLauncher.exe" >nul
 if not errorlevel 1 (
-    echo   [!] QuickLauncher.exe is still running. Close it manually or run this build script as administrator.
+    echo   [!] QuickLauncher.exe is still running. Please close it manually and retry.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )

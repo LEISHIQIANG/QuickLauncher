@@ -12,8 +12,8 @@ echo.
 
 REM === 版本信息配置 ===
 set "APP_PUBLISHER=Layton"
-set /p "APP_VERSION=请输入版本号 (默认 2.6.7.5): "
-if "%APP_VERSION%"=="" set "APP_VERSION=2.6.7.5"
+set /p "APP_VERSION=请输入版本号 (默认 1.5.6.8): "
+if "%APP_VERSION%"=="" set "APP_VERSION=1.5.6.8"
 
 echo.
 echo [信息确认]

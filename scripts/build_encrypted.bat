@@ -16,8 +16,8 @@ echo.
 REM === Version Information ===
 set "APP_PUBLISHER=Layton"
 set "APP_VERSION=%~1"
-if "%APP_VERSION%"=="" set /p "APP_VERSION=Version (default 2.6.7.5): "
-if "%APP_VERSION%"=="" set "APP_VERSION=2.6.7.5"
+if "%APP_VERSION%"=="" set /p "APP_VERSION=Version (default 1.5.6.8): "
+if "%APP_VERSION%"=="" set "APP_VERSION=1.5.6.8"
 
 echo.
 echo   Version: %APP_VERSION%

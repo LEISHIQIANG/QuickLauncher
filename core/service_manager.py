@@ -55,6 +55,7 @@ def get_autostart_status():
         "enabled": False,
         "method": "none",
         "task_scheduler_enabled": False,
+        "task_scheduler_reason": "not_checked",
         "registry_enabled": False,
         "service_installed": False,
         "service_running": False,
@@ -62,15 +63,17 @@ def get_autostart_status():
 
     try:
         from core.auto_start_manager import (
+            get_task_scheduler_check_result,
             get_auto_start_method,
             is_auto_start_enabled,
-            is_task_scheduler_enabled,
         )
         from core.auto_start_manager import _read_registry_value
 
+        task_enabled, task_reason = get_task_scheduler_check_result()
         status["enabled"] = bool(is_auto_start_enabled())
         status["method"] = get_auto_start_method()
-        status["task_scheduler_enabled"] = bool(is_task_scheduler_enabled())
+        status["task_scheduler_enabled"] = bool(task_enabled)
+        status["task_scheduler_reason"] = task_reason
         status["registry_enabled"] = _read_registry_value() is not None
     except Exception as e:
         logger.debug("get_autostart_status current manager check failed: %s", e)

@@ -24,6 +24,7 @@ LEGACY_TASK_NAMES = ("QuickLauncher_AutoStart",)
 _REG_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 HELPER_ARG = "--autostart-helper"
+AUTOSTART_LAUNCH_ARG = "--autostart-launch"
 HELPER_TARGET_ARG = "--target-exe"
 HELPER_TARGET_ARGS_ARG = "--target-args"
 HELPER_TARGET_CWD_ARG = "--target-cwd"
@@ -35,16 +36,39 @@ HELPER_EXIT_FAILED = 1
 HELPER_EXIT_CANCELLED = 2
 HELPER_EXIT_BAD_ARGS = 3
 
+AUTOSTART_FALLBACK_TIMEOUT_SECONDS = 20.0
+AUTOSTART_FALLBACK_POLL_SECONDS = 0.25
+AUTOSTART_ADMIN_TRIGGER_DELAY = "PT2S"
+AUTOSTART_STANDARD_TRIGGER_DELAY = ""
+
 SEE_MASK_NOCLOSEPROCESS = 0x00000040
 SW_HIDE = 0
 INFINITE = 0xFFFFFFFF
+CREATE_UNICODE_ENVIRONMENT = 0x00000400
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TOKEN_ASSIGN_PRIMARY = 0x0001
+TOKEN_DUPLICATE = 0x0002
+TOKEN_ADJUST_DEFAULT = 0x0080
+TOKEN_ADJUST_SESSIONID = 0x0100
+TOKEN_ELEVATION_CLASS = 20
+MAXIMUM_ALLOWED = 0x02000000
+SecurityImpersonation = 2
+TokenPrimary = 1
 
 if os.name == "nt":
+    user32 = ctypes.windll.user32
     shell32 = ctypes.windll.shell32
     kernel32 = ctypes.windll.kernel32
+    advapi32 = ctypes.windll.advapi32
+    userenv = ctypes.windll.userenv
 else:
+    user32 = None
     shell32 = None
     kernel32 = None
+    advapi32 = None
+    userenv = None
 
 
 class SHELLEXECUTEINFO(ctypes.Structure):
@@ -67,15 +91,107 @@ class SHELLEXECUTEINFO(ctypes.Structure):
     ]
 
 
+class STARTUPINFO(ctypes.Structure):
+    _fields_ = [
+        ("cb", wintypes.DWORD),
+        ("lpReserved", wintypes.LPWSTR),
+        ("lpDesktop", wintypes.LPWSTR),
+        ("lpTitle", wintypes.LPWSTR),
+        ("dwX", wintypes.DWORD),
+        ("dwY", wintypes.DWORD),
+        ("dwXSize", wintypes.DWORD),
+        ("dwYSize", wintypes.DWORD),
+        ("dwXCountChars", wintypes.DWORD),
+        ("dwYCountChars", wintypes.DWORD),
+        ("dwFillAttribute", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("wShowWindow", wintypes.WORD),
+        ("cbReserved2", wintypes.WORD),
+        ("lpReserved2", ctypes.c_void_p),
+        ("hStdInput", wintypes.HANDLE),
+        ("hStdOutput", wintypes.HANDLE),
+        ("hStdError", wintypes.HANDLE),
+    ]
+
+
+class PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("hProcess", wintypes.HANDLE),
+        ("hThread", wintypes.HANDLE),
+        ("dwProcessId", wintypes.DWORD),
+        ("dwThreadId", wintypes.DWORD),
+    ]
+
+
+class TOKEN_ELEVATION(ctypes.Structure):
+    _fields_ = [("TokenIsElevated", wintypes.DWORD)]
+
+
 if os.name == "nt":
+    user32.GetShellWindow.argtypes = []
+    user32.GetShellWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
     shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFO)]
     shell32.ShellExecuteExW.restype = wintypes.BOOL
+    kernel32.GetCurrentProcess.argtypes = []
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetLastError.argtypes = []
+    kernel32.GetLastError.restype = wintypes.DWORD
     kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     kernel32.WaitForSingleObject.restype = wintypes.DWORD
     kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
     kernel32.GetExitCodeProcess.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
+    advapi32.OpenProcessToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.GetTokenInformation.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    advapi32.GetTokenInformation.restype = wintypes.BOOL
+    advapi32.DuplicateTokenEx.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.DuplicateTokenEx.restype = wintypes.BOOL
+    advapi32.CreateProcessWithTokenW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPCWSTR,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(STARTUPINFO),
+        ctypes.POINTER(PROCESS_INFORMATION),
+    ]
+    advapi32.CreateProcessWithTokenW.restype = wintypes.BOOL
+    userenv.CreateEnvironmentBlock.argtypes = [
+        ctypes.POINTER(ctypes.c_void_p),
+        wintypes.HANDLE,
+        wintypes.BOOL,
+    ]
+    userenv.CreateEnvironmentBlock.restype = wintypes.BOOL
+    userenv.DestroyEnvironmentBlock.argtypes = [ctypes.c_void_p]
+    userenv.DestroyEnvironmentBlock.restype = wintypes.BOOL
 
 
 def _is_frozen() -> bool:
@@ -186,15 +302,47 @@ def _get_current_user_identity_variants() -> set[str]:
     return variants
 
 
-def _extract_task_scheduler_win32_error(exc: Exception) -> int | None:
-    """Extract the nested Win32 error from a pywin32 COM exception when available."""
+def _is_current_account_admin() -> bool:
+    """Return whether the current logon account has an admin split token."""
+    if os.name != "nt":
+        return False
+
     try:
-        details = exc.args[2] if len(exc.args) > 2 else None
-        if isinstance(details, tuple) and len(details) > 5 and isinstance(details[5], int):
-            return int(details[5])
+        from core.windows_uipi import get_process_elevation_status
+
+        status = get_process_elevation_status()
+        return bool(
+            status.get("elevated")
+            or status.get("is_user_an_admin")
+            or status.get("elevation_type") in ("Limited", "Full")
+        )
     except Exception:
-        pass
-    return None
+        try:
+            return bool(shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+
+
+def _is_current_process_elevated() -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        from core.windows_uipi import get_process_elevation_status
+
+        status = get_process_elevation_status()
+        return bool(status.get("elevated"))
+    except Exception:
+        try:
+            return bool(shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+
+
+def _get_task_trigger_delay(task_mode: str) -> str:
+    """Return the logon trigger delay for the selected auto-start path."""
+    if task_mode == "admin_launcher":
+        return AUTOSTART_ADMIN_TRIGGER_DELAY
+    return AUTOSTART_STANDARD_TRIGGER_DELAY
 
 
 def _build_task_definition(
@@ -217,9 +365,12 @@ def _build_task_definition(
     task_def.Settings.AllowHardTerminate = False
     task_def.Settings.Priority = 4
 
+    task_path, task_args, task_cwd, task_mode = _build_task_action_launch(path, args, cwd)
+    trigger_delay = _get_task_trigger_delay(task_mode)
+
     trigger = task_def.Triggers.Create(9)  # TASK_TRIGGER_LOGON
     trigger.Enabled = True
-    trigger.Delay = ""
+    trigger.Delay = trigger_delay
     if set_trigger_user and user_id:
         try:
             trigger.UserId = user_id
@@ -227,11 +378,11 @@ def _build_task_definition(
             pass
 
     action = task_def.Actions.Create(0)  # TASK_ACTION_EXEC
-    action.Path = path
-    if args:
-        action.Arguments = args
-    if cwd:
-        action.WorkingDirectory = cwd
+    action.Path = task_path
+    if task_args:
+        action.Arguments = task_args
+    if task_cwd:
+        action.WorkingDirectory = task_cwd
 
     task_def.Principal.LogonType = 3  # TASK_LOGON_INTERACTIVE_TOKEN
     task_def.Principal.RunLevel = 0  # TASK_RUNLEVEL_LUA
@@ -241,7 +392,7 @@ def _build_task_definition(
         except Exception:
             pass
     try:
-        # Filter the admin token so the main app still starts unelevated.
+        # Best-effort scheduler hint; admin accounts are actually lowered by the launcher path.
         task_def.Principal.ProcessTokenSidType = 2
     except Exception:
         pass
@@ -293,6 +444,46 @@ def _build_helper_launch(
     return helper_file, subprocess.list2cmdline(argv), helper_cwd
 
 
+def _build_autostart_task_launch(
+    exe_path: str | None = None,
+    arguments: str = "",
+    working_dir: str = "",
+) -> tuple[str, str, str]:
+    """Build the scheduled task action that relaunches the app via Explorer."""
+    target_path, target_args, target_cwd = _normalize_launch_spec(exe_path, arguments, working_dir)
+
+    if _is_frozen():
+        launcher_file = _get_exe_path()
+        launcher_cwd = os.path.dirname(launcher_file)
+        argv = [AUTOSTART_LAUNCH_ARG]
+    else:
+        launcher_cwd = _get_project_root()
+        launcher_file = sys.executable
+        argv = [os.path.join(launcher_cwd, "main.py"), AUTOSTART_LAUNCH_ARG]
+
+    if target_path:
+        argv.extend([HELPER_TARGET_ARG, target_path])
+    if target_args:
+        argv.extend([HELPER_TARGET_ARGS_ARG, target_args])
+    if target_cwd:
+        argv.extend([HELPER_TARGET_CWD_ARG, target_cwd])
+
+    return launcher_file, subprocess.list2cmdline(argv), launcher_cwd
+
+
+def _build_task_action_launch(
+    exe_path: str | None = None,
+    arguments: str = "",
+    working_dir: str = "",
+) -> tuple[str, str, str, str]:
+    """Return scheduled-task action and mode for the current account type."""
+    path, args, cwd = _normalize_launch_spec(exe_path, arguments, working_dir)
+    if _is_current_account_admin():
+        task_path, task_args, task_cwd = _build_autostart_task_launch(path, args, cwd)
+        return task_path, task_args, task_cwd, "admin_launcher"
+    return path, args, cwd, "standard_direct"
+
+
 def _is_allowed_helper_target(
     exe_path: str | None = None,
     arguments: str = "",
@@ -316,42 +507,76 @@ def _is_allowed_helper_target(
     )
 
 
-def _task_matches_launch_spec(task, exe_path: str | None = None, arguments: str = "", working_dir: str = "") -> bool:
-    """Validate that an existing scheduled task still points to the current app."""
+def _validate_task_launch_spec(
+    task,
+    exe_path: str | None = None,
+    arguments: str = "",
+    working_dir: str = "",
+) -> tuple[bool, str]:
+    """Validate an existing scheduled task and return a diagnostic reason."""
     try:
         path, args, cwd = _normalize_launch_spec(exe_path, arguments, working_dir)
+        task_path, task_args, task_cwd, task_mode = _build_task_action_launch(path, args, cwd)
+        expected_delay = _get_task_trigger_delay(task_mode)
         expected_users = _get_current_user_identity_variants()
 
         enabled = bool(getattr(task, "Enabled", False))
         if not enabled:
-            return False
+            return False, "task_disabled"
 
         definition = task.Definition
         principal = definition.Principal
-        if int(getattr(principal, "RunLevel", 0)) != 0:
-            return False
+        actual_runlevel = int(getattr(principal, "RunLevel", 0))
+        if actual_runlevel != 0:
+            return False, f"runlevel_mismatch: actual={actual_runlevel} expected=0"
 
         actual_user = (getattr(principal, "UserId", "") or "").strip().lower()
         if expected_users and actual_user and actual_user not in expected_users:
-            return False
+            return False, f"user_mismatch: actual={actual_user} expected={','.join(sorted(expected_users))}"
 
         actions = definition.Actions
         if int(getattr(actions, "Count", 0)) < 1:
-            return False
+            return False, "actions_missing"
+
+        triggers = definition.Triggers
+        if int(getattr(triggers, "Count", 0)) < 1:
+            return False, "triggers_missing"
+
+        trigger = triggers.Item(1)
+        actual_delay = (getattr(trigger, "Delay", "") or "").strip()
+        if actual_delay != expected_delay:
+            return (
+                False,
+                "trigger_delay_mismatch: "
+                f"mode={task_mode} actual={actual_delay or 'none'} expected={expected_delay or 'none'}",
+            )
 
         action = actions.Item(1)
         actual_path = _normalize_abs_path(getattr(action, "Path", "") or "")
         actual_args = (getattr(action, "Arguments", "") or "").strip()
         actual_cwd = _normalize_abs_path(getattr(action, "WorkingDirectory", "") or "")
 
-        return (
-            actual_path == _normalize_abs_path(path)
-            and actual_args == (args or "").strip()
-            and actual_cwd == _normalize_abs_path(cwd)
-        )
+        expected_path = _normalize_abs_path(task_path)
+        expected_args = (task_args or "").strip()
+        expected_cwd = _normalize_abs_path(task_cwd)
+        if actual_path != expected_path:
+            return False, f"path_mismatch: actual={actual_path} expected={expected_path}"
+        if actual_args != expected_args:
+            return False, f"args_mismatch: actual={actual_args} expected={expected_args}"
+        if actual_cwd != expected_cwd:
+            return False, f"cwd_mismatch: actual={actual_cwd} expected={expected_cwd}"
+
+        return True, f"ok: mode={task_mode} trigger_delay={expected_delay or 'none'}"
     except Exception as exc:
-        logger.debug("读取自启动任务定义失败: %s", exc)
-        return False
+        return False, f"task_definition_read_failed: {exc}"
+
+
+def _task_matches_launch_spec(task, exe_path: str | None = None, arguments: str = "", working_dir: str = "") -> bool:
+    """Validate that an existing scheduled task still points to the current app."""
+    valid, reason = _validate_task_launch_spec(task, exe_path, arguments, working_dir)
+    if not valid:
+        logger.debug("自启动任务定义不匹配: %s", reason)
+    return valid
 
 
 def _run_elevated_helper(
@@ -441,6 +666,344 @@ def run_autostart_helper(
         return HELPER_EXIT_FAILED
 
 
+def _get_last_error_text() -> str:
+    if os.name != "nt":
+        return ""
+    code = int(kernel32.GetLastError())
+    if code <= 0:
+        return "error=0"
+    try:
+        return f"error={code} ({ctypes.FormatError(code).strip()})"
+    except Exception:
+        return f"error={code}"
+
+
+def _build_process_command_line(target: str, arguments: str = "") -> str:
+    command = subprocess.list2cmdline([target])
+    if arguments:
+        command = f"{command} {arguments}"
+    return command
+
+
+def _launch_with_current_token(target: str, arguments: str = "", working_dir: str = "") -> bool:
+    try:
+        subprocess.Popen(_build_process_command_line(target, arguments), cwd=working_dir or None, shell=False)
+        logger.info("自启动中转已用当前令牌启动: %s %s", target, arguments or "")
+        return True
+    except Exception as exc:
+        logger.warning("自启动中转当前令牌启动失败: %s", exc)
+        return False
+
+
+def _create_process_with_token(
+    token,
+    target: str,
+    arguments: str = "",
+    working_dir: str = "",
+    *,
+    token_source: str,
+) -> bool:
+    env = ctypes.c_void_p()
+    env_created = False
+    startup = STARTUPINFO()
+    startup.cb = ctypes.sizeof(STARTUPINFO)
+    proc_info = PROCESS_INFORMATION()
+    command_line = ctypes.create_unicode_buffer(_build_process_command_line(target, arguments))
+
+    try:
+        if userenv.CreateEnvironmentBlock(ctypes.byref(env), token, False):
+            env_created = True
+        else:
+            logger.debug("自启动中转创建环境块失败，将使用默认环境: %s", _get_last_error_text())
+
+        creation_flags = CREATE_UNICODE_ENVIRONMENT if env_created else 0
+        if not advapi32.CreateProcessWithTokenW(
+            token,
+            0,
+            target,
+            command_line,
+            creation_flags,
+            env if env_created else None,
+            working_dir or None,
+            ctypes.byref(startup),
+            ctypes.byref(proc_info),
+        ):
+            logger.debug("自启动中转 CreateProcessWithTokenW 失败: %s", _get_last_error_text())
+            return False
+
+        logger.info(
+            "自启动中转已通过 %s 启动: pid=%s, target=%s %s",
+            token_source,
+            int(proc_info.dwProcessId),
+            target,
+            arguments or "",
+        )
+        return True
+    finally:
+        if proc_info.hThread:
+            try:
+                kernel32.CloseHandle(proc_info.hThread)
+            except Exception:
+                pass
+        if proc_info.hProcess:
+            try:
+                kernel32.CloseHandle(proc_info.hProcess)
+            except Exception:
+                pass
+        if env_created and env:
+            try:
+                userenv.DestroyEnvironmentBlock(env)
+            except Exception:
+                pass
+
+
+def _open_process_token_for_pid(pid: int, desired_access: int):
+    process = wintypes.HANDLE()
+    token = wintypes.HANDLE()
+    try:
+        process = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not process:
+            logger.debug("自启动中转无法打开 Explorer 进程 pid=%s: %s", pid, _get_last_error_text())
+            return None
+
+        if not advapi32.OpenProcessToken(process, desired_access, ctypes.byref(token)):
+            logger.debug("自启动中转无法读取 Explorer 令牌 pid=%s: %s", pid, _get_last_error_text())
+            return None
+
+        opened_token = token
+        token = wintypes.HANDLE()
+        return opened_token
+    finally:
+        if token:
+            try:
+                kernel32.CloseHandle(token)
+            except Exception:
+                pass
+        if process:
+            try:
+                kernel32.CloseHandle(process)
+            except Exception:
+                pass
+
+
+def _is_process_elevated_by_pid(pid: int) -> bool | None:
+    token = _open_process_token_for_pid(pid, TOKEN_QUERY)
+    if not token:
+        return None
+
+    try:
+        elevation = TOKEN_ELEVATION()
+        size = wintypes.DWORD()
+        if not advapi32.GetTokenInformation(
+            token,
+            TOKEN_ELEVATION_CLASS,
+            ctypes.byref(elevation),
+            ctypes.sizeof(elevation),
+            ctypes.byref(size),
+        ):
+            logger.debug("自启动中转无法读取 Explorer elevation pid=%s: %s", pid, _get_last_error_text())
+            return None
+
+        return bool(elevation.TokenIsElevated)
+    finally:
+        try:
+            kernel32.CloseHandle(token)
+        except Exception:
+            pass
+
+
+def _get_shell_explorer_elevation() -> tuple[bool | None, int | None, str]:
+    hwnd = user32.GetShellWindow()
+    if not hwnd:
+        return None, None, "shell_window_missing"
+
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if not pid.value:
+        return None, None, "shell_pid_missing"
+
+    elevated = _is_process_elevated_by_pid(int(pid.value))
+    if elevated is None:
+        return None, int(pid.value), "shell_token_unknown"
+    return elevated, int(pid.value), "ok"
+
+
+def _get_shell_explorer_primary_token() -> tuple[object | None, int | None, str]:
+    elevated, pid, reason = _get_shell_explorer_elevation()
+    if elevated is None:
+        return None, pid, reason
+    if elevated:
+        return None, pid, "shell_elevated"
+    if not pid:
+        return None, None, "shell_pid_missing"
+
+    token = _open_process_token_for_pid(
+        pid,
+        TOKEN_QUERY
+        | TOKEN_DUPLICATE
+        | TOKEN_ASSIGN_PRIMARY
+        | TOKEN_ADJUST_DEFAULT
+        | TOKEN_ADJUST_SESSIONID,
+    )
+    if not token:
+        token = _open_process_token_for_pid(pid, TOKEN_QUERY | TOKEN_DUPLICATE)
+    if not token:
+        return None, pid, "shell_token_open_failed"
+
+    primary_token = wintypes.HANDLE()
+    try:
+        if not advapi32.DuplicateTokenEx(
+            token,
+            MAXIMUM_ALLOWED,
+            None,
+            SecurityImpersonation,
+            TokenPrimary,
+            ctypes.byref(primary_token),
+        ):
+            logger.debug("自启动中转复制 Explorer token 失败: pid=%s %s", pid, _get_last_error_text())
+            return None, pid, "shell_token_duplicate_failed"
+
+        opened_token = primary_token
+        primary_token = wintypes.HANDLE()
+        return opened_token, pid, "ok"
+    finally:
+        if primary_token:
+            try:
+                kernel32.CloseHandle(primary_token)
+            except Exception:
+                pass
+        try:
+            kernel32.CloseHandle(token)
+        except Exception:
+            pass
+
+
+def _launch_via_explorer_token(
+    target: str,
+    arguments: str = "",
+    working_dir: str = "",
+    *,
+    timeout_seconds: float = AUTOSTART_FALLBACK_TIMEOUT_SECONDS,
+    poll_seconds: float = AUTOSTART_FALLBACK_POLL_SECONDS,
+) -> bool:
+    """Create the real app with Explorer's medium token."""
+    if os.name != "nt":
+        return _launch_with_current_token(target, arguments, working_dir)
+
+    import time
+
+    last_reason = ""
+    last_pid = None
+    attempt = 0
+    start = time.monotonic()
+    deadline = start + max(1.0, timeout_seconds)
+    poll_seconds = max(0.1, min(1.0, poll_seconds))
+
+    while True:
+        attempt += 1
+        elapsed = time.monotonic() - start
+        token, shell_pid, reason = _get_shell_explorer_primary_token()
+        last_reason = reason
+        last_pid = shell_pid
+
+        if token:
+            try:
+                if _create_process_with_token(
+                    token,
+                    target,
+                    arguments,
+                    working_dir,
+                    token_source="Explorer token",
+                ):
+                    logger.info(
+                        "自启动中转已通过 Explorer token 启动: explorer_pid=%s target=%s %s",
+                        shell_pid,
+                        target,
+                        arguments or "",
+                    )
+                    return True
+                reason = "create_process_with_explorer_token_failed"
+                last_reason = reason
+            finally:
+                try:
+                    kernel32.CloseHandle(token)
+                except Exception:
+                    pass
+
+        if reason == "shell_elevated":
+            logger.error(
+                "自启动中转拒绝使用高权限 Explorer token 启动主程序: pid=%s attempt=%s",
+                shell_pid,
+                attempt,
+            )
+            return False
+
+        should_log = attempt == 1 or attempt % max(1, int(round(1.0 / poll_seconds))) == 0
+        if should_log:
+            logger.info(
+                "自启动中转等待 Explorer token 可用: attempt=%s elapsed=%.2fs timeout=%.1fs reason=%s pid=%s",
+                attempt,
+                elapsed,
+                timeout_seconds,
+                reason,
+                shell_pid,
+            )
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(poll_seconds, remaining))
+
+    logger.error(
+        "自启动中转 Explorer token fallback 失败: attempts=%s timeout=%.1fs last_reason=%s pid=%s",
+        attempt,
+        timeout_seconds,
+        last_reason,
+        last_pid,
+    )
+    return False
+
+
+def _launch_as_standard_user(target: str, arguments: str = "", working_dir: str = "") -> bool:
+    if os.name == "nt":
+        if not _is_current_process_elevated():
+            logger.info("自启动中转当前已是普通权限，直接启动主程序")
+            return _launch_with_current_token(target, arguments, working_dir)
+
+        logger.info("自启动中转当前为高权限，直接使用 Explorer token 降权启动")
+
+    return _launch_via_explorer_token(target, arguments, working_dir)
+
+
+def run_autostart_launcher(
+    exe_path: str | None = None,
+    arguments: str = "",
+    working_dir: str = "",
+) -> int:
+    """Scheduled-task entry point that relaunches the real app unelevated."""
+    path, args, cwd = _normalize_launch_spec(exe_path, arguments, working_dir)
+    if not os.path.isfile(path):
+        logger.error("自启动中转目标不存在: %s", path)
+        return HELPER_EXIT_FAILED
+    if not _is_allowed_helper_target(path, args, cwd):
+        logger.error("自启动中转拒绝非当前程序目标: path=%s args=%s cwd=%s", path, args, cwd)
+        return HELPER_EXIT_BAD_ARGS
+
+    try:
+        from core.windows_uipi import format_process_elevation_status
+
+        logger.info("自启动中转权限状态: %s", format_process_elevation_status())
+    except Exception as exc:
+        logger.debug("自启动中转权限状态检测失败: %s", exc)
+
+    logger.info("自启动中转准备降权启动: path=%s args=%s cwd=%s", path, args, cwd)
+    if _launch_as_standard_user(path, args, cwd):
+        return HELPER_EXIT_SUCCESS
+
+    logger.error("自启动中转降权启动全部失败: path=%s args=%s cwd=%s", path, args, cwd)
+    return HELPER_EXIT_FAILED
+
+
 def _get_task_scheduler_service():
     """Return a Task Scheduler COM service instance."""
     try:
@@ -502,60 +1065,38 @@ def enable_task_scheduler(exe_path: str | None = None, arguments: str = "", work
             except Exception:
                 pass
 
-            task_def = scheduler.NewTask(0)
-            task_def.RegistrationInfo.Description = "QuickLauncher 开机自启（helper）"
-            task_def.Settings.Enabled = True
-            task_def.Settings.StartWhenAvailable = True
-            task_def.Settings.DisallowStartIfOnBatteries = False
-            task_def.Settings.StopIfGoingOnBatteries = False
-            task_def.Settings.ExecutionTimeLimit = "PT0S"
-            task_def.Settings.AllowHardTerminate = False
-            task_def.Settings.Priority = 4
-
-            trigger = task_def.Triggers.Create(9)  # TASK_TRIGGER_LOGON
-            trigger.Enabled = True
-            trigger.Delay = ""
             user_id = _get_current_user_identity()
-            try:
-                if user_id:
-                    trigger.UserId = user_id
-            except Exception:
-                pass
-
-            action = task_def.Actions.Create(0)  # TASK_ACTION_EXEC
-            action.Path = path
-            if args:
-                action.Arguments = args
-            if cwd:
-                action.WorkingDirectory = cwd
-
-            task_def.Principal.LogonType = 3  # TASK_LOGON_INTERACTIVE_TOKEN
-            task_def.Principal.RunLevel = 0  # TASK_RUNLEVEL_LUA
-            try:
-                if user_id:
-                    task_def.Principal.UserId = user_id
-            except Exception:
-                pass
-            try:
-                # Filter the admin token so the main app still starts unelevated.
-                task_def.Principal.ProcessTokenSidType = 2
-            except Exception:
-                pass
+            task_path, task_args, task_cwd, task_mode = _build_task_action_launch(path, args, cwd)
+            trigger_delay = _get_task_trigger_delay(task_mode)
+            task_def = _build_task_definition(
+                scheduler,
+                path,
+                args,
+                cwd,
+                user_id,
+                set_trigger_user=True,
+                set_principal_user=True,
+            )
 
             # TASK_LOGON_INTERACTIVE_TOKEN should not be registered with an empty password.
             # Use the Principal.UserId already stored in task_def and keep credentials empty.
             root_folder.RegisterTaskDefinition(TASK_NAME, task_def, 6, None, None, 3)
 
-            if is_task_scheduler_enabled(path, args, cwd):
+            task_valid, task_reason = get_task_scheduler_check_result(path, args, cwd)
+            if task_valid:
                 logger.info(
-                    "Task Scheduler 自启动任务已创建: path=%s, args=%s, cwd=%s",
+                    "Task Scheduler 自启动任务已创建: mode=%s, trigger_delay=%s, task_path=%s, task_args=%s, task_cwd=%s, target=%s %s",
+                    task_mode,
+                    trigger_delay or "none",
+                    task_path,
+                    task_args,
+                    task_cwd,
                     path,
                     args,
-                    cwd,
                 )
                 return True
 
-            logger.warning("Task Scheduler 任务创建后验证失败")
+            logger.warning("Task Scheduler 任务创建后验证失败: %s", task_reason)
         except Exception as exc:
             logger.warning("Task Scheduler 创建失败 (attempt %s): %s", attempt + 1, exc)
 
@@ -594,18 +1135,30 @@ def disable_task_scheduler() -> bool:
         return False
 
 
-def is_task_scheduler_enabled(exe_path: str | None = None, arguments: str = "", working_dir: str = "") -> bool:
-    """Return whether the helper-created task exists and is enabled."""
+def get_task_scheduler_check_result(
+    exe_path: str | None = None,
+    arguments: str = "",
+    working_dir: str = "",
+) -> tuple[bool, str]:
+    """Return whether the helper-created task is valid plus a diagnostic reason."""
     if os.name != "nt":
-        return False
+        return False, "unsupported_platform"
 
     try:
         scheduler = _get_task_scheduler_service()
         root_folder = scheduler.GetFolder("\\")
         task = root_folder.GetTask(TASK_NAME)
-        return _task_matches_launch_spec(task, exe_path, arguments, working_dir)
-    except Exception:
-        return False
+        return _validate_task_launch_spec(task, exe_path, arguments, working_dir)
+    except Exception as exc:
+        return False, f"task_missing_or_inaccessible: {exc}"
+
+
+def is_task_scheduler_enabled(exe_path: str | None = None, arguments: str = "", working_dir: str = "") -> bool:
+    """Return whether the helper-created task exists and is enabled."""
+    enabled, reason = get_task_scheduler_check_result(exe_path, arguments, working_dir)
+    if not enabled:
+        logger.debug("Task Scheduler 自启动任务无效: %s", reason)
+    return enabled
 
 
 def _read_registry_value() -> str | None:
@@ -621,20 +1174,6 @@ def _read_registry_value() -> str | None:
             winreg.CloseKey(key)
     except OSError:
         return None
-
-
-def _write_registry_value(exe_path: str) -> bool:
-    """Legacy compatibility helper. No longer used for normal creation."""
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_KEY_PATH, 0, winreg.KEY_SET_VALUE)
-        cmd = f'"{exe_path}"'
-        winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, cmd)
-        winreg.CloseKey(key)
-        logger.info("注册表自启动已写入: %s", cmd)
-        return True
-    except OSError as exc:
-        logger.error("写入注册表自启动失败: %s", exc)
-        return False
 
 
 def _delete_registry_value() -> bool:
@@ -682,12 +1221,17 @@ def enable_auto_start(
     arguments: str = "",
     working_dir: str = "",
 ) -> tuple[bool, str]:
-    """Enable auto-start via the elevated helper."""
+    """Enable auto-start using the account-appropriate path."""
     if exe_path:
         target_path, target_args, target_cwd = _normalize_launch_spec(exe_path, arguments, working_dir)
     else:
         target_path, target_args, target_cwd = _get_app_launch_spec()
 
+    if not _is_current_account_admin():
+        logger.info("非管理员账号启用自启动：直接创建当前用户任务")
+        return _enable_auto_start_direct(target_path, target_args, target_cwd)
+
+    logger.info("管理员账号启用自启动：通过 helper 创建中转降权任务")
     return _run_elevated_helper(HELPER_ACTION_ENABLE, target_path, target_args, target_cwd)
 
 
@@ -712,7 +1256,12 @@ def _disable_auto_start_direct() -> tuple[bool, str]:
 
 
 def disable_auto_start() -> tuple[bool, str]:
-    """Disable auto-start via the elevated helper."""
+    """Disable auto-start using the account-appropriate path."""
+    if not _is_current_account_admin():
+        logger.info("非管理员账号禁用自启动：直接删除当前用户任务")
+        return _disable_auto_start_direct()
+
+    logger.info("管理员账号禁用自启动：通过 helper 清理任务")
     return _run_elevated_helper(HELPER_ACTION_DISABLE)
 
 
@@ -724,32 +1273,15 @@ def get_auto_start_method() -> str:
     return "task_scheduler" if is_task_scheduler_enabled() else "none"
 
 
-def fix_auto_start() -> tuple[bool, str]:
-    """Rebuild the helper-only auto-start task."""
-    target_path, target_args, target_cwd = _get_app_launch_spec()
-    if not os.path.isfile(target_path):
-        return False, f"目标文件不存在: {target_path}"
+def get_auto_start_check_result() -> tuple[bool, str]:
+    """Return current auto-start validity and a reason suitable for logs."""
+    return get_task_scheduler_check_result()
 
-    disable_task_scheduler()
-    _delete_registry_value()
 
-    success, _ = enable_auto_start(target_path, target_args, target_cwd)
-    if success:
-        command_text = target_path if not target_args else f"{target_path} {target_args}"
-        return True, (
-            "开机自启动已修复\n\n"
-            "方式: helper + 任务计划\n"
-            f"命令: {command_text}\n"
-            f"工作目录: {target_cwd}"
-        )
-
-    return False, (
-        "修复失败\n\n"
-        "可能原因:\n"
-        "1. 杀毒软件拦截\n"
-        "2. 系统策略禁止修改启动项\n\n"
-        "建议将程序添加到杀毒软件白名单后重试"
-    )
+def is_auto_start_repair_needed(auto_start_enabled: bool = True) -> bool:
+    """Return whether the user wants auto-start but the task is missing or stale."""
+    enabled, _ = get_auto_start_check_result()
+    return bool(auto_start_enabled) and not enabled
 
 
 def _has_legacy_tasks() -> bool:
@@ -784,16 +1316,12 @@ def _ensure_auto_start(auto_start_enabled: bool = True):
     if not auto_start_enabled:
         return
 
-    if not is_task_scheduler_enabled():
-        logger.info("配置要求开机自启，但 helper 创建的任务当前缺失")
+    enabled, reason = get_auto_start_check_result()
+    if not enabled:
+        logger.warning("配置要求开机自启，但任务缺失或定义已过期，需要在设置中重新启用以修复: %s", reason)
 
 
 def get_exe_path() -> tuple[str, str]:
     """Compatibility helper returning the current launch path and args."""
     path, args, _ = _get_app_launch_spec()
     return path, args
-
-
-def migrate_to_fast_startup() -> bool:
-    """Deprecated compatibility stub."""
-    return False

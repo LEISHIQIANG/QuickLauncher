@@ -688,17 +688,27 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
 
     def _load_system_settings(self, settings):
         try:
-            from core.auto_start_manager import is_auto_start_enabled
-            actual_enabled = is_auto_start_enabled()
+            from core.auto_start_manager import get_auto_start_check_result
+            actual_enabled, auto_start_reason = get_auto_start_check_result()
+            desired_enabled = bool(settings.auto_start)
 
-            if settings.auto_start != actual_enabled:
-                self.data_manager.update_settings(auto_start=actual_enabled)
-
-            self.auto_start_cb.setChecked(actual_enabled)
+            if actual_enabled:
+                if not desired_enabled:
+                    self.data_manager.update_settings(auto_start=True)
+                self.auto_start_cb.setToolTip("")
+                self.auto_start_cb.setChecked(True)
+            elif desired_enabled:
+                logger.warning("配置要求开机自启，但任务缺失或定义已过期；设置页已同步为关闭: %s", auto_start_reason)
+                self.data_manager.update_settings(auto_start=False)
+                self.auto_start_cb.setToolTip(f"开机自启任务缺失或定义已过期，已切换为关闭。原因: {auto_start_reason}")
+                self.auto_start_cb.setChecked(False)
+            else:
+                self.auto_start_cb.setToolTip("")
+                self.auto_start_cb.setChecked(False)
         except Exception as e:
             logger.debug("Failed to load auto-start state: %s", e, exc_info=True)
+            self.auto_start_cb.setToolTip("检测开机自启状态失败，请查看日志。")
             self.auto_start_cb.setChecked(False)
-            self.data_manager.update_settings(auto_start=False)
 
         self.show_on_startup_cb.setChecked(settings.show_on_startup)
         self.hw_accel_cb.setChecked(settings.hardware_acceleration)
@@ -830,50 +840,6 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
 
     # === Event Handlers ===
     
-    def _on_auto_start_changed_legacy(self, state):
-        if self._updating:
-            return
-
-        checked = state == 2
-        import logging
-        logger = logging.getLogger(__name__)
-
-        if checked:
-            self._updating = True
-
-            from core.auto_start_manager import enable_auto_start
-            success, method = enable_auto_start()
-            logger.info(f"开机自启：启用结果 success={success}, method={method}")
-
-            if success:
-                self.data_manager.update_settings(auto_start=True)
-                self._updating = False
-                # 成功时静默完成，不弹窗
-            else:
-                self.data_manager.update_settings(auto_start=False)
-                self._updating = False
-                logger.error("开机自启：启用失败")
-                ThemedMessageBox.critical(self, "启用失败",
-                    "可能原因：\n"
-                    "• 杀毒软件拦截\n"
-                    "• 系统策略禁止修改启动项\n\n"
-                    "建议：将程序添加到杀毒软件白名单后重试")
-                QTimer.singleShot(0, lambda: self._reset_checkbox_state(False))
-        else:
-            self._updating = True
-            logger.info("开机自启：开始禁用")
-            from core.auto_start_manager import disable_auto_start
-            disable_auto_start()
-            # 清理旧服务（如果有）
-            try:
-                from core.service_manager import _cleanup_legacy_service
-                _cleanup_legacy_service()
-            except Exception as e:
-                logger.debug("Legacy service cleanup failed while disabling auto-start: %s", e)
-            self.data_manager.update_settings(auto_start=False)
-            self._updating = False
-            logger.info("开机自启：禁用完成")
-
     def _on_auto_start_changed(self, state):
         if self._updating:
             return
