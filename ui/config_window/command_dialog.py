@@ -25,8 +25,6 @@ from qt_compat import (
     QPainter,
     QPixmap,
     QPlainTextEdit,
-    QPoint,
-    QPolygon,
     QPushButton,
     QRadioButton,
     QStackedWidget,

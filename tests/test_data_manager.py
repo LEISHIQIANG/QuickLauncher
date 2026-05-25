@@ -6,11 +6,9 @@ import sys
 import threading
 import types
 import zipfile
-import zipfile
 
 import pytest
 
-import sys
 from core.config_history import ConfigHistoryManager
 from core.data_manager import DataManager
 from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
