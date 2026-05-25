@@ -125,11 +125,12 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem as _QTableWidgetItem,
 )
 
-from core.i18n import tr
-
 PYQT_VERSION = 5
 QT_LIB = "PyQt5"
 logger = logging.getLogger(__name__)
+
+from core.i18n import tr
+
 logger.debug("Using %s", QT_LIB)
 
 
