@@ -4,6 +4,7 @@
 """
 import logging
 from typing import Callable, Optional
+
 from .hooks_wrapper import HooksDLL
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ class KeyboardHook:
     """键盘钩子 - 使用C++ DLL实现"""
 
     def __init__(self):
-        self._dll = HooksDLL()
+        self._dll = HooksDLL.get_instance()
         self._on_alt_double_tap: Optional[Callable[[], None]] = None
         self._on_hotkey: Optional[Callable[[], None]] = None
 
@@ -32,8 +33,10 @@ class KeyboardHook:
     def set_hotkey(self, hotkey_str: str, callback: Optional[Callable[[], None]] = None):
         """设置热键"""
         self._on_hotkey = callback
-        if callback:
-            self._dll.set_hotkey(hotkey_str, callback)
+        if not hotkey_str or not callback:
+            self._dll.clear_hotkey()
+            return False
+        return self._dll.set_hotkey(hotkey_str, callback)
 
     @property
     def alt_held(self) -> bool:

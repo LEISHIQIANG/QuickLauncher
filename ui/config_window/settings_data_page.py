@@ -1,28 +1,14 @@
 """Data management settings page builder."""
 
-import os
-import sys
-import shutil
-import time
-import winreg
 
+import logging
+
+from qt_compat import QHBoxLayout, QLabel, QPushButton
 from ui.tooltip_helper import install_tooltip
-from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QFormLayout, QSlider, QSpinBox, QRadioButton, QButtonGroup,
-    QLabel, QFrame, QCheckBox, QLineEdit, QPushButton, QPlainTextEdit,
-    QListWidget, QListWidgetItem, QFileDialog, QScrollArea, QMessageBox,
-    QPainter, QPixmap, QColor, QPen, QBrush, QRect, QRectF, QDialog,
-    QTimer, QIcon, QStackedWidget, Qt, QtCompat, pyqtSignal, PYQT_VERSION,
-    QThread, QStyledItemDelegate, QSize, QKeySequence, QMenu, QAction,
-    QComboBox, QPainterPath, exec_dialog, QPoint, QApplication
-)
-from core import APP_VERSION, DEFAULT_SPECIAL_APPS, ShortcutItem, ShortcutType
-from core.app_scanner import AppScanner
-from ui.config_window.settings_helpers import NumberedListDelegate, ProgressDialog, ExportThread, ImportThread
-from ui.config_window.folder_panel import PopupMenu
-from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
+
+logger = logging.getLogger(__name__)
+
 
 class SettingsDataPageMixin:
     def _setup_data_page(self, page):

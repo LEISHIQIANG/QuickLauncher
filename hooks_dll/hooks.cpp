@@ -7,14 +7,22 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <mutex>
 
 // 全局变量
 static HHOOK g_mouseHook = NULL;
 static HHOOK g_keyboardHook = NULL;
 static DWORD g_mouseThreadId = 0;
 static DWORD g_keyboardThreadId = 0;
+static HANDLE g_mouseThreadHandle = NULL;
+static HANDLE g_keyboardThreadHandle = NULL;
+static HANDLE g_mouseReadyEvent = NULL;
+static HANDLE g_keyboardReadyEvent = NULL;
 static std::atomic<bool> g_mouseRunning(false);
 static std::atomic<bool> g_keyboardRunning(false);
+static std::atomic<bool> g_mouseInstalling(false);
+static std::atomic<bool> g_keyboardInstalling(false);
 
 // 回调
 static MouseCallback g_mouseCallback = nullptr;
@@ -27,6 +35,7 @@ static std::atomic<bool> g_mousePaused(false);
 static std::atomic<bool> g_altHeld(false);
 static std::atomic<bool> g_ctrlHeld(false);
 static std::atomic<bool> g_blockedDown(false);
+static std::atomic<DWORD> g_lastHookError(0);
 
 // 时间戳
 static double g_lastBlockTime = 0.0;
@@ -46,6 +55,14 @@ static double g_lastHotkeyTime = 0.0;
 
 // 特殊应用列表
 static std::vector<std::string> g_specialApps;
+static std::mutex g_specialAppsMutex;
+
+// 回调线程 (单线程 + Event 模式，替代每次 CreateThread)
+static HANDLE g_callbackThread = NULL;
+static HANDLE g_callbackEvent = NULL;
+static std::atomic<bool> g_callbackThreadRunning(false);
+static KeyboardCallback g_pendingCallback = nullptr;
+static std::mutex g_callbackMutex;
 
 // 常量
 constexpr double MIN_BLOCK_INTERVAL = 0.025;
@@ -55,9 +72,21 @@ constexpr double ALT_DOUBLE_TAP_COOLDOWN = 0.50;
 constexpr double ALT_LCLICK_DOUBLE_INTERVAL = 0.40;
 constexpr double ALT_LCLICK_COOLDOWN = 0.50;
 constexpr double BLOCKED_STATE_TIMEOUT = 2.0;  // 2秒超时自动释放
+constexpr int HOOKS_VERSION = 3;
+constexpr unsigned int HOOKS_CAP_MOUSE = 0x0001;
+constexpr unsigned int HOOKS_CAP_KEYBOARD = 0x0002;
+constexpr unsigned int HOOKS_CAP_GLOBAL_HOTKEY = 0x0004;
+constexpr unsigned int HOOKS_CAP_SPECIAL_APPS = 0x0008;
+constexpr unsigned int HOOKS_CAP_DIAGNOSTICS = 0x0010;
 
 inline double GetTime() {
     return GetTickCount64() / 1000.0;
+}
+
+static bool IsAltPressedNow() {
+    return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 ||
+           (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0 ||
+           (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
 }
 
 static bool IsCtrlPressedNow() {
@@ -65,6 +94,96 @@ static bool IsCtrlPressedNow() {
            (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 ||
            (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0;
 }
+
+static bool IsModifierPressedNow(int bit) {
+    if (bit == 1) {
+        return IsAltPressedNow();
+    }
+    if (bit == 2) {
+        return IsCtrlPressedNow();
+    }
+    if (bit == 4) {
+        return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 ||
+               (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0 ||
+               (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
+    }
+    if (bit == 8) {
+        return (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+               (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+    }
+    return false;
+}
+
+// ============================================================
+// 回调线程 - 单线程排队执行，避免每次 CreateThread
+// ============================================================
+
+// SEH保护的回调执行 — 必须在独立函数中，不能和 C++ 对象（如 lock_guard）共存
+static void SafeInvokeCallback(KeyboardCallback cb) {
+    __try {
+        cb();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // 忽略回调中的异常
+    }
+}
+
+static DWORD WINAPI CallbackThreadProc(LPVOID) {
+    while (g_callbackThreadRunning.load()) {
+        DWORD result = WaitForSingleObject(g_callbackEvent, 500);
+        if (!g_callbackThreadRunning.load()) break;
+        if (result == WAIT_OBJECT_0) {
+            KeyboardCallback cb = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(g_callbackMutex);
+                cb = g_pendingCallback;
+                g_pendingCallback = nullptr;
+            }
+            if (cb) {
+                SafeInvokeCallback(cb);
+            }
+        }
+    }
+    return 0;
+}
+
+
+static void EnsureCallbackThread() {
+    if (g_callbackThreadRunning.load() && g_callbackThread) return;
+
+    if (g_callbackEvent == NULL) {
+        g_callbackEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+    }
+    g_callbackThreadRunning = true;
+    g_callbackThread = CreateThread(NULL, 0, CallbackThreadProc, NULL, 0, NULL);
+}
+
+static void StopCallbackThread() {
+    g_callbackThreadRunning = false;
+    if (g_callbackEvent) SetEvent(g_callbackEvent);
+    if (g_callbackThread) {
+        WaitForSingleObject(g_callbackThread, 1000);
+        CloseHandle(g_callbackThread);
+        g_callbackThread = NULL;
+    }
+    if (g_callbackEvent) {
+        CloseHandle(g_callbackEvent);
+        g_callbackEvent = NULL;
+    }
+}
+
+static void InvokeKeyboardCallbackAsync(KeyboardCallback callback) {
+    if (!callback) return;
+    EnsureCallbackThread();
+    {
+        std::lock_guard<std::mutex> lock(g_callbackMutex);
+        g_pendingCallback = callback;
+    }
+    if (g_callbackEvent) SetEvent(g_callbackEvent);
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
 
 static std::string ToLowerCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -120,7 +239,12 @@ static HWND GetTargetWindowForSpecialAppCheck() {
 
 // 检查当前目标窗口是否为特殊应用
 static bool IsSpecialApp() {
-    if (g_specialApps.empty()) return false;
+    std::vector<std::string> appsSnapshot;
+    {
+        std::lock_guard<std::mutex> lock(g_specialAppsMutex);
+        if (g_specialApps.empty()) return false;
+        appsSnapshot = g_specialApps;
+    }
 
     HWND hwnd = GetTargetWindowForSpecialAppCheck();
     if (!hwnd) return false;
@@ -135,7 +259,7 @@ static bool IsSpecialApp() {
     GetWindowTextA(hwnd, windowTitle, sizeof(windowTitle));
     std::string titleLower = ToLowerCopy(windowTitle);
 
-    for (const auto& app : g_specialApps) {
+    for (const auto& app : appsSnapshot) {
         std::string appLower = ToLowerCopy(app);
         if (appLower.empty()) continue;
 
@@ -148,7 +272,10 @@ static bool IsSpecialApp() {
     return false;
 }
 
+// ============================================================
 // 鼠标钩子回调
+// ============================================================
+
 LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode < 0) return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
 
@@ -221,11 +348,21 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
 }
 
-DWORD WINAPI MouseHookThread(LPVOID) {
+DWORD WINAPI MouseHookThread(LPVOID param) {
+    HANDLE readyEvent = (HANDLE)param;
     g_mouseThreadId = GetCurrentThreadId();
     g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetModuleHandle(NULL), 0);
 
-    if (!g_mouseHook) return 1;
+    if (!g_mouseHook) {
+        g_lastHookError = GetLastError();
+        g_mouseRunning = false;
+        g_mouseThreadId = 0;
+        if (readyEvent) SetEvent(readyEvent);
+        return 1;
+    }
+
+    // 通知主线程钩子安装成功
+    if (readyEvent) SetEvent(readyEvent);
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) > 0) {
@@ -237,10 +374,16 @@ DWORD WINAPI MouseHookThread(LPVOID) {
         UnhookWindowsHookEx(g_mouseHook);
         g_mouseHook = NULL;
     }
+    g_blockedDown = false;
+    g_mouseThreadId = 0;
+    g_mouseRunning = false;
     return 0;
 }
 
+// ============================================================
 // 键盘钩子回调
+// ============================================================
+
 LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode < 0) return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
 
@@ -250,6 +393,13 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
     bool isAlt = (vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU);
     bool isCtrl = (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL);
+
+    // 物理键状态同步 — 修正 g_altHeld 与物理键状态的不一致
+    // 当收到非 Alt 键事件时，检查物理 Alt 是否已释放
+    if (!isAlt && g_altHeld && !IsAltPressedNow()) {
+        g_altHeld = false;
+        g_altTapCount = 0;
+    }
 
     if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
         if (isAlt) {
@@ -265,11 +415,15 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
             // 热键检测
             if (g_hotkeyEnabled && vk == g_hotkeyVk) {
-                bool altMatch = (bool)(g_hotkeyModifiers & 1) == g_altHeld;
-                bool ctrlMatch = (bool)(g_hotkeyModifiers & 2) == g_ctrlHeld;
-                if (altMatch && ctrlMatch && (now - g_lastHotkeyTime) > 0.25) {
+                bool altMatch = IsModifierPressedNow(1) == ((g_hotkeyModifiers & 1) != 0);
+                bool ctrlMatch = IsModifierPressedNow(2) == ((g_hotkeyModifiers & 2) != 0);
+                bool shiftMatch = IsModifierPressedNow(4) == ((g_hotkeyModifiers & 4) != 0);
+                bool winMatch = IsModifierPressedNow(8) == ((g_hotkeyModifiers & 8) != 0);
+                if (altMatch && ctrlMatch && shiftMatch && winMatch && (now - g_lastHotkeyTime) > 0.25) {
                     g_lastHotkeyTime = now;
-                    if (g_hotkeyCallback) g_hotkeyCallback();
+                    InvokeKeyboardCallbackAsync(g_hotkeyCallback);
+                    // 拦截热键事件，不传递给系统和其它程序
+                    return 1;
                 }
             }
         }
@@ -288,7 +442,7 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                             if ((now - g_lastDoubleTapTime) > ALT_DOUBLE_TAP_COOLDOWN) {
                                 g_lastDoubleTapTime = now;
                                 g_altTapCount = 0;
-                                if (g_altDoubleTapCallback) g_altDoubleTapCallback();
+                                InvokeKeyboardCallbackAsync(g_altDoubleTapCallback);
                             } else {
                                 g_altTapCount = 0;
                             }
@@ -304,16 +458,33 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                 }
             }
         }
+        // 热键 KeyUp 时，如果刚触发过热键也拦截（防止 keyup 泄漏给系统）
+        if (g_hotkeyEnabled && vk == g_hotkeyVk) {
+            // 检查是否在极短时间内刚触发过热键
+            if ((now - g_lastHotkeyTime) < 0.30) {
+                return 1;
+            }
+        }
     }
 
     return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
 }
 
-DWORD WINAPI KeyboardHookThread(LPVOID) {
+DWORD WINAPI KeyboardHookThread(LPVOID param) {
+    HANDLE readyEvent = (HANDLE)param;
     g_keyboardThreadId = GetCurrentThreadId();
     g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookProc, GetModuleHandle(NULL), 0);
 
-    if (!g_keyboardHook) return 1;
+    if (!g_keyboardHook) {
+        g_lastHookError = GetLastError();
+        g_keyboardRunning = false;
+        g_keyboardThreadId = 0;
+        if (readyEvent) SetEvent(readyEvent);
+        return 1;
+    }
+
+    // 通知主线程钩子安装成功
+    if (readyEvent) SetEvent(readyEvent);
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) > 0) {
@@ -325,23 +496,82 @@ DWORD WINAPI KeyboardHookThread(LPVOID) {
         UnhookWindowsHookEx(g_keyboardHook);
         g_keyboardHook = NULL;
     }
+    g_altHeld = false;
+    g_ctrlHeld = false;
+    g_altTapCount = 0;
+    g_otherKeyPressed = false;
+    g_hotkeyEnabled = false;
+    g_keyboardThreadId = 0;
+    g_keyboardRunning = false;
     return 0;
 }
 
+// ============================================================
 // 导出函数实现
+// ============================================================
+
 bool InstallMouseHook(MouseCallback callback) {
+    // 防重入
+    bool expected = false;
+    if (!g_mouseInstalling.compare_exchange_strong(expected, true)) {
+        // 已有安装操作进行中
+        return g_mouseHook != NULL;
+    }
+
     g_mouseCallback = callback;
-    if (g_mouseRunning) return g_mouseHook != NULL;
+    if (g_mouseRunning) {
+        g_mouseInstalling = false;
+        return g_mouseHook != NULL;
+    }
+
+    // 确保回调线程已启动
+    EnsureCallbackThread();
+
+    // 创建同步事件
+    if (g_mouseReadyEvent) {
+        CloseHandle(g_mouseReadyEvent);
+    }
+    g_mouseReadyEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+
     g_mouseRunning = true;
-    CreateThread(NULL, 0, MouseHookThread, NULL, 0, NULL);
-    Sleep(100);
+
+    // 关闭之前的线程句柄（如果有）
+    if (g_mouseThreadHandle) {
+        CloseHandle(g_mouseThreadHandle);
+        g_mouseThreadHandle = NULL;
+    }
+
+    g_mouseThreadHandle = CreateThread(NULL, 0, MouseHookThread, g_mouseReadyEvent, 0, NULL);
+
+    if (!g_mouseThreadHandle) {
+        g_lastHookError = GetLastError();
+        g_mouseRunning = false;
+        g_mouseInstalling = false;
+        return false;
+    }
+
+    // 等待钩子安装完成（最多 2 秒）
+    WaitForSingleObject(g_mouseReadyEvent, 2000);
+
+    g_mouseInstalling = false;
     return g_mouseHook != NULL;
 }
 
 void UninstallMouseHook() {
     g_mouseRunning = false;
-    if (g_mouseThreadId) PostThreadMessage(g_mouseThreadId, WM_QUIT, 0, 0);
-    Sleep(100);
+    if (g_mouseThreadId) {
+        PostThreadMessage(g_mouseThreadId, WM_QUIT, 0, 0);
+    }
+    // 等待线程真正退出
+    if (g_mouseThreadHandle) {
+        WaitForSingleObject(g_mouseThreadHandle, 2000);
+        CloseHandle(g_mouseThreadHandle);
+        g_mouseThreadHandle = NULL;
+    }
+    if (g_mouseReadyEvent) {
+        CloseHandle(g_mouseReadyEvent);
+        g_mouseReadyEvent = NULL;
+    }
 }
 
 void SetMousePaused(bool paused) {
@@ -358,21 +588,77 @@ void SetAltDoubleClickCallback(MouseCallback callback) {
 }
 
 bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
+    // 防重入
+    bool expected = false;
+    if (!g_keyboardInstalling.compare_exchange_strong(expected, true)) {
+        return g_keyboardHook != NULL;
+    }
+
     g_altDoubleTapCallback = altDoubleTapCallback;
-    if (g_keyboardRunning) return g_keyboardHook != NULL;
+    if (g_keyboardRunning) {
+        g_keyboardInstalling = false;
+        return g_keyboardHook != NULL;
+    }
+
+    // 确保回调线程已启动
+    EnsureCallbackThread();
+
+    // 创建同步事件
+    if (g_keyboardReadyEvent) {
+        CloseHandle(g_keyboardReadyEvent);
+    }
+    g_keyboardReadyEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+
     g_keyboardRunning = true;
-    CreateThread(NULL, 0, KeyboardHookThread, NULL, 0, NULL);
-    Sleep(100);
+
+    // 关闭之前的线程句柄
+    if (g_keyboardThreadHandle) {
+        CloseHandle(g_keyboardThreadHandle);
+        g_keyboardThreadHandle = NULL;
+    }
+
+    g_keyboardThreadHandle = CreateThread(NULL, 0, KeyboardHookThread, g_keyboardReadyEvent, 0, NULL);
+
+    if (!g_keyboardThreadHandle) {
+        g_lastHookError = GetLastError();
+        g_keyboardRunning = false;
+        g_keyboardInstalling = false;
+        return false;
+    }
+
+    // 等待钩子安装完成（最多 2 秒）
+    WaitForSingleObject(g_keyboardReadyEvent, 2000);
+
+    g_keyboardInstalling = false;
     return g_keyboardHook != NULL;
 }
 
 void UninstallKeyboardHook() {
     g_keyboardRunning = false;
-    if (g_keyboardThreadId) PostThreadMessage(g_keyboardThreadId, WM_QUIT, 0, 0);
-    Sleep(100);
+    if (g_keyboardThreadId) {
+        PostThreadMessage(g_keyboardThreadId, WM_QUIT, 0, 0);
+    }
+    // 等待线程真正退出
+    if (g_keyboardThreadHandle) {
+        WaitForSingleObject(g_keyboardThreadHandle, 2000);
+        CloseHandle(g_keyboardThreadHandle);
+        g_keyboardThreadHandle = NULL;
+    }
+    if (g_keyboardReadyEvent) {
+        CloseHandle(g_keyboardReadyEvent);
+        g_keyboardReadyEvent = NULL;
+    }
+    g_altHeld = false;
+    g_ctrlHeld = false;
+    g_altTapCount = 0;
+    g_otherKeyPressed = false;
 }
 
 bool IsAltHeld() {
+    // 增加物理键状态同步：如果逻辑上是 held 但物理上已释放，立即修正
+    if (g_altHeld && !IsAltPressedNow()) {
+        g_altHeld = false;
+    }
     return g_altHeld;
 }
 
@@ -380,28 +666,88 @@ bool IsCtrlHeld() {
     return g_ctrlHeld || IsCtrlPressedNow();
 }
 
-void SetGlobalHotkey(const char* hotkeyStr, KeyboardCallback callback) {
+static std::string NormalizeHotkeyToken(std::string token) {
+    token.erase(std::remove_if(token.begin(), token.end(), ::isspace), token.end());
+    std::transform(token.begin(), token.end(), token.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (token.length() > 2 && token.front() == '<' && token.back() == '>') {
+        token = token.substr(1, token.length() - 2);
+    }
+    return token;
+}
+
+static bool ParseGlobalHotkey(const std::string& hotkeyStr, int* modifiers, int* vk) {
+    if (!modifiers || !vk) return false;
+    *modifiers = 0;
+    *vk = 0;
+
+    size_t start = 0;
+    while (start <= hotkeyStr.length()) {
+        size_t end = hotkeyStr.find('+', start);
+        std::string token = hotkeyStr.substr(
+            start,
+            end == std::string::npos ? std::string::npos : end - start
+        );
+        token = NormalizeHotkeyToken(token);
+
+        if (!token.empty()) {
+            if (token == "alt") {
+                *modifiers |= 1;
+            } else if (token == "ctrl" || token == "control") {
+                *modifiers |= 2;
+            } else if (token == "shift") {
+                *modifiers |= 4;
+            } else if (token == "win" || token == "windows" || token == "cmd" ||
+                       token == "meta" || token == "super") {
+                *modifiers |= 8;
+            } else if (token.length() == 1 && token[0] >= 'a' && token[0] <= 'z') {
+                if (*vk != 0) return false;
+                *vk = static_cast<int>(std::toupper(static_cast<unsigned char>(token[0])));
+            } else if (token.length() == 1 && token[0] >= '0' && token[0] <= '9') {
+                if (*vk != 0) return false;
+                *vk = static_cast<int>(token[0]);
+            } else if (token == "space") {
+                if (*vk != 0) return false;
+                *vk = VK_SPACE;
+            } else if (token == "tab") {
+                if (*vk != 0) return false;
+                *vk = VK_TAB;
+            } else if (token == "enter" || token == "return") {
+                if (*vk != 0) return false;
+                *vk = VK_RETURN;
+            } else if (token == "esc" || token == "escape") {
+                if (*vk != 0) return false;
+                *vk = VK_ESCAPE;
+            } else if (token.length() >= 2 && token[0] == 'f') {
+                int n = atoi(token.substr(1).c_str());
+                if (n < 1 || n > 24 || *vk != 0) return false;
+                *vk = VK_F1 + (n - 1);
+            } else {
+                return false;
+            }
+        }
+
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+
+    return *vk != 0 && *modifiers != 0;
+}
+
+bool SetGlobalHotkey(const char* hotkeyStr, KeyboardCallback callback) {
     g_hotkeyCallback = callback;
     g_hotkeyEnabled = false;
-    if (!hotkeyStr || !callback) return;
+    if (!hotkeyStr || !callback) return false;
 
     std::string str(hotkeyStr);
     int mods = 0, vk = 0;
+    if (!ParseGlobalHotkey(str, &mods, &vk)) return false;
 
-    if (str.find("alt") != std::string::npos) mods |= 1;
-    if (str.find("ctrl") != std::string::npos) mods |= 2;
-
-    size_t pos = str.find_last_of("+");
-    if (pos != std::string::npos && pos + 1 < str.length()) {
-        char key = toupper(str[pos + 1]);
-        if (key >= 'A' && key <= 'Z') vk = key;
-    }
-
-    if (vk && mods) {
-        g_hotkeyModifiers = mods;
-        g_hotkeyVk = vk;
-        g_hotkeyEnabled = true;
-    }
+    g_hotkeyModifiers = mods;
+    g_hotkeyVk = vk;
+    g_hotkeyEnabled = true;
+    return true;
 }
 
 void ClearGlobalHotkey() {
@@ -433,6 +779,7 @@ void ReleaseAllModifierKeys() {
 }
 
 HOOKS_API void SetSpecialApps(const char** apps, int count) {
+    std::lock_guard<std::mutex> lock(g_specialAppsMutex);
     g_specialApps.clear();
     for (int i = 0; i < count; i++) {
         if (apps[i]) {
@@ -442,5 +789,22 @@ HOOKS_API void SetSpecialApps(const char** apps, int count) {
 }
 
 HOOKS_API void ClearSpecialApps() {
+    std::lock_guard<std::mutex> lock(g_specialAppsMutex);
     g_specialApps.clear();
+}
+
+HOOKS_API int GetHooksVersion() {
+    return HOOKS_VERSION;
+}
+
+HOOKS_API unsigned int GetHooksCapabilities() {
+    return HOOKS_CAP_MOUSE |
+           HOOKS_CAP_KEYBOARD |
+           HOOKS_CAP_GLOBAL_HOTKEY |
+           HOOKS_CAP_SPECIAL_APPS |
+           HOOKS_CAP_DIAGNOSTICS;
+}
+
+HOOKS_API unsigned long GetLastHookError() {
+    return static_cast<unsigned long>(g_lastHookError.load());
 }

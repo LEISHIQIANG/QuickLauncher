@@ -2,24 +2,30 @@
 设置面板 - 精确布局版本
 """
 
-import os
-import sys
-import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QFormLayout, QSlider, QSpinBox, QRadioButton,
-    QButtonGroup, QLabel, QFrame, QCheckBox,
-    QLineEdit, QPushButton, QPlainTextEdit, QListWidget, QListWidgetItem, QFileDialog, QScrollArea, QMessageBox,
-    QPainter, QPixmap, QColor, QPen, QBrush, QRectF, QDialog, QTimer, QIcon,
-    Qt, QtCompat, pyqtSignal, PYQT_VERSION, QThread, QStyledItemDelegate, QStyleOptionViewItem, QModelIndex, QStyle,
-    QPainterPath
+    QBrush,
+    QCheckBox,
+    QColor,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPropertyAnimation,
+    QPushButton,
+    QRectF,
+    QSize,
+    QStyledItemDelegate,
+    QtCompat,
+    QThread,
+    QTimer,
+    QVBoxLayout,
+    pyqtProperty,
+    pyqtSignal,
 )
-
-from core import APP_VERSION, DataManager, DEFAULT_SPECIAL_APPS
-from .theme_helper import apply_theme_to_dialog, get_radio_stylesheet, get_switch_stylesheet
-from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.window_effect import get_window_effect
 
 
@@ -76,7 +82,8 @@ class NumberedListDelegate(QStyledItemDelegate):
                         theme = p.data_manager.get_settings().theme
                         break
                     p = p.parent()
-            except: pass
+            except Exception:
+                pass
 
             is_selected = bool(option.state & QtCompat.State_Selected)
             is_hover = bool(option.state & QtCompat.State_MouseOver)
@@ -108,13 +115,15 @@ class NumberedListDelegate(QStyledItemDelegate):
             font.setPointSize(9)
             painter.setFont(font)
             num_color = QColor(255, 255, 255, 100) if theme == "dark" else QColor(0, 0, 0, 80)
-            if is_selected: num_color = QColor(255, 255, 255, 200)
+            if is_selected:
+                num_color = QColor(255, 255, 255, 200)
             painter.setPen(num_color)
             num_rect = QRectF(option.rect.left() + 10, option.rect.top(), 24, option.rect.height())
             painter.drawText(num_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, num_str)
 
             text_color = QColor(255, 255, 255, 230) if theme == "dark" else QColor(28, 28, 30, 230)
-            if is_selected: text_color = QColor(255, 255, 255)
+            if is_selected:
+                text_color = QColor(255, 255, 255)
             painter.setPen(text_color)
             font.setBold(False)
             font.setPointSize(10)
@@ -125,13 +134,13 @@ class NumberedListDelegate(QStyledItemDelegate):
                 elided_text = painter.fontMetrics().elidedText(text, QtCompat.ElideRight, int(text_rect.width()))
                 painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, elided_text)
             painter.restore()
-        except Exception as e:
-            if painter.isActive(): painter.restore()
+        except Exception:
+            if painter.isActive():
+                painter.restore()
             super(NumberedListDelegate, self).paint(painter, option, index)
 
     def createEditor(self, parent, option, index):
         self.editing_row = index.row()
-        from qt_compat import QLineEdit
         editor = QLineEdit(parent)
         editor.setFrame(False)
         editor.setStyleSheet("background: transparent; border: none; padding: 0px; margin: 0px;")
@@ -168,6 +177,7 @@ class ProgressDialog(QDialog):
         from ui.utils.window_effect import is_win11
         self.corner_radius = 8 if is_win11() else 12
         self._acrylic_applied = False
+        self._dialog_finished = False
         self._detect_theme()
         self._setup_ui()
 
@@ -244,6 +254,7 @@ class ProgressDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._dialog_finished = False
         self.adjustSize()
         from ui.utils.dialog_helper import center_dialog_on_main_window
         center_dialog_on_main_window(self)
@@ -254,6 +265,8 @@ class ProgressDialog(QDialog):
     def _apply_acrylic(self):
         """应用模糊效果 - 与主配置窗口一致"""
         try:
+            if self._dialog_finished or not self.isVisible():
+                return
             from ui.utils.window_effect import enable_acrylic_for_config_window, is_win11
             hwnd = int(self.winId())
             if not hwnd:
@@ -272,6 +285,10 @@ class ProgressDialog(QDialog):
         except Exception:
             pass
 
+    def done(self, result):
+        self._dialog_finished = True
+        super().done(result)
+
     def show_success(self, msg):
         self.msg_label.setText(msg)
         self.ok_btn.setVisible(True)
@@ -281,3 +298,138 @@ class ProgressDialog(QDialog):
         self.msg_label.setText(msg)
         self.ok_btn.setVisible(True)
         self.adjustSize()
+
+
+class SwitchButton(QCheckBox):
+    """Custom Apple/iOS-style animated toggle switch button."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setCursor(QtCompat.PointingHandCursor)
+
+        # Set a highly specific local stylesheet to disable standard QCheckBox indicator
+        self.setStyleSheet("QCheckBox::indicator, SwitchButton::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }")
+
+        # Anim progress: 0.0 (off) to 1.0 (on)
+        self._progress = 1.0 if self.isChecked() else 0.0
+
+        self._anim = QPropertyAnimation(self, b"progress")
+        self._anim.setDuration(220)  # Smooth animation duration
+        self._anim.setEasingCurve(QtCompat.OutCubic)
+
+        self.stateChanged.connect(self._on_state_changed)
+        self._theme = "dark"
+
+    @pyqtProperty(float)
+    def progress(self) -> float:
+        return self._progress
+
+    @progress.setter
+    def progress(self, val: float):
+        self._progress = val
+        self.update()
+
+    def setChecked(self, checked: bool):
+        super().setChecked(checked)
+        # Bypass animation when loaded offscreen (e.g. settings load)
+        if not self.isVisible():
+            self._anim.stop()
+            self._progress = 1.0 if checked else 0.0
+            self.update()
+
+    def set_theme(self, theme: str):
+        self._theme = theme
+        self.update()
+
+    def _on_state_changed(self, state):
+        checked = self.isChecked()
+        self._anim.stop()
+        self._anim.setStartValue(self._progress)
+        self._anim.setEndValue(1.0 if checked else 0.0)
+        self._anim.start()
+
+    def sizeHint(self):
+        font_metrics = self.fontMetrics()
+        text_width = font_metrics.horizontalAdvance(self.text()) if hasattr(font_metrics, 'horizontalAdvance') else font_metrics.width(self.text())
+        text_height = font_metrics.height()
+
+        w = 29 + 8 + text_width + 4
+        h = max(18, text_height) + 4
+        return QSize(int(w), int(h))
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QtCompat.Antialiasing)
+
+        # Switch dimensions
+        sw_width = 29
+        sw_height = 18
+        spacing = 8
+
+        rect = self.rect()
+        sw_y = (rect.height() - sw_height) / 2.0
+        sw_x = 0.0
+
+        # Colors based on theme and progress
+        if self._theme == "dark":
+            bg_off = QColor("#48484A")
+            bg_border_off = QColor("#8E8E93")
+            text_color = QColor("#FFFFFF")
+        else:
+            bg_off = QColor("#E9E9EA")
+            bg_border_off = QColor("#D1D1D6")
+            text_color = QColor("#333333")
+
+        bg_on = QColor("#007AFF")  # Apple system blue
+
+        # Interpolate background color
+        r = int(bg_off.red() + (bg_on.red() - bg_off.red()) * self._progress)
+        g = int(bg_off.green() + (bg_on.green() - bg_off.green()) * self._progress)
+        b = int(bg_off.blue() + (bg_on.blue() - bg_off.blue()) * self._progress)
+        current_bg = QColor(r, g, b)
+
+        # Draw background track
+        painter.setPen(QtCompat.NoPen)
+        painter.setBrush(QBrush(current_bg))
+        track_rect = QRectF(sw_x, sw_y, sw_width, sw_height)
+        painter.drawRoundedRect(track_rect, sw_height / 2.0, sw_height / 2.0)
+
+        # Draw unchecked border for contrast when not fully checked
+        if self._progress < 1.0:
+            opacity = 1.0 - self._progress
+            border_color = QColor(bg_border_off)
+            border_color.setAlphaF(opacity)
+            painter.setPen(QPen(border_color, 1))
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawRoundedRect(track_rect.adjusted(0.5, 0.5, -0.5, -0.5), sw_height / 2.0, sw_height / 2.0)
+
+        # Draw white knob
+        knob_size = sw_height - 4
+        knob_min_x = sw_x + 2.0
+        knob_max_x = sw_x + sw_width - sw_height + 2.0
+        knob_current_x = knob_min_x + (knob_max_x - knob_min_x) * self._progress
+
+        # Draw knob shadow
+        painter.setPen(QPen(QColor(0, 0, 0, 30), 0.5))
+        painter.setBrush(QBrush(QColor("#FFFFFF")))
+        shadow_rect = QRectF(knob_current_x, sw_y + 2.5, knob_size, knob_size)
+        painter.drawEllipse(shadow_rect)
+
+        # Draw knob
+        knob_rect = QRectF(knob_current_x, sw_y + 2.0, knob_size, knob_size)
+        painter.drawEllipse(knob_rect)
+
+        # Draw text
+        text = self.text()
+        if text:
+            font = self.font()
+            painter.setFont(font)
+            painter.setPen(QPen(text_color))
+
+            text_x = sw_x + sw_width + spacing
+            text_rect = QRectF(text_x, 0, rect.width() - text_x, rect.height())
+            painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, text)
+

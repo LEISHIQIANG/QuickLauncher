@@ -63,11 +63,11 @@ def get_autostart_status():
 
     try:
         from core.auto_start_manager import (
-            get_task_scheduler_check_result,
+            _read_registry_value,
             get_auto_start_method,
+            get_task_scheduler_check_result,
             is_auto_start_enabled,
         )
-        from core.auto_start_manager import _read_registry_value
 
         task_enabled, task_reason = get_task_scheduler_check_result()
         status["enabled"] = bool(is_auto_start_enabled())

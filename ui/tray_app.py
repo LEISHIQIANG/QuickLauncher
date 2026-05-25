@@ -2,21 +2,27 @@
 托盘应用
 """
 
+import ctypes
+import logging
 import os
 import sys
-import logging
 import time
-import ctypes
 
 # 导入兼容层
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.data_models import ShortcutType
 from qt_compat import (
-    QSystemTrayIcon, QMenu, QApplication, QMessageBox, QAction,
-    QObject, pyqtSignal, QTimer, QIcon, QPainter, QColor, QRectF, QPainterPath,
-    QtCompat, PYQT_VERSION, get_standard_icon
+    QApplication,
+    QIcon,
+    QObject,
+    QSystemTrayIcon,
+    QtCompat,
+    QThread,
+    QTimer,
+    get_standard_icon,
+    pyqtSignal,
 )
 from ui.styles.style import PopupMenu
-from ui.utils.window_effect import WindowEffect, is_win11
 from ui.styles.themed_messagebox import ThemedMessageBox
 
 logger = logging.getLogger(__name__)
@@ -32,9 +38,29 @@ def _get_shortcut_executor():
     return _ShortcutExecutor
 
 
+class IconCacheCleanThread(QThread):
+    finished_signal = pyqtSignal(dict, str)
+
+    def __init__(self, data_manager):
+        super().__init__()
+        self.data_manager = data_manager
+
+    def run(self):
+        try:
+            try:
+                from core import IconExtractor
+                if hasattr(IconExtractor, "clear_cache"):
+                    IconExtractor.clear_cache()
+            except Exception:
+                pass
+            self.finished_signal.emit(self.data_manager.clean_icon_cache(dry_run=False), "")
+        except Exception as exc:
+            self.finished_signal.emit({}, str(exc))
+
+
 class TrayApp(QObject):
     """托盘应用"""
-    
+
     # 信号定义
     show_popup_signal = pyqtSignal(int, int)
     show_config_signal = pyqtSignal()  # 用于跨线程安全地请求显示配置窗口
@@ -42,41 +68,100 @@ class TrayApp(QObject):
     _alt_double_tap_signal = pyqtSignal()
     # 键盘钩子热键信号 (从钩子线程发到主线程)
     _hook_hotkey_signal = pyqtSignal()
-    
+
     def __init__(self):
+        init_start = time.perf_counter()
         super().__init__()
         logger.info("TrayApp 初始化...")
-        
+
         # 初始化数据管理器
         logger.info("初始化数据管理器...")
         from core import DataManager
         self.data_manager = DataManager()
         logger.info("数据管理器初始化成功")
 
+        # 注册 data_manager 引用到 core 模块
+        from core import set_data_manager
+        set_data_manager(self.data_manager)
+
+        # 初始化命令注册中心
+        from core import ensure_registry_initialized, ensure_plugin_manager_initialized, plugin_manager
+        ensure_registry_initialized()
+
+        # Check plugin degrade switch before initializing plugin manager
+        _plugins_enabled = True
+        try:
+            _plugins_enabled = self.data_manager.get_settings().enable_plugins
+        except Exception:
+            pass
+        if _plugins_enabled:
+            ensure_plugin_manager_initialized()
+        else:
+            logger.info("插件系统已通过功能开关禁用")
+
+        if plugin_manager is not None:
+            def _save_enabled_plugins(enabled_ids: list[str]):
+                self.data_manager.get_settings().enabled_plugins = enabled_ids
+                self.data_manager.save()
+            plugin_manager.set_save_callback(_save_enabled_plugins)
+
+            def _confirm_high_risk(info) -> bool:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+                manifest = getattr(info, "manifest", None)
+                name = getattr(manifest, "name", str(info))
+                permissions = list(getattr(manifest, "permissions", []) or [])
+                from core.plugin_manager import HIGH_RISK_PERMISSIONS
+                high_risk = [p for p in permissions if p in HIGH_RISK_PERMISSIONS]
+                risk_line = (
+                    f"\n高风险权限: {', '.join(high_risk)}\n" if high_risk else "\n"
+                )
+                reply = ThemedMessageBox.question(
+                    self.tray_icon if self.tray_icon else None,
+                    "启用插件",
+                    f"插件「{name}」将与 QuickLauncher 主程序同权限运行。"
+                    f"{risk_line}\n仅启用您信任的插件。确定要启用吗？",
+                    ThemedMessageBox.Yes | ThemedMessageBox.No,
+                )
+                return reply == ThemedMessageBox.Yes
+            plugin_manager.set_confirm_high_risk_callback(_confirm_high_risk)
+            enabled = list(self.data_manager.get_settings().enabled_plugins)
+            if enabled:
+                plugin_manager.auto_enable(enabled)
 
         self.config_window = None
         self.popup_window = None
+        self._extra_popup_windows = []
+        self._max_extra_popup_windows = 2
         self._toast = None  # Toast 通知实例
-        
+
         # 创建托盘图标
         logger.info("创建托盘图标...")
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self._load_icon())
         self.tray_icon.setToolTip("QuickLauncher\n左键=设置 | 中键=启动器")
         self.tray_icon.activated.connect(self._on_tray_activated)
-        
+
         # 日志窗口实例
         self.log_window = None
-        
+        self.diagnostics_window = None
+        self.shortcut_health_window = None
+        self.config_history_window = None
+        self.slash_help_window = None
+        self._icon_cache_clean_thread = None
+
         # 创建菜单
         self.tray_menu = None
         self._create_menu()
-        
+
+        # Show the tray icon before any deferred startup work. Silent startup
+        # must not create hidden top-level windows that can appear in taskbar.
+        self._apply_initial_settings()
+
         # 连接信号
         self.show_popup_signal.connect(self._on_show_popup)
         self.show_config_signal.connect(self._show_config)  # 跨线程安全的配置窗口显示
         self._alt_double_tap_signal.connect(self._on_alt_double_tap)
-        
+
         # 安装鼠标钩子（延迟到事件循环启动后，让托盘图标先显示）
         logger.info("安装鼠标钩子...")
         self.mouse_hook = None
@@ -89,23 +174,26 @@ class TrayApp(QObject):
         logger.info("安装键盘钩子...")
         self.keyboard_hook = None
         QTimer.singleShot(0, self._install_keyboard_hook_and_hotkey)
-        
+
         # 快捷键管理器（钩子安装后再共享DLL）
         from hooks.hotkey_manager import HotkeyManager
         self.hotkey_manager = HotkeyManager()
         self._quitting = False
-        # 应用设置
-        self._apply_initial_settings()
         self._last_synced_settings_snapshot = self._make_settings_snapshot()
         self._pending_settings_sync = False
         self._settings_sync_timer = QTimer(self)
         self._settings_sync_timer.setSingleShot(True)
         self._settings_sync_timer.setInterval(120)
         self._settings_sync_timer.timeout.connect(self._apply_pending_settings_changes)
-        
+
+        self._sleeping = False
+        self._sleep_was_hw_accel = False
+        self._sleep_timer = QTimer(self)
+        self._sleep_timer.setSingleShot(True)
+        self._sleep_timer.timeout.connect(self._enter_light_sleep)
+
         self._has_shown_popup = False
         self._icon_preload_started = False
-        self._preinit_popup()
         self._deferred_startup_timer = QTimer(self)
         self._deferred_startup_timer.setSingleShot(True)
         self._deferred_startup_timer.setInterval(10)  # 极速启动预加载
@@ -129,7 +217,15 @@ class TrayApp(QObject):
 
         self._update_special_app_monitors(reset_state=True)
 
-        logger.info("TrayApp 初始化完成")
+        # 初始化自动更新系统（延迟 5 秒，不阻塞启动）
+        self._update_checker = None
+        self._update_downloader = None
+        self._update_installer = None
+        QTimer.singleShot(5000, self._init_update_system)
+
+        self._mark_activity("startup")
+
+        logger.info("TrayApp 初始化完成，耗时 %.1f ms", (time.perf_counter() - init_start) * 1000)
 
 
     def _make_settings_snapshot(self) -> dict:
@@ -200,7 +296,7 @@ class TrayApp(QObject):
                     self.popup_window = None
             except Exception:
                 self.popup_window = None
-        
+
         if self.popup_window:
             try:
                 pos = self.popup_window.geometry().center()
@@ -216,16 +312,16 @@ class TrayApp(QObject):
     def _apply_initial_settings(self):
         """应用初始设置"""
         settings = self.data_manager.get_settings()
-        
+
         # 1. 托盘图标可见性
         if getattr(settings, 'hide_tray_icon', False):
             self.tray_icon.hide()
         else:
             self.tray_icon.show()
-            
+
         # 2. 硬件加速 (进程优先级)
         self._apply_hardware_acceleration(getattr(settings, 'hardware_acceleration', False))
-        
+
         # 3. 双击间隔
         self._apply_double_click_interval(getattr(settings, 'double_click_interval', 300))
 
@@ -243,8 +339,9 @@ class TrayApp(QObject):
     def _apply_hardware_acceleration(self, enable: bool):
         """应用硬件加速设置"""
         try:
-            import psutil
             import os
+
+            import psutil
             p = psutil.Process(os.getpid())
             if enable:
                 # 设置为高于正常优先级 (High 可能导致鼠标卡顿，Above Normal 比较安全)
@@ -258,64 +355,72 @@ class TrayApp(QObject):
             logger.warning(f"设置进程优先级失败: {e}")
 
     def _run_deferred_startup_tasks(self):
+        if self._sleeping:
+            return
         if self._has_shown_popup:
             return
-        
-        # 优先极速预初始化弹窗和加载图标，满足"一两秒内显示完整"的要求
+
+        # Keep startup warmup for the first middle-click, but do not create a
+        # native HWND here. A hidden top-level HWND can briefly appear in the
+        # taskbar when the app is launched by the installer.
         self._preinit_popup()
         self._preload_icons()
-        
+
         # 后台线程预导入配置窗口和其它不紧急的模块
         QTimer.singleShot(500, self._preinit_watcher_manager)
         QTimer.singleShot(800, self._preimport_config_modules)
-        
+
         # 清理图标缓存放到最后执行
         QTimer.singleShot(3000, self._clean_icon_cache_async)
-    
+
     def _clean_icon_cache_async(self):
         """异步清理图标缓存
-        
+
         首次升级清理机制：
         - 使用版本标记文件记录上次清理使用的版本
         - 如果版本升级了，执行一次完整清理
         - 日常启动只做轻量级检查（跳过孤儿文件检测以提高性能）
         """
+        if self._sleeping:
+            return
         import threading
-        
+
         def do_clean():
+            if self._sleeping:
+                return
             try:
                 from core import APP_VERSION
-                
+
                 # 版本标记文件路径
                 marker_file = self.data_manager.app_dir / ".icon_cache_cleaned"
-                
+
                 # 检查是否需要深度清理（首次升级）
                 need_deep_clean = False
                 last_cleaned_version = ""
-                
+
                 if marker_file.exists():
                     try:
                         last_cleaned_version = marker_file.read_text(encoding="utf-8").strip()
                     except Exception:
                         pass
-                
+
                 # 如果版本不同或标记文件不存在，执行深度清理
                 if last_cleaned_version != APP_VERSION:
                     need_deep_clean = True
                     logger.info(f"检测到版本升级 ({last_cleaned_version or '未知'} -> {APP_VERSION})，执行图标缓存深度清理...")
-                
+
                 # 先获取缓存状态，判断是否需要清理
                 cache_stats = self.data_manager.get_icon_cache_stats()
-                
+
                 # 如果有大量无效文件（exe/dll 或过大文件），一定要清理
                 if cache_stats.get("invalid_size_mb", 0) > 10:  # 超过 10MB 的无效文件
                     need_deep_clean = True
                     logger.info(f"检测到 {cache_stats['invalid_size_mb']:.1f} MB 无效缓存文件，执行清理...")
-                
+
                 if need_deep_clean:
                     # 深度清理：清理所有类型的问题文件
                     stats = self.data_manager.clean_icon_cache(dry_run=False)
-                    
+
                     if stats["total_removed"] > 0:
                         # 构建清理报告
                         parts = []
@@ -327,46 +432,59 @@ class TrayApp(QObject):
                             parts.append(f"孤儿文件 {stats['orphan_files_removed']} 个 ({stats['orphan_files_size_mb']:.1f} MB)")
                         if stats["duplicate_files_removed"] > 0:
                             parts.append(f"重复文件 {stats['duplicate_files_removed']} 个 ({stats['duplicate_files_size_mb']:.1f} MB)")
-                        
+
                         logger.info(
                             f"图标缓存升级清理完成: 共删除 {stats['total_removed']} 个文件, "
                             f"释放 {stats['total_size_freed_mb']:.1f} MB\n  - " + "\n  - ".join(parts)
                         )
                     else:
                         logger.info("图标缓存已是最新，无需清理")
-                    
+
                     # 更新版本标记
                     try:
                         marker_file.write_text(APP_VERSION, encoding="utf-8")
                     except Exception as e:
                         logger.debug(f"无法写入版本标记: {e}")
-                        
+
             except Exception as e:
                 logger.debug(f"图标缓存清理失败: {e}")
-        
+
         threading.Thread(target=do_clean, name="IconCacheCleaner", daemon=True).start()
-    
+
     def _preinit_popup(self):
+        if self._sleeping:
+            return
         if self._has_shown_popup:
             return
         if self.popup_window:
             return
+        preinit_start = time.perf_counter()
         logger.info("预初始化弹窗...")
         try:
             from ui.launcher_popup import LauncherPopup
-            self.popup_window = LauncherPopup(self.data_manager, -10000, -10000, self)
+            self.popup_window = LauncherPopup(self.data_manager, -10000, -10000, self, capture_selection=False)
             self.popup_window.refresh_data(refresh_selection=False, reposition=False)
             self.popup_window.preload_background()
             self.popup_window.preload_visible_icons()
-            self.popup_window.prepare_first_show()
+            packaged_runtime = (
+                bool(getattr(sys, "frozen", False))
+                or "__compiled__" in dir(__builtins__)
+                or os.path.basename(sys.executable).lower() == "quicklauncher.exe"
+            )
+            self.popup_window.prepare_first_show(create_native_window=packaged_runtime)
+            logger.info("预初始化弹窗完成，耗时 %.1f ms", (time.perf_counter() - preinit_start) * 1000)
         except Exception as e:
             logger.error(f"  预初始化弹窗失败: {e}")
 
 
     def _preinit_watcher_manager(self):
         """预初始化文件夹监听管理器（在后台线程中创建 watchdog Observer）"""
+        if self._sleeping:
+            return
         import threading
         def do_init():
+            if self._sleeping:
+                return
             try:
                 from core.folder_watcher import get_watcher_manager
                 get_watcher_manager()  # 触发单例创建和 Observer 线程启动
@@ -377,26 +495,34 @@ class TrayApp(QObject):
 
     def _preimport_config_modules(self):
         """后台线程预导入配置窗口相关模块
-        
+
         模块导入可以在后台线程执行（不涉及 QWidget 创建），
         这样当用户打开配置窗口时，模块已在 sys.modules 缓存中，
         QWidget 创建只需很短的时间。
         """
+        if self._sleeping:
+            return
         import threading
         def do_import():
+            if self._sleeping:
+                return
+            import_start = time.perf_counter()
             try:
                 # 预导入配置窗口的核心模块（最重的部分）
-                import ui.config_window.main_window  # noqa: F401
                 import ui.config_window.folder_panel  # noqa: F401
                 import ui.config_window.icon_grid  # noqa: F401
+                import ui.config_window.main_window  # noqa: F401
                 import ui.config_window.theme_helper  # noqa: F401
-                logger.info("后台预导入配置窗口模块完成")
+                logger.info("后台预导入配置窗口模块完成，耗时 %.1f ms", (time.perf_counter() - import_start) * 1000)
             except Exception as e:
                 logger.debug(f"  后台预导入配置窗口模块失败: {e}")
         threading.Thread(target=do_import, name="PreimportConfigModules", daemon=True).start()
 
     def _preload_icons(self):
         """预加载图标（在主线程分批执行，避免跨线程 Qt 对象风险）"""
+        if self._sleeping:
+            self._icon_preload_started = False
+            return
         if self._icon_preload_started:
             return
         self._icon_preload_started = True
@@ -425,6 +551,9 @@ class TrayApp(QObject):
         state = {"i": 0, "count": 0}
 
         def step():
+            if self._sleeping:
+                self._icon_preload_started = False
+                return
             i = state["i"]
             if i >= len(tasks):
                 logger.info(f"预加载图标完成: {state['count']} 个")
@@ -438,7 +567,8 @@ class TrayApp(QObject):
                     target_path = getattr(item, "target_path", None)
                     item_type = getattr(item, "type", None)
 
-                    import os, sys
+                    import os
+                    import sys
                     is_folder_type = item_type == ShortcutType.FOLDER
                     if item_type == ShortcutType.FILE and target_path and os.path.isdir(target_path):
                         is_folder_type = True
@@ -461,7 +591,12 @@ class TrayApp(QObject):
                         IconExtractor.from_file(icon_path, icon_size)
                         state["count"] += 1
                     elif target_path:
-                        IconExtractor.extract(target_path, target_path, icon_size)
+                        IconExtractor.extract(
+                            target_path,
+                            target_path,
+                            icon_size,
+                            fallback_to_default=False,
+                        )
                         state["count"] += 1
                 except Exception:
                     continue
@@ -502,7 +637,6 @@ class TrayApp(QObject):
                 hook.set_paused(self._mouse_paused_state)
             except Exception:
                 pass
-
             self.mouse_hook = hook
             self._apply_mouse_hook_settings()
 
@@ -581,7 +715,7 @@ class TrayApp(QObject):
                     name = proc.info['name'].lower()
                     if any(app in name for app in target_apps):
                         current_pids.add(proc.info['pid'])
-                except:
+                except Exception:
                     pass
 
             if not self._known_processes:
@@ -590,7 +724,7 @@ class TrayApp(QObject):
 
             new_pids = current_pids - self._known_processes
             if new_pids:
-                logger.info(f"检测到目标软件启动，重装钩子以保持优先级")
+                logger.info("检测到目标软件启动，重装钩子以保持优先级")
                 self._reinstall_hooks()
 
             self._known_processes = current_pids
@@ -603,25 +737,30 @@ class TrayApp(QObject):
             self._alt_double_tap_signal.emit()
         except Exception:
             pass
-    
+
     def _on_hook_hotkey_from_hook(self):
         """键盘钩子热键回调 (从钩子线程调用，必须极快返回)"""
         try:
             self._hook_hotkey_signal.emit()
         except Exception:
             pass
-    
+
     def _on_alt_double_tap(self):
         """处理 Alt 双击 - 切换鼠标中键钩子暂停状态 (主线程)"""
         try:
             if not self.mouse_hook:
                 return
-            
+
             # 切换暂停状态
             new_paused = not self.mouse_hook.is_paused()
             self._mouse_paused_state = new_paused
             self.mouse_hook.set_paused(new_paused)
-            
+            if self._sleeping:
+                logger.info(
+                    "轻睡眠中 Alt双击: 鼠标中键%s",
+                    "已禁用" if new_paused else "已恢复",
+                )
+
             # 获取当前主题
             theme = "dark"
             try:
@@ -629,19 +768,20 @@ class TrayApp(QObject):
                 theme = getattr(settings, "theme", "dark") or "dark"
             except Exception:
                 pass
-            
+
             # 显示 Toast 通知
             if new_paused:
                 text = "已关闭鼠标中键"
             else:
                 text = "已开启鼠标中键"
-            
+
             self._show_toast(text, theme)
             logger.info(f"Alt双击: 鼠标中键钩子 {'已暂停' if new_paused else '已恢复'}")
-            
+            self._mark_activity("alt_double_tap")
+
         except Exception as e:
             logger.error(f"处理Alt双击失败: {e}")
-    
+
     def _show_toast(self, text: str, theme: str = "dark"):
         """显示 Toast 通知"""
         try:
@@ -706,18 +846,239 @@ class TrayApp(QObject):
 
         special_apps = self._get_special_apps_for_hook()
         self.mouse_hook.set_special_apps(special_apps)
-        logger.info(f"已同步特殊应用列表[dll_hook]: {special_apps}")
+        logger.info(f"已同步特殊应用列表[dll_hook]，共 {len(special_apps)} 个")
 
     def _sync_special_apps_to_hook(self):
         """同步特殊应用设置到鼠标钩子"""
         try:
-            self._update_special_app_monitors(reset_state=True)
+            if self._sleeping:
+                self._reset_special_app_monitor_state()
+                if self._process_check_timer.isActive():
+                    self._process_check_timer.stop()
+                self._special_app_monitors_active = False
+            else:
+                self._update_special_app_monitors(reset_state=True)
             if self.mouse_hook:
                 self._apply_mouse_hook_settings()
-            
+
         except Exception as e:
             logger.error(f"同步特殊应用设置失败: {e}")
-    
+
+    def _mark_activity(self, source: str = ""):
+        settings = None
+        try:
+            settings = self.data_manager.get_settings()
+        except Exception:
+            settings = None
+
+        if not getattr(settings, "sleep_mode_enabled", True):
+            try:
+                if self._sleep_timer.isActive():
+                    self._sleep_timer.stop()
+            except Exception:
+                pass
+            return
+
+        timeout_s = 10
+        try:
+            timeout_s = max(1, int(getattr(settings, "sleep_timeout_seconds", 10) or 10))
+        except Exception:
+            timeout_s = 10
+
+        if self._sleeping:
+            return
+
+        for widget in self._iter_visible_blocking_widgets():
+            try:
+                if widget and widget.isVisible():
+                    return
+            except Exception:
+                pass
+
+        try:
+            self._sleep_timer.start(timeout_s * 1000)
+        except Exception:
+            pass
+
+    def _enter_light_sleep(self):
+        if self._sleeping:
+            return
+
+        try:
+            settings = self.data_manager.get_settings()
+        except Exception:
+            settings = None
+
+        if not getattr(settings, "sleep_mode_enabled", True):
+            return
+
+        for widget in self._iter_visible_blocking_widgets():
+            try:
+                if widget and widget.isVisible():
+                    timeout_s = 10
+                    try:
+                        timeout_s = max(1, int(getattr(settings, "sleep_timeout_seconds", 10) or 10))
+                    except Exception:
+                        timeout_s = 10
+                    try:
+                        self._sleep_timer.start(timeout_s * 1000)
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                pass
+
+        self._sleeping = True
+        logger.info("进入轻睡眠模式")
+
+        try:
+            self._sleep_was_hw_accel = bool(getattr(settings, "hardware_acceleration", False))
+            if self._sleep_was_hw_accel:
+                self._apply_hardware_acceleration(False)
+        except Exception:
+            self._sleep_was_hw_accel = False
+
+        if self._mouse_paused_state:
+            logger.info("进入轻睡眠模式：中键已禁用，保留 Alt 双击恢复通道")
+
+        for timer_name in (
+            "_memory_check_timer",
+            "_process_check_timer",
+            "_deferred_startup_timer",
+        ):
+            self._stop_timer_if_active(timer_name)
+
+        try:
+            from core.folder_watcher import shutdown_watcher_manager
+            shutdown_watcher_manager()
+        except Exception:
+            pass
+
+    def _iter_visible_blocking_widgets(self):
+        yield self.popup_window
+        for popup in list(getattr(self, "_extra_popup_windows", []) or []):
+            yield popup
+        yield self.config_window
+        yield self.log_window
+
+        try:
+            self.hotkey_manager.stop()
+        except Exception:
+            pass
+
+        logger.info("进入轻睡眠模式：保留键盘 Hook 用于 Alt 双击切换中键")
+
+        try:
+            self._cleanup_icon_cache()
+        except Exception:
+            pass
+
+        try:
+            from core import IconExtractor
+            if hasattr(IconExtractor, "clear_cache"):
+                IconExtractor.clear_cache()
+        except Exception:
+            pass
+
+        try:
+            if self.popup_window:
+                try:
+                    self.popup_window._release_background_cache()
+                except Exception:
+                    pass
+                try:
+                    self.popup_window._icon_pixmap_cache.clear()
+                    self.popup_window._icon_miss_cache.clear()
+                    self.popup_window._default_icon_cache.clear()
+                except Exception:
+                    pass
+                try:
+                    type(self.popup_window)._global_bg_cache.clear()
+                except Exception:
+                    pass
+            for popup in list(getattr(self, "_extra_popup_windows", []) or []):
+                try:
+                    popup._release_background_cache()
+                except Exception:
+                    pass
+                try:
+                    popup._icon_pixmap_cache.clear()
+                    popup._icon_miss_cache.clear()
+                    popup._default_icon_cache.clear()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            self.memory_guard.check_and_optimize()
+        except Exception:
+            pass
+
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+
+    def _wake_from_sleep(self, source: str = ""):
+        if not self._sleeping:
+            self._mark_activity(source)
+            return False
+
+        self._sleeping = False
+        logger.info("退出轻睡眠模式: %s", source or "unknown")
+
+        try:
+            self._apply_pending_settings_changes()
+        except Exception:
+            pass
+
+        try:
+            if not self._memory_check_timer.isActive():
+                self._memory_check_timer.start()
+        except Exception:
+            pass
+
+        try:
+            if self._sleep_was_hw_accel:
+                self._apply_hardware_acceleration(True)
+        except Exception:
+            pass
+        self._sleep_was_hw_accel = False
+
+        try:
+            if self.keyboard_hook is None:
+                self._install_keyboard_hook_and_hotkey()
+            else:
+                self.hotkey_manager.start()
+        except Exception:
+            pass
+
+        try:
+            if self.mouse_hook and self._mouse_paused_state:
+                self.mouse_hook.set_paused(True)
+        except Exception:
+            pass
+
+        try:
+            self._update_special_app_monitors(reset_state=True)
+            if self.mouse_hook:
+                if self.keyboard_hook:
+                    try:
+                        self.mouse_hook.set_keyboard_hook(self.keyboard_hook)
+                    except Exception:
+                        pass
+                self._apply_mouse_hook_settings()
+        except Exception:
+            pass
+
+        try:
+            self._mark_activity(source)
+        except Exception:
+            pass
+        return False
+
     def _on_middle_click_from_hook(self, x: int, y: int):
         """从钩子线程接收中键点击（在钩子线程中调用）
 
@@ -725,7 +1086,6 @@ class TrayApp(QObject):
         与钩子层的 40ms 配合，总共约 120ms 有效防抖动
         """
         # 使用Windows API直接获取鼠标位置，避免DPI转换问题
-        import ctypes
         try:
             class POINT(ctypes.Structure):
                 _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
@@ -746,16 +1106,20 @@ class TrayApp(QObject):
 
         # 通过信号传递到主线程
         self.show_popup_signal.emit(x, y)
-    
+
     def _on_show_popup(self, x: int, y: int):
         """显示弹出窗口（在主线程中执行）"""
+        if self._wake_from_sleep("middle_click"):
+            return
         current_time = time.monotonic()
         if hasattr(self, '_last_show_popup_time') and (current_time - self._last_show_popup_time < 0.3):
             return
         self._last_show_popup_time = current_time
+        selection_trigger_pos = (int(x), int(y))
         x, y = self._normalize_popup_pos(x, y)
-        logger.info(f"显示弹出窗口: ({x}, {y})")
-        
+        logger.info(f"显示弹出窗口: qt=({x}, {y}) win={selection_trigger_pos}")
+        popup_start = time.perf_counter()
+
 
         try:
             _get_shortcut_executor().save_foreground_window()
@@ -771,8 +1135,9 @@ class TrayApp(QObject):
 
         if not self._icon_preload_started:
             QTimer.singleShot(0, self._preload_icons)
-        
+
         try:
+            self._prune_extra_popup_windows()
             # 1. 如果窗口已存在
             if self.popup_window:
                 # 检查是否在不同屏幕上点击
@@ -783,54 +1148,112 @@ class TrayApp(QObject):
 
                     # 如果在同一屏幕上点击，则隐藏（Toggle功能）
                     if current_screen == window_screen:
-                        self.popup_window.hide()
-                        return
+                        if self._should_multi_open_pinned_popup(self.popup_window):
+                            self._keep_as_extra_popup(self.popup_window)
+                            self.popup_window = None
+                        else:
+                            self.popup_window.hide()
+                            return
                     # 如果在不同屏幕上点击，继续显示（重新定位）
 
                 # 如果窗口对象已被销毁（C++对象已删除），则置为 None
-                try:
-                    _ = self.popup_window.width()
-                except RuntimeError:
-                    self.popup_window = None
-            
+                if self.popup_window is not None:
+                    try:
+                        _ = self.popup_window.width()
+                    except RuntimeError:
+                        self.popup_window = None
+
             # 移除每次显示的重载，提高响应速度
             # self.data_manager.reload()
-            
+
             # 2. 复用或新建窗口
             if self.popup_window:
                 # 复用现有窗口：先刷新数据和位置，再显示
-                self.popup_window.refresh_data(x, y)
+                self.popup_window.refresh_data(
+                    x,
+                    y,
+                    selection_trigger_pos=selection_trigger_pos,
+                    trigger_method="mouse",
+                )
                 self.popup_window.preload_visible_icons()
                 self.popup_window.prepare_first_show()
                 self.popup_window.show()
                 self.popup_window.activateWindow()
                 self.popup_window.raise_()
-                logger.info("弹出窗口已复用并显示")
+                logger.info("弹出窗口已复用并显示，耗时 %.1f ms", (time.perf_counter() - popup_start) * 1000)
             else:
                 # 创建新弹窗（在屏幕外创建，设置好后再移动显示）
                 from ui.launcher_popup import LauncherPopup
-                self.popup_window = LauncherPopup(self.data_manager, x, y, self)
+                self.popup_window = LauncherPopup(
+                    self.data_manager,
+                    x,
+                    y,
+                    self,
+                    selection_trigger_pos=selection_trigger_pos,
+                    trigger_method="mouse",
+                )
                 self.popup_window.preload_background()
                 self.popup_window.preload_visible_icons()
                 self.popup_window.prepare_first_show()
                 self.popup_window.show()
                 self.popup_window.activateWindow()
                 self.popup_window.raise_()
-                logger.info("弹出窗口已创建并显示")
-            
+                logger.info("弹出窗口已创建并显示，耗时 %.1f ms", (time.perf_counter() - popup_start) * 1000)
+
         except Exception as e:
             logger.error(f"显示弹出窗口失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
 
-    def _normalize_popup_pos(self, x: int, y: int):
-        # 直接使用QCursor.pos()获取当前鼠标位置
+    def _should_multi_open_pinned_popup(self, popup) -> bool:
         try:
-            from qt_compat import QCursor
-            cursor = QCursor.pos()
-            return (cursor.x(), cursor.y())
+            if not popup or not popup.isVisible() or not bool(getattr(popup, "is_pinned", False)):
+                return False
+            settings = self.data_manager.get_settings()
+            return bool(getattr(settings, "popup_multi_open_when_pinned", False))
+        except Exception:
+            return False
+
+    def _keep_as_extra_popup(self, popup):
+        try:
+            if popup and popup not in self._extra_popup_windows:
+                self._extra_popup_windows.append(popup)
+                self._trim_extra_popup_windows()
+                logger.debug("固定弹窗已保留，当前保留数量: %d", len(self._extra_popup_windows))
         except Exception:
             pass
+
+    def _trim_extra_popup_windows(self):
+        max_extra = max(0, int(getattr(self, "_max_extra_popup_windows", 2) or 0))
+        while len(self._extra_popup_windows) > max_extra:
+            old_popup = self._extra_popup_windows.pop(0)
+            try:
+                old_popup.close()
+            except Exception:
+                try:
+                    old_popup.hide()
+                except Exception:
+                    pass
+
+    def _prune_extra_popup_windows(self):
+        kept = []
+        for popup in list(getattr(self, "_extra_popup_windows", []) or []):
+            try:
+                _ = popup.width()
+                kept.append(popup)
+            except RuntimeError:
+                pass
+            except Exception:
+                kept.append(popup)
+        self._extra_popup_windows = kept
+        self._trim_extra_popup_windows()
+
+    def _normalize_popup_pos(self, x: int, y: int):
+        converted = self._try_convert_win_physical_to_qt(int(x), int(y))
+        if converted is not None:
+            return converted
+        if self._is_point_in_any_qt_screen(int(x), int(y)):
+            return (int(x), int(y))
         return (int(x), int(y))
 
     def _is_point_in_any_qt_screen(self, x: int, y: int) -> bool:
@@ -920,7 +1343,7 @@ class TrayApp(QObject):
             return (left, top)
         except Exception:
             return None
-    
+
     def _load_icon(self) -> QIcon:
         """加载图标"""
         possible_paths = [
@@ -933,7 +1356,7 @@ class TrayApp(QObject):
             'assets/app.ico',
             'resources/app.ico',
         ]
-        
+
         for path in possible_paths:
             try:
                 abs_path = os.path.abspath(path)
@@ -944,9 +1367,9 @@ class TrayApp(QObject):
                         return icon
             except Exception as e:
                 logger.warning(f"检查图标路径失败 {path}: {e}")
-        
+
         return get_standard_icon(QApplication.instance(), 'SP_ComputerIcon')
-    
+
     def _create_menu(self):
         """创建托盘菜单"""
         # 使用 PopupMenu 实现磨砂质感（模糊效果在 popup() 中自动应用）
@@ -957,8 +1380,118 @@ class TrayApp(QObject):
         self.tray_menu.add_action("设置", self._show_config)
         self.tray_menu.add_action("重新启动", self._restart)
         self.tray_menu.add_action("运行日志", self._show_log)
+        self.tray_menu.add_action("诊断中心", self._show_diagnostics)
+        self.tray_menu.add_separator()
+        self.tray_menu.add_action("检查更新", self._check_update_now)
         self.tray_menu.add_separator()
         self.tray_menu.add_action("退出软件", self._quit)
+
+    # ---- 自动更新系统 ----
+
+    def _init_update_system(self):
+        """初始化自动更新系统。"""
+        try:
+            from commercial.update.checker import UpdateChecker
+            from commercial.update.downloader import UpdateDownloader
+            from commercial.update.installer import UpdateInstaller
+
+            self._update_checker = UpdateChecker()
+            self._update_downloader = UpdateDownloader()
+            self._update_installer = UpdateInstaller()
+
+            self._update_checker.add_listener(self._on_update_event)
+            self._update_downloader.add_listener(self._on_download_event)
+            self._update_installer.add_listener(self._on_install_event)
+
+            self._update_checker.start_auto_check()
+            logger.info("自动更新系统初始化完成")
+        except Exception as e:
+            logger.debug(f"自动更新系统初始化失败（可忽略）: {e}")
+
+    def _check_update_now(self):
+        """手动检查更新。"""
+        from commercial.update.ui import UpdateNotification
+        if self._update_checker is None:
+            UpdateNotification.show_up_to_date()
+            return
+        info = self._update_checker.check_now()
+        if info and not info.has_update:
+            UpdateNotification.show_up_to_date()
+
+    def _on_update_event(self, event: str, data=None):
+        """处理更新检查事件。"""
+        from commercial.update.ui import UpdateNotification
+        if event == "update_available":
+            self._pending_update_info = data
+            UpdateNotification.show_update_available(
+                data,
+                on_download=lambda: self._download_update(data),
+                on_skip=lambda: self._skip_version(data.version),
+            )
+        elif event == "check_failed":
+            logger.debug(f"更新检查失败: {data}")
+        elif event == "up_to_date":
+            pass
+
+    def _download_update(self, update_info):
+        if self._update_downloader:
+            self._update_downloader.download(
+                update_info.download_url,
+                expected_hash=update_info.file_hash,
+                expected_size=getattr(update_info, "file_size", 0),
+                max_bytes=getattr(self._update_checker._config, "max_download_bytes", 0) if self._update_checker else 0,
+                allowed_hosts=getattr(self._update_checker._config, "allowed_download_hosts", None) if self._update_checker else None,
+            )
+
+    def _on_download_event(self, event: str, data=None):
+        from commercial.update.ui import UpdateNotification
+        if event == "progress":
+            downloaded, total = data
+            logger.info(UpdateNotification.show_download_progress_text(downloaded, total))
+        elif event == "finished":
+            UpdateNotification.show_download_finished(
+                on_install=lambda: self._install_update(data)
+            )
+        elif event == "failed":
+            UpdateNotification.show_download_failed(data)
+        elif event == "cancelled":
+            logger.info("更新下载已取消")
+
+    def _install_update(self, installer_path: str):
+        if self._update_installer:
+            update_info = getattr(self, "_pending_update_info", None)
+            self._update_installer.install(
+                installer_path,
+                expected_hash=getattr(update_info, "file_hash", "") if update_info else "",
+            )
+
+    def _on_install_event(self, event: str, data=None):
+        if event == "failed":
+            from commercial.update.ui import UpdateNotification
+            UpdateNotification.show_download_failed(data)
+
+    def _skip_version(self, version: str):
+        state_file = None
+        try:
+            from core.data_manager import DataManager
+            import json, os
+            dm = DataManager()
+            state_file = os.path.join(dm.app_dir, "config", ".update_state.json")
+            data = {}
+            if os.path.isfile(state_file):
+                with open(state_file, "r") as f:
+                    data = json.load(f)
+            skipped = data.get("skipped_versions", [])
+            if version not in skipped:
+                skipped.append(version)
+            data["skipped_versions"] = skipped
+            os.makedirs(os.path.dirname(state_file), exist_ok=True)
+            with open(state_file, "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+    # ---- 自动更新系统结束 ----
 
     def _stop_timer_if_active(self, attr_name):
         timer = getattr(self, attr_name, None)
@@ -989,6 +1522,7 @@ class TrayApp(QObject):
     def _shutdown_runtime_components(self):
         for timer_name in (
             "_settings_sync_timer",
+            "_sleep_timer",
             "_deferred_startup_timer",
             "_memory_check_timer",
             "_process_check_timer",
@@ -1031,9 +1565,22 @@ class TrayApp(QObject):
             "config_window",
             "popup_window",
             "log_window",
+            "diagnostics_window",
+            "shortcut_health_window",
+            "config_history_window",
+            "slash_help_window",
             "_toast",
         ):
             self._close_widget_if_present(attr_name)
+        self._close_extra_popup_windows()
+
+    def _close_extra_popup_windows(self):
+        for popup in list(getattr(self, "_extra_popup_windows", []) or []):
+            try:
+                popup.close()
+            except Exception:
+                pass
+        self._extra_popup_windows = []
 
     def _restart(self):
         """重新启动应用"""
@@ -1044,13 +1591,13 @@ class TrayApp(QObject):
         if self.mouse_hook:
             try:
                 self.mouse_hook.uninstall()
-            except:
+            except Exception:
                 pass
 
         if self.keyboard_hook:
             try:
                 self.keyboard_hook.uninstall()
-            except:
+            except Exception:
                 pass
 
         # 隐藏托盘
@@ -1152,14 +1699,14 @@ fso.DeleteFile WScript.ScriptFullName
             # 尝试使用配置窗口作为 parent，如果没有则使用 None
             parent = self.config_window if self.config_window else None
             ThemedMessageBox.critical(parent, "重启失败", f"无法重新启动程序\n\n{str(e)}")
-    
+
     def _test_popup(self):
         """测试弹窗（用于调试）"""
         # 获取鼠标位置
         from qt_compat import QCursor
         pos = QCursor.pos()
         self._on_show_popup(pos.x(), pos.y())
-    
+
     def _on_tray_activated(self, reason):
         """托盘图标激活"""
         logger.debug(f"托盘激活: {reason}")
@@ -1172,14 +1719,16 @@ fso.DeleteFile WScript.ScriptFullName
             # 稍微偏移一点，避免遮住托盘图标
             offset_pos = QPoint(pos.x(), pos.y() - 5)
             self.tray_menu.popup(offset_pos)
-    
+
     def _show_config(self):
         """显示配置窗口"""
+        self._wake_from_sleep("config")
         logger.info("显示配置窗口...")
+        config_start = time.perf_counter()
         try:
             if self.config_window is None:
                 from ui.config_window import ConfigWindow
-                self.config_window = ConfigWindow(self.data_manager)
+                self.config_window = ConfigWindow(self.data_manager, tray_app=self)
                 # 连接设置变更信号
                 self.config_window.settings_changed.connect(self._on_settings_changed)
 
@@ -1202,33 +1751,34 @@ fso.DeleteFile WScript.ScriptFullName
                         self._special_apps_signal_connected = True
                 except Exception:
                     pass
-            
+
             self.config_window.show()
-            
+
             # 使用强力激活方案 (多阶段尝试，应对系统焦点竞争)
             try:
                 hwnd = int(self.config_window.winId())
-                from ui.utils.window_effect import force_activate_window
                 from qt_compat import QTimer
-                
+                from ui.utils.window_effect import force_activate_window
+
                 force_activate_window(hwnd)
                 QTimer.singleShot(100, lambda: force_activate_window(hwnd))
-                
+
             except Exception:
                 # 最后的兜底
                 self.config_window.raise_()
                 self.config_window.activateWindow()
-                
-            logger.info("配置窗口已显示并进入四段式强力激活流程")
+
+            logger.info("配置窗口已显示并进入四段式强力激活流程，耗时 %.1f ms", (time.perf_counter() - config_start) * 1000)
         except Exception as e:
             logger.error(f"显示配置窗口失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
             ThemedMessageBox.critical(None, "错误", f"无法打开设置窗口:\n{e}")
-    
+
     def _on_settings_changed(self):
         """设置变更时的回调"""
         self._pending_settings_sync = True
+        self._mark_activity("settings_changed")
         if not self._settings_sync_timer.isActive():
             self._settings_sync_timer.start()
 
@@ -1244,9 +1794,10 @@ fso.DeleteFile WScript.ScriptFullName
             pass
         except Exception:
             pass
-    
+
     def _show_log(self):
         """显示日志窗口"""
+        self._wake_from_sleep("log")
         logger.info("_show_log 方法被调用")
         try:
             theme = self.data_manager.get_settings().theme
@@ -1297,11 +1848,220 @@ fso.DeleteFile WScript.ScriptFullName
             import traceback
             logger.error(traceback.format_exc())
 
+    def _show_slash_help(self):
+        """显示斜杠命令帮助。"""
+        self._wake_from_sleep("slash_help")
+        try:
+            theme = self.data_manager.get_settings().theme
+            if self.slash_help_window is None:
+                from ui.slash_help_window import SlashHelpWindow
+                self.slash_help_window = SlashHelpWindow(self.data_manager)
+            else:
+                self.slash_help_window.set_theme(theme)
+                self.slash_help_window.refresh()
+            self.slash_help_window.show()
+            self.slash_help_window.raise_()
+            self.slash_help_window.activateWindow()
+            return True
+        except RuntimeError:
+            from ui.slash_help_window import SlashHelpWindow
+            self.slash_help_window = SlashHelpWindow(self.data_manager)
+            self.slash_help_window.show()
+            return True
+        except Exception as e:
+            logger.error("显示斜杠命令帮助失败: %s", e, exc_info=True)
+            return False
+
+    def _show_about(self):
+        """显示关于对话框。"""
+        self._wake_from_sleep("about")
+        try:
+            theme = self.data_manager.get_settings().theme
+            if getattr(self, "about_window", None) is None:
+                from ui.about_window import AboutWindow
+                self.about_window = AboutWindow(theme=theme)
+            else:
+                self.about_window.set_theme(theme)
+            self.about_window.show()
+            self.about_window.raise_()
+            self.about_window.activateWindow()
+            return True
+        except RuntimeError:
+            from ui.about_window import AboutWindow
+            self.about_window = AboutWindow(theme=self.data_manager.get_settings().theme)
+            self.about_window.show()
+            return True
+        except Exception as e:
+            logger.error("显示关于对话框失败: %s", e, exc_info=True)
+            return False
+
+    def _show_diagnostics(self):
+        """显示诊断中心。"""
+        self._wake_from_sleep("diagnostics")
+        try:
+            theme = self.data_manager.get_settings().theme
+            if self.diagnostics_window is None:
+                from ui.diagnostics_window import DiagnosticsWindow
+                self.diagnostics_window = DiagnosticsWindow(self.data_manager, tray_app=self)
+            else:
+                self.diagnostics_window.set_theme(theme)
+                self.diagnostics_window.refresh()
+            self.diagnostics_window.show()
+            self.diagnostics_window.raise_()
+            self.diagnostics_window.activateWindow()
+        except RuntimeError:
+            from ui.diagnostics_window import DiagnosticsWindow
+            self.diagnostics_window = DiagnosticsWindow(self.data_manager, tray_app=self)
+            self.diagnostics_window.show()
+        except Exception as e:
+            logger.error("显示诊断中心失败: %s", e, exc_info=True)
+
+    def _show_shortcut_health(self):
+        """显示图标检查。"""
+        self._wake_from_sleep("shortcut_health")
+        try:
+            theme = self.data_manager.get_settings().theme
+            if self.shortcut_health_window is None:
+                from ui.shortcut_health_window import ShortcutHealthWindow
+                self.shortcut_health_window = ShortcutHealthWindow(self.data_manager)
+            else:
+                self.shortcut_health_window.set_theme(theme)
+                self.shortcut_health_window.refresh()
+            self.shortcut_health_window.show()
+            self.shortcut_health_window.raise_()
+            self.shortcut_health_window.activateWindow()
+        except RuntimeError:
+            from ui.shortcut_health_window import ShortcutHealthWindow
+            self.shortcut_health_window = ShortcutHealthWindow(self.data_manager)
+            self.shortcut_health_window.show()
+        except Exception as e:
+            logger.error("显示图标检查失败: %s", e, exc_info=True)
+
+    def _show_config_history(self):
+        """显示配置历史窗口。"""
+        self._wake_from_sleep("config_history")
+        try:
+            theme = self.data_manager.get_settings().theme
+            if self.config_history_window is None:
+                from ui.config_history_window import ConfigHistoryWindow
+                self.config_history_window = ConfigHistoryWindow(self.data_manager)
+            else:
+                self.config_history_window.set_theme(theme)
+                self.config_history_window.refresh()
+            self.config_history_window.show()
+            self.config_history_window.raise_()
+            self.config_history_window.activateWindow()
+        except RuntimeError:
+            from ui.config_history_window import ConfigHistoryWindow
+            self.config_history_window = ConfigHistoryWindow(self.data_manager)
+            self.config_history_window.show()
+        except Exception as e:
+            logger.error("显示配置历史失败: %s", e, exc_info=True)
+
+    def _clean_icon_cache_now(self):
+        """立即执行图标缓存维护。"""
+        self._wake_from_sleep("clean_icon_cache")
+        try:
+            if self._icon_cache_clean_thread and self._icon_cache_clean_thread.isRunning():
+                self._show_toast("图标缓存正在清理中", self.data_manager.get_settings().theme)
+                return True
+
+            self._cleanup_icon_cache()
+
+            if self.popup_window:
+                try:
+                    self.popup_window._icon_pixmap_cache.clear()
+                    self.popup_window._icon_miss_cache.clear()
+                    self.popup_window._default_icon_cache.clear()
+                except Exception:
+                    logger.debug("清理弹窗图标缓存失败", exc_info=True)
+            for popup in list(getattr(self, "_extra_popup_windows", []) or []):
+                try:
+                    popup._icon_pixmap_cache.clear()
+                    popup._icon_miss_cache.clear()
+                    popup._default_icon_cache.clear()
+                except Exception:
+                    logger.debug("清理固定多开弹窗图标缓存失败", exc_info=True)
+
+            theme = self.data_manager.get_settings().theme
+            self._show_toast("正在清理图标缓存...", theme)
+            self._icon_cache_clean_thread = IconCacheCleanThread(self.data_manager)
+            self._icon_cache_clean_thread.finished_signal.connect(self._on_icon_cache_clean_finished)
+            self._icon_cache_clean_thread.finished.connect(lambda: setattr(self, "_icon_cache_clean_thread", None))
+            self._icon_cache_clean_thread.finished.connect(self._icon_cache_clean_thread.deleteLater)
+            self._icon_cache_clean_thread.start()
+            return True
+        except Exception as e:
+            logger.error("手动图标缓存清理失败: %s", e, exc_info=True)
+            return False
+
+    def _on_icon_cache_clean_finished(self, stats: dict, error: str):
+        theme = self.data_manager.get_settings().theme
+        if error:
+            logger.error("手动图标缓存清理失败: %s", error)
+            self._show_toast("图标缓存清理失败，请查看日志", theme)
+            return
+        removed = int(stats.get("total_removed", 0) or 0)
+        freed = float(stats.get("total_size_freed_mb", 0) or 0)
+        logger.info("手动图标缓存清理完成: removed=%s freed=%.2fMB", removed, freed)
+        self._show_toast(f"图标缓存已清理：{removed} 个文件，释放 {freed:.1f} MB", theme)
+
+    def _reload_hooks_now(self):
+        """手动重装鼠标、键盘钩子。"""
+        self._wake_from_sleep("reload_hooks")
+        try:
+            self._hook_reinstall_cooldown_until = 0.0
+            self._reinstall_hooks()
+
+            if not self.mouse_hook:
+                self._install_hook()
+            if not self.keyboard_hook:
+                self._install_keyboard_hook_and_hotkey()
+            else:
+                try:
+                    self.hotkey_manager.start()
+                except Exception:
+                    pass
+
+            self._sync_special_apps_to_hook()
+            theme = self.data_manager.get_settings().theme
+            self._show_toast("全局钩子已重装", theme)
+            logger.info("手动重装全局钩子完成")
+            return True
+        except Exception as e:
+            logger.error("手动重装全局钩子失败: %s", e, exc_info=True)
+            return False
+
+    def _open_data_dir(self):
+        """打开 QuickLauncher 配置数据目录。"""
+        self._wake_from_sleep("open_data_dir")
+        try:
+            path = os.path.abspath(str(self.data_manager.app_dir))
+            os.makedirs(path, exist_ok=True)
+            os.startfile(path)
+            logger.info("已打开配置数据目录: %s", path)
+            return True
+        except Exception as e:
+            logger.error("打开配置数据目录失败: %s", e, exc_info=True)
+            return False
+
+    def _open_install_dir(self):
+        """打开 QuickLauncher 软件安装目录。"""
+        self._wake_from_sleep("open_install_dir")
+        try:
+            path = _get_shortcut_executor()._app_install_dir()
+            os.makedirs(path, exist_ok=True)
+            os.startfile(path)
+            logger.info("已打开软件安装目录: %s", path)
+            return True
+        except Exception as e:
+            logger.error("打开软件安装目录失败: %s", e, exc_info=True)
+            return False
+
     def _force_unload_dlls(self):
         """强制卸载当前进程加载的 DLL，特别是 msvcp140.dll"""
         try:
             import ctypes
-            import sys
 
             # 获取当前进程句柄
             kernel32 = ctypes.windll.kernel32

@@ -3,7 +3,8 @@
 保持与原Python版本相同的接口
 """
 import logging
-from typing import Callable, Optional, List
+from typing import Callable, List, Optional
+
 from .hooks_wrapper import HooksDLL
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ class MouseHook:
     """鼠标钩子 - 使用C++ DLL实现"""
 
     def __init__(self):
-        self._dll = HooksDLL()
+        self._dll = HooksDLL.get_instance()
         self._callback: Optional[Callable[[int, int], None]] = None
         self._alt_double_click_callback: Optional[Callable[[int, int], None]] = None
         self._keyboard_hook = None

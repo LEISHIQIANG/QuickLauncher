@@ -1,0 +1,33 @@
+{
+  "id": "event_inspector",
+  "name": "Event Inspector",
+  "version": "1.0.0",
+  "author": "QuickLauncher",
+  "description": "Windows 事件日志分析器：快速查看系统与应用错误日志、搜索关键词、按来源聚合",
+  "entry": "main.py",
+  "keywords": ["event log", "event viewer", "windows log", "事件日志", "事件查看器", "蓝屏分析", "排障"],
+  "permissions": ["file.read"],
+  "commands": [
+    {
+      "id": "event_inspector.recent",
+      "title": "最近错误",
+      "aliases": ["event-recent", "最近错误", "错误日志"],
+      "description": "显示最近 24 小时内的系统/应用错误和警告摘要",
+      "category": "排障"
+    },
+    {
+      "id": "event_inspector.search",
+      "title": "搜索事件",
+      "aliases": ["event-search", "event-find", "搜索事件"],
+      "description": "在系统/应用日志中搜索关键词（EventID、来源、描述）",
+      "category": "排障"
+    },
+    {
+      "id": "event_inspector.source",
+      "title": "按来源查看",
+      "aliases": ["event-source", "事件来源"],
+      "description": "按来源名称过滤并聚合事件日志",
+      "category": "排障"
+    }
+  ]
+}

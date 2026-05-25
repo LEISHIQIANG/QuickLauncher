@@ -1,155 +1,72 @@
 # QuickLauncher
 
-> 一款轻量级的鼠标中键快速启动工具
+QuickLauncher 是一款 Windows 桌面快速启动工具。按下鼠标中键即可呼出弹窗，快速启动常用程序、打开文件或文件夹、访问网址、执行命令和触发快捷键。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
+## 主要功能
 
-## 简介
+- 快速呼出与启动：鼠标中键呼出启动器弹窗，支持 Dock 停靠栏、分页图标网格、滚轮翻页、方向键选择、Enter 执行、Escape 清空或关闭。
+- 四类快捷方式：支持常规快捷方式（启动文件、程序或打开文件夹）、打开 URL、执行 CMD/Python/内置命令，以及向当前窗口发送快捷键；可配置启动参数、工作目录、管理员运行和触发模式。
+- 搜索与网页动作：弹窗内直接输入即可搜索，支持名称/别名/标签的模糊匹配，以及 `g`（Google）、`b`（Baidu）、`y`（Yandex）、`e`（Bing）等快捷网页搜索前缀。
+- 斜杠命令模式：输入 `/` 进入命令模式，可快速执行系统命令，如 `/config`（配置）、`/quit`（退出）、`/restart`（重启）、`/log`（日志）、`/topmost`（置顶）、`/control`（控制面板）、`/thispc`（此电脑）、`/recycle`（回收站）等。
+- 拖拽工作流：支持拖拽添加文件、文件夹和应用，拖拽调整图标与分类顺序，拖拽快捷方式到分类移动，拖拽或选中文件后投递到目标程序打开。
+- 分类与文件夹同步：支持自定义分类、Dock 分类、导入物理文件夹为分类，扫描 `.lnk`、`.exe` 和子文件夹，并可通过 watchdog 自动同步新增、删除、移动和重命名。
+- 配置窗口管理：支持添加/编辑/删除快捷方式，Ctrl/Shift 多选，批量删除、移动、启用、禁用和撤销；支持从开始菜单、桌面扫描应用，并提供内置图标选择。
+- 命令与自动化：命令快捷方式支持静默或显示窗口执行、测试运行、工作目录、变量解析（如 `{clipboard}`、`{input}`、`{date}`、`{time}`、`{selected_text}`），以及配置窗口、窗口置顶、控制面板、此电脑、回收站等内置命令。
+- URL 增强：URL 快捷方式支持自动补全 `https://`、运行时输入变量、剪贴板/日期/时间变量、自定义浏览器路径和参数，并提供 http/https 延迟测试。
+- 快捷键增强：支持录制组合键、区分左右修饰键、测试发送，支持立即触发或先关闭面板并恢复原窗口焦点后触发。
+- 智能统计与排序：记录快捷方式使用次数和最近使用时间，可在自定义排序与智能排序之间切换；智能排序不会覆盖用户手动拖拽顺序。
+- 外观与交互定制：支持深色/浅色/跟随系统主题，图标大小、格子大小、列数、Dock 高度、每列行数、圆角、透明度、亚克力、图片背景、模糊、边缘高光和阴影。
+- 系统集成与稳定性：支持开机自启、隐藏托盘图标、启动时显示设置窗口、轻睡眠、硬件加速、日志开关、单实例唤起、托盘菜单重启和运行日志查看。
+- 数据与安全：支持完整配置备份/恢复、可分享配置导入导出、恢复出厂设置、图标缓存清理、自动备份、缺失图标路径重定向和配置迁移。
+- 全局钩子与兼容性：通过 C++ DLL 处理全局鼠标和键盘钩子、Alt 双击暂停/启用、特殊应用 Ctrl+中键触发，并在 DLL 不可用时提供 Python/系统 API fallback。
 
-QuickLauncher 是一款 Windows 平台的快速启动工具。在任意位置按下鼠标中键，即可呼出应用弹窗，快速启动常用程序、打开文件夹、访问网址等。
+## 运行环境
 
-## 主要特性
+- Windows 10 / Windows 11。
+- Python 3.12 是当前测试基准环境；项目仍尽量保持 Python 3.8+ 兼容。
+- 依赖见 [requirements.txt](requirements.txt)。
 
-- **鼠标中键呼出**：在任何软件界面使用，包括桌面、浏览器、办公软件等
-- **拖拽添加应用**：支持从桌面、文件资源管理器、开始菜单直接拖拽添加
-- **多种启动方式**：支持应用程序、文件夹、网址、系统命令
-- **智能防误触**：可设置游戏进程黑名单，避免游戏中误操作
-- **自定义外观**：支持明暗主题、透明度调节、图标大小等个性化设置
-- **配置导入导出**：方便备份和迁移配置
-
-## 下载安装
-
-### 📦 方式一：安装版（推荐）
-
-适合需要开机自启动和系统集成的用户。
-
-1. 访问 [Releases 页面](https://github.com/LEISHIQIANG/QuickLauncher/releases/latest)
-2. 下载 `QuickLauncher_Setup_x.x.x.exe`
-3. 运行安装程序，按照向导完成安装
-4. 安装后自动启动，托盘图标显示运行状态
-
-**特点**：
-- ✅ 支持开机自启动
-- ✅ 自动创建桌面快捷方式
-- ✅ 支持通过控制面板卸载
-- ✅ 自动关联文件类型
-
-### 💚 方式二：绿色版（免安装）
-
-适合便携使用或不想安装到系统的用户。
-
-1. 访问 [Releases 页面](https://github.com/LEISHIQIANG/QuickLauncher/releases/latest)
-2. 下载 `QuickLauncher_Portable_x.x.x.zip`
-3. 解压到任意目录
-4. 运行 `QuickLauncher.exe` 即可使用
-
-**特点**：
-- ✅ 无需安装，解压即用
-- ✅ 便于携带和备份
-- ✅ 配置文件保存在程序目录
-- ✅ 删除文件夹即可完全卸载
-
-### 开发环境
+## 开发运行
 
 ```bash
-# 克隆仓库
-git clone https://github.com/LEISHIQIANG/QuickLauncher.git
-cd QuickLauncher
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 运行程序
-python main.py
+py -3.12 -m pip install -r requirements.txt
+py -3.12 main.py
 ```
 
-## 基本操作
-
-### 呼出/隐藏弹窗
-- **呼出**：按下鼠标中键（滚轮按下）
-- **隐藏**：再次按下中键 / 点击弹窗外部 / 按 Esc 键
-- **临时禁用**：双击 Alt 键可临时禁用/启用中键弹窗
-
-### 添加应用
-1. **拖拽添加**（推荐）：将 exe 程序、文件夹、快捷方式直接拖入弹窗空白格子
-2. **点击添加**：点击空白格子，在文件选择对话框中选择文件
-
-### 图标管理
-- **编辑**：右键图标 → 编辑
-- **删除**：右键图标 → 删除
-- **调整顺序**：长按左键拖动图标到目标位置
-
-## 高级功能
-
-- **强制启动新进程**：Alt + 左键点击图标
-- **拖放文件到图标**：将文件拖到程序图标上，用该程序打开文件
-- **透明度调节**：Ctrl + 滚轮调节背景透明度，Shift + 滚轮调节图标透明度
-- **特殊触发**：Ctrl + 中键触发特殊应用列表
-- **锁定弹窗**：右键点击空白区域或点击图钉图标
-
-## 开发
-
-### 代码质量
+## 测试
 
 ```bash
-# 代码格式化
-black .
-
-# 代码检查
-ruff check . --fix
-
-# 类型检查
-mypy core ui bootstrap
-
-# 运行测试
-pytest --cov
+py -3.12 -m pytest tests/ -v
+py -3.12 -m compileall -q core hooks ui tests main.py
 ```
 
-### 构建
+## 构建钩子 DLL
 
-```bash
-# Windows 11 构建
-scripts\build_win11_setup.bat
+当前 DLL 源码位于 [hooks_dll/hooks.cpp](hooks_dll/hooks.cpp)，构建脚本位于 [hooks_dll/build.bat](hooks_dll/build.bat)。
 
-# 查看更多构建选项
-scripts\
+```bat
+cd hooks_dll
+build.bat
 ```
 
-## 系统要求
+构建成功后会更新 `hooks/hooks.dll`。
 
-### 运行环境
+## 常用操作
 
-- **推荐系统**：Windows 11（主要适配和测试平台）
-- **兼容系统**：Windows 10 / Windows 7（理论支持，未完全测试）
-- **内存要求**：至少 100MB 可用内存
-- **磁盘空间**：约 80MB（安装后/解压后）
-- **下载大小**：安装版 21MB / 绿色版 29MB
+- 呼出或隐藏弹窗：按鼠标中键。
+- 搜索快捷方式：弹窗打开后直接输入关键字。
+- 执行搜索结果：按 Enter。
+- 清空搜索：按 Escape；搜索为空时 Escape 关闭弹窗。
+- 翻页或选择搜索结果：使用方向键。
+- 强制新进程启动：Alt + 左键点击图标。
+- 调整透明度：Ctrl + 滚轮调整背景透明度，Shift + 滚轮调整图标透明度。
 
-### 开发环境
+## 验证重点
 
-- Python 3.8+
-- PyQt5 5.15+
-- 其他依赖见 [requirements.txt](requirements.txt)
+每次修改启动、弹窗、热键、配置保存或排序逻辑后，应至少验证：
 
-## 贡献
-
-欢迎贡献！请查看 [贡献指南](docs/CONTRIBUTING.md) 了解详情。
-
-## 更新日志
-
-查看 [CHANGELOG.md](CHANGELOG.md) 了解版本更新历史。
-
-## 许可证
-
-本项目采用 [MIT License](LICENSE) 开源协议。
-
-## 作者
-
-**NAYTON**
-
-## 致谢
-
-感谢所有为本项目做出贡献的开发者。
-
+- 鼠标中键弹窗、Alt 双击、全局热键。
+- 常规快捷方式、URL、命令、快捷键四类快捷方式执行。
+- 搜索输入、Escape、Enter、方向键选择和网页搜索动作。
+- 配置窗口多选、批量删除、移动、启用、禁用和撤销。
+- 自定义排序不会被智能排序改写。

@@ -3,34 +3,110 @@
 import logging
 import os
 
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QDialog,
-    QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
-    QLabel, QPushButton, QLineEdit, QTextEdit, QPlainTextEdit,
-    QSpinBox as _QSpinBox, QSlider as _QSlider,
-    QCheckBox, QRadioButton, QButtonGroup, QGroupBox,
-    QListWidget, QListWidgetItem, QListView, QScrollArea, QFrame,
-    QMenu, QMenuBar, QStatusBar, QSplitter, QAction,
-    QFileDialog, QInputDialog, QMessageBox, QColorDialog,
-    QSystemTrayIcon, QSizePolicy, QStyle, QFileIconProvider, QComboBox,
-    QToolTip, QStackedWidget, QStackedLayout, QAbstractSpinBox,
-    QStyledItemDelegate, QStyleOptionViewItem,
-    QGraphicsDropShadowEffect, QTableWidget, QTableWidgetItem, QHeaderView,
+from PyQt5.QtCore import (
+    QAbstractListModel,
+    QBuffer,
+    QByteArray,
+    QEasingCurve,
+    QEvent,
+    QFileInfo,
+    QIODevice,
+    QMetaObject,
+    QMimeData,
+    QModelIndex,
+    QObject,
+    QParallelAnimationGroup,
+    QPoint,
+    QPointF,
+    QPropertyAnimation,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    pyqtProperty,
+    pyqtSignal,
 )
 from PyQt5.QtGui import (
-    QIcon, QPixmap, QImage, QPainter, QColor, QPen, QBrush,
-    QPainterPath, QFont, QFontMetrics, QFontDatabase, QKeySequence,
-    QDrag, QCursor, QImageReader, QImageIOHandler, QTextCursor, QRegion,
-    QBitmap, QLinearGradient,
-)
-from PyQt5.QtCore import (
-    Qt, QObject, QTimer, QPoint, QSize, QRect, QRectF, QPointF,
-    pyqtSignal, pyqtProperty, QMimeData, QByteArray, QBuffer, QIODevice,
-    QFileInfo, QThread, QModelIndex, QAbstractListModel, QEvent, QMetaObject,
-    QPropertyAnimation, QEasingCurve, QParallelAnimationGroup,
+    QBitmap,
+    QBrush,
+    QColor,
+    QCursor,
+    QDrag,
+    QFont,
+    QFontDatabase,
+    QFontMetrics,
+    QIcon,
+    QImage,
+    QImageIOHandler,
+    QImageReader,
+    QKeySequence,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygon,
+    QRegion,
+    QTextCursor,
 )
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
-
+from PyQt5.QtWidgets import (
+    QAbstractSpinBox,
+    QAction,
+    QApplication,
+    QButtonGroup,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFileIconProvider,
+    QFormLayout,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListView,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMenu,
+    QMenuBar,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
+    QStackedLayout,
+    QStackedWidget,
+    QStatusBar,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QSystemTrayIcon,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QToolTip,
+    QVBoxLayout,
+    QWidget,
+)
+from PyQt5.QtWidgets import (
+    QSlider as _QSlider,
+)
+from PyQt5.QtWidgets import (
+    QSpinBox as _QSpinBox,
+)
 
 PYQT_VERSION = 5
 QT_LIB = "PyQt5"
@@ -147,6 +223,8 @@ class QtCompat:
 
     ItemIsDragEnabled = Qt.ItemIsDragEnabled
     ItemIsEditable = Qt.ItemIsEditable
+    ItemIsSelectable = Qt.ItemIsSelectable
+    ItemIsEnabled = Qt.ItemIsEnabled
 
     Horizontal = Qt.Horizontal
     Vertical = Qt.Vertical
@@ -250,7 +328,7 @@ __all__ = [
     "QSystemTrayIcon", "QSizePolicy", "QStyle", "QFileIconProvider",
     "QComboBox", "QToolTip", "QStackedWidget", "QStackedLayout",
     "QAbstractSpinBox", "QStyledItemDelegate", "QStyleOptionViewItem",
-    "QGraphicsDropShadowEffect", "QTableWidget", "QTableWidgetItem", "QHeaderView",
+    "QGraphicsDropShadowEffect", "QGraphicsOpacityEffect", "QTableWidget", "QTableWidgetItem", "QHeaderView",
     "QIcon", "QPixmap", "QImage", "QPainter", "QColor", "QPen", "QBrush",
     "QPainterPath", "QFont", "QFontMetrics", "QFontDatabase", "QKeySequence",
     "QDrag", "QCursor", "QImageReader", "QImageIOHandler", "QTextCursor", "QRegion",

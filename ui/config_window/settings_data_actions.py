@@ -3,28 +3,16 @@
 import logging
 import os
 import sys
-import shutil
-import time
-import winreg
-from datetime import datetime
 
-from ui.tooltip_helper import install_tooltip
 from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QFormLayout, QSlider, QSpinBox, QRadioButton, QButtonGroup,
-    QLabel, QFrame, QCheckBox, QLineEdit, QPushButton, QPlainTextEdit,
-    QListWidget, QListWidgetItem, QFileDialog, QScrollArea, QMessageBox,
-    QPainter, QPixmap, QColor, QPen, QBrush, QRect, QRectF, QDialog,
-    QTimer, QIcon, QStackedWidget, Qt, QtCompat, pyqtSignal, PYQT_VERSION,
-    QThread, QStyledItemDelegate, QSize, QKeySequence, QMenu, QAction,
-    QComboBox, QPainterPath, exec_dialog, QPoint, QApplication
+    QApplication,
+    QFileDialog,
+    QtCompat,
+    QThread,
+    pyqtSignal,
 )
-from core import APP_VERSION, DEFAULT_SPECIAL_APPS, ShortcutItem, ShortcutType
-from core.app_scanner import AppScanner
-from ui.config_window.settings_helpers import NumberedListDelegate, ProgressDialog, ExportThread, ImportThread
-from ui.config_window.folder_panel import PopupMenu
+from ui.config_window.settings_helpers import ExportThread, ImportThread, ProgressDialog
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.font_manager import get_font_css_with_size
 
 logger = logging.getLogger(__name__)
 
@@ -34,31 +22,43 @@ def CompactProgressDialog(*args, **kwargs):
     return Dialog(*args, **kwargs)
 
 class SettingsDataActionsMixin:
+    def _is_progress_dialog_alive(self, progress) -> bool:
+        return not getattr(progress, "_dialog_finished", False) and progress.isVisible()
+
     def _on_export_clicked(self):
         # Same as old settings
         try:
             file_path, _ = QFileDialog.getSaveFileName(self, "导出配置", "", "QuickLauncher 配置包 (*.qlpack)")
-            if not file_path: return
-            if not file_path.endswith('.qlpack'): file_path += '.qlpack'
-            
+            if not file_path:
+                return
+            if not file_path.endswith('.qlpack'):
+                file_path += '.qlpack'
+
             progress = CompactProgressDialog(self, "导出配置", self.data_manager.get_settings().theme)
             progress.show()
-            
+
             self.export_thread = ExportThread(self.data_manager, file_path)
-            self.export_thread.finished_signal.connect(lambda s, m: progress.show_success(m) if s else progress.show_failure(m))
+            def on_finished(success, msg):
+                if not self._is_progress_dialog_alive(progress):
+                    return
+                progress.show_success(msg) if success else progress.show_failure(msg)
+            self.export_thread.finished_signal.connect(on_finished)
             self.export_thread.start()
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
     def _on_import_clicked(self):
         try:
             file_path, _ = QFileDialog.getOpenFileName(self, "导入配置", "", "QuickLauncher 配置包 (*.qlpack)")
-            if not file_path: return
-            
+            if not file_path:
+                return
+
             progress = CompactProgressDialog(self, "导入配置", self.data_manager.get_settings().theme)
             progress.show()
-            
+
             self.import_thread = ImportThread(self.data_manager, file_path)
             def on_finished(success, count, msg):
+                if not self._is_progress_dialog_alive(progress):
+                    return
                 if success:
                     progress.show_success(msg if count <= 0 else f"成功导入 {count} 项配置")
                     self.import_completed.emit(count)
@@ -100,12 +100,12 @@ class SettingsDataActionsMixin:
         )
         if not path:
             return
-            
+
         if not path.lower().endswith('.zip'):
              ThemedMessageBox.warning(self, "错误", "请选择 .zip 格式的备份文件")
              return
 
-        theme = self.data_manager.get_settings().theme
+        self.data_manager.get_settings().theme
 
         result = ThemedMessageBox.question(
             self,
@@ -123,6 +123,9 @@ class SettingsDataActionsMixin:
             QApplication.restoreOverrideCursor()
 
             if success:
+                report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
+                if report.get("has_warnings"):
+                    ThemedMessageBox.warning(self, "导入提示", "部分不安全内容已跳过，请查看日志或诊断信息。")
                 ThemedMessageBox.information(self, "恢复成功", "配置已恢复，程序即将重启。")
                 self._restart_application()
             else:
@@ -159,10 +162,13 @@ class SettingsDataActionsMixin:
                 return
 
             if self.data_manager.import_shareable_config(path):
+                report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
+                if report.get("has_warnings"):
+                    ThemedMessageBox.warning(self, "导入提示", "部分不安全内容已跳过，请查看日志或诊断信息。")
                 ThemedMessageBox.information(
                     self,
                     "导入成功",
-                    f"分享配置已导入到「导入图标」分类\n\n请重启应用以查看效果"
+                    "分享配置已导入到「导入图标」分类\n\n请重启应用以查看效果"
                 )
                 # 导入成功后需要刷新以显示新分类
                 self.settings_changed.emit()
@@ -171,6 +177,25 @@ class SettingsDataActionsMixin:
 
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
+
+    def _on_config_history_clicked(self):
+        """打开配置历史窗口。"""
+        try:
+            from ui.config_history_window import ConfigHistoryWindow
+            if not hasattr(self, "_config_history_window") or self._config_history_window is None:
+                self._config_history_window = ConfigHistoryWindow(self.data_manager, parent=self)
+            else:
+                try:
+                    self._config_history_window.set_theme(self.data_manager.get_settings().theme)
+                except Exception:
+                    pass
+                self._config_history_window.refresh()
+            self._config_history_window.show()
+            self._config_history_window.raise_()
+            self._config_history_window.activateWindow()
+        except Exception as e:
+            ThemedMessageBox.warning(self, "打开失败", f"无法打开配置历史:\n{e}")
+
     def _on_factory_reset_clicked(self):
         """处理清除所有配置按钮点击"""
         try:
@@ -194,7 +219,7 @@ class SettingsDataActionsMixin:
 
         if result != ThemedMessageBox.Yes:
             return
-        
+
         # 第二次确认（防止误操作）
         result2 = ThemedMessageBox.question(
             self,
@@ -205,7 +230,7 @@ class SettingsDataActionsMixin:
 
         if result2 != ThemedMessageBox.Yes:
             return
-        
+
         # 执行清除所有配置
         progress = ProgressDialog(self, "清除所有配置", theme=theme)
         try:
@@ -214,15 +239,15 @@ class SettingsDataActionsMixin:
         except Exception:
             pass
         progress.show()
-        
+
         class _FactoryResetThread(QThread):
             finished_signal = pyqtSignal(dict)
             progress_signal = pyqtSignal(str, float)
-            
+
             def __init__(self, data_manager):
                 super().__init__()
                 self.data_manager = data_manager
-            
+
             def run(self):
                 try:
                     def on_progress(msg, pct):
@@ -230,25 +255,25 @@ class SettingsDataActionsMixin:
                             self.progress_signal.emit(msg, pct)
                         except Exception:
                             pass
-                    
+
                     stats = self.data_manager.factory_reset(callback=on_progress)
                     self.finished_signal.emit(stats)
                 except Exception as e:
                     self.finished_signal.emit({"error": str(e)})
-        
+
         def on_progress_update(msg, pct):
             try:
                 progress.msg_label.setText(msg)
                 progress.progress_bar.setValue(int(pct * 100))
             except Exception:
                 pass
-        
+
         def on_reset_finished(stats):
             try:
                 progress.close()
             except Exception:
                 pass
-            
+
             error = stats.get("error")
             if error:
                 ThemedMessageBox.critical(self, "错误", f"清除所有配置失败:\n{error}")
@@ -268,13 +293,13 @@ class SettingsDataActionsMixin:
 
             # 重启应用
             self._restart_application(theme=theme)
-        
+
         thread = _FactoryResetThread(self.data_manager)
         thread.progress_signal.connect(on_progress_update)
         thread.finished_signal.connect(on_reset_finished)
         thread.finished.connect(thread.deleteLater)
         thread.start()
-        
+
         # 保存线程引用防止被回收
         self._factory_reset_thread = thread
     def _restart_application(self, theme: str = "light"):
@@ -283,8 +308,6 @@ class SettingsDataActionsMixin:
         Args:
             theme: 用于错误消息框的主题，默认为 "light"
         """
-        import sys
-        import os
         import subprocess
 
         try:
@@ -318,6 +341,6 @@ class SettingsDataActionsMixin:
             # 退出当前进程
             from qt_compat import QApplication
             QApplication.instance().quit()
-            
+
         except Exception as e:
             ThemedMessageBox.warning(self, "警告", f"自动重启失败，请手动重启应用。\n错误: {e}")

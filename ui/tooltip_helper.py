@@ -1,6 +1,6 @@
 """Tooltip 辅助函数 - 为所有控件添加完美圆角 Tooltip"""
 
-from qt_compat import QWidget, Qt, QCursor, QTimer
+from qt_compat import QCursor, QTimer, QWidget
 
 
 def install_tooltip(widget: QWidget, text: str):
@@ -30,7 +30,7 @@ def install_tooltip(widget: QWidget, text: str):
             from core import DataManager
             dm = DataManager()
             theme = dm.get_settings().theme
-        except:
+        except Exception:
             theme = "dark"
 
         # 显示时获取当前鼠标位置

@@ -8,7 +8,9 @@ hiddenimports = [
     'pynput', 'pynput.mouse._win32', 'pynput.keyboard._win32',
     'win32gui', 'win32ui', 'win32con', 'win32api', 'win32process',
     'psutil', 'PIL', 'PIL.Image',
-    'PyQt5', 'PyQt5.QtCore', 'PyQt5.QtGui', 'PyQt5.QtWidgets', 'PyQt5.QtNetwork',
+    'PIL.BmpImagePlugin', 'PIL.GifImagePlugin', 'PIL.IcoImagePlugin',
+    'PIL.JpegImagePlugin', 'PIL.PngImagePlugin', 'PIL.WebPImagePlugin',
+    'PyQt5', 'PyQt5.QtCore', 'PyQt5.QtGui', 'PyQt5.QtWidgets', 'PyQt5.QtNetwork', 'PyQt5.QtSvg',
     # UI 模块 - 修复打包后设置面板无法加载的问题
     'ui.config_window.settings_panel',
     'ui.config_window.settings_helpers',
@@ -19,10 +21,9 @@ hiddenimports = [
 tmp_ret = collect_all('PyQt5')
 
 _UNWANTED_DLLS = {
-    'qt5svg.dll', 'qt5printsupport.dll',
-    'qsvg.dll', 'qsvgicon.dll', 'qxdgdesktopportal.dll',
+    'qt5printsupport.dll', 'qxdgdesktopportal.dll',
 }
-_UNWANTED_PYD = {'PyQt5.QtSvg.pyd', 'PyQt5.QtPrintSupport.pyd'}
+_UNWANTED_PYD = {'PyQt5.QtPrintSupport.pyd'}
 
 _filtered_datas = []
 for entry in tmp_ret[0]:
@@ -42,7 +43,7 @@ binaries += _filtered_binaries
 
 _filtered_hiddenimports = [
     hi for hi in tmp_ret[2]
-    if not hi.lower().startswith('pyqt5.qtsvg') and not hi.lower().startswith('pyqt5.qtprintsupport')
+    if not hi.lower().startswith('pyqt5.qtprintsupport')
 ]
 hiddenimports += _filtered_hiddenimports
 

@@ -97,13 +97,20 @@ class PopupIconMixin:
             except Exception as e:
                 logger.debug(f"提取图标失败: {e}")
 
-        default_key = (item.type, self.icon_size)
+        default_key = (item.type, self.icon_size, self._default_icon_cache_text(item))
         cached_default = self._default_icon_cache.get(default_key)
         if cached_default is not None:
             return cached_default
         pixmap = self._create_default_icon(item)
         self._default_icon_cache[default_key] = pixmap
         return pixmap
+
+    def _default_icon_cache_text(self, item: ShortcutItem) -> str:
+        if getattr(item, "type", None) == ShortcutType.HOTKEY:
+            return "hotkey"
+        name = getattr(item, "name", None) or ""
+        return name[0].upper() if name else ""
+
     def _create_default_icon(self, item: ShortcutItem) -> QPixmap:
         """创建默认图标"""
         size = self.icon_size
@@ -129,6 +136,15 @@ class PopupIconMixin:
             font = QFont("Segoe UI", size // 4)
             painter.setFont(font)
             painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌨")
+        else:
+            name = getattr(item, "name", None)
+            if name:
+                first_char = name[0].upper()
+                painter.setPen(QPen(QColor(255, 255, 255)))
+                font = QFont("Segoe UI", size // 3)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
         
         painter.end()
         return pixmap

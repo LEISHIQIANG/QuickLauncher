@@ -3,21 +3,35 @@ QuickLauncher - 快捷启动器
 主入口文件
 """
 
-import sys
 import os
+import sys
 import traceback
-import logging
 from datetime import datetime
 
+
 # 确保项目根目录在 sys.path 中（双击运行时工作目录可能不是项目根目录）
-_root = os.path.dirname(os.path.abspath(__file__))
-if _root not in sys.path:
-    sys.path.insert(0, _root)
+def _ensure_project_root_on_path():
+    root = os.path.dirname(os.path.abspath(__file__))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    return root
 
-from bootstrap.dpi import setup_dpi_awareness
-setup_dpi_awareness()
 
-from bootstrap.logging_init import get_log_dir, setup_logging, setup_faulthandler
+def _load_setup_dpi_awareness():
+    _ensure_project_root_on_path()
+    from bootstrap.dpi import setup_dpi_awareness
+    return setup_dpi_awareness
+
+
+def _load_logging_helpers():
+    from bootstrap.logging_init import get_log_dir, setup_faulthandler, setup_logging
+    return get_log_dir, setup_faulthandler, setup_logging
+
+
+def _load_safe_execute():
+    from core.error_handler import safe_execute
+    return safe_execute
+
 
 def _sanitize_gui_env():
     for k in list(os.environ.keys()):
@@ -26,12 +40,24 @@ def _sanitize_gui_env():
     for k in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH", "QML_IMPORT_PATH"):
         os.environ.pop(k, None)
 
+setup_dpi_awareness = _load_setup_dpi_awareness()
+setup_dpi_awareness()
+
+# 在主线程以 STA 模式初始化 COM，防止 Nuitka 打包后 QFileDialog 触发
+# RPC_E_WRONG_THREAD (0x8001010e)。后台线程各自调用 CoInitialize 不影响此处。
+try:
+    import ctypes
+    ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED = 0x2
+except Exception:
+    pass
+
 _sanitize_gui_env()
+get_log_dir, setup_faulthandler, setup_logging = _load_logging_helpers()
 log_dir = get_log_dir()
 log_file, logger = setup_logging(log_dir)
 setup_faulthandler(log_dir)
 
-from core.error_handler import safe_execute
+safe_execute = _load_safe_execute()
 
 safe_execute(
     lambda: os.environ.setdefault("PYTHONUTF8", "1"),
@@ -137,23 +163,21 @@ def main():
         except Exception as e:
             logger.debug("启动权限状态检测失败（可忽略）: %s", e)
 
-        from qt_compat import QApplication, QLocalServer, QLocalSocket, setup_high_dpi, QT_LIB, QTimer, exec_app
+        from qt_compat import QT_LIB, QApplication, QTimer, exec_app, setup_high_dpi
         logger.info(f"Qt binding: {QT_LIB}")
 
         setup_high_dpi()
         app = QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)
         app.setStyle("Fusion")
-        app.setStyleSheet("""
-            QToolTip {
-                background: rgba(44, 44, 48, 240);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 6px;
-                padding: 4px 8px;
-                font-size: 11px;
-            }
-        """)
+
+        try:
+            from core.shortcut_command_exec import init_main_thread_invoker
+            init_main_thread_invoker()
+            logger.debug("已初始化主线程 UI 命令调度器")
+        except Exception as e:
+            logger.warning(f"初始化主线程调度器失败: {e}")
+        # QToolTip 样式由各窗口的玻璃拟态主题样式表动态控制，不再全局硬编码
 
         try:
             from qt_compat import QFont
@@ -221,8 +245,24 @@ def main():
 
         try:
             from core import register_callback
-            register_callback('show_config_window', _tray_app.show_config_signal.emit)
-            logger.debug("已注册 show_config_window 回调")
+            callbacks = {
+                'show_config_window': _tray_app.show_config_signal.emit,
+                'quit_app': _tray_app._quit,
+                'restart_app': _tray_app._restart,
+                'show_log': _tray_app._show_log,
+                'show_about': _tray_app._show_about,
+                'show_help': _tray_app._show_slash_help,
+                'show_diagnostics': _tray_app._show_diagnostics,
+                'show_shortcut_health': _tray_app._show_shortcut_health,
+                'show_config_history': _tray_app._show_config_history,
+                'clean_icon_cache': _tray_app._clean_icon_cache_now,
+                'reload_hooks': _tray_app._reload_hooks_now,
+                'open_data_dir': _tray_app._open_data_dir,
+                'open_install_dir': _tray_app._open_install_dir,
+            }
+            for name, callback in callbacks.items():
+                register_callback(name, callback)
+            logger.debug("已注册内置命令回调: %s", ", ".join(callbacks))
         except Exception as e:
             logger.warning(f"注册回调失败: {e}")
 
@@ -273,16 +313,6 @@ def main():
 
 def _parse_autostart_cli_args(start_index: int = 3):
     from core.auto_start_manager import HELPER_TARGET_ARG, HELPER_TARGET_ARGS_ARG, HELPER_TARGET_CWD_ARG
-    target_exe = target_args = target_cwd = ""
-    for arg, attr in [(HELPER_TARGET_ARG, 'target_exe'), (HELPER_TARGET_ARGS_ARG, 'target_args'), (HELPER_TARGET_CWD_ARG, 'target_cwd')]:
-        if arg in sys.argv[start_index:]:
-            try:
-                idx = sys.argv.index(arg, start_index)
-                if idx + 1 < len(sys.argv):
-                    locals()[attr]  # just reference
-            except ValueError:
-                pass
-    # parse properly
     def _get(arg):
         try:
             i = sys.argv.index(arg, start_index)
@@ -301,8 +331,11 @@ if __name__ == "__main__":
             sys.exit(0 if success else 1)
         elif sys.argv[1] == "--configure-autostart":
             from core.auto_start_manager import (
-                HELPER_ACTION_DISABLE, HELPER_ACTION_ENABLE, HELPER_EXIT_BAD_ARGS,
-                disable_auto_start, enable_auto_start,
+                HELPER_ACTION_DISABLE,
+                HELPER_ACTION_ENABLE,
+                HELPER_EXIT_BAD_ARGS,
+                disable_auto_start,
+                enable_auto_start,
             )
             action = sys.argv[2] if len(sys.argv) > 2 else ""
             target_exe, target_args, target_cwd = _parse_autostart_cli_args(3)
@@ -334,6 +367,7 @@ if __name__ == "__main__":
             sys.exit(0 if success else 1)
         elif sys.argv[1] == "--service-mode":
             import servicemanager
+
             from core.windows_service import QuickLauncherService
             servicemanager.Initialize()
             servicemanager.PrepareToHostSingle(QuickLauncherService)

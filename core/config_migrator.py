@@ -5,9 +5,7 @@
 
 import os
 import shutil
-import json
 from pathlib import Path
-from typing import Optional
 
 
 class ConfigMigrator:

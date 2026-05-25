@@ -23,7 +23,7 @@ extern "C" {
     HOOKS_API void UninstallKeyboardHook();
     HOOKS_API bool IsAltHeld();
     HOOKS_API bool IsCtrlHeld();
-    HOOKS_API void SetGlobalHotkey(const char* hotkeyStr, KeyboardCallback callback);
+    HOOKS_API bool SetGlobalHotkey(const char* hotkeyStr, KeyboardCallback callback);
     HOOKS_API void ClearGlobalHotkey();
 
     // 特殊应用列表
@@ -32,4 +32,7 @@ extern "C" {
 
     // 工具函数
     HOOKS_API void ReleaseAllModifierKeys();
+    HOOKS_API int GetHooksVersion();
+    HOOKS_API unsigned int GetHooksCapabilities();
+    HOOKS_API unsigned long GetLastHookError();
 }

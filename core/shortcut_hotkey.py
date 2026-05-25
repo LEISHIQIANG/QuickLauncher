@@ -1,13 +1,12 @@
 """Hotkey execution helpers for ShortcutExecutor."""
 
+import ctypes
 import logging
 import time
+from ctypes import wintypes
 from typing import List
 
 from .data_models import ShortcutItem
-
-import ctypes
-from ctypes import wintypes
 
 user32 = ctypes.windll.user32
 shell32 = ctypes.windll.shell32
@@ -41,7 +40,8 @@ SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
 SendInput.restype = wintypes.UINT
 
 try:
-    from pynput.keyboard import Key, Controller as KeyboardController
+    from pynput.keyboard import Controller as KeyboardController
+    from pynput.keyboard import Key
     HAS_PYNPUT = True
     keyboard = KeyboardController()
 except ImportError:
@@ -114,14 +114,14 @@ class HotkeyExecutionMixin:
     @classmethod
     def restore_foreground_window(cls):
         """恢复之前的前台窗口
-        
+
         v2.6.6.0 改进：
         - 增加窗口句柄有效性检查（IsWindow）
         - 如果目标窗口无效或恢复失败，尝试激活桌面作为后备
         - 这可以修复 Win10 上弹窗隐藏后左键选择失效的问题
         """
         hwnd = cls._previous_hwnd
-        
+
         # 检查窗口句柄是否有效
         if hwnd:
             try:
@@ -131,7 +131,7 @@ class HotkeyExecutionMixin:
                     cls._previous_hwnd = None
             except Exception:
                 hwnd = None
-        
+
         if hwnd:
             try:
                 # 先尝试 SetForegroundWindow
@@ -140,17 +140,17 @@ class HotkeyExecutionMixin:
                     # 如果失败，尝试使用 AttachThreadInput 技巧
                     current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
                     target_thread = user32.GetWindowThreadProcessId(hwnd, None)
-                    
+
                     if current_thread != target_thread:
                         user32.AttachThreadInput(current_thread, target_thread, True)
                         user32.SetForegroundWindow(hwnd)
                         user32.AttachThreadInput(current_thread, target_thread, False)
-                
+
                 logger.debug(f"恢复前台窗口: {hwnd}")
                 return True
             except Exception as e:
                 logger.debug(f"恢复前台窗口失败: {e}")
-        
+
         # ===== 后备方案：激活桌面窗口 =====
         # 如果没有有效的之前窗口，或恢复失败，尝试激活桌面
         # 这可以"重置"系统的焦点状态，修复左键失效问题
@@ -167,7 +167,7 @@ class HotkeyExecutionMixin:
                     return True
         except Exception as e:
             logger.debug(f"后备焦点恢复失败: {e}")
-        
+
         return False
     @classmethod
     def restore_foreground_window_fast(cls, timeout_ms: int = 180, poll_ms: int = 8) -> bool:
@@ -215,8 +215,20 @@ class HotkeyExecutionMixin:
             'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73,
             'f5': 0x74, 'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
             'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
+            'f13': 0x7C, 'f14': 0x7D, 'f15': 0x7E, 'f16': 0x7F,
+            'f17': 0x80, 'f18': 0x81, 'f19': 0x82, 'f20': 0x83,
+            'f21': 0x84, 'f22': 0x85, 'f23': 0x86, 'f24': 0x87,
+            'num0': 0x60, 'num1': 0x61, 'num2': 0x62, 'num3': 0x63,
+            'num4': 0x64, 'num5': 0x65, 'num6': 0x66, 'num7': 0x67,
+            'num8': 0x68, 'num9': 0x69,
+            'numpad0': 0x60, 'numpad1': 0x61, 'numpad2': 0x62, 'numpad3': 0x63,
+            'numpad4': 0x64, 'numpad5': 0x65, 'numpad6': 0x66, 'numpad7': 0x67,
+            'numpad8': 0x68, 'numpad9': 0x69,
+            'multiply': 0x6A, 'add': 0x6B, 'subtract': 0x6D, 'decimal': 0x6E, 'divide': 0x6F,
             'numlock': 0x90,
             'scrolllock': 0x91,
+            ';': 0xBA, '=': 0xBB, ',': 0xBC, '-': 0xBD, '.': 0xBE, '/': 0xBF,
+            '`': 0xC0, '[': 0xDB, '\\': 0xDC, ']': 0xDD, "'": 0xDE,
         }
 
         if k_lower in vk_codes:
@@ -247,9 +259,12 @@ class HotkeyExecutionMixin:
         for m in modifiers or []:
             vk = ShortcutExecutor._vk_from_key(m)
             if vk:
-                if vk == 0x10: vk = 0xA0
-                elif vk == 0x11: vk = 0xA2
-                elif vk == 0x12: vk = 0xA4
+                if vk == 0x10:
+                    vk = 0xA0
+                elif vk == 0x11:
+                    vk = 0xA2
+                elif vk == 0x12:
+                    vk = 0xA4
                 mod_vks.append(vk)
 
         try:
@@ -326,7 +341,7 @@ class HotkeyExecutionMixin:
     @staticmethod
     def _verify_and_release_all_modifiers():
         """验证并释放所有可能卡住的修饰键
-        
+
         v2.6.6.0 新增方法：
         1. 检测所有修饰键的当前状态
         2. 如果发现按下状态，使用多种方法尝试释放
@@ -334,7 +349,7 @@ class HotkeyExecutionMixin:
         """
         KEYEVENTF_KEYUP = 0x0002
         KEYEVENTF_EXTENDEDKEY = 0x0001
-        
+
         # 所有修饰键的VK码：通用 + 左右侧特定
         modifier_vks = [
             (0x10, "Shift"),
@@ -349,9 +364,9 @@ class HotkeyExecutionMixin:
             (0x5B, "LWin"),
             (0x5C, "RWin"),
         ]
-        
+
         stuck_keys = []
-        
+
         # 检测哪些键处于按下状态
         for vk, name in modifier_vks:
             try:
@@ -360,14 +375,14 @@ class HotkeyExecutionMixin:
                     stuck_keys.append((vk, name))
             except Exception:
                 pass
-        
+
         # 如果有卡住的键，尝试释放
         if stuck_keys:
             logger.debug(f"检测到卡住的修饰键: {[name for _, name in stuck_keys]}")
-            
+
             for vk, name in stuck_keys:
                 released = False
-                
+
                 # 尝试方法1: keybd_event
                 for _ in range(3):
                     try:
@@ -378,7 +393,7 @@ class HotkeyExecutionMixin:
                         time.sleep(0.002)
                     except Exception:
                         pass
-                    
+
                     # 检查是否已释放
                     try:
                         state = user32.GetAsyncKeyState(vk)
@@ -387,7 +402,7 @@ class HotkeyExecutionMixin:
                             break
                     except Exception:
                         pass
-                
+
                 # 尝试方法2: _release_vk_strong
                 if not released:
                     try:
@@ -395,7 +410,7 @@ class HotkeyExecutionMixin:
                         time.sleep(0.005)
                     except Exception:
                         pass
-                    
+
                     # 再次检查
                     try:
                         state = user32.GetAsyncKeyState(vk)
@@ -403,7 +418,7 @@ class HotkeyExecutionMixin:
                             released = True
                     except Exception:
                         pass
-                
+
                 # 尝试方法3: SendInput（使用模块级结构）
                 if not released:
                     try:
@@ -411,7 +426,7 @@ class HotkeyExecutionMixin:
                         time.sleep(0.002)
                     except Exception:
                         pass
-                
+
                 if released:
                     logger.debug(f"成功释放修饰键: {name}")
                 else:
@@ -550,15 +565,15 @@ class HotkeyExecutionMixin:
     def _get_pynput_key(key_str: str):
         """将字符串转换为 pynput 键"""
         key_lower = key_str.lower().strip()
-        
+
         # 检查特殊键
         if key_lower in ShortcutExecutor.PYNPUT_SPECIAL_KEYS:
             return ShortcutExecutor.PYNPUT_SPECIAL_KEYS[key_lower]
-        
+
         # 单个字符
         if len(key_str) == 1:
             return key_str.lower()
-        
+
         logger.warning(f"未知键: {key_str}")
         return None
     @staticmethod
@@ -581,13 +596,13 @@ class HotkeyExecutionMixin:
                 pynput_key = ShortcutExecutor._get_pynput_key(mod)
                 if pynput_key:
                     mod_keys.append(pynput_key)
-            
+
             # 转换主键
             main_key = ShortcutExecutor._get_pynput_key(key)
             if not main_key:
                 logger.error(f"无法识别主键: {key}")
                 return False
-            
+
             # 按下所有修饰键
             for mk in mod_keys:
                 keyboard.press(mk)
@@ -625,7 +640,7 @@ class HotkeyExecutionMixin:
 
             logger.info(f"[pynput] 快捷键发送完成: {shortcut.hotkey}")
             return True
-            
+
         except Exception as e:
             logger.error(f"[pynput] 执行快捷键异常: {e}")
             # 只在异常时才清理残留按键
@@ -640,21 +655,21 @@ class HotkeyExecutionMixin:
         """使用 ctypes 执行快捷键（备用方案）"""
         modifiers = shortcut.hotkey_modifiers or []
         key = shortcut.hotkey_key or ""
-        
+
         if not key:
             logger.warning("快捷键未设置")
             return False
-        
+
         logger.info(f"[ctypes] 执行快捷键: {shortcut.hotkey}")
-        
+
         def get_vk(k):
             return ShortcutExecutor._vk_from_key(k)
-            
+
         pressed_vks = []
         try:
             KEYEVENTF_KEYUP = 0x0002
             KEYEVENTF_EXTENDEDKEY = 0x0001
-            
+
             # 按下修饰键
             for mod in modifiers:
                 vk = get_vk(mod)
@@ -665,7 +680,7 @@ class HotkeyExecutionMixin:
                     user32.keybd_event(vk, 0, flags, 0)
                     pressed_vks.append(vk)
                     time.sleep(0.01)
-            
+
             # 按下主键
             vk_main = get_vk(key)
             if vk_main:
@@ -675,18 +690,18 @@ class HotkeyExecutionMixin:
                 user32.keybd_event(vk_main, 0, flags, 0)
                 pressed_vks.append(vk_main)
                 time.sleep(0.05) # 稍微增加保持时间
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"[ctypes] 执行异常: {e}")
             return False
-            
+
         finally:
             # v2.6.5.9 改进：确保释放所有已按下的键（逆序释放）
             KEYEVENTF_KEYUP = 0x0002
             KEYEVENTF_EXTENDEDKEY = 0x0001
-            
+
             for vk in reversed(pressed_vks):
                 # 尝试多种方法释放
                 for attempt in range(3):
@@ -696,7 +711,7 @@ class HotkeyExecutionMixin:
                             flags |= KEYEVENTF_EXTENDEDKEY
                         user32.keybd_event(vk, 0, flags, 0)
                         time.sleep(0.003)
-                        
+
                         # 检查是否已释放
                         state = user32.GetAsyncKeyState(vk)
                         if (state & 0x8000) == 0:
@@ -704,14 +719,14 @@ class HotkeyExecutionMixin:
                     except Exception as rel_e:
                         if attempt == 2:
                             logger.error(f"释放VK失败: {rel_e}")
-                
+
                 # 如果仍未释放，使用强力释放
                 try:
                     if (user32.GetAsyncKeyState(vk) & 0x8000) != 0:
                         ShortcutExecutor._release_vk_strong(vk)
                 except Exception:
                     pass
-            
+
             # 额外调用全面验证释放
             time.sleep(0.010)
             try:

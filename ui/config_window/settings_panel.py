@@ -4,32 +4,19 @@
 
 import os
 import sys
-import shutil
-import time
-import winreg
 import logging
-from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from ui.tooltip_helper import install_tooltip
 from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QFormLayout, QSlider, QSpinBox, QRadioButton,
-    QButtonGroup, QLabel, QFrame, QCheckBox,
-    QLineEdit, QPushButton, QPlainTextEdit, QListWidget, QListWidgetItem, QFileDialog, QScrollArea, QMessageBox,
-    QPainter, QPixmap, QColor, QPen, QBrush, QRect, QRectF, QDialog, QTimer, QIcon, QStackedWidget,
-    Qt, QtCompat, pyqtSignal, PYQT_VERSION, QThread, QStyledItemDelegate, QSize, QKeySequence, QMenu, QAction, QComboBox,
-    QPainterPath, exec_dialog, QPoint, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+    QLabel, QFrame, QPushButton, QListWidget, QListWidgetItem, QFileDialog, QPainter, QPixmap, QColor, QPen, QBrush, QRectF, QDialog, QTimer, QStackedWidget,
+    Qt, QtCompat, pyqtSignal, QSize, QPainterPath, QPoint, pyqtProperty, QPropertyAnimation, QEasingCurve
 )
 
-from core import APP_VERSION, DataManager, DEFAULT_SPECIAL_APPS, ShortcutItem, ShortcutType
-from core.app_scanner import AppScanner
-from .theme_helper import apply_theme_to_dialog, get_radio_stylesheet, get_switch_stylesheet
-from .settings_helpers import NumberedListDelegate, ProgressDialog, ExportThread, ImportThread
-from .folder_panel import PopupMenu
+from core import DataManager, DEFAULT_SPECIAL_APPS
 from ui.styles.style import StyleSheet
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.font_manager import get_font_family, get_font_css_with_size
+from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.window_effect import get_window_effect
 from .settings_page_helpers import SettingsPageHelpersMixin
 from .settings_system_page import SettingsSystemPageMixin
@@ -38,6 +25,9 @@ from .settings_popup_page import SettingsPopupPageMixin
 from .settings_data_page import SettingsDataPageMixin
 from .settings_about_page import SettingsAboutPageMixin
 from .settings_data_actions import SettingsDataActionsMixin
+from .settings_plugins_page import SettingsPluginsPageMixin
+from .settings_commands_page import SettingsCommandsPageMixin
+from .settings_license_page import SettingsLicensePageMixin
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +48,7 @@ class CompactProgressDialog(QDialog):
         from ui.utils.window_effect import is_win11
         self.corner_radius = 8 if is_win11() else 12
         self._acrylic_applied = False
+        self._dialog_finished = False
         self._detect_theme()
         self._setup_ui()
 
@@ -161,6 +152,7 @@ class CompactProgressDialog(QDialog):
     def showEvent(self, event):
         """显示时居中并应用模糊效果"""
         super().showEvent(event)
+        self._dialog_finished = False
         self.adjustSize()
         from ui.utils.dialog_helper import center_dialog_on_main_window
         center_dialog_on_main_window(self)
@@ -192,6 +184,8 @@ class CompactProgressDialog(QDialog):
     def _apply_acrylic(self):
         """应用模糊效果 - 与主配置窗口一致"""
         try:
+            if self._dialog_finished or not self.isVisible():
+                return
             from ui.utils.window_effect import enable_acrylic_for_config_window, is_win11
             hwnd = int(self.winId())
             if not hwnd:
@@ -209,6 +203,17 @@ class CompactProgressDialog(QDialog):
             enable_acrylic_for_config_window(self, self.theme, blur_amount=30, radius=self.corner_radius)
         except Exception:
             pass
+
+    def done(self, result):
+        self._dialog_finished = True
+        for attr in ("anim_group", "opacity_anim", "pos_anim"):
+            anim = getattr(self, attr, None)
+            if anim is not None:
+                try:
+                    anim.stop()
+                except Exception:
+                    pass
+        super().done(result)
 
     def show_success(self, msg, title=""):
         """显示成功消息"""
@@ -228,12 +233,83 @@ class CompactProgressDialog(QDialog):
         self.ok_btn.setVisible(True)
         self.adjustSize()
 
+from ui.utils.smooth_scroll import SmoothScrollArea
+
 class NavigationItem(QListWidgetItem):
     def __init__(self, text, icon_name=None, theme="dark"):
         super().__init__(text)
+        self.icon_name = icon_name or ""
         self.setTextAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
         self.setSizeHint(QSize(0, 40))
-        # 字体通过样式表和全局字体设置，不在这里单独设置
+
+class NavigationItemWidget(QWidget):
+    """Custom navigation item widget with theme-aware styling."""
+    
+    def __init__(self, text, icon, theme="dark", parent=None):
+        super().__init__(parent)
+        self.text = text
+        self.icon = icon
+        self.theme = theme
+        self.item = None  # Reference to QListWidgetItem
+        self.setMouseTracking(True)
+    def sizeHint(self) -> QSize:
+        fm = self.fontMetrics()
+        h = max(19, fm.height()) + 22  # 22px padding total (11px top/bottom), scales perfectly with high-DPI
+        return QSize(100, h)
+
+    def update_icon(self, new_icon):
+        self.icon = new_icon
+        self.update()
+        
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Determine selection and hover states
+        is_selected = False
+        if self.item is not None:
+            is_selected = self.item.isSelected()
+        is_hovered = self.underMouse()
+        
+        # Draw hover background
+        if is_hovered and not is_selected:
+            if self.theme == "dark":
+                hover_bg = QColor(255, 255, 255, 12)  # rgba(255, 255, 255, 0.05)
+            else:
+                hover_bg = QColor(0, 0, 0, 8)  # rgba(0, 0, 0, 0.03)
+            painter.setBrush(hover_bg)
+            painter.setPen(QtCompat.NoPen)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(8, 2, -8, -2), 6, 6)
+            
+        # Draw icon
+        if self.icon:
+            pixmap = self.icon.pixmap(19, 19)
+            y = (self.height() - pixmap.height()) // 2
+            painter.drawPixmap(14, y, pixmap)
+            
+        # Draw text
+        if self.theme == "dark":
+            text_color = QColor(255, 255, 255, 242) if is_selected else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 150))
+        else:
+            text_color = QColor(0, 0, 0, 242) if is_selected else (QColor(0, 0, 0, 200) if is_hovered else QColor(0, 0, 0, 150))
+            
+        painter.setPen(text_color)
+        from ui.utils.font_manager import get_qfont
+        painter.setFont(get_qfont(12))
+        
+        text_rect = QRectF(38, 0, self.width() - 48, self.height())
+        painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
+        
+        painter.end()
+
 
 class NavigationWidget(QListWidget):
     def __init__(self, parent=None):
@@ -243,68 +319,138 @@ class NavigationWidget(QListWidget):
         self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.setSpacing(4)
-        # 通过 QFont 对象设置 PreferNoHinting，避免中文字被压扁
+        self.setIconSize(QSize(19, 19))
         from ui.utils.font_manager import get_qfont
         self.setFont(get_qfont(13))
         
-    def apply_theme(self, theme):
-        if theme == "dark":
-            self.setStyleSheet("""
-                QListWidget {
-                    background-color: transparent;
-                    border: none;
-                    outline: none;
-                    padding-top: 10px;
-                }
-                QListWidget::item {
-                    background-color: transparent;
-                    color: rgba(255, 255, 255, 0.6);
-                    border-radius: 6px;
-                    padding-left: 12px;
-                    margin: 2px 8px;
-                }
-                QListWidget::item:selected {
-                    background-color: rgba(255, 255, 255, 0.15);
-                    color: #ffffff;
-                }
-                QListWidget::item:hover:!selected {
-                    background-color: rgba(255, 255, 255, 0.08);
-                    color: rgba(255, 255, 255, 0.9);
-                }
-            """)
+        self.theme = "dark"
+        self._pill_rect = QRectF()
+        self._pill_opacity = 0.0
+        self._pill_rect_anim = None
+        self._pill_opacity_anim = None
+        
+        self.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        
+    @pyqtProperty(QRectF)
+    def pill_rect(self) -> QRectF:
+        return self._pill_rect
+        
+    @pill_rect.setter
+    def pill_rect(self, rect: QRectF):
+        self._pill_rect = rect
+        self.viewport().update()
+        
+    @pyqtProperty(float)
+    def pill_opacity(self) -> float:
+        return self._pill_opacity
+        
+    @pill_opacity.setter
+    def pill_opacity(self, opacity: float):
+        self._pill_opacity = opacity
+        self.viewport().update()
+        
+    def _on_selection_changed(self, selected, deselected):
+        curr_indexes = self.selectedIndexes()
+        if curr_indexes:
+            index = curr_indexes[0]
+            visual_rect = self.visualRect(index)
+            target_rect = QRectF(visual_rect).adjusted(8, 2, -8, -2)
+            
+            if self._pill_rect_anim is not None:
+                self._pill_rect_anim.stop()
+                
+            if self._pill_rect.isEmpty() or self._pill_opacity < 0.1:
+                self._pill_rect = target_rect
+            else:
+                self._pill_rect_anim = QPropertyAnimation(self, b"pill_rect")
+                self._pill_rect_anim.setDuration(220)
+                self._pill_rect_anim.setStartValue(self._pill_rect)
+                self._pill_rect_anim.setEndValue(target_rect)
+                self._pill_rect_anim.setEasingCurve(QEasingCurve.OutCubic)
+                self._pill_rect_anim.start()
+                
+            if self._pill_opacity_anim is not None:
+                self._pill_opacity_anim.stop()
+            self._pill_opacity_anim = QPropertyAnimation(self, b"pill_opacity")
+            self._pill_opacity_anim.setDuration(180)
+            self._pill_opacity_anim.setStartValue(self._pill_opacity)
+            self._pill_opacity_anim.setEndValue(1.0)
+            self._pill_opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
+            self._pill_opacity_anim.start()
         else:
-            self.setStyleSheet("""
-                QListWidget {
-                    background-color: transparent;
-                    border: none;
-                    outline: none;
-                    padding-top: 10px;
-                }
-                QListWidget::item {
-                    background-color: transparent;
-                    color: rgba(0, 0, 0, 0.6);
-                    border-radius: 6px;
-                    padding-left: 12px;
-                    margin: 2px 8px;
-                }
-                QListWidget::item:selected {
-                    background-color: rgba(0, 0, 0, 0.08);
-                    color: #000000;
-                }
-                QListWidget::item:hover:!selected {
-                    background-color: rgba(0, 0, 0, 0.04);
-                    color: rgba(0, 0, 0, 0.8);
-                }
-            """)
+            if self._pill_opacity_anim is not None:
+                self._pill_opacity_anim.stop()
+            self._pill_opacity_anim = QPropertyAnimation(self, b"pill_opacity")
+            self._pill_opacity_anim.setDuration(180)
+            self._pill_opacity_anim.setStartValue(self._pill_opacity)
+            self._pill_opacity_anim.setEndValue(0.0)
+            self._pill_opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
+            self._pill_opacity_anim.start()
+        
+    def apply_theme(self, theme):
+        self.theme = theme
+        self._apply_nav_icons(theme)
+        
+        self.setStyleSheet("""
+            QListWidget {
+                background-color: transparent;
+                border: none;
+                outline: none;
+                padding-top: 10px;
+            }
+            QListWidget::item {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+                margin: 2px 8px;
+            }
+            QListWidget::item:selected {
+                background-color: transparent;
+                border: none;
+            }
+            QListWidget::item:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
 
-class BaseSettingPage(QScrollArea):
+    def _apply_nav_icons(self, theme: str):
+        from .action_button_icons import create_action_button_icon
+        for row in range(self.count()):
+            item = self.item(row)
+            widget = self.itemWidget(item)
+            if isinstance(widget, NavigationItemWidget):
+                widget.theme = theme
+                icon_name = getattr(item, "icon_name", "")
+                if icon_name:
+                    new_icon = create_action_button_icon(icon_name, theme, 19)
+                    widget.update_icon(new_icon)
+                widget.update()
+
+    def paintEvent(self, event):
+        if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
+            painter = QPainter(self.viewport())
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            if self.theme == "dark":
+                pill_color = QColor(255, 255, 255, int(self._pill_opacity * 38))  # rgba(255, 255, 255, 0.15)
+            else:
+                pill_color = QColor(0, 0, 0, int(self._pill_opacity * 20))  # rgba(0, 0, 0, 0.08)
+                
+            painter.setBrush(QBrush(pill_color))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawRoundedRect(self._pill_rect, 6, 6)
+            painter.end()
+            
+        super().paintEvent(event)
+
+class BaseSettingPage(SmoothScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
-        # 隐藏垂直滚动条，但仍可通过鼠标滚轮滚动
-        self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)
         # 让 ScrollArea 透明
         self.setStyleSheet("QScrollArea, QWidget#Content { background: transparent; border: none; }")
         
@@ -320,6 +466,7 @@ class BaseSettingPage(QScrollArea):
         from ui.utils.font_manager import get_qfont
         group = QGroupBox(title)
         group.setFont(get_qfont(14))
+        group.setProperty("settingsGroupTitle", title)
 
         group.setStyleSheet("""
             QGroupBox {
@@ -331,20 +478,373 @@ class BaseSettingPage(QScrollArea):
                 subcontrol-position: top left;
                 left: 0px;
                 top: -4px;
-                padding-left: 0px;
+                padding-left: 18px;
                 color: white;
             }
         """)
+
+        icon_label = QLabel()
+        icon_label.setObjectName("SettingsGroupIcon")
+        icon_label.setProperty("settingsGroupIconTitle", title)
+        icon_label.setParent(group)
+        icon_label.setFixedSize(14, 14)
+        icon_label.setAlignment(QtCompat.AlignCenter)
+        icon_label.setStyleSheet("background: transparent; border: none;")
+        icon_label.setPixmap(self._create_group_icon(title, "dark", 14))
+        icon_label.raise_()
 
         layout = QVBoxLayout(group)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
         self.layout.addWidget(group)
+        self._position_group_icon(group)
         return layout, group
+
+    def _position_group_icon(self, group):
+        icon_label = group.findChild(QLabel, "SettingsGroupIcon")
+        if not icon_label:
+            return
+        icon_label.move(0, 0)
+        icon_label.raise_()
+
+    def _group_icon_kind(self, title: str) -> str:
+        if "插件" in title:
+            return "plugin"
+        if "收藏命令" in title:
+            return "command_favorite"
+        if "内置命令" in title or "命令" in title:
+            return "command"
+        if "许可证信息" in title:
+            return "license"
+        if "激活许可证" in title:
+            return "key"
+        if "支持一下" in title:
+            return "support"
+        if title == "管理":
+            return "license_manage"
+        if "启动" in title or "运行" in title:
+            return "power"
+        if "排序" in title:
+            return "sort"
+        if "主题" in title or "背景" in title or "外观" in title:
+            return "palette"
+        if "日志" in title:
+            return "log"
+        if "尺寸" in title or "布局" in title:
+            return "layout"
+        if "透明" in title:
+            return "opacity"
+        if "视觉" in title or "特效" in title:
+            return "spark"
+        if "位置" in title:
+            return "target"
+        if "触发" in title or "交互" in title:
+            return "gesture"
+        if "危险" in title:
+            return "warning"
+        if "配置" in title or "管理" in title:
+            return "archive"
+        if "关于" in title or "简介" in title or "作者" in title:
+            return "info"
+        if "添加" in title:
+            return "plus"
+        if "分类" in title or "同步" in title:
+            return "folder"
+        if "高级" in title:
+            return "sliders"
+        if "技巧" in title or "操作" in title:
+            return "guide"
+        return "dot"
+
+    def _group_icon_accent(self, title: str, theme: str) -> QColor:
+        if "危险" in title:
+            return QColor(255, 99, 99)
+        if "插件" in title:
+            return QColor(44, 190, 155)
+        if "收藏命令" in title:
+            return QColor(255, 184, 77)
+        if "命令" in title:
+            return QColor(82, 145, 255)
+        if "支持一下" in title:
+            return QColor(255, 122, 86)
+        if "许可证" in title or title == "管理":
+            return QColor(255, 180, 72)
+        if "日志" in title or "配置" in title or "管理" in title:
+            return QColor(54, 176, 116)
+        if "主题" in title or "背景" in title or "外观" in title or "视觉" in title:
+            return QColor(112, 101, 242)
+        if "弹窗" in title or "位置" in title or "触发" in title or "交互" in title:
+            return QColor(45, 126, 235)
+        if "关于" in title or "简介" in title or "作者" in title:
+            return QColor(28, 150, 130)
+        return QColor(45, 126, 235) if theme == "light" else QColor(96, 166, 255)
+
+    def _create_group_icon(self, title: str, theme: str, size: int = 14) -> QPixmap:
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QtCompat.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.SmoothPixmapTransform)
+        painter.scale(size / 22.0, size / 22.0)
+
+        accent = self._group_icon_accent(title, theme)
+        accent.setAlpha(145 if theme == "light" else 165)
+        ink = QColor(38, 49, 64, 150) if theme == "light" else QColor(235, 241, 250, 165)
+        bg = QColor(accent)
+        bg.setAlpha(12 if theme == "light" else 18)
+        border = QColor(accent)
+        border.setAlpha(55 if theme == "light" else 70)
+
+        painter.setPen(QPen(border, 1.2))
+        painter.setBrush(QBrush(bg))
+        painter.drawRoundedRect(QRectF(1.0, 1.0, 20.0, 20.0), 6.0, 6.0)
+
+        pen = QPen(ink, 1.8)
+        pen.setCapStyle(QtCompat.RoundCap)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        accent_pen = QPen(accent, 2.0)
+        accent_pen.setCapStyle(QtCompat.RoundCap)
+        accent_pen.setJoinStyle(QtCompat.RoundJoin)
+
+        def line(x1, y1, x2, y2, color_pen=pen):
+            painter.setPen(color_pen)
+            painter.drawLine(int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2)))
+
+        def ellipse(x, y, w, h, color_pen=pen, brush=None):
+            painter.setPen(color_pen)
+            painter.setBrush(brush if brush is not None else QtCompat.NoBrush)
+            painter.drawEllipse(QRectF(x, y, w, h))
+
+        def rect(x, y, w, h, color_pen=pen, brush=None, radius=2.5):
+            painter.setPen(color_pen)
+            painter.setBrush(brush if brush is not None else QtCompat.NoBrush)
+            painter.drawRoundedRect(QRectF(x, y, w, h), radius, radius)
+
+        def heart_path() -> QPainterPath:
+            path = QPainterPath()
+            path.moveTo(11, 16.2)
+            path.cubicTo(6.5, 13.2, 5.0, 10.8, 5.0, 8.7)
+            path.cubicTo(5.0, 6.7, 6.6, 5.3, 8.4, 5.3)
+            path.cubicTo(9.6, 5.3, 10.5, 5.9, 11, 6.8)
+            path.cubicTo(11.5, 5.9, 12.4, 5.3, 13.6, 5.3)
+            path.cubicTo(15.4, 5.3, 17.0, 6.7, 17.0, 8.7)
+            path.cubicTo(17.0, 10.8, 15.5, 13.2, 11, 16.2)
+            return path
+
+        def star_path(cx=11, cy=10.8, outer=6.2, inner=2.8) -> QPainterPath:
+            points = [
+                (cx, cy - outer),
+                (cx + 1.0, cy - inner),
+                (cx + outer, cy - inner),
+                (cx + 1.8, cy + 0.8),
+                (cx + 3.1, cy + outer),
+                (cx, cy + 2.6),
+                (cx - 3.1, cy + outer),
+                (cx - 1.8, cy + 0.8),
+                (cx - outer, cy - inner),
+                (cx - 1.0, cy - inner),
+            ]
+            path = QPainterPath()
+            path.moveTo(*points[0])
+            for point in points[1:]:
+                path.lineTo(*point)
+            path.closeSubpath()
+            return path
+
+        kind = self._group_icon_kind(title)
+        if kind == "power":
+            painter.setPen(accent_pen)
+            painter.drawArc(QRectF(6, 6, 10, 10), 35 * 16, 290 * 16)
+            line(11, 4.7, 11, 10.5)
+        elif kind == "sort":
+            line(6, 7, 16, 7)
+            line(6, 11, 14, 11)
+            line(6, 15, 12, 15)
+            line(16, 5, 18, 7)
+            line(16, 9, 18, 7)
+        elif kind == "palette":
+            ellipse(5, 5, 12, 12)
+            painter.setBrush(QBrush(accent))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawEllipse(QRectF(8, 7, 2.4, 2.4))
+            painter.drawEllipse(QRectF(12, 8, 2.4, 2.4))
+            painter.drawEllipse(QRectF(8.8, 12, 2.4, 2.4))
+            painter.setPen(pen)
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawArc(QRectF(10, 11, 6, 5), 180 * 16, 145 * 16)
+        elif kind == "log":
+            rect(6, 4.5, 10, 13)
+            line(8.5, 8, 13.5, 8, accent_pen)
+            line(8.5, 11, 13.5, 11)
+            line(8.5, 14, 12.5, 14)
+        elif kind == "layout":
+            rect(5, 5, 12, 12)
+            line(11, 5, 11, 17)
+            line(5, 10.5, 17, 10.5, accent_pen)
+        elif kind == "opacity":
+            path = QPainterPath()
+            path.moveTo(11, 4)
+            path.cubicTo(16, 9, 17, 12, 17, 14)
+            path.cubicTo(17, 17, 14.5, 18.5, 11, 18.5)
+            path.cubicTo(7.5, 18.5, 5, 17, 5, 14)
+            path.cubicTo(5, 12, 6, 9, 11, 4)
+            painter.setPen(pen)
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawPath(path)
+            line(6.8, 14.5, 15.2, 14.5, accent_pen)
+        elif kind == "spark":
+            line(11, 4.5, 11, 7.2, accent_pen)
+            line(11, 14.8, 11, 17.5, accent_pen)
+            line(4.5, 11, 7.2, 11, accent_pen)
+            line(14.8, 11, 17.5, 11, accent_pen)
+            line(7, 7, 8.7, 8.7)
+            line(15, 7, 13.3, 8.7)
+            line(7, 15, 8.7, 13.3)
+            line(15, 15, 13.3, 13.3)
+        elif kind == "target":
+            ellipse(5, 5, 12, 12)
+            ellipse(8.3, 8.3, 5.4, 5.4, accent_pen)
+            line(11, 3.5, 11, 6)
+            line(11, 16, 11, 18.5)
+            line(3.5, 11, 6, 11)
+            line(16, 11, 18.5, 11)
+        elif kind == "gesture":
+            line(7, 7, 7, 14)
+            line(10, 5.5, 10, 14)
+            line(13, 7, 13, 14)
+            line(16, 9.5, 16, 14)
+            painter.setPen(accent_pen)
+            painter.drawArc(QRectF(6, 11, 11, 7), 200 * 16, 145 * 16)
+        elif kind == "plugin":
+            rect(5, 6, 12, 10.5)
+            line(8, 6, 8, 4.5, pen)
+            line(14, 6, 14, 4.5, pen)
+            line(8, 16.5, 8, 18, pen)
+            line(14, 16.5, 14, 18, pen)
+            line(3.5, 9.5, 5, 9.5, pen)
+            line(3.5, 13.2, 5, 13.2, pen)
+            line(17, 9.5, 18.5, 9.5, pen)
+            line(17, 13.2, 18.5, 13.2, pen)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(accent))
+            painter.drawRoundedRect(QRectF(8.5, 9, 5, 4.8), 1.2, 1.2)
+        elif kind == "command":
+            rect(5, 5, 12, 12)
+            line(5, 8.3, 17, 8.3, pen)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(accent))
+            painter.drawEllipse(QRectF(7.0, 6.3, 1.4, 1.4))
+            painter.drawEllipse(QRectF(9.4, 6.3, 1.4, 1.4))
+            line(7.2, 10.9, 9.2, 12.5, accent_pen)
+            line(9.2, 12.5, 7.2, 14.1, accent_pen)
+            line(11.2, 14.1, 14.3, 14.1)
+        elif kind == "command_favorite":
+            painter.setPen(QPen(accent, 1.7))
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawPath(star_path(10.7, 10.3, 5.6, 2.5))
+            line(6.5, 16, 15.5, 16, pen)
+            line(14.6, 5.6, 17.2, 5.6, pen)
+            line(15.9, 4.3, 15.9, 6.9, pen)
+        elif kind == "license":
+            rect(6, 4.5, 10, 13)
+            line(8, 8, 14, 8, accent_pen)
+            line(8, 10.8, 13.2, 10.8)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(accent))
+            painter.drawEllipse(QRectF(9.4, 13.1, 3.2, 3.2))
+        elif kind == "key":
+            ellipse(5.3, 6.4, 6.2, 6.2, accent_pen)
+            line(10.7, 11.0, 16.8, 17.1)
+            line(14.1, 14.4, 15.7, 12.8, pen)
+            line(15.7, 16.0, 17.1, 14.6, pen)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(accent))
+            painter.drawEllipse(QRectF(7.4, 8.5, 2.0, 2.0))
+        elif kind == "support":
+            painter.setPen(accent_pen)
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawEllipse(QRectF(4.8, 4.8, 12.4, 12.4))
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(accent))
+            painter.drawPath(heart_path())
+        elif kind == "license_manage":
+            rect(5.4, 5.3, 11.2, 10.4)
+            line(8, 8.4, 14, 8.4, accent_pen)
+            line(8, 11.4, 12.6, 11.4)
+            line(7.2, 16.5, 14.8, 16.5, pen)
+        elif kind == "warning":
+            path = QPainterPath()
+            path.moveTo(11, 4.5)
+            path.lineTo(18, 17)
+            path.lineTo(4, 17)
+            path.closeSubpath()
+            painter.setPen(QPen(accent, 1.8))
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawPath(path)
+            line(11, 8.3, 11, 12.6)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(ink))
+            painter.drawEllipse(QRectF(10.1, 14.2, 1.8, 1.8))
+        elif kind == "archive":
+            rect(5, 6.5, 12, 10.5)
+            line(6, 9, 16, 9, accent_pen)
+            line(9, 12, 13, 12)
+        elif kind == "info":
+            ellipse(5, 5, 12, 12, accent_pen)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(ink))
+            painter.drawEllipse(QRectF(10, 7.2, 2, 2))
+            painter.drawRoundedRect(QRectF(10, 10.4, 2, 5.5), 1, 1)
+        elif kind == "plus":
+            line(6, 11, 16, 11, accent_pen)
+            line(11, 6, 11, 16, accent_pen)
+        elif kind == "folder":
+            painter.setPen(pen)
+            painter.setBrush(QtCompat.NoBrush)
+            path = QPainterPath()
+            path.moveTo(4.8, 8)
+            path.lineTo(8.8, 8)
+            path.lineTo(10, 6.5)
+            path.lineTo(17.2, 6.5)
+            path.lineTo(17.2, 16.5)
+            path.lineTo(4.8, 16.5)
+            path.closeSubpath()
+            painter.drawPath(path)
+            line(7.5, 12, 14.5, 12, accent_pen)
+        elif kind == "sliders":
+            line(5.5, 7, 16.5, 7)
+            line(5.5, 11, 16.5, 11)
+            line(5.5, 15, 16.5, 15)
+            ellipse(7, 5.6, 2.8, 2.8, accent_pen, QBrush(bg))
+            ellipse(12.2, 9.6, 2.8, 2.8, accent_pen, QBrush(bg))
+            ellipse(9.4, 13.6, 2.8, 2.8, accent_pen, QBrush(bg))
+        elif kind == "guide":
+            rect(6, 5, 10, 12)
+            line(9, 8, 13, 8, accent_pen)
+            line(9, 11, 13, 11)
+            line(9, 14, 12, 14)
+        else:
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(accent))
+            painter.drawEllipse(QRectF(8, 8, 6, 6))
+
+        painter.end()
+        return pixmap
 
     def apply_theme(self, theme):
         """应用主题到所有分组标题和按钮"""
         title_color = "rgba(28,28,30,0.9)" if theme == "light" else "rgba(255,255,255,0.9)"
+        scrollbar_style = StyleSheet.get_scrollbar_style(theme)
+        self.setStyleSheet(
+            "QScrollArea, QWidget#Content { background: transparent; border: none; }"
+            + scrollbar_style
+        )
+        try:
+            self.verticalScrollBar().setStyleSheet(scrollbar_style)
+            self.horizontalScrollBar().setStyleSheet(scrollbar_style)
+        except Exception:
+            pass
 
         style = f"""
             QGroupBox {{
@@ -356,7 +856,7 @@ class BaseSettingPage(QScrollArea):
                 subcontrol-position: top left;
                 left: 0px;
                 top: -4px;
-                padding-left: 0px;
+                padding-left: 18px;
                 color: {title_color};
                 font-weight: 500;
             }}
@@ -364,63 +864,42 @@ class BaseSettingPage(QScrollArea):
 
         for group in self.findChildren(QGroupBox):
             group.setStyleSheet(style)
-            
-        # 应用按钮样式 — 与主窗口底部按钮一致
-        if theme == "dark":
-            btn_bg = "rgba(255,255,255,0.18)"
-            btn_border = "rgba(255,255,255,0.22)"
-            btn_hover = "rgba(255,255,255,0.28)"
-            btn_hover_text = "rgba(255,255,255,0.95)"
-            text_color = "rgba(255,255,255,0.85)"
-        else:
-            btn_bg = "rgba(255,255,255,0.75)"
-            btn_border = "rgba(255,255,255,0.35)"
-            btn_hover = "rgba(255,255,255,0.95)"
-            btn_hover_text = "rgba(28,28,30,0.9)"
-            text_color = "rgba(28,28,30,0.75)"
 
-        btn_style = f"""
-            QPushButton {{
-                font-size: 11px;
-                padding: 5px 12px;
-                background: {btn_bg};
-                border: 1px solid {btn_border};
-                border-radius: 8px;
-                color: {text_color};
-                font-weight: 400;
-            }}
-            QPushButton:hover {{
-                background-color: {btn_hover};
-                color: {btn_hover_text};
-            }}
-            QPushButton:pressed {{ opacity: 0.7; }}
-            QPushButton:disabled {{
-                color: rgba(128,128,128,0.4);
-                background: rgba(128,128,128,0.08);
-                border: 1px solid rgba(128,128,128,0.15);
-            }}
-            QPushButton:checked {{
-                background-color: rgba(10,132,255,0.85);
-                color: white;
-                border: 1px solid rgba(10,132,255,0.9);
-            }}
-        """
+        for label in self.findChildren(QLabel, "SettingsGroupIcon"):
+            title = label.property("settingsGroupIconTitle") or ""
+            label.setPixmap(self._create_group_icon(str(title), theme, 14))
+            parent = label.parent()
+            if parent:
+                self._position_group_icon(parent)
+
+        # 应用按钮样式 — 与主窗口底部按钮一致
+        from ui.styles.style import Glassmorphism
+        btn_style = Glassmorphism.get_action_button_style(theme, is_compact=False, is_delete=False)
+        compact_btn_style = Glassmorphism.get_action_button_style(theme, is_compact=True, is_delete=False)
+        delete_btn_style = Glassmorphism.get_action_button_style(theme, is_compact=False, is_delete=True)
 
         for btn in self.findChildren(QPushButton):
             if "清除所有配置" in btn.text():
                 continue
-            btn.setStyleSheet(btn_style)
+            if btn.property("is_compact_btn"):
+                btn.setStyleSheet(compact_btn_style)
+            elif btn.property("is_delete_btn"):
+                btn.setStyleSheet(delete_btn_style)
+            else:
+                btn.setStyleSheet(btn_style)
 
-class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsAppearancePageMixin, SettingsPopupPageMixin, SettingsDataPageMixin, SettingsAboutPageMixin, SettingsDataActionsMixin, QWidget):
+class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsAppearancePageMixin, SettingsPopupPageMixin, SettingsDataPageMixin, SettingsAboutPageMixin, SettingsDataActionsMixin, SettingsPluginsPageMixin, SettingsCommandsPageMixin, SettingsLicensePageMixin, QWidget):
     settings_changed = pyqtSignal()
+    command_settings_changed = pyqtSignal()
     import_completed = pyqtSignal(int)
     back_requested = pyqtSignal()
     hotkey_recording_changed = pyqtSignal(bool)
     special_apps_changed = pyqtSignal()
     
-    def __init__(self, data_manager: DataManager):
+    def __init__(self, data_manager: DataManager, tray_app=None):
         super().__init__()
         self.data_manager = data_manager
+        self.tray_app = tray_app
         self._updating = False
         self.current_theme = "dark"
         
@@ -472,6 +951,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         try:
             from ui.styles.style import Glassmorphism
             from .theme_helper import get_switch_stylesheet, get_radio_stylesheet
+            from .settings_helpers import SwitchButton
             
             # 综合样式表
             full_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
@@ -485,13 +965,18 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             text_color = "rgba(255, 255, 255, 0.9)" if theme == "dark" else "rgba(28, 28, 30, 0.9)"
             self.setStyleSheet(self.styleSheet() + f"\nQLabel {{ color: {text_color}; }}")
             
+            # 更新自定义开关按钮的主题背景与文字颜色
+            for btn in self.findChildren(SwitchButton):
+                btn.set_theme(theme)
+            
         except Exception as e:
             logger.debug("Failed to apply SettingsPanel theme: %s", e, exc_info=True)
 
         # Apply theme to all pages (for updating group box titles)
         pages = [
             self.page_system, self.page_appearance, self.page_popup,
-            self.page_data, self.page_about
+            self.page_data, self.page_plugins, self.page_commands,
+            self.page_about, self.page_license,
         ]
         for page in pages:
             if hasattr(page, 'apply_theme'):
@@ -499,7 +984,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
 
         # 更新描述文字颜色
         desc_color = self._get_desc_color()
-        for obj_name in ["data_desc_1", "data_desc_2", "data_desc_3", "context_menu_desc"]:
+        for obj_name in ["data_desc_1", "data_desc_2", "data_desc_3", "context_menu_desc", "plugins_desc", "fav_desc", "disable_desc"]:
             label = self.findChild(QLabel, obj_name)
             if label:
                 style = label.styleSheet()
@@ -513,6 +998,16 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
                 desc_label = card.findChild(QLabel, f"desc_{menu_id}")
                 if desc_label:
                     desc_label.setStyleSheet(f"{get_font_css_with_size(11, 400)} color: {desc_color}; background: transparent; border: none;")
+
+        # 触发插件与命令列表的主题重绘刷新
+        if 4 in self._initialized_pages:
+            self._rebuild_plugin_list(preserve_scroll=True)
+        if 5 in self._initialized_pages:
+            self._command_refresh_apply_theme = False
+            try:
+                self._refresh_command_settings()
+            finally:
+                self._command_refresh_apply_theme = True
         
 
         
@@ -558,10 +1053,13 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             1: self._setup_appearance_page,
             2: self._setup_popup_page,
             3: self._setup_data_page,
-            4: self._setup_about_page,
+            4: self._setup_plugins_page,
+            5: self._setup_commands_page,
+            6: self._setup_about_page,
+            7: self._setup_license_page,
         }
         # 需要底部 stretch 的页面
-        self._pages_need_stretch = {0, 1, 3, 4}
+        self._pages_need_stretch = {0, 1, 3, 6, 7}
         # 已初始化的页面索引集合
         self._initialized_pages = set()
         # 页面引用（索引 -> BaseSettingPage）
@@ -570,9 +1068,10 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         # 为所有页面创建空的 BaseSettingPage 占位
         page_attrs = [
             'page_system', 'page_appearance', 'page_popup',
-            'page_data', 'page_about'
+            'page_data', 'page_plugins', 'page_commands', 'page_about',
+            'page_license',
         ]
-        for i in range(5):
+        for i in range(8):
             page = BaseSettingPage()
             setattr(self, page_attrs[i], page)
             self._pages[i] = page
@@ -605,17 +1104,34 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
 
     def _init_nav_items(self):
         items = [
-            ("系统设置", 0),
-            ("弹窗外观", 1),
-            ("弹窗交互", 2),
-            ("配置管理", 3),
-            ("关于软件", 4)
+            ("系统设置", 0, "system"),
+            ("弹窗外观", 1, "appearance"),
+            ("弹窗交互", 2, "interaction"),
+            ("配置管理", 3, "settings_data"),
+            ("插件管理", 4, "plugin"),
+            ("命令管理", 5, "command"),
+            ("支持一下", 7, "support"),
+            ("关于软件", 6, "about"),
         ]
         
-        for text, index in items:
-            item = NavigationItem(text)
+        for text, index, icon_name in items:
+            item = NavigationItem(text, icon_name)
             item.setData(QtCompat.UserRole, index)
             self.nav_widget.addItem(item)
+            
+            # Create Custom NavigationItemWidget
+            from .action_button_icons import create_action_button_icon
+            icon = create_action_button_icon(icon_name, self.current_theme, 19)
+            
+            widget = NavigationItemWidget(text, icon, self.current_theme, self.nav_widget)
+            widget.item = item
+            
+            # Clear QListWidgetItem text to prevent default text rendering (eliminates ghosting/overlapping)
+            item.setText("")
+            
+            item.setSizeHint(widget.sizeHint())
+            
+            self.nav_widget.setItemWidget(item, widget)
             
         self.nav_widget.setCurrentRow(0)
 
@@ -682,7 +1198,13 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             elif index == 3:
                 pass  # data page has no settings to load
             elif index == 4:
+                pass  # plugins page
+            elif index == 5:
+                pass  # commands page
+            elif index == 6:
                 pass  # about page is static
+            elif index == 7:
+                pass  # license page is dynamic
         finally:
             self._updating = old_updating
 
@@ -715,6 +1237,14 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         self.hide_tray_cb.setChecked(settings.hide_tray_icon)
         self.disable_logging_cb.setChecked(getattr(settings, 'disable_logging', False))
         self.debug_log_cb.setChecked(getattr(settings, 'enable_debug_log', False))
+        self.sleep_mode_cb.setChecked(getattr(settings, 'sleep_mode_enabled', True))
+
+        # 排序方式
+        sort_mode = getattr(settings, 'sort_mode', 'custom')
+        if sort_mode == 'smart':
+            self.smart_sort_radio.setChecked(True)
+        else:
+            self.custom_sort_radio.setChecked(True)
 
         # 主题设置
         follow_system = getattr(settings, 'theme_follow_system', True)
@@ -808,6 +1338,11 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             self.auto_close_no.setChecked(True)
         self.delay_widget.setVisible(popup_auto_close)
 
+        if getattr(settings, 'popup_multi_open_when_pinned', False):
+            self.multi_open_pinned_yes.setChecked(True)
+        else:
+            self.multi_open_pinned_no.setChecked(True)
+
         self.delay_slider.setValue(settings.hover_leave_delay)
         self.delay_label.setText(f"{settings.hover_leave_delay}ms")
 
@@ -818,7 +1353,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         self.special_apps_list.clear()
         for app in settings.special_apps:
             item = QListWidgetItem(app)
-            item.setFlags(item.flags() | QtCompat.ItemIsDragEnabled | QtCompat.ItemIsEditable)
+            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
             self.special_apps_list.addItem(item)
 
 
@@ -979,6 +1514,15 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             )
             if reply == ThemedMessageBox.Yes:
                 self._restart_app()
+
+    def _on_sleep_mode_changed(self, state):
+        if self._updating: return
+        self.data_manager.update_settings(sleep_mode_enabled=(state == 2))
+
+    def _on_sort_mode_changed(self, button):
+        if self._updating: return
+        mode = "smart" if button == self.smart_sort_radio else "custom"
+        self.data_manager.update_settings(sort_mode=mode)
 
     def _restart_app(self):
         """重启应用"""
@@ -1258,12 +1802,16 @@ fso.DeleteFile WScript.ScriptFullName
         self.delay_widget.setVisible(auto_close)
         self.data_manager.update_settings(popup_auto_close=auto_close)
 
+    def _on_multi_open_pinned_changed(self, button):
+        if self._updating: return
+        self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
+
     # Removed _on_mc_* handlers as they are deleted
 
     # Special Apps Logic (Simplified copy from old settings)
     def _add_special_app(self):
         item = QListWidgetItem("new_app")
-        item.setFlags(item.flags() | QtCompat.ItemIsDragEnabled | QtCompat.ItemIsEditable)
+        item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
         self.special_apps_list.addItem(item)
         self.special_apps_list.setCurrentItem(item)
         self.special_apps_list.editItem(item)
@@ -1280,7 +1828,7 @@ fso.DeleteFile WScript.ScriptFullName
         self.special_apps_list.clear()
         for app in DEFAULT_SPECIAL_APPS:
             item = QListWidgetItem(app)
-            item.setFlags(item.flags() | QtCompat.ItemIsDragEnabled | QtCompat.ItemIsEditable)
+            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
             self.special_apps_list.addItem(item)
         self._apply_special_apps()
 

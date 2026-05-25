@@ -2,24 +2,36 @@
 快捷方式编辑对话框
 """
 
+import logging
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QWidget,
-    QLineEdit, QPushButton, QLabel, QFileDialog, QGroupBox, QCheckBox,
-    Qt, QtCompat, QPixmap, PYQT_VERSION, QPainter, QColor, QFont, QIcon,
-    QPainterPath, QPen, QTimer, QRectF, QListView, QMenu, QAction, QPoint
-)
-
-from ui.utils.window_effect import get_window_effect, is_win11, enable_acrylic_for_config_window
 from core import ShortcutItem, ShortcutType
-from .theme_helper import get_checkbox_stylesheet, get_small_checkbox_stylesheet
-from ui.styles.style import get_dialog_stylesheet, Glassmorphism
-from ui.utils.window_effect import enable_window_shadow_and_round_corners
-from ui.utils.dialog_helper import center_dialog_on_main_window
+from qt_compat import (
+    QCheckBox,
+    QColor,
+    QFileDialog,
+    QFont,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QIcon,
+    QLabel,
+    QLineEdit,
+    QPainter,
+    QPixmap,
+    QPushButton,
+    QtCompat,
+    QVBoxLayout,
+)
+from ui.styles.style import Glassmorphism
+
 from .base_dialog import BaseDialog
+from .icon_browse_helper import choose_custom_icon
+from .theme_helper import get_small_checkbox_stylesheet
+
+logger = logging.getLogger(__name__)
 
 
 class ShortcutDialog(BaseDialog):
@@ -32,31 +44,31 @@ class ShortcutDialog(BaseDialog):
 
         self.setWindowTitle("编辑快捷方式" if shortcut else "添加快捷方式")
         self.setMinimumWidth(380)
-        
+
         self._setup_window_icon()
         self._setup_ui()
         self._load_data()
         self._apply_theme()
-    
+
     def _setup_window_icon(self):
         """设置窗口图标"""
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(QtCompat.transparent)
-        
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        
-        # 绘制文件夹/文件图标
-        font = QFont("Segoe UI Emoji", 40)
-        font.setStyleHint(QFont.StyleHint.SansSerif)
-        painter.setFont(font)
-        
-        painter.setPen(QColor(70, 130, 180))
-        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "📁")
-        painter.end()
-        
-        self.setWindowIcon(QIcon(pixmap))
-    
+        try:
+            pixmap = QPixmap(64, 64)
+            pixmap.fill(QtCompat.transparent)
+            painter = QPainter(pixmap)
+            try:
+                painter.setRenderHint(QtCompat.Antialiasing)
+                font = QFont("Segoe UI Emoji", 40)
+                font.setStyleHint(QFont.StyleHint.SansSerif)
+                painter.setFont(font)
+                painter.setPen(QColor(70, 130, 180))
+                painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "📁")
+            finally:
+                painter.end()
+            self.setWindowIcon(QIcon(pixmap))
+        except Exception:
+            pass
+
     def _apply_theme(self):
         """应用主题"""
         self._apply_theme_colors()
@@ -119,52 +131,59 @@ class ShortcutDialog(BaseDialog):
         basic_layout = QFormLayout(basic_group)
         basic_layout.setSpacing(6)
         basic_layout.setContentsMargins(8, 0, 8, 8)
-        
+
         # 名称
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
         basic_layout.addRow("名称:", self.name_edit)
-        
+
         # 目标路径
         target_layout = QHBoxLayout()
         target_layout.setSpacing(8)
         self.target_edit = QLineEdit()
         self.target_edit.setPlaceholderText("程序或文件路径")
         target_layout.addWidget(self.target_edit)
-        
+
         browse_btn = QPushButton("浏览...")
         browse_btn.clicked.connect(self._browse_target)
         target_layout.addWidget(browse_btn)
         self._browse_target_btn = browse_btn
         basic_layout.addRow("目标:", target_layout)
-        
+
+        layout.addWidget(basic_group)
+
+        launch_group = QGroupBox("启动参数")
+        launch_layout = QFormLayout(launch_group)
+        launch_layout.setSpacing(6)
+        launch_layout.setContentsMargins(8, 0, 8, 8)
+
         # 参数
         self.args_edit = QLineEdit()
         self.args_edit.setPlaceholderText("可选，启动参数")
-        basic_layout.addRow("参数:", self.args_edit)
-        
+        launch_layout.addRow("参数:", self.args_edit)
+
         # 工作目录
         workdir_layout = QHBoxLayout()
         workdir_layout.setSpacing(8)
         self.workdir_edit = QLineEdit()
         self.workdir_edit.setPlaceholderText("可选，工作目录")
         workdir_layout.addWidget(self.workdir_edit)
-        
+
         workdir_btn = QPushButton("浏览...")
         workdir_btn.clicked.connect(self._browse_workdir)
         workdir_layout.addWidget(workdir_btn)
         self._browse_workdir_btn = workdir_btn
-        basic_layout.addRow("工作目录:", workdir_layout)
+        launch_layout.addRow("工作目录:", workdir_layout)
 
         # 以管理员身份运行
         self.run_as_admin_cb = QCheckBox("以管理员身份运行")
-        basic_layout.addRow("", self.run_as_admin_cb)
+        launch_layout.addRow("", self.run_as_admin_cb)
 
-        layout.addWidget(basic_group)
-        
+        layout.addWidget(launch_group)
+
         # 图标设置
-        icon_group = QGroupBox("自定义图标")
+        icon_group = QGroupBox("图标")
         icon_layout = QHBoxLayout(icon_group)
         icon_layout.setSpacing(6)
         icon_layout.setContentsMargins(6, 0, 6, 6)
@@ -185,15 +204,15 @@ class ShortcutDialog(BaseDialog):
         # 图标路径和按钮
         icon_right_layout = QVBoxLayout()
         icon_right_layout.setSpacing(6)
-        
+
         self.icon_edit = QLineEdit()
         self.icon_edit.setPlaceholderText("留空则使用默认图标")
         self.icon_edit.setReadOnly(True)
         icon_right_layout.addWidget(self.icon_edit)
-        
+
         icon_btn_layout = QHBoxLayout()
         icon_btn_layout.setSpacing(8)
-        
+
         browse_icon_btn = QPushButton("选择图标...")
         browse_icon_btn.clicked.connect(self._browse_icon)
         icon_btn_layout.addWidget(browse_icon_btn)
@@ -203,7 +222,7 @@ class ShortcutDialog(BaseDialog):
         clear_icon_btn.clicked.connect(self._clear_icon)
         icon_btn_layout.addWidget(clear_icon_btn)
         self._clear_icon_btn = clear_icon_btn
-        
+
         icon_btn_layout.addStretch()
         icon_right_layout.addLayout(icon_btn_layout)
 
@@ -230,14 +249,14 @@ class ShortcutDialog(BaseDialog):
         icon_btn_layout.addLayout(invert_v_layout)
 
         icon_layout.addLayout(icon_right_layout, 1)
-        
+
         layout.addWidget(icon_group)
-        
+
         # 按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(16)
+        btn_layout.setSpacing(8)
         btn_layout.addStretch()
-        
+
         cancel_btn = QPushButton("取消")
         cancel_btn.setFixedSize(80, 32)
         cancel_btn.clicked.connect(self.reject)
@@ -250,30 +269,9 @@ class ShortcutDialog(BaseDialog):
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
         self._ok_btn = ok_btn
-        
+
         layout.addLayout(btn_layout)
-    
-    def mousePressEvent(self, event):
-        if event.button() == QtCompat.LeftButton:
-            # 限制拖动区域：只有点击顶部 50px 区域（标题栏）才能拖动
-            pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
-            if pos.y() <= 50:
-                self._drag_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
-                event.accept()
-            else:
-                self._drag_pos = None
 
-    def mouseMoveEvent(self, event):
-        if getattr(self, '_drag_pos', None) is not None and event.buttons() & QtCompat.LeftButton:
-            new_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
-            self.move(self.pos() + (new_pos - self._drag_pos))
-            self._drag_pos = new_pos
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
-    
     def _load_data(self):
         """加载数据"""
         self.name_edit.setText(self.shortcut.name or "")
@@ -291,7 +289,7 @@ class ShortcutDialog(BaseDialog):
         self.run_as_admin_cb.setChecked(self.shortcut.run_as_admin)
 
         self._update_icon_preview()
-    
+
     def _update_icon_preview(self):
         """更新图标预览"""
         pixmap = None
@@ -301,18 +299,29 @@ class ShortcutDialog(BaseDialog):
             try:
                 from core.icon_extractor import IconExtractor
                 pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
-            except:
+            except Exception:
                 pass
+            if not pixmap or pixmap.isNull():
+                logger.warning(
+                    "[IconDiag] shortcut dialog custom preview failed icon_path=%r target=%r",
+                    self._custom_icon_path,
+                    self.target_edit.text().strip(),
+                )
 
         # 2. 尝试目标文件图标
         if not pixmap and self.target_edit.text():
             target = self.target_edit.text().strip()
-            if os.path.exists(target):
-                try:
-                    from core.icon_extractor import IconExtractor
-                    pixmap = IconExtractor.from_file(target, 48)
-                except:
-                    pass
+            try:
+                from core.icon_extractor import IconExtractor
+                pixmap = IconExtractor.extract(target, target, 48, fallback_to_default=False)
+            except Exception:
+                pass
+            if not pixmap or pixmap.isNull():
+                logger.warning(
+                    "[IconDiag] shortcut dialog target preview failed target=%r custom_icon=%r",
+                    target,
+                    self._custom_icon_path,
+                )
 
         # 3. 默认图标
         if not pixmap or pixmap.isNull():
@@ -333,20 +342,20 @@ class ShortcutDialog(BaseDialog):
         """创建文件默认图标"""
         pixmap = QPixmap(size, size)
         pixmap.fill(QtCompat.transparent)
-        
+
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
-        
+
         painter.setBrush(QColor(70, 130, 180))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
-        
+
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "📄")
-        
+
         painter.end()
         return pixmap
 
@@ -356,15 +365,15 @@ class ShortcutDialog(BaseDialog):
             self, "选择目标", "",
             "可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)"
         )
-        
+
         if file_path:
             self.target_edit.setText(file_path)
-            
+
             # 自动填充名称
             if not self.name_edit.text():
                 name = os.path.splitext(os.path.basename(file_path))[0][:6]
                 self.name_edit.setText(name)
-            
+
             # 解析 .lnk
             if file_path.lower().endswith('.lnk'):
                 try:
@@ -375,10 +384,10 @@ class ShortcutDialog(BaseDialog):
                     self.workdir_edit.setText(info.get('working_dir', ''))
                 except Exception:
                     pass
-            
+
             # 更新预览
             self._update_icon_preview()
-    
+
     def _browse_workdir(self):
         """浏览工作目录"""
         folder = QFileDialog.getExistingDirectory(self, "选择工作目录")
@@ -387,10 +396,7 @@ class ShortcutDialog(BaseDialog):
 
     def _browse_icon(self):
         """浏览图标"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择图标", "",
-            "图标文件 (*.ico *.png *.jpg *.exe *.dll);;所有文件 (*.*)"
-        )
+        file_path = choose_custom_icon(self, "选择图标")
         if file_path:
             self._custom_icon_path = file_path
             self.icon_edit.setText(file_path)
@@ -405,7 +411,7 @@ class ShortcutDialog(BaseDialog):
         self.invert_theme_cb.setChecked(False)
         self.invert_current_cb.setChecked(False)
         self._update_icon_preview()
-    
+
     def _on_invert_theme_changed(self, state):
         """随主题反转勾选变化"""
         self.invert_current_cb.setEnabled(bool(state))
@@ -417,17 +423,17 @@ class ShortcutDialog(BaseDialog):
         """确定"""
         name = self.name_edit.text().strip()
         target = self.target_edit.text().strip()
-        
+
         if not name:
             self.name_edit.setFocus()
             return
-        
+
         if not target:
             self.target_edit.setFocus()
             return
-        
+
         self.accept()
-    
+
     def get_shortcut(self) -> ShortcutItem:
         """获取快捷方式"""
         self.shortcut.name = self.name_edit.text().strip()[:6]
@@ -441,62 +447,4 @@ class ShortcutDialog(BaseDialog):
         if self.invert_theme_cb.isChecked():
             self.shortcut.icon_invert_theme_when_set = getattr(self, 'theme', 'dark')
         return self.shortcut
-    
-    def showEvent(self, event):
-        """显示时应用阴影效果"""
-        super().showEvent(event)
-        
-        # 居中对齐父窗口
-        self._center_on_parent()
-        
-        if not self._shadow_applied:
-            self._shadow_applied = True
-            # 延迟一小段时间应用，确保窗口几何信息已准备就绪
-            QTimer.singleShot(100, self._apply_effects)
-        
-        # 启动出现动画
-        self._start_show_animation()
-    
-    def _start_show_animation(self):
-        """窗口出现动画 (0.2s)"""
-        # 1. 透明度动画
-        self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
-        self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
-        self.opacity_anim.setEndValue(1.0)
-        self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
-        
-        # 2. 位置动画 (微升 20px)
-        pos = self.pos()
-        self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
-        self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
-        self.pos_anim.setEndValue(pos)
-        self.pos_anim.setEasingCurve(QtCompat.OutCubic)
-        
-        # 并行运行
-        self.anim_group = QtCompat.QParallelAnimationGroup()
-        self.anim_group.addAnimation(self.opacity_anim)
-        self.anim_group.addAnimation(self.pos_anim)
-        self.anim_group.start()
-            
-    def _center_on_parent(self):
-        """居中显示在主窗口（ConfigWindow）"""
-        center_dialog_on_main_window(self)
-            
-    def _apply_effects(self):
-        """应用窗口特效 - 圆角 + 磨砂玻璃"""
-        try:
-            hwnd = int(self.winId())
-            effect = get_window_effect()
-            theme = getattr(self, 'theme', 'dark')
-            if is_win11():
-                effect.set_round_corners(hwnd, enable=True)
-                effect.enable_window_shadow(hwnd, self.corner_radius)
-            else:
-                w, h = self.width(), self.height()
-                if w > 0 and h > 0:
-                    effect.set_window_region(hwnd, w, h, self.corner_radius)
-            enable_acrylic_for_config_window(self, theme, blur_amount=10)
-        except Exception:
-            pass
+

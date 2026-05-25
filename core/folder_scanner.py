@@ -3,13 +3,13 @@
 扫描物理文件夹,生成快捷方式列表
 """
 
-import os
 import logging
+import uuid
 from pathlib import Path
 from typing import List
-from .data_models import ShortcutItem, ShortcutType
-import uuid
 
+from .data_models import ShortcutItem, ShortcutType
+from .shortcut_parser import ShortcutParser
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,6 @@ class FolderScanner:
             shortcut.type = ShortcutType.FILE
             # 使用 shortcut_parser 解析 .lnk 文件
             try:
-                from .shortcut_parser import ShortcutParser
                 parsed = ShortcutParser.parse(str(file_path))
                 if parsed:
                     shortcut.target_path = parsed.get("target", str(file_path))

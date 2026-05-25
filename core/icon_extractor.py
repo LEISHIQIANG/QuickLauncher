@@ -1,43 +1,44 @@
-"""
-图标提取器
-"""
+"""Icon extraction helpers."""
 
+import ctypes
+import logging
 import os
 import sys
-import logging
-import ctypes
 import time
 from collections import OrderedDict
 from ctypes import wintypes
-from typing import Optional
 
 logger = logging.getLogger(__name__)
+_ICON_DEBUG_ENV = "QL_ICON_DEBUG"
+_ICON_FAILURE_LOGGED = set()
 
 try:
     from qt_compat import (
-        QPixmap, QImage, QIcon, QPainter, QColor,
-        Qt, QSize, QFileIconProvider, QApplication,
-        QFileInfo, PYQT_VERSION, QT_LIB
+        QT_LIB,
+        QApplication,
+        QColor,
+        QIcon,
+        QImage,
+        QPainter,
+        QPixmap,
+        Qt,
     )
+
     QT_AVAILABLE = True
-    logger.debug(f"icon_extractor: 使用 {QT_LIB}")
+    logger.debug("icon_extractor: using %s", QT_LIB)
 except Exception as e:
     QT_AVAILABLE = False
-    PYQT_VERSION = 0
-    QFileInfo = None
-    logger.debug("Qt 兼容层不可用，图标提取将跳过 Qt 路径: %s", e)
+    logger.debug("Qt compatibility layer is unavailable: %s", e)
 
-# 尝试导入 Win32 模块
+
 HAS_WIN32 = False
 try:
     import win32gui
     import win32ui
-    import win32con
-    import win32api
-    from PIL import Image
+
     HAS_WIN32 = True
 except ImportError:
-    logger.warning("win32gui/PIL 未安装，图标提取功能受限")
+    logger.debug("win32gui is not installed; icon extraction will use ctypes/Qt fallbacks")
 
 
 class SHFILEINFO(ctypes.Structure):
@@ -46,25 +47,180 @@ class SHFILEINFO(ctypes.Structure):
         ("iIcon", ctypes.c_int),
         ("dwAttributes", wintypes.DWORD),
         ("szDisplayName", ctypes.c_wchar * 260),
-        ("szTypeName", ctypes.c_wchar * 80)
+        ("szTypeName", ctypes.c_wchar * 80),
     ]
+
 
 SHGFI_ICON = 0x100
 SHGFI_LARGEICON = 0x0
+SHGFI_USEFILEATTRIBUTES = 0x10
+SHGFI_PIDL = 0x8
+FILE_ATTRIBUTE_NORMAL = 0x80
+
+_TARGET_ICON_EXCLUDED_EXTS = {".exe", ".lnk", ".url"}
+_CUSTOM_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp"}
+_CUSTOM_RESOURCE_EXTS = {".exe", ".dll"}
+
+
+_SHGETFILEINFO_PROTO = ctypes.WINFUNCTYPE(
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    wintypes.DWORD,
+    ctypes.POINTER(SHFILEINFO),
+    wintypes.UINT,
+    wintypes.UINT,
+)
 
 
 class IconExtractor:
-    """
-    图标提取工具类 (优化版：LRU缓存 + 直接内存转换)
-    """
+    """Small LRU-backed icon extraction utility."""
+
     _cache = OrderedDict()
     _cache_timestamps = {}
-    _MAX_CACHE_SIZE = 130  # Maximum number of icons to cache
+    _MAX_CACHE_SIZE = 150
     _CACHE_TTL_SECONDS = 30 * 60
-    _icon_provider = None
-    _qfileinfo_cls = None
     _default_icon_cache = {}
-    
+
+    @classmethod
+    def _diag(cls, message: str, *args):
+        if os.environ.get(_ICON_DEBUG_ENV, "").strip().lower() in ("1", "true", "yes", "on"):
+            logger.info("[IconDiag] " + message, *args)
+        elif logger.isEnabledFor(logging.DEBUG):
+            logger.debug("[IconDiag] " + message, *args)
+
+    @classmethod
+    def _warn_once(cls, key: str, message: str, *args):
+        if key in _ICON_FAILURE_LOGGED:
+            return
+        _ICON_FAILURE_LOGGED.add(key)
+        if len(_ICON_FAILURE_LOGGED) > 200:
+            _ICON_FAILURE_LOGGED.clear()
+        if os.environ.get(_ICON_DEBUG_ENV, "").strip().lower() in ("1", "true", "yes", "on"):
+            logger.info("[IconDiag] " + message, *args)
+        elif logger.isEnabledFor(logging.DEBUG):
+            logger.debug("[IconDiag] " + message, *args)
+
+    @staticmethod
+    def _is_valid_icon(icon) -> bool:
+        return icon is not None and (not hasattr(icon, "isNull") or not icon.isNull())
+
+    @classmethod
+    def _is_visually_empty_icon(cls, icon) -> bool:
+        if not cls._is_valid_icon(icon):
+            return True
+        try:
+            image = icon.toImage() if isinstance(icon, QPixmap) else icon
+            if not cls._is_valid_icon(image):
+                return True
+            width = image.width()
+            height = image.height()
+            if width <= 0 or height <= 0:
+                return True
+            checked = 0
+            visible = 0
+            for y in range(height):
+                for x in range(width):
+                    checked += 1
+                    if image.pixelColor(x, y).alpha() > 2:
+                        visible += 1
+                        if visible >= 4:
+                            return False
+            return checked > 0
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_shell_path(path: str) -> bool:
+        return bool(path) and str(path).strip().lower().startswith("shell:")
+
+    @staticmethod
+    def _is_url_like(path: str) -> bool:
+        if not path:
+            return False
+        lowered = str(path).strip().lower()
+        return "://" in lowered or lowered.startswith(("http:", "https:", "mailto:", "ms-"))
+
+    @staticmethod
+    def _normcase(path: str) -> str:
+        if not path:
+            return ""
+        try:
+            return os.path.normcase(os.path.abspath(path))
+        except Exception:
+            return os.path.normcase(str(path))
+
+    @staticmethod
+    def _clean_path(path: str) -> str:
+        if not path:
+            return ""
+        cleaned = str(path).strip().strip('"')
+        return os.path.expandvars(os.path.expanduser(cleaned))
+
+    @classmethod
+    def _split_resource_location(cls, icon_path: str):
+        text = str(icon_path or "").strip()
+        if not text or "," not in text:
+            return None
+
+        path_part, index_part = text.rsplit(",", 1)
+        path_part = cls._clean_path(path_part.strip())
+        index_part = index_part.strip()
+        if not path_part or not index_part.lstrip("-").isdigit():
+            return None
+        return path_part, int(index_part)
+
+    @classmethod
+    def _is_pixmap_preferred_resource(cls, icon_path: str) -> bool:
+        resource_location = cls._split_resource_location(icon_path)
+        if resource_location:
+            path_part, _ = resource_location
+        else:
+            path_part = cls._clean_path(icon_path)
+        ext = os.path.splitext(path_part)[1].lower()
+        return ext in _CUSTOM_RESOURCE_EXTS
+
+    @classmethod
+    def _is_regular_associated_target(cls, path: str) -> bool:
+        if not path or cls._is_shell_path(path) or cls._is_url_like(path):
+            return False
+        if os.path.isdir(path):
+            return False
+        ext = os.path.splitext(str(path))[1].lower()
+        if not ext or ext in _TARGET_ICON_EXCLUDED_EXTS:
+            return False
+        if os.path.exists(path) and not os.path.isfile(path):
+            return False
+        return True
+
+    @classmethod
+    def _make_extract_cache_key(
+        cls,
+        file_path: str,
+        target_path: str = None,
+        size: int = 24,
+        return_image: bool = False,
+        device_pixel_ratio: float = 1.0,
+    ) -> str:
+        file_path = cls._clean_path(file_path)
+        target_path = cls._clean_path(target_path)
+        target = target_path or file_path or ""
+        if cls._is_regular_associated_target(target):
+            ext = os.path.splitext(str(target))[1].lower()
+            return f"assoc:{ext}|{size}|{1 if return_image else 0}|{device_pixel_ratio}"
+        return (
+            f"extract:{cls._normcase(file_path or '')}|"
+            f"{cls._normcase(target_path or '')}|{size}|{1 if return_image else 0}|{device_pixel_ratio}"
+        )
+
+    @classmethod
+    def get_target_cache_id(
+        cls,
+        file_path: str,
+        target_path: str = None,
+        size: int = 24,
+        device_pixel_ratio: float = 1.0,
+    ) -> str:
+        return cls._make_extract_cache_key(file_path, target_path, size, False, device_pixel_ratio)
 
     @classmethod
     def _get_cached(cls, cache_key):
@@ -84,6 +240,42 @@ class IconExtractor:
         return cached
 
     @classmethod
+    def _render_square_icon(cls, source, size: int, return_image: bool = False):
+        if not cls._is_valid_icon(source):
+            return None
+
+        image = source.toImage() if isinstance(source, QPixmap) else source
+        if not cls._is_valid_icon(image):
+            return None
+
+        canvas = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
+        canvas.fill(Qt.transparent)
+        scaled = image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        painter = QPainter(canvas)
+        try:
+            painter.setCompositionMode(QPainter.CompositionMode_Source)
+        except Exception:
+            pass
+        painter.drawImage((size - scaled.width()) // 2, (size - scaled.height()) // 2, scaled)
+        painter.end()
+
+        cls._diag(
+            "render source=%s size=%s return_image=%s src=%sx%s scaled=%sx%s",
+            type(source).__name__,
+            size,
+            return_image,
+            image.width(),
+            image.height(),
+            scaled.width(),
+            scaled.height(),
+        )
+
+        if return_image:
+            return canvas
+        return QPixmap.fromImage(canvas)
+
+    @classmethod
     def _remember_cache(cls, cache_key, value):
         cls._cache[cache_key] = value
         cls._cache.move_to_end(cache_key)
@@ -96,7 +288,8 @@ class IconExtractor:
     def clear_expired_cache(cls):
         now = time.time()
         expired = [
-            key for key, timestamp in cls._cache_timestamps.items()
+            key
+            for key, timestamp in cls._cache_timestamps.items()
             if timestamp and now - timestamp > cls._CACHE_TTL_SECONDS
         ]
         for key in expired:
@@ -115,16 +308,16 @@ class IconExtractor:
         }
 
     @classmethod
-    def get_icon_provider(cls):
-        if not QT_AVAILABLE:
-            return None
-        if cls._icon_provider is None:
-            cls._icon_provider = QFileIconProvider()
-        return cls._icon_provider
-    
-    @classmethod
-    def extract(cls, file_path: str, target_path: str = None, size: int = 24):
-        """提取文件图标"""
+    def extract(
+        cls,
+        file_path: str,
+        target_path: str = None,
+        size: int = 24,
+        return_image: bool = False,
+        fallback_to_default: bool = True,
+        device_pixel_ratio: float = 1.0,
+    ):
+        """Extract the icon for a launch target."""
         if not QT_AVAILABLE:
             return None
         try:
@@ -132,152 +325,247 @@ class IconExtractor:
                 return None
         except Exception:
             return None
-            
-        if not file_path:
+
+        file_path = cls._clean_path(file_path)
+        target_path = cls._clean_path(target_path or file_path)
+        cls._diag(
+            "extract start file=%s target=%s size=%s dpr=%s return_image=%s fallback=%s",
+            file_path,
+            target_path,
+            size,
+            device_pixel_ratio,
+            return_image,
+            fallback_to_default,
+        )
+        if not file_path and not target_path:
             return cls._create_default_icon(size)
-        
-        cache_key = f"extract:{file_path}|{size}"
+
+        # Normalize scale factor and calculate the required physical pixel size
+        dpr = max(1.0, float(device_pixel_ratio or 1.0))
+        physical_size = int(round(size * dpr))
+
+        cache_key = cls._make_extract_cache_key(file_path, target_path, size, return_image, dpr)
         cached = cls._get_cached(cache_key)
         if cached is not None:
+            cls._diag(
+                "cache hit key=%s size=%s return_image=%s path=%s",
+                cache_key,
+                size,
+                return_image,
+                target_path or file_path,
+            )
             return cached
-        
-        pixmap = None
 
-        # shell: 路径使用 PIDL 提取
-        for sp in (file_path, target_path):
-            if sp and sp.lower().startswith("shell:"):
-                pixmap = cls._extract_shell_pidl(sp, size)
-                if pixmap and (not hasattr(pixmap, 'isNull') or not pixmap.isNull()):
-                    cls._remember_cache(cache_key, pixmap)
-                    return pixmap
+        result = cls._extract_target_uncached(file_path, target_path, physical_size, return_image)
+        if cls._is_valid_icon(result):
+            try:
+                result.setDevicePixelRatio(dpr)
+            except Exception:
+                pass
+            cls._remember_cache(cache_key, result)
+            cls._diag(
+                "extract ok key=%s size=%s physical_size=%s return_image=%s image=%sx%s",
+                cache_key,
+                size,
+                physical_size,
+                return_image,
+                result.width(),
+                result.height(),
+            )
+            return result
 
-        # 图片文件直接加载（UWP 应用的 PNG 图标等）
-        if file_path and os.path.exists(file_path):
-            ext = os.path.splitext(file_path)[1].lower()
-            if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.ico'):
-                pixmap = cls.from_file(file_path, size=size)
-                if pixmap and not pixmap.isNull():
-                    cls._remember_cache(cache_key, pixmap)
-                    return pixmap
+        if fallback_to_default:
+            cls._warn_once(
+                cache_key,
+                "extract failed, using default icon path=%s target=%s size=%s return_image=%s",
+                file_path,
+                target_path,
+                size,
+                return_image,
+            )
+            name = None
+            for path in (target_path, file_path):
+                if path:
+                    try:
+                        name = os.path.splitext(os.path.basename(path))[0]
+                        if name:
+                            break
+                    except Exception:
+                        pass
+            default_icon = cls._create_default_icon(size, name)
+            if default_icon:
+                try:
+                    default_icon.setDevicePixelRatio(dpr)
+                except Exception:
+                    pass
+            return default_icon
+        cls._warn_once(
+            cache_key,
+            "extract failed without default path=%s target=%s size=%s return_image=%s",
+            file_path,
+            target_path,
+            size,
+            return_image,
+        )
+        return None
 
-        # 尝试提取
+    @classmethod
+    def _extract_target_uncached(
+        cls,
+        file_path: str,
+        target_path: str,
+        size: int,
+        return_image: bool = False,
+    ):
+        for path in (target_path, file_path):
+            if cls._is_shell_path(path):
+                cls._diag("extract branch=shell path=%s size=%s", path, size)
+                result = cls._extract_shell_pidl(path, size, return_image=return_image)
+                if cls._is_valid_icon(result):
+                    cls._diag("source=shell-pidl path=%s size=%s", path, size)
+                    return result
+
+        if cls._is_regular_associated_target(target_path):
+            cls._diag("extract branch=assoc target=%s size=%s", target_path, size)
+            result = cls._extract_associated_file_icon(
+                target_path,
+                size,
+                return_image=return_image,
+            )
+            if cls._is_valid_icon(result):
+                cls._diag("source=assoc ext=%s size=%s", os.path.splitext(str(target_path))[1].lower(), size)
+                return result
+
         paths_to_try = []
-        if file_path and os.path.exists(file_path):
-            paths_to_try.append(file_path)
-        if target_path and os.path.exists(target_path) and target_path != file_path:
-            paths_to_try.append(target_path)
+        for path in (target_path, file_path):
+            if path and path not in paths_to_try and (os.path.exists(path) or os.path.isdir(path)):
+                paths_to_try.append(path)
 
         for path in paths_to_try:
-            # 尝试 Win32 API
-            if HAS_WIN32:
-                pixmap = cls._extract_win32(path, size)
-                if pixmap and not pixmap.isNull():
-                    break
-            
-            # 尝试 Qt 图标提供者
-            if not pixmap or pixmap.isNull():
-                pixmap = cls._extract_qt(path, size)
-                if pixmap and not pixmap.isNull():
-                    break
-        
-        # 回退到默认图标
-        if not pixmap or pixmap.isNull():
-            pixmap = cls._create_default_icon(size)
-        
-        # Add to cache
-        cls._remember_cache(cache_key, pixmap)
-            
-        return pixmap
-    
-    @classmethod
-    def _extract_qt(cls, path: str, size: int):
-        """使用 Qt 提取图标"""
-        if not QT_AVAILABLE:
-            return None
-            
-        try:
-            if cls._qfileinfo_cls is None:
-                cls._qfileinfo_cls = QFileInfo
-
-            info = cls._qfileinfo_cls(path)
-            provider = cls.get_icon_provider()
-            if provider:
-                icon = provider.icon(info)
-                if not icon.isNull():
-                    return icon.pixmap(size, size)
-        except Exception as e:
-            logger.debug(f"Qt 图标提取失败: {e}")
-        
-        return None
-    
-    @classmethod
-    def _extract_win32(cls, path: str, size: int, return_image: bool = False):
-        """使用 Win32 API 提取图标"""
-        if (not QT_AVAILABLE) or sys.platform != "win32":
-            return None
-        
-        try:
-            # 尝试提取图标
-            if HAS_WIN32:
-                large, small = win32gui.ExtractIconEx(path, 0)
-            else:
-                large, small = ([], [])
-            
-            if large:
-                hicon = large[0]
-                result = cls._hicon_to_pixmap(hicon, size, return_image)
-                
-                # 清理
-                for ico in large:
-                    try:
-                        win32gui.DestroyIcon(ico)
-                    except:
-                        pass
-                for ico in small:
-                    try:
-                        win32gui.DestroyIcon(ico)
-                    except:
-                        pass
-                
-                if result:
+            ext = os.path.splitext(str(path))[1].lower()
+            cls._diag("extract probe path=%s ext=%s size=%s", path, ext, size)
+            if ext in _CUSTOM_RESOURCE_EXTS:
+                result = cls._extract_from_resource(
+                    path,
+                    0,
+                    size,
+                    return_image=return_image,
+                )
+                if cls._is_valid_icon(result) and not cls._is_visually_empty_icon(result):
+                    cls._diag("source=resource-preferred path=%s index=0 size=%s", path, size)
                     return result
-                    
-        except Exception as e:
-            # 忽略拒绝访问等常见错误，避免刷屏
-            if "拒绝访问" not in str(e) and "Access is denied" not in str(e):
-                logger.debug(f"ExtractIconEx 失败: {e}")
-        
-        # 尝试 SHGetFileInfo
-        try:
-            shfi = SHFILEINFO()
-            result = ctypes.windll.shell32.SHGetFileInfoW(
-                path, 0, ctypes.byref(shfi),
-                ctypes.sizeof(shfi),
-                SHGFI_ICON | SHGFI_LARGEICON
-            )
-            
-            if result and shfi.hIcon:
-                res = cls._hicon_to_pixmap(shfi.hIcon, size, return_image)
-                ctypes.windll.user32.DestroyIcon(shfi.hIcon)
-                if res:
-                    return res
-                    
-        except Exception as e:
-            logger.debug(f"SHGetFileInfo 失败: {e}")
-        
+
+            result = cls._extract_win32(path, size, return_image=return_image)
+            if cls._is_valid_icon(result):
+                cls._diag("source=shgetfileinfo path=%s size=%s", path, size)
+                return result
+
         return None
 
     @classmethod
-    def _extract_shell_pidl(cls, shell_path: str, size: int, return_image: bool = False):
-        """通过 SHParseDisplayName + PIDL 从 shell: 路径提取图标"""
+    def _extract_associated_file_icon(
+        cls,
+        path: str,
+        size: int,
+        return_image: bool = False,
+    ):
+        ext = os.path.splitext(str(path))[1].lower()
+        if not ext:
+            return None
+
+        probe_name = f"file{ext}"
+        result = cls._extract_win32(
+            probe_name,
+            size,
+            return_image=return_image,
+            use_file_attributes=True,
+        )
+        if cls._is_valid_icon(result):
+            return result
+
+        return None
+
+    @classmethod
+    def _extract_win32(
+        cls,
+        path: str,
+        size: int,
+        return_image: bool = False,
+        use_file_attributes: bool = False,
+    ):
+        if not QT_AVAILABLE or sys.platform != "win32":
+            return None
+
+        try:
+            cls._diag(
+                "win32 start path=%s size=%s return_image=%s file_attributes=%s",
+                path,
+                size,
+                return_image,
+                use_file_attributes,
+            )
+            shfi = SHFILEINFO()
+            flags = SHGFI_ICON | SHGFI_LARGEICON
+            attrs = 0
+            if use_file_attributes:
+                flags |= SHGFI_USEFILEATTRIBUTES
+                attrs = FILE_ATTRIBUTE_NORMAL
+
+            sh_get_file_info = _SHGETFILEINFO_PROTO(("SHGetFileInfoW", ctypes.windll.shell32))
+            result = sh_get_file_info(
+                path,
+                attrs,
+                ctypes.byref(shfi),
+                ctypes.sizeof(shfi),
+                flags,
+            )
+            if result and shfi.hIcon:
+                hicon = shfi.hIcon
+                try:
+                    icon = cls._hicon_to_pixmap(hicon, size, return_image)
+                    cls._diag(
+                        "win32 result path=%s hicon=%s icon_valid=%s empty=%s",
+                        path,
+                        bool(hicon),
+                        cls._is_valid_icon(icon),
+                        cls._is_visually_empty_icon(icon),
+                    )
+                    if icon and not cls._is_visually_empty_icon(icon):
+                        return icon
+                finally:
+                    cls._destroy_icon(hicon)
+        except Exception as e:
+            logger.debug("SHGetFileInfo failed: %s", e)
+
+        if not use_file_attributes:
+            resource_icon = cls._extract_from_resource(
+                path,
+                0,
+                size,
+                return_image=return_image,
+            )
+            if cls._is_valid_icon(resource_icon) and not cls._is_visually_empty_icon(resource_icon):
+                return resource_icon
+
+        return None
+
+    @classmethod
+    def _extract_shell_pidl(
+        cls,
+        shell_path: str,
+        size: int,
+        return_image: bool = False,
+    ):
         if not QT_AVAILABLE or sys.platform != "win32":
             return None
         try:
             SHParseDisplayName = ctypes.windll.shell32.SHParseDisplayName
             SHParseDisplayName.argtypes = [
-                wintypes.LPCWSTR, ctypes.c_void_p,
+                wintypes.LPCWSTR,
+                ctypes.c_void_p,
                 ctypes.POINTER(ctypes.c_void_p),
-                ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)
+                ctypes.c_ulong,
+                ctypes.POINTER(ctypes.c_ulong),
             ]
             pidl = ctypes.c_void_p()
             sfgao = ctypes.c_ulong()
@@ -286,283 +574,414 @@ class IconExtractor:
                 return None
             try:
                 shfi = SHFILEINFO()
-                SHGFI_PIDL = 0x8
-                # 通过 CFUNCTYPE 创建独立函数指针，避免 64 位 PIDL 指针溢出
-                _proto = ctypes.WINFUNCTYPE(
-                    ctypes.c_void_p,       # 返回值 DWORD_PTR
-                    ctypes.c_void_p,       # pszPath (PIDL pointer)
-                    wintypes.DWORD,        # dwFileAttributes
-                    ctypes.POINTER(SHFILEINFO),  # psfi
-                    wintypes.UINT,         # cbSizeFileInfo
-                    wintypes.UINT          # uFlags
-                )
-                _SHGetFileInfo = _proto(("SHGetFileInfoW", ctypes.windll.shell32))
-                result = _SHGetFileInfo(
-                    pidl.value, 0, ctypes.byref(shfi), ctypes.sizeof(shfi),
-                    SHGFI_ICON | SHGFI_LARGEICON | SHGFI_PIDL
+                sh_get_file_info = _SHGETFILEINFO_PROTO(("SHGetFileInfoW", ctypes.windll.shell32))
+                result = sh_get_file_info(
+                    pidl.value,
+                    0,
+                    ctypes.byref(shfi),
+                    ctypes.sizeof(shfi),
+                    SHGFI_ICON | SHGFI_LARGEICON | SHGFI_PIDL,
                 )
                 if result and shfi.hIcon:
-                    px = cls._hicon_to_pixmap(shfi.hIcon, size, return_image=return_image)
-                    ctypes.windll.user32.DestroyIcon(shfi.hIcon)
-                    return px
+                    hicon = shfi.hIcon
+                    try:
+                        icon = cls._hicon_to_pixmap(
+                            hicon,
+                            size,
+                            return_image=return_image,
+                        )
+                        return icon
+                    finally:
+                        cls._destroy_icon(hicon)
             finally:
-                _free = ctypes.WINFUNCTYPE(None, ctypes.c_void_p)(("CoTaskMemFree", ctypes.windll.ole32))
-                _free(pidl.value)
+                free = ctypes.WINFUNCTYPE(None, ctypes.c_void_p)(("CoTaskMemFree", ctypes.windll.ole32))
+                free(pidl.value)
         except Exception as e:
-            logger.debug(f"Shell PIDL 图标提取失败: {e}")
+            logger.debug("Shell PIDL icon extraction failed: %s", e)
         return None
 
+    @staticmethod
+    def _destroy_icon(hicon):
+        if not hicon:
+            return
+        try:
+            destroy_icon = ctypes.windll.user32.DestroyIcon
+            destroy_icon.argtypes = [wintypes.HICON]
+            destroy_icon.restype = wintypes.BOOL
+            destroy_icon(hicon)
+        except Exception:
+            pass
+
     @classmethod
-    def _hicon_to_pixmap(cls, hicon, size: int, return_image: bool = False):
-        """将 HICON 转换为 QPixmap 或 QImage"""
+    def _hicon_to_pixmap(
+        cls,
+        hicon,
+        size: int,
+        return_image: bool = False,
+    ):
         if not QT_AVAILABLE:
             return None
-            
-        # 确保 hicon 是整数句柄
-        if hasattr(hicon, 'value'):
-            hicon_handle = hicon.value
-        else:
-            hicon_handle = hicon
-            
+
+        hicon_handle = hicon.value if hasattr(hicon, "value") else hicon
         if not hicon_handle:
             return None
-            
-        # 优先尝试 Qt6 自带方法
+
+        # 1. 优先尝试 Qt 原生高效 C++ 接口 QImage.fromHICON
         try:
-            if hasattr(QImage, 'fromHICON'):
+            if hasattr(QImage, "fromHICON"):
                 image = QImage.fromHICON(hicon_handle)
-                if not image.isNull():
-                    scaled_image = image.scaled(size, size, 
-                        Qt.KeepAspectRatio, 
-                        Qt.SmoothTransformation)
-                    
-                    if return_image:
-                        return scaled_image
-                    return QPixmap.fromImage(scaled_image)
+                if image and not image.isNull():
+                    cls._diag(
+                        "hicon native qimage size=%s return_image=%s image=%sx%s",
+                        size,
+                        return_image,
+                        image.width(),
+                        image.height(),
+                    )
+                    return cls._render_square_icon(image, size, return_image=return_image)
         except Exception as e:
-            logger.debug(f"Qt fromHICON 失败: {e}")
-        
+            logger.debug("QImage.fromHICON failed: %s", e)
+
+        # 2. 备选尝试 QtWin 接口
+        if not return_image:
+            try:
+                from PyQt5.QtWinExtras import QtWin
+                pixmap = QtWin.fromHICON(hicon_handle)
+                if pixmap and not pixmap.isNull():
+                    cls._diag(
+                        "hicon qtwin size=%s return_image=%s pixmap=%sx%s",
+                        size,
+                        return_image,
+                        pixmap.width(),
+                        pixmap.height(),
+                    )
+                    return cls._render_square_icon(pixmap, size, return_image=return_image)
+            except Exception as e:
+                logger.debug("QtWin.fromHICON failed: %s", e)
+
+        # 3. 终极备选：有 Win32 接口时，直接读取位图 Bits 字节流，绕过 Pillow PNG 转换
         if HAS_WIN32:
+            hbm_mask = None
+            hbm_color = None
+            hdc = None
+            hdc_mem = None
+            hdc_mem2 = None
+            old_bmp = None
             try:
                 info = win32gui.GetIconInfo(hicon_handle)
-                hbmColor = info[4]
-                hbmMask = info[3]
-                
-                if not hbmColor:
+                hbm_mask = info[3]
+                hbm_color = info[4]
+                if not hbm_color:
+                    if hbm_mask:
+                        win32gui.DeleteObject(hbm_mask)
+                        hbm_mask = None
                     return None
-                
-                bmp = win32ui.CreateBitmapFromHandle(hbmColor)
+
+                bmp = win32ui.CreateBitmapFromHandle(hbm_color)
                 bmp_info = bmp.GetInfo()
-                width = bmp_info['bmWidth']
-                height = bmp_info['bmHeight']
-                
+                width = bmp_info["bmWidth"]
+                height = bmp_info["bmHeight"]
+
                 hdc = win32gui.GetDC(0)
                 hdc_mem = win32ui.CreateDCFromHandle(hdc)
                 hdc_mem2 = hdc_mem.CreateCompatibleDC()
-                
                 old_bmp = hdc_mem2.SelectObject(bmp)
-                
                 bmp_str = bmp.GetBitmapBits(True)
-                
-                img = Image.frombuffer('RGBA', (width, height), bmp_str, 'raw', 'BGRA', 0, 1)
-                
-                hdc_mem2.SelectObject(old_bmp)
-                win32gui.DeleteObject(hbmColor)
-                if hbmMask:
-                    win32gui.DeleteObject(hbmMask)
-                win32gui.ReleaseDC(0, hdc)
-                
-                img = img.resize((size, size), Image.Resampling.LANCZOS)
 
-                from io import BytesIO
-                buffer = BytesIO()
-                img.save(buffer, format='PNG')
-                buffer.seek(0)
-                data = buffer.read()
-                
-                if return_image:
-                    image = QImage()
-                    image.loadFromData(data)
-                    return image
-                else:
-                    pixmap = QPixmap()
-                    pixmap.loadFromData(data)
-                    return pixmap
-                
+                # 核心改进：直接用 BGRA 字节数据流构造 QImage，并深拷贝脱离底层句柄依赖
+                raw_image = QImage(bmp_str, width, height, QImage.Format_ARGB32)
+                image = raw_image.copy()  # 必须深拷贝，防止 C++ 底层引用在函数返回时野指针崩溃
+
+                cls._diag(
+                    "hicon win32 raw bits size=%s return_image=%s image=%sx%s",
+                    size,
+                    return_image,
+                    image.width(),
+                    image.height(),
+                )
+                return cls._render_square_icon(image, size, return_image=return_image)
             except Exception as e:
-                logger.debug(f"HICON 转换失败: {e}")
-                return None
+                logger.debug("win32 raw bitmap extraction failed: %s", e)
+            finally:
+                try:
+                    if hdc_mem2 is not None and old_bmp is not None:
+                        hdc_mem2.SelectObject(old_bmp)
+                except Exception:
+                    pass
+                try:
+                    if hdc_mem2 is not None:
+                        hdc_mem2.DeleteDC()
+                except Exception:
+                    pass
+                try:
+                    if hdc_mem is not None:
+                        hdc_mem.DeleteDC()
+                except Exception:
+                    pass
+                try:
+                    if hdc is not None:
+                        win32gui.ReleaseDC(0, hdc)
+                except Exception:
+                    pass
+                try:
+                    if hbm_color is not None:
+                        win32gui.DeleteObject(hbm_color)
+                except Exception:
+                    pass
+                try:
+                    if hbm_mask is not None:
+                        win32gui.DeleteObject(hbm_mask)
+                except Exception:
+                    pass
 
         return None
-    
+
     @classmethod
-    def _create_default_icon(cls, size: int):
-        """创建默认图标"""
+    def _create_default_icon(cls, size: int, name: str = None):
         if not QT_AVAILABLE:
             return None
 
-        cached = cls._default_icon_cache.get(size)
+        cache_key = (size, name[0] if name else None)
+        cached = cls._default_icon_cache.get(cache_key)
         if cached is not None:
             return cached
-            
-        transparent = Qt.transparent
-        nopen = Qt.NoPen
-        antialias = QPainter.Antialiasing
-        
+
         pixmap = QPixmap(size, size)
-        pixmap.fill(transparent)
-        
+        pixmap.fill(Qt.transparent)
+
         painter = QPainter(pixmap)
-        painter.setRenderHint(antialias)
-        painter.setPen(nopen)
-        painter.setBrush(QColor(100, 130, 180))
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(135, 206, 250))
         margin = size // 8
-        painter.drawEllipse(margin, margin, size - margin * 2, size - margin * 2)
+        radius = size // 6
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, radius, radius)
+
+        if name:
+            first_char = name[0]
+            painter.setPen(QColor(255, 255, 255))
+            font = painter.font()
+            font.setPointSize(int(size * 0.4))
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, first_char)
+
         painter.end()
 
-        cls._default_icon_cache[size] = pixmap
+        cls._default_icon_cache[cache_key] = pixmap
         return pixmap
-    
+
     @classmethod
     def get_icon_count(cls, path: str) -> int:
-        """获取文件中包含的图标数量"""
+        path = cls._clean_path(path)
         if not path or not os.path.exists(path):
             return 0
-            
+
         try:
-            # 1. 尝试使用 PrivateExtractIconsW (更准确)
-            # PrivateExtractIconsW(path, 0, 0, 0, None, None, 0, 0) 返回图标数量
-            # 但 PrivateExtractIconsW 的行为比较复杂，有时并不直接返回数量
-            # 我们可以用 ExtractIconExW 来获取数量
-            
-            # 2. 使用 ExtractIconExW
-            # UINT ExtractIconExW(LPCWSTR lpszFile, int nIconIndex, HICON *phiconLarge, HICON *phiconSmall, UINT nIcons);
-            # 如果 nIconIndex = -1，phiconLarge 和 phiconSmall 为 NULL，则返回图标数量
-            
-            cnt = ctypes.windll.shell32.ExtractIconExW(path, -1, None, None, 0)
+            extract_icon_ex = ctypes.windll.shell32.ExtractIconExW
+            extract_icon_ex.argtypes = [
+                wintypes.LPCWSTR,
+                ctypes.c_int,
+                ctypes.POINTER(wintypes.HICON),
+                ctypes.POINTER(wintypes.HICON),
+                wintypes.UINT,
+            ]
+            extract_icon_ex.restype = wintypes.UINT
+            cnt = extract_icon_ex(path, -1, None, None, 0)
             if cnt > 0:
                 return cnt
-                
         except Exception as e:
-            logger.debug(f"获取图标数量失败: {e}")
-            
+            logger.debug("Failed to count icons: %s", e)
+
         return 0
 
     @classmethod
-    def _extract_from_resource(cls, path: str, index: int, size: int, return_image: bool = False):
-        """从资源文件提取图标 (path,index)"""
+    def _extract_from_resource(
+        cls,
+        path: str,
+        index: int,
+        size: int,
+        return_image: bool = False,
+    ):
+        path = cls._clean_path(path)
+        if not path:
+            return None
         try:
-            # PrivateExtractIconsW 声明
-            # UINT PrivateExtractIconsW(LPCWSTR szFileName, int nIconIndex, int cxIcon, int cyIcon, HICON *phicon, UINT *piconid, UINT nIcons, UINT flags);
-            
+            cls._diag(
+                "resource start path=%s index=%s size=%s return_image=%s",
+                path,
+                index,
+                size,
+                return_image,
+            )
             phicon = wintypes.HICON()
             piconid = wintypes.UINT()
-            
-            ret = ctypes.windll.user32.PrivateExtractIconsW(
-                path, index, size, size,
-                ctypes.byref(phicon), ctypes.byref(piconid), 1, 0
+            private_extract_icons = ctypes.windll.user32.PrivateExtractIconsW
+            private_extract_icons.argtypes = [
+                wintypes.LPCWSTR,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.POINTER(wintypes.HICON),
+                ctypes.POINTER(wintypes.UINT),
+                wintypes.UINT,
+                wintypes.UINT,
+            ]
+            private_extract_icons.restype = wintypes.UINT
+
+            ret = private_extract_icons(
+                path,
+                index,
+                size,
+                size,
+                ctypes.byref(phicon),
+                ctypes.byref(piconid),
+                1,
+                0,
             )
-            
+
             if ret > 0 and phicon:
-                result = cls._hicon_to_pixmap(phicon, size, return_image)
-                ctypes.windll.user32.DestroyIcon(phicon)
-                return result
-                
-        except Exception as e:
-            logger.debug(f"资源图标提取失败 ({path},{index}): {e}")
-            
-        # 2. 回退到 ExtractIconW (Shell32)
-        try:
-            # ExtractIconW: 
-            # -1: 返回图标总数
-            # 负数 (非-1): 资源 ID
-            # 正数: 顺序索引
-            hIcon = ctypes.windll.shell32.ExtractIconW(0, path, index)
-            # ExtractIconW 返回 0 表示没有图标，1 表示文件存在但没图标（有些文档这么说），或者 >1 是句柄
-            if hIcon and hIcon > 1:
-                result = cls._hicon_to_pixmap(hIcon, size, return_image)
-                ctypes.windll.user32.DestroyIcon(hIcon)
-                if result:
+                try:
+                    result = cls._hicon_to_pixmap(
+                        phicon,
+                        size,
+                        return_image,
+                    )
+                    cls._diag(
+                        "resource result path=%s index=%s ret=%s valid=%s empty=%s",
+                        path,
+                        index,
+                        ret,
+                        cls._is_valid_icon(result),
+                        cls._is_visually_empty_icon(result),
+                    )
                     return result
+                finally:
+                    cls._destroy_icon(phicon)
         except Exception as e:
-            logger.debug(f"ExtractIconW 提取失败 ({path},{index}): {e}")
+            logger.debug("PrivateExtractIcons failed (%s,%s): %s", path, index, e)
+
+        try:
+            extract_icon = ctypes.windll.shell32.ExtractIconW
+            extract_icon.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT]
+            extract_icon.restype = wintypes.HICON
+            hicon = extract_icon(None, path, index)
+            if hicon and hicon > 1:
+                try:
+                    result = cls._hicon_to_pixmap(
+                        hicon,
+                        size,
+                        return_image,
+                    )
+                    cls._diag(
+                        "resource fallback result path=%s index=%s valid=%s empty=%s",
+                        path,
+                        index,
+                        cls._is_valid_icon(result),
+                        cls._is_visually_empty_icon(result),
+                    )
+                    if result:
+                        return result
+                finally:
+                    cls._destroy_icon(hicon)
+        except Exception as e:
+            logger.debug("ExtractIconW failed (%s,%s): %s", path, index, e)
 
         return None
 
     @classmethod
-    def from_file(cls, icon_path: str, size: int = 24, return_image: bool = False):
-        """从图标文件加载"""
-        if not QT_AVAILABLE:
+    def from_file(
+        cls,
+        icon_path: str,
+        size: int = 24,
+        return_image: bool = False,
+        device_pixel_ratio: float = 1.0,
+    ):
+        """Load a custom icon resource exactly as specified by icon_path."""
+        if not QT_AVAILABLE or not icon_path:
             return None
-            
-        if not icon_path:
-            return None
+
+        icon_path = cls._clean_path(icon_path)
+        resource_location = cls._split_resource_location(icon_path)
+        cls._diag(
+            "from_file start path=%s size=%s return_image=%s resource=%s",
+            icon_path,
+            size,
+            return_image,
+            resource_location,
+        )
+        if resource_location:
+            path_part, icon_index = resource_location
+            icon_path = f"{path_part},{icon_index}"
 
         cache_key = f"from_file:{icon_path}|{size}|{1 if return_image else 0}"
         cached = cls._get_cached(cache_key)
         if cached is not None:
             return cached
-            
-        # 检查 resource syntax: path,index
-        if ',' in icon_path:
-            parts = icon_path.split(',')
-            if len(parts) >= 2:
-                # 处理像 "C:\Path\To\File.dll, 1" 这样的情况
-                path_part = ",".join(parts[:-1]).strip()
-                index_part = parts[-1].strip()
-                
-                # 如果最后一部分是数字，则认为是索引
-                if index_part.lstrip('-').isdigit():
-                    result = cls._extract_from_resource(path_part, int(index_part), size, return_image)
-                    if result is not None and (not hasattr(result, "isNull") or not result.isNull()):
-                        cls._remember_cache(cache_key, result)
-                    return result
-        
+
+        if resource_location:
+            result = cls._extract_from_resource(
+                path_part,
+                icon_index,
+                size,
+                return_image,
+            )
+            if cls._is_valid_icon(result):
+                cls._remember_cache(cache_key, result)
+                cls._diag("custom resource ok path=%s index=%s size=%s", path_part, icon_index, size)
+            return result
+
         if not os.path.exists(icon_path):
             return None
-        
+
         try:
             ext = os.path.splitext(icon_path)[1].lower()
-            
-            if ext == '.ico':
+
+            if ext == ".ico":
                 icon = QIcon(icon_path)
                 if not icon.isNull():
-                    # QIcon 无法直接转 QImage (需要 pixmap -> image)
-                    pixmap = icon.pixmap(size, size)
-                    result = pixmap.toImage() if return_image else pixmap
+                    result = cls._render_square_icon(icon.pixmap(size, size), size, return_image=return_image)
                     cls._remember_cache(cache_key, result)
+                    cls._diag("custom ico ok path=%s size=%s", icon_path, size)
                     return result
-            elif ext in ('.png', '.jpg', '.jpeg', '.bmp'):
+
+            if ext in _CUSTOM_IMAGE_EXTS:
                 if return_image:
                     image = QImage(icon_path)
                     if not image.isNull():
-                        result = image.scaled(size, size, 
-                            Qt.KeepAspectRatio, 
-                            Qt.SmoothTransformation)
+                        result = cls._render_square_icon(image, size, return_image=True)
                         cls._remember_cache(cache_key, result)
+                        cls._diag("custom image ok path=%s size=%s", icon_path, size)
                         return result
                 else:
                     pixmap = QPixmap(icon_path)
                     if not pixmap.isNull():
-                        result = pixmap.scaled(size, size, 
-                            Qt.KeepAspectRatio, 
-                            Qt.SmoothTransformation)
+                        result = cls._render_square_icon(pixmap, size, return_image=False)
                         cls._remember_cache(cache_key, result)
+                        cls._diag("custom pixmap ok path=%s size=%s", icon_path, size)
                         return result
-            elif ext == '.exe':
-                result = cls._extract_win32(icon_path, size, return_image)
-                if result is not None and (not hasattr(result, "isNull") or not result.isNull()):
+
+            if ext in _CUSTOM_RESOURCE_EXTS:
+                result = cls._extract_from_resource(
+                    icon_path,
+                    0,
+                    size,
+                    return_image,
+                )
+                if not cls._is_valid_icon(result) or cls._is_visually_empty_icon(result):
+                    result = cls._extract_win32(icon_path, size, return_image=return_image)
+                if cls._is_valid_icon(result):
                     cls._remember_cache(cache_key, result)
+                    cls._diag("custom executable icon ok path=%s size=%s", icon_path, size)
                 return result
-                
+
         except Exception as e:
-            logger.debug(f"加载图标文件失败: {e}")
-        
+            logger.debug("Failed to load icon file: %s", e)
+
         return None
-    
+
     @staticmethod
     def invert_pixmap(pixmap):
-        """反转 pixmap 的 RGB（保持 alpha）"""
         if not QT_AVAILABLE or not pixmap or pixmap.isNull():
             return pixmap
         image = pixmap.toImage()
@@ -573,14 +992,13 @@ class IconExtractor:
                     255 - pixel.red(),
                     255 - pixel.green(),
                     255 - pixel.blue(),
-                    pixel.alpha()
+                    pixel.alpha(),
                 )
                 image.setPixelColor(x, y, inverted)
         return QPixmap.fromImage(image)
 
     @staticmethod
     def invert_image(image):
-        """反转 QImage 的 RGB（保持 alpha）— 线程安全版本"""
         if not QT_AVAILABLE or not image or image.isNull():
             return image
         result = image.copy()
@@ -591,37 +1009,31 @@ class IconExtractor:
                     255 - pixel.red(),
                     255 - pixel.green(),
                     255 - pixel.blue(),
-                    pixel.alpha()
+                    pixel.alpha(),
                 )
                 result.setPixelColor(x, y, inverted)
         return result
 
     @classmethod
     def clear_cache(cls):
-        """清除缓存"""
         cls._cache.clear()
         cls._cache_timestamps.clear()
-        cls._icon_provider = None
-        cls._qfileinfo_cls = None
         cls._default_icon_cache.clear()
 
 
 def should_invert_icon(item, current_theme: str) -> bool:
-    """判断图标是否需要反转"""
-    if not getattr(item, 'icon_invert_with_theme', False):
+    if not getattr(item, "icon_invert_with_theme", False):
         return False
-    set_theme = getattr(item, 'icon_invert_theme_when_set', '')
+    set_theme = getattr(item, "icon_invert_theme_when_set", "")
     if not set_theme:
         return False
-    if getattr(item, 'icon_invert_current', False):
+    if getattr(item, "icon_invert_current", False):
         return current_theme == set_theme
-    else:
-        return current_theme != set_theme
+    return current_theme != set_theme
 
 
 def get_icon_dir() -> str:
-    """获取图标存储目录"""
-    # 避免循环引用，这里局部导入
     from .data_manager import DataManager
+
     data_manager = DataManager()
     return str(data_manager.icons_dir)

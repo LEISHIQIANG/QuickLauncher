@@ -7,10 +7,18 @@
 """
 
 import logging
+
 from qt_compat import (
-    QWidget, QLabel, QVBoxLayout, QTimer, QApplication,
-    Qt, QColor, QPainter, QPainterPath, QRectF,
-    QtCompat
+    QApplication,
+    QColor,
+    QLabel,
+    QPainter,
+    QPainterPath,
+    Qt,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
+    QWidget,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,7 +204,7 @@ class ToastNotification(QWidget):
     def _apply_acrylic(self):
         """应用模糊效果 - 与主配置窗口一致"""
         try:
-            from ui.utils.window_effect import get_window_effect, enable_acrylic_for_config_window, is_win11
+            from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
             hwnd = int(self.winId())
             if not hwnd:
                 return

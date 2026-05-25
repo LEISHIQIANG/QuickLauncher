@@ -1,7 +1,7 @@
 import ctypes
-from ctypes import c_int, c_void_p, Structure, POINTER, byref, sizeof, windll, c_bool
-from ctypes.wintypes import DWORD, ULONG, HWND
 import sys
+from ctypes import POINTER, Structure, byref, c_bool, c_int, c_void_p, sizeof, windll
+from ctypes.wintypes import DWORD, HWND, ULONG
 
 BOOL = c_int
 HRGN = c_void_p
@@ -14,11 +14,11 @@ def get_windows_version():
     global _windows_version_cache
     if _windows_version_cache is not None:
         return _windows_version_cache
-    
+
     try:
         version = sys.getwindowsversion()
         build = version.build
-        
+
         if build >= 22000:
             _windows_version_cache = "win11"
         elif build >= 10240:
@@ -27,7 +27,7 @@ def get_windows_version():
             _windows_version_cache = "win7"
     except Exception:
         _windows_version_cache = "win10"
-    
+
     return _windows_version_cache
 
 def is_win11():
@@ -63,7 +63,7 @@ class AccentPolicy(Structure):
 
 class WindowEffect:
     """Windows 窗口特效工具类 (Acrylic/Blur/Aero)"""
-    
+
     # 状态常量
     ACCENT_DISABLED = 0
     ACCENT_ENABLE_GRADIENT = 1
@@ -71,7 +71,7 @@ class WindowEffect:
     ACCENT_ENABLE_BLURBEHIND = 3          # 传统 Aero Blur
     ACCENT_ENABLE_ACRYLICBLURBEHIND = 4   # Acrylic (Win10 1709+)
     ACCENT_INVALID_STATE = 5
-    
+
     # 组合属性常量
     WCA_ACCENT_POLICY = 19
 
@@ -79,7 +79,7 @@ class WindowEffect:
     DWMWCP_DONOTROUND = 1
     DWMWCP_ROUND = 2
     DWMWCP_ROUNDSMALL = 3
-    
+
     def __init__(self):
         self.user32 = windll.user32
         self.gdi32 = windll.gdi32
@@ -144,12 +144,12 @@ class WindowEffect:
             hwnd_val = int(hwnd)
             if not self._is_window(hwnd_val):
                 return 1.0
-            
+
             # 1. 尝试 GetDpiForWindow (Win10 1607+)
             dpi = 0
             if hasattr(self.user32, "GetDpiForWindow"):
                 dpi = self.user32.GetDpiForWindow(HWND(hwnd_val))
-            
+
             # 2. 如果 GetDpiForWindow 没拿到或者返回 96 (可能是窗口还未完全切换 DPI 上下文)
             # 尝试通过 MonitorFromWindow 获取
             if dpi <= 96:
@@ -164,7 +164,7 @@ class WindowEffect:
                             dpi = dpi_x.value
                     except Exception:
                         pass
-            
+
             if dpi > 0:
                 return float(dpi) / 96.0
         except Exception:
@@ -180,7 +180,7 @@ class WindowEffect:
         :param blur: 是否启用模糊 (True=Acrylic, False=Transparent)
         """
         policy = AccentPolicy()
-        
+
         if not enable:
             policy.AccentState = self.ACCENT_DISABLED
             policy.AccentFlags = 0
@@ -192,13 +192,13 @@ class WindowEffect:
                 policy.AccentState = self.ACCENT_ENABLE_ACRYLICBLURBEHIND
             else:
                 policy.AccentState = self.ACCENT_ENABLE_TRANSPARENTGRADIENT
-                
+
             policy.AccentFlags = 2 # 似乎有些标志位，2 比较常用
-            
+
             # 颜色处理 (Windows 需要 AABBGGRR 格式的 DWORD)
             # 输入通常是 RGB 或 ARGB
             # GradientColor: AABBGGRR
-            
+
             if gradient_color:
                 # 清洗字符串
                 gradient_color = gradient_color.lstrip('#')
@@ -219,14 +219,14 @@ class WindowEffect:
                     b = int(gradient_color[6:8], 16)
                 else:
                     a, r, g, b = 10, 255, 255, 255
-                
+
                 # 组合成 AABBGGRR
                 col = (a << 24) | (b << 16) | (g << 8) | r
                 policy.GradientColor = col
             else:
                 # 默认白色，高透明
                 policy.GradientColor = (10 << 24) | (255 << 16) | (255 << 8) | 255
-                
+
             policy.AnimationId = animation_id
 
         # 准备数据结构
@@ -234,7 +234,7 @@ class WindowEffect:
         data.Attribute = self.WCA_ACCENT_POLICY
         data.SizeOfData = sizeof(policy)
         data.Data = ctypes.cast(byref(policy), c_void_p)
-        
+
         if not self._is_window(hwnd):
             return
         self.SetWindowCompositionAttribute(HWND(int(hwnd)), byref(data))
@@ -256,8 +256,8 @@ class WindowEffect:
 
             pref = c_int(preference_val)
             dwmapi.DwmSetWindowAttribute(
-                HWND(int(hwnd)), 
-                DWORD(DWMWA_WINDOW_CORNER_PREFERENCE), 
+                HWND(int(hwnd)),
+                DWORD(DWMWA_WINDOW_CORNER_PREFERENCE),
                 byref(pref),
                 sizeof(pref)
             )
@@ -328,12 +328,12 @@ class WindowEffect:
             policy.AccentState = self.ACCENT_ENABLE_BLURBEHIND
         else:
             policy.AccentState = self.ACCENT_DISABLED
-            
+
         data = WindowCompositionAttributeData()
         data.Attribute = self.WCA_ACCENT_POLICY
         data.SizeOfData = sizeof(policy)
         data.Data = ctypes.cast(byref(policy), c_void_p)
-        
+
         if not self._is_window(hwnd):
             return
         self.SetWindowCompositionAttribute(HWND(int(hwnd)), byref(data))
@@ -391,10 +391,10 @@ class WindowEffect:
     def apply_unified_round_corners(self, hwnd: int, w: int, h: int, r: int = 12):
         """
         应用统一的圆角效果（自动适配 Win10/Win11）
-        
+
         Win11: 使用 DWM 原生圆角
         Win10: 使用窗口区域裁剪
-        
+
         Args:
             hwnd: 窗口句柄
             w: 窗口宽度
@@ -407,14 +407,14 @@ class WindowEffect:
         else:
             # Win10 使用区域裁剪
             self.set_window_region(hwnd, w, h, r)
-    
+
     def apply_unified_blur_effect(self, hwnd: int, gradient_color: str = None, enable: bool = True):
         """
         应用统一的模糊效果（自动适配 Win10/Win11）
-        
+
         Win11: 使用 Acrylic 效果
         Win10: 使用 Aero Blur 效果
-        
+
         Args:
             hwnd: 窗口句柄
             gradient_color: 渐变颜色（带透明度）
@@ -433,9 +433,9 @@ class WindowEffect:
     def enable_window_shadow(self, hwnd: int, radius: int = 12):
         """
         为无边框窗口启用原生窗口阴影（自动适配 Win10/Win11）
-        
+
         通过 DwmExtendFrameIntoClientArea 扩展边框来实现阴影效果。
-        
+
         Args:
             hwnd: 窗口句柄
             radius: 圆角半径（默认 12px）
@@ -443,9 +443,9 @@ class WindowEffect:
         try:
             if not self._is_window(hwnd):
                 return False
-            
+
             dwmapi = windll.dwmapi
-            
+
             # 定义 MARGINS 结构
             class MARGINS(Structure):
                 _fields_ = [
@@ -454,45 +454,45 @@ class WindowEffect:
                     ("cyTopHeight", c_int),
                     ("cyBottomHeight", c_int),
                 ]
-            
+
             # 设置边距扩展以启用阴影
             # 使用 -1 可以让整个窗口都扩展到客户区
             margins = MARGINS(-1, -1, -1, -1)
-            
+
             dwmapi.DwmExtendFrameIntoClientArea.argtypes = [HWND, POINTER(MARGINS)]
             dwmapi.DwmExtendFrameIntoClientArea.restype = c_int
             result = dwmapi.DwmExtendFrameIntoClientArea(HWND(int(hwnd)), byref(margins))
-            
+
             if result != 0:
                 return False
-            
+
             # Win11 上启用圆角
             if is_win11():
                 self.set_round_corners(hwnd, enable=True)
 
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     def enable_shadow_for_dialog(self, hwnd: int, radius: int = 12):
         """
         为对话框启用阴影效果（自动适配 Win10/Win11）
-        
+
         此方法专门用于标准对话框，使用更小的边距扩展。
-        
+
         Args:
             hwnd: 窗口句柄
             radius: 圆角半径（默认 12px）
-        
+
         Returns:
             bool: 是否成功启用
         """
         try:
             if not self._is_window(hwnd):
                 return False
-            
+
             dwmapi = windll.dwmapi
-            
+
             # 定义 MARGINS 结构
             class MARGINS(Structure):
                 _fields_ = [
@@ -501,23 +501,23 @@ class WindowEffect:
                     ("cyTopHeight", c_int),
                     ("cyBottomHeight", c_int),
                 ]
-            
+
             # 使用 1 像素边距来启用阴影而不影响客户区
             margins = MARGINS(1, 1, 1, 1)
-            
+
             dwmapi.DwmExtendFrameIntoClientArea.argtypes = [HWND, POINTER(MARGINS)]
             dwmapi.DwmExtendFrameIntoClientArea.restype = c_int
             result = dwmapi.DwmExtendFrameIntoClientArea(HWND(int(hwnd)), byref(margins))
-            
+
             if result != 0:
                 return False
-            
+
             # Win11 上启用圆角
             if is_win11():
                 self.set_round_corners(hwnd, enable=True)
 
             return True
-        except Exception as e:
+        except Exception:
             return False
 
 
@@ -604,15 +604,15 @@ def enable_window_shadow_and_round_corners(widget, radius: int = 12, force_regio
 def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: int = 30, radius: int = 12):
     """
     为配置窗口启用磨砂玻璃 Acrylic 效果
-    
+
     此函数专门为配置窗口优化，提供适合 UI 的模糊效果参数。
-    
+
     Args:
         widget: Qt 窗口对象
         theme: 主题 ("dark" 或 "light")
         blur_amount: 透明度/模糊程度 (0-255)，默认 30 表示高透明度（更明显的模糊）
         radius: 圆角半径 (默认 12px)，仅 Win10 使用
-    
+
     Returns:
         bool: 是否成功应用
     """
@@ -620,9 +620,9 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
         hwnd = int(widget.winId())
         if not hwnd:
             return False
-        
+
         effect = get_window_effect()
-        
+
         # Windows Acrylic API 需要 AARRGGBB 格式
         if theme == "dark":
             # 深色主题：深灰色 (#1c1c1e)
@@ -630,13 +630,13 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
         else:
             # 浅色主题：浅灰色 (#f2f2f7)
             r, g, b = 0xf2, 0xf2, 0xf7
-        
+
         if is_win11():
             # Win11: 保持原有逻辑 (Win11 效果很好)
             # 使用较低的 alpha 值获得更好的磨砂效果
             alpha = max(30, min(blur_amount, 80))
             gradient_color = f"{alpha:02x}{r:02x}{g:02x}{b:02x}"
-            
+
             # Application unified blur (Acrylic)
             effect.apply_unified_blur_effect(hwnd, gradient_color, enable=True)
         else:
@@ -665,7 +665,7 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
             effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
 
         return True
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         return False
@@ -673,7 +673,7 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
 def force_activate_window(hwnd: int):
     """
     极度强化版的窗口激活函数 (v2)
-    
+
     综合了：
     1. AttachThreadInput (线程输入挂接)
     2. ShowWindow (恢复显示)
@@ -683,49 +683,49 @@ def force_activate_window(hwnd: int):
     """
     if not hwnd:
         return False
-        
+
     try:
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
-        
+
         # 1. 基础状态恢复
         if user32.IsIconic(hwnd):
             user32.ShowWindow(hwnd, 9)  # SW_RESTORE
         else:
             user32.ShowWindow(hwnd, 5)  # SW_SHOW
-            
+
         # 2. 线程上下文准备
         foreground_hwnd = user32.GetForegroundWindow()
-        target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+        user32.GetWindowThreadProcessId(hwnd, None)
         current_thread = kernel32.GetCurrentThreadId()
         foreground_thread = user32.GetWindowThreadProcessId(foreground_hwnd, None) if foreground_hwnd else 0
-        
+
         # 3. 线程输入挂接 (突破 SetForegroundWindow 限制的关键)
         attached = False
         if foreground_thread and foreground_thread != current_thread:
             attached = bool(user32.AttachThreadInput(foreground_thread, current_thread, True))
-            
+
         try:
             # 4. 暴力切换 Z-Order (瞬时置顶)
             user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002) # HWND_TOPMOST
             user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040) # HWND_NOTOPMOST
-            
+
             # 5. 调用系统前台切换
             user32.SetForegroundWindow(hwnd)
             user32.BringWindowToTop(hwnd)
             user32.SetActiveWindow(hwnd)
-            
+
             # 6. 使用深度激活 API
             if hasattr(user32, "SwitchToThisWindow"):
                 user32.SwitchToThisWindow(hwnd, True)
-            
+
         finally:
             if attached:
                 user32.AttachThreadInput(foreground_thread, current_thread, False)
-        
+
         # 8. 最后确认归位到 Top (非 TopMost)
         user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040) # HWND_TOP
-        
+
         return user32.GetForegroundWindow() == hwnd
     except Exception:
         return False

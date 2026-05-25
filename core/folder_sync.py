@@ -7,11 +7,26 @@ import logging
 import os
 import time
 from typing import Tuple
-from .folder_scanner import FolderScanner
-from .data_manager import DataManager
 
+from .data_manager import DataManager
+from .folder_scanner import FolderScanner
 
 logger = logging.getLogger(__name__)
+_last_sync_status: dict[str, dict] = {}
+
+
+def get_folder_sync_status(folder_id: str | None = None) -> dict:
+    """Return last folder sync status for diagnostics."""
+    if folder_id:
+        return dict(_last_sync_status.get(folder_id, {}))
+    return {key: dict(value) for key, value in _last_sync_status.items()}
+
+
+def _set_sync_status(folder_id: str, **kwargs):
+    status = dict(_last_sync_status.get(folder_id, {}))
+    status.update(kwargs)
+    status["timestamp"] = time.time()
+    _last_sync_status[folder_id] = status
 
 
 def sync_folder(data_manager: DataManager, folder_id: str) -> Tuple[int, int]:
@@ -30,15 +45,22 @@ def sync_folder(data_manager: DataManager, folder_id: str) -> Tuple[int, int]:
     """
     folder = data_manager.data.get_folder_by_id(folder_id)
     if not folder or not folder.linked_path:
+        _set_sync_status(folder_id, ok=False, reason="folder_not_linked", added=0, removed=0)
         return 0, 0
 
     linked_path = os.path.abspath(folder.linked_path)
     if not os.path.isdir(linked_path):
         logger.warning(f"文件夹同步已跳过，绑定目录不可用: {folder.linked_path}")
+        _set_sync_status(folder_id, ok=False, reason="linked_path_missing", path=folder.linked_path, added=0, removed=0)
         return 0, 0
 
     # 1. 扫描物理文件夹
-    scanned_shortcuts = FolderScanner.scan_folder(linked_path)
+    try:
+        scanned_shortcuts = FolderScanner.scan_folder(linked_path)
+    except Exception as e:
+        logger.error("文件夹同步扫描失败: %s", e)
+        _set_sync_status(folder_id, ok=False, reason=f"scan_failed: {e}", path=linked_path, added=0, removed=0)
+        return 0, 0
 
     # 2. 构建路径集合(忽略大小写)
     scanned_paths = {(s.target_path or "").lower() for s in scanned_shortcuts}
@@ -71,4 +93,14 @@ def sync_folder(data_manager: DataManager, folder_id: str) -> Tuple[int, int]:
         folder.last_sync_time = time.time()
         data_manager.save()
 
+    _set_sync_status(
+        folder_id,
+        ok=True,
+        reason="synced",
+        path=linked_path,
+        added=added_count,
+        removed=removed_count,
+        total=len(scanned_shortcuts),
+    )
+    logger.info("文件夹同步完成: folder=%s added=%s removed=%s total=%s", folder_id, added_count, removed_count, len(scanned_shortcuts))
     return added_count, removed_count

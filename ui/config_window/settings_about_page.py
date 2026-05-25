@@ -1,233 +1,462 @@
 """About settings page builder."""
 
 import os
-import sys
-import shutil
-import time
-import winreg
-
-from ui.tooltip_helper import install_tooltip
+from core import APP_VERSION
 from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QFormLayout, QSlider, QSpinBox, QRadioButton, QButtonGroup,
-    QLabel, QFrame, QCheckBox, QLineEdit, QPushButton, QPlainTextEdit,
-    QListWidget, QListWidgetItem, QFileDialog, QScrollArea, QMessageBox,
-    QPainter, QPixmap, QColor, QPen, QBrush, QRect, QRectF, QDialog,
-    QTimer, QIcon, QStackedWidget, Qt, QtCompat, pyqtSignal, PYQT_VERSION,
-    QThread, QStyledItemDelegate, QSize, QKeySequence, QMenu, QAction,
-    QComboBox, QPainterPath, exec_dialog, QPoint, QApplication
+    QHBoxLayout,
+    QIcon,
+    QLabel,
+    QtCompat,
+    QVBoxLayout,
+    QFrame,
+    Qt,
 )
-from core import APP_VERSION, DEFAULT_SPECIAL_APPS, ShortcutItem, ShortcutType
-from core.app_scanner import AppScanner
-from ui.config_window.settings_helpers import NumberedListDelegate, ProgressDialog, ExportThread, ImportThread
-from ui.config_window.folder_panel import PopupMenu
-from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
+
+
+class AboutCardFrame(QFrame):
+    """用于关于页面的高级玻璃拟态卡片容器。"""
+    def __init__(self, theme="dark", parent=None):
+        super().__init__(parent)
+        self.setObjectName("AboutCardFrame")
+        self.update_theme(theme)
+        
+    def update_theme(self, theme):
+        self.setStyleSheet("""
+            #AboutCardFrame {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+
+class AboutQuoteFrame(QFrame):
+    """带有左侧高对比度呼吸渐变/纯色点缀条的优雅简介卡片。"""
+    def __init__(self, theme="dark", parent=None):
+        super().__init__(parent)
+        self.setObjectName("AboutQuoteFrame")
+        self.update_theme(theme)
+        
+    def update_theme(self, theme):
+        self.setStyleSheet("""
+            #AboutQuoteFrame {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+
+# 结构化卡片展示数据定义
+SECTION_DATA = {
+    "基本操作": [
+        {
+            "title": "呼出弹窗",
+            "points": [
+                "在任意位置按下鼠标中键，弹窗会按设置显示在鼠标附近",
+                "支持普通中键、特殊应用中的 Ctrl + 中键，以及全局热键 fallback"
+            ]
+        },
+        {
+            "title": "隐藏弹窗",
+            "points": [
+                "再次按下鼠标中键，或点击弹窗外部的任意区域",
+                "按下 Esc 键，或在启动项目后自动隐藏（可在弹窗交互中开关）"
+            ]
+        },
+        {
+            "title": "搜索和执行",
+            "points": [
+                "弹窗打开后直接输入关键字进行模糊匹配（支持名称、别名、标签）",
+                "支持快捷网页搜索：g (Google)、b (Baidu)、y (Yandex)、e (Bing)",
+                "斜杠命令模式：输入 / 快速执行系统动作，如 /config、/quit 等"
+            ]
+        },
+        {
+            "title": "锁定与翻页",
+            "points": [
+                "右键点击弹窗空白区或右上角图钉，弹窗将不会自动隐藏",
+                "支持鼠标滚轮滚动或左右方向键（←/→）进行流畅的分类翻页"
+            ]
+        }
+    ],
+    "添加与管理": [
+        {
+            "title": "拖拽添加（推荐）",
+            "points": [
+                "将程序、文件、文件夹或快捷方式直接拖入弹窗或设置窗口中",
+                "支持桌面、文件资源管理器、开始菜单拖拽，支持一键批量拖入"
+            ]
+        },
+        {
+            "title": "五类快捷入口",
+            "points": [
+                "<b>快捷方式</b>：配置启动参数、工作目录、以及管理员运行权限",
+                "<b>网址与目录</b>：支持延迟测试，使用默认或指定浏览器及命令行参数",
+                "<b>命令与快捷键</b>：运行 CMD、Python 脚本以及录制发送复杂组合键"
+            ]
+        },
+        {
+            "title": "批量管理与重定向",
+            "points": [
+                "支持 Ctrl/Shift 多选图标进行批量删除、移动、启用与禁用（支持撤销）",
+                "提供内置常用快捷图标库，在图标路径失效时支持在目录中自动重定向"
+            ]
+        }
+    ],
+    "分类与同步": [
+        {
+            "title": "分类与 Dock 栏",
+            "points": [
+                "左侧分类栏支持新建、重命名、上下拖拽重排与快速删除",
+                "提供专用常驻 Dock 分类，用于放置高频全局快捷入口"
+            ]
+        },
+        {
+            "title": "物理文件夹同步",
+            "points": [
+                "拖入本地文件夹即可自动生成动态分类，增量同步 Lnk 与 Exe 文件",
+                "物理同步监听文件新增、删除与重命名，防止手动拖放引起的冲突"
+            ]
+        }
+    ],
+    "高级功能": [
+        {
+            "title": "命令与网址变量",
+            "points": [
+                "支持 {clipboard}、{input}、{date}、{time} 等丰富环境变量",
+                "支持 {selected_text}，配合 :q 安全引用规则，实现选中即处理"
+            ]
+        },
+        {
+            "title": "高级物理反馈",
+            "points": [
+                "<b>文件投递</b>：支持将任意文件拖到快捷图标上，调用对应程序打开",
+                "<b>触控调节</b>：Ctrl/Shift + 鼠标滚轮精细微调弹窗背景与图标透明度",
+                "<b>轻睡眠模式</b>：双击 Alt 临时暂停热键弹窗，支持内存整理与睡眠保护"
+            ]
+        }
+    ],
+    "配置管理": [
+        {
+            "title": "完整环境备份",
+            "points": [
+                "导出独立配置包，完美备份所有设置、分类、本地图标、背景等资源",
+                "适合在新机上瞬间恢复工作环境，或将配置轻松回滚到之前备份"
+            ]
+        },
+        {
+            "title": "社交化分享配置",
+            "points": [
+                "可单独导出网址或命令分类，自动隐藏本地敏感路径生成分享包",
+                "导入分享配置时会自动建立隔离的「导入图标」分类，极度安全"
+            ]
+        }
+    ],
+    "使用技巧": [
+        {
+            "title": "按键防冲突机制",
+            "points": [
+                "自定义防冲突进程列表（如 CAD、3D 建模、大型游戏或设计软件）",
+                "在此类全屏或特定应用中，必须使用 Ctrl + 中键呼出，完美防误触"
+            ]
+        },
+        {
+            "title": "后台无感与托盘",
+            "points": [
+                "支持开机静默自启动，并可选择彻底隐藏托盘图标实现完全无感后台",
+                "托盘菜单支持一键查看精细运行日志、快捷配置同步、重启或安全退出"
+            ]
+        }
+    ]
+}
+
+
+def _generate_html_content(items, theme):
+    """根据主题渲染高规格排版的 RichText HTML 内容。"""
+    title_color = "#ffffff" if theme == "dark" else "#1c1c1e"
+    desc_color = "#a1a1a6" if theme == "dark" else "#555559"
+    bullet_color = "#ff9500"
+    
+    html = '<div style="font-family: \'Segoe UI\', \'Microsoft YaHei UI\'; padding: 4px 6px;">'
+    for idx, item in enumerate(items):
+        title = item["title"]
+        points = item["points"]
+        
+        margin_top = "0px" if idx == 0 else "12px"
+        
+        html += f'<div style="margin-top: {margin_top};">'
+        # 子项标题 (✦ 点缀)
+        html += f'<div style="font-size: 13px; font-weight: bold; color: {title_color}; margin-bottom: 4px;">'
+        html += f'<span style="color: {bullet_color}; margin-right: 6px;">✦</span>{title}</div>'
+        
+        # 点描述
+        html += f'<div style="font-size: 12px; color: {desc_color}; line-height: 1.6; padding-left: 14px;">'
+        for pt in points:
+            html += f'<div style="margin-bottom: 2px;">• {pt}</div>'
+        html += '</div></div>'
+        
+    html += '</div>'
+    return html
+
+
+def _generate_intro_html(theme):
+    """简介卡片富文本排版。"""
+    text_color = "#d1d1d6" if theme == "dark" else "#3a3a3c"
+    return f"""
+    <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 13px; color: {text_color}; line-height: 1.6;">
+        QuickLauncher 是一款面向 Windows 桌面的极速启动与轻量自动化效率工具。<br/><br/>
+        按下鼠标中键即可快速呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；
+        同时支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。
+    </div>
+    """
+
 
 class SettingsAboutPageMixin:
     def _setup_about_page(self, page):
-        # 软件信息
+        self.theme = "dark"
+        
+        # 尝试从 DataManager 读取当前主题，或者跟随 Mixin 环境
+        if hasattr(self, 'data_manager'):
+            self.theme = self.data_manager.get_settings().theme
+            
+        # 1. 软件信息头部区域
         layout, group = page.add_group("关于 QuickLauncher")
-
-        # 图标和标题
-        header_layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        header_card = AboutCardFrame(self.theme, group)
+        header_card_layout = QHBoxLayout(header_card)
+        header_card_layout.setContentsMargins(16, 16, 16, 16)
+        header_card_layout.setSpacing(16)
         
         # 尝试加载图标
+        icon_loaded = False
         try:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            # 优先查找 assets 目录
             icon_path = os.path.join(base_dir, "assets", "app.ico")
             if not os.path.exists(icon_path):
                 icon_path = os.path.join(base_dir, "app.ico")
                 
             if os.path.exists(icon_path):
-                icon_label = QLabel()
+                icon_label = QLabel(header_card)
                 icon_label.setFixedSize(64, 64)
                 pixmap = QIcon(icon_path).pixmap(64, 64)
                 if pixmap and not pixmap.isNull():
                     icon_label.setPixmap(pixmap.scaled(64, 64, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation))
-                    header_layout.addWidget(icon_label)
-        except:
+                    header_card_layout.addWidget(icon_label)
+                    icon_loaded = True
+        except Exception:
             pass
             
         title_layout = QVBoxLayout()
-        title = QLabel("QuickLauncher")
-        title.setStyleSheet(f"{get_font_css_with_size(24, 600)}")
-        version = QLabel(f"v{APP_VERSION}")
-        version.setStyleSheet(f"{get_font_css_with_size(14, 400)} color: #b0b0b5;")
-        title_layout.addWidget(title)
-        title_layout.addWidget(version)
-        title_layout.addStretch()
+        title_layout.setSpacing(0)
+        title_layout.setContentsMargins(0, 0, 0, 0)
         
-        header_layout.addLayout(title_layout)
-        header_layout.addStretch()
-        layout.addLayout(header_layout)
+        # 联动生成标题与胶囊 Badge
+        title_lbl = QLabel(header_card)
+        title_lbl.setTextFormat(Qt.RichText)
+        title_lbl.setWordWrap(True)
+        title_layout.addWidget(title_lbl)
         
-        # 软件简介
+        # 联动生成软件口号
+        slogan_lbl = QLabel(header_card)
+        slogan_lbl.setTextFormat(Qt.RichText)
+        slogan_lbl.setWordWrap(True)
+        title_layout.addWidget(slogan_lbl)
+        
+        # 联动生成开发者精致 Badge
+        developer_lbl = QLabel(header_card)
+        developer_lbl.setTextFormat(Qt.RichText)
+        developer_lbl.setOpenExternalLinks(True)  # 允许点击链接直接跳转浏览器
+        title_layout.addWidget(developer_lbl)
+        
+        header_card_layout.addLayout(title_layout)
+        header_card_layout.addStretch()
+        layout.addWidget(header_card)
+        
+        # 保存组件引用以便动态主题切换
+        page._header_card = header_card
+        page._title_lbl = title_lbl
+        page._slogan_lbl = slogan_lbl
+        page._developer_lbl = developer_lbl
+        
+        # 2. 软件简介 quote 卡片
         layout, group = page.add_group("软件简介")
-        intro_text = QLabel(
-            "QuickLauncher 是一款轻量级的鼠标中键快速启动工具。\n"
-            "在任意位置按下鼠标中键，即可呼出应用弹窗，快速启动常用程序、打开文件夹、访问网址等。"
-        )
-        intro_text.setWordWrap(True)
-        intro_text.setStyleSheet("QLabel { line-height: 1.5; }")
-        layout.addWidget(intro_text)
-
-        # 基本操作
-        layout, group = page.add_group("一、基本操作")
-        feature1_text = QLabel(
-            "1. 呼出弹窗\n"
-            "   • 在任意位置按下鼠标中键（滚轮按下），弹窗会在鼠标位置附近显示\n"
-            "   • 可在任何软件界面使用，包括桌面、浏览器、办公软件等\n\n"
-
-            "2. 隐藏弹窗\n"
-            "   • 再次按下鼠标中键\n"
-            "   • 点击弹窗外部的任意区域\n"
-            "   • 按下 Esc 键\n"
-            "   • 启动应用后自动隐藏（可在设置中关闭）\n\n"
-
-            "3. 临时禁用/启用中键弹窗\n"
-            "   • 双击 Alt 键可临时禁用或启用中键弹窗功能\n"
-            "   • 禁用后鼠标中键不会触发弹窗，方便在特定场景下使用\n"
-            "   • 再次双击 Alt 键即可恢复\n\n"
-
-            "4. 锁定弹窗\n"
-            "   • 右键点击弹窗任意空白区域\n"
-            "   • 或点击弹窗右上角的图钉图标\n"
-            "   • 锁定后弹窗不会因失去焦点而自动隐藏，方便连续操作\n\n"
-
-            "5. 翻页切换\n"
-            "   • 鼠标滚轮上下滚动\n"
-            "   • 键盘方向键 ← 和 →\n"
-            "   • 弹窗底部会显示当前页码和总页数"
-        )
-        feature1_text.setWordWrap(True)
-        feature1_text.setStyleSheet("QLabel { line-height: 1.6; }")
-        layout.addWidget(feature1_text)
-
-        # 添加应用
-        layout, group = page.add_group("二、添加应用")
-        feature2_text = QLabel(
-            "1. 拖拽添加（推荐）\n"
-            "   • 将 exe 程序、文件夹、快捷方式直接拖入弹窗的空白格子\n"
-            "   • 支持从桌面、文件资源管理器、开始菜单拖拽\n"
-            "   • 可同时拖拽多个文件，会依次添加到空白格子中\n\n"
-
-            "2. 点击添加\n"
-            "   • 点击弹窗中的空白格子\n"
-            "   • 在弹出的文件选择对话框中选择要添加的文件\n"
-            "   • 支持选择 exe 程序、文件夹、任意文件类型\n\n"
-
-            "3. 支持的类型\n"
-            "   • 应用程序：exe 可执行文件\n"
-            "   • 文件夹：快速打开常用目录\n"
-            "   • 文件：文档、图片、视频等任意文件\n"
-            "   • 打开网址：在编辑对话框中输入 http:// 或 https:// 开头的网址\n"
-            "   • 运行命令：在编辑对话框中输入系统命令或脚本路径"
-        )
-        feature2_text.setWordWrap(True)
-        feature2_text.setStyleSheet("QLabel { line-height: 1.6; }")
-        layout.addWidget(feature2_text)
-
-        # 图标管理
-        layout, group = page.add_group("三、图标管理")
-        feature3_text = QLabel(
-            "1. 编辑图标\n"
-            "   • 右键点击图标 → 选择「编辑」\n"
-            "   • 可修改显示名称、图标图片、目标路径、启动参数\n"
-            "   • 可设置管理员权限运行、最小化启动等选项\n\n"
-
-            "2. 删除图标\n"
-            "   • 右键点击图标 → 选择「删除」\n"
-            "   • 确认后即可移除该图标\n\n"
-
-            "3. 调整顺序\n"
-            "   • 长按鼠标左键拖动图标到目标位置\n"
-            "   • 可在同一页内调整，也可拖到其他页面\n"
-            "   • 松开鼠标即可完成位置调整\n\n"
-
-            "4. 其他操作\n"
-            "   • 打开所在位置：右键图标 → 选择「打开所在位置」\n"
-            "   • 复制路径：右键图标 → 选择「复制路径」"
-        )
-        feature3_text.setWordWrap(True)
-        feature3_text.setStyleSheet("QLabel { line-height: 1.6; }")
-        layout.addWidget(feature3_text)
-
-        # 高级功能
-        layout, group = page.add_group("四、高级功能")
-        feature4_text = QLabel(
-            "1. 强制启动新进程\n"
-            "   • 按住 Alt 键 + 左键点击图标\n"
-            "   • 即使程序已经运行，也会强制启动一个新的进程窗口\n\n"
-
-            "2. 拖放文件到图标\n"
-            "   • 将文件拖到程序图标上松开鼠标\n"
-            "   • 会用该程序打开拖入的文件\n"
-            "   • 例如：将图片拖到 Photoshop 图标上，用 PS 打开图片\n\n"
-
-            "3. 透明度调节\n"
-            "   • Ctrl + 鼠标滚轮：调节弹窗背景透明度\n"
-            "   • Shift + 鼠标滚轮：调节图标透明度\n"
-            "   • 可在「弹窗外观」设置中精确调整数值\n\n"
-
-            "4. 特殊触发（Ctrl + 中键）\n"
-            "   • 按住 Ctrl 键 + 鼠标中键：触发特殊应用列表\n"
-            "   • 可在「弹窗交互」设置中配置特殊触发的应用\n"
-            "   • 适合设置常用但不想占用主弹窗空间的应用"
-        )
-        feature4_text.setWordWrap(True)
-        feature4_text.setStyleSheet("QLabel { line-height: 1.6; }")
-        layout.addWidget(feature4_text)
-
-        # 配置管理
-        layout, group = page.add_group("五、配置管理")
-        feature5_text = QLabel(
-            "1. 导出配置\n"
-            "   • 在「配置管理」页面点击「导出配置」\n"
-            "   • 会导出所有图标、设置、分类信息到 JSON 文件\n"
-            "   • 可用于备份或迁移到其他电脑\n\n"
-
-            "2. 导入配置\n"
-            "   • 在「配置管理」页面点击「导入配置」\n"
-            "   • 选择之前导出的 JSON 配置文件\n"
-            "   • 会覆盖当前所有配置，请谨慎操作\n\n"
-
-            "3. 分享配置\n"
-            "   • 导出分享配置：仅导出快捷键、打开网址、运行命令类型的图标\n"
-            "   • 导入分享配置：导入后会自动创建「导入图标」分类\n"
-            "   • 适合与他人分享配置，不包含本地程序路径"
-        )
-        feature5_text.setWordWrap(True)
-        feature5_text.setStyleSheet("QLabel { line-height: 1.6; }")
-        layout.addWidget(feature5_text)
-
-        # 使用技巧
-        layout, group = page.add_group("六、使用技巧")
-        feature6_text = QLabel(
-            "1. 游戏防误触\n"
-            "   • 在「弹窗交互」设置中添加游戏进程名（如 game.exe）\n"
-            "   • 当游戏运行时，中键不会触发弹窗，避免游戏中误操作\n\n"
-
-            "2. 自定义弹窗外观\n"
-            "   • 在「弹窗外观」中调整图标大小、每行列数、圆角等\n"
-            "   • 在「系统设置」中切换明暗主题\n"
-            "   • 可根据个人喜好打造专属界面\n\n"
-
-            "3. 开机自启动\n"
-            "   • 在「系统设置」中勾选「开机自启动」\n"
-            "   • 软件会在系统启动后自动运行，无需手动打开\n\n"
-
-            "4. 弹窗位置设置\n"
-            "   • 在「弹窗交互」中选择弹窗显示位置\n"
-            "   • 鼠标-弹窗中心：弹窗中心对齐鼠标位置\n"
-            "   • 鼠标-弹窗左上角：弹窗左上角对齐鼠标位置"
-        )
-        feature6_text.setWordWrap(True)
-        feature6_text.setStyleSheet("QLabel { line-height: 1.6; }")
-        layout.addWidget(feature6_text)
+        layout.setContentsMargins(0, 0, 0, 0)
+        intro_card = AboutQuoteFrame(self.theme, group)
+        intro_layout = QVBoxLayout(intro_card)
+        # 用 Qt 原生 layout margin 来控制左右上下的安全呼吸间距，绝对防止 PyQt RichText 对 HTML padding 属性的裁剪缺陷
+        intro_layout.setContentsMargins(18, 14, 18, 14)
         
-        # 作者信息
+        intro_lbl = QLabel(intro_card)
+        intro_lbl.setTextFormat(Qt.RichText)
+        intro_lbl.setWordWrap(True)
+        intro_layout.addWidget(intro_lbl)
+        layout.addWidget(intro_card)
+        
+        page._intro_group = group
+        page._intro_card = intro_card
+        page._intro_lbl = intro_lbl
+        
+        # 3. 遍历渲染 6 大功能卡片
+        page._feature_cards = []
+        page._feature_lbls = []
+        page._feature_card_data = []
+        
+        for section_title, items in SECTION_DATA.items():
+            layout, group = page.add_group(section_title)
+            layout.setContentsMargins(0, 0, 0, 0)
+            
+            card = AboutCardFrame(self.theme, group)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(12, 12, 12, 12)
+            
+            lbl = QLabel(card)
+            lbl.setTextFormat(Qt.RichText)
+            lbl.setWordWrap(True)
+            card_layout.addWidget(lbl)
+            
+            layout.addWidget(card)
+            
+            # 保存到引用管理器以支持主题响应
+            page._feature_cards.append(card)
+            page._feature_lbls.append(lbl)
+            page._feature_card_data.append((section_title, items))
+            
+        # 4. 精致极简底栏区 (作者与开源信息)
         layout, group = page.add_group("作者信息")
-        author_label = QLabel("开发者: NAYTON")
-        layout.addWidget(author_label)
+        layout.setContentsMargins(0, 0, 0, 0)
+        footer_card = AboutCardFrame(self.theme, group)
+        footer_layout = QHBoxLayout(footer_card)
+        footer_layout.setContentsMargins(16, 10, 16, 10)
+        # 左侧：开发者
+        left_lbl = QLabel(footer_card)
+        left_lbl.setTextFormat(Qt.RichText)
+        left_lbl.setWordWrap(False)
+        footer_layout.addWidget(left_lbl)
+        
+        footer_layout.addStretch()
+        
+        # 中间：许可证
+        center_lbl = QLabel(footer_card)
+        center_lbl.setTextFormat(Qt.RichText)
+        center_lbl.setWordWrap(False)
+        center_lbl.setAlignment(Qt.AlignCenter)
+        footer_layout.addWidget(center_lbl)
+        
+        footer_layout.addStretch()
+        
+        # 右侧：感谢
+        right_lbl = QLabel(footer_card)
+        right_lbl.setTextFormat(Qt.RichText)
+        right_lbl.setWordWrap(False)
+        footer_layout.addWidget(right_lbl)
+        
+        layout.addWidget(footer_card)
+        
+        page._footer_card = footer_card
+        page._footer_lbl = left_lbl
+        page._center_footer_lbl = center_lbl
+        page._right_footer_lbl = right_lbl
+        
+        # 5. 主题与睡眠/唤醒钩子修补，实现动态主题适配
+        original_apply_theme = page.apply_theme
+        def custom_apply_theme(theme):
+            original_apply_theme(theme)
+            self._update_about_page_theme(page, theme)
+        page.apply_theme = custom_apply_theme
+        
+        # 首次创建时主动应用当前主题渲染
+        self._update_about_page_theme(page, self.theme)
+
+    def _update_about_page_theme(self, page, theme):
+        """动态渲染所有卡片、边框及 RichText 文本以适应新主题。"""
+        # 1. 更新卡片背景与边框 QSS
+        if hasattr(page, "_header_card") and page._header_card:
+            page._header_card.update_theme(theme)
+        if hasattr(page, "_intro_card") and page._intro_card:
+            page._intro_card.update_theme(theme)
+        if hasattr(page, "_footer_card") and page._footer_card:
+            page._footer_card.update_theme(theme)
+        if hasattr(page, "_feature_cards"):
+            for card in page._feature_cards:
+                card.update_theme(theme)
+                
+        # 针对 "软件简介" 组的特殊左侧边栏高亮处理 (代替之前的 AboutQuoteFrame 左边框)
+        if hasattr(page, "_intro_group") and page._intro_group:
+            bg_color = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
+            border_color = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
+            text_color = "rgba(255, 255, 255, 0.9)" if theme == "dark" else "rgba(28, 28, 30, 0.9)"
+            page._intro_group.setStyleSheet(f"""
+                QGroupBox {{
+                    background-color: {bg_color};
+                    border: 1px solid {border_color};
+                    border-radius: 12px;
+                    color: {text_color};
+                    margin-top: 18px;
+                    padding-top: 10px;
+                }}
+                QGroupBox::title {{
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    left: 14px;
+                    padding: 2px 10px;
+                    background: transparent;
+                    color: {text_color};
+                    font-weight: 500;
+                }}
+            """)
+                
+        # 2. 渲染特定主题的文字与 Badge 标记
+        title_color = "#ffffff" if theme == "dark" else "#1c1c1e"
+        desc_color = "#a1a1a6" if theme == "dark" else "#636366"
+        version_bg = "#3a3a3c" if theme == "dark" else "#e5e5ea"
+        version_color = "#ffffff" if theme == "dark" else "#3a3a3c"
+        dev_badge_bg = "rgba(255, 149, 0, 0.15)"
+        dev_badge_color = "#ff9500"
+        
+        if hasattr(page, "_title_lbl") and page._title_lbl:
+            title_html = f"""
+            <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; margin-bottom: 4px;">
+                <span style="font-size: 22px; font-weight: 800; color: {title_color};">QuickLauncher</span>
+                <span style="font-size: 13px; font-weight: 500; color: {version_color}; margin-left: 8px; vertical-align: middle;">v{APP_VERSION}</span>
+            </div>
+            """
+            page._title_lbl.setText(title_html)
+            
+        if hasattr(page, "_slogan_lbl") and page._slogan_lbl:
+            slogan_html = f"""
+            <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; margin-bottom: 8px;">
+                Windows 极速快捷启动与轻量自动化效率工具
+            </div>
+            """
+            page._slogan_lbl.setText(slogan_html)
+            
+        if hasattr(page, "_developer_lbl") and page._developer_lbl:
+            dev_html = f"""
+            <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 11px; line-height: 1.3;">
+                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ 开发者: NAYTON</span><br/>
+                <a href="https://github.com/LEISHIQIANG/QuickLauncher"
+                   style="color: {dev_badge_color}; font-size: 11px; text-decoration: none;"
+                >GitHub.com/LEISHIQIANG/QuickLauncher</a>
+            </div>
+            """
+            page._developer_lbl.setText(dev_html)
+            
+        if hasattr(page, "_intro_lbl") and page._intro_lbl:
+            page._intro_lbl.setText(_generate_intro_html(theme))
+            
+        if hasattr(page, "_feature_lbls") and hasattr(page, "_feature_card_data"):
+            for lbl, (section_title, data) in zip(page._feature_lbls, page._feature_card_data):
+                lbl.setText(_generate_html_content(data, theme))
+                
+        if hasattr(page, "_footer_lbl") and page._footer_lbl:
+            left_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color};">⚡ 开发者: NAYTON</div>"""
+            page._footer_lbl.setText(left_html)
+            
+        if hasattr(page, "_center_footer_lbl") and page._center_footer_lbl:
+            center_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; text-align: center;">开源协议：MIT License</div>"""
+            page._center_footer_lbl.setText(center_html)
+            
+        if hasattr(page, "_right_footer_lbl") and page._right_footer_lbl:
+            right_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; text-align: right;">⭐ 感谢您的支持！</div>"""
+            page._right_footer_lbl.setText(right_html)

@@ -2,7 +2,6 @@
 测试 error_handler 模块
 """
 
-import pytest
 from core.error_handler import safe_execute, safe_method
 
 

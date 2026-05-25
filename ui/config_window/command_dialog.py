@@ -2,53 +2,212 @@
 命令编辑对话框
 """
 
+import logging
 import os
 import sys
-import logging
-import tempfile
+
+from core import ShortcutItem, ShortcutType
+from core.builtin_commands import canonical_builtin_command
+from qt_compat import (
+    QButtonGroup,
+    QCheckBox,
+    QColor,
+    QComboBox,
+    QFileDialog,
+    QFont,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QIcon,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QPainter,
+    QPixmap,
+    QPlainTextEdit,
+    QPoint,
+    QPolygon,
+    QPushButton,
+    QRadioButton,
+    QStackedWidget,
+    QtCompat,
+    QThread,
+    QVBoxLayout,
+    pyqtSignal,
+)
+from ui.styles.style import Glassmorphism, PopupMenu
+from ui.tooltip_helper import install_tooltip
+
+from .base_dialog import BaseDialog
+from .icon_browse_helper import choose_custom_icon
+from .theme_helper import get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from ui.tooltip_helper import install_tooltip
-from qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QWidget,
-    QLineEdit, QPushButton, QLabel, QGroupBox, QFileDialog, QCheckBox,
-    QPlainTextEdit, QPixmap, QPainter, QColor, QFont,
-    QComboBox, QSpinBox, QStackedWidget, QIcon,
-    Qt, QtCompat, PYQT_VERSION, QRadioButton, QButtonGroup,
-    QPainterPath, QPen, QTimer, QRectF, QListView, QPoint,
-    exec_dialog
-)
 
-from ui.utils.window_effect import get_window_effect, is_win11, enable_acrylic_for_config_window
+class CommandTestThread(QThread):
+    finished_signal = pyqtSignal(dict)
 
-from core import ShortcutItem, ShortcutType
-from .theme_helper import log_error, get_temp_icon_dir, get_radio_stylesheet, get_checkbox_stylesheet, get_small_checkbox_stylesheet
-from .icon_picker_dialog import IconPickerDialog
-from ui.styles.style import get_dialog_stylesheet, Glassmorphism, PopupMenu
-from ui.utils.window_effect import enable_window_shadow_and_round_corners
-from ui.utils.dialog_helper import center_dialog_on_main_window
-from .base_dialog import BaseDialog
+    def __init__(self, shortcut: ShortcutItem, timeout: float = 10.0, parent=None):
+        super().__init__(parent)
+        self.shortcut = shortcut
+        self.timeout = timeout
+        self._suppress_signal = False
 
+    def suppress_result_signal(self):
+        self._suppress_signal = True
 
-
+    def run(self):
+        try:
+            from core import ShortcutExecutor
+            if not ShortcutExecutor:
+                result = {
+                    "success": False,
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "error": "执行器不可用，请检查运行环境依赖。",
+                    "duration": 0.0,
+                }
+            else:
+                result = ShortcutExecutor.test_command(self.shortcut, timeout=self.timeout)
+        except Exception as e:
+            result = {
+                "success": False,
+                "exit_code": None,
+                "stdout": "",
+                "stderr": "",
+                "error": str(e),
+                "duration": 0.0,
+            }
+        if not self._suppress_signal:
+            self.finished_signal.emit(result)
 
 
 class CommandDialog(BaseDialog):
     """命令编辑对话框"""
+    _orphaned_threads = []
 
     BUILTIN_COMMANDS = [
         ("置顶/取消置顶 (Toggle Topmost)", "toggle_topmost"),
         ("开启置顶 (Pin Window)", "pin_on"),
         ("关闭置顶 (Unpin Window)", "pin_off"),
         ("配置窗口 (Config Window)", "show_config_window"),
-        ("打开控制面板 (Control Panel)", "open_control_panel"),
-        ("打开此电脑 (This PC)", "open_this_pc"),
-        ("打开回收站 (Recycle Bin)", "open_recycle_bin"),
+        ("运行日志 (Log Window)", "show_log"),
+        ("斜杠命令帮助 (Slash Help)", "show_help"),
+        ("诊断中心 (Diagnostics)", "show_diagnostics"),
+        ("图标检查 (Shortcut Health)", "show_shortcut_health"),
+        ("配置历史 (Config History)", "show_config_history"),
+        ("清理图标缓存 (Clean Icon Cache)", "clean_icon_cache"),
+        ("清理缓存 (Clean Cache)", "clean-cache"),
+        ("重装全局钩子 (Reload Hooks)", "reload_hooks"),
+        ("打开数据目录 (Data Directory)", "open_data_dir"),
+        ("打开安装目录 (Install Directory)", "open_install_dir"),
+        ("配置文件 data.json (Config File)", "open_config_file"),
+        ("用户图标目录 (Icons Directory)", "open_icons_dir"),
+        ("历史快照目录 (History Directory)", "open_history_dir"),
+        ("自动备份目录 (Auto Backups)", "open_auto_backups_dir"),
+        ("错误日志 error.log (Error Log)", "open_error_log"),
     ]
 
+    BUILTIN_COMMAND_ALIASES = {
+        "topmost": "toggle_topmost",
+        "置顶": "toggle_topmost",
+        "pin": "toggle_topmost",
+        "toggle_topmost": "toggle_topmost",
+        "topmost_on": "pin_on",
+        "置顶开": "pin_on",
+        "pin_on": "pin_on",
+        "topmost_off": "pin_off",
+        "置顶关": "pin_off",
+        "unpin": "pin_off",
+        "pin_off": "pin_off",
+        "show_config": "show_config_window",
+        "show_config_window": "show_config_window",
+        "config_window": "show_config_window",
+        "配置窗口": "show_config_window",
+        "show_log": "show_log",
+        "日志": "show_log",
+        "show_help": "show_help",
+        "help": "show_help",
+        "帮助": "show_help",
+        "show_diagnostics": "show_diagnostics",
+        "diagnostics": "show_diagnostics",
+        "diag": "show_diagnostics",
+        "诊断": "show_diagnostics",
+        "诊断中心": "show_diagnostics",
+        "show_shortcut_health": "show_shortcut_health",
+        "shortcut_health": "show_shortcut_health",
+        "shortcut-health": "show_shortcut_health",
+        "health": "show_shortcut_health",
+        "图标检查": "show_shortcut_health",
+        "诊断图标": "show_shortcut_health",
+        "show_config_history": "show_config_history",
+        "config_history": "show_config_history",
+        "config-history": "show_config_history",
+        "配置历史": "show_config_history",
+        "clean_icon_cache": "clean_icon_cache",
+        "icon_cache": "clean_icon_cache",
+        "icon-cache": "clean_icon_cache",
+        "clean-icons": "clean_icon_cache",
+        "清理图标": "clean_icon_cache",
+        "图标缓存": "clean_icon_cache",
+        "clean_cache": "clean-cache",
+        "clean-cache": "clean-cache",
+        "cache-clean": "clean-cache",
+        "clear-cache": "clean-cache",
+        "清理缓存": "clean-cache",
+        "缓存清理": "clean-cache",
+        "reload_hooks": "reload_hooks",
+        "reload-hooks": "reload_hooks",
+        "hooks": "reload_hooks",
+        "重装钩子": "reload_hooks",
+        "open_data_dir": "open_data_dir",
+        "app_data": "open_data_dir",
+        "app-data": "open_data_dir",
+        "config_dir": "open_data_dir",
+        "config-dir": "open_data_dir",
+        "data-dir": "open_data_dir",
+        "数据目录": "open_data_dir",
+        "配置目录": "open_data_dir",
+        "open_install_dir": "open_install_dir",
+        "install_dir": "open_install_dir",
+        "install-dir": "open_install_dir",
+        "program_dir": "open_install_dir",
+        "program-dir": "open_install_dir",
+        "project_dir": "open_install_dir",
+        "project-dir": "open_install_dir",
+        "安装目录": "open_install_dir",
+        "项目目录": "open_install_dir",
+        "软件目录": "open_install_dir",
+        "open_config_file": "open_config_file",
+        "config-file": "open_config_file",
+        "data-json": "open_config_file",
+        "data.json": "open_config_file",
+        "配置文件": "open_config_file",
+        "open_icons_dir": "open_icons_dir",
+        "icons-dir": "open_icons_dir",
+        "图标目录": "open_icons_dir",
+        "open_history_dir": "open_history_dir",
+        "history-dir": "open_history_dir",
+        "历史目录": "open_history_dir",
+        "open_auto_backups_dir": "open_auto_backups_dir",
+        "auto-backups": "open_auto_backups_dir",
+        "备份目录": "open_auto_backups_dir",
+        "open_error_log": "open_error_log",
+        "error-log": "open_error_log",
+        "error.log": "open_error_log",
+        "错误日志": "open_error_log",
+    }
+
+    @classmethod
+    def _canonical_builtin_command(cls, command: str) -> str:
+        return canonical_builtin_command(command)
+
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
+        # 清理已完成的孤儿线程
+        self._cleanup_finished_orphans()
+
         super().__init__(parent)
         if shortcut:
             self.shortcut = shortcut
@@ -56,45 +215,59 @@ class CommandDialog(BaseDialog):
             self.shortcut = ShortcutItem(type=ShortcutType.COMMAND)
 
         self._custom_icon_path = self.shortcut.icon_path or ""
+        self._command_test_thread = None
 
         # 确保有默认值
         if not hasattr(self.shortcut, 'command_type'):
             self.shortcut.command_type = 'cmd'
 
         self.setWindowTitle("编辑运行命令" if shortcut else "添加运行命令")
-        self.setMinimumWidth(480)
-        
+        self.setMinimumWidth(460)
+
         self._setup_window_icon()
         self._setup_ui()
+        self._loading_data = False
         self._load_data()
         self._apply_theme()
 
     def _setup_window_icon(self):
-        """设置窗口图标"""
+        """设置窗口图标 - 使用更可靠的方式"""
+        if BaseDialog._is_compiled():
+            return
         try:
+            # 使用简单的几何图形绘制图标，避免依赖系统字体
             pixmap = QPixmap(64, 64)
             pixmap.fill(QtCompat.transparent)
-            
+
             painter = QPainter(pixmap)
             try:
                 if not painter.isActive():
                     return
                 painter.setRenderHint(QtCompat.Antialiasing)
-                
-                # 绘制闪电
-                font = QFont("Segoe UI Emoji", 40)
-                font.setStyleHint(QFont.StyleHint.SansSerif)
-                painter.setFont(font)
-                
-                # 使用金黄色以匹配"闪电"的直观感觉
-                painter.setPen(QColor(255, 200, 0))
-                painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⚡")
+
+                # 绘制一个简单的闪电形状（几何图形，不依赖字体）
+                from qt_compat import QPolygon, QPoint
+                painter.setPen(QtCompat.NoPen)
+                painter.setBrush(QColor(255, 200, 0))
+
+                # 闪电形状的点
+                points = [
+                    QPoint(32, 10),
+                    QPoint(28, 30),
+                    QPoint(35, 30),
+                    QPoint(25, 54),
+                    QPoint(38, 35),
+                    QPoint(30, 35),
+                ]
+                polygon = QPolygon(points)
+                painter.drawPolygon(polygon)
             finally:
                 painter.end()
-            
+
             self.setWindowIcon(QIcon(pixmap))
         except Exception as e:
             # 即使设置图标失败也不要崩溃
+            logger.debug(f"设置窗口图标失败: {e}")
             pass
 
     def _apply_theme(self):
@@ -144,6 +317,7 @@ class CommandDialog(BaseDialog):
 
         self.name_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
         self.icon_path_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
+        self.workdir_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
 
         # --- 命令输入框容器样式 ---
         # 只有容器负责背景和边框，内部编辑器完全透明
@@ -164,6 +338,14 @@ class CommandDialog(BaseDialog):
             }}
         """
         self.command_edit.setStyleSheet(editor_style)
+        self.test_output.setStyleSheet(editor_style + f"""
+            QPlainTextEdit {{
+                background-color: {"rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.75)"};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+        """)
         # 再次强制视口透明（双重保险）
         if hasattr(self.command_edit, "viewport"):
             self.command_edit.viewport().setStyleSheet("background: transparent;")
@@ -215,6 +397,7 @@ class CommandDialog(BaseDialog):
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
         for btn in [self._browse_icon_btn, self._clear_icon_btn,
+                         self._browse_workdir_btn, self.insert_var_btn, self._test_btn,
                          self._cancel_btn, self._ok_btn]:
                 btn.setStyleSheet(flat_btn_style)
 
@@ -223,31 +406,34 @@ class CommandDialog(BaseDialog):
         self.invert_theme_cb.setStyleSheet(cb_style)
         self.invert_current_cb.setStyleSheet(cb_style)
         self.show_window_cb.setStyleSheet(cb_style)
+        self.run_as_admin_cb.setStyleSheet(cb_style)
+        self.python_legacy_cb.setStyleSheet(cb_style)
+        self.variable_expansion_cb.setStyleSheet(cb_style)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
         layout.setContentsMargins(10, 10, 10, 10)  # 特殊页边距：复杂编辑窗口保持 10px
-        
+
         # 顶部标题栏
         title_layout = QHBoxLayout()
         title_label = QLabel("编辑运行命令" if self.shortcut.name else "添加运行命令")
-        title_label.setStyleSheet("font-size: 14px; font-weight: 400; color: gray;")
+        title_label.setStyleSheet("font-size: 12px; font-weight: 400; color: gray;")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         layout.addLayout(title_layout)
-        
+
         # 1. 基本信息
         basic_group = QGroupBox("基本信息")
         basic_layout = QFormLayout(basic_group)
-        basic_layout.setSpacing(16)
-        basic_layout.setContentsMargins(12, 0, 12, 12)
-        
+        basic_layout.setSpacing(6)
+        basic_layout.setContentsMargins(8, 0, 8, 8)
+
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
         basic_layout.addRow("名称:", self.name_edit)
-        
+
         # 类型
         self.type_combo = QComboBox()
         self.type_combo.addItems(["CMD 命令", "Python 代码", "内置命令"])
@@ -255,17 +441,17 @@ class CommandDialog(BaseDialog):
         self.type_combo.showPopup = lambda: self._show_type_popup()
 
         basic_layout.addRow("类型:", self.type_combo)
-        
+
         layout.addWidget(basic_group)
 
         # 2. 图标设置 (移到第二位)
         icon_group = QGroupBox("图标")
         icon_layout = QHBoxLayout(icon_group)
-        icon_layout.setSpacing(10)
-        icon_layout.setContentsMargins(12, 0, 12, 12)
-        
+        icon_layout.setSpacing(6)
+        icon_layout.setContentsMargins(6, 0, 6, 6)
+
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(40, 40) # 稍微减小图标预览大小，原为48
+        self.icon_preview.setFixedSize(32, 32)
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
         self.icon_preview.setStyleSheet("""
             QLabel {
@@ -275,18 +461,18 @@ class CommandDialog(BaseDialog):
             }
         """)
         icon_layout.addWidget(self.icon_preview)
-        
+
         icon_path_layout = QVBoxLayout()
-        icon_path_layout.setSpacing(8)
-        
+        icon_path_layout.setSpacing(6)
+
         self.icon_path_edit = QLineEdit()
         self.icon_path_edit.setPlaceholderText("可选，自定义图标路径")
         self.icon_path_edit.setReadOnly(True)
         icon_path_layout.addWidget(self.icon_path_edit)
-        
+
         icon_btn_layout = QHBoxLayout()
-        icon_btn_layout.setSpacing(4) # 减小间距
-        
+        icon_btn_layout.setSpacing(6)
+
         browse_icon_btn = QPushButton("选择图标...")
         browse_icon_btn.clicked.connect(self._browse_icon)
         icon_btn_layout.addWidget(browse_icon_btn)
@@ -296,7 +482,7 @@ class CommandDialog(BaseDialog):
         clear_icon_btn.clicked.connect(self._clear_icon)
         icon_btn_layout.addWidget(clear_icon_btn)
         self._clear_icon_btn = clear_icon_btn
-        
+
         icon_btn_layout.addStretch()
         icon_path_layout.addLayout(icon_btn_layout)
 
@@ -323,14 +509,13 @@ class CommandDialog(BaseDialog):
         icon_btn_layout.addLayout(invert_v_layout)
 
         icon_layout.addLayout(icon_path_layout, 1)
-        layout.addWidget(icon_group)
-        
+
         # 3. 命令设置 (移到第三位)
         cmd_group = QGroupBox("命令内容")
         cmd_layout = QVBoxLayout(cmd_group)
         cmd_layout.setSpacing(4) # 减小间距
         cmd_layout.setContentsMargins(8, 8, 8, 8) # 减小内部边距
-        
+
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(8)
@@ -340,6 +525,16 @@ class CommandDialog(BaseDialog):
         top_row.addWidget(self.hint_label)
         top_row.addStretch()
 
+        self.insert_var_btn = QPushButton("插入")
+        self.insert_var_btn.setFixedSize(54, 24)
+        self.insert_var_btn.clicked.connect(self._show_insert_popup)
+        top_row.addWidget(self.insert_var_btn)
+
+        self._test_btn = QPushButton("测试")
+        self._test_btn.setFixedSize(54, 24)
+        self._test_btn.clicked.connect(self._test_command)
+        top_row.addWidget(self._test_btn)
+
         self.show_window_cb = QCheckBox("显示执行窗口")
         top_row.addWidget(self.show_window_cb)
 
@@ -347,7 +542,7 @@ class CommandDialog(BaseDialog):
 
         # 使用 StackedWidget 切换不同类型的输入
         self.input_stack = QStackedWidget()
-        
+
         # 1. 文本编辑器 (CMD/Python) - 重构为容器模式
         # 外层容器：负责背景、边框、圆角
         from qt_compat import QFrame
@@ -356,26 +551,26 @@ class CommandDialog(BaseDialog):
         container_layout = QVBoxLayout(self.command_container)
         container_layout.setContentsMargins(4, 2, 4, 4) # 内部留白，防止文字贴边
         container_layout.setSpacing(0)
-        
+
         # 内层编辑器：完全透明，只负责显示文字
         self.command_edit = QPlainTextEdit()
-        self.command_edit.setFixedHeight(40) # 略微减小编辑器高度，留给容器内边距
+        self.command_edit.setFixedHeight(92)
         self.command_edit.setTabChangesFocus(True)
         # 关键：关闭视口背景自动填充
         if hasattr(self.command_edit, "viewport"):
             self.command_edit.viewport().setAutoFillBackground(False)
-            
+
         if hasattr(QPlainTextEdit, "LineWrapMode"):
             self.command_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         else:
             self.command_edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-            
+
         self.command_edit.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)
         self.command_edit.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
-        
+
         container_layout.addWidget(self.command_edit)
         self.input_stack.addWidget(self.command_container)
-        
+
         # 2. 内置命令下拉框
         self.builtin_combo = QComboBox()
         self.builtin_combo.setFixedHeight(48) # 同步高度
@@ -383,41 +578,81 @@ class CommandDialog(BaseDialog):
             self.builtin_combo.addItem(name, cmd)
         self.builtin_combo.currentIndexChanged.connect(self._on_builtin_changed)
         self.builtin_combo.showPopup = lambda: self._show_builtin_popup()
-        
+
         self.input_stack.addWidget(self.builtin_combo)
-        self.input_stack.setFixedHeight(48) # 锁定两行高度
-        
+        self.input_stack.setFixedHeight(100)
+
         cmd_layout.addWidget(self.input_stack)
+        self.test_output = QPlainTextEdit()
+        self.test_output.setReadOnly(True)
+        self.test_output.setFixedHeight(72)
+        self.test_output.setPlaceholderText("运行结果会显示在这里")
+        self.test_output.setVisible(False)
+        cmd_layout.addWidget(self.test_output)
         cmd_layout.setContentsMargins(8, 4, 8, 8) # 恢复适度边距，保持比例协调
         layout.addWidget(cmd_group)
 
-        # 4. 触发模式 (移到第四位)
-        trigger_group = QGroupBox("触发模式")
-        trigger_layout = QVBoxLayout(trigger_group)
-        trigger_layout.setSpacing(8)
-        
-        self.trigger_immediate_rb = QRadioButton("立即触发 (全局快捷键)")
-        install_tooltip(self.trigger_immediate_rb, "点击后立即执行，适合不依赖特定窗口焦点的操作")
+        # 4. 高级选项
+        advanced_group = QGroupBox("高级选项")
+        advanced_layout = QFormLayout(advanced_group)
+        advanced_layout.setSpacing(6)
+        advanced_layout.setContentsMargins(8, 0, 8, 8)
 
-        self.trigger_after_close_rb = QRadioButton("窗口关闭后触发 (聚焦指定窗口)")
-        install_tooltip(self.trigger_after_close_rb, "等待快捷启动窗口完全关闭后执行，适合需要操作当前活动窗口的快捷键")
-        
+        workdir_layout = QHBoxLayout()
+        workdir_layout.setSpacing(6)
+        self.workdir_edit = QLineEdit()
+        self.workdir_edit.setPlaceholderText("可选，工作目录")
+        workdir_layout.addWidget(self.workdir_edit)
+        self._browse_workdir_btn = QPushButton("浏览...")
+        self._browse_workdir_btn.clicked.connect(self._browse_workdir)
+        workdir_layout.addWidget(self._browse_workdir_btn)
+        advanced_layout.addRow("工作目录:", workdir_layout)
+
+        option_row = QHBoxLayout()
+        option_row.setSpacing(8)
+        self.run_as_admin_cb = QCheckBox("以管理员身份运行")
+        self.python_legacy_cb = QCheckBox("兼容旧 Python")
+        install_tooltip(self.python_legacy_cb, "在主进程内执行 Python，兼容旧脚本；新命令建议关闭")
+        self.variable_expansion_cb = QCheckBox("解析变量")
+        install_tooltip(self.variable_expansion_cb, "替换 {clipboard}、{input}、{date} 等占位符；Python 默认关闭")
+        option_row.addWidget(self.run_as_admin_cb)
+        option_row.addWidget(self.python_legacy_cb)
+        option_row.addWidget(self.variable_expansion_cb)
+        option_row.addStretch()
+        advanced_layout.addRow("", option_row)
+
+        layout.addWidget(advanced_group)
+
+        # 5. 触发模式
+        trigger_group = QGroupBox("触发模式")
+        trigger_layout = QHBoxLayout(trigger_group)
+        trigger_layout.setSpacing(12)
+        trigger_layout.setContentsMargins(8, 0, 8, 8)
+
+        self.trigger_immediate_rb = QRadioButton("点击后马上运行")
+        install_tooltip(self.trigger_immediate_rb, "点击图标后立刻运行命令，适合打开程序、网页或执行后台命令")
+
+        self.trigger_after_close_rb = QRadioButton("先关闭面板，再运行")
+        install_tooltip(self.trigger_after_close_rb, "先关闭快捷启动面板并把焦点还给原来的窗口，再运行命令，适合需要操作原窗口的命令")
+
         trigger_layout.addWidget(self.trigger_immediate_rb)
         trigger_layout.addWidget(self.trigger_after_close_rb)
-        
+        trigger_layout.addStretch()
+
         self.trigger_group_btn = QButtonGroup(self)
         self.trigger_group_btn.addButton(self.trigger_immediate_rb)
         self.trigger_group_btn.addButton(self.trigger_after_close_rb)
-        
+
         layout.addWidget(trigger_group)
-        
+        layout.addWidget(icon_group)
+
         layout.addStretch()
-        
+
         # 按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(16)
+        btn_layout.setSpacing(8)
         btn_layout.addStretch()
-        
+
         cancel_btn = QPushButton("取消")
         cancel_btn.setFixedSize(80, 32)
         cancel_btn.clicked.connect(self.reject)
@@ -430,12 +665,12 @@ class CommandDialog(BaseDialog):
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
         self._ok_btn = ok_btn
-        
+
         layout.addLayout(btn_layout)
-        
+
         # 自适应大小
         self.adjustSize()
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(460)
 
     def _on_type_changed(self, index):
         """类型改变"""
@@ -443,16 +678,37 @@ class CommandDialog(BaseDialog):
             self.hint_label.setText("输入要执行的CMD命令（静默运行，不显示窗口）:")
             self.command_edit.setPlaceholderText("例如: shutdown /s /t 0")
             self.input_stack.setCurrentIndex(0)
+            self.input_stack.setFixedHeight(100)
+            self.show_window_cb.setEnabled(True)
+            self.insert_var_btn.setEnabled(True)
+            self.python_legacy_cb.setEnabled(False)
+            self.variable_expansion_cb.setEnabled(True)
+            if not getattr(self, "_loading_data", False):
+                self.variable_expansion_cb.setChecked(False)
         elif index == 1:  # Python
             self.hint_label.setText("输入要执行的Python代码（提供 os, sys, subprocess 等上下文）:")
             self.command_edit.setPlaceholderText("例如: os.system('notepad')")
             self.input_stack.setCurrentIndex(0)
+            self.input_stack.setFixedHeight(100)
+            self.show_window_cb.setEnabled(True)
+            self.insert_var_btn.setEnabled(True)
+            self.python_legacy_cb.setEnabled(True)
+            self.variable_expansion_cb.setEnabled(True)
+            if not getattr(self, "_loading_data", False):
+                self.variable_expansion_cb.setChecked(False)
         elif index == 2:  # Built-in
             self.hint_label.setText("选择内置命令:")
             self.input_stack.setCurrentIndex(1)
+            self.input_stack.setFixedHeight(48)
+            self.show_window_cb.setChecked(False)
+            self.show_window_cb.setEnabled(False)
+            self.insert_var_btn.setEnabled(False)
+            self.python_legacy_cb.setEnabled(False)
+            self.variable_expansion_cb.setChecked(False)
+            self.variable_expansion_cb.setEnabled(False)
             # 触发一次内置命令变更，以更新图标
             self._on_builtin_changed(self.builtin_combo.currentIndex())
-            
+
         # 更新图标
         self._update_icon_preview()
 
@@ -462,13 +718,37 @@ class CommandDialog(BaseDialog):
         command = self.builtin_combo.itemData(index)
         if not command:
             return
+        if getattr(self, "_loading_data", False) and self._custom_icon_path:
+            self._update_icon_preview()
+            return
 
         import os
         system32 = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32')
 
         # 自动设置图标
         icon_path = ""
-        if command == "open_control_panel":
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        command_icon_files = {
+            "open_task_manager": "taskmgr.png",
+            "open_windows_settings": "windows-settings.png",
+            "open_services": "services.png",
+            "open_device_manager": "device-manager.png",
+            "open_disk_management": "disk-management.png",
+            "open_network_connections": "network-connections.png",
+            "open_startup_folder": "startup-folder.png",
+            "open_system_info": "system-info.png",
+            "open_config_file": "config-file.png",
+            "open_icons_dir": "icons-dir.png",
+            "open_history_dir": "history-dir.png",
+            "open_auto_backups_dir": "auto-backups.png",
+            "open_error_log": "error-log.png",
+        }
+        if command in command_icon_files:
+            icon_path = os.path.join(base_dir, "assets", "command_icons", command_icon_files[command])
+        elif command == "open_control_panel":
             icon_path = os.path.join(system32, "control.exe")
         elif command == "open_this_pc":
             # 使用资源 ID (-109) 而不是索引
@@ -477,10 +757,6 @@ class CommandDialog(BaseDialog):
             # 使用资源 ID (-55) (Recycle Bin Empty)
             icon_path = os.path.join(system32, "imageres.dll,-55")
         elif command == "show_config_window":
-            if getattr(sys, 'frozen', False):
-                base_dir = os.path.dirname(sys.executable)
-            else:
-                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             icon_path = os.path.join(base_dir, "assets", "setting.ico")
         elif "topmost" in command or "pin" in command:
             # 尝试给置顶命令也加个图标 (imageres.dll, -229 is a pin icon in Win10/11 usually)
@@ -489,11 +765,16 @@ class CommandDialog(BaseDialog):
         if icon_path:
             self._custom_icon_path = icon_path
             self.icon_path_edit.setText(icon_path)
-            self._update_icon_preview()
+        else:
+            if not getattr(self, "_loading_data", False):
+                self._custom_icon_path = ""
+                self.icon_path_edit.clear()
+        self._update_icon_preview()
 
     def _show_type_popup(self):
         """显示类型选择弹出菜单"""
-        menu = PopupMenu(theme=self.theme, radius=12, parent=None)
+        menu = PopupMenu(theme=self.theme, radius=12, parent=self)
+        self._type_menu = menu
         items = ["CMD 命令", "Python 代码", "内置命令"]
         current = self.type_combo.currentText()
         for i, item_text in enumerate(items):
@@ -511,7 +792,8 @@ class CommandDialog(BaseDialog):
 
     def _show_builtin_popup(self):
         """显示内置命令选择弹出菜单"""
-        menu = PopupMenu(theme=self.theme, radius=12, parent=None)
+        menu = PopupMenu(theme=self.theme, radius=12, parent=self)
+        self._builtin_menu = menu
         current = self.builtin_combo.currentText()
         for i in range(self.builtin_combo.count()):
             item_text = self.builtin_combo.itemText(i)
@@ -527,54 +809,238 @@ class CommandDialog(BaseDialog):
         menu.setMinimumWidth(self.builtin_combo.width())
         menu.popup(pos)
 
-    def mousePressEvent(self, event):
-        if event.button() == QtCompat.LeftButton:
-            # 限制拖动区域：只有点击顶部 50px 区域（标题栏）才能拖动
-            pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
-            if pos.y() <= 50:
-                self._drag_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
-                event.accept()
-            else:
-                self._drag_pos = None
+    def _show_insert_popup(self):
+        """显示变量和常用片段菜单"""
+        menu = PopupMenu(theme=self.theme, radius=12, parent=self)
+        self._insert_menu = menu
+        items = [
+            ("剪贴板", "{clipboard}"),
+            ("剪贴板(引用)", "{clipboard:q}"),
+            ("运行时输入", "{input}"),
+            ("选中文本", "{selected_text}"),
+            ("选中文本(引用)", "{selected_text:q}"),
+            ("日期", "{date}"),
+            ("时间", "{time}"),
+            ("程序目录", "{app_dir}"),
+            ("配置目录", "{config_dir}"),
+            ("PowerShell 片段", "powershell -NoProfile -ExecutionPolicy Bypass -Command {clipboard:q}"),
+            ("Python 模板", 'import os\nprint(os.getcwd())'),
+        ]
+        for label, text in items:
+            menu.add_action(label, lambda t=text: self._insert_command_text(t))
+        pos = self.insert_var_btn.mapToGlobal(self.insert_var_btn.rect().bottomLeft())
+        menu.setMinimumWidth(180)
+        menu.popup(pos)
 
-    def mouseMoveEvent(self, event):
-        if getattr(self, '_drag_pos', None) is not None and event.buttons() & QtCompat.LeftButton:
-            new_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
-            self.move(self.pos() + (new_pos - self._drag_pos))
-            self._drag_pos = new_pos
-            event.accept()
+    def _insert_command_text(self, text: str):
+        cursor = self.command_edit.textCursor()
+        if cursor.hasSelection():
+            cursor.insertText(text)
+        else:
+            if self.command_edit.toPlainText() and not self.command_edit.toPlainText().endswith(("\n", " ")):
+                cursor.insertText(" ")
+            cursor.insertText(text)
+        self.command_edit.setTextCursor(cursor)
+        self.command_edit.setFocus()
+        if "{selected_text" in text:
+            self.variable_expansion_cb.setChecked(True)
+            self.trigger_after_close_rb.setChecked(True)
+        elif text.startswith("{") or "{input" in text or "{clipboard" in text:
+            self.variable_expansion_cb.setChecked(True)
 
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
+    def _browse_workdir(self):
+        folder = QFileDialog.getExistingDirectory(self, "选择工作目录")
+        if folder:
+            self.workdir_edit.setText(folder)
+
+    def _build_preview_shortcut(self) -> ShortcutItem:
+        import copy
+        shortcut = copy.copy(self.shortcut)
+        type_index = self.type_combo.currentIndex()
+        shortcut.type = ShortcutType.COMMAND
+        shortcut.name = self.name_edit.text().strip()[:6] or "测试"
+        shortcut.command_type = "cmd" if type_index == 0 else "python" if type_index == 1 else "builtin"
+        shortcut.command = self.builtin_combo.currentData() if type_index == 2 else self.command_edit.toPlainText().strip()
+        shortcut.trigger_mode = "after_close" if self.trigger_after_close_rb.isChecked() else "immediate"
+        shortcut.show_window = self.show_window_cb.isChecked()
+        shortcut.working_dir = self.workdir_edit.text().strip()
+        shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
+        shortcut.python_execution_mode = "legacy_inline" if self.python_legacy_cb.isChecked() else "subprocess"
+        shortcut.command_variables_enabled = self.variable_expansion_cb.isChecked()
+        return shortcut
+
+    def _collect_runtime_inputs(self, command: str):
+        try:
+            from core.command_variables import collect_input_prompts
+            prompts = collect_input_prompts(command)
+        except Exception:
+            return {}
+        values = {}
+        for prompt in prompts:
+            label = prompt or "输入内容"
+            try:
+                from ui.styles.themed_messagebox import ThemedInputDialog
+                value, ok = ThemedInputDialog.getText(self, "运行参数", label)
+            except Exception as e:
+                logger.debug(f"加载 ThemedInputDialog 失败，退回到标准输入: {e}")
+                value, ok = QInputDialog.getText(self, "运行参数", label)
+            if not ok:
+                return None
+            values[prompt] = value
+            if not prompt:
+                values["input"] = value
+        return values
+
+    def _test_command(self):
+        if self._command_test_thread is not None and self._command_test_thread.isRunning():
+            return
+        shortcut = self._build_preview_shortcut()
+        self.test_output.setVisible(True)
+        self.adjustSize()
+        if not shortcut.command:
+            self.test_output.setPlainText("命令内容为空。")
+            return
+        inputs = self._collect_runtime_inputs(shortcut.command) if shortcut.command_variables_enabled else {}
+        if inputs is None:
+            self.test_output.setPlainText("测试运行已取消。")
+            return
+        if inputs:
+            setattr(shortcut, "_runtime_input_values", inputs)
+
+        self._test_btn.setEnabled(False)
+        self.test_output.setPlainText("正在测试...")
+        self._command_test_thread = CommandTestThread(shortcut, timeout=10.0, parent=None)
+        self._command_test_thread.finished_signal.connect(self._show_test_result)
+        self._command_test_thread.start()
+
+    def _show_test_result(self, result: dict):
+        if self._dialog_finished or not hasattr(self, "test_output") or not hasattr(self, "_test_btn"):
+            return
+        lines = [
+            f"状态: {'成功' if result.get('success') else '失败'}",
+            f"退出码: {result.get('exit_code')}",
+            f"耗时: {result.get('duration', 0):.2f}s",
+        ]
+        if result.get("resolved_command"):
+            lines.extend(["", "最终命令:", str(result.get("resolved_command"))])
+        if result.get("error"):
+            lines.extend(["", "错误:", str(result.get("error"))])
+        if result.get("stdout"):
+            lines.extend(["", "stdout:", str(result.get("stdout"))])
+        if result.get("stderr"):
+            lines.extend(["", "stderr:", str(result.get("stderr"))])
+        self.test_output.setPlainText("\n".join(lines))
+        self._test_btn.setEnabled(True)
+        self._command_test_thread = None
+
+    def closeEvent(self, event):
+        super().closeEvent(event)
+
+    def done(self, result):
+        self._cleanup_command_test_thread()
+        super().done(result)
+
+    def _cleanup_command_test_thread(self):
+        # 强制终止正在后台测试的挂起子进程（如果有），避免垃圾子进程泄露
+        if hasattr(self, "shortcut") and self.shortcut:
+            try:
+                process = getattr(self.shortcut, "_active_test_process", None)
+                if process and process.poll() is None:
+                    process.kill()
+                    try:
+                        process.wait(timeout=1.0)
+                        logger.info("测试后台挂起子进程已被成功强制终止清理")
+                    except Exception:
+                        logger.debug("子进程终止超时")
+            except Exception as e:
+                logger.debug(f"清理挂起子进程时发生异常: {e}")
+
+        thread = getattr(self, "_command_test_thread", None)
+        if thread is None:
+            return
+        try:
+            thread.finished_signal.disconnect(self._show_test_result)
+        except Exception:
+            pass
+        try:
+            thread.suppress_result_signal()
+        except Exception:
+            pass
+        if thread.isRunning():
+            thread.wait(500)
+        if thread.isRunning():
+            try:
+                thread.terminate()
+                thread.wait(200)
+            except Exception:
+                pass
+        if thread.isRunning():
+            try:
+                thread.setParent(None)
+                self._orphaned_threads.append(thread)
+                thread.finished.connect(lambda t=thread, cls=type(self): cls._forget_orphaned_thread(t))
+                thread.finished.connect(thread.deleteLater)
+            except Exception:
+                pass
+            self._command_test_thread = None
+        else:
+            try:
+                thread.deleteLater()
+            except Exception:
+                pass
+            self._command_test_thread = None
+
+    @classmethod
+    def _forget_orphaned_thread(cls, thread):
+        try:
+            cls._orphaned_threads.remove(thread)
+        except ValueError:
+            pass
+
+    @classmethod
+    def _cleanup_finished_orphans(cls):
+        """清理已完成的孤儿线程（仅从列表移除，deleteLater 由 finished 信号负责）"""
+        if not cls._orphaned_threads:
+            return
+        still_running = [t for t in cls._orphaned_threads if t.isRunning()]
+        removed = len(cls._orphaned_threads) - len(still_running)
+        cls._orphaned_threads = still_running
+        if removed:
+            logger.info(f"清理了 {removed} 个已完成的孤儿线程")
 
     def _load_data(self):
         """加载数据"""
+        self._loading_data = True
         try:
             self.name_edit.setText(self.shortcut.name or "")
-            
+
             # 暂时阻塞信号，避免初始化时频繁触发
             self.type_combo.blockSignals(True)
-            
+
             # 加载命令类型
             cmd_type = getattr(self.shortcut, 'command_type', 'cmd')
+            command = self.shortcut.command or ""
+            canonical_builtin = self._canonical_builtin_command(command)
+            if cmd_type != 'python' and canonical_builtin:
+                cmd_type = 'builtin'
+                command = canonical_builtin
+
             if cmd_type == 'python':
                 self.type_combo.setCurrentIndex(1)
             elif cmd_type == 'builtin':
                 self.type_combo.setCurrentIndex(2)
             else:
                 self.type_combo.setCurrentIndex(0)
-            
+
             self.type_combo.blockSignals(False)
-            
+
             # 加载触发模式
             if getattr(self.shortcut, 'trigger_mode', 'immediate') == 'after_close':
                 self.trigger_after_close_rb.setChecked(True)
             else:
                 self.trigger_immediate_rb.setChecked(True)
-        
+
             # 加载命令内容
-            command = self.shortcut.command or ""
             if cmd_type == 'builtin':
                 # 尝试在下拉框中选中对应命令
                 index = self.builtin_combo.findData(command)
@@ -582,7 +1048,7 @@ class CommandDialog(BaseDialog):
                     self.builtin_combo.setCurrentIndex(index)
             else:
                 self.command_edit.setPlainText(command)
-            
+
             if self._custom_icon_path:
                 self.icon_path_edit.setText(self._custom_icon_path)
 
@@ -590,12 +1056,26 @@ class CommandDialog(BaseDialog):
             self.invert_theme_cb.setChecked(self.shortcut.icon_invert_with_theme)
             self.invert_current_cb.setChecked(self.shortcut.icon_invert_current)
             self.show_window_cb.setChecked(getattr(self.shortcut, 'show_window', False))
+            self.workdir_edit.setText(getattr(self.shortcut, 'working_dir', '') or '')
+            self.run_as_admin_cb.setChecked(getattr(self.shortcut, 'run_as_admin', False))
+            self.python_legacy_cb.setChecked(
+                getattr(self.shortcut, 'python_execution_mode', 'subprocess') == 'legacy_inline'
+            )
+            self.variable_expansion_cb.setChecked(
+                getattr(
+                    self.shortcut,
+                    'command_variables_enabled',
+                    False
+                )
+            )
 
             # 手动调用一次以初始化界面状态
             self._on_type_changed(self.type_combo.currentIndex())
-            
-        except Exception as e:
+
+        except Exception:
             pass
+        finally:
+            self._loading_data = False
 
     def _update_icon_preview(self):
         """更新图标预览"""
@@ -603,10 +1083,10 @@ class CommandDialog(BaseDialog):
         if getattr(self, '_updating_icon', False):
             return
         self._updating_icon = True
-        
+
         try:
             pixmap = None
-            
+
             if self._custom_icon_path:
                 try:
                     should_load = False
@@ -616,12 +1096,15 @@ class CommandDialog(BaseDialog):
                     # 或者检查文件是否存在
                     elif os.path.exists(self._custom_icon_path):
                         should_load = True
-                        
+
                     if should_load:
                         from core.icon_extractor import IconExtractor
                         pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
                 except Exception as e:
                     logger.debug(f"加载自定义图标失败: {e}")
+
+            if not pixmap or pixmap.isNull():
+                pixmap = self._create_command_icon(48)
 
             # 应用反转
             if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
@@ -632,7 +1115,9 @@ class CommandDialog(BaseDialog):
             if pixmap and not pixmap.isNull():
                 pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                 self.icon_preview.setPixmap(pixmap)
-        except:
+            else:
+                self.icon_preview.clear()
+        except Exception:
             pass
         finally:
             self._updating_icon = False
@@ -642,21 +1127,21 @@ class CommandDialog(BaseDialog):
         try:
             pixmap = QPixmap(size, size)
             pixmap.fill(QtCompat.transparent)
-            
+
             painter = QPainter(pixmap)
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
-                
+
                 painter.setBrush(QColor(50, 50, 50))
                 painter.setPen(QtCompat.NoPen)
                 margin = size // 8
                 painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
-                
+
                 painter.setPen(QColor(0, 255, 0))
                 font = QFont("Consolas", size // 3)
                 font.setBold(True)
                 painter.setFont(font)
-                
+
                 # 根据类型显示不同图标文本
                 text = ">_"
                 if self.type_combo.currentIndex() == 1: # Python
@@ -665,7 +1150,7 @@ class CommandDialog(BaseDialog):
                 elif self.type_combo.currentIndex() == 2: # Built-in
                     text = "In"
                     painter.setPen(QColor(100, 200, 255)) # 蓝色
-                    
+
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, text)
             finally:
                 painter.end()
@@ -676,40 +1161,16 @@ class CommandDialog(BaseDialog):
             empty = QPixmap(size, size)
             empty.fill(QtCompat.transparent)
             return empty
-    
+
     def _browse_icon(self):
         """浏览图标文件"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择图标", "",
-            "图标文件 (*.ico *.png *.jpg *.jpeg *.bmp *.exe *.dll);;所有文件 (*.*)"
-        )
-
+        file_path = choose_custom_icon(self, "选择图标")
         if file_path:
-            ext = os.path.splitext(file_path)[1].lower()
-            if ext in ('.dll', '.exe'):
-                # 检查文件是否包含图标
-                from core.icon_extractor import IconExtractor
-                count = IconExtractor.get_icon_count(file_path)
-
-                if count > 0:
-                    # 显示图标选择器
-                    dialog = IconPickerDialog(self, file_path)
-                    if exec_dialog(dialog) and dialog.selected_index >= 0:
-                        self._custom_icon_path = f"{file_path},{dialog.selected_index}"
-                        self.icon_path_edit.setText(self._custom_icon_path)
-                        self.invert_theme_cb.setChecked(False)
-                        self.invert_current_cb.setChecked(False)
-                        self._update_icon_preview()
-                        return
-
-            # 如果不是 DLL/EXE 或者取消了选择，或者文件中没有图标
-            # 如果是普通图片，直接设置
-            if ext not in ('.dll', '.exe') or count == 0:
-                self._custom_icon_path = file_path
-                self.icon_path_edit.setText(file_path)
-                self.invert_theme_cb.setChecked(False)
-                self.invert_current_cb.setChecked(False)
-                self._update_icon_preview()
+            self._custom_icon_path = file_path
+            self.icon_path_edit.setText(file_path)
+            self.invert_theme_cb.setChecked(False)
+            self.invert_current_cb.setChecked(False)
+            self._update_icon_preview()
 
     def _clear_icon(self):
         """清除自定义图标"""
@@ -718,7 +1179,7 @@ class CommandDialog(BaseDialog):
         self.invert_theme_cb.setChecked(False)
         self.invert_current_cb.setChecked(False)
         self._update_icon_preview()
-    
+
     def _on_invert_theme_changed(self, state):
         """随主题反转勾选变化"""
         self.invert_current_cb.setEnabled(bool(state))
@@ -729,30 +1190,43 @@ class CommandDialog(BaseDialog):
     def _on_ok(self):
         """确定"""
         name = self.name_edit.text().strip()
-        
+
         type_index = self.type_combo.currentIndex()
         if type_index == 2: # Built-in
             command = self.builtin_combo.currentData()
         else:
             command = self.command_edit.toPlainText().strip()
-        
+
         if not name:
             self.name_edit.setFocus()
+            try:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+                ThemedMessageBox.warning(self, "校验失败", "请输入命令名称！")
+            except Exception:
+                pass
             return
-        
+
         if not command:
             if type_index == 2:
                 pass # 内置命令一定有值
             else:
                 self.command_edit.setFocus()
+                try:
+                    from ui.styles.themed_messagebox import ThemedMessageBox
+                    ThemedMessageBox.warning(self, "校验失败", "请输入命令内容！")
+                except Exception:
+                    pass
                 return
-        
+
+        if self.variable_expansion_cb.isChecked() and "{selected_text" in command and self.trigger_immediate_rb.isChecked():
+            self.trigger_after_close_rb.setChecked(True)
+
         self.accept()
-    
+
     def get_shortcut(self) -> ShortcutItem:
         """获取快捷方式"""
         self.shortcut.name = self.name_edit.text().strip()[:6]
-        
+
         type_index = self.type_combo.currentIndex()
         if type_index == 0:
             self.shortcut.command_type = 'cmd'
@@ -763,9 +1237,13 @@ class CommandDialog(BaseDialog):
         else:
             self.shortcut.command_type = 'builtin'
             self.shortcut.command = self.builtin_combo.currentData()
-            
+
         self.shortcut.trigger_mode = 'after_close' if self.trigger_after_close_rb.isChecked() else 'immediate'
         self.shortcut.show_window = self.show_window_cb.isChecked()
+        self.shortcut.working_dir = self.workdir_edit.text().strip()
+        self.shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
+        self.shortcut.python_execution_mode = 'legacy_inline' if self.python_legacy_cb.isChecked() else 'subprocess'
+        self.shortcut.command_variables_enabled = self.variable_expansion_cb.isChecked()
         self.shortcut.icon_path = self._custom_icon_path
         self.shortcut.type = ShortcutType.COMMAND
         self.shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
@@ -773,62 +1251,4 @@ class CommandDialog(BaseDialog):
         if self.invert_theme_cb.isChecked():
             self.shortcut.icon_invert_theme_when_set = getattr(self, 'theme', 'dark')
         return self.shortcut
-    
-    def showEvent(self, event):
-        """显示时应用阴影效果"""
-        super().showEvent(event)
-        
-        # 居中对齐父窗口
-        self._center_on_parent()
-        
-        if not getattr(self, '_shadow_applied', False):
-            self._shadow_applied = True
-            # 延迟一小段时间应用，确保窗口几何信息已准备就绪
-            QTimer.singleShot(100, self._apply_effects)
-            
-        # 启动出现动画
-        self._start_show_animation()
-    
-    def _start_show_animation(self):
-        """窗口出现动画 (0.2s)"""
-        # 1. 透明度动画
-        self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
-        self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
-        self.opacity_anim.setEndValue(1.0)
-        self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
-        
-        # 2. 位置动画 (微升 20px)
-        pos = self.pos()
-        self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
-        self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
-        self.pos_anim.setEndValue(pos)
-        self.pos_anim.setEasingCurve(QtCompat.OutCubic)
-        
-        # 并行运行
-        self.anim_group = QtCompat.QParallelAnimationGroup()
-        self.anim_group.addAnimation(self.opacity_anim)
-        self.anim_group.addAnimation(self.pos_anim)
-        self.anim_group.start()
-            
-    def _center_on_parent(self):
-        """居中显示在主窗口（ConfigWindow）"""
-        center_dialog_on_main_window(self)
-            
-    def _apply_effects(self):
-        """应用窗口特效 - 圆角 + 磨砂玻璃"""
-        try:
-            hwnd = int(self.winId())
-            effect = get_window_effect()
-            theme = getattr(self, 'theme', 'dark')
-            if is_win11():
-                effect.set_round_corners(hwnd, enable=True)
-                effect.enable_window_shadow(hwnd, self.corner_radius)
-            else:
-                w, h = self.width(), self.height()
-                if w > 0 and h > 0:
-                    effect.set_window_region(hwnd, w, h, self.corner_radius)
-            enable_acrylic_for_config_window(self, theme, blur_amount=10)
-        except Exception:
-            pass
+

@@ -1,9 +1,6 @@
 """完美圆角的自定义 Tooltip"""
 
-from qt_compat import (
-    QWidget, QLabel, QVBoxLayout, QTimer, QApplication, QCursor,
-    Qt, QPainter, QPainterPath, QColor
-)
+from qt_compat import QApplication, QColor, QCursor, QLabel, QPainter, QPainterPath, Qt, QTimer, QVBoxLayout, QWidget
 
 
 class CustomToolTip(QWidget):

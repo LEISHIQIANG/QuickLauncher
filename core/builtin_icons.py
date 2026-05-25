@@ -1,7 +1,8 @@
 """内置图标管理模块"""
-import os
 import json
-from typing import List, Dict
+import os
+from typing import Dict, List
+
 from core import ShortcutItem, ShortcutType
 
 

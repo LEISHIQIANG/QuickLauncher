@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
+      - name: Compile
+        run: python -m compileall -q commercial core hooks ui tests main.py
+      - name: Lint
+        run: >
+          python -m ruff check --select F
+          commercial/__init__.py
+          commercial/errors.py
+          core/__init__.py
+          core/command_risk.py
+          core/data_models.py
+          core/shortcut_command_exec.py
+          core/version.py
+          scripts/read_project_version.py
+          tests/test_command_risk.py
+          tests/test_command_variables.py
+          tests/test_data_manager.py
+          tests/test_hooks_wrapper.py
+          tests/test_release_metadata.py
+          tests/test_shortcut_command_exec.py
+          ui/config_window/command_dialog.py
+      - name: Tests
+        run: python -m pytest tests/ -q

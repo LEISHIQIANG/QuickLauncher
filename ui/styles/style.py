@@ -6,15 +6,23 @@
 以及统一的颜色方案和样式表生成器。
 """
 
+import logging
 import os
 import sys
-import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from qt_compat import (
-    QWidget, QVBoxLayout, QPushButton, QApplication,
-    QPainter, QColor, QPen, QRectF, QPainterPath,
-    QtCompat, Qt
+    QApplication,
+    QColor,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPushButton,
+    QRectF,
+    Qt,
+    QtCompat,
+    QVBoxLayout,
+    QWidget,
 )
 
 
@@ -22,20 +30,20 @@ class Colors:
     """
     设计规范颜色常量
     """
-    
+
     # 系统蓝色
     BLUE = "#007AFF"
     BLUE_LIGHT = "#0A84FF"
-    
+
     # 系统绿色
     # 系统绿色 (改为青色)
     GREEN = "#30B0C7"
     GREEN_LIGHT = "#40C8E0"
-    
+
     # 系统红色
     RED = "#FF3B30"
     RED_LIGHT = "#FF453A"
-    
+
     # 系统灰色
     GRAY = "#8E8E93"
     GRAY2 = "#636366"
@@ -43,7 +51,7 @@ class Colors:
     GRAY4 = "#3A3A3C"
     GRAY5 = "#2C2C2E"
     GRAY6 = "#1C1C1E"
-    
+
     # 深色主题背景
     DARK_BG_PRIMARY = "rgba(28, 28, 30, 0.85)"
     DARK_BG_SECONDARY = "rgba(44, 44, 46, 0.85)"
@@ -52,7 +60,7 @@ class Colors:
     DARK_TEXT_SECONDARY = "#8E8E93"
     DARK_BORDER = "rgba(255, 255, 255, 0.1)"
     DARK_SEPARATOR = "rgba(255, 255, 255, 0.16)"
-    
+
     # 浅色主题背景
     LIGHT_BG_PRIMARY = "rgba(242, 242, 247, 0.8)"
     LIGHT_BG_SECONDARY = "rgba(255, 255, 255, 0.8)"
@@ -61,33 +69,33 @@ class Colors:
     LIGHT_TEXT_SECONDARY = "#8E8E93"
     LIGHT_BORDER = "rgba(0, 0, 0, 0.08)"
     LIGHT_SEPARATOR = "rgba(60, 60, 67, 0.18)"
-    
+
     # 通用圆角
     RADIUS_SMALL = 8
     RADIUS_MEDIUM = 10
     RADIUS_LARGE = 12
     RADIUS_XLARGE = 16
-    
+
     @classmethod
     def get_bg_primary(cls, theme: str) -> str:
         return cls.DARK_BG_PRIMARY if theme == "dark" else cls.LIGHT_BG_PRIMARY
-    
+
     @classmethod
     def get_bg_secondary(cls, theme: str) -> str:
         return cls.DARK_BG_SECONDARY if theme == "dark" else cls.LIGHT_BG_SECONDARY
-    
+
     @classmethod
     def get_text_primary(cls, theme: str) -> str:
         return cls.DARK_TEXT_PRIMARY if theme == "dark" else cls.LIGHT_TEXT_PRIMARY
-    
+
     @classmethod
     def get_text_secondary(cls, theme: str) -> str:
         return cls.DARK_TEXT_SECONDARY if theme == "dark" else cls.LIGHT_TEXT_SECONDARY
-    
+
     @classmethod
     def get_border(cls, theme: str) -> str:
         return cls.DARK_BORDER if theme == "dark" else cls.LIGHT_BORDER
-    
+
     @classmethod
     def get_accent(cls, theme: str) -> str:
         return cls.BLUE_LIGHT if theme == "dark" else cls.BLUE
@@ -320,7 +328,7 @@ class PopupMenu(QWidget):
     def _apply_blur_effect(self):
         """应用磨砂玻璃模糊效果 + 圆角裁剪（与主配置窗口风格一致）"""
         try:
-            from ui.utils.window_effect import get_window_effect, is_win11, is_win10
+            from ui.utils.window_effect import get_window_effect, is_win11
 
             hwnd = int(self.winId())
             if not hwnd:
@@ -337,9 +345,9 @@ class PopupMenu(QWidget):
                 # DWM DWMWCP_ROUND 圆角约 8px，同步 paintEvent 圆角半径以完美重合
                 self._radius = 8
                 if self._theme == "dark":
-                    gradient_color = f"c81c1c1e"  # alpha=200, 深灰
+                    gradient_color = "c81c1c1e"  # alpha=200, 深灰
                 else:
-                    gradient_color = f"c8f2f2f7"  # alpha=200, 浅灰
+                    gradient_color = "c8f2f2f7"  # alpha=200, 浅灰
                 effect.set_acrylic(hwnd, gradient_color, enable=True, blur=True)
             else:
                 # Win10: 使用窗口区域裁剪 + DWM Blur Behind
@@ -348,9 +356,9 @@ class PopupMenu(QWidget):
                     effect.set_dwm_blur_behind(hwnd, w, h, r, enable=True)
                 # 应用半透明着色层
                 if self._theme == "dark":
-                    gradient_color = f"c81c1c1e"
+                    gradient_color = "c81c1c1e"
                 else:
-                    gradient_color = f"c8f2f2f7"
+                    gradient_color = "c8f2f2f7"
                 effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
 
             self._blur_applied = True
@@ -415,7 +423,7 @@ class StyleSheet:
     """
     简约风格样式表生成器
     """
-    
+
     @staticmethod
     def get_button_style(theme: str) -> str:
         """获取按钮样式 - 苹果奶白风格"""
@@ -531,49 +539,6 @@ class StyleSheet:
             """
 
     @staticmethod
-    def get_groupbox_style(theme: str) -> str:
-        """获取分组框样式 - 紧凑风格"""
-        if theme == "dark":
-            return """
-                QGroupBox {
-                    font-weight: 400;
-                    border: none;
-                    margin-top: 2px;
-                    padding-top: 14px;
-                    font-size: 11px;
-                    color: white;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: padding;
-                    subcontrol-position: top left;
-                    left: 0px;
-                    padding: 0px 0px 3px 0px;
-                    background-color: transparent;
-                    color: #ffffff;
-                }
-            """
-        else:
-            return """
-                QGroupBox {
-                    font-weight: 400;
-                    border: none;
-                    margin-top: 2px;
-                    padding-top: 14px;
-                    font-size: 11px;
-                    color: #1c1c1e;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    subcontrol-position: top left;
-                    left: 0px;
-                    top: -6px;
-                    padding: 0px 0px 3px 0px;
-                    background-color: transparent;
-                    color: #1c1c1e;
-                }
-            """
-    
-    @staticmethod
     def get_scrollbar_style(theme: str) -> str:
         """获取滚动条样式"""
         if theme == "dark":
@@ -582,7 +547,7 @@ class StyleSheet:
         else:
             handle_color = "rgba(0, 0, 0, 60)"
             handle_hover = "rgba(0, 0, 0, 100)"
-            
+
         return f"""
             QScrollBar:vertical {{
                 border: none;
@@ -627,7 +592,7 @@ class StyleSheet:
                 background: none;
             }}
         """
-    
+
     @staticmethod
     def get_combobox_style(theme: str) -> str:
         """获取下拉框样式"""
@@ -740,7 +705,7 @@ class StyleSheet:
                     color: #ffffff;
                 }
             """
-    
+
     @staticmethod
     def get_groupbox_style(theme: str) -> str:
         """获取分组框样式 - 极简风格"""
@@ -782,13 +747,13 @@ class StyleSheet:
                     color: #1c1c1e;
                 }
             """
-    
+
     @staticmethod
     def get_slider_style(theme: str) -> str:
         """获取滑块样式"""
         accent = "#0A84FF" if theme == "dark" else "#007AFF"
         track_bg = "#3a3a3c" if theme == "dark" else "#D1D1D6"
-        
+
         # 处理手柄边框，使其更柔和以避免毛刺感
         if theme == "dark":
             handle_border = "1px solid rgba(0, 0, 0, 0.2)"
@@ -796,7 +761,7 @@ class StyleSheet:
         else:
             handle_border = "1px solid rgba(0, 0, 0, 0.05)"
             handle_bg = "#ffffff"
-        
+
         return f"""
             QSlider::groove:horizontal {{
                 height: 4px;
@@ -834,7 +799,7 @@ class Glassmorphism:
     磨砂玻璃拟态样式生成器
     提供 Glassmorphism + Neumorphism 混合效果
     """
-    
+
     @staticmethod
     def get_glassmorphism_container_style(theme: str) -> str:
         """获取磨砂玻璃容器背景样式（用于主窗口背景）"""
@@ -850,7 +815,7 @@ class Glassmorphism:
                 border: 1px solid rgba(0, 0, 0, 0.05);
                 border-radius: 12px;
             """
-    
+
     @staticmethod
     def get_neumorphism_button_style(theme: str) -> str:
         """获取拟态按钮样式（带柔和阴影）"""
@@ -929,7 +894,7 @@ class Glassmorphism:
                     color: rgba(60, 60, 67, 0.3);
                 }
             """
-    
+
     @staticmethod
     def get_flat_action_button_style(theme: str) -> str:
         """获取扁平操作按钮样式（与主配置窗口底部四按钮一致）"""
@@ -957,6 +922,128 @@ class Glassmorphism:
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
             QPushButton:disabled {{ background-color: rgba(255,255,255,0.3); color: #C7C7CC; }}
         """
+
+    @staticmethod
+    def get_action_button_style(theme: str, is_compact: bool = False, is_delete: bool = False) -> str:
+        """获取设置/配置窗口按钮的统一精细样式 (保证视觉 100% 一致)"""
+        if is_delete:
+            if theme == "dark":
+                return """
+                    QPushButton {
+                        font-size: 10px;
+                        padding: 2px 4px;
+                        margin: 0px;
+                        background: rgba(244, 67, 54, 0.15);
+                        border: 1px solid rgba(244, 67, 54, 0.3);
+                        border-radius: 4px;
+                        color: #ff5252;
+                        font-weight: 400;
+                    }
+                    QPushButton:hover {
+                        background-color: rgba(244, 67, 54, 0.25);
+                        border: 1px solid rgba(244, 67, 54, 0.5);
+                        color: #ff7979;
+                    }
+                    QPushButton:pressed { opacity: 0.7; }
+                    QPushButton:disabled {
+                        color: rgba(128,128,128,0.4);
+                        background: rgba(128,128,128,0.08);
+                        border: 1px solid rgba(128,128,128,0.15);
+                    }
+                """
+            else:
+                return """
+                    QPushButton {
+                        font-size: 10px;
+                        padding: 2px 4px;
+                        margin: 0px;
+                        background: rgba(211, 47, 47, 0.08);
+                        border: 1px solid rgba(211, 47, 47, 0.25);
+                        border-radius: 4px;
+                        color: #d32f2f;
+                        font-weight: 400;
+                    }
+                    QPushButton:hover {
+                        background-color: rgba(211, 47, 47, 0.15);
+                        border: 1px solid rgba(211, 47, 47, 0.45);
+                        color: #c62828;
+                    }
+                    QPushButton:pressed { opacity: 0.7; }
+                    QPushButton:disabled {
+                        color: rgba(128,128,128,0.4);
+                        background: rgba(128,128,128,0.08);
+                        border: 1px solid rgba(128,128,128,0.15);
+                    }
+                """
+
+        if theme == "dark":
+            btn_bg = "rgba(255,255,255,0.18)"
+            btn_border = "rgba(255,255,255,0.22)"
+            btn_hover = "rgba(255,255,255,0.28)"
+            btn_hover_text = "rgba(255,255,255,0.95)"
+            text_color = "rgba(255,255,255,0.85)"
+        else:
+            btn_bg = "rgba(255,255,255,0.75)"
+            btn_border = "rgba(255,255,255,0.35)"
+            btn_hover = "rgba(255,255,255,0.95)"
+            btn_hover_text = "rgba(28,28,30,0.9)"
+            text_color = "rgba(28,28,30,0.75)"
+
+        if is_compact:
+            return f"""
+                QPushButton {{
+                    font-size: 10px;
+                    padding: 2px 4px;
+                    margin: 0px;
+                    background: {btn_bg};
+                    border: 1px solid {btn_border};
+                    border-radius: 4px;
+                    color: {text_color};
+                    font-weight: 400;
+                }}
+                QPushButton:hover {{
+                    background-color: {btn_hover};
+                    color: {btn_hover_text};
+                }}
+                QPushButton:pressed {{ opacity: 0.7; }}
+                QPushButton:disabled {{
+                    color: rgba(128,128,128,0.4);
+                    background: rgba(128,128,128,0.08);
+                    border: 1px solid rgba(128,128,128,0.15);
+                }}
+                QPushButton:checked {{
+                    background-color: rgba(10,132,255,0.85);
+                    color: white;
+                    border: 1px solid rgba(10,132,255,0.9);
+                }}
+            """
+        else:
+            return f"""
+                QPushButton {{
+                    font-size: 11px;
+                    padding: 5px 12px;
+                    background: {btn_bg};
+                    border: 1px solid {btn_border};
+                    border-radius: 8px;
+                    color: {text_color};
+                    font-weight: 400;
+                }}
+                QPushButton:hover {{
+                    background-color: {btn_hover};
+                    color: {btn_hover_text};
+                }}
+                QPushButton:pressed {{ opacity: 0.7; }}
+                QPushButton:disabled {{
+                    color: rgba(128,128,128,0.4);
+                    background: rgba(128,128,128,0.08);
+                    border: 1px solid rgba(128,128,128,0.15);
+                }}
+                QPushButton:checked {{
+                    background-color: rgba(10,132,255,0.85);
+                    color: white;
+                    border: 1px solid rgba(10,132,255,0.9);
+                }}
+            """
 
     @staticmethod
     def get_neumorphism_input_style(theme: str) -> str:
@@ -1077,7 +1164,7 @@ class Glassmorphism:
                     border: none;
                 }
             """
-    
+
     @staticmethod
     def get_neumorphism_groupbox_style(theme: str) -> str:
         """获取拟态分组框样式（内嵌效果）"""
@@ -1125,7 +1212,7 @@ class Glassmorphism:
                     font-size: 11px;
                 }
             """
-    
+
     @staticmethod
     def get_neumorphism_list_style(theme: str) -> str:
         """获取拟态列表样式"""
@@ -1179,7 +1266,7 @@ class Glassmorphism:
                     background: rgba(0, 0, 0, 0.03);
                 }
             """
-    
+
     @staticmethod
     def get_full_glassmorphism_stylesheet(theme: str) -> str:
         """获取完整的磨砂玻璃拟态样式表"""
@@ -1187,7 +1274,7 @@ class Glassmorphism:
         scrollbar = StyleSheet.get_scrollbar_style(theme)
         slider = StyleSheet.get_slider_style(theme)
         combobox = StyleSheet.get_combobox_style(theme)
-        
+
         if theme == "dark":
             base = """
                 QWidget {
@@ -1300,7 +1387,7 @@ class Glassmorphism:
                     font-weight: 400;
                 }
             """
-        
+
         return (
             base +
             glass.get_neumorphism_button_style(theme) +
@@ -1376,9 +1463,9 @@ def get_menu_stylesheet(theme: str) -> str:
 def get_dialog_stylesheet(theme: str) -> str:
     """获取对话框完整样式表"""
     style = StyleSheet
-    
+
     font_family = '"Source Han Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif'
-    
+
     if theme == "dark":
         text_primary = Colors.DARK_TEXT_PRIMARY
         text_secondary = Colors.DARK_TEXT_SECONDARY
@@ -1443,7 +1530,7 @@ def get_dialog_stylesheet(theme: str) -> str:
             image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><circle cx='12' cy='12' r='5'/></svg>");
         }}
     """
-    
+
     return (
         base +
         style.get_button_style(theme) +
@@ -1459,94 +1546,3 @@ def get_button_stylesheet(theme: str) -> str:
     """获取按钮样式表"""
     return StyleSheet.get_button_style(theme)
 
-
-class CustomToolTip(QWidget):
-    """完美圆角的自定义 Tooltip"""
-
-    _instance = None
-    _timer = None
-
-    def __init__(self):
-        super().__init__(None)
-        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-
-        from qt_compat import QLabel, QGraphicsDropShadowEffect
-        self.label = QLabel(self)
-        self.label.setWordWrap(False)
-        self.label.setAlignment(Qt.AlignCenter)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.label)
-
-        self._theme = "dark"
-        self._update_style()
-
-    def _update_style(self):
-        if self._theme == "dark":
-            bg = "rgba(44, 44, 48, 240)"
-            text = "#ffffff"
-            border = "rgba(255, 255, 255, 0.15)"
-        else:
-            bg = "rgba(255, 255, 255, 240)"
-            text = "#1c1c1e"
-            border = "rgba(0, 0, 0, 0.1)"
-
-        self.label.setStyleSheet(f"""
-            QLabel {{
-                background: {bg};
-                color: {text};
-                border: 1px solid {border};
-                border-radius: 6px;
-                padding: 4px 8px;
-                font-size: 11px;
-            }}
-        """)
-
-    def showText(self, text: str, pos, theme: str = "dark"):
-        self._theme = theme
-        self._update_style()
-        self.label.setText(text)
-        self.adjustSize()
-
-        from qt_compat import QCursor
-        cursor_pos = QCursor.pos()
-        x = cursor_pos.x() + 15
-        y = cursor_pos.y() + 20
-
-        screen = QApplication.screenAt(cursor_pos)
-        if screen:
-            geo = screen.availableGeometry()
-            if x + self.width() > geo.right():
-                x = cursor_pos.x() - self.width() - 5
-            if y + self.height() > geo.bottom():
-                y = cursor_pos.y() - self.height() - 5
-
-        self.move(x, y)
-        self.show()
-        self.raise_()
-
-    @classmethod
-    def showToolTip(cls, text: str, theme: str = "dark"):
-        if cls._instance is None:
-            cls._instance = CustomToolTip()
-
-        if cls._timer:
-            cls._timer.stop()
-
-        from qt_compat import QTimer, QCursor
-        cls._instance.showText(text, QCursor.pos(), theme)
-
-        cls._timer = QTimer()
-        cls._timer.setSingleShot(True)
-        cls._timer.timeout.connect(cls._instance.hide)
-        cls._timer.start(3000)
-
-    @classmethod
-    def hideToolTip(cls):
-        if cls._instance:
-            cls._instance.hide()
-        if cls._timer:
-            cls._timer.stop()

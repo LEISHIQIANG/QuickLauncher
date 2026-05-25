@@ -21,13 +21,13 @@ from qt_compat import (
     QWidget, QApplication, Qt, QtCompat, QPoint, QTimer, QRect,
     QPixmap, QPainter, QColor, QFont, QBrush, QPen, QPainterPath, QCursor,
     pyqtSignal, QImage, QRectF, QImageReader, QSize, QImageIOHandler, QThread,
-    QGraphicsDropShadowEffect, QRegion, QBitmap, pyqtProperty
+    QGraphicsDropShadowEffect, QRegion, QBitmap, pyqtProperty, QFontMetrics
 )
 
 from core import DataManager, ShortcutItem, ShortcutType
 from core.windows_uipi import allow_drag_drop_for_widget
 from ui.utils.window_effect import WindowEffect, is_win11, is_win10, enable_acrylic_for_config_window, get_window_effect
-from core.display_debug_logger import get_display_debug_logger
+# from core.display_debug_logger import get_display_debug_logger
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ from ui.launcher_popup.popup_background import PopupBackgroundMixin
 from ui.launcher_popup.popup_renderer import PopupRendererMixin
 from ui.launcher_popup.popup_drag_drop import PopupDragDropMixin
 from ui.launcher_popup.popup_icons import PopupIconMixin
+from ui.launcher_popup.popup_command_result import PopupCommandResultMixin
 
 try:
     from core import ShortcutExecutor
@@ -57,7 +58,174 @@ except ImportError:
     _should_invert_icon = None
 
 
-class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin, PopupIconMixin, QWidget):
+class FolderSyncWorker(QThread):
+    """后台文件夹同步工作线程，避免 GUI 线程卡顿"""
+    def __init__(self, launcher):
+        super().__init__(launcher)
+        self.launcher = launcher
+
+    def run(self):
+        try:
+            self.launcher._sync_all_folders()
+        except Exception as e:
+            logger.error(f"后台文件夹同步失败: {e}")
+
+
+class IconFlashOverlay(QWidget):
+    """Lightweight icon flash layer that does not repaint the launcher content."""
+
+    def __init__(self, launcher):
+        super().__init__(launcher)
+        self.launcher = launcher
+        self._opacity = 0.0
+        self._started_at = 0.0
+        self._duration_ms = 220
+        self._items = []
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self._tick)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.hide()
+
+    def start(self):
+        self.setGeometry(self.launcher.rect())
+        self._items = list(self._snapshot_icons())
+        if not self._items:
+            return
+        self.raise_()
+        self.show()
+        self._started_at = time.perf_counter()
+        self._opacity = 0.0
+        if not self._timer.isActive():
+            self._timer.start()
+        self.update()
+
+    def stop(self):
+        if self._timer.isActive():
+            self._timer.stop()
+        self._opacity = 0.0
+        self._items = []
+        self.hide()
+
+    def _tick(self):
+        elapsed_ms = (time.perf_counter() - self._started_at) * 1000.0
+        t = max(0.0, min(1.0, elapsed_ms / self._duration_ms))
+        if t >= 1.0:
+            self.stop()
+            return
+
+        if t < 0.42:
+            pulse_t = t / 0.42
+            self._opacity = 0.68 * (1.0 - abs(2.0 * pulse_t - 1.0))
+        else:
+            pulse_t = (t - 0.42) / 0.58
+            self._opacity = 0.48 * (1.0 - abs(2.0 * pulse_t - 1.0))
+        self.update()
+
+    def _snapshot_icons(self):
+        launcher = self.launcher
+        icon_size = int(getattr(launcher, "icon_size", 0) or 0)
+        if icon_size <= 0:
+            return
+
+        pages = getattr(launcher, "pages", []) or []
+        current_page = int(getattr(launcher, "current_page", 0) or 0)
+        cols = max(1, int(getattr(launcher, "cols", 1) or 1))
+        fixed_rows = max(1, int(getattr(launcher, "fixed_rows", 1) or 1))
+        cell_size = int(getattr(launcher, "cell_size", icon_size) or icon_size)
+        cell_h = int(getattr(launcher, "cell_h", cell_size) or cell_size)
+        padding = int(getattr(launcher, "padding", 0) or 0)
+        text_h = QFontMetrics(getattr(launcher, "_label_font", launcher.font())).height()
+        text_spacing = 1
+        use_card = getattr(getattr(launcher, "settings", None), "bg_mode", "theme") == "acrylic"
+
+        if 0 <= current_page < len(pages):
+            items = getattr(pages[current_page], "items", []) or []
+            for i, item in enumerate(items[:cols * fixed_rows]):
+                row = i // cols
+                col = i % cols
+                x = padding + col * cell_size
+                y = padding + row * cell_h
+                if use_card:
+                    card_pad = 2
+                    card_size = icon_size + card_pad * 2
+                    total_h = card_size + text_spacing + text_h
+                    card_y = y + (cell_h - total_h) // 2
+                    card_x = x + (cell_size - card_size) // 2
+                    icon_x = card_x + card_pad
+                    icon_y = card_y + card_pad
+                else:
+                    total_h = icon_size + text_spacing + text_h
+                    icon_x = x + (cell_size - icon_size) // 2
+                    icon_y = y + (cell_h - total_h) // 2
+                pixmap = self._icon_pixmap(item)
+                if pixmap is not None:
+                    yield icon_x, icon_y, pixmap, self._cover_pixmap(pixmap)
+
+        dock_items = getattr(launcher, "dock_items", []) or []
+        dock_height = int(getattr(launcher, "dock_height", 0) or 0)
+        if dock_items and dock_height > 0:
+            dock_height_mode = max(1, int(getattr(launcher.settings, "dock_height_mode", 1) or 1))
+            visible_count = len(dock_items)
+            if dock_height_mode == 1:
+                visible_count = min(visible_count, cols)
+            line_width = (
+                cols * cell_size
+                if dock_height_mode > 1 and visible_count > cols
+                else min(visible_count, cols) * cell_size
+            )
+            start_x = (launcher.width() - line_width) // 2
+            dock_y = int(getattr(launcher, "dock_y", 0) or 0)
+            dock_row_stride = icon_size + 6
+            for i in range(visible_count):
+                row = i // cols
+                if row >= dock_height_mode:
+                    break
+                col = i % cols
+                x = start_x + col * cell_size
+                y = dock_y + 8 + row * dock_row_stride
+                icon_x = x + (cell_size - icon_size) // 2
+                pixmap = self._icon_pixmap(dock_items[i])
+                if pixmap is not None:
+                    yield icon_x, y, pixmap, self._cover_pixmap(pixmap)
+
+    def _icon_pixmap(self, item):
+        try:
+            pixmap = self.launcher._get_icon(item)
+        except Exception:
+            return None
+        if pixmap is None or pixmap.isNull():
+            return None
+        return pixmap
+
+    def _cover_pixmap(self, pixmap):
+        cover = QPixmap(pixmap.size())
+        cover.fill(QtCompat.transparent)
+        painter = QPainter(cover)
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        theme = getattr(getattr(self.launcher, "settings", None), "theme", "dark")
+        color = QColor(28, 28, 30) if theme == "dark" else QColor(242, 242, 247)
+        painter.fillRect(cover.rect(), color)
+        painter.end()
+        return cover
+
+    def paintEvent(self, event):
+        if self._opacity <= 0.0:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QtCompat.SmoothPixmapTransform)
+        painter.setOpacity(self._opacity)
+        for x, y, _pixmap, cover in self._items:
+            painter.drawPixmap(x, y, cover)
+        painter.end()
+
+
+class LauncherPopup(PopupCommandResultMixin, PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin, PopupIconMixin, QWidget):
     """弹出启动器窗口"""
     
     # 启动错误信号 (name, error_msg)
@@ -74,7 +242,19 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
     # 设置更新信号
     settings_updated = pyqtSignal()
     
-    def __init__(self, data_manager: DataManager, x: int, y: int, tray_app=None):
+    # 文件夹同步完成信号
+    folder_sync_finished = pyqtSignal()
+    
+    def __init__(
+        self,
+        data_manager: DataManager,
+        x: int,
+        y: int,
+        tray_app=None,
+        selection_trigger_pos=None,
+        trigger_method: str = "mouse",
+        capture_selection: bool = True,
+    ):
         super().__init__()
 
         # 保存 TrayApp 引用
@@ -84,6 +264,7 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         # 连接信号
         self.bg_loaded_signal.connect(self._on_bg_loaded)
         self.execution_error.connect(self._on_execution_error)
+        self.folder_sync_finished.connect(self._on_folder_sync_finished)
         self._is_loading_bg = False
         self._pending_bg_params = None
         self._bg_load_timer = QTimer(self)
@@ -153,6 +334,8 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         self._visible_icons_preloaded = False
         self._first_show_ready = False
         self._blank_refresh_in_progress = False
+        self._icon_flash_overlay = IconFlashOverlay(self)
+        self._sync_worker = None
         # 使用全局字体
         self._label_font = QFont()
         self._label_font.setPointSize(7)
@@ -176,10 +359,11 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
                 current_hwnd = win32gui.GetForegroundWindow()
             except Exception as e:
                 logger.debug("Failed to capture foreground window during init: %s", e)
-        self._selected_files_trigger_pos = (int(x), int(y))
+        self._selected_files_trigger_pos = selection_trigger_pos if selection_trigger_pos is not None else (int(x), int(y))
                  
         # 异步检测选中文件
-        self._start_file_check(current_hwnd)
+        if capture_selection:
+            self._start_file_check(current_hwnd)
         
         # ===== 拖放相关状态 =====
         self._drag_hover_index = -1  # 拖放时悬停的图标索引
@@ -394,6 +578,9 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         super().hide()
 
     def hideEvent(self, event):
+        overlay = getattr(self, "_icon_flash_overlay", None)
+        if overlay is not None:
+            overlay.stop()
         try:
             if self._auto_close_timer.isActive():
                 self._auto_close_timer.stop()
@@ -651,6 +838,9 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
     def resizeEvent(self, event):
         self._bg_cache = None
         self._cached_bg_path = None
+        overlay = getattr(self, "_icon_flash_overlay", None)
+        if overlay is not None:
+            overlay.setGeometry(self.rect())
         QTimer.singleShot(0, self._update_window_effect)
         super().resizeEvent(event)
 
@@ -815,7 +1005,7 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         except Exception as e:
             logger.debug(f"preload visible icons failed: {e}")
 
-    def prepare_first_show(self):
+    def prepare_first_show(self, create_native_window: bool = True):
         """Warm up Qt's first paint path before the popup is shown to the user."""
         if self._first_show_ready:
             return
@@ -825,11 +1015,12 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         except Exception:
             pass
 
-        try:
-            # Force native window creation while the popup is still off-screen.
-            self.winId()
-        except Exception:
-            pass
+        if create_native_window:
+            try:
+                # Force native window creation while the popup is still off-screen.
+                self.winId()
+            except Exception:
+                pass
 
         try:
             self.preload_background()
@@ -944,18 +1135,20 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
         y: int = None,
         refresh_selection: bool = True,
         force: bool = False,
-        reposition: bool = True
+        reposition: bool = True,
+        selection_trigger_pos=None,
+        trigger_method: str = "mouse",
+        capture_selection: bool = True,
+        preserve_search_state: bool = False,
     ):
         """刷新数据并重置位置"""
         # 强制刷新屏幕DPI信息
         QApplication.processEvents()
 
         current_revision = self.data_manager.get_runtime_revision()
-        revision_changed = force or current_revision != getattr(self, "_model_revision", -1)
+        revision_changed = current_revision != getattr(self, "_model_revision", -1)
         self._model_revision = current_revision
         if revision_changed:
-            self._icon_pixmap_cache.clear()
-            self._default_icon_cache.clear()
             self._visible_icons_preloaded = False
             self._first_show_ready = False
             self._cached_bg_path = None
@@ -1015,14 +1208,15 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
                 current_hwnd = win32gui.GetForegroundWindow()
             except Exception as e:
                 logger.debug("Failed to capture foreground window before show: %s", e)
-            if x is not None and y is not None:
+            
+            if selection_trigger_pos is not None:
+                self._selected_files_trigger_pos = selection_trigger_pos
+            elif x is not None and y is not None:
                 self._selected_files_trigger_pos = (int(x), int(y))
 
         # 3. 延迟执行耗时的 COM 操作 (文件查找)
         # 使用线程处理，避免阻塞 UI
-        # 3. 延迟执行耗时的 COM 操作 (文件查找)
-        # 使用线程处理，避免阻塞 UI
-        if refresh_selection:
+        if refresh_selection and capture_selection:
             self._start_file_check(current_hwnd)
         
         # 4. 始终重新计算窗口大小 (因为 reload 移除后，prev_item_count 比较不再可靠)
@@ -1095,7 +1289,6 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
             
         self.updateGeometry()
         self.update()
-        self.repaint()  # 强制立即重绘，确保不出现视觉残留
         
         # 保存前台窗口 (如果需要)
         if HAS_EXECUTOR:
@@ -1103,9 +1296,6 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
                 ShortcutExecutor.save_foreground_window()
             except Exception:
                 pass
-        
-        # 确保重绘
-        self.update()
 
     def _sync_all_folders(self):
         """同步所有文件夹 - 等同于配置窗口的手动同步功能"""
@@ -1137,36 +1327,15 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
             logger.error(f"同步文件夹失败: {e}")
 
     def _flash_icons(self):
-        """图标闪烁效果 - 模拟桌面刷新的视觉反馈"""
-        # 保存原始透明度
-        original_alpha = self.settings.icon_alpha
+        """Flash icons through a cheap child overlay instead of repainting icons."""
+        overlay = getattr(self, "_icon_flash_overlay", None)
+        if overlay is not None and self.isVisible():
+            QTimer.singleShot(16, self._start_icon_flash_overlay)
 
-        # 创建闪烁动画序列
-        def flash_step_1():
-            # 第一步：降低透明度
-            self.settings.icon_alpha = 0.3
-            self.update()
-            QTimer.singleShot(50, flash_step_2)
-
-        def flash_step_2():
-            # 第二步：恢复透明度
-            self.settings.icon_alpha = original_alpha
-            self.update()
-            QTimer.singleShot(50, flash_step_3)
-
-        def flash_step_3():
-            # 第三步：再次降低（第二次闪烁）
-            self.settings.icon_alpha = 0.4
-            self.update()
-            QTimer.singleShot(50, flash_step_4)
-
-        def flash_step_4():
-            # 第四步：最终恢复
-            self.settings.icon_alpha = original_alpha
-            self.update()
-
-        # 开始闪烁动画
-        flash_step_1()
+    def _start_icon_flash_overlay(self):
+        overlay = getattr(self, "_icon_flash_overlay", None)
+        if overlay is not None and self.isVisible():
+            overlay.start()
 
 
     # ===== 拖放事件处理 =====
@@ -1217,14 +1386,30 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
 
         return None
 
-    def _refresh_after_folder_sync(self):
-        """同步文件夹后刷新当前弹窗"""
-        self._sync_all_folders()
-        self.refresh_data(refresh_selection=False, force=True, reposition=False)
-        self._flash_icons()
-        if self.tray_app and getattr(self.tray_app, 'config_window', None):
-            if hasattr(self.tray_app.config_window, '_on_settings_panel_changed'):
-                self.tray_app.config_window._on_settings_panel_changed()
+    def _on_folder_sync_finished(self):
+        """Handle completed folder sync on the GUI thread."""
+        self._refresh_after_folder_sync(sync_first=False)
+
+    def _refresh_after_folder_sync(self, sync_first: bool = True):
+        """Refresh after folder sync while preserving transient search state."""
+        try:
+            if sync_first:
+                self._sync_all_folders()
+            self.refresh_data(
+                refresh_selection=False,
+                force=True,
+                reposition=False,
+                preserve_search_state=True,
+            )
+            self._flash_icons()
+            if self.tray_app and getattr(self.tray_app, 'config_window', None):
+                if hasattr(self.tray_app.config_window, '_on_settings_panel_changed'):
+                    self.tray_app.config_window._on_settings_panel_changed()
+            logger.info(f"同步并刷新完成，页面数: {len(self.pages)}, Dock项: {len(self.dock_items)}")
+        except Exception as e:
+            logger.error(f"同步刷新处理失败: {e}")
+        finally:
+            self._blank_refresh_in_progress = False
 
     def _run_blank_area_refresh(self):
         """在双击事件结束后执行空白区刷新，避免重入和窗口抖动"""
@@ -1233,12 +1418,18 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
 
         self._blank_refresh_in_progress = True
         try:
-            logger.info("左键双击空白区域，同步文件夹并刷新图标")
-            self._refresh_after_folder_sync()
-            logger.info(f"同步并刷新完成，页面数: {len(self.pages)}, Dock项: {len(self.dock_items)}")
+            logger.info("左键双击空白区域，异步启动文件夹同步")
+            # 立即提供无延迟的视觉反馈
+            self._flash_icons()
+            
+            # 启动后台同步工作线程
+            self._sync_worker = FolderSyncWorker(self)
+            self._sync_worker.finished.connect(self.folder_sync_finished.emit)
+            self._sync_worker.finished.connect(self._sync_worker.deleteLater)
+            self._sync_worker.finished.connect(lambda: setattr(self, "_sync_worker", None))
+            self._sync_worker.start()
         except Exception as e:
-            logger.error(f"同步并刷新失败: {e}")
-        finally:
+            logger.error(f"启动同步线程失败: {e}")
             self._blank_refresh_in_progress = False
     
     
@@ -1354,13 +1545,18 @@ class LauncherPopup(PopupBackgroundMixin, PopupRendererMixin, PopupDragDropMixin
             super().mouseDoubleClickEvent(event)
             return
 
-        if self._executing or self._blank_refresh_in_progress:
+        if self._executing:
             event.accept()
             return
 
         pos = self._get_event_pos(event)
         if self._get_clicked_item_at(pos):
             super().mouseDoubleClickEvent(event)
+            return
+
+        if self._blank_refresh_in_progress:
+            self._flash_icons()
+            event.accept()
             return
 
         QTimer.singleShot(0, self._run_blank_area_refresh)

@@ -4,12 +4,24 @@
 """
 
 from qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    Qt, QtCompat, QPainter, QPainterPath, QColor, QPen, QTimer, QPoint
+    QColor,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPoint,
+    QPushButton,
+    Qt,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
 )
-from .style import get_dialog_stylesheet
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11
+
+from .style import get_dialog_stylesheet
 
 
 class ThemedMessageBox(QDialog):
@@ -44,6 +56,7 @@ class ThemedMessageBox(QDialog):
         self.title_text = title
         self._theme = "dark"
         self._acrylic_applied = False
+        self._dialog_finished = False
 
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
@@ -155,14 +168,14 @@ class ThemedMessageBox(QDialog):
                         theme = parent.data_manager.get_settings().theme
                         break
                     parent = parent.parent() if hasattr(parent, 'parent') else None
-            except:
+            except Exception:
                 pass
         if theme == "dark" and not self.parent():
             try:
                 from core import DataManager
                 dm = DataManager()
                 theme = dm.get_settings().theme
-            except:
+            except Exception:
                 pass
         return theme
 
@@ -225,6 +238,7 @@ class ThemedMessageBox(QDialog):
     def showEvent(self, event):
         """显示时居中并应用模糊效果"""
         super().showEvent(event)
+        self._dialog_finished = False
         self.adjustSize()
         center_dialog_on_main_window(self)
         if not self._acrylic_applied:
@@ -255,6 +269,8 @@ class ThemedMessageBox(QDialog):
     def _apply_acrylic(self):
         """应用模糊效果 - 与主配置窗口一致"""
         try:
+            if self._dialog_finished or not self.isVisible():
+                return
             from ui.utils.window_effect import enable_acrylic_for_config_window
             hwnd = int(self.winId())
             if not hwnd:
@@ -273,6 +289,17 @@ class ThemedMessageBox(QDialog):
         except Exception:
             pass
 
+    def done(self, result):
+        self._dialog_finished = True
+        for attr in ("anim_group", "opacity_anim", "pos_anim"):
+            anim = getattr(self, attr, None)
+            if anim is not None:
+                try:
+                    anim.stop()
+                except Exception:
+                    pass
+        super().done(result)
+
     @staticmethod
     def information(parent, title, text):
         """显示信息消息框"""
@@ -283,11 +310,22 @@ class ThemedMessageBox(QDialog):
     @staticmethod
     def question(parent, title, text, buttons=None):
         """显示询问消息框"""
+        # 兼容旧版的 signature: question(parent, title, message, theme="dark") -> bool
+        is_legacy = False
+        if isinstance(buttons, str):
+            is_legacy = True
+            buttons = None
+
         if buttons is None:
             buttons = ThemedMessageBox.Yes | ThemedMessageBox.No
+
         dialog = ThemedMessageBox(parent, ThemedMessageBox.Question, title, text, buttons)
         dialog.exec_()
-        return dialog.result()
+        res = dialog.result()
+
+        if is_legacy:
+            return res == ThemedMessageBox.Yes
+        return res
 
     @staticmethod
     def warning(parent, title, text):
@@ -324,6 +362,7 @@ class ThemedInputDialog(QDialog):
         self.ok_clicked = False
         self._theme = "dark"
         self._acrylic_applied = False
+        self._dialog_finished = False
 
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
@@ -346,7 +385,7 @@ class ThemedInputDialog(QDialog):
             layout.addWidget(label_widget)
 
         # 输入框
-        from qt_compat import QLineEdit, QFont
+        from qt_compat import QFont, QLineEdit
         self.line_edit = QLineEdit()
         self.line_edit.setText(text)
         self.line_edit.setFixedHeight(28)
@@ -441,6 +480,7 @@ class ThemedInputDialog(QDialog):
     def showEvent(self, event):
         """显示时居中并应用模糊效果"""
         super().showEvent(event)
+        self._dialog_finished = False
         self.adjustSize()
         center_dialog_on_main_window(self)
         self.line_edit.setFocus()
@@ -472,6 +512,8 @@ class ThemedInputDialog(QDialog):
     def _apply_acrylic(self):
         """应用模糊效果 - 与主配置窗口一致"""
         try:
+            if self._dialog_finished or not self.isVisible():
+                return
             from ui.utils.window_effect import enable_acrylic_for_config_window
             hwnd = int(self.winId())
             if not hwnd:
@@ -489,6 +531,17 @@ class ThemedInputDialog(QDialog):
             enable_acrylic_for_config_window(self, self._theme, blur_amount=30, radius=self.corner_radius)
         except Exception:
             pass
+
+    def done(self, result):
+        self._dialog_finished = True
+        for attr in ("anim_group", "opacity_anim", "pos_anim"):
+            anim = getattr(self, attr, None)
+            if anim is not None:
+                try:
+                    anim.stop()
+                except Exception:
+                    pass
+        super().done(result)
 
     @staticmethod
     def getText(parent, title, label, text=""):

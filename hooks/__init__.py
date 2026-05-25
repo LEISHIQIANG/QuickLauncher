@@ -14,3 +14,5 @@ try:
 except Exception as e:
     import logging
     logging.warning(f"KeyboardHook 导入失败: {e}")
+
+__all__ = ["MouseHook", "KeyboardHook"]

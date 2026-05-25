@@ -1,55 +1,48 @@
 """Popup settings page builder."""
 
-import os
-import sys
-import shutil
-import time
-import winreg
 
-from ui.tooltip_helper import install_tooltip
 from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QFormLayout, QSlider, QSpinBox, QRadioButton, QButtonGroup,
-    QLabel, QFrame, QCheckBox, QLineEdit, QPushButton, QPlainTextEdit,
-    QListWidget, QListWidgetItem, QFileDialog, QScrollArea, QMessageBox,
-    QPainter, QPixmap, QColor, QPen, QBrush, QRect, QRectF, QDialog,
-    QTimer, QIcon, QStackedWidget, Qt, QtCompat, pyqtSignal, PYQT_VERSION,
-    QThread, QStyledItemDelegate, QSize, QKeySequence, QMenu, QAction,
-    QComboBox, QPainterPath, exec_dialog, QPoint, QApplication
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QRadioButton,
+    QSlider,
+    QtCompat,
+    QVBoxLayout,
+    QWidget,
 )
-from core import APP_VERSION, DEFAULT_SPECIAL_APPS, ShortcutItem, ShortcutType
-from core.app_scanner import AppScanner
-from ui.config_window.settings_helpers import NumberedListDelegate, ProgressDialog, ExportThread, ImportThread
-from ui.config_window.folder_panel import PopupMenu
-from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.font_manager import get_font_css_with_size
+from ui.config_window.settings_helpers import NumberedListDelegate
+from ui.tooltip_helper import install_tooltip
+
 
 class SettingsPopupPageMixin:
     def _setup_popup_page(self, page):
         # 弹窗位置
         layout, group = page.add_group("弹窗位置")
         self.pos_group = QButtonGroup(self)
-        
+
         # 选项：鼠标-弹窗中心，鼠标-弹窗左上角
         self.pos_mouse_center = QRadioButton("鼠标-弹窗中心")
         self.pos_mouse_tl = QRadioButton("鼠标-弹窗左上角")
-        
+
         self.pos_group.addButton(self.pos_mouse_center, 0)
         self.pos_group.addButton(self.pos_mouse_tl, 1)
-        
+
         self.pos_group.buttonClicked.connect(self._on_popup_pos_changed)
-        
+
         # 第一行
         row1 = QHBoxLayout()
         row1.addWidget(self.pos_mouse_center)
         row1.addWidget(self.pos_mouse_tl)
         row1.addStretch()
-        
+
         v_pos = QVBoxLayout()
         v_pos.addLayout(row1)
-        
+
         layout.addLayout(v_pos)
-        
+
         # 自动关闭弹窗选项
         auto_close_row = QHBoxLayout()
         auto_close_row.addWidget(self._create_label("自动关闭"))
@@ -63,9 +56,21 @@ class SettingsPopupPageMixin:
         self.auto_close_group.buttonClicked.connect(self._on_auto_close_changed)
         auto_close_row.addWidget(self.auto_close_yes)
         auto_close_row.addWidget(self.auto_close_no)
+        auto_close_row.addSpacing(22)
+        auto_close_row.addWidget(self._create_label("固定时多开"))
+        self.multi_open_pinned_group = QButtonGroup(self)
+        self.multi_open_pinned_yes = QRadioButton("是")
+        self.multi_open_pinned_no = QRadioButton("否")
+        install_tooltip(self.multi_open_pinned_yes, "窗口固定时，再次中键保留当前窗口并新开一个弹窗")
+        install_tooltip(self.multi_open_pinned_no, "窗口固定时，再次中键仍隐藏当前弹窗")
+        self.multi_open_pinned_group.addButton(self.multi_open_pinned_yes, 0)
+        self.multi_open_pinned_group.addButton(self.multi_open_pinned_no, 1)
+        self.multi_open_pinned_group.buttonClicked.connect(self._on_multi_open_pinned_changed)
+        auto_close_row.addWidget(self.multi_open_pinned_yes)
+        auto_close_row.addWidget(self.multi_open_pinned_no)
         auto_close_row.addStretch()
         layout.addLayout(auto_close_row)
-        
+
         # 消失延迟 (仅在自动关闭开启时可用)
         self.delay_widget = QWidget()
         delay_row = QHBoxLayout(self.delay_widget)
@@ -103,30 +108,32 @@ class SettingsPopupPageMixin:
         # 按钮控制区 (置于列表上方，始终显示)
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
-        
+
         self.special_add_btn = QPushButton("新建")
         self.special_add_btn.clicked.connect(self._add_special_app)
         btn_layout.addWidget(self.special_add_btn, 1)
-        
+
         self.special_del_btn = QPushButton("删除")
         self.special_del_btn.clicked.connect(self._remove_special_app)
         btn_layout.addWidget(self.special_del_btn, 1)
-        
+
         reset_btn = QPushButton("重置默认")
         reset_btn.clicked.connect(self._reset_special_apps)
         btn_layout.addWidget(reset_btn, 1)
-        
+
         apply_btn = QPushButton("应用更改")
         apply_btn.clicked.connect(self._apply_special_apps)
         btn_layout.addWidget(apply_btn, 1)
-        
+
         layout.addLayout(btn_layout)
-        
+
         # 列表区域
         self.special_apps_list = QListWidget()
         self.special_apps_list.setMinimumHeight(120)
-        self.special_apps_list.setDragDropMode(QtCompat.InternalMove)
-        self.special_apps_list.setDefaultDropAction(QtCompat.MoveAction)
+        self.special_apps_list.setDragDropMode(QListWidget.NoDragDrop)
+        self.special_apps_list.setDragEnabled(False)
+        self.special_apps_list.setAcceptDrops(False)
+        self.special_apps_list.setDropIndicatorShown(False)
         self.special_apps_list.setSelectionMode(QtCompat.SingleSelection)
         # 开启滚动条，确保列表内容滚动时按钮保持可见
         self.special_apps_list.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)

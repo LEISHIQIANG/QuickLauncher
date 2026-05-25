@@ -14,7 +14,8 @@ from qt_compat import (
     Qt, QtCompat, pyqtSignal, PYQT_VERSION, QPainterPath, QRegion,
     QPainter, QColor, QPen, QRectF, QApplication, QPoint, QTimer,
     QIcon, QSize, QStyledItemDelegate, QDrag, QMimeData,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, pyqtProperty,
+    QPropertyAnimation, QEasingCurve, QBrush, QPixmap
 )
 
 from ui.utils.window_effect import enable_window_shadow_and_round_corners, enable_acrylic_for_config_window, is_win11, get_window_effect
@@ -28,16 +29,33 @@ from .base_dialog import BaseDialog
 class FolderItemDelegate(QStyledItemDelegate):
     """文件夹列表项委托 - 绘制拖放目标提示"""
 
+    def __init__(self, owner=None):
+        super().__init__()
+        self._owner = owner
+
     def paint(self, painter, option, index):
         super().paint(painter, option, index)
 
         # 检查是否为拖放目标
         is_drop_target = index.data(QtCompat.UserRole + 1)
         if is_drop_target:
+            theme = "dark"
+            if self._owner:
+                theme = self._owner._get_current_theme()
+
             painter.setRenderHint(QtCompat.Antialiasing)
-            # 使用实线边框和半透明背景，参考图标排列栏样式
-            painter.setPen(QPen(QColor(70, 130, 180, 200), 2))
-            painter.setBrush(QColor(70, 130, 180, 100))
+
+            if theme == "dark":
+                # Dark theme: fresh mint green (minty pastel)
+                pen_color = QColor(168, 230, 207, 180)
+                brush_color = QColor(168, 230, 207, 45)
+            else:
+                # Light theme: gorgeous pastel mint green
+                pen_color = QColor(70, 180, 140, 200)
+                brush_color = QColor(168, 230, 207, 75)
+
+            painter.setPen(QPen(pen_color, 1.5))
+            painter.setBrush(brush_color)
             rect = option.rect.adjusted(2, 2, -2, -2)
             painter.drawRoundedRect(rect, 8, 8)
 
@@ -151,6 +169,185 @@ class FolderImportDialog(BaseDialog):
         return self.sync_check.isChecked()
 
 
+class FolderItemWidget(QWidget):
+    """Custom folder item widget supporting Apple-style press scale feedback and theme-aware styling."""
+    
+    def __init__(self, text, icon, theme="dark", parent=None):
+        super().__init__(parent)
+        self.text = text
+        self.icon = icon
+        self.theme = theme
+        self._scale_factor = 1.0
+        self.item = None  # Reference to QListWidgetItem
+        self._scale_anim = None
+        self.setMouseTracking(True)
+    def sizeHint(self) -> QSize:
+        fm = self.fontMetrics()
+        h = max(18, fm.height()) + 18  # 18px padding total (9px top/bottom)
+        return QSize(100, h)
+
+    @pyqtProperty(float)
+    def scale_factor(self) -> float:
+        return self._scale_factor
+        
+    @scale_factor.setter
+    def scale_factor(self, value: float):
+        self._scale_factor = value
+        self.update()
+        
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Determine selection and hover states
+        is_selected = False
+        if self.item is not None:
+            is_selected = self.item.isSelected()
+        is_hovered = self.underMouse()
+        
+        # Draw hover background
+        if is_hovered and not is_selected:
+            if self.theme == "dark":
+                hover_bg = QColor(255, 255, 255, 15)  # rgba(255, 255, 255, 0.06)
+            else:
+                hover_bg = QColor(0, 0, 0, 10)  # rgba(0, 0, 0, 0.04)
+            painter.setBrush(hover_bg)
+            painter.setPen(QtCompat.NoPen)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(0, 1, 0, -1), 8, 8)
+            
+        # Draw icon
+        if self.icon:
+            pixmap = self.icon.pixmap(18, 18)
+            y = (self.height() - pixmap.height()) // 2
+            painter.drawPixmap(8, y, pixmap)
+            
+        # Draw text
+        if self.theme == "dark":
+            text_color = QColor(255, 255, 255, 242) if is_selected else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 180))
+        else:
+            text_color = QColor(28, 28, 30, 242) if is_selected else (QColor(28, 28, 30, 217) if is_hovered else QColor(28, 28, 30, 165))
+            
+        painter.setPen(text_color)
+        from ui.utils.font_manager import get_qfont
+        painter.setFont(get_qfont(12))
+        
+        text_rect = QRectF(32, 0, self.width() - 42, self.height())
+        painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
+        
+        painter.end()
+
+
+class FolderListWidget(QListWidget):
+    """Folder list with stable Qt drag/drop virtual method dispatch and sliding selection anim."""
+
+    def __init__(self, owner):
+        super().__init__()
+        self._owner = owner
+        self._pill_rect = QRectF()
+        self._pill_opacity = 0.0
+        self._pill_rect_anim = None
+        self._pill_opacity_anim = None
+        
+        self.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        
+    @pyqtProperty(QRectF)
+    def pill_rect(self) -> QRectF:
+        return self._pill_rect
+        
+    @pill_rect.setter
+    def pill_rect(self, rect: QRectF):
+        self._pill_rect = rect
+        self.viewport().update()
+        
+    @pyqtProperty(float)
+    def pill_opacity(self) -> float:
+        return self._pill_opacity
+        
+    @pill_opacity.setter
+    def pill_opacity(self, opacity: float):
+        self._pill_opacity = opacity
+        self.viewport().update()
+        
+    def _on_selection_changed(self, selected, deselected):
+        curr_indexes = self.selectedIndexes()
+        if curr_indexes:
+            index = curr_indexes[0]
+            visual_rect = self.visualRect(index)
+            target_rect = QRectF(visual_rect).adjusted(0, 1, 0, -1)
+            
+            if self._pill_rect_anim is not None:
+                self._pill_rect_anim.stop()
+                
+            if self._pill_rect.isEmpty() or self._pill_opacity < 0.1:
+                self._pill_rect = target_rect
+            else:
+                self._pill_rect_anim = QPropertyAnimation(self, b"pill_rect")
+                self._pill_rect_anim.setDuration(220)
+                self._pill_rect_anim.setStartValue(self._pill_rect)
+                self._pill_rect_anim.setEndValue(target_rect)
+                self._pill_rect_anim.setEasingCurve(QEasingCurve.OutCubic)
+                self._pill_rect_anim.start()
+                
+            if self._pill_opacity_anim is not None:
+                self._pill_opacity_anim.stop()
+            self._pill_opacity_anim = QPropertyAnimation(self, b"pill_opacity")
+            self._pill_opacity_anim.setDuration(180)
+            self._pill_opacity_anim.setStartValue(self._pill_opacity)
+            self._pill_opacity_anim.setEndValue(1.0)
+            self._pill_opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
+            self._pill_opacity_anim.start()
+        else:
+            if self._pill_opacity_anim is not None:
+                self._pill_opacity_anim.stop()
+            self._pill_opacity_anim = QPropertyAnimation(self, b"pill_opacity")
+            self._pill_opacity_anim.setDuration(180)
+            self._pill_opacity_anim.setStartValue(self._pill_opacity)
+            self._pill_opacity_anim.setEndValue(0.0)
+            self._pill_opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
+            self._pill_opacity_anim.start()
+
+    def startDrag(self, supported_actions):
+        self._owner._list_start_drag(supported_actions)
+
+    def dragEnterEvent(self, event):
+        self._owner._list_drag_enter_event(event)
+
+    def dragMoveEvent(self, event):
+        self._owner._list_drag_move_event(event)
+
+    def dragLeaveEvent(self, event):
+        self._owner._list_drag_leave_event(event)
+
+    def dropEvent(self, event):
+        self._owner._list_drop_event(event)
+
+    def paintEvent(self, event):
+        if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
+            painter = QPainter(self.viewport())
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            theme = self._owner._get_current_theme()
+            if theme == "dark":
+                pill_color = QColor(255, 255, 255, int(self._pill_opacity * 35))  # rgba(255, 255, 255, 0.14)
+            else:
+                pill_color = QColor(0, 0, 0, int(self._pill_opacity * 20))  # rgba(0, 0, 0, 0.08)
+                
+            painter.setBrush(QBrush(pill_color))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawRoundedRect(self._pill_rect, 8, 8)
+            painter.end()
+            
+        super().paintEvent(event)
+
+
 class FolderPanel(QWidget):
     """左侧文件夹面板"""
     
@@ -180,11 +377,11 @@ class FolderPanel(QWidget):
         list_frame_layout.setContentsMargins(7, 4, 7, 7)
         list_frame_layout.setSpacing(10)
 
-        self.folder_list = QListWidget()
+        self.folder_list = FolderListWidget(self)
         self.folder_list.setObjectName("folderList")
         self.folder_list.setIconSize(QSize(18, 18))
         # 设置自定义委托以绘制拖放提示
-        self.folder_list.setItemDelegate(FolderItemDelegate())
+        self.folder_list.setItemDelegate(FolderItemDelegate(self))
         # 启用拖放，不仅支持内部移动，也支持接收外部拖放
         self.folder_list.setDragDropMode(QtCompat.DragDrop)
         self.folder_list.setDefaultDropAction(QtCompat.MoveAction)
@@ -226,10 +423,6 @@ class FolderPanel(QWidget):
         if theme == "dark":
             frame_bg = "rgba(255, 255, 255, 0.06)"
             frame_border = "rgba(255, 255, 255, 0.10)"
-            item_hover = "rgba(255, 255, 255, 0.08)"
-            item_selected_bg = "rgba(255, 255, 255, 0.14)"
-            item_selected_text = "rgba(255, 255, 255, 0.95)"
-            item_text = "rgba(255, 255, 255, 0.85)"
             btn_bg = "rgba(255, 255, 255, 0.18)"
             btn_border_color = "rgba(255, 255, 255, 0.22)"
             btn_hover_bg = "rgba(255, 255, 255, 0.28)"
@@ -238,10 +431,6 @@ class FolderPanel(QWidget):
         else:
             frame_bg = "rgba(255, 255, 255, 0.20)"
             frame_border = "rgba(0, 0, 0, 0.06)"
-            item_hover = "rgba(0, 0, 0, 0.04)"
-            item_selected_bg = "rgba(0, 0, 0, 0.08)"
-            item_selected_text = "rgba(28, 28, 30, 0.95)"
-            item_text = "rgba(28, 28, 30, 0.85)"
             btn_bg = "rgba(255, 255, 255, 0.75)"
             btn_border_color = "rgba(255, 255, 255, 0.35)"
             btn_hover_bg = "rgba(255, 255, 255, 0.95)"
@@ -256,26 +445,36 @@ class FolderPanel(QWidget):
             }}
         """)
 
-        self.folder_list.setStyleSheet(f"""
-            QListWidget#folderList {{
+        # Items are drawn by FolderItemWidget, stylesheet just resets default background
+        self.folder_list.setStyleSheet("""
+            QListWidget#folderList {
                 outline: none;
                 background: transparent;
                 border: none;
-            }}
-            QListWidget#folderList::item {{
-                padding: 8px;
-                border-radius: 8px;
+            }
+            QListWidget#folderList::item {
+                background: transparent;
+                border: none;
+                padding: 0px;
                 margin: 1px 0px;
-                color: {item_text};
-            }}
-            QListWidget#folderList::item:selected {{
-                background-color: {item_selected_bg};
-                color: {item_selected_text};
-            }}
-            QListWidget#folderList::item:hover:!selected {{
-                background-color: {item_hover};
-            }}
+            }
+            QListWidget#folderList::item:selected {
+                background: transparent;
+                border: none;
+            }
+            QListWidget#folderList::item:hover {
+                background: transparent;
+                border: none;
+            }
         """)
+
+        # Propagate theme change to any existing FolderItemWidgets
+        for i in range(self.folder_list.count()):
+            item = self.folder_list.item(i)
+            widget = self.folder_list.itemWidget(item)
+            if isinstance(widget, FolderItemWidget):
+                widget.theme = theme
+                widget.update()
 
         self.add_btn.setStyleSheet(f"""
             QPushButton {{
@@ -378,13 +577,6 @@ class FolderPanel(QWidget):
         """加载文件夹列表"""
         self.folder_list.clear()
 
-        # 动态绑定拖放事件处理
-        self.folder_list.startDrag = self._list_start_drag
-        self.folder_list.dragEnterEvent = self._list_drag_enter_event
-        self.folder_list.dragMoveEvent = self._list_drag_move_event
-        self.folder_list.dragLeaveEvent = self._list_drag_leave_event
-        self.folder_list.dropEvent = self._list_drop_event
-
         # 加载文件夹图标 (从 assets/Folder.ico 读取蓝色图标)
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
@@ -399,6 +591,7 @@ class FolderPanel(QWidget):
 
         for folder in self.data_manager.data.folders:
             item = QListWidgetItem()
+            item.setData(QtCompat.UserRole, folder.id)
 
             # 根据类型设置文本 (移除黄色的文件夹 emoji，保留状态 emoji)
             if folder.is_dock:
@@ -408,20 +601,20 @@ class FolderPanel(QWidget):
             else:
                 display_text = folder.name
 
-            item.setText(display_text)
-            item.setData(QtCompat.UserRole, folder.id)
-
-            # 设置蓝色的 QIcon 图标
-            if folder_icon:
-                item.setIcon(folder_icon)
-
             # 系统文件夹不可拖拽
             if folder.is_system:
                 flags = item.flags()
                 flags &= ~QtCompat.ItemIsDragEnabled
                 item.setFlags(flags)
 
+            # Create Custom FolderItemWidget
+            widget = FolderItemWidget(display_text, folder_icon, self._get_current_theme(), self.folder_list)
+            widget.item = item
+            
+            item.setSizeHint(widget.sizeHint())
+
             self.folder_list.addItem(item)
+            self.folder_list.setItemWidget(item, widget)
 
         # 选中第一个非Dock文件夹
         for i in range(self.folder_list.count()):
@@ -434,10 +627,17 @@ class FolderPanel(QWidget):
                 break
 
     def _list_start_drag(self, supported_actions):
-        """自定义文件夹拖动开始事件"""
+        """自定义文件夹拖动开始事件 - 苹果风格高质感动态预览与局部减淡"""
         item = self.folder_list.currentItem()
         if not item:
             return
+
+        widget = self.folder_list.itemWidget(item)
+        if not widget:
+            return
+
+        # Record the initial row at the start of the drag
+        self._initial_drag_row = self.folder_list.row(item)
 
         drag = QDrag(self.folder_list)
         mime_data = QMimeData()
@@ -445,9 +645,53 @@ class FolderPanel(QWidget):
         # 设置特殊标识：这是文件夹排序拖动
         folder_id = item.data(QtCompat.UserRole)
         mime_data.setData("application/x-folder-reorder", folder_id.encode())
-
         drag.setMimeData(mime_data)
-        drag.exec_(QtCompat.MoveAction)
+
+        # Grab high-fidelity snapshot of the item card widget
+        pixmap = widget.grab()
+        w = pixmap.width()
+        h = pixmap.height()
+
+        transparent_pixmap = QPixmap(w, h)
+        transparent_pixmap.fill(QtCompat.transparent)
+
+        painter = QPainter(transparent_pixmap)
+        painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setOpacity(0.75)  # Floating glass translucent card
+        painter.drawPixmap(0, 0, pixmap)
+
+        # Soft fresh mint overlay border around the preview
+        painter.setOpacity(0.9)
+        theme = self._get_current_theme()
+        if theme == "dark":
+            border_color = QColor(168, 230, 207, 150)
+        else:
+            border_color = QColor(70, 180, 140, 220)
+
+        painter.setPen(QPen(border_color, 1.5))
+        painter.setBrush(QtCompat.NoBrush)
+        painter.drawRoundedRect(1, 1, w - 2, h - 2, 8, 8)
+        painter.end()
+
+        drag.setPixmap(transparent_pixmap)
+        drag.setHotSpot(QPoint(w // 2, h // 2))
+
+        # Dim the source widget in the list during drag for dynamic feedback
+        try:
+            opacity_effect = QGraphicsOpacityEffect(widget)
+            opacity_effect.setOpacity(0.35)
+            widget.setGraphicsEffect(opacity_effect)
+        except Exception:
+            opacity_effect = None
+
+        try:
+            drag.exec_(supported_actions)
+        finally:
+            # If the drag was cancelled or finished, restore full opacity
+            try:
+                widget.setGraphicsEffect(None)
+            except Exception:
+                pass
 
     def _list_drag_enter_event(self, event):
         """处理拖入事件"""
@@ -464,22 +708,96 @@ class FolderPanel(QWidget):
             event.ignore()
 
     def _list_drag_move_event(self, event):
-        """处理拖动移动事件"""
-        # 清除所有项的拖放标记
-        for i in range(self.folder_list.count()):
-            list_item = self.folder_list.item(i)
-            list_item.setData(QtCompat.UserRole + 1, False)
+        """处理拖动移动事件 - 实时苹果风格平滑滑动交换"""
+        if not event.mimeData().hasFormat("application/x-folder-reorder"):
+            # 外部文件/图标拖动时，仍使用原始指示器逻辑
+            for i in range(self.folder_list.count()):
+                list_item = self.folder_list.item(i)
+                list_item.setData(QtCompat.UserRole + 1, False)
 
         pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
         item = self.folder_list.itemAt(pos)
 
-        # 文件夹排序拖动：允许所有文件夹作为目标
+        # 文件夹排序拖动：实时苹果风格滑动交换
         if event.mimeData().hasFormat("application/x-folder-reorder"):
-            if item:
-                item.setData(QtCompat.UserRole + 1, True)
-                self.folder_list.viewport().update()
             event.acceptProposedAction()
-        # 外部文件拖入
+            
+            if not item:
+                return
+                
+            dest_row = self.folder_list.row(item)
+            source_item = self.folder_list.currentItem()
+            if not source_item:
+                return
+                
+            source_row = self.folder_list.row(source_item)
+            
+            # Dynamic real-time Apple-style swapping reorder
+            if source_row != dest_row:
+                # Record old positions of all visible widgets in the list
+                old_positions = {}
+                for r in range(self.folder_list.count()):
+                    it = self.folder_list.item(r)
+                    try:
+                        w = self.folder_list.itemWidget(it)
+                        if w:
+                            old_positions[id(it)] = w.pos()
+                    except RuntimeError:
+                        pass
+                        
+                try:
+                    widget = self.folder_list.itemWidget(source_item)
+                except RuntimeError:
+                    widget = None
+                    
+                self.folder_list.blockSignals(True)
+                try:
+                    # Unparent widget to protect it from C++ deletion during takeItem
+                    if widget:
+                        self.folder_list.removeItemWidget(source_item)
+                        
+                    self.folder_list.takeItem(source_row)
+                    self.folder_list.insertItem(dest_row, source_item)
+                    
+                    if widget:
+                        self.folder_list.setItemWidget(source_item, widget)
+                        source_item.setSizeHint(widget.sizeHint())
+                        widget.show()
+                    self.folder_list.setCurrentItem(source_item)
+                except RuntimeError:
+                    pass
+                finally:
+                    self.folder_list.blockSignals(False)
+                    
+                # Force layout recalculation
+                self.folder_list.doItemsLayout()
+                
+                # Trigger QPropertyAnimation for all shifted items
+                for r in range(self.folder_list.count()):
+                    it = self.folder_list.item(r)
+                    try:
+                        w = self.folder_list.itemWidget(it)
+                    except RuntimeError:
+                        w = None
+                        
+                    if w and id(it) in old_positions:
+                        old_pos = old_positions[id(it)]
+                        try:
+                            new_pos = w.pos()
+                            if old_pos != new_pos:
+                                if hasattr(w, "_pos_anim") and w._pos_anim is not None:
+                                    w._pos_anim.stop()
+                                    
+                                anim = QPropertyAnimation(w, b"pos")
+                                anim.setDuration(180)  # 180ms responsive slide
+                                anim.setStartValue(old_pos)
+                                anim.setEndValue(new_pos)
+                                anim.setEasingCurve(QEasingCurve.OutCubic)
+                                w._pos_anim = anim
+                                anim.start()
+                        except RuntimeError:
+                            pass
+        # 外部拖入
         elif event.mimeData().hasUrls():
             event.acceptProposedAction()
         # 图标拖动：检查同步文件夹限制
@@ -519,12 +837,72 @@ class FolderPanel(QWidget):
             event.ignore()
 
     def _list_drag_leave_event(self, event):
-        """处理拖动离开事件"""
-        # 恢复光标
+        """处理拖动离开事件 - 拖离时弹性还原位置"""
         while QApplication.overrideCursor():
             QApplication.restoreOverrideCursor()
 
-        # 清除所有拖放提示
+        source_item = self.folder_list.currentItem()
+        if source_item and hasattr(self, '_initial_drag_row') and self._initial_drag_row >= 0:
+            current_row = self.folder_list.row(source_item)
+            if current_row != self._initial_drag_row:
+                old_positions = {}
+                for r in range(self.folder_list.count()):
+                    it = self.folder_list.item(r)
+                    try:
+                        w = self.folder_list.itemWidget(it)
+                        if w:
+                            old_positions[id(it)] = w.pos()
+                    except RuntimeError:
+                        pass
+
+                try:
+                    widget = self.folder_list.itemWidget(source_item)
+                except RuntimeError:
+                    widget = None
+
+                self.folder_list.blockSignals(True)
+                try:
+                    if widget:
+                        self.folder_list.removeItemWidget(source_item)
+
+                    self.folder_list.takeItem(current_row)
+                    self.folder_list.insertItem(self._initial_drag_row, source_item)
+                    if widget:
+                        self.folder_list.setItemWidget(source_item, widget)
+                        source_item.setSizeHint(widget.sizeHint())
+                        widget.show()
+                    self.folder_list.setCurrentItem(source_item)
+                except RuntimeError:
+                    pass
+                finally:
+                    self.folder_list.blockSignals(False)
+
+                self.folder_list.doItemsLayout()
+
+                for r in range(self.folder_list.count()):
+                    it = self.folder_list.item(r)
+                    try:
+                        w = self.folder_list.itemWidget(it)
+                    except RuntimeError:
+                        w = None
+
+                    if w and id(it) in old_positions:
+                        old_pos = old_positions[id(it)]
+                        try:
+                            new_pos = w.pos()
+                            if old_pos != new_pos:
+                                if hasattr(w, "_pos_anim") and w._pos_anim is not None:
+                                    w._pos_anim.stop()
+                                anim = QPropertyAnimation(w, b"pos")
+                                anim.setDuration(180)
+                                anim.setStartValue(old_pos)
+                                anim.setEndValue(new_pos)
+                                anim.setEasingCurve(QEasingCurve.OutCubic)
+                                w._pos_anim = anim
+                                anim.start()
+                        except RuntimeError:
+                            pass
+
         for i in range(self.folder_list.count()):
             list_item = self.folder_list.item(i)
             list_item.setData(QtCompat.UserRole + 1, False)
@@ -532,11 +910,48 @@ class FolderPanel(QWidget):
 
     def _list_drop_event(self, event):
         """处理放下事件"""
-        # 恢复光标
         while QApplication.overrideCursor():
             QApplication.restoreOverrideCursor()
 
-        # 找到标记为拖放目标的项
+        # 文件夹排序拖动
+        if event.mimeData().hasFormat("application/x-folder-reorder"):
+            event.ignore()  # 阻止 Qt 默认删除/重建行为
+            
+            source_item = self.folder_list.currentItem()
+            if not source_item:
+                return
+                
+            final_row = self.folder_list.row(source_item)
+            
+            widget = self.folder_list.itemWidget(source_item)
+            if widget:
+                try:
+                    widget.setGraphicsEffect(None)
+                except Exception:
+                    pass
+                    
+            if hasattr(self, '_initial_drag_row') and self._initial_drag_row >= 0:
+                # 重新保存序列并刷新
+                folder_ids = []
+                for i in range(self.folder_list.count()):
+                    item = self.folder_list.item(i)
+                    folder_ids.append(item.data(QtCompat.UserRole))
+                self.data_manager.reorder_folders(folder_ids)
+                
+                # 获取拖动项的ID
+                folder_id = source_item.data(QtCompat.UserRole)
+                
+                # 重新加载文件夹列表，干净地重建所有 Item 及其自定义 Widget
+                self._load_folders()
+                
+                # 恢复选中状态
+                for i in range(self.folder_list.count()):
+                    if self.folder_list.item(i).data(QtCompat.UserRole) == folder_id:
+                        self.folder_list.setCurrentRow(i)
+                        self.folder_selected.emit(folder_id)
+                        break
+            return
+
         target_item = None
         for i in range(self.folder_list.count()):
             list_item = self.folder_list.item(i)
@@ -545,15 +960,8 @@ class FolderPanel(QWidget):
             list_item.setData(QtCompat.UserRole + 1, False)
         self.folder_list.viewport().update()
 
-        # 文件夹排序拖动
-        if event.mimeData().hasFormat("application/x-folder-reorder"):
-            if target_item:
-                source_id = event.mimeData().data("application/x-folder-reorder").data().decode()
-                target_id = target_item.data(QtCompat.UserRole)
-                self._handle_folder_reorder(source_id, target_id)
-            event.acceptProposedAction()
         # 外部文件/文件夹拖入
-        elif event.mimeData().hasUrls():
+        if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
             for url in urls:
                 local_path = url.toLocalFile()
@@ -591,7 +999,6 @@ class FolderPanel(QWidget):
     def _on_item_clicked(self, item: QListWidgetItem):
         """点击项目"""
         folder_id = item.data(QtCompat.UserRole)
-        # 确保只有一个选中状态
         self.folder_list.setCurrentItem(item)
         self.folder_selected.emit(folder_id)
     

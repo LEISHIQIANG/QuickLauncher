@@ -1,29 +1,37 @@
 ; QuickLauncher 安装程序脚本
+; 支持 Free/Pro 双版本构建
 
+#ifndef MyAppEdition
+  #define MyAppEdition "Free"
+#endif
 #ifndef MyAppName
   #define MyAppName "QuickLauncher"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "1.5.6.8"
+  #define MyAppVersion "1.6.0.0"
 #endif
 #ifndef MyAppPublisher
-  #define MyAppPublisher "Your Name"
+  #define MyAppPublisher "Layton"
 #endif
 #ifndef MyAppExeName
   #define MyAppExeName "QuickLauncher.exe"
 #endif
 #ifndef MyAppFileVersion
-  #define MyAppFileVersion "1.5.6.8"
+  #define MyAppFileVersion "1.6.0.0"
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion
+  #if MyAppEdition == "Pro"
+    #define OutputBaseFilename "QuickLauncher_Pro_Setup_" + MyAppVersion
+  #else
+    #define OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion
+  #endif
 #endif
 
 [Setup]
-AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+AppId={{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppVerName={#MyAppName} {#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion} ({#MyAppEdition})
 AppPublisher={#MyAppPublisher}
 VersionInfoVersion={#MyAppFileVersion}
 VersionInfoCompany={#MyAppPublisher}
@@ -61,9 +69,13 @@ Name: "desktopicon"; Description: "Create desktop shortcut"; Flags: unchecked
 Name: "startupicon"; Description: "Start with Windows"; Flags: unchecked
 
 [Files]
-Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config\*.log,config\*.log.*"
+Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config\*.log,config\*.log.*,temp_icons\favicons\*,temp_icons\favicons\*.*"
 ; VC++ Redistributable 安装包（如果需要的话）
 ; Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
+[Dirs]
+Name: "{app}\temp_icons"; Permissions: users-modify
+Name: "{app}\temp_icons\favicons"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -78,7 +90,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--configure-autostart enable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; StatusMsg: "Configuring startup task..."; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: startupicon
 
 ; Launch application after install
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch QuickLauncher"; Flags: runasoriginaluser nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Launch QuickLauncher"; Flags: runasoriginaluser nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--autostart-helper disable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallAutoStart"
@@ -169,7 +181,8 @@ begin
     try
       repeat
         if (FindRec.Name <> '.') and (FindRec.Name <> '..') and
-           (FindRec.Name <> 'config') and (FindRec.Name <> 'assets') and (FindRec.Name <> 'icons') then
+           (FindRec.Name <> 'config') and (FindRec.Name <> 'assets') and (FindRec.Name <> 'icons') and
+           (FindRec.Name <> 'temp_icons') and (FindRec.Name <> 'plugins') then
         begin
           FilePath := InstallDir + '\' + FindRec.Name;
 
@@ -320,8 +333,8 @@ begin
   begin
     // 检查是否是同路径升级
     PrevInstallDir := '';
-    if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}_is1', 'InstallLocation', PrevInstallDir) or
-       RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}_is1', 'InstallLocation', PrevInstallDir) then
+    if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1', 'InstallLocation', PrevInstallDir) or
+       RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1', 'InstallLocation', PrevInstallDir) then
     begin
       CurrentInstallDir := ExpandConstant('{app}');
       if CompareText(RemoveBackslashUnlessRoot(PrevInstallDir), RemoveBackslashUnlessRoot(CurrentInstallDir)) = 0 then

@@ -2,10 +2,16 @@
 数据模型定义
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional
-from enum import Enum
+import time
 import uuid
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Optional
+
+try:
+    from .builtin_commands import canonical_builtin_command
+except Exception:
+    canonical_builtin_command = None
 
 
 class ShortcutType(Enum):
@@ -24,28 +30,37 @@ class ShortcutItem:
     name: str = ""
     type: ShortcutType = ShortcutType.FILE
     order: int = 0
-    
+    enabled: bool = True
+    tags: List[str] = field(default_factory=list)
+    last_used_at: float = 0.0
+    use_count: int = 0
+    smart_order: Optional[int] = None
+
     # 文件类型
     target_path: str = ""
     target_args: str = ""
     working_dir: str = ""
-    
+
     # 快捷键类型
     hotkey: str = ""
     hotkey_modifiers: List[str] = field(default_factory=list)
     hotkey_key: str = ""
-    
+
     # URL类型
     url: str = ""
-    
+    preferred_browser_path: str = ""
+    preferred_browser_args: str = ""
+
     # 命令类型
     command: str = ""
     command_type: str = "cmd"  # cmd, python, builtin
     show_window: bool = False
+    python_execution_mode: str = "subprocess"  # subprocess, legacy_inline
+    command_variables_enabled: bool = False
 
     # 触发模式
     trigger_mode: str = "immediate"  # immediate (立即触发), after_close (窗口关闭后触发)
-    
+
     # 图标
     icon_path: str = ""
     icon_data: str = ""
@@ -58,13 +73,18 @@ class ShortcutItem:
 
     # 以管理员身份运行
     run_as_admin: bool = False
-    
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
             "type": self.type.value,
             "order": self.order,
+            "enabled": self.enabled,
+            "tags": self.tags,
+            "last_used_at": self.last_used_at,
+            "use_count": self.use_count,
+            "smart_order": self.smart_order,
             "target_path": self.target_path,
             "target_args": self.target_args,
             "working_dir": self.working_dir,
@@ -72,6 +92,8 @@ class ShortcutItem:
             "hotkey_modifiers": self.hotkey_modifiers,
             "hotkey_key": self.hotkey_key,
             "url": self.url,
+            "preferred_browser_path": self.preferred_browser_path,
+            "preferred_browser_args": self.preferred_browser_args,
             "command": self.command,
             "command_type": self.command_type,
             "trigger_mode": self.trigger_mode,
@@ -82,9 +104,11 @@ class ShortcutItem:
             "icon_invert_current": self.icon_invert_current,
             "icon_invert_theme_when_set": self.icon_invert_theme_when_set,
             "run_as_admin": self.run_as_admin,
-            "show_window": self.show_window
+            "show_window": self.show_window,
+            "python_execution_mode": self.python_execution_mode,
+            "command_variables_enabled": self.command_variables_enabled
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'ShortcutItem':
         item = cls()
@@ -95,6 +119,11 @@ class ShortcutItem:
         except ValueError:
             item.type = ShortcutType.FILE
         item.order = data.get("order", 0)
+        item.enabled = data.get("enabled", True)
+        item.tags = cls._normalize_tags(data.get("tags", []))
+        item.last_used_at = data.get("last_used_at", 0.0)
+        item.use_count = data.get("use_count", 0)
+        item.smart_order = data.get("smart_order", None)
         item.target_path = data.get("target_path", "")
         item.target_args = data.get("target_args", "")
         item.working_dir = data.get("working_dir", "")
@@ -102,8 +131,15 @@ class ShortcutItem:
         item.hotkey_modifiers = data.get("hotkey_modifiers", [])
         item.hotkey_key = data.get("hotkey_key", "")
         item.url = data.get("url", "")
+        item.preferred_browser_path = data.get("preferred_browser_path", "")
+        item.preferred_browser_args = data.get("preferred_browser_args", "")
         item.command = data.get("command", "")
         item.command_type = data.get("command_type", "cmd")
+        if item.type == ShortcutType.COMMAND and item.command_type != "python" and canonical_builtin_command:
+            canonical_command = canonical_builtin_command(item.command)
+            if canonical_command:
+                item.command = canonical_command
+                item.command_type = "builtin"
         item.trigger_mode = data.get("trigger_mode", "immediate")
         item.icon_path = data.get("icon_path", "")
         item.icon_data = data.get("icon_data", "")
@@ -113,7 +149,44 @@ class ShortcutItem:
         item.icon_invert_theme_when_set = data.get("icon_invert_theme_when_set", "")
         item.run_as_admin = data.get("run_as_admin", False)
         item.show_window = data.get("show_window", False)
+        item.python_execution_mode = data.get("python_execution_mode", "subprocess")
+        item.command_variables_enabled = data.get(
+            "command_variables_enabled",
+            False
+        )
         return item
+
+    @staticmethod
+    def _normalize_tags(tags) -> List[str]:
+        if not tags:
+            return []
+        if isinstance(tags, str):
+            tags = [tags]
+        result = []
+        seen = set()
+        for tag in tags:
+            value = str(tag or "").strip()
+            if not value:
+                continue
+            lowered = value.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            result.append(value)
+        return result
+
+    def mark_used(self, timestamp: float | None = None):
+        try:
+            self.last_used_at = float(timestamp if timestamp is not None else time.time())
+        except Exception:
+            self.last_used_at = time.time()
+        try:
+            self.use_count = max(0, int(self.use_count)) + 1
+        except Exception:
+            self.use_count = 1
+
+    def is_enabled(self) -> bool:
+        return bool(self.enabled)
 
 
 @dataclass
@@ -130,7 +203,7 @@ class Folder:
     linked_path: str = ""  # 绑定的物理文件夹路径
     auto_sync: bool = False  # 是否启用自动同步
     last_sync_time: float = 0.0  # 最后同步时间戳
-    
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -143,7 +216,7 @@ class Folder:
             "auto_sync": self.auto_sync,
             "last_sync_time": self.last_sync_time
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'Folder':
         folder = cls()
@@ -188,10 +261,13 @@ class AppSettings:
     close_after_launch: bool = True
     show_on_startup: bool = True  # 新增：启动时是否显示设置窗口
     auto_start: bool = False  # 开机自启
+    sort_mode: str = "custom"  # custom, smart
     hardware_acceleration: bool = False  # 硬件加速
     hide_tray_icon: bool = False  # 隐藏托盘图标
     enable_debug_log: bool = False  # 开启DEBUG日志
     disable_logging: bool = False  # 关闭日志记录
+    sleep_mode_enabled: bool = True  # 10秒无操作后轻睡眠
+    sleep_timeout_seconds: int = 10
     show_welcome_guide: bool = True  # 显示欢迎引导
     first_run: bool = True  # 首次运行标记
     last_version: str = ""  # 上次运行的版本号
@@ -200,13 +276,24 @@ class AppSettings:
     dock_enabled: bool = True
     dock_height_mode: int = 1  # 1=单行, 2=双行, 3=三行
     popup_max_rows: int = 3  # 中键弹窗每列最大行数
-    
+
+    # 命令与插件设置
+    enabled_plugins: List[str] = field(default_factory=list)
+    favorite_commands: List[str] = field(default_factory=list)
+    disabled_builtin_commands: List[str] = field(default_factory=list)
+    plugin_dev_mode: bool = False
+
+    # 功能降级开关
+    enable_context_detection: bool = True
+    enable_plugins: bool = True
+
     # 弹窗设置
     popup_align_mode: str = "mouse_center"  # mouse_center, mouse_top_left, screen_center, bottom_right
     hover_leave_delay: int = 200  # 消失延迟 (ms)
     popup_auto_close: bool = True  # 自动关闭弹窗（鼠标离开后自动关闭），False 则需要点击才关闭
+    popup_multi_open_when_pinned: bool = False  # 固定时再次中键是否新开弹窗
     double_click_interval: int = 300  # 双击间隔 (ms)
-    
+
     # 弹窗背景与视觉
     bg_mode: str = "theme"  # theme, image, color
     bg_solid_color: str = "#2b2b2b"
@@ -216,21 +303,21 @@ class AppSettings:
     theme_bg_alpha: int = 90
     theme_blur_radius: int = 0
     theme_edge_opacity: float = 0.0
-    
+
     image_bg_alpha: int = 90
     image_blur_radius: int = 0
     image_edge_opacity: float = 0.0
-    
+
     acrylic_bg_alpha: int = 90
     acrylic_blur_radius: int = 0
     acrylic_edge_opacity: float = 0.0
-    
+
     # 边缘与阴影效果
     shadow_size: int = 0  # 模糊大小 (阴影/发光大小)
     shadow_distance: int = 0  # 模糊距离 (阴影偏移)
     edge_highlight_color: str = "#ffffff"
     edge_highlight_opacity: float = 0.0 # Shared/Default, keeping for compatibility or fallback
-    
+
     custom_bg_path: str = ""
 
     special_apps: List[str] = field(default_factory=lambda: DEFAULT_SPECIAL_APPS.copy())
@@ -239,12 +326,12 @@ class AppSettings:
     def bg_alpha_255(self) -> int:
         """将 0-100 的透明度转换为 0-255"""
         return int(self.bg_alpha * 255 / 100)
-        
+
     @property
     def dock_bg_alpha_255(self) -> int:
         """将 0-100 的 Dock 透明度转换为 0-255"""
         return int(self.dock_bg_alpha * 255 / 100)
-    
+
     def to_dict(self) -> dict:
         return {
             "theme": self.theme,
@@ -260,10 +347,13 @@ class AppSettings:
             "close_after_launch": self.close_after_launch,
             "show_on_startup": self.show_on_startup,
             "auto_start": self.auto_start,
+            "sort_mode": self.sort_mode,
             "hardware_acceleration": self.hardware_acceleration,
             "hide_tray_icon": self.hide_tray_icon,
             "enable_debug_log": self.enable_debug_log,
             "disable_logging": self.disable_logging,
+            "sleep_mode_enabled": self.sleep_mode_enabled,
+            "sleep_timeout_seconds": self.sleep_timeout_seconds,
             "show_welcome_guide": self.show_welcome_guide,
             "first_run": self.first_run,
             "last_version": self.last_version,
@@ -272,6 +362,7 @@ class AppSettings:
             "popup_max_rows": self.popup_max_rows,
             "popup_align_mode": self.popup_align_mode,
             "popup_auto_close": self.popup_auto_close,
+            "popup_multi_open_when_pinned": self.popup_multi_open_when_pinned,
             "hover_leave_delay": self.hover_leave_delay,
             "double_click_interval": self.double_click_interval,
             "bg_mode": self.bg_mode,
@@ -291,9 +382,15 @@ class AppSettings:
             "edge_highlight_color": self.edge_highlight_color,
             "edge_highlight_opacity": self.edge_highlight_opacity,
             "custom_bg_path": self.custom_bg_path,
-            "special_apps": self.special_apps
+            "special_apps": self.special_apps,
+            "enabled_plugins": self.enabled_plugins,
+            "favorite_commands": self.favorite_commands,
+            "disabled_builtin_commands": self.disabled_builtin_commands,
+            "plugin_dev_mode": self.plugin_dev_mode,
+            "enable_context_detection": self.enable_context_detection,
+            "enable_plugins": self.enable_plugins,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'AppSettings':
         settings = cls()
@@ -301,6 +398,8 @@ class AppSettings:
             if hasattr(settings, key):
                 if key == "bg_alpha" and value > 100:
                     value = int(value * 100 / 255)
+                if key == "sort_mode" and value not in ("custom", "smart"):
+                    value = "custom"
                 setattr(settings, key, value)
 
         # 如果没有特殊应用设置，使用默认值
@@ -315,11 +414,11 @@ class AppData:
     version: str = "2.5"
     settings: AppSettings = field(default_factory=AppSettings)
     folders: List[Folder] = field(default_factory=list)
-    
+
     def __post_init__(self):
         if not self.folders:
             self._create_default_folders()
-    
+
     def _create_default_folders(self):
         dock = Folder(
             id="dock",
@@ -336,29 +435,29 @@ class AppData:
             is_dock=False
         )
         self.folders = [dock, default]
-    
+
     def get_dock(self) -> Optional[Folder]:
         for folder in self.folders:
             if folder.is_dock:
                 return folder
         return None
-    
+
     def get_pages(self) -> List[Folder]:
         return [f for f in self.folders if not f.is_dock]
-    
+
     def get_folder_by_id(self, folder_id: str) -> Optional[Folder]:
         for folder in self.folders:
             if folder.id == folder_id:
                 return folder
         return None
-    
+
     def to_dict(self) -> dict:
         return {
             "version": self.version,
             "settings": self.settings.to_dict(),
             "folders": [folder.to_dict() for folder in self.folders]
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'AppData':
         app_data = cls.__new__(cls)

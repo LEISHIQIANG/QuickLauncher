@@ -1,6 +1,6 @@
 import os
-import sys
 import subprocess
+import sys
 
 
 def _is_working_python(exe_path: str) -> bool:

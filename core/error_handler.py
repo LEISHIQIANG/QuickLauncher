@@ -4,8 +4,8 @@
 """
 
 import logging
-from typing import Callable, TypeVar, Optional, Type, Tuple
 from functools import wraps
+from typing import Callable, Optional, Tuple, Type, TypeVar
 
 logger = logging.getLogger(__name__)
 

@@ -2,18 +2,30 @@
 新手引导窗口 - 首次启动交互式教程
 """
 
-import sys
-import os
 import logging
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    Qt, QtCompat, PYQT_VERSION, QPainter, QColor, QPainterPath, QPen, QPixmap, QPoint, QTimer, QCheckBox
+    QCheckBox,
+    QColor,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPoint,
+    QPushButton,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
 )
-from ui.utils.window_effect import is_win11, get_window_effect, enable_acrylic_for_config_window, is_win10
 from ui.styles.style import Glassmorphism
 from ui.utils.dialog_helper import center_dialog_on_main_window
+from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +205,6 @@ class WelcomeGuide(QDialog):
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.Antialiasing)
 
-        from ui.utils.window_effect import is_win10
         if is_win10():
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)

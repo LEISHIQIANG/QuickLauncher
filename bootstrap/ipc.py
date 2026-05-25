@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 def create_ipc_server(app, server_name: str, on_show_config):
     """创建 IPC 本地服务器，返回 server 对象"""
-    from qt_compat import QLocalServer, QLocalSocket, QTimer
+    from qt_compat import QLocalServer, QTimer
 
     _pending = {'show_config': False}
 

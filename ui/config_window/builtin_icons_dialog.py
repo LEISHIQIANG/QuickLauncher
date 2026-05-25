@@ -1,17 +1,13 @@
 """内置图标选择对话框"""
-import sys
-import os
 import math
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from qt_compat import (
-    QVBoxLayout, QGridLayout, QLabel, QScrollArea,
-    QWidget, QFrame, QtCompat, pyqtSignal, QPixmap, QTimer, QCursor, QApplication, QEvent,
-    QDialog, QColor, Qt
-)
 from core import ShortcutItem
 from core.builtin_icons import BuiltinIconsManager
-from .base_dialog import BaseDialog
+from qt_compat import QColor, QDialog, QFrame, QLabel, QPixmap, QtCompat, QTimer, QVBoxLayout, QWidget, pyqtSignal
 from ui.styles.style import Glassmorphism
 from ui.utils.dialog_helper import center_dialog_on_main_window
 
@@ -51,9 +47,10 @@ class BuiltinIconWidget(QFrame):
 
         layout.addWidget(self.icon_frame, alignment=QtCompat.AlignCenter)
 
-        self.name_label = QLabel(item.name[:4])
+        self.name_label = QLabel(item.name[:6] if item.name else "")
         self.name_label.setAlignment(QtCompat.AlignCenter)
-        self.name_label.setStyleSheet("font-size: 8px; background: transparent; border: none;")
+        self.name_label.setStyleSheet("font-size: 11px; background: transparent; border: none;")
+        self.name_label.setWordWrap(True)
         layout.addWidget(self.name_label)
 
         self._load_icon()
@@ -109,8 +106,8 @@ class BuiltinIconsDialog(QDialog):
         # Popup 标志自带“点击外部自动关闭”特性
         # NoDropShadowWindowHint 消除系统底层可能自带的陈旧/异常阴影
         self.setWindowFlags(
-            QtCompat.Popup | 
-            QtCompat.FramelessWindowHint | 
+            QtCompat.Popup |
+            QtCompat.FramelessWindowHint |
             QtCompat.NoDropShadowWindowHint
         )
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
@@ -125,6 +122,7 @@ class BuiltinIconsDialog(QDialog):
         self.corner_radius = 8 if is_win11() else 12
         self._acrylic_applied = False
         self._closing = False
+        self._dialog_finished = False
         self.theme = self._get_theme_from_parent()
 
         # 设置颜色
@@ -147,7 +145,7 @@ class BuiltinIconsDialog(QDialog):
                     if hasattr(parent, 'data_manager'):
                         return parent.data_manager.get_settings().theme
                     parent = parent.parent() if hasattr(parent, 'parent') else None
-            except:
+            except Exception:
                 pass
         return "dark"
 
@@ -186,23 +184,26 @@ class BuiltinIconsDialog(QDialog):
     def showEvent(self, event):
         """显示时应用效果"""
         super().showEvent(event)
+        self._dialog_finished = False
         # 启动自动检查定时器
         self._close_timer.start()
 
         center_dialog_on_main_window(self)
-        
+
         # 启用原生 DWM 阴影和圆角
         if not getattr(self, '_effects_applied', False):
             self._effects_applied = True
             from ui.utils.window_effect import enable_window_shadow_and_round_corners
             enable_window_shadow_and_round_corners(self, radius=self.corner_radius)
-            
+
             # 延迟应用亚克力效果以确保窗口已创建
             QTimer.singleShot(10, self._apply_acrylic)
 
     def _apply_acrylic(self):
         """应用磨砂玻璃效果"""
         try:
+            if self._dialog_finished or self._closing or not self.isVisible():
+                return
             from ui.utils.window_effect import enable_acrylic_for_config_window
             enable_acrylic_for_config_window(self, self.theme, blur_amount=30, radius=self.corner_radius)
         except Exception:
@@ -212,7 +213,7 @@ class BuiltinIconsDialog(QDialog):
         items = self.manager.get_items()
         cols = 6
         rows = math.ceil(len(items) / cols)
-        cell = 62  # 固定cell尺寸，留出文字空间
+        cell = 68  # 固定cell尺寸，留出文字空间
         pad = 15
 
         width = pad * 2 + cols * cell
@@ -249,3 +250,12 @@ class BuiltinIconsDialog(QDialog):
     def _on_icon_clicked(self, item: ShortcutItem):
         self.icon_selected.emit(item)
         self.accept()
+
+    def done(self, result):
+        self._dialog_finished = True
+        self._closing = True
+        try:
+            self._close_timer.stop()
+        except Exception:
+            pass
+        super().done(result)

@@ -3,19 +3,41 @@
 """
 
 import logging
+import os
+from datetime import datetime
 
-from qt_compat import (
-    QDialog, QPainter, QColor, QPainterPath, QPen, QTimer, QPoint,
-    QtCompat
-)
-from ui.utils.window_effect import get_window_effect, is_win11, is_win10, enable_acrylic_for_config_window
+from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QPoint, QtCompat, QTimer
 from ui.utils.dialog_helper import center_dialog_on_main_window
+from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
 
 logger = logging.getLogger(__name__)
 
 
+def _trace_to_crash_log(msg: str):
+    """写一条时间戳追踪到 crash.log，用于定位闪退发生在哪个操作。"""
+    try:
+        import sys
+        from pathlib import Path
+        if getattr(sys, "frozen", False):
+            log_dir = str(Path(sys.executable).parent / "config")
+        else:
+            log_dir = str(Path(__file__).parent.parent.parent / "config")
+        with open(os.path.join(log_dir, "crash.log"), "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+    except Exception:
+        pass
+
+
 class BaseDialog(QDialog):
     """统一的对话框基类"""
+
+    @staticmethod
+    def _is_compiled():
+        """检测是否为 Nuitka 编译版本 — 跳过不可靠的 Qt 回调操作"""
+        import sys
+        return ("__compiled__" in dir(__builtins__)
+                or bool(globals().get("__compiled__"))
+                or bool(getattr(sys, "frozen", False)))
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -26,6 +48,7 @@ class BaseDialog(QDialog):
         self.corner_radius = 8 if is_win11() else 12
         self.theme = "dark"
         self._shadow_applied = False
+        self._dialog_finished = False
         self._drag_pos = None
 
         # 使用 QColor 对象存储颜色（与主配置窗口一致）
@@ -57,53 +80,76 @@ class BaseDialog(QDialog):
                 logger.debug(f"获取主题失败: {e}")
 
     def paintEvent(self, event):
-        """绘制背景 - 完全按照RoundedWindow的逻辑"""
+        _trace_to_crash_log(f"paintEvent.0: {type(self).__name__}")
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
 
-        if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            if is_win10():
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
+                painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
 
-        inset = 1.0 if is_win10() else 0.5
+            inset = 1.0 if is_win10() else 0.5
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
-        )
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset, inset,
+                self.width() - inset * 2, self.height() - inset * 2,
+                self.corner_radius, self.corner_radius
+            )
 
-        # 磨砂玻璃模式：与RoundedWindow完全一致
-        tint_color = QColor(self.bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
-        else:
-            tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            tint_color = QColor(self.bg_color)
+            if is_win10():
+                tint_color.setAlpha(min(tint_color.alpha(), 150))
+            else:
+                tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
 
-        # 边框
-        pen_color = QColor(self.border_color)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1))
-        painter.drawPath(path)
+            pen_color = QColor(self.border_color)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            painter.setPen(QPen(pen_color, 1))
+            painter.drawPath(path)
+        finally:
+            painter.end()
+        _trace_to_crash_log(f"paintEvent.9: {type(self).__name__}")
 
     def showEvent(self, event):
         """显示时应用效果"""
-        super().showEvent(event)
+        _trace_to_crash_log(f"showEvent.0: {type(self).__name__}")
+        self._dialog_finished = False
+        _trace_to_crash_log(f"showEvent.1 adjustSize: {type(self).__name__}")
         self.adjustSize()
+        _trace_to_crash_log(f"showEvent.2 center: {type(self).__name__}")
         center_dialog_on_main_window(self)
+
+        target_pos = self.pos()
+        # 预先移到动画起点，初始设置透明度为 0
+        self.setWindowOpacity(0.0)
+        self.move(target_pos.x(), target_pos.y() + 24)
+
+        super().showEvent(event)
 
         if not self._shadow_applied:
             self._shadow_applied = True
-            QTimer.singleShot(100, self._apply_effects)
+            self._effects_timer = QTimer(self)
+            self._effects_timer.setSingleShot(True)
+            self._effects_timer.timeout.connect(self._apply_effects)
+            self._effects_timer.start(100)
 
-        self._start_show_animation()
+        _trace_to_crash_log(f"showEvent.3 anim: {type(self).__name__}")
+        self._start_show_animation(target_pos)
+        _trace_to_crash_log(f"showEvent.4 done: {type(self).__name__}")
 
     def _apply_effects(self):
         """应用窗口特效"""
+        _trace_to_crash_log(f"_apply_effects.0: {type(self).__name__}")
+        if self._dialog_finished or not self.isVisible():
+            _trace_to_crash_log(f"_apply_effects.skip: {type(self).__name__} finished={self._dialog_finished} visible={self.isVisible()}")
+            return
         try:
             hwnd = int(self.winId())
+            if not hwnd:
+                return
             effect = get_window_effect()
             theme = self.theme
             if is_win11():
@@ -116,25 +162,72 @@ class BaseDialog(QDialog):
         except Exception:
             pass
 
-    def _start_show_animation(self):
-        """窗口出现动画"""
-        self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
-        self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
-        self.opacity_anim.setEndValue(1.0)
-        self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
+    def done(self, result):
+        _trace_to_crash_log(f"done: {type(self).__name__} result={result}")
+        self._dialog_finished = True
+        effects_timer = getattr(self, "_effects_timer", None)
+        if effects_timer is not None:
+            try:
+                effects_timer.stop()
+            except Exception:
+                pass
+        anim_timer = getattr(self, "_anim_timer", None)
+        if anim_timer is not None:
+            try:
+                anim_timer.stop()
+            except Exception:
+                pass
+        super().done(result)
 
-        pos = self.pos()
-        self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
-        self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
-        self.pos_anim.setEndValue(pos)
-        self.pos_anim.setEasingCurve(QtCompat.OutCubic)
+    def _start_show_animation(self, target_pos=None):
+        """苹果风格的高质感弹性滑入动画 - 100% 兼容编译及免崩溃设计"""
+        if self._dialog_finished:
+            return
 
-        self.anim_group = QtCompat.QParallelAnimationGroup()
-        self.anim_group.addAnimation(self.opacity_anim)
-        self.anim_group.addAnimation(self.pos_anim)
-        self.anim_group.start()
+        if target_pos is None:
+            target_pos = self.pos()
+        self._anim_target_pos = target_pos
+
+        # 初始状态
+        self.setWindowOpacity(0.0)
+        self.move(target_pos.x(), target_pos.y() + 24)
+
+        # 动画参数
+        self._anim_step = 0
+        self._anim_duration_ms = 240  # 240ms 极速且流畅的动效
+        self._anim_interval_ms = 16   # 16ms (60 FPS) 完美同步显示器刷新率，防止 DWM 阻塞
+        self._anim_total_steps = max(1, self._anim_duration_ms // self._anim_interval_ms)
+
+        # 创建并启动定时器
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(self._anim_interval_ms)
+        self._anim_timer.timeout.connect(self._on_animation_tick)
+        self._anim_timer.start()
+
+    def _on_animation_tick(self):
+        if self._dialog_finished:
+            if hasattr(self, "_anim_timer"):
+                self._anim_timer.stop()
+            return
+
+        self._anim_step += 1
+        progress = self._anim_step / self._anim_total_steps
+
+        if progress >= 1.0:
+            progress = 1.0
+            if hasattr(self, "_anim_timer"):
+                self._anim_timer.stop()
+
+        # Easing curve: EaseOutCubic (平滑指数级物理减速，无回弹，滑入极度丝滑且收尾无顿感)
+        t = progress - 1.0
+        eased = t * t * t + 1.0
+
+        # 加速透明度淡入：在 67% 的进度时透明度就达到 1.0，从而提前关闭 DWM 混合层以消除卡顿
+        self.setWindowOpacity(min(1.0, progress * 1.5))
+        
+        target_y = self._anim_target_pos.y()
+        current_y = int(target_y + (1.0 - eased) * 24)
+        self.move(self._anim_target_pos.x(), current_y)
 
     def mousePressEvent(self, event):
         """鼠标按下 - 支持拖动"""

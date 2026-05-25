@@ -3,8 +3,9 @@
 """
 
 import logging
-from qt_compat import QTimer
+
 from core import APP_VERSION
+from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
 

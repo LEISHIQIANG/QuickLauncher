@@ -3,26 +3,80 @@ setlocal EnableDelayedExpansion
 set "COPYCMD=/Y"
 cd /d "%~dp0.."
 chcp 65001 >nul
+
 echo ========================================
-echo QuickLauncher Win11 Full Build - Max Performance (Nuitka + PyQt5)
+echo QuickLauncher Win11 Full Build - Smooth UI Runtime (Nuitka + PyQt5)
 echo ========================================
 echo.
 echo [!] Note: This script is optimized for Windows 10/11
-echo [!] Using Nuitka for fastest startup speed
+echo [!] Using Nuitka with Win11 smooth-window runtime defaults
 echo [!] 64-bit Windows 10/11 only
 echo.
 
 REM === Version configuration ===
 set "APP_PUBLISHER=Layton"
-set "DEFAULT_APP_VERSION=1.5.6.8"
+set "DEFAULT_APP_VERSION=1.6.0.0"
+for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
+for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
 set "APP_VERSION="
-set /p APP_VERSION=Enter version [1.5.6.8]:
+if not defined QL_LOGGING (
+    set /p APP_VERSION=Enter version [%DEFAULT_APP_VERSION%]:
+)
 if not defined APP_VERSION set "APP_VERSION=%DEFAULT_APP_VERSION%"
+
+REM === 打包日志：交互输入完成后，用 PowerShell Tee-Object 记录后续所有输出 ===
+REM 第二次进入（QL_LOGGING=1）时跳过，直接执行构建
+if not defined QL_LOGGING (
+    if not exist "dist\build_logs" mkdir "dist\build_logs" >nul 2>&1
+    set "QL_LOGGING=1"
+    powershell -NoProfile -Command "$bat='%~f0'; $ts=Get-Date -Format 'yyyyMMdd_HHmmss'; $log='dist\build_logs\build_'+$ts+'.log'; Write-Host \"Build log: $log\"; $env:QL_LOGGING='1'; $env:APP_VERSION='%APP_VERSION%'; $env:APP_PUBLISHER='%APP_PUBLISHER%'; $arg='\"'+$bat+'\" 2>&1'; cmd /c $arg | Tee-Object -FilePath $log; Write-Host \"`n[Build log: $log]\""
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b
+)
+
+REM === Build type (Free/Pro) ===
+if not defined QL_APP_BUILD set "QL_APP_BUILD=free"
+if not defined QL_BUILD_TYPE set "QL_BUILD_TYPE=Free"
+if /I "%QL_APP_BUILD%"=="pro" set "QL_BUILD_TYPE=Pro"
+
+echo   Build type: %QL_BUILD_TYPE%
+
+REM Write build type marker for commercial/__init__.py
+echo %QL_APP_BUILD% > "commercial\.build_type"
 
 echo.
 echo [Build Info]
 echo   Publisher: %APP_PUBLISHER%
 echo   Version: %APP_VERSION%
+if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=smooth"
+
+REM Build profiles:
+REM   smooth (default):   performance-first Win10/11 runtime, keep graphics runtime DLLs and qdirect2d plugin.
+REM   balanced:           remove unused modules, skip UPX, exclude extra graphics runtimes.
+REM   small:              balanced + UPX executable compression.
+if /I "%QL_BUILD_PROFILE%"=="small" (
+    if not defined QL_UPX_EXE set "QL_UPX_EXE=1"
+    if not defined QL_UPX_RUNTIME set "QL_UPX_RUNTIME=0"
+    if not defined QL_KEEP_GRAPHICS_RUNTIME set "QL_KEEP_GRAPHICS_RUNTIME=0"
+    if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=0"
+) else if /I "%QL_BUILD_PROFILE%"=="smooth" (
+    if not defined QL_UPX_EXE set "QL_UPX_EXE=0"
+    if not defined QL_UPX_RUNTIME set "QL_UPX_RUNTIME=0"
+    if not defined QL_KEEP_GRAPHICS_RUNTIME set "QL_KEEP_GRAPHICS_RUNTIME=1"
+    if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"
+) else (
+    set "QL_BUILD_PROFILE=balanced"
+    if not defined QL_UPX_EXE set "QL_UPX_EXE=1"
+    if not defined QL_UPX_RUNTIME set "QL_UPX_RUNTIME=0"
+    if not defined QL_KEEP_GRAPHICS_RUNTIME set "QL_KEEP_GRAPHICS_RUNTIME=0"
+    if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=0"
+)
+
+echo   Build profile: %QL_BUILD_PROFILE%
+echo   Size mode: remove unused Qt/Python modules
+echo   UPX exe: %QL_UPX_EXE%
+echo   Keep graphics runtime DLLs: %QL_KEEP_GRAPHICS_RUNTIME%
+echo   Keep qdirect2d platform plugin: %QL_KEEP_DIRECT2D%
 echo.
 REM ====================
 
@@ -101,7 +155,7 @@ REM set "HTTPS_PROXY="
 
 echo   Installing/updating PyQt5, Nuitka and other dependencies...
 !PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple
-!PYTHON_CMD! -m pip install nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+!PYTHON_CMD! -m pip install nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 echo.
@@ -119,7 +173,15 @@ del /s /q *.pyc >nul 2>&1
 REM Preserve the Nuitka download cache so MinGW/GCC is not re-downloaded every build.
 echo   Cache cleanup completed
 
-REM Nuitka build command - Win11 optimized (max size optimization mode)
+set "QL_GRAPHICS_EXCLUDES=--noinclude-dlls=opengl32.dll,d3dcompiler_*.dll"
+set "QL_VC_RUNTIME_EXCLUDES=--noinclude-dlls=mfc140u.dll,mfc140*.dll --noinclude-dlls=msvcp140.dll,msvcp140_1.dll,msvcp140_2.dll --noinclude-dlls=vcruntime140.dll,vcruntime140_1.dll --noinclude-dlls=concrt140.dll,vcomp140.dll --noinclude-dlls=api-ms-win-crt-*.dll,ucrtbase.dll"
+if "%QL_KEEP_GRAPHICS_RUNTIME%"=="1" (
+    set "QL_GRAPHICS_EXCLUDES="
+    set "QL_VC_RUNTIME_EXCLUDES="
+)
+
+REM Nuitka build command - small runtime, with first-frame smoothness guarded by
+REM no-UPX default and explicit manifest embedding below.
 !PYTHON_CMD! -m nuitka ^
     --mingw64 ^
     --standalone ^
@@ -133,20 +195,15 @@ REM Nuitka build command - Win11 optimized (max size optimization mode)
     --enable-plugin=pyqt5 ^
     --include-qt-plugins=platforms ^
     --noinclude-qt-translations ^
-    --noinclude-dlls=opengl32.dll,d3dcompiler_*.dll ^
+    !QL_GRAPHICS_EXCLUDES! ^
     --noinclude-dlls=qt5quick*.dll,qt5qml*.dll,qt5multimedia*.dll,qt5webengine*.dll,qt5webchannel*.dll ^
     --noinclude-dlls=qt5dbus.dll,qt53d*.dll,qt5designer*.dll,qt5help.dll,qt5bluetooth.dll,qt5nfc.dll ^
     --noinclude-dlls=qt5location.dll,qt5positioning.dll,qt5sensors.dll,qt5texttospeech.dll,qt5websockets.dll ^
     --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml*.dll,qt5networkauth.dll,qt5purchasing.dll ^
     --noinclude-dlls=qt5remoteobjects.dll,qt5script*.dll,qt5scxml.dll,qt5virtualkeyboard.dll,qt5charts.dll,qt5datavisualization.dll ^
-    --noinclude-dlls=qt5svg.dll,qt5printsupport.dll,qt5network.dll ^
-    --noinclude-dlls=mfc140u.dll,mfc140*.dll ^
-    --noinclude-dlls=msvcp140.dll,msvcp140_1.dll,msvcp140_2.dll ^
-    --noinclude-dlls=vcruntime140.dll,vcruntime140_1.dll ^
-    --noinclude-dlls=concrt140.dll,vcomp140.dll ^
-    --noinclude-dlls=api-ms-win-crt-*.dll,ucrtbase.dll ^
+    --noinclude-dlls=qt5printsupport.dll ^
+    !QL_VC_RUNTIME_EXCLUDES! ^
     --noinclude-dlls=qt6pdf.dll ^
-    --noinclude-dlls=libcrypto-3.dll,libssl-3.dll ^
     --company-name="%APP_PUBLISHER%" ^
     --product-name="QuickLauncher" ^
     --file-version="%APP_VERSION%" ^
@@ -154,11 +211,14 @@ REM Nuitka build command - Win11 optimized (max size optimization mode)
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
+    --include-data-dir=plugins=plugins ^
+    --include-data-files=PLUGIN_DEV.md=PLUGIN_DEV.md ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^
     --include-package=bootstrap ^
+    --include-package=PIL ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^
     --include-module=win32gui ^
@@ -172,8 +232,19 @@ REM Nuitka build command - Win11 optimized (max size optimization mode)
     --include-module=win32com.shell.shell ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
+    --include-module=PIL.BmpImagePlugin ^
+    --include-module=PIL.GifImagePlugin ^
+    --include-module=PIL.IcoImagePlugin ^
+    --include-module=PIL.JpegImagePlugin ^
+    --include-module=PIL.PngImagePlugin ^
+    --include-module=PIL.WebPImagePlugin ^
+    --include-module=PyQt5.QtSvg ^
+    --include-module=qrcode ^
     --include-module=ctypes.wintypes ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,numpy,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,email,http,urllib3,requests,asyncio,xml,html,csv,pypinyin ^
+    --include-module=ssl ^
+    --include-module=_ssl ^
+    --include-module=_hashlib ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,numpy,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,http.server,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --output-filename=QuickLauncher.exe ^
     main.py
@@ -185,14 +256,36 @@ if not exist "dist\main.dist\QuickLauncher.exe" (
     exit /b 1
 )
 
+REM Embed the project manifest when mt.exe is available. Nuitka generates its
+REM own Windows metadata, but this manifest explicitly requests PerMonitorV2
+REM DPI awareness, which keeps popup geometry and DWM composition stable on
+REM mixed-DPI Windows 11 desktops.
+set "MT_EXE="
+for /f "delims=" %%m in ('where mt.exe 2^>nul') do (
+    if not defined MT_EXE set "MT_EXE=%%m"
+)
+if defined MT_EXE (
+    if exist "QuickLauncher.manifest" (
+        echo   Embedding Windows manifest...
+        "!MT_EXE!" -manifest "QuickLauncher.manifest" -outputresource:"dist\main.dist\QuickLauncher.exe;#1" >nul 2>&1
+        if !ERRORLEVEL! EQU 0 (
+            echo   [OK] Manifest embedded
+        ) else (
+            echo   [Warning] Manifest embedding failed, continuing
+        )
+    )
+) else (
+    echo   [Info] mt.exe not found; skipping manifest embedding
+)
+
 REM Cleanup temporary build files
 if exist "dist\main.build" (
     echo   Cleaning temporary build files...
     rmdir /s /q "dist\main.build" >nul 2>&1
 )
 
-REM Keep VC++ runtime DLLs
-echo   Keeping VC++ runtime DLLs...
+REM Runtime DLL policy is controlled by QL_KEEP_GRAPHICS_RUNTIME above.
+echo   Runtime DLL cleanup policy applied
 cd dist\main.dist
 
 REM Remove unnecessary Qt modules and MFC
@@ -202,20 +295,36 @@ del /f /q qt5designer*.dll qt5help.dll qt5location.dll qt5positioning.dll qt5sen
 del /f /q qt5serialport.dll qt5sql.dll qt5test.dll qt5xml*.dll qt5xmlpatterns.dll 2>nul
 del /f /q qt5webengine*.dll qt5webchannel*.dll qt5websockets.dll qt5bluetooth.dll qt5nfc.dll 2>nul
 del /f /q qt5texttospeech.dll qt5networkauth.dll qt5script*.dll qt5virtualkeyboard.dll 2>nul
-del /f /q qt5svg.dll qt5printsupport.dll 2>nul
+del /f /q qt5printsupport.dll 2>nul
 del /f /q mfc140*.dll atl140.dll 2>nul
-del /f /q libcrypto-*.dll libssl-*.dll libeay32.dll ssleay32.dll 2>nul
+del /f /q libeay32.dll ssleay32.dll 2>nul
 del /f /q _sqlite3.pyd 2>nul
+del /f /q _decimal.pyd _lzma.pyd _bz2.pyd 2>nul
+REM Python urllib-based URL latency and favicon fetching require OpenSSL.
+if exist "_ssl.pyd" (
+    if not exist "libssl-3.dll" (
+        echo   [X] Missing libssl-3.dll required for HTTPS URL latency.
+        cd ..\..
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+    if not exist "libcrypto-3.dll" (
+        echo   [X] Missing libcrypto-3.dll required for HTTPS URL latency.
+        cd ..\..
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
 if exist "PyQt5" (
     del /f /q PyQt5\QtPdf.pyd PyQt5\QtQuick*.pyd PyQt5\QtQml*.pyd PyQt5\QtMultimedia*.pyd 2>nul
     del /f /q PyQt5\QtDesigner*.pyd PyQt5\QtHelp.pyd PyQt5\QtSql.pyd PyQt5\QtTest.pyd PyQt5\QtXml*.pyd 2>nul
-    del /f /q PyQt5\QtSvg.pyd PyQt5\QtPrintSupport.pyd 2>nul
+    del /f /q PyQt5\QtPrintSupport.pyd 2>nul
 )
 
 REM Remove unnecessary platform plugins (keep qwindows only)
 echo   Cleaning unnecessary platform plugins...
 if exist "PyQt5\qt-plugins\platforms" (
-    del /f /q PyQt5\qt-plugins\platforms\qdirect2d.dll 2>nul
+    if not "%QL_KEEP_DIRECT2D%"=="1" del /f /q PyQt5\qt-plugins\platforms\qdirect2d.dll 2>nul
     del /f /q PyQt5\qt-plugins\platforms\qoffscreen.dll 2>nul
     del /f /q PyQt5\qt-plugins\platforms\qminimal.dll 2>nul
 )
@@ -225,12 +334,12 @@ if exist "PyQt5\qt-plugins\styles" (
     rmdir /s /q PyQt5\qt-plugins\styles 2>nul
 )
 
-REM Remove unnecessary TLS plugins (no network features)
+REM Remove Qt TLS plugins; URL latency uses Python OpenSSL DLLs above.
 if exist "PyQt5\qt-plugins\tls" (
     rmdir /s /q PyQt5\qt-plugins\tls 2>nul
 )
 
-REM Remove unnecessary image format plugins (keep ico/png/jpg/gif/webp/bmp)
+REM Remove unnecessary image format plugins (keep ico/png/jpg/gif/webp/bmp/svg)
 echo   Cleaning unnecessary image format plugins...
 if exist "PyQt5\qt-plugins\imageformats" (
     del /f /q PyQt5\qt-plugins\imageformats\qtiff.dll 2>nul
@@ -238,13 +347,9 @@ if exist "PyQt5\qt-plugins\imageformats" (
     del /f /q PyQt5\qt-plugins\imageformats\qwbmp.dll 2>nul
     del /f /q PyQt5\qt-plugins\imageformats\qtga.dll 2>nul
     del /f /q PyQt5\qt-plugins\imageformats\qpdf.dll 2>nul
-    del /f /q PyQt5\qt-plugins\imageformats\qsvg.dll 2>nul
 )
 
-REM Remove SVG iconengine plugin (no SVG icons)
-if exist "PyQt5\qt-plugins\iconengines" (
-    del /f /q PyQt5\qt-plugins\iconengines\qsvgicon.dll 2>nul
-)
+REM Keep SVG runtime/plugins: favicon fallback can render inline SVG logos.
 
 REM Remove XDG desktop portal plugin (Linux-only, useless on Windows)
 if exist "PyQt5\qt-plugins\platformthemes" (
@@ -301,25 +406,39 @@ if exist "Pythonwin" (
     rmdir /s /q Pythonwin 2>nul
 )
 
+REM Remove test and debug directories
+if exist "lib\test" rmdir /s /q lib\test 2>nul
+if exist "lib\unittest" rmdir /s /q lib\unittest 2>nul
+
 cd ..\..
 
 REM Rename output folder
 ren "dist\main.dist" "QuickLauncher"
 
-REM UPX compression (ultra mode)
-echo   UPX compressing executable...
-if exist "upx.exe" (
-    upx.exe --ultra-brute dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
-    upx.exe --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
-    upx.exe --best --lzma dist\QuickLauncher\qt5*.dll >nul 2>&1
-    upx.exe --best --lzma dist\QuickLauncher\*.pyd >nul 2>&1
-    if exist "dist\QuickLauncher\PyQt5" upx.exe --best --lzma dist\QuickLauncher\PyQt5\*.pyd >nul 2>&1
-    if exist "dist\QuickLauncher\PIL" upx.exe --best --lzma dist\QuickLauncher\PIL\*.pyd >nul 2>&1
-    if exist "dist\QuickLauncher\psutil" upx.exe --best --lzma dist\QuickLauncher\psutil\*.pyd >nul 2>&1
-    if exist "dist\QuickLauncher\win32com\shell" upx.exe --best --lzma dist\QuickLauncher\win32com\shell\*.pyd >nul 2>&1
-    echo   [OK] UPX compression completed
+REM UPX compression. Disabled by default because UPX decompression can make the
+REM first visible Qt/DWM frame noticeably worse in the packaged build.
+if "%QL_UPX_EXE%"=="1" (
+    echo   UPX compressing executable...
+    if exist "upx.exe" (
+        upx.exe --best --lzma dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
+        if "%QL_UPX_RUNTIME%"=="1" (
+        upx.exe --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
+        upx.exe --best --lzma dist\QuickLauncher\qt5*.dll >nul 2>&1
+        upx.exe --best --lzma dist\QuickLauncher\*.pyd >nul 2>&1
+        if exist "dist\QuickLauncher\PyQt5" upx.exe --best --lzma dist\QuickLauncher\PyQt5\*.pyd >nul 2>&1
+        if exist "dist\QuickLauncher\PIL" upx.exe --best --lzma dist\QuickLauncher\PIL\*.pyd >nul 2>&1
+        if exist "dist\QuickLauncher\psutil" upx.exe --best --lzma dist\QuickLauncher\psutil\*.pyd >nul 2>&1
+        if exist "dist\QuickLauncher\win32com\shell" upx.exe --best --lzma dist\QuickLauncher\win32com\shell\*.pyd >nul 2>&1
+            echo   [OK] UPX compression completed (executable + runtime binaries)
+        ) else (
+            echo   [OK] UPX compression completed (executable only)
+            echo   [Info] Runtime DLL/PYD UPX skipped for smoother first-use animations. Set QL_UPX_RUNTIME=1 to enable.
+        )
+    ) else (
+        echo   [Warning] upx.exe not found, skipping compression
+    )
 ) else (
-    echo   [Warning] upx.exe not found, skipping compression
+    echo   [Info] UPX skipped for smoother popup first-frame rendering. Set QL_UPX_EXE=1 to enable.
 )
 
 REM Copy required resources
@@ -330,6 +449,40 @@ if exist "assets\app.ico" (
     copy /Y "scripts\app.ico" "dist\QuickLauncher\" >nul
 ) else (
     echo   [Warning] app.ico not found, skipping copy.
+)
+
+if exist "assets\support.jpg" (
+    if not exist "dist\QuickLauncher\assets" mkdir "dist\QuickLauncher\assets" >nul 2>&1
+    copy /Y "assets\support.jpg" "dist\QuickLauncher\assets\support.jpg" >nul
+) else (
+    echo   [Warning] assets\support.jpg not found, support dialog will use fallback placeholder.
+)
+
+if exist "commercial\.build_type" (
+    if not exist "dist\QuickLauncher\commercial" mkdir "dist\QuickLauncher\commercial" >nul 2>&1
+    copy /Y "commercial\.build_type" "dist\QuickLauncher\commercial\.build_type" >nul
+) else (
+    echo   [Warning] commercial\.build_type not found, default free build marker will be used.
+)
+
+REM Nuitka treats Python files as code, so include-data-dir is not enough for
+REM local plugin source files. Copy plugins explicitly to guarantee every
+REM packaged plugin keeps plugin.json, main.py and README.md.
+echo   Copying bundled plugins...
+if exist "plugins" (
+    if exist "dist\QuickLauncher\plugins" rmdir /s /q "dist\QuickLauncher\plugins" >nul 2>&1
+    xcopy "plugins" "dist\QuickLauncher\plugins\" /E /I /Y >nul
+    if !ERRORLEVEL! GEQ 4 (
+        echo   [X] Failed to copy bundled plugins.
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+) else (
+    echo   [Warning] plugins directory not found, skipping bundled plugins.
+)
+
+if exist "PLUGIN_DEV.md" (
+    copy /Y "PLUGIN_DEV.md" "dist\QuickLauncher\" >nul
 )
 
 echo.
@@ -344,7 +497,7 @@ if exist "..\%SETUP_STAGE_DIR%" rmdir /s /q "..\%SETUP_STAGE_DIR%" >nul 2>&1
 mkdir "..\%SETUP_STAGE_DIR%" >nul 2>&1
 if exist "..\dist\QuickLauncher_Setup_%APP_VERSION%.exe" del /f /q "..\dist\QuickLauncher_Setup_%APP_VERSION%.exe" >nul 2>&1
 
-"!ISCC!" /DMyAppName="QuickLauncher" /DMyAppVersion="%APP_VERSION%" /DMyAppFileVersion="%APP_VERSION%" /DMyAppPublisher="%APP_PUBLISHER%" installer.iss
+"!ISCC!" /DMyAppEdition="%QL_BUILD_TYPE%" /DMyAppName="QuickLauncher" /DMyAppVersion="%APP_VERSION%" /DMyAppFileVersion="%APP_VERSION%" /DMyAppPublisher="%APP_PUBLISHER%" installer.iss
 if !ERRORLEVEL! NEQ 0 (
     echo   [!] Setup package generation failed.
     cd ..

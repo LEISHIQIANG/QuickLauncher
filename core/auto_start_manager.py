@@ -44,6 +44,8 @@ AUTOSTART_STANDARD_TRIGGER_DELAY = ""
 SEE_MASK_NOCLOSEPROCESS = 0x00000040
 SW_HIDE = 0
 INFINITE = 0xFFFFFFFF
+WAIT_TIMEOUT = 0x00000102
+AUTOSTART_HELPER_TIMEOUT_MS = 60000
 CREATE_UNICODE_ENVIRONMENT = 0x00000400
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -135,8 +137,6 @@ if os.name == "nt":
         ctypes.POINTER(wintypes.DWORD),
     ]
     user32.GetWindowThreadProcessId.restype = wintypes.DWORD
-    shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFO)]
-    shell32.ShellExecuteExW.restype = wintypes.BOOL
     kernel32.GetCurrentProcess.argtypes = []
     kernel32.GetCurrentProcess.restype = wintypes.HANDLE
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -145,6 +145,8 @@ if os.name == "nt":
     kernel32.GetLastError.restype = wintypes.DWORD
     kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateProcess.restype = wintypes.BOOL
     kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
     kernel32.GetExitCodeProcess.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
@@ -172,6 +174,8 @@ if os.name == "nt":
         ctypes.POINTER(wintypes.HANDLE),
     ]
     advapi32.DuplicateTokenEx.restype = wintypes.BOOL
+    # Use raw pointer argtypes for the output structs because this shared DLL
+    # function is also configured by shortcut launch helpers.
     advapi32.CreateProcessWithTokenW.argtypes = [
         wintypes.HANDLE,
         wintypes.DWORD,
@@ -180,8 +184,8 @@ if os.name == "nt":
         wintypes.DWORD,
         ctypes.c_void_p,
         wintypes.LPCWSTR,
-        ctypes.POINTER(STARTUPINFO),
-        ctypes.POINTER(PROCESS_INFORMATION),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
     ]
     advapi32.CreateProcessWithTokenW.restype = wintypes.BOOL
     userenv.CreateEnvironmentBlock.argtypes = [
@@ -613,7 +617,7 @@ def _run_elevated_helper(
     sei.nShow = SW_HIDE
 
     try:
-        if not shell32.ShellExecuteExW(ctypes.byref(sei)):
+        if not shell32.ShellExecuteExW(ctypes.pointer(sei)):
             error_code = kernel32.GetLastError()
             if error_code == 1223:
                 logger.info("用户取消了自启动 helper 的 UAC 授权")
@@ -621,7 +625,15 @@ def _run_elevated_helper(
             logger.error("启动自启动 helper 失败, error=%s", error_code)
             return False, "failed"
 
-        kernel32.WaitForSingleObject(sei.hProcess, INFINITE)
+        wait_result = kernel32.WaitForSingleObject(sei.hProcess, AUTOSTART_HELPER_TIMEOUT_MS)
+        if wait_result == WAIT_TIMEOUT:
+            logger.error("自启动 helper 执行超时，已终止 helper 进程")
+            try:
+                kernel32.TerminateProcess(sei.hProcess, HELPER_EXIT_FAILED)
+            except Exception:
+                pass
+            return False, "failed"
+
         exit_code = wintypes.DWORD(HELPER_EXIT_FAILED)
         kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(exit_code))
 
@@ -695,6 +707,79 @@ def _launch_with_current_token(target: str, arguments: str = "", working_dir: st
         return False
 
 
+def enable_impersonate_privilege() -> bool:
+    """Explicitly enable SeImpersonatePrivilege for the current process."""
+    if os.name != "nt":
+        return False
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        advapi32 = ctypes.windll.advapi32
+        kernel32 = ctypes.windll.kernel32
+
+        TOKEN_ADJUST_PRIVILEGES = 0x0020
+        TOKEN_QUERY = 0x0008
+        SE_PRIVILEGE_ENABLED = 0x00000002
+
+        class LUID(ctypes.Structure):
+            _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+
+        class LUID_AND_ATTRIBUTES(ctypes.Structure):
+            _fields_ = [("Luid", LUID), ("Attributes", wintypes.DWORD)]
+
+        class TOKEN_PRIVILEGES(ctypes.Structure):
+            _fields_ = [
+                ("PrivilegeCount", wintypes.DWORD),
+                ("Privileges", LUID_AND_ATTRIBUTES * 1)
+            ]
+
+        # Define function signatures locally to prevent collision
+        OpenProcessToken = advapi32.OpenProcessToken
+        OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+        OpenProcessToken.restype = wintypes.BOOL
+
+        LookupPrivilegeValueW = advapi32.LookupPrivilegeValueW
+        LookupPrivilegeValueW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.POINTER(LUID)]
+        LookupPrivilegeValueW.restype = wintypes.BOOL
+
+        AdjustTokenPrivileges = advapi32.AdjustTokenPrivileges
+        AdjustTokenPrivileges.argtypes = [
+            wintypes.HANDLE,
+            wintypes.BOOL,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+            ctypes.c_void_p
+        ]
+        AdjustTokenPrivileges.restype = wintypes.BOOL
+
+        h_token = wintypes.HANDLE()
+        if not OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, ctypes.byref(h_token)):
+            return False
+
+        try:
+            luid = LUID()
+            if not LookupPrivilegeValueW(None, "SeImpersonatePrivilege", ctypes.byref(luid)):
+                return False
+
+            tp = TOKEN_PRIVILEGES()
+            tp.PrivilegeCount = 1
+            tp.Privileges[0].Luid = luid
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED
+
+            if not AdjustTokenPrivileges(h_token, False, ctypes.byref(tp), 0, None, None):
+                logger.warning("Failed to adjust token privileges for SeImpersonatePrivilege: %s", kernel32.GetLastError())
+                return False
+            return True
+        finally:
+            kernel32.CloseHandle(h_token)
+    except Exception as exc:
+        logger.debug("Failed to enable Impersonate privilege: %s", exc)
+        return False
+
+
 def _create_process_with_token(
     token,
     target: str,
@@ -703,6 +788,9 @@ def _create_process_with_token(
     *,
     token_source: str,
 ) -> bool:
+    # Enable SeImpersonatePrivilege before using CreateProcessWithTokenW
+    enable_impersonate_privilege()
+
     env = ctypes.c_void_p()
     env_created = False
     startup = STARTUPINFO()
@@ -896,7 +984,8 @@ def _launch_via_explorer_token(
     last_pid = None
     attempt = 0
     start = time.monotonic()
-    deadline = start + max(1.0, timeout_seconds)
+    timeout_seconds = max(0.05, float(timeout_seconds))
+    deadline = start + timeout_seconds
     poll_seconds = max(0.1, min(1.0, poll_seconds))
 
     while True:

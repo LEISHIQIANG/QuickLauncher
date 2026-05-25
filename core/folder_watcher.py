@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 try:
-    from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler
+    from watchdog.observers import Observer
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False

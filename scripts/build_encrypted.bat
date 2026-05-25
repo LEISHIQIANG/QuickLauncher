@@ -15,9 +15,12 @@ echo.
 
 REM === Version Information ===
 set "APP_PUBLISHER=Layton"
+set "DEFAULT_APP_VERSION=1.6.0.0"
+for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
+for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
 set "APP_VERSION=%~1"
-if "%APP_VERSION%"=="" set /p "APP_VERSION=Version (default 1.5.6.8): "
-if "%APP_VERSION%"=="" set "APP_VERSION=1.5.6.8"
+if "%APP_VERSION%"=="" set /p "APP_VERSION=Version (default %DEFAULT_APP_VERSION%): "
+if "%APP_VERSION%"=="" set "APP_VERSION=%DEFAULT_APP_VERSION%"
 
 echo.
 echo   Version: %APP_VERSION%
@@ -95,7 +98,7 @@ echo.
 echo [3/5] Installing dependencies...
 !PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 !PYTHON_CMD! -m pip install nuitka ordered-set zstandard python-minifier -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
-!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 echo   Done
 
 REM ============================================
@@ -165,14 +168,13 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --noinclude-dlls=qt5dbus.dll,qt53d*.dll,qt5designer*.dll,qt5help.dll ^
     --noinclude-dlls=qt5location.dll,qt5positioning.dll,qt5sensors.dll ^
     --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml.dll ^
-    --noinclude-dlls=qt5svg.dll,qt5printsupport.dll ^
+    --noinclude-dlls=qt5printsupport.dll ^
     --noinclude-dlls=mfc140u.dll,mfc140*.dll ^
     --noinclude-dlls=msvcp140.dll,msvcp140_1.dll,msvcp140_2.dll ^
     --noinclude-dlls=vcruntime140.dll,vcruntime140_1.dll ^
     --noinclude-dlls=concrt140.dll,vcomp140.dll ^
     --noinclude-dlls=api-ms-win-crt-*.dll,ucrtbase.dll ^
     --noinclude-dlls=qt6pdf.dll ^
-    --noinclude-dlls=libcrypto-3.dll,libssl-3.dll ^
     --company-name="%APP_PUBLISHER%" ^
     --product-name="QuickLauncher" ^
     --file-version="%APP_VERSION%" ^
@@ -184,6 +186,7 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^
+    --include-package=PIL ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^
     --include-module=win32gui ^
@@ -197,8 +200,19 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-module=win32com.shell.shell ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
+    --include-module=PIL.BmpImagePlugin ^
+    --include-module=PIL.GifImagePlugin ^
+    --include-module=PIL.IcoImagePlugin ^
+    --include-module=PIL.JpegImagePlugin ^
+    --include-module=PIL.PngImagePlugin ^
+    --include-module=PIL.WebPImagePlugin ^
+    --include-module=PyQt5.QtSvg ^
+    --include-module=qrcode ^
     --include-module=ctypes.wintypes ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,numpy,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,email,http,urllib3,requests,asyncio,xml,html,csv,pypinyin ^
+    --include-module=ssl ^
+    --include-module=_ssl ^
+    --include-module=_hashlib ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,numpy,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,xml,html,csv,pypinyin ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --assume-yes-for-downloads ^
     --output-filename=QuickLauncher.exe ^
@@ -226,14 +240,29 @@ cd dist\QuickLauncher
 del /f /q qt5pdf.dll qt6pdf.dll qt5quick*.dll qt5qml*.dll qt5multimedia.dll qt5dbus.dll qt53d*.dll 2>nul
 del /f /q qt5designer*.dll qt5help.dll qt5location.dll qt5positioning.dll qt5sensors.dll 2>nul
 del /f /q qt5serialport.dll qt5sql.dll qt5test.dll qt5xml.dll qt5xmlpatterns.dll 2>nul
-del /f /q qt5svg.dll qt5printsupport.dll 2>nul
+del /f /q qt5printsupport.dll 2>nul
 del /f /q mfc140*.dll atl140.dll 2>nul
-del /f /q libcrypto-*.dll libssl-*.dll libeay32.dll ssleay32.dll 2>nul
+del /f /q libeay32.dll ssleay32.dll 2>nul
 del /f /q _sqlite3.pyd 2>nul
+REM Python urllib-based URL latency and favicon fetching require OpenSSL.
+if exist "_ssl.pyd" (
+    if not exist "libssl-3.dll" (
+        echo   [X] Missing libssl-3.dll required for HTTPS URL latency.
+        cd ..\..
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+    if not exist "libcrypto-3.dll" (
+        echo   [X] Missing libcrypto-3.dll required for HTTPS URL latency.
+        cd ..\..
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
 if exist "PyQt5" (
     del /f /q PyQt5\QtPdf.pyd PyQt5\QtQuick*.pyd PyQt5\QtQml*.pyd PyQt5\QtMultimedia*.pyd 2>nul
     del /f /q PyQt5\QtDesigner*.pyd PyQt5\QtHelp.pyd PyQt5\QtSql.pyd PyQt5\QtTest.pyd PyQt5\QtXml*.pyd 2>nul
-    del /f /q PyQt5\QtSvg.pyd PyQt5\QtPrintSupport.pyd 2>nul
+    del /f /q PyQt5\QtPrintSupport.pyd 2>nul
 )
 if exist "PyQt5\qt-plugins\platforms" (
     del /f /q PyQt5\qt-plugins\platforms\qdirect2d.dll 2>nul
@@ -250,10 +279,6 @@ if exist "PyQt5\qt-plugins\imageformats" (
     del /f /q PyQt5\qt-plugins\imageformats\qwbmp.dll 2>nul
     del /f /q PyQt5\qt-plugins\imageformats\qtga.dll 2>nul
     del /f /q PyQt5\qt-plugins\imageformats\qpdf.dll 2>nul
-    del /f /q PyQt5\qt-plugins\imageformats\qsvg.dll 2>nul
-)
-if exist "PyQt5\qt-plugins\iconengines" (
-    del /f /q PyQt5\qt-plugins\iconengines\qsvgicon.dll 2>nul
 )
 if exist "PyQt5\qt-plugins\platformthemes" (
     del /f /q PyQt5\qt-plugins\platformthemes\qxdgdesktopportal.dll 2>nul

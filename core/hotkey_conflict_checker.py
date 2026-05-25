@@ -3,7 +3,6 @@
 """
 
 import ctypes
-from ctypes import wintypes
 import logging
 
 logger = logging.getLogger(__name__)
@@ -63,6 +62,23 @@ def normalize_hotkey(hotkey_str: str) -> str:
 
     return result.title()
 
+# 新增：在模块加载时一次性计算出规范化后的哈希字典，将冲突判断优化至 O(1)
+_NORMALIZED_SYSTEM_HOTKEYS = {
+    normalize_hotkey(k): v for k, v in SYSTEM_HOTKEYS.items()
+}
+
+_NORMALIZED_COMMON_CONFLICTS = {
+    normalize_hotkey(k): v for k, v in {
+        "Ctrl+S": "保存（常用）",
+        "Ctrl+O": "打开（常用）",
+        "Ctrl+N": "新建（常用）",
+        "Ctrl+W": "关闭（常用）",
+        "Ctrl+P": "打印（常用）",
+        "Ctrl+F": "查找（常用）",
+        "Ctrl+H": "替换（常用）",
+    }.items()
+}
+
 
 def check_conflict(hotkey_str: str) -> tuple:
     """
@@ -76,25 +92,13 @@ def check_conflict(hotkey_str: str) -> tuple:
 
     normalized = normalize_hotkey(hotkey_str)
 
-    # 检查系统快捷键
-    for sys_key, desc in SYSTEM_HOTKEYS.items():
-        if normalize_hotkey(sys_key) == normalized:
-            return True, f"与系统快捷键冲突：{desc}"
+    # 1. O(1) 查表：检查系统快捷键
+    if normalized in _NORMALIZED_SYSTEM_HOTKEYS:
+        return True, f"与系统快捷键冲突：{_NORMALIZED_SYSTEM_HOTKEYS[normalized]}"
 
-    # 检查常见软件快捷键
-    common_conflicts = {
-        "Ctrl+S": "保存（常用）",
-        "Ctrl+O": "打开（常用）",
-        "Ctrl+N": "新建（常用）",
-        "Ctrl+W": "关闭（常用）",
-        "Ctrl+P": "打印（常用）",
-        "Ctrl+F": "查找（常用）",
-        "Ctrl+H": "替换（常用）",
-    }
-
-    for common_key, desc in common_conflicts.items():
-        if normalize_hotkey(common_key) == normalized:
-            return True, f"与常用快捷键冲突：{desc}"
+    # 2. O(1) 查表：检查常见软件快捷键
+    if normalized in _NORMALIZED_COMMON_CONFLICTS:
+        return True, f"与常用快捷键冲突：{_NORMALIZED_COMMON_CONFLICTS[normalized]}"
 
     return False, ""
 

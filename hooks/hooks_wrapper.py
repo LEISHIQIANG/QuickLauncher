@@ -3,57 +3,107 @@ C++ DLL钩子的Python封装
 使用ctypes调用hooks.dll
 """
 import ctypes
+import logging
 import os
 from typing import Callable, Optional
 
 # 回调函数类型
 MOUSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
 KEYBOARD_CALLBACK = ctypes.CFUNCTYPE(None)
+logger = logging.getLogger(__name__)
 
 class HooksDLL:
+    EXPECTED_VERSION = 3
+    REQUIRED_EXPORTS = (
+        "InstallMouseHook", "UninstallMouseHook", "SetMousePaused", "IsMousePaused",
+        "SetAltDoubleClickCallback", "InstallKeyboardHook", "UninstallKeyboardHook",
+        "IsAltHeld", "IsCtrlHeld", "SetGlobalHotkey", "ClearGlobalHotkey",
+        "ReleaseAllModifierKeys",
+    )
+    _last_probe = {}
+    _instance = None
+
+    @classmethod
+    def get_instance(cls, dll_path: str = None) -> 'HooksDLL':
+        """获取单例实例，避免多次加载DLL导致GC回调问题"""
+        if cls._instance is None or cls._instance.dll is None:
+            cls._instance = cls(dll_path)
+        return cls._instance
+
     def __init__(self, dll_path: str = None):
         if dll_path is None:
             hooks_dir = os.path.dirname(__file__)
             dll_path = os.path.join(hooks_dir, "hooks.dll")
-        self.dll = ctypes.CDLL(dll_path)
+        self.dll_path = dll_path
+        self.dll = None
+        self.loaded = False
+        self.compatible = False
+        self.load_error = ""
+        self.missing_exports = []
+        self.version = None
+        self.capabilities = 0
+        self._has_special_apps = False
+        self._has_last_error = False
+        try:
+            self.dll = ctypes.CDLL(dll_path)
+            self.loaded = True
+        except Exception as e:
+            self.load_error = str(e)
+            HooksDLL._last_probe = self.get_diagnostics()
+            logger.error("hooks.dll load failed: %s", e)
+            self._init_callback_refs()
+            return
 
-        # 定义函数签名
+        self._bind_required_exports()
+        self._bind_optional_exports()
+        self.compatible = self.loaded and not self.missing_exports
+
+        # 保持回调引用防止GC
+        self._init_callback_refs()
+        HooksDLL._last_probe = self.get_diagnostics()
+
+    def _init_callback_refs(self):
+        self._mouse_callback_ref = None
+        self._alt_dclick_callback_ref = None
+        self._keyboard_callback_ref = None
+        self._hotkey_callback_ref = None
+
+    def _bind_required_exports(self):
+        for name in self.REQUIRED_EXPORTS:
+            if not hasattr(self.dll, name):
+                self.missing_exports.append(name)
+
+        if self.missing_exports:
+            logger.warning("hooks.dll missing exports: %s", self.missing_exports)
+            return
+
         self.dll.InstallMouseHook.argtypes = [MOUSE_CALLBACK]
         self.dll.InstallMouseHook.restype = ctypes.c_bool
-
         self.dll.UninstallMouseHook.argtypes = []
         self.dll.UninstallMouseHook.restype = None
-
         self.dll.SetMousePaused.argtypes = [ctypes.c_bool]
         self.dll.SetMousePaused.restype = None
-
         self.dll.IsMousePaused.argtypes = []
         self.dll.IsMousePaused.restype = ctypes.c_bool
-
         self.dll.SetAltDoubleClickCallback.argtypes = [MOUSE_CALLBACK]
         self.dll.SetAltDoubleClickCallback.restype = None
 
         self.dll.InstallKeyboardHook.argtypes = [KEYBOARD_CALLBACK]
         self.dll.InstallKeyboardHook.restype = ctypes.c_bool
-
         self.dll.UninstallKeyboardHook.argtypes = []
         self.dll.UninstallKeyboardHook.restype = None
-
         self.dll.IsAltHeld.argtypes = []
         self.dll.IsAltHeld.restype = ctypes.c_bool
-
         self.dll.IsCtrlHeld.argtypes = []
         self.dll.IsCtrlHeld.restype = ctypes.c_bool
-
         self.dll.SetGlobalHotkey.argtypes = [ctypes.c_char_p, KEYBOARD_CALLBACK]
-        self.dll.SetGlobalHotkey.restype = None
-
+        self.dll.SetGlobalHotkey.restype = ctypes.c_bool
         self.dll.ClearGlobalHotkey.argtypes = []
         self.dll.ClearGlobalHotkey.restype = None
-
         self.dll.ReleaseAllModifierKeys.argtypes = []
         self.dll.ReleaseAllModifierKeys.restype = None
 
+    def _bind_optional_exports(self):
         # 特殊应用支持（可选，兼容旧DLL）
         try:
             self.dll.SetSpecialApps.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
@@ -64,36 +114,97 @@ class HooksDLL:
         except AttributeError:
             self._has_special_apps = False
 
-        # 保持回调引用防止GC
-        self._mouse_callback_ref = None
-        self._alt_dclick_callback_ref = None
-        self._keyboard_callback_ref = None
-        self._hotkey_callback_ref = None
+        try:
+            self.dll.GetHooksVersion.argtypes = []
+            self.dll.GetHooksVersion.restype = ctypes.c_int
+            self.version = int(self.dll.GetHooksVersion())
+        except AttributeError:
+            self.version = None
+
+        try:
+            self.dll.GetHooksCapabilities.argtypes = []
+            self.dll.GetHooksCapabilities.restype = ctypes.c_uint
+            self.capabilities = int(self.dll.GetHooksCapabilities())
+        except AttributeError:
+            self.capabilities = 0
+
+        try:
+            self.dll.GetLastHookError.argtypes = []
+            self.dll.GetLastHookError.restype = ctypes.c_ulong
+            self._has_last_error = True
+        except AttributeError:
+            self._has_last_error = False
+
+    def get_last_hook_error(self) -> int:
+        if self.dll is None or not getattr(self, "_has_last_error", False):
+            return 0
+        try:
+            return int(self.dll.GetLastHookError())
+        except Exception:
+            return 0
+
+    def get_diagnostics(self) -> dict:
+        compatible = bool(self.loaded and not self.missing_exports)
+        version_ok = self.version is None or self.version >= self.EXPECTED_VERSION
+        summary = "hooks.dll 可用" if compatible and version_ok else "hooks.dll 需要更新或不可用"
+        return {
+            "path": self.dll_path,
+            "loaded": self.loaded,
+            "compatible": compatible and version_ok,
+            "version": self.version,
+            "expected_version": self.EXPECTED_VERSION,
+            "capabilities": self.capabilities,
+            "missing_exports": list(self.missing_exports),
+            "load_error": self.load_error,
+            "last_hook_error": self.get_last_hook_error(),
+            "summary": summary,
+        }
+
+    @classmethod
+    def probe_default(cls) -> dict:
+        try:
+            return cls().get_diagnostics()
+        except Exception as e:
+            return {"loaded": False, "compatible": False, "summary": "hooks.dll 检测失败", "load_error": str(e)}
+
+    def _ready(self) -> bool:
+        return bool(self.loaded and self.compatible and self.dll is not None)
 
     def install_mouse_hook(self, callback: Callable[[int, int], None]) -> bool:
         """安装鼠标钩子"""
+        if not self._ready():
+            return False
         self._mouse_callback_ref = MOUSE_CALLBACK(callback)
-        return self.dll.InstallMouseHook(self._mouse_callback_ref)
+        ok = bool(self.dll.InstallMouseHook(self._mouse_callback_ref))
+        if not ok:
+            logger.warning("InstallMouseHook failed, last_error=%s", self.get_last_hook_error())
+        return ok
 
     def uninstall_mouse_hook(self):
         """卸载鼠标钩子"""
-        self.dll.UninstallMouseHook()
+        if self._ready():
+            self.dll.UninstallMouseHook()
 
     def set_mouse_paused(self, paused: bool):
         """设置鼠标钩子暂停状态"""
-        self.dll.SetMousePaused(paused)
+        if self._ready():
+            self.dll.SetMousePaused(paused)
 
     def is_mouse_paused(self) -> bool:
         """获取鼠标钩子暂停状态"""
+        if not self._ready():
+            return False
         return self.dll.IsMousePaused()
 
     def set_alt_double_click_callback(self, callback: Optional[Callable[[int, int], None]]):
         """设置Alt+左键双击回调"""
         if callback:
             self._alt_dclick_callback_ref = MOUSE_CALLBACK(callback)
-            self.dll.SetAltDoubleClickCallback(self._alt_dclick_callback_ref)
+            if self._ready():
+                self.dll.SetAltDoubleClickCallback(self._alt_dclick_callback_ref)
         else:
-            self.dll.SetAltDoubleClickCallback(None)
+            if self._ready():
+                self.dll.SetAltDoubleClickCallback(None)
 
     def install_keyboard_hook(self, alt_double_tap_callback: Optional[Callable[[], None]] = None) -> bool:
         """安装键盘钩子"""
@@ -101,36 +212,50 @@ class HooksDLL:
             self._keyboard_callback_ref = KEYBOARD_CALLBACK(alt_double_tap_callback)
         else:
             self._keyboard_callback_ref = KEYBOARD_CALLBACK(lambda: None)
-        return self.dll.InstallKeyboardHook(self._keyboard_callback_ref)
+        if not self._ready():
+            return False
+        ok = bool(self.dll.InstallKeyboardHook(self._keyboard_callback_ref))
+        if not ok:
+            logger.warning("InstallKeyboardHook failed, last_error=%s", self.get_last_hook_error())
+        return ok
 
     def uninstall_keyboard_hook(self):
         """卸载键盘钩子"""
-        self.dll.UninstallKeyboardHook()
+        if self._ready():
+            self.dll.UninstallKeyboardHook()
 
     def is_alt_held(self) -> bool:
         """获取Alt键按住状态"""
+        if not self._ready():
+            return False
         return self.dll.IsAltHeld()
 
     def is_ctrl_held(self) -> bool:
         """获取Ctrl键按住状态"""
+        if not self._ready():
+            return False
         return self.dll.IsCtrlHeld()
 
     def set_hotkey(self, hotkey_str: str, callback: Callable[[], None]):
         """设置全局热键"""
+        if not self._ready():
+            return False
         self._hotkey_callback_ref = KEYBOARD_CALLBACK(callback)
-        self.dll.SetGlobalHotkey(hotkey_str.encode('utf-8'), self._hotkey_callback_ref)
+        return bool(self.dll.SetGlobalHotkey(hotkey_str.encode('utf-8'), self._hotkey_callback_ref))
 
     def clear_hotkey(self):
         """清除全局热键"""
-        self.dll.ClearGlobalHotkey()
+        if self._ready():
+            self.dll.ClearGlobalHotkey()
 
     def release_all_modifier_keys(self):
         """释放所有修饰键"""
-        self.dll.ReleaseAllModifierKeys()
+        if self._ready():
+            self.dll.ReleaseAllModifierKeys()
 
     def set_special_apps(self, apps: list):
         """设置特殊应用列表"""
-        if not self._has_special_apps:
+        if not self._ready() or not self._has_special_apps:
             return
 
         if not apps:
@@ -146,6 +271,5 @@ class HooksDLL:
 
     def clear_special_apps(self):
         """清除特殊应用列表"""
-        if self._has_special_apps:
+        if self._ready() and self._has_special_apps:
             self.dll.ClearSpecialApps()
-

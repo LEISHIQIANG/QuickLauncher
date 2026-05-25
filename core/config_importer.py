@@ -1,15 +1,28 @@
-import os
 import json
-import zipfile
-import uuid
-import shutil
 import logging
-from typing import List, Dict, Optional
+import os
+import uuid
+import zipfile
 from datetime import datetime
+from typing import Optional
 
-from .data_models import ShortcutItem, ShortcutType, Folder
+from .config_validation import sanitize_settings_dict
 from .data_manager import DataManager
-from .icon_extractor import get_icon_dir, IconExtractor
+from .data_models import Folder, ShortcutItem, ShortcutType
+from .icon_extractor import IconExtractor, get_icon_dir
+from .import_security import (
+    MAX_CONFIG_BYTES,
+    MAX_ICON_BYTES,
+    UnsafeZipError,
+    build_safe_zip_index,
+    has_zip_entry,
+    is_allowed_icon_path,
+    new_import_report,
+    read_zip_bytes,
+    read_zip_text,
+    set_imported_items,
+    skip_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +111,12 @@ class ConfigImporter:
             for folder in data_manager.data.folders:
                 if not folder or not folder.items:
                     continue
-                    
+
                 for item in folder.items:
                     # 只导出指定类型
                     if item.type in (ShortcutType.HOTKEY, ShortcutType.URL, ShortcutType.COMMAND):
                         item_dict = item.to_dict()
-                        
+
                         # 处理图标
                         icon_path = item.icon_path
                         if icon_path:
@@ -161,7 +174,7 @@ class ConfigImporter:
                     zf.writestr('settings.json', json.dumps(settings_dict, indent=2, ensure_ascii=False))
                 except Exception as e:
                     logger.warning(f"导出设置失败: {e}")
-                
+
                 # 写入图标文件
                 for orig_path, arcname in icon_files_to_include:
                     try:
@@ -176,7 +189,7 @@ class ConfigImporter:
                     except Exception as e:
                         msg = f"无法写入图标到导出包: {arcname}, {e}"
                         logger.warning(msg)
-                    
+
             logger.info("导出完成")
             return True
         except Exception as e:
@@ -201,13 +214,15 @@ class ConfigImporter:
                 logger.error("无效的ZIP文件: %s", file_path)
                 return -1
 
+            report = data_manager._reset_import_report() if hasattr(data_manager, "_reset_import_report") else new_import_report()
             with zipfile.ZipFile(file_path, 'r') as zf:
-                names = zf.namelist()
+                safe_index = build_safe_zip_index(zf, report)
+                names = set(safe_index.keys())
                 # 检查是否为完整备份
                 if 'data.json' in names:
                     return ConfigImporter._import_full_backup(data_manager, file_path)
                 elif 'items.json' in names:
-                    return ConfigImporter._import_legacy(data_manager, zf, target_folder_id)
+                    return ConfigImporter._import_legacy(data_manager, zf, target_folder_id, safe_index, report)
                 else:
                     logger.error("文件格式错误: 缺少必要文件")
                     return -1
@@ -231,24 +246,132 @@ class ConfigImporter:
             return -1
 
     @staticmethod
-    def _import_legacy(data_manager: DataManager, zf: zipfile.ZipFile, target_folder_id: Optional[str]) -> int:
+    def _import_legacy_safe(
+        data_manager: DataManager,
+        zf: zipfile.ZipFile,
+        target_folder_id: Optional[str],
+        safe_index: Optional[dict] = None,
+        report: Optional[dict] = None,
+    ) -> int:
+        try:
+            if safe_index is None:
+                report = report or new_import_report()
+                safe_index = build_safe_zip_index(zf, report)
+            if not has_zip_entry(safe_index, 'items.json'):
+                logger.error("legacy import missing items.json")
+                return -1
+
+            items_text = read_zip_text(
+                zf,
+                safe_index,
+                'items.json',
+                max_bytes=MAX_CONFIG_BYTES,
+                report=report,
+                required=True,
+            )
+            if items_text is None:
+                return -1
+            items_data = json.loads(items_text)
+            if not isinstance(items_data, list):
+                logger.error("legacy import items.json is not a list")
+                return -1
+
+            target_folder = data_manager.data.get_folder_by_id(target_folder_id) if target_folder_id else None
+            if not target_folder:
+                folder_name = f"瀵煎叆鐨勯」鐩?{datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                target_folder = Folder(name=folder_name, is_system=False, is_dock=False)
+                data_manager.data.folders.append(target_folder)
+
+            imported_count = 0
+            local_icon_dir = get_icon_dir()
+            os.makedirs(local_icon_dir, exist_ok=True)
+
+            with data_manager.batch_update(immediate=True):
+                for raw_item in items_data[:2048]:
+                    if not isinstance(raw_item, dict):
+                        continue
+                    item_dict = dict(raw_item)
+                    item_dict["id"] = str(uuid.uuid4())
+                    zip_icon_path = str(item_dict.get("icon_path") or "")
+                    if zip_icon_path and has_zip_entry(safe_index, zip_icon_path):
+                        ext = os.path.splitext(zip_icon_path)[1].lower()
+                        if not is_allowed_icon_path(zip_icon_path):
+                            skip_file(report, zip_icon_path, "unsupported icon extension")
+                            item_dict["icon_path"] = ""
+                        else:
+                            icon_content = read_zip_bytes(
+                                zf,
+                                safe_index,
+                                zip_icon_path,
+                                max_bytes=MAX_ICON_BYTES,
+                                report=report,
+                            )
+                            if icon_content:
+                                new_icon_name = f"{item_dict['id']}{ext or '.png'}"
+                                local_icon_path = os.path.join(local_icon_dir, new_icon_name)
+                                with open(local_icon_path, "wb") as target:
+                                    target.write(icon_content)
+                                item_dict["icon_path"] = local_icon_path
+                            else:
+                                item_dict["icon_path"] = ""
+                    else:
+                        item_dict["icon_path"] = ""
+
+                    item = ShortcutItem.from_dict(item_dict)
+                    target_folder.items.append(item)
+                    imported_count += 1
+
+                if has_zip_entry(safe_index, 'settings.json'):
+                    settings_text = read_zip_text(
+                        zf,
+                        safe_index,
+                        'settings.json',
+                        max_bytes=MAX_CONFIG_BYTES,
+                        report=report,
+                    )
+                    if settings_text:
+                        settings_data = json.loads(settings_text)
+                        data_manager.update_settings(**sanitize_settings_dict(settings_data, report))
+
+                if imported_count > 0:
+                    data_manager.save()
+
+            set_imported_items(report, imported_count)
+            logger.info("legacy config import completed: imported=%s", imported_count)
+            return imported_count
+        except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
+            logger.warning("legacy config import rejected unsafe package: %s", e)
+            return -1
+        except Exception as e:
+            logger.exception("legacy config import failed: %s", e)
+            return -1
+
+    @staticmethod
+    def _import_legacy(
+        data_manager: DataManager,
+        zf: zipfile.ZipFile,
+        target_folder_id: Optional[str],
+        safe_index: Optional[dict] = None,
+        report: Optional[dict] = None,
+    ) -> int:
         """导入旧版格式（仅快捷键、URL、命令）"""
+        return ConfigImporter._import_legacy_safe(data_manager, zf, target_folder_id, safe_index, report)
         try:
                 # 读取 items.json
                 if 'items.json' not in zf.namelist():
                     logger.error("文件格式错误: 缺少 items.json")
                     return -1
-                
+
                 items_data = json.loads(zf.read('items.json').decode('utf-8'))
                 if not isinstance(items_data, list):
                     logger.error("文件格式错误: items.json 不是列表")
                     return -1
-                
+
                 # 准备目标文件夹
                 target_folder = None
                 if target_folder_id:
                     target_folder = data_manager.data.get_folder_by_id(target_folder_id)
-                
+
                 if not target_folder:
                     # 创建新的导入文件夹
                     folder_name = f"导入的项目 {datetime.now().strftime('%Y-%m-%d %H:%M')}"

@@ -3,18 +3,31 @@
 """
 
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QPlainTextEdit, QLabel, QtCompat, QFont, QColor,
-    QPainter, QPixmap, QIcon, QWidget, QPainterPath,
-    QPen, QRectF, PYQT_VERSION, Qt, QPoint
+    QColor,
+    QDialog,
+    QFont,
+    QHBoxLayout,
+    QIcon,
+    QLabel,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPlainTextEdit,
+    QPoint,
+    QPushButton,
+    Qt,
+    QtCompat,
+    QVBoxLayout,
 )
-from ui.utils.window_effect import enable_window_shadow_and_round_corners, get_window_effect, is_win11, enable_acrylic_for_config_window
+from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.styles.style import PopupMenu, Glassmorphism, StyleSheet, Colors
+from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
 
 
 class RoundedMenuPlainTextEdit(QPlainTextEdit):
@@ -45,6 +58,7 @@ class LogWindow(QDialog):
         self._blur_applied = False
         self.setWindowOpacity(0)  # 初始透明度为 0
         self._auto_refresh_timer = None
+        self._full_log_content = ""  # 完整日志内容缓存
 
         self.setWindowTitle("运行日志")
         self.resize(700, 500)
@@ -128,7 +142,7 @@ class LogWindow(QDialog):
         self.log_edit.setFont(font)
         layout.addWidget(self.log_edit)
 
-        # 按钮栏
+        # 底部按钮栏：左侧操作按钮 + 右侧过滤按钮
         btn_layout = QHBoxLayout()
         btn_layout.setContentsMargins(0, 0, 4, 0)
         btn_layout.setSpacing(8)
@@ -148,6 +162,33 @@ class LogWindow(QDialog):
         btn_layout.addWidget(self.clear_btn)
 
         btn_layout.addStretch()
+
+        self.info_filter_btn = QPushButton("INFO (0)")
+        self.info_filter_btn.setFixedHeight(30)
+        self.info_filter_btn.setMinimumWidth(105)
+        self.info_filter_btn.setCursor(QtCompat.PointingHandCursor)
+        self.info_filter_btn.setCheckable(True)
+        self.info_filter_btn.setChecked(True)
+        self.info_filter_btn.clicked.connect(self._apply_filter)
+        btn_layout.addWidget(self.info_filter_btn)
+
+        self.debug_filter_btn = QPushButton("DEBUG (0)")
+        self.debug_filter_btn.setFixedHeight(30)
+        self.debug_filter_btn.setMinimumWidth(105)
+        self.debug_filter_btn.setCursor(QtCompat.PointingHandCursor)
+        self.debug_filter_btn.setCheckable(True)
+        self.debug_filter_btn.setChecked(True)
+        self.debug_filter_btn.clicked.connect(self._apply_filter)
+        btn_layout.addWidget(self.debug_filter_btn)
+
+        self.error_filter_btn = QPushButton("ERROR (0)")
+        self.error_filter_btn.setFixedHeight(30)
+        self.error_filter_btn.setMinimumWidth(105)
+        self.error_filter_btn.setCursor(QtCompat.PointingHandCursor)
+        self.error_filter_btn.setCheckable(True)
+        self.error_filter_btn.setChecked(True)
+        self.error_filter_btn.clicked.connect(self._apply_filter)
+        btn_layout.addWidget(self.error_filter_btn)
 
         layout.addLayout(btn_layout)
 
@@ -185,7 +226,7 @@ class LogWindow(QDialog):
         theme = self._theme
         self.log_edit.set_theme(theme)
 
-        input_style = Glassmorphism.get_neumorphism_input_style(theme)
+        Glassmorphism.get_neumorphism_input_style(theme)
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
 
         if theme == "dark":
@@ -271,6 +312,9 @@ class LogWindow(QDialog):
         """
         self.refresh_btn.setStyleSheet(action_btn_style)
         self.clear_btn.setStyleSheet(action_btn_style)
+
+        # 过滤按钮样式
+        self._apply_filter_button_styles(theme)
 
     def _apply_blur_effect(self):
         """应用磨砂玻璃模糊效果 - 与主配置窗口相同"""
@@ -399,11 +443,141 @@ class LogWindow(QDialog):
         self._drag_pos = None
         super().mouseReleaseEvent(event)
 
+    # --- 过滤按钮逻辑 ---
+    def _apply_filter_button_styles(self, theme: str):
+        """应用过滤按钮的主题样式"""
+        is_dark = theme == "dark"
+
+        # INFO 按钮 - 默认主题色
+        if is_dark:
+            info_bg = "rgba(255, 255, 255, 0.10)"
+            info_border = "rgba(255, 255, 255, 0.18)"
+            info_text = "rgba(255, 255, 255, 0.85)"
+            info_active_bg = "rgba(10, 132, 255, 0.35)"
+            info_active_border = "rgba(10, 132, 255, 0.6)"
+        else:
+            info_bg = "rgba(0, 0, 0, 0.04)"
+            info_border = "rgba(0, 0, 0, 0.08)"
+            info_text = "rgba(28, 28, 30, 0.85)"
+            info_active_bg = "rgba(0, 122, 255, 0.15)"
+            info_active_border = "rgba(0, 122, 255, 0.4)"
+
+        self.info_filter_btn.setStyleSheet(f"""
+            QPushButton {{
+                font-size: 11px; padding: 4px 8px;
+                background: {info_bg}; border: 1px solid {info_border};
+                border-radius: 5px; color: {info_text};
+            }}
+            QPushButton:hover {{ background: {info_active_bg}; border: 1px solid {info_active_border}; }}
+            QPushButton:checked {{ background: {info_active_bg}; border: 1px solid {info_active_border}; font-weight: bold; }}
+        """)
+
+        # DEBUG 按钮 - 淡黄色（柔和）
+        if is_dark:
+            debug_bg = "rgba(255, 214, 10, 0.05)"
+            debug_border = "rgba(255, 214, 10, 0.12)"
+            debug_text = "rgba(255, 224, 130, 0.7)"
+            debug_active_bg = "rgba(255, 214, 10, 0.15)"
+            debug_active_border = "rgba(255, 214, 10, 0.30)"
+        else:
+            debug_bg = "rgba(180, 150, 0, 0.03)"
+            debug_border = "rgba(180, 150, 0, 0.08)"
+            debug_text = "rgba(140, 120, 20, 0.75)"
+            debug_active_bg = "rgba(255, 214, 10, 0.10)"
+            debug_active_border = "rgba(200, 170, 0, 0.22)"
+
+        self.debug_filter_btn.setStyleSheet(f"""
+            QPushButton {{
+                font-size: 11px; padding: 4px 8px;
+                background: {debug_bg}; border: 1px solid {debug_border};
+                border-radius: 5px; color: {debug_text};
+            }}
+            QPushButton:hover {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; }}
+            QPushButton:checked {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; font-weight: bold; }}
+        """)
+
+        # ERROR 按钮 - 淡红色（柔和）
+        if is_dark:
+            error_bg = "rgba(255, 69, 58, 0.06)"
+            error_border = "rgba(255, 69, 58, 0.14)"
+            error_text = "rgba(255, 120, 110, 0.7)"
+            error_active_bg = "rgba(255, 69, 58, 0.18)"
+            error_active_border = "rgba(255, 69, 58, 0.35)"
+        else:
+            error_bg = "rgba(200, 40, 30, 0.03)"
+            error_border = "rgba(200, 40, 30, 0.08)"
+            error_text = "rgba(190, 50, 40, 0.75)"
+            error_active_bg = "rgba(255, 69, 58, 0.10)"
+            error_active_border = "rgba(220, 50, 40, 0.22)"
+
+        self.error_filter_btn.setStyleSheet(f"""
+            QPushButton {{
+                font-size: 11px; padding: 4px 8px;
+                background: {error_bg}; border: 1px solid {error_border};
+                border-radius: 5px; color: {error_text};
+            }}
+            QPushButton:hover {{ background: {error_active_bg}; border: 1px solid {error_active_border}; }}
+            QPushButton:checked {{ background: {error_active_bg}; border: 1px solid {error_active_border}; font-weight: bold; }}
+        """)
+
+    def _count_log_levels(self, content: str):
+        """统计日志中各级别的条数"""
+        # 匹配常见日志格式中的级别关键字
+        info_count = len(re.findall(r'\bINFO\b', content))
+        debug_count = len(re.findall(r'\bDEBUG\b', content))
+        error_count = len(re.findall(r'\bERROR\b', content))
+        return info_count, debug_count, error_count
+
+    def _update_filter_button_labels(self, content: str):
+        """更新过滤按钮上的计数"""
+        info_c, debug_c, error_c = self._count_log_levels(content)
+        self.info_filter_btn.setText(f"INFO ({info_c})")
+        self.debug_filter_btn.setText(f"DEBUG ({debug_c})")
+        self.error_filter_btn.setText(f"ERROR ({error_c})")
+
+    def _apply_filter(self):
+        """根据按钮选中状态过滤日志内容，未选中的级别会被隐藏"""
+        content = self._full_log_content
+        if not content:
+            return
+
+        show_info = self.info_filter_btn.isChecked()
+        show_debug = self.debug_filter_btn.isChecked()
+        show_error = self.error_filter_btn.isChecked()
+
+        if show_info and show_debug and show_error:
+            # 全部选中，显示完整内容
+            self.log_edit.setPlainText(content)
+        else:
+            # 排除未选中的级别
+            hidden_levels = []
+            if not show_info:
+                hidden_levels.append("INFO")
+            if not show_debug:
+                hidden_levels.append("DEBUG")
+            if not show_error:
+                hidden_levels.append("ERROR")
+
+            lines = content.splitlines()
+            filtered = [
+                line for line in lines
+                if not any(lv in line for lv in hidden_levels)
+            ]
+            if filtered:
+                self.log_edit.setPlainText("\n".join(filtered))
+            else:
+                self.log_edit.setPlainText("所有日志条目均已被过滤")
+
+        from qt_compat import QTextCursor
+        self.log_edit.moveCursor(QTextCursor.MoveOperation.End)
+
     # --- 日志操作 ---
     def load_log(self):
         """加载日志内容（只读取最后100KB）"""
         if not os.path.exists(self.log_path):
+            self._full_log_content = ""
             self.log_edit.setPlainText("日志文件不存在")
+            self._update_filter_button_labels("")
             return
 
         try:
@@ -419,11 +593,13 @@ class LogWindow(QDialog):
                 else:
                     content = f.read()
 
-                self.log_edit.setPlainText(content)
-                from qt_compat import QTextCursor
-                self.log_edit.moveCursor(QTextCursor.MoveOperation.End)
+                self._full_log_content = content
+                self._update_filter_button_labels(content)
+                self._apply_filter()
         except Exception as e:
+            self._full_log_content = ""
             self.log_edit.setPlainText(f"无法读取日志文件: {e}")
+            self._update_filter_button_labels("")
 
     def clear_log(self):
         """清空日志"""
@@ -434,6 +610,9 @@ class LogWindow(QDialog):
             try:
                 with open(self.log_path, 'w', encoding='utf-8') as f:
                     f.write("")
+                self.info_filter_btn.setChecked(True)
+                self.debug_filter_btn.setChecked(True)
+                self.error_filter_btn.setChecked(True)
                 self.load_log()
             except Exception as e:
                 ThemedMessageBox.warning(self, "错误", f"无法清空日志: {e}")

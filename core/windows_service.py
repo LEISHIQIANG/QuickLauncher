@@ -5,15 +5,16 @@ Windows 服务实现
 服务只负责启动主程序，不处理 GUI
 """
 
-import sys
-import os
-import win32serviceutil
-import win32service
-import win32event
-import servicemanager
-import subprocess
-import time
 import logging
+import os
+import subprocess
+import sys
+import time
+
+import servicemanager
+import win32event
+import win32service
+import win32serviceutil
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
         if self.main_process:
             try:
                 self.main_process.terminate()
-            except:
+            except Exception:
                 pass
 
     def SvcDoRun(self):
@@ -88,17 +89,17 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
                 match = re.search(r'([A-Za-z]:[^"]+QuickLauncher\.exe)', image_path)
                 if match:
                     exe_path = match.group(1)
-        except:
+        except Exception:
             pass
 
         # 降级方案1：从安装注册表获取
         if not exe_path:
             try:
-                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}_is1", 0, winreg.KEY_READ)
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1", 0, winreg.KEY_READ)
                 install_path, _ = winreg.QueryValueEx(key, "InstallLocation")
                 winreg.CloseKey(key)
                 exe_path = os.path.join(install_path, "QuickLauncher.exe")
-            except:
+            except Exception:
                 pass
 
         # 降级方案2：使用 exe 同目录
@@ -120,7 +121,7 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
                 if "explorer.exe" in result.stdout:
                     time.sleep(2)  # 等待桌面加载
                     break
-            except:
+            except Exception:
                 pass
             time.sleep(1)
 
@@ -230,7 +231,7 @@ def is_service_installed():
     try:
         win32serviceutil.QueryServiceStatus(SERVICE_NAME)
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -239,7 +240,7 @@ def is_service_running():
     try:
         status = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
         return status == win32service.SERVICE_RUNNING
-    except:
+    except Exception:
         return False
 
 

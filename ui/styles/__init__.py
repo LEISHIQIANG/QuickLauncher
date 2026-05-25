@@ -6,9 +6,9 @@ from .style import (
     Colors,
     PopupMenu,
     StyleSheet,
-    get_menu_stylesheet,
-    get_dialog_stylesheet,
     get_button_stylesheet,
+    get_dialog_stylesheet,
+    get_menu_stylesheet,
 )
 
 __all__ = [

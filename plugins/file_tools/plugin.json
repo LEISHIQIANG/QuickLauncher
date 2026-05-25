@@ -1,0 +1,26 @@
+{
+  "id": "file_tools",
+  "name": "File Tools",
+  "version": "1.0.0",
+  "author": "QuickLauncher",
+  "description": "文件辅助工具：复制选中文件路径、计算文件哈希",
+  "entry": "main.py",
+  "keywords": ["file", "file tools", "文件", "文件工具"],
+  "permissions": ["clipboard.write", "file.read"],
+  "commands": [
+    {
+      "id": "file_tools.copy_path",
+      "title": "复制文件路径",
+      "aliases": ["copy-path", "copypath", "path", "复制路径"],
+      "description": "复制资源管理器选中文件路径，支持 name/dir/full 模式",
+      "category": "文件"
+    },
+    {
+      "id": "file_tools.hash",
+      "title": "文件哈希",
+      "aliases": ["hash", "sha256", "md5"],
+      "description": "计算指定文件或选中文件的 MD5/SHA1/SHA256",
+      "category": "文件"
+    }
+  ]
+}

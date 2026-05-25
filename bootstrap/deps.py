@@ -1,7 +1,7 @@
-import os
-import sys
-import subprocess
 import logging
+import os
+import subprocess
+import sys
 
 
 def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_box):

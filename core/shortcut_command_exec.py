@@ -2,36 +2,222 @@
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
-from typing import List
+import time
+from typing import List, Optional
 
+from qt_compat import QObject, pyqtSignal
+
+from .command_registry import CommandContext
+from .command_risk import audit_command_execution
+from .command_variables import (
+    CommandVariableError,
+    find_unquoted_external_command_variables,
+    is_value_only_variable_command,
+    read_clipboard_text,
+    resolve_command_variables,
+    should_expand_command_variables,
+)
 from .data_models import ShortcutItem
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
 
 
+class MainThreadInvoker(QObject):
+    execute_signal = pyqtSignal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.execute_signal.connect(self._on_execute)
+
+    def _on_execute(self, func):
+        try:
+            func()
+        except Exception as e:
+            logger.error(f"MainThreadInvoker execution failed: {e}")
+
+_main_thread_invoker = None
+
+def init_main_thread_invoker():
+    global _main_thread_invoker
+    if _main_thread_invoker is None:
+        _main_thread_invoker = MainThreadInvoker()
+
+
 class CommandExecutionMixin:
+    @staticmethod
+    def _python_launcher() -> Optional[str]:
+        """Return a Python executable suitable for user scripts."""
+        if not ShortcutExecutor._is_packaged_runtime() and sys.executable:
+            resolved = ShortcutExecutor._resolve_long_path(sys.executable)
+            if os.path.isfile(resolved):
+                return resolved
+        return ShortcutExecutor._find_system_python_launcher()
+
+    @staticmethod
+    def _is_packaged_runtime() -> bool:
+        executable = os.path.basename(sys.executable or "").lower()
+        return bool(getattr(sys, "frozen", False)) or (
+            executable.endswith(".exe") and "python" not in executable
+        )
+
+    @staticmethod
+    def _app_install_dir() -> str:
+        if ShortcutExecutor._is_packaged_runtime():
+            return os.path.dirname(os.path.abspath(sys.executable))
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    @staticmethod
+    def _probe_python_launcher(candidate: str) -> bool:
+        try:
+            completed = subprocess.run(
+                [candidate, "-c", "import sys; print(sys.version_info[0])"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                shell=False,
+            )
+            return completed.returncode == 0
+        except Exception:
+            return False
+
+    @staticmethod
+    def _resolve_long_path(path: str) -> str:
+        """Convert a Windows short (8.3) path to its long form."""
+        if os.name != "nt" or not path:
+            return path
+        try:
+            buf = ctypes.create_unicode_buffer(4096)
+            result = ctypes.windll.kernel32.GetLongPathNameW(path, buf, 4096)
+            if 0 < result < 4096:
+                return buf.value
+        except Exception:
+            pass
+        # If GetLongPathNameW fails (e.g. 8.3 names disabled on this volume),
+        # verify the path actually exists — a stale short-path will break .cmd wrappers.
+        if not os.path.exists(path):
+            logger.debug("_resolve_long_path: path does not exist after GetLongPathNameW: %s", path)
+        return path
+
+    @staticmethod
+    def _find_system_python_launcher() -> Optional[str]:
+        candidates = [shutil.which("py"), shutil.which("python3"), shutil.which("python")]
+        app_dir = os.path.normcase(
+            ShortcutExecutor._resolve_long_path(os.path.abspath(ShortcutExecutor._app_install_dir()))
+        )
+        for candidate in candidates:
+            if not candidate:
+                continue
+            long_path = ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+            norm = os.path.normcase(long_path)
+            candidate_dir = os.path.normcase(os.path.dirname(long_path))
+            if "windowsapps" in norm or (ShortcutExecutor._is_packaged_runtime() and candidate_dir == app_dir):
+                continue
+            if ShortcutExecutor._is_packaged_runtime() and not ShortcutExecutor._probe_python_launcher(long_path):
+                continue
+            return long_path
+        return None
+
+    @staticmethod
+    def _python_launcher_error() -> str:
+        return (
+            "找不到可用的系统 Python。打包版不能直接复用程序目录内的 python312.dll；"
+            "请安装系统 Python/py launcher，或勾选“兼容旧 Python”在主进程执行。"
+        )
+
+    @staticmethod
+    def _write_temp_python_script(command: str) -> str:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
+            f.write(command)
+            return f.name
+
+    @staticmethod
+    def _write_python_cmd_wrapper(script_path: str) -> str:
+        python_exe = ShortcutExecutor._python_launcher()
+        if not python_exe:
+            raise RuntimeError(ShortcutExecutor._python_launcher_error())
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cmd", delete=False, encoding="utf-8") as f:
+            wrapper_path = f.name
+            f.write("@echo off\n")
+            f.write("chcp 65001 >nul\n")
+            f.write(subprocess.list2cmdline([python_exe, script_path]) + "\n")
+            f.write("set QL_EXIT=%ERRORLEVEL%\n")
+            f.write(f'del /f /q "{script_path}" >nul 2>nul\n')
+            f.write("echo.\n")
+            f.write("echo [QuickLauncher] Python exited with code %QL_EXIT%.\n")
+            f.write('del /f /q "%~f0" >nul 2>nul\n')
+            return wrapper_path
+
+    @staticmethod
+    def _write_cmd_wrapper(command: str) -> tuple[str, str]:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cmd", delete=False, encoding="utf-8") as user_file:
+            user_path = user_file.name
+            user_file.write("@echo off\n")
+            user_file.write("chcp 65001 >nul\n")
+            user_file.write(command)
+            if not command.endswith(("\n", "\r")):
+                user_file.write("\n")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cmd", delete=False, encoding="utf-8") as wrapper_file:
+            wrapper_path = wrapper_file.name
+            wrapper_file.write("@echo off\n")
+            wrapper_file.write("chcp 65001 >nul\n")
+            wrapper_file.write(f'call "{user_path}"\n')
+            wrapper_file.write("set QL_EXIT=%ERRORLEVEL%\n")
+            wrapper_file.write(f'del /f /q "{user_path}" >nul 2>nul\n')
+            wrapper_file.write('del /f /q "%~f0" >nul 2>nul\n')
+            wrapper_file.write("exit /b %QL_EXIT%\n")
+            return user_path, wrapper_path
+
+    @staticmethod
+    def _is_qt_main_thread() -> bool:
+        try:
+            from qt_compat import QApplication, QThread
+            app = QApplication.instance()
+            return bool(app and QThread.currentThread() == app.thread())
+        except Exception:
+            return False
+
+    @staticmethod
+    def _cleanup_file_later(process, *paths: str):
+        def cleanup():
+            try:
+                if process is not None:
+                    process.wait()
+            except Exception:
+                pass
+            for path in paths:
+                try:
+                    if path and os.path.exists(path):
+                        os.remove(path)
+                except Exception as e:
+                    logger.debug("临时文件清理失败 %s: %s", path, e)
+
+        threading.Thread(target=cleanup, daemon=True, name="CommandTempCleanup").start()
+
     @staticmethod
     def _run_silent_output(argv: List[str]) -> str:
         """静默执行命令并获取输出"""
         if os.name != 'nt':
             return ""
-            
+
         try:
             startupinfo = ShortcutExecutor._get_silent_startupinfo()
             creationflags = ShortcutExecutor._get_silent_creationflags()
-            
+
             # 关键：对于 PowerShell，即使设置了 Hidden WindowStyle，
             # 如果不通过 shell=True 启动，有时仍会短暂显示控制台。
             # 但 shell=True 本身又会引入 cmd.exe 窗口。
             # 最好的办法是直接调用 powershell.exe 并通过 startupinfo 隐藏。
-            
+
             process = subprocess.Popen(
                 argv,
                 stdout=subprocess.PIPE,
@@ -56,25 +242,57 @@ class CommandExecutionMixin:
         if not command:
             logger.warning("命令为空")
             return False, "命令内容为空"
-            
+
         command_type = getattr(shortcut, 'command_type', 'cmd')
-        
+        if command_type == "cmd" and is_value_only_variable_command(command):
+            if ShortcutExecutor._should_expand_command_variables(shortcut):
+                return False, f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}"
+            return False, f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}"
+        if command_type == "cmd" and ShortcutExecutor._should_expand_command_variables(shortcut):
+            unsafe_variables = find_unquoted_external_command_variables(command)
+            if unsafe_variables:
+                examples = ", ".join(f"{{{name}:q}}" for name in unsafe_variables[:3])
+                return False, f"外部输入变量用于 CMD 命令时必须使用 :q 引用，例如: {examples}"
+        try:
+            if ShortcutExecutor._should_expand_command_variables(shortcut):
+                command = ShortcutExecutor._resolve_command_variables(shortcut, command)
+        except CommandVariableError as e:
+            return False, str(e)
+
+        if command_type != "python":
+            try:
+                from core.builtin_commands import canonical_builtin_command
+                parts = command.strip().split(None, 1)
+                cmd_word = parts[0] if parts else ""
+                canonical = canonical_builtin_command(cmd_word)
+                if canonical:
+                    args_part = parts[1] if len(parts) > 1 else ""
+                    if args_part:
+                        command = f"{canonical} {args_part}"
+                    else:
+                        command = canonical
+                    command_type = "builtin"
+            except Exception as e:
+                logger.debug("内置命令规范化失败（可忽略）: %s", e)
+
+        audit_command_execution(shortcut, command, command_type=command_type)
+
         # Python 代码执行
         if command_type == 'python':
             show_window = getattr(shortcut, "show_window", False)
             if show_window:
-                # 写入临时脚本，用可见窗口的 cmd.exe 运行
-                import tempfile
+                tmp_path = None
                 try:
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-                        f.write(command)
-                        tmp_path = f.name
+                    if not ShortcutExecutor._python_launcher():
+                        return False, ShortcutExecutor._python_launcher_error()
+                    tmp_path = ShortcutExecutor._write_temp_python_script(command)
                     if os.name == "nt":
+                        wrapper_path = ShortcutExecutor._write_python_cmd_wrapper(tmp_path)
                         run_as_admin = getattr(shortcut, "run_as_admin", False)
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
                             os.environ.get("ComSpec") or os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"),
-                            subprocess.list2cmdline(["/d", "/s", "/k", f'python "{tmp_path}" & del /f "{tmp_path}"']),
-                            None,
+                            subprocess.list2cmdline(["/d", "/s", "/k", wrapper_path]),
+                            (getattr(shortcut, "working_dir", "") or "").strip() or None,
                             show_cmd=1,
                             run_as_admin=run_as_admin,
                             admin_failure_message="Administrator launch failed.",
@@ -83,22 +301,65 @@ class CommandExecutionMixin:
                             return True, ""
                         if launch_error:
                             return False, launch_error
-                    subprocess.Popen(["python", tmp_path], shell=False)
+                    python_exe = ShortcutExecutor._python_launcher()
+                    if not python_exe:
+                        return False, ShortcutExecutor._python_launcher_error()
+                    process = subprocess.Popen([python_exe, tmp_path], shell=False)
+                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
                     return True, ""
+                except FileNotFoundError:
+                    try:
+                        if tmp_path and os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                    except Exception:
+                        pass
+                    return False, ShortcutExecutor._python_launcher_error()
                 except Exception as e:
+                    try:
+                        if tmp_path and os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                    except Exception:
+                        pass
                     return False, f"Python 代码执行失败: {e}"
+            force_subprocess = (
+                bool(getattr(ShortcutExecutor, "_is_launch_context_elevated", lambda: False)())
+                and not bool(getattr(shortcut, "run_as_admin", False))
+            )
+            if getattr(shortcut, "python_execution_mode", "legacy_inline") == "subprocess" or force_subprocess:
+                try:
+                    python_exe = ShortcutExecutor._python_launcher()
+                    if not python_exe:
+                        raise FileNotFoundError(ShortcutExecutor._python_launcher_error())
+                    tmp_path = ShortcutExecutor._write_temp_python_script(command)
+                    if force_subprocess and os.name == "nt":
+                        launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                            python_exe,
+                            subprocess.list2cmdline([tmp_path]),
+                            (getattr(shortcut, "working_dir", "") or "").strip() or None,
+                            show_cmd=0,
+                            run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
+                            admin_failure_message="Administrator launch failed.",
+                        )
+                        if launched:
+                            ShortcutExecutor._cleanup_file_later(None, tmp_path)
+                            return True, ""
+                        if launch_error:
+                            return False, launch_error
+                    process = ShortcutExecutor._popen_silent(
+                        [python_exe, tmp_path],
+                        cwd=(getattr(shortcut, "working_dir", "") or "").strip() or None,
+                        env=ShortcutExecutor._sanitized_child_env(),
+                        shell=False,
+                    )
+                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
+                    return True, ""
+                except FileNotFoundError:
+                    return False, ShortcutExecutor._python_launcher_error()
+                except Exception as e:
+                    return False, f"Python 代码启动失败: {e}"
             try:
                 # 提供一些常用的上下文
-                context = {
-                    'os': os,
-                    'sys': sys,
-                    'subprocess': subprocess,
-                    'time': time,
-                    'ctypes': ctypes,
-                    'ShortcutExecutor': ShortcutExecutor,
-                    'logger': logger,
-                    'run_silent': lambda cmd, shell=False: ShortcutExecutor._popen_silent(cmd, shell=shell)
-                }
+                context = ShortcutExecutor._python_inline_context()
                 exec(command, context)
                 logger.info("执行Python代码成功")
                 return True, ""
@@ -108,28 +369,50 @@ class CommandExecutionMixin:
                 import traceback
                 logger.error(traceback.format_exc())
                 return False, error_msg
-                
+
         # 内置命令
         elif command_type == 'builtin':
             success = ShortcutExecutor._execute_builtin_command(command)
             return success, "" if success else "内置命令执行失败"
-            
+
         # CMD 命令 (默认为 silent)
         else:
-            # 兼容旧版本，检查是否是内置命令关键字
-            if command_type == 'cmd':
-                cmd_lower = command.strip().lower()
-                if cmd_lower in ('topmost', '置顶', 'pin', 'toggle_topmost',
-                               'topmost_on', '置顶开', 'pin_on',
-                               'topmost_off', '置顶关', 'unpin', 'pin_off'):
-                    success = ShortcutExecutor._execute_builtin_command(command)
-                    return success, "" if success else "内置命令执行失败"
-
             error_msg = ""
             process = None
             run_as_admin = getattr(shortcut, "run_as_admin", False)
             show_window = getattr(shortcut, "show_window", False)
             show_cmd = 1 if show_window else 0
+            raw_command = command
+            if "\n" in raw_command or "\r" in raw_command:
+                try:
+                    user_cmd_path, wrapper_path = ShortcutExecutor._write_cmd_wrapper(raw_command)
+                    cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
+                    comspec = os.environ.get("ComSpec") or os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe")
+                    if os.name == "nt":
+                        launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                            comspec,
+                            subprocess.list2cmdline(["/d", "/s", "/k" if show_window else "/c", wrapper_path]),
+                            cwd,
+                            show_cmd=show_cmd,
+                            run_as_admin=run_as_admin,
+                            admin_failure_message="Administrator launch failed.",
+                        )
+                        if launched:
+                            return True, ""
+                        if launch_error:
+                            return False, launch_error
+                    process = ShortcutExecutor._popen_silent(
+                        [comspec, "/d", "/s", "/c", wrapper_path],
+                        cwd=cwd,
+                        env=ShortcutExecutor._sanitized_child_env(),
+                        shell=False,
+                    )
+                    ShortcutExecutor._cleanup_file_later(process, user_cmd_path, wrapper_path)
+                    return True, ""
+                except Exception as e:
+                    error_msg = f"命令启动失败: {e}"
+                    logger.error(error_msg)
+                    return False, error_msg
             # 多行命令合并为单行
             command = " & ".join(line.strip() for line in command.splitlines() if line.strip())
 
@@ -199,72 +482,583 @@ class CommandExecutionMixin:
                             shell=True
                         )
                     logger.info(f"执行命令({'Visible' if show_window else 'Silent'} Shell): {command}")
-                    
+
             except Exception as e:
                 error_msg = f"命令启动失败: {e}"
                 logger.error(error_msg)
-            
-            # ===== v2.6.6.0 关键修复：命令执行后恢复焦点 =====
-            # 等待命令进程完成或超时（最多等待 2 秒）
+
+            # 焦点恢复移到后台线程，避免主线程阻塞
             if process is not None:
-                try:
-                    process.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    logger.debug("命令进程超时未完成，继续执行焦点恢复")
-                except Exception as e:
-                    logger.debug(f"等待命令进程时出错: {e}")
-            
-            # 短暂等待，让系统处理进程结束后的状态变化
-            time.sleep(0.05)
-            
-            # 恢复焦点
-            try:
-                ShortcutExecutor.restore_foreground_window()
-                logger.debug("CMD 命令执行后：已恢复焦点")
-            except Exception as e:
-                logger.debug(f"CMD 命令执行后恢复焦点失败: {e}")
-            
+                def _restore_focus(proc=process):
+                    try:
+                        proc.wait(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        logger.debug("命令进程超时未完成，继续执行焦点恢复")
+                    except Exception as e:
+                        logger.debug(f"等待命令进程时出错: {e}")
+                    time.sleep(0.05)
+                    try:
+                        ShortcutExecutor.restore_foreground_window()
+                        logger.debug("CMD 命令执行后：已恢复焦点")
+                    except Exception as e:
+                        logger.debug(f"CMD 命令执行后恢复焦点失败: {e}")
+                threading.Thread(target=_restore_focus, daemon=True, name="FocusRestore").start()
+
             return (process is not None), error_msg
+
+    @staticmethod
+    def _resolve_command_variables(shortcut: ShortcutItem, command: str) -> str:
+        if not ShortcutExecutor._should_expand_command_variables(shortcut):
+            return command
+        input_values = getattr(shortcut, "_runtime_input_values", None)
+        selected_provider = None
+        if getattr(shortcut, "trigger_mode", "immediate") == "after_close":
+            selected_provider = ShortcutExecutor._capture_selected_text
+        return resolve_command_variables(
+            command,
+            input_values=input_values,
+            clipboard_provider=read_clipboard_text,
+            selected_text_provider=selected_provider,
+            strict_unknown=True,
+        )
+
+    @staticmethod
+    def _should_expand_command_variables(shortcut: ShortcutItem) -> bool:
+        command_type = getattr(shortcut, "command_type", "cmd")
+        enabled = getattr(shortcut, "command_variables_enabled", None)
+        return should_expand_command_variables(command_type, enabled)
+
+    @staticmethod
+    def _python_inline_context() -> dict:
+        return {
+            "os": os,
+            "sys": sys,
+            "subprocess": subprocess,
+            "time": time,
+            "ctypes": ctypes,
+            "ShortcutExecutor": ShortcutExecutor,
+            "logger": logger,
+            "run_silent": lambda cmd, shell=False: ShortcutExecutor._popen_silent(cmd, shell=shell),
+        }
+
+    @staticmethod
+    def _legacy_python_test_script(command: str) -> str:
+        return (
+            "import os, sys, subprocess, time, ctypes, logging\n"
+            "logger = logging.getLogger('QuickLauncherCommandTest')\n"
+            "def run_silent(cmd, shell=False):\n"
+            "    return subprocess.Popen(cmd, shell=shell, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+            "ShortcutExecutor = None\n\n"
+            f"{command}"
+        )
+
+    @staticmethod
+    def _capture_selected_text() -> str:
+        """Copy selected text from the previous foreground window and restore clipboard."""
+        snapshot = ShortcutExecutor._snapshot_clipboard()
+        original_text = read_clipboard_text()
+        original_sequence = ShortcutExecutor._get_clipboard_sequence_number()
+        try:
+            try:
+                ShortcutExecutor.restore_foreground_window_fast(timeout_ms=300)
+            except Exception:
+                ShortcutExecutor.restore_foreground_window()
+            time.sleep(0.08)
+            if hasattr(ShortcutExecutor, "_execute_hotkey_sendinput"):
+                ShortcutExecutor._execute_hotkey_sendinput(["ctrl"], "c")
+            else:
+                return ""
+            for _ in range(12):
+                time.sleep(0.03)
+                if ShortcutExecutor._get_clipboard_sequence_number() != original_sequence:
+                    break
+            if ShortcutExecutor._get_clipboard_sequence_number() == original_sequence:
+                return ""
+            return read_clipboard_text()
+        finally:
+            if not ShortcutExecutor._restore_clipboard_snapshot(snapshot):
+                try:
+                    ShortcutExecutor._write_clipboard_text(original_text)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _get_clipboard_sequence_number() -> int:
+        if os.name != "nt":
+            return 0
+        try:
+            return int(ctypes.windll.user32.GetClipboardSequenceNumber())
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _snapshot_clipboard():
+        if os.name != "nt":
+            return None
+        try:
+            import win32clipboard
+            import win32con
+
+            supported = {win32con.CF_UNICODETEXT, win32con.CF_TEXT}
+            if hasattr(win32con, "CF_HDROP"):
+                supported.add(win32con.CF_HDROP)
+
+            snapshot = []
+            win32clipboard.OpenClipboard()
+            try:
+                fmt = 0
+                while True:
+                    fmt = win32clipboard.EnumClipboardFormats(fmt)
+                    if not fmt:
+                        break
+                    try:
+                        data = win32clipboard.GetClipboardData(fmt)
+                    except Exception:
+                        continue
+                    if fmt in supported or isinstance(data, (bytes, bytearray, str, tuple)):
+                        snapshot.append((fmt, data))
+            finally:
+                win32clipboard.CloseClipboard()
+            return snapshot
+        except Exception as e:
+            logger.debug("clipboard snapshot failed: %s", e)
+            return None
+
+    @staticmethod
+    def _restore_clipboard_snapshot(snapshot) -> bool:
+        if snapshot is None or os.name != "nt":
+            return False
+        try:
+            import win32clipboard
+
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+                ok = True
+                for fmt, data in snapshot:
+                    try:
+                        win32clipboard.SetClipboardData(fmt, data)
+                    except Exception as e:
+                        ok = False
+                        logger.debug("clipboard format restore failed %s: %s", fmt, e)
+                return ok
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception as e:
+            logger.debug("clipboard restore failed: %s", e)
+            return False
+
+    @staticmethod
+    def _write_clipboard_text(text: str) -> bool:
+        try:
+            import win32clipboard
+            import win32con
+
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text or "")
+                return True
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception as e:
+            logger.debug("写入剪贴板失败: %s", e)
+            return False
+
+    @staticmethod
+    def _open_builtin_directory(command: str) -> bool:
+        try:
+            if command == "open_data_dir":
+                path = os.path.join(ShortcutExecutor._app_install_dir(), "config")
+            else:
+                path = ShortcutExecutor._app_install_dir()
+            path = os.path.abspath(path)
+            os.makedirs(path, exist_ok=True)
+            os.startfile(path)
+            logger.info("已打开内置目录: %s", path)
+            return True
+        except Exception as e:
+            logger.error("打开内置目录失败 %s: %s", command, e, exc_info=True)
+            return False
+
+    @staticmethod
+    def _open_filesystem_target(path: str, create_dir: bool = False, fallback_to_parent: bool = True) -> bool:
+        try:
+            path = os.path.abspath(path)
+            if create_dir:
+                os.makedirs(path, exist_ok=True)
+            elif not os.path.exists(path):
+                if not fallback_to_parent:
+                    return False
+                parent = os.path.dirname(path)
+                os.makedirs(parent, exist_ok=True)
+                path = parent
+
+            opener = getattr(os, "startfile", None)
+            if callable(opener):
+                opener(path)
+                logger.info("Opened built-in filesystem target: %s", path)
+                return True
+            return ShortcutExecutor._shell_execute_open(path)
+        except Exception as e:
+            logger.error("Open built-in filesystem target failed %s: %s", path, e, exc_info=True)
+            return False
+
+    @staticmethod
+    def _open_builtin_text_file(path: str) -> bool:
+        path = os.path.abspath(path)
+        if not os.path.exists(path):
+            return ShortcutExecutor._open_filesystem_target(path, create_dir=False)
+
+        if os.name == "nt":
+            try:
+                params = subprocess.list2cmdline([path])
+                if ShortcutExecutor._shell_execute_open("notepad.exe", params):
+                    logger.info("Opened built-in text file via notepad: %s", path)
+                    return True
+            except Exception:
+                logger.debug("Opening built-in text file via notepad failed: %s", path, exc_info=True)
+
+        return ShortcutExecutor._open_filesystem_target(
+            path,
+            create_dir=False,
+            fallback_to_parent=False,
+        )
+
+    @staticmethod
+    def _open_builtin_filesystem_target(command: str) -> bool:
+        install_dir = ShortcutExecutor._app_install_dir()
+        config_dir = os.path.join(install_dir, "config")
+        targets = {
+            "open_data_dir": (config_dir, True),
+            "open_install_dir": (install_dir, True),
+            "open_config_file": (os.path.join(config_dir, "data.json"), False),
+            "open_icons_dir": (os.path.join(install_dir, "icons"), True),
+            "open_history_dir": (os.path.join(config_dir, "history"), True),
+            "open_auto_backups_dir": (os.path.join(config_dir, "auto_backups"), True),
+            "open_error_log": (os.path.join(config_dir, "error.log"), False),
+        }
+        target = targets.get(command)
+        if not target:
+            return False
+        path, create_dir = target
+        if command in {"open_config_file", "open_error_log"}:
+            return ShortcutExecutor._open_builtin_text_file(path)
+        return ShortcutExecutor._open_filesystem_target(path, create_dir=create_dir)
+
+    @staticmethod
+    def _open_windows_system_builtin(command: str) -> bool:
+        if command == "open_windows_settings":
+            if ShortcutExecutor._shell_execute_open("ms-settings:"):
+                return True
+            try:
+                opener = getattr(os, "startfile", None)
+                if callable(opener):
+                    opener("ms-settings:")
+                    return True
+            except Exception:
+                logger.debug("os.startfile(ms-settings:) failed", exc_info=True)
+
+        specs = {
+            "open_control_panel": ("control.exe", None, ["control.exe"]),
+            "open_this_pc": ("explorer.exe", "shell:MyComputerFolder", ["explorer.exe", "shell:MyComputerFolder"]),
+            "open_recycle_bin": ("explorer.exe", "shell:RecycleBinFolder", ["explorer.exe", "shell:RecycleBinFolder"]),
+            "open_task_manager": ("taskmgr.exe", None, ["taskmgr.exe"]),
+            "open_services": ("services.msc", None, ["mmc.exe", "services.msc"]),
+            "open_device_manager": ("devmgmt.msc", None, ["mmc.exe", "devmgmt.msc"]),
+            "open_disk_management": ("diskmgmt.msc", None, ["mmc.exe", "diskmgmt.msc"]),
+            "open_network_connections": ("control.exe", "ncpa.cpl", ["control.exe", "ncpa.cpl"]),
+            "open_startup_folder": ("explorer.exe", "shell:startup", ["explorer.exe", "shell:startup"]),
+            "open_system_info": ("msinfo32.exe", None, ["msinfo32.exe"]),
+        }
+        spec = specs.get(command)
+        if not spec:
+            return False
+
+        target, parameters, fallback_argv = spec
+        if ShortcutExecutor._shell_execute_open(target, parameters):
+            return True
+        try:
+            ShortcutExecutor._popen_silent(
+                fallback_argv,
+                env=ShortcutExecutor._sanitized_child_env(),
+            )
+            return True
+        except Exception as e:
+            logger.error("Open Windows built-in command failed %s: %s", command, e)
+            return False
+
+    @staticmethod
+    def test_command(shortcut: ShortcutItem, timeout: float = 10.0) -> dict:
+        """Run a command shortcut synchronously for the editor test button."""
+        start = time.monotonic()
+        result = {
+            "success": False,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "error": "",
+            "duration": 0.0,
+        }
+        try:
+            command = shortcut.command or ""
+            command_type = getattr(shortcut, "command_type", "cmd")
+            if command_type == "cmd" and is_value_only_variable_command(command):
+                if ShortcutExecutor._should_expand_command_variables(shortcut):
+                    result["error"] = f"鍛戒护鍙寘鍚€煎崰浣嶇锛屼笉鑳界洿鎺ユ墽琛屻€傝鏀逛负鍙墽琛屽懡浠わ紝渚嬪: echo {command}"
+                else:
+                    result["error"] = f"鍛戒护鍙寘鍚彉閲忓崰浣嶇锛屼絾鏈惎鐢ㄨВ鏋愬彉閲忋€傝鍚敤瑙ｆ瀽鍙橀噺锛屾垨鏀逛负鍙墽琛屽懡浠わ紝渚嬪: echo {command}"
+                return result
+            if command_type == "cmd" and ShortcutExecutor._should_expand_command_variables(shortcut):
+                unsafe_variables = find_unquoted_external_command_variables(command)
+                if unsafe_variables:
+                    examples = ", ".join(f"{{{name}:q}}" for name in unsafe_variables[:3])
+                    result["error"] = f"澶栭儴杈撳叆鍙橀噺鐢ㄤ簬 CMD 鍛戒护鏃跺繀椤讳娇鐢?:q 寮曠敤锛屼緥濡? {examples}"
+                    return result
+            command = ShortcutExecutor._resolve_command_variables(shortcut, command)
+            cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
+            if command_type != "python":
+                from core.builtin_commands import canonical_builtin_command
+                parts = command.strip().split(None, 1)
+                cmd_word = parts[0] if parts else ""
+                canonical = canonical_builtin_command(cmd_word)
+                if canonical:
+                    args_part = parts[1] if len(parts) > 1 else ""
+                    if args_part:
+                        command = f"{canonical} {args_part}"
+                    else:
+                        command = canonical
+                    command_type = "builtin"
+
+            if command_type == "builtin":
+                success = ShortcutExecutor._execute_builtin_command(command)
+                result["success"] = success
+                result["exit_code"] = 0 if success else 1
+                
+                try:
+                    from core.command_registry import take_pending_command_result
+                    pending = take_pending_command_result()
+                    if pending is not None:
+                        result["stdout"] = pending.message
+                        result["error"] = pending.error if not success else ""
+                        return result
+                except Exception:
+                    pass
+                
+                result["stdout"] = "内置命令测试运行已触发。" if success else ""
+                result["error"] = "" if success else "内置命令执行失败"
+                return result
+
+            if command_type == "python":
+                python_exe = ShortcutExecutor._python_launcher()
+                if not python_exe:
+                    result["error"] = ShortcutExecutor._python_launcher_error()
+                    return result
+
+                test_script = command
+                if getattr(shortcut, "python_execution_mode", "legacy_inline") == "legacy_inline":
+                    test_script = ShortcutExecutor._legacy_python_test_script(command)
+
+                tmp_path = ShortcutExecutor._write_temp_python_script(test_script)
+                try:
+                    process = subprocess.Popen(
+                        [python_exe, tmp_path],
+                        cwd=cwd,
+                        env=ShortcutExecutor._sanitized_child_env(),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        shell=False,
+                    )
+                    shortcut._active_test_process = process
+                    try:
+                        stdout, stderr = process.communicate(timeout=timeout)
+                        returncode = process.returncode
+                    except subprocess.TimeoutExpired:
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
+                        stdout, stderr = process.communicate()
+                        raise subprocess.TimeoutExpired(process.args, timeout, output=stdout, stderr=stderr)
+                    finally:
+                        if hasattr(shortcut, "_active_test_process"):
+                            try:
+                                delattr(shortcut, "_active_test_process")
+                            except Exception:
+                                pass
+
+                    result.update(
+                        success=returncode == 0,
+                        exit_code=returncode,
+                        stdout=stdout or "",
+                        stderr=stderr or "",
+                    )
+                    return result
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+
+            process = subprocess.Popen(
+                command,
+                cwd=cwd,
+                env=ShortcutExecutor._sanitized_child_env(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                shell=True,
+            )
+            shortcut._active_test_process = process
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+                returncode = process.returncode
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                stdout, stderr = process.communicate()
+                raise subprocess.TimeoutExpired(process.args, timeout, output=stdout, stderr=stderr)
+            finally:
+                if hasattr(shortcut, "_active_test_process"):
+                    try:
+                        delattr(shortcut, "_active_test_process")
+                    except Exception:
+                        pass
+
+            result.update(
+                success=returncode == 0,
+                exit_code=returncode,
+                stdout=stdout or "",
+                stderr=stderr or "",
+            )
+            return result
+        except subprocess.TimeoutExpired as e:
+            result["error"] = f"测试运行超时 ({timeout:g}s)"
+            result["stdout"] = e.stdout or ""
+            result["stderr"] = e.stderr or ""
+            return result
+        except Exception as e:
+            result["error"] = str(e)
+            return result
+        finally:
+            result["duration"] = time.monotonic() - start
+
     @staticmethod
     def _execute_builtin_command(command: str) -> bool:
         """执行内置命令"""
-        cmd_lower = command.strip().lower()
-        
-        # 切换置顶（自动判断当前状态）
-        if cmd_lower in ('topmost', '置顶', 'pin', 'toggle_topmost'):
-            return ShortcutExecutor._toggle_topmost()
-        
-        # 强制置顶
-        if cmd_lower in ('topmost_on', '置顶开', 'pin_on'):
-            return ShortcutExecutor._set_topmost(True)
-        
-        # 强制取消置顶
-        if cmd_lower in ('topmost_off', '置顶关', 'unpin', 'pin_off'):
-            return ShortcutExecutor._set_topmost(False)
-            
-        if cmd_lower in ('show_config', 'show_config_window', 'config_window', '配置窗口'):
-            # 使用全局回调机制打开配置窗口
-            # 回调绑定到 TrayApp.show_config_signal.emit()
-            # Qt 的信号机制保证了跨线程安全，所以可以从任何线程调用
+        from core.builtin_commands import (
+            INTERNAL_PATH_BUILTIN_COMMANDS,
+            UI_CALLBACK_BUILTIN_COMMANDS,
+            WINDOWS_SYSTEM_BUILTIN_COMMANDS,
+            canonical_builtin_command,
+        )
+        parts = command.strip().split(None, 1)
+        cmd_name = parts[0].lower() if parts else ""
+        args_text = parts[1] if len(parts) > 1 else ""
+
+        # Phase 1/2: try CommandRegistry first for new-style commands
+        try:
+            from core import registry
+            from core.command_registry import (
+                _CallbackHandler,
+                set_pending_command_result,
+            )
+            if registry is not None and registry.count() > 0:
+                cmd_def = registry.get(cmd_name) or registry.get(canonical_builtin_command(cmd_name))
+                if cmd_def is not None and not isinstance(cmd_def.handler, _CallbackHandler):
+                    selected_files = []
+                    try:
+                        from ui.launcher_popup.file_selection import get_selected_files_for_process
+                        selected_files = get_selected_files_for_process() or []
+                    except Exception:
+                        pass
+
+                    clipboard_text = ""
+                    try:
+                        from qt_compat import QApplication
+                        cb = QApplication.clipboard()
+                        clipboard_text = cb.text() or ""
+                    except Exception:
+                        pass
+
+                    ctx = CommandContext(
+                        raw_input=command,
+                        args_text=args_text,
+                        clipboard_text=clipboard_text,
+                        selected_files=selected_files,
+                        update_callback=lambda r: set_pending_command_result(r),
+                    )
+                    result = cmd_def.handler(ctx)
+                    set_pending_command_result(result)
+                    return result.success
+        except Exception:
+            pass
+
+        canonical = canonical_builtin_command(cmd_name)
+        command_name = canonical or cmd_name
+        filesystem_builtin_commands = {"open_data_dir", "open_install_dir"} | INTERNAL_PATH_BUILTIN_COMMANDS
+        if canonical in UI_CALLBACK_BUILTIN_COMMANDS:
             try:
-                from core import has_callback, call_callback
-                if has_callback('show_config_window'):
-                    call_callback('show_config_window')
-                    logger.info("配置窗口: 通过全局回调打开")
+                from core import call_callback, has_callback
+                if has_callback(canonical):
+                    global _main_thread_invoker
+                    if _main_thread_invoker is not None and not ShortcutExecutor._is_qt_main_thread():
+                        _main_thread_invoker.execute_signal.emit(lambda: call_callback(canonical))
+                        logger.info(f"UI内置命令(通过主线程): {canonical}")
+                    elif ShortcutExecutor._is_qt_main_thread():
+                        result = call_callback(canonical)
+                        if result is False:
+                            logger.error("UI内置命令回调返回失败: %s", canonical)
+                            return False
+                    else:
+                        logger.warning("MainThreadInvoker未初始化，已跳过跨线程直接执行: %s", canonical)
                     return True
                 else:
-                    logger.warning("配置窗口: 回调未注册")
+                    if canonical == 'show_config_window':
+                        direct = getattr(sys.modules.get("main"), "show_config_window_direct", None)
+                        if callable(direct):
+                            try:
+                                if direct():
+                                    return True
+                            except Exception as e:
+                                logger.debug("配置窗口直接回退失败: %s", e)
+                        logger.debug("配置窗口: 回退到 IPC 方式")
+                        return ShortcutExecutor._send_ipc_command_deferred('show_config')
+                    if canonical in filesystem_builtin_commands:
+                        return ShortcutExecutor._open_builtin_filesystem_target(canonical)
+                    logger.warning(f"内置命令: 回调未注册: {canonical}")
+                    return False
             except Exception as e:
-                logger.error(f"配置窗口: 回调调用失败: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-            
-            # 回退到 IPC 方式
-            logger.debug("配置窗口: 回退到 IPC 方式")
-            return ShortcutExecutor._send_ipc_command_deferred('show_config')
+                logger.error(f"内置命令执行失败 ({canonical}): {e}")
+                return False
+
+        # 切换置顶（自动判断当前状态）
+        if cmd_name in ('topmost', '置顶', 'pin', 'toggle_topmost'):
+            return ShortcutExecutor._toggle_topmost()
+
+        # 强制置顶
+        if cmd_name in ('topmost_on', '置顶开', 'pin_on'):
+            return ShortcutExecutor._set_topmost(True)
+
+        # 强制取消置顶
+        if cmd_name in ('topmost_off', '置顶关', 'unpin', 'pin_off'):
+            return ShortcutExecutor._set_topmost(False)
 
 
-        if cmd_lower == 'open_control_panel':
+        if command_name in filesystem_builtin_commands:
+            return ShortcutExecutor._open_builtin_filesystem_target(command_name)
+
+        if command_name in WINDOWS_SYSTEM_BUILTIN_COMMANDS:
+            return ShortcutExecutor._open_windows_system_builtin(command_name)
+
+        if cmd_name == 'open_control_panel':
             if ShortcutExecutor._shell_execute_open("control.exe"):
                 return True
             try:
@@ -273,8 +1067,8 @@ class CommandExecutionMixin:
             except Exception as e:
                 logger.error(f"打开控制面板失败: {e}")
                 return False
-            
-        if cmd_lower == 'open_this_pc':
+
+        if cmd_name == 'open_this_pc':
             if ShortcutExecutor._shell_execute_open("explorer.exe", "shell:MyComputerFolder"):
                 return True
             try:
@@ -287,7 +1081,7 @@ class CommandExecutionMixin:
                 logger.error(f"打开此电脑失败: {e}")
                 return False
 
-        if cmd_lower == 'open_recycle_bin':
+        if cmd_name == 'open_recycle_bin':
             if ShortcutExecutor._shell_execute_open("explorer.exe", "shell:RecycleBinFolder"):
                 return True
             try:
@@ -304,29 +1098,29 @@ class CommandExecutionMixin:
     @staticmethod
     def _send_ipc_command_deferred(command: str) -> bool:
         """延迟发送IPC命令，避免主线程阻塞导致的死锁
-        
+
         当从弹窗点击内置命令时，主线程正在处理执行流程，
         如果直接同步发送 IPC，会因为 waitForConnected() 阻塞事件循环，
         而 QLocalServer 的 newConnection 信号也需要事件循环来触发，
         导致连接永远无法建立（死锁）。
-        
+
         解决方案：使用 Python threading.Timer 在短暂延迟后发送命令，
         让当前事件处理完成后再发送。
         """
         import threading
-        
+
         def do_send():
             try:
                 # 延迟让 UI 事件处理完成
                 # 打包版本首次调用需要更长延迟，Qt网络模块初始化较慢
-                import time
                 import sys
+                import time
                 is_frozen = getattr(sys, 'frozen', False)
-                
+
                 # 打包版本使用更长的初始延迟
                 initial_delay = 0.35 if is_frozen else 0.15
                 time.sleep(initial_delay)
-                
+
                 # 执行实际的 IPC 发送
                 logger.debug(f"开始发送延迟IPC命令: {command} (frozen={is_frozen})")
                 result = ShortcutExecutor._send_ipc_command(command)
@@ -338,14 +1132,14 @@ class CommandExecutionMixin:
                 logger.error(f"延迟IPC命令异常: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
-        
+
         try:
             # 使用 Python 线程而不是 QTimer，避免线程亲和性问题
             thread = threading.Thread(target=do_send, name="IPCCommandSender", daemon=True)
             thread.start()
             logger.debug(f"IPC命令已排队到后台线程: {command}")
             return True  # 返回 True 表示命令已排队（不是已执行）
-            
+
         except Exception as e:
             logger.error(f"排队IPC命令失败: {e}, 尝试直接发送")
             # 回退到直接发送
@@ -353,10 +1147,10 @@ class CommandExecutionMixin:
     @staticmethod
     def _send_ipc_command(command: str) -> bool:
         """发送IPC命令
-        
+
         修复：增加首次连接的等待时间和递增重试延迟，
         解决打包后exe第一次调用时连接失败的问题。
-        
+
         关键改进：
         1. 首次调用前添加较长延迟，让Qt网络模块和IPC服务器有时间完成初始化
         2. 增加连接等待时间和总超时时间
@@ -365,10 +1159,11 @@ class CommandExecutionMixin:
         """
         try:
             # 延迟导入以避免循环引用
-            from qt_compat import QLocalSocket, QApplication
             import sys
+
+            from qt_compat import QLocalSocket
             is_frozen = getattr(sys, 'frozen', False)
-            
+
             # 首次调用时给Qt网络模块和IPC服务器更多初始化时间
             # 这对于打包后的exe在首次使用QLocalSocket尤为重要
             if not hasattr(ShortcutExecutor, '_ipc_initialized'):
@@ -378,19 +1173,18 @@ class CommandExecutionMixin:
                 init_delay = 0.35 if is_frozen else 0.15
                 time.sleep(init_delay)
                 logger.debug(f"IPC客户端首次初始化延迟完成 (frozen={is_frozen}, delay={init_delay}s)")
-            
+
             server_name = "QuickLauncherInstance_v3"
             deadline = time.monotonic() + 4.0  # 增加总超时时间到 4 秒
             last_socket = None
             attempt = 0
             last_error = ""
-            success = False
-            
+
             while time.monotonic() < deadline:
                 socket = QLocalSocket()
                 last_socket = socket
                 attempt += 1
-                
+
                 try:
                     socket.connectToServer(server_name)
                     # 首次尝试使用更长的等待时间（打包后首次加载可能较慢）
@@ -401,23 +1195,23 @@ class CommandExecutionMixin:
                         wait_time = 800
                     else:
                         wait_time = 400
-                    
+
                     if socket.waitForConnected(wait_time):
                         # 连接成功，发送数据
                         data = command.encode('utf-8')
                         bytes_written = socket.write(data)
                         socket.flush()
-                        
+
                         # 等待数据写入完成
                         write_ok = bytes_written == len(data)
                         if not write_ok:
                             write_ok = socket.waitForBytesWritten(800)
-                        
+
                         if write_ok or bytes_written > 0:
                             socket.disconnectFromServer()
                             logger.info(f"IPC命令发送成功: {command} (尝试 {attempt} 次)")
                             return True
-                        
+
                         # 即使 waitForBytesWritten 返回 False，数据可能已发送
                         socket.disconnectFromServer()
                         logger.debug(f"IPC命令可能已发送: {command} (尝试 {attempt} 次, bytes={bytes_written})")
@@ -426,16 +1220,16 @@ class CommandExecutionMixin:
                         # 连接失败，记录错误
                         last_error = socket.errorString() or "未知错误"
                         logger.debug(f"IPC连接尝试 {attempt} 失败: {last_error}")
-                        
+
                 except Exception as e:
                     last_error = str(e)
                     logger.debug(f"IPC连接尝试 {attempt} 异常: {e}")
-                
+
                 try:
                     socket.disconnectFromServer()
                 except Exception:
                     pass
-                
+
                 # 优化重试延迟策略：
                 # 前3次快速重试（50-100ms），之后逐渐增加到最大200ms
                 if attempt <= 3:
@@ -443,13 +1237,13 @@ class CommandExecutionMixin:
                 else:
                     retry_delay = min(0.1 + (attempt - 3) * 0.03, 0.2)
                 time.sleep(retry_delay)
-            
+
             try:
                 if last_socket:
                     last_socket.disconnectFromServer()
             except Exception:
                 pass
-            
+
             logger.warning(f"IPC命令发送失败（超时）: {command}, 共尝试 {attempt} 次, 最后错误: {last_error}")
             return False
         except Exception as e:
