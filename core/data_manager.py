@@ -49,11 +49,14 @@ class DataManager:
     """数据管理器 - 单例模式"""
 
     _instance = None
+    _instance_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):

@@ -4,8 +4,8 @@ import logging
 import os
 import sys
 
-from qt_compat import QColor, QBrush, QFont, QPainter, QPainterPath, QPen, QPixmap, QRectF, Qt, QtCompat
 from core import ShortcutItem, ShortcutType
+from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, Qt, QtCompat
 
 try:
     from core import IconExtractor
@@ -20,20 +20,133 @@ logger = logging.getLogger(__name__)
 
 
 class PopupIconMixin:
+    def _mark_icon_cache_changed(self):
+        self._icon_cache_revision = int(getattr(self, "_icon_cache_revision", 0) or 0) + 1
+        # Clear page pixmap cache so it re-renders with updated icons
+        cache = getattr(self, "_page_pixmap_cache", None)
+        if cache is not None:
+            cache.clear()
+
+    def _get_icon_miss_cache(self):
+        cache = getattr(self, "_icon_miss_cache", None)
+        if cache is None:
+            cache = set()
+            self._icon_miss_cache = cache
+        return cache
+
+    def _remember_icon_miss(self, cache_key):
+        cache = self._get_icon_miss_cache()
+        cache.add(cache_key)
+        while len(cache) > 200:
+            cache.pop()
+
+    def _get_icon_source_size(self) -> int:
+        cached = getattr(self, "_cached_icon_source_size", None)
+        if cached is None:
+            self._cached_icon_source_size = max(48, self.icon_size * 2)
+        return self._cached_icon_source_size
+
+    def _get_cached_icon_for_animation(self, item: ShortcutItem, need_invert: bool = False):
+        source_size = self._get_icon_source_size()
+        icon_path = getattr(item, "icon_path", None)
+        target_path = getattr(item, "target_path", None)
+
+        # Resolve folder icon path to match _get_icon behavior,
+        # otherwise the cache key won't match and folder icons
+        # fall back to colored rectangles during page animation.
+        if not icon_path:
+            item_type = getattr(item, "type", None)
+            is_folder_type = item_type == ShortcutType.FOLDER
+            if item_type == ShortcutType.FILE and target_path and os.path.isdir(target_path):
+                is_folder_type = True
+            if is_folder_type:
+                possible_paths = [
+                    os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico"),
+                    os.path.join(
+                        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "assets",
+                        "Folder.ico",
+                    ),
+                ]
+                if hasattr(sys, "_MEIPASS"):
+                    possible_paths.insert(0, os.path.join(sys._MEIPASS, "assets", "Folder.ico"))
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        icon_path = path
+                        target_path = None
+                        break
+
+        if icon_path:
+            cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)
+            cached = self._icon_pixmap_cache.get(cache_key)
+            if cached is not None:
+                self._icon_pixmap_cache.move_to_end(cache_key)
+                return cached
+
+        if target_path and HAS_ICON_EXTRACTOR and IconExtractor:
+            try:
+                cache_id = IconExtractor.get_target_cache_id(target_path, target_path, source_size)
+                cache_key = ("extract", cache_id, self.icon_size, source_size, need_invert)
+                cached = self._icon_pixmap_cache.get(cache_key)
+                if cached is not None:
+                    self._icon_pixmap_cache.move_to_end(cache_key)
+                    return cached
+            except Exception:
+                pass
+
+        return None
+
+    def _animation_icon_ready(self, item: ShortcutItem, need_invert: bool | None = None) -> bool:
+        """Return whether animation can render this item without a placeholder icon."""
+        if need_invert is None:
+            need_invert = False
+            try:
+                if _should_invert_icon is not None:
+                    current_theme = getattr(self.settings, "theme", "dark") if hasattr(self, "settings") else "dark"
+                    need_invert = _should_invert_icon(item, current_theme)
+            except Exception:
+                need_invert = False
+        if self._get_cached_icon_for_animation(item, need_invert) is not None:
+            return True
+
+        icon_path = getattr(item, "icon_path", None)
+        target_path = getattr(item, "target_path", None)
+        item_type = getattr(item, "type", None)
+        if icon_path:
+            return False
+        if target_path:
+            return False
+        if item_type == ShortcutType.FOLDER:
+            return False
+        if item_type == ShortcutType.FILE and target_path:
+            return False
+        return True
+
     def _get_icon(self, item: ShortcutItem) -> QPixmap:
-        """获取图标"""
+        """Get icon pixmap for a shortcut item."""
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         item_type = getattr(item, "type", None)
 
-        # 判断是否需要反转
         need_invert = False
         try:
             if _should_invert_icon is not None:
-                current_theme = getattr(self.settings, 'theme', 'dark') if hasattr(self, 'settings') else 'dark'
+                current_theme = getattr(self.settings, "theme", "dark") if hasattr(self, "settings") else "dark"
                 need_invert = _should_invert_icon(item, current_theme)
         except Exception:
             pass
+
+        if getattr(self, "_suspend_icon_extraction", False):
+            cached = self._get_cached_icon_for_animation(item, need_invert)
+            if cached is not None:
+                return cached
+            default_key = (item.type, self.icon_size)
+            cached_default = self._default_icon_cache.get(default_key)
+            if cached_default is not None:
+                return cached_default
+            pixmap = self._create_default_icon(item)
+            self._default_icon_cache[default_key] = pixmap
+            return pixmap
 
         is_folder_type = item_type == ShortcutType.FOLDER
         if item_type == ShortcutType.FILE and target_path and os.path.isdir(target_path):
@@ -41,63 +154,137 @@ class PopupIconMixin:
 
         if not icon_path and is_folder_type:
             possible_paths = [
-                os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'assets', 'Folder.ico'),
-                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'assets', 'Folder.ico')
+                os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico"),
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                    "assets",
+                    "Folder.ico",
+                ),
             ]
-            if hasattr(sys, '_MEIPASS'):
-                possible_paths.insert(0, os.path.join(sys._MEIPASS, 'assets', 'Folder.ico'))
-            for p in possible_paths:
-                if os.path.exists(p):
-                    icon_path = p
+            if hasattr(sys, "_MEIPASS"):
+                possible_paths.insert(0, os.path.join(sys._MEIPASS, "assets", "Folder.ico"))
+            for path in possible_paths:
+                if os.path.exists(path):
+                    icon_path = path
                     target_path = None
                     break
 
         if HAS_ICON_EXTRACTOR and IconExtractor:
             try:
+                source_size = self._get_icon_source_size()
                 should_load = False
                 if icon_path:
-                    if ',' in icon_path:
+                    if "," in icon_path:
                         should_load = True
                     elif os.path.exists(icon_path):
                         should_load = True
 
                 if should_load:
-                    cache_key = ("from_file", icon_path, self.icon_size, need_invert)
+                    logger.debug(
+                        "[IconDiag] popup custom probe name=%r icon_path=%r target_path=%r size=%s invert=%s",
+                        getattr(item, "name", ""),
+                        icon_path,
+                        target_path,
+                        self.icon_size,
+                        source_size,
+                        need_invert,
+                    )
+                    cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)
                     cached = self._icon_pixmap_cache.get(cache_key)
                     if cached is not None:
                         self._icon_pixmap_cache.move_to_end(cache_key)
                         return cached
 
-                    pixmap = IconExtractor.from_file(icon_path, self.icon_size)
-                    if pixmap and not pixmap.isNull():
-                        if need_invert:
-                            pixmap = IconExtractor.invert_pixmap(pixmap)
-                        self._icon_pixmap_cache[cache_key] = pixmap
-                        self._icon_pixmap_cache.move_to_end(cache_key)
-                        while len(self._icon_pixmap_cache) > 200:
-                            self._icon_pixmap_cache.popitem(last=False)
-                        return pixmap
+                    if cache_key not in self._get_icon_miss_cache():
+                        pixmap = IconExtractor.from_file(icon_path, source_size, return_image=False)
+                        if pixmap and not pixmap.isNull():
+                            if need_invert:
+                                pixmap = IconExtractor.invert_pixmap(pixmap)
+                            if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:
+                                pixmap = pixmap.scaled(
+                                    self.icon_size,
+                                    self.icon_size,
+                                    Qt.KeepAspectRatio,
+                                    Qt.SmoothTransformation,
+                                )
+                            self._icon_pixmap_cache[cache_key] = pixmap
+                            self._mark_icon_cache_changed()
+                            self._icon_pixmap_cache.move_to_end(cache_key)
+                            while len(self._icon_pixmap_cache) > 200:
+                                self._icon_pixmap_cache.popitem(last=False)
+                            return pixmap
+
+                        self._remember_icon_miss(cache_key)
+                        logger.debug(
+                            "[IconDiag] popup custom icon failed name=%r icon_path=%r target_path=%r size=%s",
+                            getattr(item, "name", ""),
+                            icon_path,
+                            target_path,
+                            self.icon_size,
+                        )
 
                 if target_path:
-                    cache_key = ("extract", target_path, self.icon_size, need_invert)
+                    logger.debug(
+                        "[IconDiag] popup target probe name=%r icon_path=%r target_path=%r size=%s invert=%s",
+                        getattr(item, "name", ""),
+                        icon_path,
+                        target_path,
+                        self.icon_size,
+                        source_size,
+                        need_invert,
+                    )
+                    cache_id = IconExtractor.get_target_cache_id(target_path, target_path, source_size)
+                    cache_key = ("extract", cache_id, self.icon_size, source_size, need_invert)
                     cached = self._icon_pixmap_cache.get(cache_key)
                     if cached is not None:
                         self._icon_pixmap_cache.move_to_end(cache_key)
                         return cached
 
-                    pixmap = IconExtractor.extract(target_path, target_path, self.icon_size)
-                    if pixmap and not pixmap.isNull():
-                        if need_invert:
-                            pixmap = IconExtractor.invert_pixmap(pixmap)
-                        self._icon_pixmap_cache[cache_key] = pixmap
-                        self._icon_pixmap_cache.move_to_end(cache_key)
-                        while len(self._icon_pixmap_cache) > 200:
-                            self._icon_pixmap_cache.popitem(last=False)
-                        return pixmap
-            except Exception as e:
-                logger.debug(f"提取图标失败: {e}")
+                    if cache_key not in self._get_icon_miss_cache():
+                        pixmap = IconExtractor.extract(
+                            target_path,
+                            target_path,
+                            source_size,
+                            return_image=False,
+                            fallback_to_default=False,
+                        )
+                        if pixmap and not pixmap.isNull():
+                            if need_invert:
+                                pixmap = IconExtractor.invert_pixmap(pixmap)
+                            if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:
+                                pixmap = pixmap.scaled(
+                                    self.icon_size,
+                                    self.icon_size,
+                                    Qt.KeepAspectRatio,
+                                    Qt.SmoothTransformation,
+                                )
+                            self._icon_pixmap_cache[cache_key] = pixmap
+                            self._mark_icon_cache_changed()
+                            self._icon_pixmap_cache.move_to_end(cache_key)
+                            while len(self._icon_pixmap_cache) > 200:
+                                self._icon_pixmap_cache.popitem(last=False)
+                            return pixmap
 
-        default_key = (item.type, self.icon_size, self._default_icon_cache_text(item))
+                        self._remember_icon_miss(cache_key)
+                        logger.debug(
+                            "[IconDiag] popup target icon failed name=%r icon_path=%r target_path=%r size=%s cache_id=%s",
+                            getattr(item, "name", ""),
+                            icon_path,
+                            target_path,
+                            self.icon_size,
+                            cache_id,
+                        )
+            except Exception as e:
+                logger.debug(
+                    "[IconDiag] popup icon exception name=%r icon_path=%r target_path=%r size=%s error=%s",
+                    getattr(item, "name", ""),
+                    icon_path,
+                    target_path,
+                    self.icon_size,
+                    e,
+                )
+
+        default_key = (item.type, self.icon_size)
         cached_default = self._default_icon_cache.get(default_key)
         if cached_default is not None:
             return cached_default
@@ -105,46 +292,29 @@ class PopupIconMixin:
         self._default_icon_cache[default_key] = pixmap
         return pixmap
 
-    def _default_icon_cache_text(self, item: ShortcutItem) -> str:
-        if getattr(item, "type", None) == ShortcutType.HOTKEY:
-            return "hotkey"
-        name = getattr(item, "name", None) or ""
-        return name[0].upper() if name else ""
-
     def _create_default_icon(self, item: ShortcutItem) -> QPixmap:
-        """创建默认图标"""
+        """Create a simple fallback icon."""
         size = self.icon_size
         pixmap = QPixmap(size, size)
         pixmap.fill(QtCompat.transparent)
-        
+
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
-        
-        if item.type == ShortcutType.HOTKEY:
-            color = QColor(70, 130, 180)
-        else:
-            color = QColor(100, 130, 180)
-        
+
+        color = QColor(135, 206, 250)
         painter.setBrush(QBrush(color))
         painter.setPen(QtCompat.NoPen)
-        
+
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 4, 4)
-        
-        if item.type == ShortcutType.HOTKEY:
-            painter.setPen(QPen(QColor(255, 255, 255)))
-            font = QFont("Segoe UI", size // 4)
-            painter.setFont(font)
-            painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌨")
-        else:
-            name = getattr(item, "name", None)
-            if name:
-                first_char = name[0].upper()
-                painter.setPen(QPen(QColor(255, 255, 255)))
-                font = QFont("Segoe UI", size // 3)
-                font.setBold(True)
-                painter.setFont(font)
-                painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
-        
+        radius = size // 6
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, radius, radius)
+
+        first_char = item.name[0] if item.name else "?"
+        painter.setPen(QPen(QColor(255, 255, 255)))
+        font = QFont("Segoe UI", int(size * 0.4))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
+
         painter.end()
         return pixmap

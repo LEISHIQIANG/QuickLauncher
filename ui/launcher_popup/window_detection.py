@@ -56,6 +56,23 @@ def _is_desktop_window(hwnd) -> bool:
     return class_name in DESKTOP_WINDOW_CLASSES
 
 
+def _window_from_point(x: int, y: int) -> int:
+    if not HAS_WIN32_SHELL:
+        return 0
+    try:
+        return int(win32gui.WindowFromPoint((int(x), int(y))) or 0)
+    except Exception:
+        return 0
+
+
+def _window_selection_kind(hwnd) -> str:
+    if _is_desktop_window(hwnd):
+        return "desktop"
+    if _is_explorer_like_window(hwnd):
+        return "explorer"
+    return "other"
+
+
 def _point_near_window(hwnd, x: int, y: int, margin: int = EXPLORER_WINDOW_PROXIMITY_PX) -> bool:
     if not HAS_WIN32_SHELL:
         return False

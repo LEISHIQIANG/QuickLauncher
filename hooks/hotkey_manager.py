@@ -210,24 +210,28 @@ class HotkeyManager(QObject):
             with self._pending_lock:
                 self._pending_activated += 1
             # 安全地在主线程启动定时器（避免跨线程操作 QTimer）
-            if QMetaObject is not None:
+            for conn_type in (Qt.ConnectionType.QueuedConnection, Qt.QueuedConnection):
                 try:
                     QMetaObject.invokeMethod(
-                        self._dispatch_timer, "start",
-                        Qt.ConnectionType.QueuedConnection
+                        self._dispatch_timer, "start", conn_type
                     )
+                    return
                 except Exception:
-                    # PyQt5 枚举风格不同
-                    try:
-                        QMetaObject.invokeMethod(
-                            self._dispatch_timer, "start",
-                            Qt.QueuedConnection
-                        )
-                    except Exception:
-                        pass
-            else:
-                # 最后兜底：直接调用（仍可能触发警告，但不会崩溃）
-                self._dispatch_timer.start()
+                    continue
+            # 所有 QMetaObject 方式都失败时，通过信号桥间接调度到主线程
+            try:
+                from qt_compat import QApplication
+                app = QApplication.instance()
+                if app is not None:
+                    from qt_compat import QTimer
+                    timer = QTimer()
+                    timer.setSingleShot(True)
+                    timer.timeout.connect(lambda: self._dispatch_timer.start() if self._dispatch_timer else None)
+                    timer.start(0)
+                    return
+            except Exception:
+                pass
+            logger.warning("无法跨线程调度 QTimer.start，热键激活可能延迟")
         except Exception:
             return
 

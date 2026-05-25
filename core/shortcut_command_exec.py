@@ -191,7 +191,13 @@ class CommandExecutionMixin:
         def cleanup():
             try:
                 if process is not None:
-                    process.wait()
+                    process.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                    process.wait(timeout=2.0)
+                except Exception:
+                    pass
             except Exception:
                 pass
             for path in paths:
