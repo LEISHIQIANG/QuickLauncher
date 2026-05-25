@@ -8,6 +8,8 @@ import sys
 import traceback
 from datetime import datetime
 
+from core.i18n import tr
+
 
 # 确保项目根目录在 sys.path 中（双击运行时工作目录可能不是项目根目录）
 def _ensure_project_root_on_path():
@@ -304,7 +306,11 @@ def main():
             from ui.styles.themed_messagebox import ThemedMessageBox
             if not QApplication.instance():
                 QApplication(sys.argv)
-            ThemedMessageBox.critical(None, "启动失败", f"程序启动失败\n\n{e}\n\n详情请查看日志:\n{log_file}")
+            ThemedMessageBox.critical(
+                None,
+                tr("启动失败"),
+                tr("程序启动失败\n\n{error}\n\n详情请查看日志:\n{log_file}", error=e, log_file=log_file),
+            )
         except Exception as dialog_error:
             logger.debug("startup themed error dialog failed: %s", dialog_error)
             _native_error_box("QuickLauncher 启动失败", f"程序启动失败:\n{e}\n\n详情请查看日志:\n{log_file}")

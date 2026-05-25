@@ -1,18 +1,16 @@
-"""安装更新包。"""
+"""Update installer launcher."""
 
-import logging
 import hashlib
 import os
 import re
 import subprocess
 import sys
 
-logger = logging.getLogger(__name__)
 _SHA256_RE = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
 
 
 class UpdateInstaller:
-    """安装器：执行更新包并退出当前进程。"""
+    """Starts the downloaded installer and exits the current process."""
 
     def __init__(self):
         self._listeners = []
@@ -21,9 +19,9 @@ class UpdateInstaller:
         self._listeners.append(callback)
 
     def _notify(self, event: str, data=None):
-        for cb in self._listeners:
+        for callback in list(self._listeners):
             try:
-                cb(event, data)
+                callback(event, data)
             except Exception:
                 pass
 
@@ -34,16 +32,12 @@ class UpdateInstaller:
         if os.path.splitext(installer_path)[1].lower() != ".exe":
             self._notify("failed", "安装文件类型无效")
             return
-        if expected_hash:
-            if not _verify_sha256(installer_path, expected_hash):
-                self._notify("failed", "安装文件哈希校验失败")
-                return
-
+        if expected_hash and not _verify_sha256(installer_path, expected_hash):
+            self._notify("failed", "安装文件哈希校验失败")
+            return
         self._notify("started")
-
         try:
             current_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.getcwd()
-
             subprocess.Popen(
                 [
                     installer_path,
@@ -57,8 +51,8 @@ class UpdateInstaller:
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
             )
             sys.exit(0)
-        except Exception as e:
-            self._notify("failed", f"启动安装失败: {e}")
+        except Exception as exc:
+            self._notify("failed", f"启动安装失败: {exc}")
 
 
 def _verify_sha256(path: str, expected_hash: str) -> bool:
@@ -67,7 +61,7 @@ def _verify_sha256(path: str, expected_hash: str) -> bool:
         return False
     expected = match.group(1).lower()
     digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest() == expected

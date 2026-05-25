@@ -24,6 +24,7 @@ from .config_validation import (
     validate_app_data_dict,
 )
 from .data_models import AppData, AppSettings, Folder, ShortcutItem
+from .i18n import normalize_language, set_language
 from .import_security import (
     MAX_BACKGROUND_BYTES,
     MAX_CONFIG_BYTES,
@@ -104,6 +105,7 @@ class DataManager:
         self._ensure_dirs()
         self.history_manager = ConfigHistoryManager(self.history_dir, self._max_history_snapshots)
         self.data = self._load()
+        set_language(getattr(self.data.settings, "language", "zh_CN"))
         self._last_saved_data_dict = self.data.to_dict()
 
     def get_runtime_revision(self) -> int:
@@ -448,6 +450,7 @@ class DataManager:
             # 先刷新待保存的数据，避免丢失
             self.flush_pending_save()
             self.data = self._load()
+            set_language(getattr(self.data.settings, "language", "zh_CN"))
             self._runtime_revision += 1
 
     def record_shortcut_used(self, shortcut_id: str) -> bool:
@@ -794,7 +797,19 @@ class DataManager:
 
     def get_settings(self) -> AppSettings:
         """获取设置"""
+        set_language(getattr(self.data.settings, "language", "zh_CN"))
         return self.data.settings
+
+    def set_language(self, language: str, immediate: bool = True) -> str:
+        """Set the application language without requiring a UI switch control."""
+        normalized = normalize_language(language)
+        with self._save_lock:
+            if getattr(self.data.settings, "language", "zh_CN") != normalized:
+                self.data.settings.language = normalized
+                self._mark_history("设置变更", f"语言切换: {normalized}")
+                self.save(immediate=immediate)
+        set_language(normalized)
+        return normalized
 
     def clean_icon_cache(self, dry_run: bool = False) -> dict:
         """清理图标缓存

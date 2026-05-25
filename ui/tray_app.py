@@ -11,6 +11,7 @@ import time
 # 导入兼容层
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.data_models import ShortcutType
+from core.i18n import tr
 from qt_compat import (
     QApplication,
     QIcon,
@@ -68,6 +69,9 @@ class TrayApp(QObject):
     _alt_double_tap_signal = pyqtSignal()
     # 键盘钩子热键信号 (从钩子线程发到主线程)
     _hook_hotkey_signal = pyqtSignal()
+    _update_event_signal = pyqtSignal(str, object)
+    _download_event_signal = pyqtSignal(str, object)
+    _install_event_signal = pyqtSignal(str, object)
 
     def __init__(self):
         init_start = time.perf_counter()
@@ -85,8 +89,8 @@ class TrayApp(QObject):
         set_data_manager(self.data_manager)
 
         # 初始化命令注册中心
-        from core import ensure_registry_initialized, ensure_plugin_manager_initialized, plugin_manager
-        ensure_registry_initialized()
+        import core
+        core.ensure_registry_initialized()
 
         # Check plugin degrade switch before initializing plugin manager
         _plugins_enabled = True
@@ -95,14 +99,15 @@ class TrayApp(QObject):
         except Exception:
             pass
         if _plugins_enabled:
-            ensure_plugin_manager_initialized()
+            core.ensure_plugin_manager_initialized()
         else:
             logger.info("插件系统已通过功能开关禁用")
 
+        plugin_manager = core.plugin_manager
         if plugin_manager is not None:
             def _save_enabled_plugins(enabled_ids: list[str]):
                 self.data_manager.get_settings().enabled_plugins = enabled_ids
-                self.data_manager.save()
+                self.data_manager.save(immediate=True)
             plugin_manager.set_save_callback(_save_enabled_plugins)
 
             def _confirm_high_risk(info) -> bool:
@@ -138,7 +143,7 @@ class TrayApp(QObject):
         logger.info("创建托盘图标...")
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self._load_icon())
-        self.tray_icon.setToolTip("QuickLauncher\n左键=设置 | 中键=启动器")
+        self.tray_icon.setToolTip(tr("QuickLauncher\n左键=设置 | 中键=启动器"))
         self.tray_icon.activated.connect(self._on_tray_activated)
 
         # 日志窗口实例
@@ -161,6 +166,9 @@ class TrayApp(QObject):
         self.show_popup_signal.connect(self._on_show_popup)
         self.show_config_signal.connect(self._show_config)  # 跨线程安全的配置窗口显示
         self._alt_double_tap_signal.connect(self._on_alt_double_tap)
+        self._update_event_signal.connect(self._on_update_event)
+        self._download_event_signal.connect(self._on_download_event)
+        self._install_event_signal.connect(self._on_install_event)
 
         # 安装鼠标钩子（延迟到事件循环启动后，让托盘图标先显示）
         logger.info("安装鼠标钩子...")
@@ -217,11 +225,17 @@ class TrayApp(QObject):
 
         self._update_special_app_monitors(reset_state=True)
 
-        # 初始化自动更新系统（延迟 5 秒，不阻塞启动）
         self._update_checker = None
         self._update_downloader = None
         self._update_installer = None
-        QTimer.singleShot(5000, self._init_update_system)
+        self._pending_update_info = None
+        self._pending_update_installer = ""
+        self._update_dialog_parent = None
+        try:
+            if getattr(self.data_manager.get_settings(), "auto_update_enabled", False):
+                QTimer.singleShot(5000, self._init_update_system)
+        except Exception:
+            pass
 
         self._mark_activity("startup")
 
@@ -1382,78 +1396,106 @@ class TrayApp(QObject):
         self.tray_menu.add_action("运行日志", self._show_log)
         self.tray_menu.add_action("诊断中心", self._show_diagnostics)
         self.tray_menu.add_separator()
-        self.tray_menu.add_action("检查更新", self._check_update_now)
-        self.tray_menu.add_separator()
         self.tray_menu.add_action("退出软件", self._quit)
 
     # ---- 自动更新系统 ----
 
-    def _init_update_system(self):
+    def _init_update_system(self, start_auto_check: bool = True):
         """初始化自动更新系统。"""
         try:
-            from commercial.update.checker import UpdateChecker
-            from commercial.update.downloader import UpdateDownloader
-            from commercial.update.installer import UpdateInstaller
+            from services.update.checker import UpdateChecker
+            from services.update.downloader import UpdateDownloader
+            from services.update.installer import UpdateInstaller
 
             self._update_checker = UpdateChecker()
             self._update_downloader = UpdateDownloader()
             self._update_installer = UpdateInstaller()
 
-            self._update_checker.add_listener(self._on_update_event)
-            self._update_downloader.add_listener(self._on_download_event)
-            self._update_installer.add_listener(self._on_install_event)
+            self._update_checker.add_listener(lambda event, data=None: self._update_event_signal.emit(event, data))
+            self._update_downloader.add_listener(lambda event, data=None: self._download_event_signal.emit(event, data))
+            self._update_installer.add_listener(lambda event, data=None: self._install_event_signal.emit(event, data))
 
-            self._update_checker.start_auto_check()
+            if start_auto_check:
+                self._update_checker.start_auto_check()
             logger.info("自动更新系统初始化完成")
         except Exception as e:
             logger.debug(f"自动更新系统初始化失败（可忽略）: {e}")
 
-    def _check_update_now(self):
+    def _check_update_now(self, parent=None):
         """手动检查更新。"""
-        from commercial.update.ui import UpdateNotification
+        from services.update.ui import UpdateNotification
+
+        self._update_dialog_parent = parent
         if self._update_checker is None:
-            UpdateNotification.show_up_to_date()
+            self._init_update_system(start_auto_check=False)
+        if self._update_checker is None:
+            UpdateNotification.show_check_failed("更新系统未初始化", parent=parent)
             return
         info = self._update_checker.check_now()
         if info and not info.has_update:
-            UpdateNotification.show_up_to_date()
+            UpdateNotification.show_up_to_date(parent=parent)
 
     def _on_update_event(self, event: str, data=None):
         """处理更新检查事件。"""
-        from commercial.update.ui import UpdateNotification
+        from services.update.ui import UpdateNotification
+        parent = getattr(self, "_update_dialog_parent", None)
+
         if event == "update_available":
             self._pending_update_info = data
             UpdateNotification.show_update_available(
                 data,
                 on_download=lambda: self._download_update(data),
                 on_skip=lambda: self._skip_version(data.version),
+                parent=parent,
             )
+        elif event == "auto_download_requested":
+            self._pending_update_info = data
+            logger.info("发现新版本 %s，开始自动下载", getattr(data, "version", ""))
+            self._download_update(data)
+        elif event == "update_skipped":
+            logger.info("已忽略版本 %s，本次自动检查不再提醒", getattr(data, "version", ""))
         elif event == "check_failed":
             logger.debug(f"更新检查失败: {data}")
         elif event == "up_to_date":
             pass
 
     def _download_update(self, update_info):
-        if self._update_downloader:
-            self._update_downloader.download(
-                update_info.download_url,
-                expected_hash=update_info.file_hash,
-                expected_size=getattr(update_info, "file_size", 0),
-                max_bytes=getattr(self._update_checker._config, "max_download_bytes", 0) if self._update_checker else 0,
-                allowed_hosts=getattr(self._update_checker._config, "allowed_download_hosts", None) if self._update_checker else None,
+        if not self._update_downloader:
+            return
+        target_dir = None
+        try:
+            target_dir = os.path.join(
+                str(self.data_manager.app_dir),
+                "downloads",
+                self._update_checker._config.download_dir_name,
             )
+        except Exception:
+            pass
+        self._update_downloader.download(
+            update_info.download_url,
+            target_dir=target_dir,
+            expected_hash=update_info.file_hash,
+            expected_size=getattr(update_info, "file_size", 0),
+            max_bytes=getattr(self._update_checker._config, "max_download_bytes", 0) if self._update_checker else 0,
+            allowed_hosts=getattr(self._update_checker._config, "allowed_download_hosts", None) if self._update_checker else None,
+        )
 
     def _on_download_event(self, event: str, data=None):
-        from commercial.update.ui import UpdateNotification
+        from services.update.ui import UpdateNotification
+        parent = getattr(self, "_update_dialog_parent", None)
+
         if event == "progress":
             downloaded, total = data
             logger.info(UpdateNotification.show_download_progress_text(downloaded, total))
         elif event == "finished":
-            UpdateNotification.show_download_finished(
-                on_install=lambda: self._install_update(data)
-            )
+            self._pending_update_installer = data
+            auto_install = bool(getattr(self._update_checker._config, "auto_install", False)) if self._update_checker else False
+            if auto_install:
+                self._install_update(data)
+            else:
+                UpdateNotification.show_download_finished(on_install=lambda: self._install_update(data), parent=parent)
         elif event == "failed":
-            UpdateNotification.show_download_failed(data)
+            UpdateNotification.show_download_failed(data, parent=parent)
         elif event == "cancelled":
             logger.info("更新下载已取消")
 
@@ -1467,27 +1509,14 @@ class TrayApp(QObject):
 
     def _on_install_event(self, event: str, data=None):
         if event == "failed":
-            from commercial.update.ui import UpdateNotification
-            UpdateNotification.show_download_failed(data)
+            from services.update.ui import UpdateNotification
+
+            UpdateNotification.show_download_failed(data, parent=getattr(self, "_update_dialog_parent", None))
 
     def _skip_version(self, version: str):
-        state_file = None
         try:
-            from core.data_manager import DataManager
-            import json, os
-            dm = DataManager()
-            state_file = os.path.join(dm.app_dir, "config", ".update_state.json")
-            data = {}
-            if os.path.isfile(state_file):
-                with open(state_file, "r") as f:
-                    data = json.load(f)
-            skipped = data.get("skipped_versions", [])
-            if version not in skipped:
-                skipped.append(version)
-            data["skipped_versions"] = skipped
-            os.makedirs(os.path.dirname(state_file), exist_ok=True)
-            with open(state_file, "w") as f:
-                json.dump(data, f)
+            if self._update_checker:
+                self._update_checker.skip_version(version)
         except Exception:
             pass
 
@@ -1528,6 +1557,12 @@ class TrayApp(QObject):
             "_process_check_timer",
         ):
             self._stop_timer_if_active(timer_name)
+
+        try:
+            if self._update_checker:
+                self._update_checker.stop()
+        except Exception as e:
+            logger.debug(f"stop update checker failed: {e}")
 
         try:
             self.hotkey_manager.stop()
@@ -1698,7 +1733,7 @@ fso.DeleteFile WScript.ScriptFullName
             # TrayApp 是 QObject，不能作为 QDialog 的 parent
             # 尝试使用配置窗口作为 parent，如果没有则使用 None
             parent = self.config_window if self.config_window else None
-            ThemedMessageBox.critical(parent, "重启失败", f"无法重新启动程序\n\n{str(e)}")
+            ThemedMessageBox.critical(parent, tr("重启失败"), tr("无法重新启动程序\n\n{error}", error=str(e)))
 
     def _test_popup(self):
         """测试弹窗（用于调试）"""
@@ -1773,7 +1808,7 @@ fso.DeleteFile WScript.ScriptFullName
             logger.error(f"显示配置窗口失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            ThemedMessageBox.critical(None, "错误", f"无法打开设置窗口:\n{e}")
+            ThemedMessageBox.critical(None, tr("错误"), tr("无法打开设置窗口:\n{error}", error=e))
 
     def _on_settings_changed(self):
         """设置变更时的回调"""
@@ -1963,7 +1998,7 @@ fso.DeleteFile WScript.ScriptFullName
         self._wake_from_sleep("clean_icon_cache")
         try:
             if self._icon_cache_clean_thread and self._icon_cache_clean_thread.isRunning():
-                self._show_toast("图标缓存正在清理中", self.data_manager.get_settings().theme)
+                self._show_toast(tr("图标缓存正在清理中"), self.data_manager.get_settings().theme)
                 return True
 
             self._cleanup_icon_cache()
@@ -1984,7 +2019,7 @@ fso.DeleteFile WScript.ScriptFullName
                     logger.debug("清理固定多开弹窗图标缓存失败", exc_info=True)
 
             theme = self.data_manager.get_settings().theme
-            self._show_toast("正在清理图标缓存...", theme)
+            self._show_toast(tr("正在清理图标缓存..."), theme)
             self._icon_cache_clean_thread = IconCacheCleanThread(self.data_manager)
             self._icon_cache_clean_thread.finished_signal.connect(self._on_icon_cache_clean_finished)
             self._icon_cache_clean_thread.finished.connect(lambda: setattr(self, "_icon_cache_clean_thread", None))
@@ -1999,12 +2034,12 @@ fso.DeleteFile WScript.ScriptFullName
         theme = self.data_manager.get_settings().theme
         if error:
             logger.error("手动图标缓存清理失败: %s", error)
-            self._show_toast("图标缓存清理失败，请查看日志", theme)
+            self._show_toast(tr("图标缓存清理失败，请查看日志"), theme)
             return
         removed = int(stats.get("total_removed", 0) or 0)
         freed = float(stats.get("total_size_freed_mb", 0) or 0)
         logger.info("手动图标缓存清理完成: removed=%s freed=%.2fMB", removed, freed)
-        self._show_toast(f"图标缓存已清理：{removed} 个文件，释放 {freed:.1f} MB", theme)
+        self._show_toast(tr("图标缓存已清理：{removed} 个文件，释放 {freed:.1f} MB", removed=removed, freed=freed), theme)
 
     def _reload_hooks_now(self):
         """手动重装鼠标、键盘钩子。"""
@@ -2025,7 +2060,7 @@ fso.DeleteFile WScript.ScriptFullName
 
             self._sync_special_apps_to_hook()
             theme = self.data_manager.get_settings().theme
-            self._show_toast("全局钩子已重装", theme)
+            self._show_toast(tr("全局钩子已重装"), theme)
             logger.info("手动重装全局钩子完成")
             return True
         except Exception as e:

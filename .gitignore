@@ -80,4 +80,4 @@ config-van/
 Run_QuickLauncher_Python312.bat
 
 # 构建标记文件（由 build 脚本自动生成）
-commercial/.build_type
+services/.build_type

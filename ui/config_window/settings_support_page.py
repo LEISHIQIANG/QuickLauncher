@@ -555,8 +555,8 @@ class DrinkCard(QFrame):
         painter.end()
 
 
-class SettingsLicensePageMixin:
-    def _setup_license_page(self, page):
+class SettingsSupportPageMixin:
+    def _setup_support_page(self, page):
         # 1. 页面头部卡片组件
         layout, group = page.add_group("支持一下")
         

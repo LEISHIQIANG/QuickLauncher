@@ -18,12 +18,12 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-dev.txt
       - name: Compile
-        run: python -m compileall -q commercial core hooks ui tests main.py
+        run: python -m compileall -q services core hooks ui tests main.py
       - name: Lint
         run: >
           python -m ruff check --select F
-          commercial/__init__.py
-          commercial/errors.py
+          services/__init__.py
+          services/errors.py
           core/__init__.py
           core/command_risk.py
           core/data_models.py

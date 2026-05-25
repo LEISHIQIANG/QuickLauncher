@@ -2,6 +2,7 @@
 
 import sys
 
+from core.i18n import is_chinese, tr
 from qt_compat import (
     QLabel,
     QSpinBox,
@@ -12,8 +13,13 @@ from qt_compat import (
 class SettingsPageHelpersMixin:
     def _create_label(self, text):
         """创建右对齐标签，自动处理2字/3字与4字对齐"""
-        clean_text = text.replace(":", "")
+        clean_text = tr(text).replace(":", "")
         new_text = clean_text
+
+        if not is_chinese():
+            lbl = QLabel(new_text + ":")
+            lbl.setAlignment(QtCompat.AlignRight | QtCompat.AlignVCenter)
+            return lbl
 
         # 2字 -> 4字对齐 (中间加2个全角空格)
         if len(clean_text) == 2:
@@ -28,7 +34,7 @@ class SettingsPageHelpersMixin:
     def _create_spinbox(self, min_val, max_val, suffix=""):
         spinbox = QSpinBox()
         spinbox.setRange(min_val, max_val)
-        spinbox.setSuffix(suffix)
+        spinbox.setSuffix(tr(suffix) if suffix else "")
         spinbox.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         spinbox.setFixedWidth(60)
         spinbox.setMinimumHeight(24)

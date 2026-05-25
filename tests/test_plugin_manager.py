@@ -377,6 +377,67 @@ class TestPluginManagerLoad:
             assert count == 1
             assert pm.get_plugin("sample").status == "enabled"
 
+    def test_enable_disable_save_enabled_plugin_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "sample", main_py=_SAMPLE_MAIN_PY)
+            saved = []
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp, save_callback=lambda ids: saved.append(list(ids)))
+            pm.scan_plugins()
+
+            assert pm.enable_plugin("sample")
+            assert saved[-1] == ["sample"]
+
+            assert pm.disable_plugin("sample")
+            assert saved[-1] == []
+
+    def test_auto_enable_restores_saved_plugins_after_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "sample", main_py=_SAMPLE_MAIN_PY)
+
+            first = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            first.scan_plugins()
+            assert first.enable_plugin("sample")
+            saved_ids = [p.manifest.id for p in first.list_enabled()]
+
+            second_reg = CommandRegistry()
+            second = PluginManager(second_reg, plugins_dir=tmp)
+            second.scan_plugins()
+            assert second.auto_enable(saved_ids) == 1
+
+            assert second.get_plugin("sample").status == "enabled"
+            assert second_reg.get("sample.hello") is not None
+
+    def test_reload_enabled_plugin_keeps_saved_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "sample", main_py=_SAMPLE_MAIN_PY)
+            saved = []
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp, save_callback=lambda ids: saved.append(list(ids)))
+            pm.scan_plugins()
+            assert pm.enable_plugin("sample")
+            saved.clear()
+
+            assert pm.reload_plugin("sample")
+
+            assert pm.get_plugin("sample").status == "enabled"
+            assert saved[-1] == ["sample"]
+
+    def test_scan_plugins_does_not_persist_temporary_disable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "sample", main_py=_SAMPLE_MAIN_PY)
+            saved = []
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp, save_callback=lambda ids: saved.append(list(ids)))
+            pm.scan_plugins()
+            assert pm.enable_plugin("sample")
+            saved.clear()
+
+            pm.scan_plugins()
+
+            assert saved == []
+            assert reg.get("sample.hello") is None
+
     def test_load_error_status_returns_false(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = os.path.join(tmp, "bad")

@@ -18,11 +18,13 @@ def test_release_metadata_script_matches_core_version():
     assert completed.stdout.strip() == APP_VERSION
 
 
-def test_installer_metadata_has_no_commercial_placeholders():
+def test_installer_metadata_has_no_placeholder_metadata():
     installer = (ROOT / "scripts" / "installer.iss").read_text(encoding="utf-8")
 
     assert "Your Name" not in installer
     assert "A1B2C3D4-E5F6-7890-ABCD-EF1234567890" not in installer
+    assert "AppVerName={#MyAppName} {#MyAppVersion}" in installer
+    assert 'OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion' in installer
     assert APP_PUBLISHER in installer
     assert APP_ID in installer
 

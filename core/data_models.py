@@ -265,6 +265,7 @@ class AppSettings:
     hardware_acceleration: bool = False  # 硬件加速
     hide_tray_icon: bool = False  # 隐藏托盘图标
     enable_debug_log: bool = False  # 开启DEBUG日志
+    auto_update_enabled: bool = False  # 启动时自动检查更新
     disable_logging: bool = False  # 关闭日志记录
     sleep_mode_enabled: bool = True  # 10秒无操作后轻睡眠
     sleep_timeout_seconds: int = 10
@@ -286,6 +287,7 @@ class AppSettings:
     # 功能降级开关
     enable_context_detection: bool = True
     enable_plugins: bool = True
+    language: str = "zh_CN"
 
     # 弹窗设置
     popup_align_mode: str = "mouse_center"  # mouse_center, mouse_top_left, screen_center, bottom_right
@@ -351,6 +353,7 @@ class AppSettings:
             "hardware_acceleration": self.hardware_acceleration,
             "hide_tray_icon": self.hide_tray_icon,
             "enable_debug_log": self.enable_debug_log,
+            "auto_update_enabled": self.auto_update_enabled,
             "disable_logging": self.disable_logging,
             "sleep_mode_enabled": self.sleep_mode_enabled,
             "sleep_timeout_seconds": self.sleep_timeout_seconds,
@@ -389,6 +392,7 @@ class AppSettings:
             "plugin_dev_mode": self.plugin_dev_mode,
             "enable_context_detection": self.enable_context_detection,
             "enable_plugins": self.enable_plugins,
+            "language": self.language,
         }
 
     @classmethod

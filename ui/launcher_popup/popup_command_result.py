@@ -877,7 +877,7 @@ class PopupCommandResultMixin:
         # Close button in bottom-right corner
         close_rect = self._close_button_rect()
         
-        # Soft premium styling for close button
+        # Soft highlighted styling for close button
         close_id = ("close", -1)
         close_hovered = self.__dict__.get("_result_hover_button") == close_id
         close_pressed = self.__dict__.get("_result_pressed_button") == close_id

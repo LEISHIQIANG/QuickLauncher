@@ -106,12 +106,12 @@ class IconFlashOverlay(QWidget):
         if not self._items:
             return
         self.raise_()
-        self.show()
         self._started_at = time.perf_counter()
-        self._opacity = 0.0
+        self._opacity = 0.18
+        self.show()
         if not self._timer.isActive():
             self._timer.start()
-        self.update()
+        self.repaint()
 
     def stop(self):
         if self._timer.isActive():
@@ -204,7 +204,18 @@ class IconFlashOverlay(QWidget):
 
     def _icon_pixmap(self, item):
         try:
-            pixmap = self.launcher._get_icon(item)
+            need_invert = False
+            try:
+                if _should_invert_icon is not None:
+                    current_theme = getattr(self.launcher.settings, "theme", "dark")
+                    need_invert = _should_invert_icon(item, current_theme)
+            except Exception:
+                need_invert = False
+
+            pixmap = self.launcher._get_cached_icon_for_animation(item, need_invert)
+            if pixmap is None:
+                default_key = self.launcher._default_icon_cache_key(item)
+                pixmap = self.launcher._default_icon_cache.get(default_key)
         except Exception:
             return None
         if pixmap is None or pixmap.isNull():
@@ -1592,7 +1603,7 @@ class LauncherPopup(PopupCommandResultMixin, PopupBackgroundMixin, PopupRenderer
         """Flash icons through a cheap child overlay instead of repainting icons."""
         overlay = getattr(self, "_icon_flash_overlay", None)
         if overlay is not None and self.isVisible():
-            QTimer.singleShot(16, self._start_icon_flash_overlay)
+            self._start_icon_flash_overlay()
 
     def _start_icon_flash_overlay(self):
         overlay = getattr(self, "_icon_flash_overlay", None)

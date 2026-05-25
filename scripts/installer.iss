@@ -1,9 +1,4 @@
 ; QuickLauncher 安装程序脚本
-; 支持 Free/Pro 双版本构建
-
-#ifndef MyAppEdition
-  #define MyAppEdition "Free"
-#endif
 #ifndef MyAppName
   #define MyAppName "QuickLauncher"
 #endif
@@ -20,18 +15,14 @@
   #define MyAppFileVersion "1.6.0.0"
 #endif
 #ifndef OutputBaseFilename
-  #if MyAppEdition == "Pro"
-    #define OutputBaseFilename "QuickLauncher_Pro_Setup_" + MyAppVersion
-  #else
-    #define OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion
-  #endif
+  #define OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion
 #endif
 
 [Setup]
 AppId={{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppVerName={#MyAppName} {#MyAppVersion} ({#MyAppEdition})
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 VersionInfoVersion={#MyAppFileVersion}
 VersionInfoCompany={#MyAppPublisher}

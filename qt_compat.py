@@ -47,17 +47,14 @@ from PyQt5.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
-    QPolygon,
     QRegion,
     QTextCursor,
 )
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
     QAbstractSpinBox,
-    QAction,
     QApplication,
     QButtonGroup,
-    QCheckBox,
     QColorDialog,
     QComboBox,
     QDialog,
@@ -68,22 +65,16 @@ from PyQt5.QtWidgets import (
     QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
-    QLabel,
-    QLineEdit,
     QListView,
     QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMenuBar,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
-    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSplitter,
@@ -95,11 +86,34 @@ from PyQt5.QtWidgets import (
     QStyleOptionViewItem,
     QSystemTrayIcon,
     QTableWidget,
-    QTableWidgetItem,
     QTextEdit,
     QToolTip,
     QVBoxLayout,
     QWidget,
+)
+from PyQt5.QtWidgets import (
+    QAction as _QAction,
+)
+from PyQt5.QtWidgets import (
+    QCheckBox as _QCheckBox,
+)
+from PyQt5.QtWidgets import (
+    QGroupBox as _QGroupBox,
+)
+from PyQt5.QtWidgets import (
+    QLabel as _QLabel,
+)
+from PyQt5.QtWidgets import (
+    QLineEdit as _QLineEdit,
+)
+from PyQt5.QtWidgets import (
+    QListWidgetItem as _QListWidgetItem,
+)
+from PyQt5.QtWidgets import (
+    QPushButton as _QPushButton,
+)
+from PyQt5.QtWidgets import (
+    QRadioButton as _QRadioButton,
 )
 from PyQt5.QtWidgets import (
     QSlider as _QSlider,
@@ -107,11 +121,99 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtWidgets import (
     QSpinBox as _QSpinBox,
 )
+from PyQt5.QtWidgets import (
+    QTableWidgetItem as _QTableWidgetItem,
+)
+
+from core.i18n import tr
 
 PYQT_VERSION = 5
 QT_LIB = "PyQt5"
 logger = logging.getLogger(__name__)
 logger.debug("Using %s", QT_LIB)
+
+
+def _translate_args(args):
+    return tuple(tr(arg) if isinstance(arg, str) else arg for arg in args)
+
+
+class _TranslatedTextMixin:
+    def setText(self, text):  # noqa: N802 - Qt API name
+        if isinstance(text, str):
+            text = tr(text)
+        return super().setText(text)
+
+    def setToolTip(self, text):  # noqa: N802 - Qt API name
+        if isinstance(text, str):
+            text = tr(text)
+        return super().setToolTip(text)
+
+
+class QLabel(_TranslatedTextMixin, _QLabel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+
+class QPushButton(_TranslatedTextMixin, _QPushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+
+class QCheckBox(_TranslatedTextMixin, _QCheckBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+
+class QRadioButton(_TranslatedTextMixin, _QRadioButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+
+class QGroupBox(_TranslatedTextMixin, _QGroupBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+    def setTitle(self, title):  # noqa: N802 - Qt API name
+        if isinstance(title, str):
+            title = tr(title)
+        return super().setTitle(title)
+
+
+class QAction(_TranslatedTextMixin, _QAction):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+
+class QListWidgetItem(_QListWidgetItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+    def setText(self, text):  # noqa: N802 - Qt API name
+        if isinstance(text, str):
+            text = tr(text)
+        return super().setText(text)
+
+
+class QTableWidgetItem(_QTableWidgetItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*_translate_args(args), **kwargs)
+
+    def setText(self, text):  # noqa: N802 - Qt API name
+        if isinstance(text, str):
+            text = tr(text)
+        return super().setText(text)
+
+
+class QLineEdit(_QLineEdit):
+    def setPlaceholderText(self, text):  # noqa: N802 - Qt API name
+        if isinstance(text, str):
+            text = tr(text)
+        return super().setPlaceholderText(text)
+
+    def setToolTip(self, text):  # noqa: N802 - Qt API name
+        if isinstance(text, str):
+            text = tr(text)
+        return super().setToolTip(text)
 
 
 class QSlider(_QSlider):

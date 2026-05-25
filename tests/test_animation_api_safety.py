@@ -97,7 +97,7 @@ def test_codebase_for_isactive_animation_vulnerabilities():
 
 def test_wobbly_coffee_cup_lifecycle_safety(qapp):
     """Verify that WobblyCoffeeCup is stable, and its pause_effects/resume_effects work safely without AttributeErrors."""
-    from ui.config_window.settings_license_page import WobblyCoffeeCup
+    from ui.config_window.settings_support_page import WobblyCoffeeCup
     
     # Instantiate WobblyCoffeeCup inside the QApplication context (headless/offscreen)
     cup = WobblyCoffeeCup("☕")
@@ -194,4 +194,3 @@ def test_settings_about_page_lifecycle_safety(qapp):
     
     # Cleanup
     page.deleteLater()
-

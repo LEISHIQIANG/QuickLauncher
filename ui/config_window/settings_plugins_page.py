@@ -492,10 +492,7 @@ class SettingsPluginsPageMixin:
         previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
                            if p.status == "enabled"}
         plugin_manager.scan_plugins()
-        for pid in previous_enabled:
-            info = plugin_manager.get_plugin(pid)
-            if info and info.status != "error":
-                plugin_manager.reload_plugin(pid)
+        plugin_manager.auto_enable(list(previous_enabled))
         self._rebuild_plugin_list(preserve_scroll=True)
 
     def _on_open_plugins_dir(self):
@@ -546,10 +543,7 @@ class SettingsPluginsPageMixin:
             previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
                                if p.status == "enabled"}
             plugin_manager.scan_plugins()
-            for pid in previous_enabled:
-                info = plugin_manager.get_plugin(pid)
-                if info and info.status != "error":
-                    plugin_manager.reload_plugin(pid)
+            plugin_manager.auto_enable(list(previous_enabled))
             self._rebuild_plugin_list(preserve_scroll=True)
             
             # Show success message
@@ -600,10 +594,7 @@ class SettingsPluginsPageMixin:
         previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
                            if p.status == "enabled"}
         plugin_manager.scan_plugins()
-        for pid in previous_enabled:
-            info = plugin_manager.get_plugin(pid)
-            if info and info.status != "error":
-                plugin_manager.reload_plugin(pid)
+        plugin_manager.auto_enable(list(previous_enabled))
         self._rebuild_plugin_list(preserve_scroll=True)
 
         info = plugin_manager.get_plugin(plugin_id)

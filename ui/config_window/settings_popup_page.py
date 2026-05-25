@@ -1,6 +1,5 @@
 """Popup settings page builder."""
-
-
+from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
     QHBoxLayout,
@@ -24,8 +23,8 @@ class SettingsPopupPageMixin:
         self.pos_group = QButtonGroup(self)
 
         # 选项：鼠标-弹窗中心，鼠标-弹窗左上角
-        self.pos_mouse_center = QRadioButton("鼠标-弹窗中心")
-        self.pos_mouse_tl = QRadioButton("鼠标-弹窗左上角")
+        self.pos_mouse_center = QRadioButton(tr("鼠标-弹窗中心"))
+        self.pos_mouse_tl = QRadioButton(tr("鼠标-弹窗左上角"))
 
         self.pos_group.addButton(self.pos_mouse_center, 0)
         self.pos_group.addButton(self.pos_mouse_tl, 1)
@@ -47,10 +46,10 @@ class SettingsPopupPageMixin:
         auto_close_row = QHBoxLayout()
         auto_close_row.addWidget(self._create_label("自动关闭"))
         self.auto_close_group = QButtonGroup(self)
-        self.auto_close_yes = QRadioButton("是")
-        self.auto_close_no = QRadioButton("否")
-        install_tooltip(self.auto_close_yes, "鼠标移出窗口后延迟自动关闭")
-        install_tooltip(self.auto_close_no, "需要点击窗口内图标或窗口外其他地方才会关闭")
+        self.auto_close_yes = QRadioButton(tr("是"))
+        self.auto_close_no = QRadioButton(tr("否"))
+        install_tooltip(self.auto_close_yes, tr("鼠标移出窗口后延迟自动关闭"))
+        install_tooltip(self.auto_close_no, tr("需要点击窗口内图标或窗口外其他地方才会关闭"))
         self.auto_close_group.addButton(self.auto_close_yes, 0)
         self.auto_close_group.addButton(self.auto_close_no, 1)
         self.auto_close_group.buttonClicked.connect(self._on_auto_close_changed)
@@ -59,10 +58,10 @@ class SettingsPopupPageMixin:
         auto_close_row.addSpacing(22)
         auto_close_row.addWidget(self._create_label("固定时多开"))
         self.multi_open_pinned_group = QButtonGroup(self)
-        self.multi_open_pinned_yes = QRadioButton("是")
-        self.multi_open_pinned_no = QRadioButton("否")
-        install_tooltip(self.multi_open_pinned_yes, "窗口固定时，再次中键保留当前窗口并新开一个弹窗")
-        install_tooltip(self.multi_open_pinned_no, "窗口固定时，再次中键仍隐藏当前弹窗")
+        self.multi_open_pinned_yes = QRadioButton(tr("是"))
+        self.multi_open_pinned_no = QRadioButton(tr("否"))
+        install_tooltip(self.multi_open_pinned_yes, tr("窗口固定时，再次中键保留当前窗口并新开一个弹窗"))
+        install_tooltip(self.multi_open_pinned_no, tr("窗口固定时，再次中键仍隐藏当前弹窗"))
         self.multi_open_pinned_group.addButton(self.multi_open_pinned_yes, 0)
         self.multi_open_pinned_group.addButton(self.multi_open_pinned_no, 1)
         self.multi_open_pinned_group.buttonClicked.connect(self._on_multi_open_pinned_changed)
@@ -109,19 +108,19 @@ class SettingsPopupPageMixin:
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
 
-        self.special_add_btn = QPushButton("新建")
+        self.special_add_btn = QPushButton(tr("新建"))
         self.special_add_btn.clicked.connect(self._add_special_app)
         btn_layout.addWidget(self.special_add_btn, 1)
 
-        self.special_del_btn = QPushButton("删除")
+        self.special_del_btn = QPushButton(tr("删除"))
         self.special_del_btn.clicked.connect(self._remove_special_app)
         btn_layout.addWidget(self.special_del_btn, 1)
 
-        reset_btn = QPushButton("重置默认")
+        reset_btn = QPushButton(tr("重置默认"))
         reset_btn.clicked.connect(self._reset_special_apps)
         btn_layout.addWidget(reset_btn, 1)
 
-        apply_btn = QPushButton("应用更改")
+        apply_btn = QPushButton(tr("应用更改"))
         apply_btn.clicked.connect(self._apply_special_apps)
         btn_layout.addWidget(apply_btn, 1)
 

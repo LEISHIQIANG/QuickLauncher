@@ -29,20 +29,15 @@ REM 第二次进入（QL_LOGGING=1）时跳过，直接执行构建
 if not defined QL_LOGGING (
     if not exist "dist\build_logs" mkdir "dist\build_logs" >nul 2>&1
     set "QL_LOGGING=1"
-    powershell -NoProfile -Command "$bat='%~f0'; $ts=Get-Date -Format 'yyyyMMdd_HHmmss'; $log='dist\build_logs\build_'+$ts+'.log'; Write-Host \"Build log: $log\"; $env:QL_LOGGING='1'; $env:APP_VERSION='%APP_VERSION%'; $env:APP_PUBLISHER='%APP_PUBLISHER%'; $arg='\"'+$bat+'\" 2>&1'; cmd /c $arg | Tee-Object -FilePath $log; Write-Host \"`n[Build log: $log]\""
-    if "%QL_NO_PAUSE%"=="" pause
-    exit /b
+    powershell -NoProfile -Command "$bat='%~f0'; $ts=Get-Date -Format 'yyyyMMdd_HHmmss'; $log='dist\build_logs\build_'+$ts+'.log'; Write-Host \"Build log: $log\"; $env:QL_LOGGING='1'; $env:QL_NO_PAUSE='1'; $env:APP_VERSION='%APP_VERSION%'; $env:APP_PUBLISHER='%APP_PUBLISHER%'; $arg='\"'+$bat+'\" 2>&1'; cmd /c $arg | ForEach-Object { $_ -replace '\u001b\[[0-9;]*[a-zA-Z]', '' } | Tee-Object -FilePath $log; $exitCode=$LASTEXITCODE; Write-Host \"`n[Build log: $log]\"; exit $exitCode"
+    if errorlevel 1 (
+        echo.
+        echo   [!] Build failed. Please check the log above.
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+    exit /b 0
 )
-
-REM === Build type (Free/Pro) ===
-if not defined QL_APP_BUILD set "QL_APP_BUILD=free"
-if not defined QL_BUILD_TYPE set "QL_BUILD_TYPE=Free"
-if /I "%QL_APP_BUILD%"=="pro" set "QL_BUILD_TYPE=Pro"
-
-echo   Build type: %QL_BUILD_TYPE%
-
-REM Write build type marker for commercial/__init__.py
-echo %QL_APP_BUILD% > "commercial\.build_type"
 
 echo.
 echo [Build Info]
@@ -154,8 +149,7 @@ REM set "HTTP_PROXY="
 REM set "HTTPS_PROXY="
 
 echo   Installing/updating PyQt5, Nuitka and other dependencies...
-!PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple
-!PYTHON_CMD! -m pip install nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 echo.
@@ -186,8 +180,8 @@ REM no-UPX default and explicit manifest embedding below.
     --mingw64 ^
     --standalone ^
     --windows-console-mode=disable ^
-    --show-progress ^
     --assume-yes-for-downloads ^
+    --include-windows-runtime-dlls=no ^
     --lto=yes ^
     --remove-output ^
     --no-pyi-file ^
@@ -202,8 +196,9 @@ REM no-UPX default and explicit manifest embedding below.
     --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml*.dll,qt5networkauth.dll,qt5purchasing.dll ^
     --noinclude-dlls=qt5remoteobjects.dll,qt5script*.dll,qt5scxml.dll,qt5virtualkeyboard.dll,qt5charts.dll,qt5datavisualization.dll ^
     --noinclude-dlls=qt5printsupport.dll ^
+    --noinclude-dlls=qt5pdf.dll,qt6pdf.dll,libeay32.dll,ssleay32.dll ^
+    --noinclude-dlls=_sqlite3.pyd,_decimal.pyd,_lzma.pyd,_bz2.pyd,atl140.dll ^
     !QL_VC_RUNTIME_EXCLUDES! ^
-    --noinclude-dlls=qt6pdf.dll ^
     --company-name="%APP_PUBLISHER%" ^
     --product-name="QuickLauncher" ^
     --file-version="%APP_VERSION%" ^
@@ -252,6 +247,13 @@ REM no-UPX default and explicit manifest embedding below.
 if not exist "dist\main.dist\QuickLauncher.exe" (
     echo.
     echo   [!] Compilation failed! Please check the error messages above.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+!PYTHON_CMD! -c "import os; sz=os.path.getsize('dist/main.dist/QuickLauncher.exe'); assert sz > 1048576, 'exe too small'; print(f'  [OK] QuickLauncher.exe size: {sz//1024} KB')"
+if !ERRORLEVEL! NEQ 0 (
+    echo   [X] Executable verification failed.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
@@ -458,13 +460,6 @@ if exist "assets\support.jpg" (
     echo   [Warning] assets\support.jpg not found, support dialog will use fallback placeholder.
 )
 
-if exist "commercial\.build_type" (
-    if not exist "dist\QuickLauncher\commercial" mkdir "dist\QuickLauncher\commercial" >nul 2>&1
-    copy /Y "commercial\.build_type" "dist\QuickLauncher\commercial\.build_type" >nul
-) else (
-    echo   [Warning] commercial\.build_type not found, default free build marker will be used.
-)
-
 REM Nuitka treats Python files as code, so include-data-dir is not enough for
 REM local plugin source files. Copy plugins explicitly to guarantee every
 REM packaged plugin keeps plugin.json, main.py and README.md.
@@ -497,7 +492,7 @@ if exist "..\%SETUP_STAGE_DIR%" rmdir /s /q "..\%SETUP_STAGE_DIR%" >nul 2>&1
 mkdir "..\%SETUP_STAGE_DIR%" >nul 2>&1
 if exist "..\dist\QuickLauncher_Setup_%APP_VERSION%.exe" del /f /q "..\dist\QuickLauncher_Setup_%APP_VERSION%.exe" >nul 2>&1
 
-"!ISCC!" /DMyAppEdition="%QL_BUILD_TYPE%" /DMyAppName="QuickLauncher" /DMyAppVersion="%APP_VERSION%" /DMyAppFileVersion="%APP_VERSION%" /DMyAppPublisher="%APP_PUBLISHER%" installer.iss
+"!ISCC!" /DMyAppName="QuickLauncher" /DMyAppVersion="%APP_VERSION%" /DMyAppFileVersion="%APP_VERSION%" /DMyAppPublisher="%APP_PUBLISHER%" installer.iss
 if !ERRORLEVEL! NEQ 0 (
     echo   [!] Setup package generation failed.
     cd ..
@@ -527,4 +522,12 @@ echo ========================================
 echo   [OK] Build successful! (Win11 optimized version)
 echo   Installer: dist\QuickLauncher_Setup_%APP_VERSION%.exe
 echo ========================================
-if "%QL_NO_PAUSE%"=="" pause
+echo.
+echo   Starting packaged QuickLauncher.exe...
+if exist "dist\QuickLauncher\QuickLauncher.exe" (
+    start "" /D "%CD%\dist\QuickLauncher" "%CD%\dist\QuickLauncher\QuickLauncher.exe"
+    exit /b 0
+)
+
+echo   [!] Packaged executable not found: dist\QuickLauncher\QuickLauncher.exe
+exit /b 1

@@ -48,6 +48,7 @@ _STRING_CHOICES = {
     "sort_mode": {"custom", "smart"},
     "popup_align_mode": {"mouse_center", "mouse_top_left", "screen_center", "bottom_right"},
     "bg_mode": {"theme", "image", "color", "acrylic"},
+    "language": {"zh_CN", "en_US"},
 }
 _STRING_FIELDS = {"last_version", "custom_bg_path", "bg_solid_color", "edge_highlight_color"}
 _LIST_STRING_FIELDS = {

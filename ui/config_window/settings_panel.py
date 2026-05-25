@@ -2,32 +2,58 @@
 设置面板 - 分类导航版本
 """
 
+import logging
 import os
 import sys
-import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from core import DEFAULT_SPECIAL_APPS, DataManager
+from core.i18n import tr
 from qt_compat import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QLabel, QFrame, QPushButton, QListWidget, QListWidgetItem, QFileDialog, QPainter, QPixmap, QColor, QPen, QBrush, QRectF, QDialog, QTimer, QStackedWidget,
-    Qt, QtCompat, pyqtSignal, QSize, QPainterPath, QPoint, pyqtProperty, QPropertyAnimation, QEasingCurve
+    QBrush,
+    QColor,
+    QDialog,
+    QEasingCurve,
+    QFileDialog,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPoint,
+    QPropertyAnimation,
+    QPushButton,
+    QRectF,
+    QSize,
+    QStackedWidget,
+    Qt,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
+    QWidget,
+    pyqtProperty,
+    pyqtSignal,
 )
-
-from core import DataManager, DEFAULT_SPECIAL_APPS
 from ui.styles.style import StyleSheet
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.window_effect import get_window_effect
-from .settings_page_helpers import SettingsPageHelpersMixin
-from .settings_system_page import SettingsSystemPageMixin
-from .settings_appearance_page import SettingsAppearancePageMixin
-from .settings_popup_page import SettingsPopupPageMixin
-from .settings_data_page import SettingsDataPageMixin
+
 from .settings_about_page import SettingsAboutPageMixin
-from .settings_data_actions import SettingsDataActionsMixin
-from .settings_plugins_page import SettingsPluginsPageMixin
+from .settings_appearance_page import SettingsAppearancePageMixin
 from .settings_commands_page import SettingsCommandsPageMixin
-from .settings_license_page import SettingsLicensePageMixin
+from .settings_data_actions import SettingsDataActionsMixin
+from .settings_data_page import SettingsDataPageMixin
+from .settings_page_helpers import SettingsPageHelpersMixin
+from .settings_plugins_page import SettingsPluginsPageMixin
+from .settings_popup_page import SettingsPopupPageMixin
+from .settings_support_page import SettingsSupportPageMixin
+from .settings_system_page import SettingsSystemPageMixin
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +115,7 @@ class CompactProgressDialog(QDialog):
         main_layout.addLayout(self.title_layout)
 
         # 消息内容
-        self.msg_label = QLabel("正在处理...")
+        self.msg_label = QLabel(tr("正在处理..."))
         self.msg_label.setWordWrap(True)
         self.msg_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignTop)
         self.msg_label.setStyleSheet(
@@ -104,7 +130,7 @@ class CompactProgressDialog(QDialog):
         self.btn_layout.setSpacing(6)
         self.btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_layout.addStretch()
-        self.ok_btn = QPushButton("确定")
+        self.ok_btn = QPushButton(tr("确定"))
         self.ok_btn.setDefault(True)
         self.ok_btn.setFixedHeight(22)
         self.ok_btn.setMinimumWidth(52)
@@ -234,6 +260,7 @@ class CompactProgressDialog(QDialog):
         self.adjustSize()
 
 from ui.utils.smooth_scroll import SmoothScrollArea
+
 
 class NavigationItem(QListWidgetItem):
     def __init__(self, text, icon_name=None, theme="dark"):
@@ -464,7 +491,7 @@ class BaseSettingPage(SmoothScrollArea):
         
     def add_group(self, title):
         from ui.utils.font_manager import get_qfont
-        group = QGroupBox(title)
+        group = QGroupBox(tr(title))
         group.setFont(get_qfont(14))
         group.setProperty("settingsGroupTitle", title)
 
@@ -514,14 +541,8 @@ class BaseSettingPage(SmoothScrollArea):
             return "command_favorite"
         if "内置命令" in title or "命令" in title:
             return "command"
-        if "许可证信息" in title:
-            return "license"
-        if "激活许可证" in title:
-            return "key"
         if "支持一下" in title:
             return "support"
-        if title == "管理":
-            return "license_manage"
         if "启动" in title or "运行" in title:
             return "power"
         if "排序" in title:
@@ -567,8 +588,6 @@ class BaseSettingPage(SmoothScrollArea):
             return QColor(82, 145, 255)
         if "支持一下" in title:
             return QColor(255, 122, 86)
-        if "许可证" in title or title == "管理":
-            return QColor(255, 180, 72)
         if "日志" in title or "配置" in title or "管理" in title:
             return QColor(54, 176, 116)
         if "主题" in title or "背景" in title or "外观" in title or "视觉" in title:
@@ -746,21 +765,6 @@ class BaseSettingPage(SmoothScrollArea):
             line(6.5, 16, 15.5, 16, pen)
             line(14.6, 5.6, 17.2, 5.6, pen)
             line(15.9, 4.3, 15.9, 6.9, pen)
-        elif kind == "license":
-            rect(6, 4.5, 10, 13)
-            line(8, 8, 14, 8, accent_pen)
-            line(8, 10.8, 13.2, 10.8)
-            painter.setPen(QtCompat.NoPen)
-            painter.setBrush(QBrush(accent))
-            painter.drawEllipse(QRectF(9.4, 13.1, 3.2, 3.2))
-        elif kind == "key":
-            ellipse(5.3, 6.4, 6.2, 6.2, accent_pen)
-            line(10.7, 11.0, 16.8, 17.1)
-            line(14.1, 14.4, 15.7, 12.8, pen)
-            line(15.7, 16.0, 17.1, 14.6, pen)
-            painter.setPen(QtCompat.NoPen)
-            painter.setBrush(QBrush(accent))
-            painter.drawEllipse(QRectF(7.4, 8.5, 2.0, 2.0))
         elif kind == "support":
             painter.setPen(accent_pen)
             painter.setBrush(QtCompat.NoBrush)
@@ -768,11 +772,6 @@ class BaseSettingPage(SmoothScrollArea):
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(accent))
             painter.drawPath(heart_path())
-        elif kind == "license_manage":
-            rect(5.4, 5.3, 11.2, 10.4)
-            line(8, 8.4, 14, 8.4, accent_pen)
-            line(8, 11.4, 12.6, 11.4)
-            line(7.2, 16.5, 14.8, 16.5, pen)
         elif kind == "warning":
             path = QPainterPath()
             path.moveTo(11, 4.5)
@@ -888,7 +887,7 @@ class BaseSettingPage(SmoothScrollArea):
             else:
                 btn.setStyleSheet(btn_style)
 
-class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsAppearancePageMixin, SettingsPopupPageMixin, SettingsDataPageMixin, SettingsAboutPageMixin, SettingsDataActionsMixin, SettingsPluginsPageMixin, SettingsCommandsPageMixin, SettingsLicensePageMixin, QWidget):
+class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsAppearancePageMixin, SettingsPopupPageMixin, SettingsDataPageMixin, SettingsAboutPageMixin, SettingsDataActionsMixin, SettingsPluginsPageMixin, SettingsCommandsPageMixin, SettingsSupportPageMixin, QWidget):
     settings_changed = pyqtSignal()
     command_settings_changed = pyqtSignal()
     import_completed = pyqtSignal(int)
@@ -950,8 +949,9 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         # 内容区域统一使用 Glassmorphism 样式
         try:
             from ui.styles.style import Glassmorphism
-            from .theme_helper import get_switch_stylesheet, get_radio_stylesheet
+
             from .settings_helpers import SwitchButton
+            from .theme_helper import get_radio_stylesheet, get_switch_stylesheet
             
             # 综合样式表
             full_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
@@ -976,7 +976,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         pages = [
             self.page_system, self.page_appearance, self.page_popup,
             self.page_data, self.page_plugins, self.page_commands,
-            self.page_about, self.page_license,
+            self.page_about, self.page_support,
         ]
         for page in pages:
             if hasattr(page, 'apply_theme'):
@@ -1056,7 +1056,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             4: self._setup_plugins_page,
             5: self._setup_commands_page,
             6: self._setup_about_page,
-            7: self._setup_license_page,
+            7: self._setup_support_page,
         }
         # 需要底部 stretch 的页面
         self._pages_need_stretch = {0, 1, 3, 6, 7}
@@ -1069,7 +1069,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         page_attrs = [
             'page_system', 'page_appearance', 'page_popup',
             'page_data', 'page_plugins', 'page_commands', 'page_about',
-            'page_license',
+            'page_support',
         ]
         for i in range(8):
             page = BaseSettingPage()
@@ -1115,7 +1115,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         ]
         
         for text, index, icon_name in items:
-            item = NavigationItem(text, icon_name)
+            item = NavigationItem(tr(text), icon_name)
             item.setData(QtCompat.UserRole, index)
             self.nav_widget.addItem(item)
             
@@ -1123,7 +1123,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             from .action_button_icons import create_action_button_icon
             icon = create_action_button_icon(icon_name, self.current_theme, 19)
             
-            widget = NavigationItemWidget(text, icon, self.current_theme, self.nav_widget)
+            widget = NavigationItemWidget(tr(text), icon, self.current_theme, self.nav_widget)
             widget.item = item
             
             # Clear QListWidgetItem text to prevent default text rendering (eliminates ghosting/overlapping)
@@ -1204,7 +1204,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             elif index == 6:
                 pass  # about page is static
             elif index == 7:
-                pass  # license page is dynamic
+                pass  # support page is dynamic
         finally:
             self._updating = old_updating
 
@@ -1237,6 +1237,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         self.hide_tray_cb.setChecked(settings.hide_tray_icon)
         self.disable_logging_cb.setChecked(getattr(settings, 'disable_logging', False))
         self.debug_log_cb.setChecked(getattr(settings, 'enable_debug_log', False))
+        self.auto_update_cb.setChecked(getattr(settings, 'auto_update_enabled', False))
         self.sleep_mode_cb.setChecked(getattr(settings, 'sleep_mode_enabled', True))
 
         # 排序方式
@@ -1519,6 +1520,11 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         if self._updating: return
         self.data_manager.update_settings(sleep_mode_enabled=(state == 2))
 
+    def _on_auto_update_changed(self, state):
+        if self._updating:
+            return
+        self.data_manager.update_settings(auto_update_enabled=(state == 2))
+
     def _on_sort_mode_changed(self, button):
         if self._updating: return
         mode = "smart" if button == self.smart_sort_radio else "custom"
@@ -1527,10 +1533,10 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
     def _restart_app(self):
         """重启应用"""
         import logging
-        import subprocess
-        import tempfile
-        import sys
         import os
+        import subprocess
+        import sys
+        import tempfile
 
         logger = logging.getLogger(__name__)
         logger.info("用户请求重启应用...")

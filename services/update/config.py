@@ -1,20 +1,26 @@
-"""更新配置与数据模型。"""
+"""Update configuration and response models."""
 
 from dataclasses import dataclass
 
 
 @dataclass
 class UpdateConfig:
-    check_url: str = "https://update.quicklauncher.app/api/check"
+    update_source: str = "github"
+    check_url: str = "https://api.github.com/repos/LEISHIQIANG/QuickLauncher/releases/latest"
+    github_repo: str = "LEISHIQIANG/QuickLauncher"
+    asset_name_pattern: str = r"(?i)(quicklauncher|setup).*\.(exe|msi)$"
     channel: str = "stable"
     check_interval_hours: int = 24
+    check_on_startup: bool = True
+    repeat_auto_check: bool = False
     auto_download: bool = False
     auto_install: bool = False
     verify_ssl: bool = True
     require_file_hash: bool = True
     allow_insecure_update_urls: bool = False
-    allowed_download_hosts: tuple[str, ...] = ("update.quicklauncher.app",)
+    allowed_download_hosts: tuple[str, ...] = ("github.com",)
     max_download_bytes: int = 200 * 1024 * 1024
+    download_dir_name: str = "updates"
 
 
 @dataclass

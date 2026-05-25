@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import APP_VERSION, DataManager, ShortcutItem, ShortcutType
+from core.i18n import tr
 from core.windows_uipi import allow_drag_drop_for_widget
 from qt_compat import (
     QColor,
@@ -32,9 +33,9 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
 
-from ui.styles.themed_messagebox import ThemedMessageBox
 from .theme_helper import get_radio_stylesheet, get_switch_stylesheet
 
 
@@ -61,6 +62,7 @@ class TitleBar(QWidget):
 
     back_requested = pyqtSignal()
     settings_requested = pyqtSignal()
+    update_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -109,6 +111,9 @@ class TitleBar(QWidget):
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(icon_size, icon_size)
+        self.icon_label.setCursor(QtCompat.PointingHandCursor)
+        self.icon_label.setToolTip(tr("检查更新"))
+        self.icon_label.mousePressEvent = self._on_update_click
         self.icon_label.setStyleSheet("background: transparent;")
 
         try:
@@ -131,6 +136,9 @@ class TitleBar(QWidget):
 
         # 标题
         self.title_label = QLabel(f"QuickLauncher {APP_VERSION}")
+        self.title_label.setCursor(QtCompat.PointingHandCursor)
+        self.title_label.setToolTip(tr("检查更新"))
+        self.title_label.mousePressEvent = self._on_update_click
         self.title_label.setStyleSheet("font-size: 13px; font-weight: 400; background: transparent;")
         self.title_label.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.title_label)
@@ -294,7 +302,7 @@ class TitleBar(QWidget):
         self.settings_btn.setVisible(not is_settings)
 
         if is_settings:
-            self.title_label.setText("设置")
+            self.title_label.setText(tr("设置"))
             self.title_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
             self.title_label.setContentsMargins(0, 0, 0, 0)
         else:
@@ -307,6 +315,12 @@ class TitleBar(QWidget):
 
     def _on_settings(self):
         self.settings_requested.emit()
+
+    def _on_update_click(self, event):
+        if self._in_settings_mode:
+            return
+        if event.button() == QtCompat.LeftButton:
+            self.update_requested.emit()
 
     def _on_close(self):
         if self.parent_window:
@@ -548,6 +562,7 @@ class ConfigWindow(QMainWindow):
         self.title_bar = TitleBar(self)
         self.title_bar.settings_requested.connect(self._show_settings)
         self.title_bar.back_requested.connect(self._show_launcher)
+        self.title_bar.update_requested.connect(self._check_update_now)
         main_layout.addWidget(self.title_bar)
 
         self.top_separator = QFrame()
@@ -680,6 +695,22 @@ class ConfigWindow(QMainWindow):
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"显示设置面板失败: {e}")
+
+    def _check_update_now(self):
+        try:
+            if self.tray_app and hasattr(self.tray_app, "_check_update_now"):
+                self.tray_app._check_update_now(parent=self)
+                return
+
+            from services.update.checker import UpdateChecker
+            from services.update.ui import UpdateNotification
+
+            checker = UpdateChecker()
+            info = checker.check_now()
+            if info and not info.has_update:
+                UpdateNotification.show_up_to_date(parent=self)
+        except Exception as e:
+            ThemedMessageBox.warning(self, "检查更新失败", f"无法检查更新:\n{e}")
 
     def _show_launcher(self):
         self._slide_to_page(0, direction="right")
@@ -850,7 +881,7 @@ class ConfigWindow(QMainWindow):
         if folder:
             # 计算所有文件夹的总项数
             total_items = sum(len(f.items) for f in self.data_manager.data.folders)
-            self.status_bar.showMessage(f" 当前: {folder.name} {len(folder.items)}项  共计: {total_items} 项")
+            self.status_bar.showMessage(tr("当前: {folder} {count}项  共计: {total} 项", folder=folder.name, count=len(folder.items), total=total_items))
 
     def _begin_shortcut_dialog_action(self) -> bool:
         if self._shortcut_edit_active:
@@ -939,8 +970,8 @@ class ConfigWindow(QMainWindow):
 
         confirmed = ThemedMessageBox.question(
             self,
-            "确认删除",
-            f"确定要删除 '{shortcut.name}' 吗?",
+            tr("确认删除"),
+            tr("确定要删除 '{name}' 吗?", name=shortcut.name),
             theme
         )
 

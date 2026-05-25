@@ -1,6 +1,5 @@
 """Appearance settings page builder."""
-
-
+from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
     QGridLayout,
@@ -23,9 +22,9 @@ class SettingsAppearancePageMixin:
         # 模式选择
         mode_layout = QHBoxLayout()
         self.bg_mode_group = QButtonGroup(self)
-        self.bg_theme_radio = QRadioButton("跟随主题")
-        self.bg_image_radio = QRadioButton("图片背景")
-        self.bg_acrylic_radio = QRadioButton("亚克力背景")
+        self.bg_theme_radio = QRadioButton(tr("跟随主题"))
+        self.bg_image_radio = QRadioButton(tr("图片背景"))
+        self.bg_acrylic_radio = QRadioButton(tr("亚克力背景"))
 
         self.bg_mode_group.addButton(self.bg_theme_radio, 0)
         self.bg_mode_group.addButton(self.bg_image_radio, 1)
@@ -44,8 +43,8 @@ class SettingsAppearancePageMixin:
         img_layout.setContentsMargins(0, 0, 0, 0)
         self.bg_path_edit = QLineEdit()
         self.bg_path_edit.setReadOnly(True)
-        self.bg_path_edit.setPlaceholderText("选择背景图片...")
-        self.bg_browse_btn = QPushButton("浏览...")
+        self.bg_path_edit.setPlaceholderText(tr("选择背景图片..."))
+        self.bg_browse_btn = QPushButton(tr("浏览..."))
         self.bg_browse_btn.clicked.connect(self._browse_bg_image)
         img_layout.addWidget(self.bg_path_edit)
         img_layout.addWidget(self.bg_browse_btn)
@@ -82,7 +81,7 @@ class SettingsAppearancePageMixin:
 
         grid.addWidget(self._create_label("Dock高度"), 1, 2)
         self.dock_height_spin = self._create_spinbox(0, 3, "行")
-        self.dock_height_spin.setSpecialValueText("隐藏")
+        self.dock_height_spin.setSpecialValueText(tr("隐藏"))
         self.dock_height_spin.valueChanged.connect(self._on_dock_size_changed)
         grid.addWidget(self.dock_height_spin, 1, 3)
 

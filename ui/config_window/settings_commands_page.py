@@ -4,29 +4,29 @@ from __future__ import annotations
 
 import logging
 
+from core.i18n import tr
 from qt_compat import (
+    QColor,
+    QDrag,
+    QGraphicsOpacityEffect,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QtCompat,
-    QVBoxLayout,
-    QWidget,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QLineEdit,
-    QGridLayout,
-    QTimer,
-    QPixmap,
     QPainter,
-    QColor,
     QPen,
+    QPixmap,
     QPoint,
-    QGraphicsOpacityEffect,
-    QDrag,
-    QSize,
+    QPushButton,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
+    QWidget,
 )
-from ui.utils.font_manager import get_font_css_with_size
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.utils.font_manager import get_font_css_with_size
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ class DragDropListWidget(QListWidget):
             self.doItemsLayout()
 
             # Trigger QPropertyAnimation for all shifted items
-            from qt_compat import QPropertyAnimation, QEasingCurve
+            from qt_compat import QEasingCurve, QPropertyAnimation
             for r in range(self.count()):
                 it = self.item(r)
                 try:
@@ -275,7 +275,7 @@ class DragDropListWidget(QListWidget):
 
                 self.doItemsLayout()
 
-                from qt_compat import QPropertyAnimation, QEasingCurve
+                from qt_compat import QEasingCurve, QPropertyAnimation
                 for r in range(self.count()):
                     it = self.item(r)
                     try:
@@ -334,10 +334,7 @@ class SettingsCommandsPageMixin:
         # ── Favorites ──
         layout2, group2 = page.add_group("收藏命令")
 
-        fav_desc = QLabel(
-            "收藏的命令会显示在 / 默认页顶部，方便快速访问。\n"
-            "可以使用下方“内置命令管理”中的“收藏”按钮或从结果卡片的星标按钮添加。"
-        )
+        fav_desc = QLabel(tr("收藏的命令会显示在 / 默认页顶部，方便快速访问。\n可以使用下方“内置命令管理”中的“收藏”按钮或从结果卡片的星标按钮添加。"))
         fav_desc.setObjectName("fav_desc")
         fav_desc.setWordWrap(True)
         fav_desc.setMinimumWidth(0)
@@ -361,7 +358,7 @@ class SettingsCommandsPageMixin:
         layout2.addWidget(self.fav_list_widget)
 
         # Placeholder label when no favorites are present
-        self.fav_placeholder_lbl = QLabel("暂未收藏任何命令")
+        self.fav_placeholder_lbl = QLabel(tr("暂未收藏任何命令"))
         self.fav_placeholder_lbl.setStyleSheet(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
@@ -373,9 +370,7 @@ class SettingsCommandsPageMixin:
         # ── Disabled builtin commands ──
         layout3, group3 = page.add_group("内置命令管理")
 
-        disable_desc = QLabel(
-            "可在下方直接启用或禁用特定的系统内置命令，以优化匹配列表。"
-        )
+        disable_desc = QLabel(tr("可在下方直接启用或禁用特定的系统内置命令，以优化匹配列表。"))
         disable_desc.setObjectName("disable_desc")
         disable_desc.setWordWrap(True)
         disable_desc.setMinimumWidth(0)
@@ -389,7 +384,7 @@ class SettingsCommandsPageMixin:
 
         # Search filter for built-in commands
         self.builtin_filter_edit = QLineEdit()
-        self.builtin_filter_edit.setPlaceholderText("搜索内置命令 (支持名称、快捷键、描述)...")
+        self.builtin_filter_edit.setPlaceholderText(tr("搜索内置命令 (支持名称、快捷键、描述)..."))
         self.builtin_filter_edit.setClearButtonEnabled(True)
         self.builtin_filter_edit.setFixedHeight(26)
         # Debounce search: don't rebuild 28+ widgets on every keystroke
@@ -492,7 +487,7 @@ class SettingsCommandsPageMixin:
                     key_lbl.setMinimumWidth(0)
                     item_layout.addWidget(key_lbl, 1, 1, 1, 1)
                     
-                    unfav_btn = QPushButton("取消收藏")
+                    unfav_btn = QPushButton(tr("取消收藏"))
                     unfav_btn.setFixedWidth(72)
                     unfav_btn.setMinimumHeight(20)
                     unfav_btn.setProperty("is_compact_btn", True)
@@ -612,7 +607,7 @@ class SettingsCommandsPageMixin:
                 self._update_builtin_command_rows(builtin_cmds, settings, colors=(bg, border, text_color, sub_text_color), query=query)
             else:
                 clear_layout(self.builtin_layout)
-                lbl = QLabel("无法读取注册表命令")
+                lbl = QLabel(tr("无法读取注册表命令"))
                 lbl.setStyleSheet("color: #f44336;")
                 self.builtin_layout.addWidget(lbl)
 
@@ -689,7 +684,7 @@ class SettingsCommandsPageMixin:
                 entry["dot_lbl"].setStyleSheet(f"color: {dot_color}; font-size: 11px; margin-right: 2px;")
 
                 fav_btn = entry["fav_btn"]
-                fav_btn.setText("取消收藏" if is_fav else "收藏")
+                fav_btn.setText(tr("取消收藏") if is_fav else tr("收藏"))
                 try:
                     fav_btn.clicked.disconnect()
                 except Exception:
@@ -700,7 +695,7 @@ class SettingsCommandsPageMixin:
                     fav_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_favorite_command(cid))
 
                 toggle_btn = entry["toggle_btn"]
-                toggle_btn.setText("启用" if is_disabled else "禁用")
+                toggle_btn.setText(tr("启用") if is_disabled else tr("禁用"))
                 try:
                     toggle_btn.clicked.disconnect()
                 except Exception:
@@ -753,7 +748,7 @@ class SettingsCommandsPageMixin:
             self._refresh_builtin_command_rows_only()
         except Exception as e:
             logger.error("取消收藏失败: %s", e)
-            ThemedMessageBox.critical(self, "操作失败", f"取消收藏失败:\n{e}")
+            ThemedMessageBox.critical(self, tr("操作失败"), tr("取消收藏失败:\n{error}", error=e))
 
     def _on_toggle_builtin_command(self, cmd_id, enable):
         try:
@@ -775,7 +770,7 @@ class SettingsCommandsPageMixin:
             self._refresh_builtin_command_rows_only()
         except Exception as e:
             logger.error("切换内置命令状态失败: %s", e)
-            ThemedMessageBox.critical(self, "操作失败", f"保存命令状态失败:\n{e}")
+            ThemedMessageBox.critical(self, tr("操作失败"), tr("保存命令状态失败:\n{error}", error=e))
 
     def _on_favorite_command(self, cmd_id):
         try:
@@ -791,7 +786,7 @@ class SettingsCommandsPageMixin:
             self._refresh_builtin_command_rows_only()
         except Exception as e:
             logger.error("收藏失败: %s", e)
-            ThemedMessageBox.critical(self, "操作失败", f"收藏失败:\n{e}")
+            ThemedMessageBox.critical(self, tr("操作失败"), tr("收藏失败:\n{error}", error=e))
 
     def _on_favorites_reordered(self, source_row, dest_row):
         try:
@@ -809,4 +804,4 @@ class SettingsCommandsPageMixin:
                 self._schedule_refresh()
         except Exception as e:
             logger.error("重新排序收藏命令失败: %s", e)
-            ThemedMessageBox.critical(self, "操作失败", f"重新排序失败:\n{e}")
+            ThemedMessageBox.critical(self, tr("操作失败"), tr("重新排序失败:\n{error}", error=e))

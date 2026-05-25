@@ -3,6 +3,7 @@
 提供跟随主题的 QMessageBox 替代品
 """
 
+from core.i18n import tr
 from qt_compat import (
     QColor,
     QDialog,
@@ -104,7 +105,7 @@ class ThemedMessageBox(QDialog):
         self.button_results = {}
 
         if buttons & self.Yes:
-            yes_btn = QPushButton("是")
+            yes_btn = QPushButton(tr("是"))
             yes_btn.setFixedHeight(22)
             yes_btn.setMinimumWidth(52)
             yes_btn.clicked.connect(lambda: self._set_result(self.Yes))
@@ -112,7 +113,7 @@ class ThemedMessageBox(QDialog):
             self.button_results[self.Yes] = yes_btn
 
         if buttons & self.No:
-            no_btn = QPushButton("否")
+            no_btn = QPushButton(tr("否"))
             no_btn.setFixedHeight(22)
             no_btn.setMinimumWidth(52)
             no_btn.clicked.connect(lambda: self._set_result(self.No))
@@ -120,7 +121,7 @@ class ThemedMessageBox(QDialog):
             self.button_results[self.No] = no_btn
 
         if buttons & self.Ok:
-            ok_btn = QPushButton("确定")
+            ok_btn = QPushButton(tr("确定"))
             ok_btn.setDefault(True)
             ok_btn.setFixedHeight(22)
             ok_btn.setMinimumWidth(52)
@@ -129,7 +130,7 @@ class ThemedMessageBox(QDialog):
             self.button_results[self.Ok] = ok_btn
 
         if buttons & self.Cancel:
-            cancel_btn = QPushButton("取消")
+            cancel_btn = QPushButton(tr("取消"))
             cancel_btn.setFixedHeight(22)
             cancel_btn.setMinimumWidth(52)
             cancel_btn.clicked.connect(lambda: self._set_result(self.Cancel))
@@ -406,13 +407,13 @@ class ThemedInputDialog(QDialog):
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.addStretch()
 
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(tr("取消"))
         cancel_btn.setFixedHeight(22)
         cancel_btn.setMinimumWidth(52)
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
-        ok_btn = QPushButton("确定")
+        ok_btn = QPushButton(tr("确定"))
         ok_btn.setDefault(True)
         ok_btn.setFixedHeight(22)
         ok_btn.setMinimumWidth(52)

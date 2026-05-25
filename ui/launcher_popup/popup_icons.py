@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class PopupIconMixin:
+    def _default_icon_cache_key(self, item: ShortcutItem):
+        name = getattr(item, "name", "") or "?"
+        initial = name[0] if name else "?"
+        return (getattr(item, "type", None), self.icon_size, initial)
+
     def _mark_icon_cache_changed(self):
         self._icon_cache_revision = int(getattr(self, "_icon_cache_revision", 0) or 0) + 1
         # Clear page pixmap cache so it re-renders with updated icons
@@ -140,7 +145,7 @@ class PopupIconMixin:
             cached = self._get_cached_icon_for_animation(item, need_invert)
             if cached is not None:
                 return cached
-            default_key = (item.type, self.icon_size)
+            default_key = self._default_icon_cache_key(item)
             cached_default = self._default_icon_cache.get(default_key)
             if cached_default is not None:
                 return cached_default
@@ -284,7 +289,7 @@ class PopupIconMixin:
                     e,
                 )
 
-        default_key = (item.type, self.icon_size)
+        default_key = self._default_icon_cache_key(item)
         cached_default = self._default_icon_cache.get(default_key)
         if cached_default is not None:
             return cached_default

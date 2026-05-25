@@ -480,6 +480,8 @@ class PluginManager:
     # ---- scanning ----
 
     def scan_plugins(self) -> list[PluginInfo]:
+        for plugin_id in [p.manifest.id for p in self._plugins.values() if p.status == "enabled"]:
+            self.disable_plugin(plugin_id, persist=False)
         self._plugins.clear()
         base = Path(self._plugins_dir)
         if not base.is_dir():
@@ -632,7 +634,7 @@ class PluginManager:
             self._save_enabled()
         return ok
 
-    def disable_plugin(self, plugin_id: str) -> bool:
+    def disable_plugin(self, plugin_id: str, persist: bool = True) -> bool:
         info = self._plugins.get(plugin_id)
         if info is None:
             return False
@@ -664,7 +666,8 @@ class PluginManager:
             _search_sources.pop(sid, None)
         info.registered_search_sources.clear()
         info.status = "disabled"
-        self._save_enabled()
+        if persist:
+            self._save_enabled()
         return True
 
     def reload_plugin(self, plugin_id: str) -> bool:
@@ -684,6 +687,7 @@ class PluginManager:
             last_run_at=info.last_run_at,
         )
         was_enabled = info.status == "enabled"
+        was_error = info.status == "error"
 
         self.disable_plugin(plugin_id)
         # Force re-import by removing from sys.modules
@@ -694,13 +698,21 @@ class PluginManager:
         new_info = self._load_manifest(info.directory, manifest_path)
         if new_info and new_info.status == "error":
             self._plugins[plugin_id] = new_info
+            self._save_enabled()
             return False
         if new_info:
             self._plugins[plugin_id] = new_info
+        if not was_enabled and not was_error:
+            self._save_enabled()
+            return True
+
         ok = self.load_plugin(plugin_id)
-        if not ok and was_enabled:
+        if ok:
+            self._save_enabled()
+        else:
             # Rollback: restore old state so the plugin remains available
             self._plugins[plugin_id] = old_info
+            self._save_enabled()
             logger.info("重载插件 %s 失败，已回滚到先前状态", plugin_id)
         return ok
 
