@@ -269,7 +269,7 @@ def test_open_install_dir_builtin_uses_project_root_in_source_mode(monkeypatch):
     monkeypatch.delattr(command_exec.sys, "frozen", raising=False)
 
     assert command_exec.CommandExecutionMixin._execute_builtin_command("open_install_dir")
-    assert opened["path"].endswith("QuickLauncher_V1.6.0.0")
+    assert opened["path"] == command_exec.CommandExecutionMixin._app_install_dir()
 
 
 def test_ui_builtin_defers_callback_outside_qt_main_thread(monkeypatch):
