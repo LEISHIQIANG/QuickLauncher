@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 EXPLORER_WINDOW_PROXIMITY_PX = 48
 EXPLORER_WINDOW_CLASSES = {"CabinetWClass", "ExploreWClass", "Progman", "WorkerW"}
+EXPLORER_EXCLUDED_CLASSES = {"Shell_TrayWnd"}
 DESKTOP_WINDOW_CLASSES = {"Progman", "WorkerW"}
 
 
@@ -45,6 +46,8 @@ def _get_window_class_name(hwnd) -> str:
 def _is_explorer_like_window(hwnd) -> bool:
     class_name = _get_window_class_name(hwnd)
     if not class_name:
+        return False
+    if class_name in EXPLORER_EXCLUDED_CLASSES:
         return False
     return class_name in EXPLORER_WINDOW_CLASSES or "Shell" in class_name
 
