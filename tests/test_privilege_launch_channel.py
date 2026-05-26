@@ -24,7 +24,10 @@ def test_standard_user_channel_keeps_single_three_second_budget(monkeypatch):
     monkeypatch.setattr(
         channel,
         "launch_via_explorer_com",
-        lambda target, parameters="", directory="", show=1: (com_calls.append((target, parameters)), (False, "mocked_com_failed"))[1]
+        lambda target, parameters="", directory="", show=1: (
+            com_calls.append((target, parameters)),
+            (False, "mocked_com_failed"),
+        )[1],
     )
 
     ok, error = channel.launch_as_standard_user(

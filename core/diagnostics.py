@@ -41,22 +41,26 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
     config_status = getattr(data_manager, "get_config_status", lambda: {})()
     status = config_status.get("status", "unknown")
     issues = config_status.get("issues", [])
-    items.append(DiagnosticItem(
-        "配置文件",
-        status if status in ("ok", "warn", "error") else "unknown",
-        "配置已加载" if status == "ok" else "配置存在问题",
-        "; ".join(map(str, issues)) or f"source={config_status.get('source', '')}",
-        "如状态为 error，请从数据设置中恢复备份。",
-    ))
+    items.append(
+        DiagnosticItem(
+            "配置文件",
+            status if status in ("ok", "warn", "error") else "unknown",
+            "配置已加载" if status == "ok" else "配置存在问题",
+            "; ".join(map(str, issues)) or f"source={config_status.get('source', '')}",
+            "如状态为 error，请从数据设置中恢复备份。",
+        )
+    )
 
     try:
         schema_issues = validate_app_data(data_manager.data)
-        items.append(DiagnosticItem(
-            "配置结构",
-            "ok" if not schema_issues else "warn",
-            "结构校验通过" if not schema_issues else f"发现 {len(schema_issues)} 个结构问题",
-            "; ".join(schema_issues),
-        ))
+        items.append(
+            DiagnosticItem(
+                "配置结构",
+                "ok" if not schema_issues else "warn",
+                "结构校验通过" if not schema_issues else f"发现 {len(schema_issues)} 个结构问题",
+                "; ".join(schema_issues),
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("配置结构", "error", "结构校验失败", str(exc)))
 
@@ -66,13 +70,15 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         probe = HooksDLL.probe_default()
         hook_status = "ok" if probe.get("loaded") and probe.get("compatible") else "warn"
         summary = probe.get("summary", "") or "hooks.dll 状态未知"
-        items.append(DiagnosticItem(
-            "Hook DLL",
-            hook_status,
-            summary,
-            json.dumps(probe, ensure_ascii=False),
-            "如不兼容，请重新构建 hooks.dll。",
-        ))
+        items.append(
+            DiagnosticItem(
+                "Hook DLL",
+                hook_status,
+                summary,
+                json.dumps(probe, ensure_ascii=False),
+                "如不兼容，请重新构建 hooks.dll。",
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("Hook DLL", "error", "无法检测 hooks.dll", str(exc)))
 
@@ -106,13 +112,15 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         summary = f"检测到 {len(conflicts)} 个冲突" if conflicts else f"无冲突，共 {len(hotkey_map)} 个热键"
         details = "\n".join(conflicts[:20]) if conflicts else f"已配置热键的快捷方式: {len(hotkey_map)} 个"
 
-        items.append(DiagnosticItem(
-            "快捷方式热键",
-            status,
-            summary,
-            details,
-            "可在热键对话框中修改冲突的热键" if conflicts else "",
-        ))
+        items.append(
+            DiagnosticItem(
+                "快捷方式热键",
+                status,
+                summary,
+                details,
+                "可在热键对话框中修改冲突的热键" if conflicts else "",
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("快捷方式热键", "unknown", "无法检测热键冲突", str(exc)))
 
@@ -121,12 +129,14 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
 
         elevation = get_process_elevation_status()
         is_elevated = elevation.get("elevated", False)
-        items.append(DiagnosticItem(
-            "权限状态",
-            "ok",
-            "管理员运行" if is_elevated else "普通权限运行",
-            json.dumps(elevation, ensure_ascii=False),
-        ))
+        items.append(
+            DiagnosticItem(
+                "权限状态",
+                "ok",
+                "管理员运行" if is_elevated else "普通权限运行",
+                json.dumps(elevation, ensure_ascii=False),
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("权限状态", "unknown", "无法读取权限状态", str(exc)))
 
@@ -143,10 +153,17 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
 
     try:
         icon_stats = data_manager.get_icon_cache_stats()
-        total_files = icon_stats.get('total_files', 0)
-        total_size_mb = icon_stats.get('total_size_mb', 0)
+        total_files = icon_stats.get("total_files", 0)
+        total_size_mb = icon_stats.get("total_size_mb", 0)
         status = "warn" if total_size_mb > 100 or total_files > 1000 else "ok"
-        items.append(DiagnosticItem("图标缓存", status, f"{total_files} 个文件，{total_size_mb} MB", json.dumps(icon_stats, ensure_ascii=False)))
+        items.append(
+            DiagnosticItem(
+                "图标缓存",
+                status,
+                f"{total_files} 个文件，{total_size_mb} MB",
+                json.dumps(icon_stats, ensure_ascii=False),
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("图标缓存", "unknown", "无法读取图标缓存", str(exc)))
 
@@ -167,13 +184,15 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         )
         if not details and (debug_count or info_count):
             details = f"无严重问题，仅有 {debug_count} 个调试信息和 {info_count} 个提示信息"
-        items.append(DiagnosticItem(
-            "图标检查",
-            status,
-            f"ERROR {error_count} / WARN {warn_count} / 其他 {debug_count + info_count} / 可修复 {fixable_count}",
-            details,
-            "可在系统设置 -> 日志修复 -> 图标检查中执行修复。" if fixable_count else "",
-        ))
+        items.append(
+            DiagnosticItem(
+                "图标检查",
+                status,
+                f"ERROR {error_count} / WARN {warn_count} / 其他 {debug_count + info_count} / 可修复 {fixable_count}",
+                details,
+                "可在系统设置 -> 日志修复 -> 图标检查中执行修复。" if fixable_count else "",
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("图标检查", "unknown", "无法执行图标检查", str(exc)))
 
@@ -184,7 +203,14 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
             mem_status = memory.get("status", "unknown")
             current_mb = memory.get("current_mb", 0)
             summary = f"{current_mb} MB ({mem_status})"
-            items.append(DiagnosticItem("内存状态", "warn" if mem_status in ("moderate", "critical") else "ok", summary, json.dumps(memory, ensure_ascii=False)))
+            items.append(
+                DiagnosticItem(
+                    "内存状态",
+                    "warn" if mem_status in ("moderate", "critical") else "ok",
+                    summary,
+                    json.dumps(memory, ensure_ascii=False),
+                )
+            )
         else:
             items.append(DiagnosticItem("内存状态", "unknown", "内存监控未启用", "memory_guard 未初始化"))
     except Exception as exc:
@@ -206,25 +232,29 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
 
         sync_status = get_folder_sync_status()
         failed = [v for v in sync_status.values() if not v.get("ok")]
-        items.append(DiagnosticItem(
-            "文件夹同步",
-            "warn" if failed else "ok",
-            f"{len(sync_status)} 个分类有同步记录，失败 {len(failed)} 个",
-            json.dumps(sync_status, ensure_ascii=False),
-        ))
+        items.append(
+            DiagnosticItem(
+                "文件夹同步",
+                "warn" if failed else "ok",
+                f"{len(sync_status)} 个分类有同步记录，失败 {len(failed)} 个",
+                json.dumps(sync_status, ensure_ascii=False),
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("文件夹同步", "unknown", "无法读取同步状态", str(exc)))
 
     try:
         log_file = Path(getattr(data_manager, "app_dir", "")) / "error.log"
         recent_errors = _recent_error_lines(log_file)
-        items.append(DiagnosticItem(
-            "最近错误",
-            "warn" if recent_errors else "ok",
-            f"{len(recent_errors)} 条 ERROR/CRITICAL",
-            "\n".join(recent_errors[-20:]),
-            str(log_file),
-        ))
+        items.append(
+            DiagnosticItem(
+                "最近错误",
+                "warn" if recent_errors else "ok",
+                f"{len(recent_errors)} 条 ERROR/CRITICAL",
+                "\n".join(recent_errors[-20:]),
+                str(log_file),
+            )
+        )
     except Exception as exc:
         items.append(DiagnosticItem("最近错误", "unknown", "无法读取错误日志", str(exc)))
     return items

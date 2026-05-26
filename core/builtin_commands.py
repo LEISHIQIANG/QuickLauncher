@@ -238,6 +238,7 @@ def canonical_builtin_command(command: str) -> str:
     try:
         from core import ensure_registry_initialized, registry
         from core.command_registry import _CallbackHandler
+
         ensure_registry_initialized()
         if registry is not None and registry.count() > 0:
             canonical = registry.get_canonical(clean_cmd)
@@ -264,6 +265,7 @@ def canonical_builtin_command(command: str) -> str:
     try:
         from core import ensure_registry_initialized, registry
         from core.command_registry import _CallbackHandler
+
         ensure_registry_initialized()
         if registry is not None and registry.count() > 0:
             canonical = registry.get_canonical(cmd_name)
@@ -274,11 +276,9 @@ def canonical_builtin_command(command: str) -> str:
                 return canonical
     except Exception:
         pass
-    return (
-        BUILTIN_COMMAND_ALIASES.get(cmd_name.lower(), "")
-        or SIMPLE_WINDOWS_SYSTEM_COMMAND_ALIASES.get(cmd_name.lower(), "")
+    return BUILTIN_COMMAND_ALIASES.get(cmd_name.lower(), "") or SIMPLE_WINDOWS_SYSTEM_COMMAND_ALIASES.get(
+        cmd_name.lower(), ""
     )
-
 
 
 def is_builtin_command_alias(command: str) -> bool:

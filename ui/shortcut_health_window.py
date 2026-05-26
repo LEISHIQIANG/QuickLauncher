@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 from core.shortcut_health import apply_health_fixes, check_shortcuts
-from qt_compat import QApplication, QFont, QHBoxLayout, QPlainTextEdit, QPushButton, QTextEdit, QThread, QTimer, pyqtSignal
+from qt_compat import (
+    QApplication,
+    QFont,
+    QHBoxLayout,
+    QPushButton,
+    QTextEdit,
+    QThread,
+    QTimer,
+    pyqtSignal,
+)
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
 
@@ -197,7 +206,9 @@ class ShortcutHealthWindow(ThemedToolWindow):
         for issue in self.issues:
             target = issue.shortcut_name or issue.folder_name or issue.shortcut_id or issue.folder_id
             color = severity_colors.get(issue.severity.lower(), "#888888")
-            lines.append(f'<span style="color: {color};">[{issue.severity.upper()}] {self._html_escape(issue.title)} - {self._html_escape(target)}</span>')
+            lines.append(
+                f'<span style="color: {color};">[{issue.severity.upper()}] {self._html_escape(issue.title)} - {self._html_escape(target)}</span>'
+            )
             lines.append(f"  分类: {self._html_escape(issue.folder_name or issue.folder_id)}")
             lines.append(f"  类型: {self._html_escape(issue.issue_type)}")
             lines.append(f"  说明: {self._html_escape(issue.message)}")

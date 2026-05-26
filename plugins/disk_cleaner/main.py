@@ -515,6 +515,16 @@ def _handle_analyze(context) -> CommandResult:
     return CommandResult(
         success=True,
         message=result,
+        display_type="table",
+        payload={
+            "window_size": "large",
+            "columns": ["Name", "Size", "Percent"],
+            "rows": [
+                [name, _format_bytes(size), f"{(size / total * 100) if total > 0 else 0:.1f}%"]
+                for name, size in entries[:10]
+            ],
+            "copy_format": "tsv",
+        },
         actions=[CommandAction(type="copy", label="复制报告", value=result)],
     )
 
@@ -548,6 +558,18 @@ def _handle_scan(context) -> CommandResult:
     return CommandResult(
         success=True,
         message=result,
+        display_type="list",
+        payload={
+            "window_size": "medium",
+            "items": [
+                {
+                    "title": name,
+                    "status": "success" if size > 0 else "skipped",
+                    "detail": desc,
+                }
+                for name, desc, size in results
+            ],
+        },
         actions=[CommandAction(type="copy", label="复制扫描报告", value=result)],
     )
 
@@ -580,6 +602,17 @@ def _handle_clean(context) -> CommandResult:
             return CommandResult(
                 success=ok,
                 message=result,
+                display_type="list",
+                payload={
+                    "window_size": "medium",
+                    "items": [
+                        {
+                            "title": name,
+                            "status": "success" if ok else "failed",
+                            "detail": msg,
+                        }
+                    ],
+                },
                 actions=[CommandAction(type="copy", label="复制结果", value=result)],
             )
 
@@ -602,6 +635,18 @@ def _handle_clean(context) -> CommandResult:
         return CommandResult(
             success=all_ok,
             message=result,
+            display_type="list",
+            payload={
+                "window_size": "medium",
+                "items": [
+                    {
+                        "title": line.split("]", 1)[0].strip("✅❌ [") if "]" in line else line,
+                        "status": "failed" if line.startswith("❌") else "success",
+                        "detail": line,
+                    }
+                    for line in lines[1:]
+                ],
+            },
             actions=[CommandAction(type="copy", label="复制结果", value=result)],
         )
     except BaseException as e:

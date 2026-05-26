@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 from datetime import datetime
 from pathlib import Path
 
@@ -162,13 +162,6 @@ def _handle_request(context, method: str, data_dir: str) -> CommandResult:
             error=str(e),
         )
 
-    lines = [
-        f"[{status}] {url_str}  ({elapsed_ms}ms)",
-        "",
-        formatted,
-    ]
-    result = "\n".join(lines)
-
     curl_cmd = _to_curl(url_str, method, body_text, {
         "User-Agent": "QuickLauncher-API-Tester/1.0",
         "Accept": "application/json, */*",
@@ -189,7 +182,18 @@ def _handle_request(context, method: str, data_dir: str) -> CommandResult:
 
     return CommandResult(
         success=True,
-        message=result,
+        message=formatted,
+        display_type="log",
+        payload={
+            "window_size": "large",
+            "wrap": False,
+            "method": method.upper(),
+            "url": url_str,
+            "status": status,
+            "elapsed_ms": elapsed_ms,
+            "content_type": content_type,
+            "curl": curl_cmd,
+        },
         actions=[
             CommandAction(type="copy", label="复制响应", value=formatted),
             CommandAction(type="copy", label="复制 curl", value=curl_cmd),
@@ -215,8 +219,18 @@ def _handle_history(context, data_dir: str) -> CommandResult:
         )
 
     result = "\n".join(lines)
+    items = [
+        {
+            "title": f"{h['method']} {h['status']}",
+            "status": "success" if int(h.get("status", 0) or 0) < 400 else "warning",
+            "detail": f"{h['url']}  ({h.get('elapsed_ms', '-')}ms)  {h.get('time', '')[:19]}",
+        }
+        for h in reversed(hist[-15:])
+    ]
     return CommandResult(
         success=True,
         message=result,
+        display_type="list",
+        payload={"window_size": "medium", "items": items},
         actions=[CommandAction(type="copy", label="复制历史", value=result)],
     )

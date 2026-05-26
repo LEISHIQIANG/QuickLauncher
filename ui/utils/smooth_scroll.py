@@ -196,7 +196,7 @@ class SmoothScrollArea(QScrollArea):
         if rounded != bar.value():
             bar.setValue(rounded)
 
-        self._velocity *= 0.885 ** frame
+        self._velocity *= 0.885**frame
         if abs(self._velocity) < 0.18:
             self._velocity = 0.0
             self._scroll_pos = float(bar.value())

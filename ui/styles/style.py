@@ -173,9 +173,9 @@ class PopupMenu(QWidget):
         btn.setEnabled(bool(enabled))
         btn.setCursor(QtCompat.PointingHandCursor)
         try:
-            policy = getattr(Qt, 'NoFocus', None)
+            policy = getattr(Qt, "NoFocus", None)
             if policy is None:
-                policy = getattr(Qt.FocusPolicy, 'NoFocus', None)
+                policy = getattr(Qt.FocusPolicy, "NoFocus", None)
             if policy is not None:
                 btn.setFocusPolicy(policy)
         except Exception:
@@ -184,10 +184,12 @@ class PopupMenu(QWidget):
         btn.clicked.connect(lambda: self._trigger(callback))
         # 悬停到普通菜单项时收起子菜单
         original_enter = btn.enterEvent
+
         def _on_enter(e):
             self._collapse_submenu()
             if original_enter and callable(original_enter):
                 original_enter(e)
+
         btn.enterEvent = _on_enter
         self._layout.addWidget(btn)
         return btn
@@ -203,9 +205,9 @@ class PopupMenu(QWidget):
         btn = QPushButton(text + "  ▸", self)
         btn.setCursor(QtCompat.PointingHandCursor)
         try:
-            policy = getattr(Qt, 'NoFocus', None)
+            policy = getattr(Qt, "NoFocus", None)
             if policy is None:
-                policy = getattr(Qt.FocusPolicy, 'NoFocus', None)
+                policy = getattr(Qt.FocusPolicy, "NoFocus", None)
             if policy is not None:
                 btn.setFocusPolicy(policy)
         except Exception:
@@ -229,10 +231,12 @@ class PopupMenu(QWidget):
 
         # 悬停展开
         original_enter = btn.enterEvent
+
         def _on_enter(e):
             self._expand_submenu()
             if original_enter and callable(original_enter):
                 original_enter(e)
+
         btn.enterEvent = _on_enter
 
         return btn
@@ -1389,14 +1393,14 @@ class Glassmorphism:
             """
 
         return (
-            base +
-            glass.get_neumorphism_button_style(theme) +
-            glass.get_neumorphism_input_style(theme) +
-            glass.get_neumorphism_groupbox_style(theme) +
-            glass.get_neumorphism_list_style(theme) +
-            scrollbar +
-            slider +
-            combobox
+            base
+            + glass.get_neumorphism_button_style(theme)
+            + glass.get_neumorphism_input_style(theme)
+            + glass.get_neumorphism_groupbox_style(theme)
+            + glass.get_neumorphism_list_style(theme)
+            + scrollbar
+            + slider
+            + combobox
         )
 
 
@@ -1532,17 +1536,16 @@ def get_dialog_stylesheet(theme: str) -> str:
     """
 
     return (
-        base +
-        style.get_button_style(theme) +
-        style.get_input_style(theme) +
-        style.get_scrollbar_style(theme) +
-        style.get_combobox_style(theme) +
-        style.get_groupbox_style(theme) +
-        style.get_slider_style(theme)
+        base
+        + style.get_button_style(theme)
+        + style.get_input_style(theme)
+        + style.get_scrollbar_style(theme)
+        + style.get_combobox_style(theme)
+        + style.get_groupbox_style(theme)
+        + style.get_slider_style(theme)
     )
 
 
 def get_button_stylesheet(theme: str) -> str:
     """获取按钮样式表"""
     return StyleSheet.get_button_style(theme)
-

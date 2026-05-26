@@ -1,10 +1,13 @@
-"""Popup settings page builder."""
+"""Popup settings page builder and event handlers."""
+
+from core import DEFAULT_SPECIAL_APPS
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QRadioButton,
     QSlider,
@@ -76,7 +79,7 @@ class SettingsPopupPageMixin:
         delay_row.setContentsMargins(0, 0, 0, 0)
         delay_row.addWidget(self._create_label("消失延迟"))
         self.delay_slider = QSlider(QtCompat.Horizontal)
-        self.delay_slider.setRange(0, 2000) # 0-2秒
+        self.delay_slider.setRange(0, 2000)  # 0-2秒
         self.delay_slider.setSingleStep(50)
         self.delay_slider.valueChanged.connect(self._on_delay_changed)
         delay_row.addWidget(self.delay_slider)
@@ -137,9 +140,155 @@ class SettingsPopupPageMixin:
         # 开启滚动条，确保列表内容滚动时按钮保持可见
         self.special_apps_list.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)
         self.special_apps_list.setItemDelegate(NumberedListDelegate(self.special_apps_list))
-        self.special_apps_list.setStyleSheet("QListWidget { background: transparent; outline: none; border: none; } QListWidget::item { border: none; background: transparent; min-height: 24px; margin: 1px 0px; padding: 2px 6px; }")
+        self.special_apps_list.setStyleSheet(
+            "QListWidget { background: transparent; outline: none; border: none; } QListWidget::item { border: none; background: transparent; min-height: 24px; margin: 1px 0px; padding: 2px 6px; }"
+        )
         self.special_apps_list.itemDoubleClicked.connect(self._edit_special_app_item)
 
         layout.addWidget(self.special_apps_list, 1)  # stretch=1 让列表填满剩余空间
 
         layout.addStretch()
+
+    # === Settings Load ===
+
+    def _load_popup_settings(self, settings):
+        if settings.popup_align_mode == "mouse_top_left":
+            self.pos_mouse_tl.setChecked(True)
+        else:
+            self.pos_mouse_center.setChecked(True)
+
+        popup_auto_close = getattr(settings, "popup_auto_close", True)
+        if popup_auto_close:
+            self.auto_close_yes.setChecked(True)
+        else:
+            self.auto_close_no.setChecked(True)
+        self.delay_widget.setVisible(popup_auto_close)
+
+        if getattr(settings, "popup_multi_open_when_pinned", False):
+            self.multi_open_pinned_yes.setChecked(True)
+        else:
+            self.multi_open_pinned_no.setChecked(True)
+
+        self.delay_slider.setValue(settings.hover_leave_delay)
+        self.delay_label.setText(f"{settings.hover_leave_delay}ms")
+
+        double_click_interval = getattr(settings, "double_click_interval", 300)
+        self.double_click_slider.setValue(double_click_interval)
+        self.double_click_label.setText(f"{double_click_interval}ms")
+
+        self.special_apps_list.clear()
+        for app in settings.special_apps:
+            item = QListWidgetItem(app)
+            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
+            self.special_apps_list.addItem(item)
+
+    # === Event Handlers ===
+
+    def _on_popup_pos_changed(self, button):
+        if self._updating:
+            return
+        pos = "mouse_center"
+        if button == self.pos_mouse_tl:
+            pos = "mouse_top_left"
+        self.data_manager.update_settings(popup_align_mode=pos)
+
+    def _on_delay_changed(self, value):
+        self.delay_label.setText(f"{value}ms")
+        if self._updating:
+            return
+        self.data_manager.update_settings(hover_leave_delay=value)
+
+    def _on_double_click_interval_changed(self, value):
+        self.double_click_label.setText(f"{value}ms")
+        if self._updating:
+            return
+        self.data_manager.update_settings(double_click_interval=value)
+
+    def _on_auto_close_changed(self, button):
+        if self._updating:
+            return
+        auto_close = button == self.auto_close_yes
+        self.delay_widget.setVisible(auto_close)
+        self.data_manager.update_settings(popup_auto_close=auto_close)
+
+    def _on_multi_open_pinned_changed(self, button):
+        if self._updating:
+            return
+        self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
+
+    # === Special Apps ===
+
+    def _add_special_app(self):
+        item = QListWidgetItem("new_app")
+        item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
+        self.special_apps_list.addItem(item)
+        self.special_apps_list.setCurrentItem(item)
+        self.special_apps_list.editItem(item)
+
+    def _remove_special_app(self):
+        row = self.special_apps_list.currentRow()
+        if row >= 0:
+            self.special_apps_list.takeItem(row)
+
+    def _edit_special_app_item(self, item):
+        self.special_apps_list.editItem(item)
+
+    def _reset_special_apps(self):
+        self.special_apps_list.clear()
+        for app in DEFAULT_SPECIAL_APPS:
+            item = QListWidgetItem(app)
+            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
+            self.special_apps_list.addItem(item)
+        self._apply_special_apps()
+
+    def _apply_special_apps(self):
+        if self._updating:
+            return
+        apps = []
+        for i in range(self.special_apps_list.count()):
+            item = self.special_apps_list.item(i)
+            text = item.text().strip().lower()
+            if text:
+                apps.append(text)
+        self.data_manager.update_settings(special_apps=apps)
+        self.special_apps_changed.emit()
+
+    def _validate_hotkey(self, hotkey_str: str) -> tuple:
+        """验证快捷键是否有效
+
+        Returns:
+            (is_valid: bool, error_msg: str)
+        """
+        if not hotkey_str or not hotkey_str.strip():
+            return True, ""
+
+        parts = [p.strip() for p in hotkey_str.split("+")]
+        modifiers = []
+        main_key = None
+
+        for part in parts:
+            part_lower = part.lower().replace("<", "").replace(">", "")
+            if part_lower in ("ctrl", "alt", "shift", "cmd", "win"):
+                modifiers.append(part_lower)
+            else:
+                main_key = part
+
+        if "alt" in modifiers:
+            return False, "不允许使用 Alt 键\n请使用 Ctrl、Shift 或 Win"
+
+        if not main_key:
+            return False, "必须包含一个主键（字母、数字或功能键）"
+
+        if not modifiers:
+            return False, "必须包含至少一个修饰键（Ctrl、Shift、Win）"
+
+        try:
+            from core.hotkey_conflict_checker import check_conflict
+
+            is_conflict, conflict_desc = check_conflict(hotkey_str)
+            if is_conflict:
+                return False, f"快捷键冲突：{conflict_desc}"
+        except Exception:
+            pass
+
+        return True, ""

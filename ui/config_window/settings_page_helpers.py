@@ -31,6 +31,7 @@ class SettingsPageHelpersMixin:
         lbl = QLabel(new_text + ":")
         lbl.setAlignment(QtCompat.AlignRight | QtCompat.AlignVCenter)
         return lbl
+
     def _create_spinbox(self, min_val, max_val, suffix=""):
         spinbox = QSpinBox()
         spinbox.setRange(min_val, max_val)
@@ -40,11 +41,13 @@ class SettingsPageHelpersMixin:
         spinbox.setMinimumHeight(24)
         spinbox.setAlignment(QtCompat.AlignCenter)
         return spinbox
+
     def _is_win11(self) -> bool:
         try:
             return sys.getwindowsversion().build >= 22000
         except Exception:
             return False
+
     def _is_win10(self) -> bool:
         try:
             v = sys.getwindowsversion()

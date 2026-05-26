@@ -75,6 +75,7 @@ from PyQt5.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QSplitter,

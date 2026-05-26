@@ -179,9 +179,11 @@ def test_double_click_edit_emits_signal_directly(monkeypatch, qapp):
     widget.double_clicked.connect(lambda: emitted.append(True))
     try:
         from qt_compat import QtCompat
+
         class _FakeEvent:
             def button(self):
                 return QtCompat.LeftButton
+
         widget.mouseDoubleClickEvent(_FakeEvent())
         assert emitted == [True]
     finally:
@@ -339,10 +341,12 @@ def test_icon_drag_enter_accepts_shortcut_drop(qapp):
     class FakeMime:
         def hasFormat(self, fmt):
             return fmt == "application/x-shortcut-id"
+
         def data(self, fmt):
             class _FakeBytes:
                 def data(self):
                     return b"source"
+
             return _FakeBytes()
 
     class FakeEvent:
@@ -376,13 +380,17 @@ def test_icon_container_handles_blank_area_mouse_press(qapp):
     container.blank_clicked.connect(lambda: emitted.append(True))
     try:
         from qt_compat import QtCompat
+
         class _FakeEvent:
             def button(self):
                 return QtCompat.LeftButton
+
             def pos(self):
                 return QPoint(100, 100)
+
             def accept(self):
                 pass
+
         container.mousePressEvent(_FakeEvent())
         assert emitted == [True]
     finally:
@@ -393,22 +401,27 @@ def test_drag_enter_triggers_realtime_swap(monkeypatch, qapp):
     """dragEnterEvent calls parent handle_realtime_swap when mime type matches."""
     parent = grid_mod.QWidget()
     swaps = []
-    parent.handle_realtime_swap = lambda source_id, target_id, pointer_pos=None: swaps.append((source_id, target_id, pointer_pos))
+    parent.handle_realtime_swap = lambda source_id, target_id, pointer_pos=None: swaps.append(
+        (source_id, target_id, pointer_pos)
+    )
     widget = IconWidget(ShortcutItem(id="target", name="Target", type=ShortcutType.FILE))
     widget.setParent(parent)
 
     class FakeMime:
         def hasFormat(self, fmt):
             return fmt == "application/x-shortcut-id"
+
         def data(self, fmt):
             class _FakeBytes:
                 def data(self):
                     return b"source"
+
             return _FakeBytes()
 
     class FakeEvent:
         def mimeData(self):
             return FakeMime()
+
         def acceptProposedAction(self):
             pass
 
@@ -435,6 +448,7 @@ def test_drop_triggers_handle_final_reorder(monkeypatch, qapp):
     class FakeEvent:
         def mimeData(self):
             return FakeMime()
+
         def acceptProposedAction(self):
             pass
 
@@ -470,15 +484,18 @@ def test_drag_enter_highlights_target_widget(qapp):
     class FakeMime:
         def hasFormat(self, fmt):
             return fmt == "application/x-shortcut-id"
+
         def data(self, fmt):
             class _FakeBytes:
                 def data(self):
                     return b"source"
+
             return _FakeBytes()
 
     class FakeEvent:
         def mimeData(self):
             return FakeMime()
+
         def acceptProposedAction(self):
             pass
 

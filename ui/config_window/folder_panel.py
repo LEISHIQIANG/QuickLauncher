@@ -7,23 +7,46 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from qt_compat import (
-    QWidget, QVBoxLayout, QListWidget, QListWidgetItem,
-    QPushButton, QMenu, QInputDialog, QMessageBox, QFrame,
-    QDialog, QLineEdit, QHBoxLayout, QLabel, QCheckBox,
-    Qt, QtCompat, pyqtSignal, PYQT_VERSION, QPainterPath, QRegion,
-    QPainter, QColor, QPen, QRectF, QApplication, QPoint, QTimer,
-    QIcon, QSize, QStyledItemDelegate, QDrag, QMimeData,
-    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, pyqtProperty,
-    QPropertyAnimation, QEasingCurve, QBrush, QPixmap
-)
-
-from ui.utils.window_effect import enable_window_shadow_and_round_corners, enable_acrylic_for_config_window, is_win11, get_window_effect
 from core import DataManager
 from core.i18n import tr
+from qt_compat import (
+    QApplication,
+    QBrush,
+    QCheckBox,
+    QColor,
+    QDialog,
+    QDrag,
+    QEasingCurve,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QIcon,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMimeData,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPoint,
+    QPropertyAnimation,
+    QPushButton,
+    QRectF,
+    QSize,
+    QStyledItemDelegate,
+    Qt,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
+    QWidget,
+    pyqtProperty,
+    pyqtSignal,
+)
 from ui.styles.style import PopupMenu, get_dialog_stylesheet
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.dialog_helper import center_dialog_on_main_window
+
 from .base_dialog import BaseDialog
 
 
@@ -73,29 +96,29 @@ class FolderInputDialog(BaseDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.setContentsMargins(12, 12, 12, 12)
-        
+
         # 标签
         self.label = QLabel(label)
         layout.addWidget(self.label)
-        
+
         # 输入框
         self.input_edit = QLineEdit()
         self.input_edit.setText(text)
         layout.addWidget(self.input_edit)
-        
+
         # 按钮
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        
+
         cancel_btn = QPushButton(tr("取消"))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
-        
+
         ok_btn = QPushButton(tr("确定"))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
-        
+
         layout.addLayout(btn_layout)
 
         # 应用主题
@@ -105,11 +128,11 @@ class FolderInputDialog(BaseDialog):
         """应用主题"""
         self._apply_theme_colors()
         self.setStyleSheet(get_dialog_stylesheet(self.theme))
-    
+
     def _on_ok(self):
         if self.input_edit.text().strip():
             self.accept()
-    
+
     def get_text(self) -> str:
         return self.input_edit.text().strip()
 
@@ -172,7 +195,7 @@ class FolderImportDialog(BaseDialog):
 
 class FolderItemWidget(QWidget):
     """Custom folder item widget supporting Apple-style press scale feedback and theme-aware styling."""
-    
+
     def __init__(self, text, icon, theme="dark", parent=None):
         super().__init__(parent)
         self.text = text
@@ -182,6 +205,7 @@ class FolderItemWidget(QWidget):
         self.item = None  # Reference to QListWidgetItem
         self._scale_anim = None
         self.setMouseTracking(True)
+
     def sizeHint(self) -> QSize:
         fm = self.fontMetrics()
         h = max(18, fm.height()) + 18  # 18px padding total (9px top/bottom)
@@ -190,12 +214,12 @@ class FolderItemWidget(QWidget):
     @pyqtProperty(float)
     def scale_factor(self) -> float:
         return self._scale_factor
-        
+
     @scale_factor.setter
     def scale_factor(self, value: float):
         self._scale_factor = value
         self.update()
-        
+
     def leaveEvent(self, event):
         self.update()
         super().leaveEvent(event)
@@ -203,17 +227,17 @@ class FolderItemWidget(QWidget):
     def enterEvent(self, event):
         self.update()
         super().enterEvent(event)
-        
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         # Determine selection and hover states
         is_selected = False
         if self.item is not None:
             is_selected = self.item.isSelected()
         is_hovered = self.underMouse()
-        
+
         # Draw hover background
         if is_hovered and not is_selected:
             if self.theme == "dark":
@@ -223,26 +247,35 @@ class FolderItemWidget(QWidget):
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
             painter.drawRoundedRect(QRectF(self.rect()).adjusted(0, 1, 0, -1), 8, 8)
-            
+
         # Draw icon
         if self.icon:
             pixmap = self.icon.pixmap(18, 18)
             y = (self.height() - pixmap.height()) // 2
             painter.drawPixmap(8, y, pixmap)
-            
+
         # Draw text
         if self.theme == "dark":
-            text_color = QColor(255, 255, 255, 242) if is_selected else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 180))
+            text_color = (
+                QColor(255, 255, 255, 242)
+                if is_selected
+                else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 180))
+            )
         else:
-            text_color = QColor(28, 28, 30, 242) if is_selected else (QColor(28, 28, 30, 217) if is_hovered else QColor(28, 28, 30, 165))
-            
+            text_color = (
+                QColor(28, 28, 30, 242)
+                if is_selected
+                else (QColor(28, 28, 30, 217) if is_hovered else QColor(28, 28, 30, 165))
+            )
+
         painter.setPen(text_color)
         from ui.utils.font_manager import get_qfont
+
         painter.setFont(get_qfont(12))
-        
+
         text_rect = QRectF(32, 0, self.width() - 42, self.height())
         painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
-        
+
         painter.end()
 
 
@@ -256,37 +289,37 @@ class FolderListWidget(QListWidget):
         self._pill_opacity = 0.0
         self._pill_rect_anim = None
         self._pill_opacity_anim = None
-        
+
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
-        
+
     @pyqtProperty(QRectF)
     def pill_rect(self) -> QRectF:
         return self._pill_rect
-        
+
     @pill_rect.setter
     def pill_rect(self, rect: QRectF):
         self._pill_rect = rect
         self.viewport().update()
-        
+
     @pyqtProperty(float)
     def pill_opacity(self) -> float:
         return self._pill_opacity
-        
+
     @pill_opacity.setter
     def pill_opacity(self, opacity: float):
         self._pill_opacity = opacity
         self.viewport().update()
-        
+
     def _on_selection_changed(self, selected, deselected):
         curr_indexes = self.selectedIndexes()
         if curr_indexes:
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
             target_rect = QRectF(visual_rect).adjusted(0, 1, 0, -1)
-            
+
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
-                
+
             if self._pill_rect.isEmpty() or self._pill_opacity < 0.1:
                 self._pill_rect = target_rect
             else:
@@ -296,7 +329,7 @@ class FolderListWidget(QListWidget):
                 self._pill_rect_anim.setEndValue(target_rect)
                 self._pill_rect_anim.setEasingCurve(QEasingCurve.OutCubic)
                 self._pill_rect_anim.start()
-                
+
             if self._pill_opacity_anim is not None:
                 self._pill_opacity_anim.stop()
             self._pill_opacity_anim = QPropertyAnimation(self, b"pill_opacity")
@@ -334,27 +367,27 @@ class FolderListWidget(QListWidget):
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)
-            
+
             theme = self._owner._get_current_theme()
             if theme == "dark":
                 pill_color = QColor(255, 255, 255, int(self._pill_opacity * 35))  # rgba(255, 255, 255, 0.14)
             else:
                 pill_color = QColor(0, 0, 0, int(self._pill_opacity * 20))  # rgba(0, 0, 0, 0.08)
-                
+
             painter.setBrush(QBrush(pill_color))
             painter.setPen(QtCompat.NoPen)
             painter.drawRoundedRect(self._pill_rect, 8, 8)
             painter.end()
-            
+
         super().paintEvent(event)
 
 
 class FolderPanel(QWidget):
     """左侧文件夹面板"""
-    
+
     folder_selected = pyqtSignal(str)
     _folder_sync_requested = pyqtSignal(str)  # 用于从 watchdog 线程安全地通知主线程执行同步
-    
+
     def __init__(self, data_manager: DataManager):
         super().__init__()
         self.data_manager = data_manager
@@ -366,7 +399,7 @@ class FolderPanel(QWidget):
 
         # 延迟恢复文件夹监听，避免阻塞 UI 初始化
         QTimer.singleShot(0, self._restore_folder_watches_async)
-    
+
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 1)
@@ -389,18 +422,18 @@ class FolderPanel(QWidget):
         self.folder_list.setAcceptDrops(True)
         # 禁用默认的拖放指示器（小箭头）
         self.folder_list.setDropIndicatorShown(False)
-        
+
         self.folder_list.itemClicked.connect(self._on_item_clicked)
         self.folder_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.folder_list.customContextMenuRequested.connect(self._show_context_menu)
         self.folder_list.model().rowsMoved.connect(self._on_rows_moved)
-        
+
         # 设置选择模式 - 使用 QtCompat
         self.folder_list.setSelectionMode(QtCompat.SingleSelection)
         # 禁用水平滚动条并启用文字省略号
         self.folder_list.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.folder_list.setTextElideMode(QtCompat.ElideRight)
-        
+
         if hasattr(self.folder_list, "setFrameShape"):
             try:
                 self.folder_list.setFrameShape(QFrame.NoFrame)
@@ -416,7 +449,7 @@ class FolderPanel(QWidget):
         list_frame_layout.addWidget(self.add_btn)
 
         layout.addWidget(self.list_frame, 1)
-        
+
         # 应用初始主题
         self.apply_theme(self._get_current_theme())
 
@@ -508,14 +541,14 @@ class FolderPanel(QWidget):
     def retranslate_ui(self):
         if hasattr(self, "add_btn"):
             self.add_btn.setText(tr("＋ 新建分类"))
-    
+
     def _get_current_theme(self) -> str:
         """获取当前主题"""
         try:
             return self.data_manager.get_settings().theme
-        except:
+        except Exception:
             return "dark"
-    
+
     def _get_menu_stylesheet(self) -> str:
         """获取右键菜单样式 — 半透明背景配合模糊效果"""
         theme = self._get_current_theme()
@@ -578,13 +611,13 @@ class FolderPanel(QWidget):
                     margin: 6px 10px;
                 }
             """
-    
+
     def _load_folders(self):
         """加载文件夹列表"""
         self.folder_list.clear()
 
         # 加载文件夹图标 (从 assets/Folder.ico 读取蓝色图标)
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = os.path.dirname(sys.executable)
         else:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -616,7 +649,7 @@ class FolderPanel(QWidget):
             # Create Custom FolderItemWidget
             widget = FolderItemWidget(display_text, folder_icon, self._get_current_theme(), self.folder_list)
             widget.item = item
-            
+
             item.setSizeHint(widget.sizeHint())
 
             self.folder_list.addItem(item)
@@ -721,23 +754,23 @@ class FolderPanel(QWidget):
                 list_item = self.folder_list.item(i)
                 list_item.setData(QtCompat.UserRole + 1, False)
 
-        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
         item = self.folder_list.itemAt(pos)
 
         # 文件夹排序拖动：实时苹果风格滑动交换
         if event.mimeData().hasFormat("application/x-folder-reorder"):
             event.acceptProposedAction()
-            
+
             if not item:
                 return
-                
+
             dest_row = self.folder_list.row(item)
             source_item = self.folder_list.currentItem()
             if not source_item:
                 return
-                
+
             source_row = self.folder_list.row(source_item)
-            
+
             # Dynamic real-time Apple-style swapping reorder
             if source_row != dest_row:
                 # Record old positions of all visible widgets in the list
@@ -750,21 +783,21 @@ class FolderPanel(QWidget):
                             old_positions[id(it)] = w.pos()
                     except RuntimeError:
                         pass
-                        
+
                 try:
                     widget = self.folder_list.itemWidget(source_item)
                 except RuntimeError:
                     widget = None
-                    
+
                 self.folder_list.blockSignals(True)
                 try:
                     # Unparent widget to protect it from C++ deletion during takeItem
                     if widget:
                         self.folder_list.removeItemWidget(source_item)
-                        
+
                     self.folder_list.takeItem(source_row)
                     self.folder_list.insertItem(dest_row, source_item)
-                    
+
                     if widget:
                         self.folder_list.setItemWidget(source_item, widget)
                         source_item.setSizeHint(widget.sizeHint())
@@ -774,10 +807,10 @@ class FolderPanel(QWidget):
                     pass
                 finally:
                     self.folder_list.blockSignals(False)
-                    
+
                 # Force layout recalculation
                 self.folder_list.doItemsLayout()
-                
+
                 # Trigger QPropertyAnimation for all shifted items
                 for r in range(self.folder_list.count()):
                     it = self.folder_list.item(r)
@@ -785,7 +818,7 @@ class FolderPanel(QWidget):
                         w = self.folder_list.itemWidget(it)
                     except RuntimeError:
                         w = None
-                        
+
                     if w and id(it) in old_positions:
                         old_pos = old_positions[id(it)]
                         try:
@@ -793,7 +826,7 @@ class FolderPanel(QWidget):
                             if old_pos != new_pos:
                                 if hasattr(w, "_pos_anim") and w._pos_anim is not None:
                                     w._pos_anim.stop()
-                                    
+
                                 anim = QPropertyAnimation(w, b"pos")
                                 anim.setDuration(180)  # 180ms responsive slide
                                 anim.setStartValue(old_pos)
@@ -848,7 +881,7 @@ class FolderPanel(QWidget):
             QApplication.restoreOverrideCursor()
 
         source_item = self.folder_list.currentItem()
-        if source_item and hasattr(self, '_initial_drag_row') and self._initial_drag_row >= 0:
+        if source_item and hasattr(self, "_initial_drag_row") and self._initial_drag_row >= 0:
             current_row = self.folder_list.row(source_item)
             if current_row != self._initial_drag_row:
                 old_positions = {}
@@ -960,34 +993,32 @@ class FolderPanel(QWidget):
         # 文件夹排序拖动
         if event.mimeData().hasFormat("application/x-folder-reorder"):
             event.ignore()  # 阻止 Qt 默认删除/重建行为
-            
+
             source_item = self.folder_list.currentItem()
             if not source_item:
                 return
-                
-            final_row = self.folder_list.row(source_item)
-            
+
             widget = self.folder_list.itemWidget(source_item)
             if widget:
                 try:
                     widget.setGraphicsEffect(None)
                 except Exception:
                     pass
-                    
-            if hasattr(self, '_initial_drag_row') and self._initial_drag_row >= 0:
+
+            if hasattr(self, "_initial_drag_row") and self._initial_drag_row >= 0:
                 # 重新保存序列并刷新
                 folder_ids = []
                 for i in range(self.folder_list.count()):
                     item = self.folder_list.item(i)
                     folder_ids.append(item.data(QtCompat.UserRole))
                 self.data_manager.reorder_folders(folder_ids)
-                
+
                 # 获取拖动项的ID
                 folder_id = source_item.data(QtCompat.UserRole)
-                
+
                 # 重新加载文件夹列表，干净地重建所有 Item 及其自定义 Widget
                 self._load_folders()
-                
+
                 # 恢复选中状态
                 for i in range(self.folder_list.count()):
                     if self.folder_list.item(i).data(QtCompat.UserRole) == folder_id:
@@ -1007,7 +1038,7 @@ class FolderPanel(QWidget):
         # 外部文件/文件夹拖入
         if target_item is None:
             try:
-                pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+                pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
                 target_item = self.folder_list.itemAt(pos)
             except Exception:
                 target_item = None
@@ -1061,13 +1092,13 @@ class FolderPanel(QWidget):
                 event.ignore()
         else:
             event.ignore()
-    
+
     def _on_item_clicked(self, item: QListWidgetItem):
         """点击项目"""
         folder_id = item.data(QtCompat.UserRole)
         self.folder_list.setCurrentItem(item)
         self.folder_selected.emit(folder_id)
-    
+
     def _on_rows_moved(self, *args):
         """行移动后重新排序"""
         folder_ids = []
@@ -1075,7 +1106,7 @@ class FolderPanel(QWidget):
             item = self.folder_list.item(i)
             folder_ids.append(item.data(QtCompat.UserRole))
         self.data_manager.reorder_folders(folder_ids)
-    
+
     def _show_context_menu(self, pos):
         """显示右键菜单 - 修复重影问题"""
         item = self.folder_list.itemAt(pos)
@@ -1117,7 +1148,7 @@ class FolderPanel(QWidget):
             if name:
                 folder = self.data_manager.add_folder(name)
                 self._load_folders()
-                
+
                 # 选中新文件夹
                 for i in range(self.folder_list.count()):
                     item = self.folder_list.item(i)
@@ -1125,20 +1156,20 @@ class FolderPanel(QWidget):
                         self.folder_list.setCurrentItem(item)
                         self.folder_selected.emit(folder.id)
                         break
-    
+
     def _rename_folder(self, folder_id: str):
         """重命名文件夹"""
         folder = self.data_manager.data.get_folder_by_id(folder_id)
         if not folder:
             return
-        
+
         dialog = FolderInputDialog(self, tr("重命名"), tr("请输入新名称:"), folder.name)
         if dialog.exec_():
             name = dialog.get_text()
             if name:
                 self.data_manager.rename_folder(folder_id, name)
                 self._load_folders()
-    
+
     def _delete_folder(self, folder_id: str):
         """删除文件夹 - 使用主题化对话框"""
         folder = self.data_manager.data.get_folder_by_id(folder_id)
@@ -1147,13 +1178,14 @@ class FolderPanel(QWidget):
 
         # 使用 ThemedMessageBox 替代 QMessageBox
         from .main_window import ThemedMessageBox
+
         theme = self._get_current_theme()
 
         confirmed = ThemedMessageBox.question(
             self,
             tr("确认删除"),
             tr("确定要删除文件夹 '{name}' 吗?\n其中的快捷方式也会被删除。", name=folder.name),
-            theme
+            theme,
         )
 
         if confirmed:
@@ -1177,13 +1209,11 @@ class FolderPanel(QWidget):
 
         # 2. 扫描文件夹
         from core.folder_scanner import FolderScanner
+
         shortcuts = FolderScanner.scan_folder(folder_path)
 
         if not shortcuts:
-            ThemedMessageBox.warning(
-                self, "文件夹为空",
-                f"文件夹中没有找到支持的内容(子文件夹、.lnk 或 .exe 文件)"
-            )
+            ThemedMessageBox.warning(self, "文件夹为空", "文件夹中没有找到支持的内容(子文件夹、.lnk 或 .exe 文件)")
             return
 
         # 3. 创建新分类
@@ -1215,20 +1245,15 @@ class FolderPanel(QWidget):
             self._start_folder_watch(folder.id)
 
         # 9. 显示成功消息
-        ThemedMessageBox.information(
-            self, "导入成功",
-            f"已导入 {len(shortcuts)} 个项目到分类 '{folder_name}'"
-        )
+        ThemedMessageBox.information(self, "导入成功", f"已导入 {len(shortcuts)} 个项目到分类 '{folder_name}'")
 
     def _manual_sync(self, folder_id: str):
         """手动同步文件夹"""
         from core.folder_sync import sync_folder
+
         added, removed = sync_folder(self.data_manager, folder_id)
 
-        ThemedMessageBox.information(
-            self, "同步完成",
-            f"新增 {added} 项,删除 {removed} 项"
-        )
+        ThemedMessageBox.information(self, "同步完成", f"新增 {added} 项,删除 {removed} 项")
 
         # 如果当前选中的是这个文件夹,刷新显示
         current_item = self.folder_list.currentItem()
@@ -1249,6 +1274,7 @@ class FolderPanel(QWidget):
         else:
             # 停止监听
             from core.folder_watcher import get_watcher_manager
+
             get_watcher_manager().stop_watch(folder_id)
 
         self.data_manager.save()
@@ -1273,8 +1299,7 @@ class FolderPanel(QWidget):
     def _unlink_folder(self, folder_id: str):
         """解除文件夹绑定"""
         reply = ThemedMessageBox.question(
-            self, "确认解除绑定",
-            "解除绑定后将停止自动同步,但已导入的快捷方式会保留。\n确定继续吗?"
+            self, "确认解除绑定", "解除绑定后将停止自动同步,但已导入的快捷方式会保留。\n确定继续吗?"
         )
 
         if reply == ThemedMessageBox.Yes:
@@ -1285,6 +1310,7 @@ class FolderPanel(QWidget):
 
                 # 停止监听
                 from core.folder_watcher import get_watcher_manager
+
                 get_watcher_manager().stop_watch(folder_id)
 
                 self.data_manager.save()
@@ -1297,15 +1323,12 @@ class FolderPanel(QWidget):
             return
 
         from core.folder_watcher import get_watcher_manager
-        get_watcher_manager().start_watch(
-            folder_id,
-            folder.linked_path,
-            self._on_folder_changed
-        )
+
+        get_watcher_manager().start_watch(folder_id, folder.linked_path, self._on_folder_changed)
 
     def _on_folder_changed(self, folder_id: str):
         """文件夹内容变化回调（从 watchdog 线程调用）
-        
+
         使用 pyqtSignal.emit() 而不是 QTimer.singleShot()，
         因为 pyqtSignal.emit() 是线程安全的，而 QTimer 从非 Qt 线程调用是不安全的。
         """
@@ -1314,9 +1337,11 @@ class FolderPanel(QWidget):
     def _auto_sync(self, folder_id: str):
         """自动同步文件夹（静默执行，不弹对话框）"""
         import logging
+
         sync_logger = logging.getLogger(__name__)
         try:
             from core.folder_sync import sync_folder
+
             added, removed = sync_folder(self.data_manager, folder_id)
             if added > 0 or removed > 0:
                 sync_logger.info(f"自动同步完成: 新增 {added} 项, 删除 {removed} 项")
@@ -1328,7 +1353,7 @@ class FolderPanel(QWidget):
                 try:
                     parent = self.parent()
                     while parent:
-                        if hasattr(parent, 'settings_changed'):
+                        if hasattr(parent, "settings_changed"):
                             parent.settings_changed.emit()
                             break
                         parent = parent.parent()
@@ -1341,6 +1366,7 @@ class FolderPanel(QWidget):
         """异步恢复所有启用自动同步的文件夹监听（在后台线程中执行 Observer 初始化）"""
         import logging
         import threading
+
         logger = logging.getLogger(__name__)
 
         # 收集需要监听的文件夹信息
@@ -1356,14 +1382,11 @@ class FolderPanel(QWidget):
             """在后台线程中初始化 watchdog Observer 并注册监听"""
             try:
                 from core.folder_watcher import get_watcher_manager
+
                 watcher = get_watcher_manager()
                 for folder_id, linked_path, folder_name in watch_tasks:
                     try:
-                        watcher.start_watch(
-                            folder_id,
-                            linked_path,
-                            self._on_folder_changed
-                        )
+                        watcher.start_watch(folder_id, linked_path, self._on_folder_changed)
                     except Exception as e:
                         logger.error(f"恢复文件夹监听失败 {folder_name}: {e}")
             except Exception as e:

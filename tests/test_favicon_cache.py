@@ -475,7 +475,9 @@ def test_fetch_favicon_blocks_redirect_to_loopback(monkeypatch, tmp_path):
     monkeypatch.setattr(favicon_cache, "_cache_dir", lambda: str(tmp_path))
     monkeypatch.setattr(favicon_cache, "_is_urlopen_patched", lambda: False)
     monkeypatch.setattr(favicon_cache.urllib.request, "build_opener", lambda *args, **kwargs: opener)
-    monkeypatch.setattr(favicon_cache.socket, "getaddrinfo", lambda *args, **kwargs: [(None, None, None, None, ("93.184.216.34", 443))])
+    monkeypatch.setattr(
+        favicon_cache.socket, "getaddrinfo", lambda *args, **kwargs: [(None, None, None, None, ("93.184.216.34", 443))]
+    )
 
     assert favicon_cache.fetch_favicon("https://public.example") == ""
 

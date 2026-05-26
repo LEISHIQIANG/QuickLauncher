@@ -92,10 +92,12 @@ def _popup_with_items(items):
 
 
 def test_typing_starts_search_escape_clears_and_arrows_select():
-    popup = _popup_with_items([
-        ShortcutItem(id="photoshop", name="Photoshop"),
-        ShortcutItem(id="paint", name="Paint"),
-    ])
+    popup = _popup_with_items(
+        [
+            ShortcutItem(id="photoshop", name="Photoshop"),
+            ShortcutItem(id="paint", name="Paint"),
+        ]
+    )
 
     first = _FakeKeyEvent(0, "p")
     LauncherPopup.keyPressEvent(popup, first)
@@ -121,9 +123,11 @@ def test_typing_starts_search_escape_clears_and_arrows_select():
 
 
 def test_first_space_opens_search_without_querying():
-    popup = _popup_with_items([
-        ShortcutItem(id="space-tool", name="Space Tool"),
-    ])
+    popup = _popup_with_items(
+        [
+            ShortcutItem(id="space-tool", name="Space Tool"),
+        ]
+    )
 
     event = _FakeKeyEvent(Qt.Key_Space, " ")
     LauncherPopup.keyPressEvent(popup, event)
@@ -138,13 +142,14 @@ def test_first_space_opens_search_without_querying():
 def test_space_before_slash_enters_command_mode(monkeypatch):
     class FakeSettings:
         favorite_commands = ["config"]
-        
+
     class FakeDataManager:
         @staticmethod
         def get_settings():
             return FakeSettings()
-            
+
     import core
+
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
 
     popup = _popup_with_items([])
@@ -294,12 +299,15 @@ def test_blank_area_refresh_preserves_awakened_search_state():
 
     assert calls == [
         "sync",
-        ("refresh", {
-            "refresh_selection": False,
-            "force": True,
-            "reposition": False,
-            "preserve_search_state": True,
-        }),
+        (
+            "refresh",
+            {
+                "refresh_selection": False,
+                "force": True,
+                "reposition": False,
+                "preserve_search_state": True,
+            },
+        ),
         "flash",
     ]
 
@@ -563,9 +571,12 @@ def test_finishing_search_hide_shrinks_after_visual_edge_is_hidden():
 
 def test_search_hover_and_click_target_search_results():
     from core.fuzzy_search import FuzzyMatchResult
-    popup = _popup_with_items([
-        ShortcutItem(id="photoshop", name="Photoshop"),
-    ])
+
+    popup = _popup_with_items(
+        [
+            ShortcutItem(id="photoshop", name="Photoshop"),
+        ]
+    )
     popup.current_page = 0
 
     popup.padding = 8
@@ -583,7 +594,7 @@ def test_search_hover_and_click_target_search_results():
         folder_name="Default",
         score=100.0,
         original_index=0,
-        matched_fields=["name"]
+        matched_fields=["name"],
     )
     popup.search_results = [photoshop_result]
     popup.search_query = "p"
@@ -591,6 +602,7 @@ def test_search_hover_and_click_target_search_results():
     class FakeMouseEvent:
         def __init__(self, pos):
             self._pos = pos
+
         def pos(self):
             return self._pos
 
@@ -612,7 +624,7 @@ def test_search_hover_and_click_target_search_results():
 
 def test_slash_command_empty_query_sorting(monkeypatch):
     from core.slash_commands import SlashCommand
-    
+
     # 1. Setup mock commands
     mock_cmds = [
         SlashCommand("quit", ["quit"], "退出", "system", "quit_app", "", "退出"),
@@ -620,43 +632,45 @@ def test_slash_command_empty_query_sorting(monkeypatch):
         SlashCommand("config", ["config"], "配置", "system", "show_config_window", "", "配置"),
         SlashCommand("log", ["log"], "日志", "system", "show_log", "", "日志"),
     ]
-    import ui.launcher_popup.popup_window as popup_window_mod
-    monkeypatch.setattr(popup_window_mod, "find_matching_commands", lambda q: mock_cmds)
-    
+    import ui.launcher_popup.popup_search as popup_search_mod
+
+    monkeypatch.setattr(popup_search_mod, "find_matching_commands", lambda q: mock_cmds)
+
     # 2. Setup mock data_manager and settings with favorite commands: restart then config
     class FakeSettings:
         favorite_commands = ["restart", "config"]
-        
+
     class FakeDataManager:
         @staticmethod
         def get_settings():
             return FakeSettings()
-            
+
     import core
+
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
-    
+
     # 3. Create popup and trigger empty query / command search
     popup = _popup_with_items([])
     popup.search_query = "/"
     popup._refresh_search_results()
-    
+
     # The expected output order:
     # Favorites first (in saved order): restart, config
     # Non-favorited commands are excluded when query is empty
     results = popup.search_results
     assert len(results) == 2
-    
+
     # Check ids and folder names
     assert results[0].shortcut.id == "restart"
     assert results[0].folder_name == "收藏命令"
-    
+
     assert results[1].shortcut.id == "config"
     assert results[1].folder_name == "收藏命令"
 
 
 def test_plain_search_includes_command_results(monkeypatch):
+    import ui.launcher_popup.popup_search as popup_search_mod
     from core.slash_commands import SlashCommand
-    import ui.launcher_popup.popup_window as popup_window_mod
 
     mock_cmds = [
         SlashCommand(
@@ -669,7 +683,7 @@ def test_plain_search_includes_command_results(monkeypatch):
             "文本统计",
         ),
     ]
-    monkeypatch.setattr(popup_window_mod, "find_matching_commands", lambda q: mock_cmds if q == "text" else [])
+    monkeypatch.setattr(popup_search_mod, "find_matching_commands", lambda q: mock_cmds if q == "text" else [])
 
     popup = _popup_with_items([])
     popup.search_query = "text"
@@ -685,84 +699,83 @@ def test_plain_search_includes_command_results(monkeypatch):
 
 def test_command_result_keys_and_autofill(monkeypatch):
     popup = _popup_with_items([])
-    
+
     # 1. Test auto-fill command name on execution
-    item = ShortcutItem(
-        id="wifi",
-        name="Wifi",
-        type=ShortcutType.COMMAND,
-        command="/wifi",
-        command_type="builtin"
-    )
+    item = ShortcutItem(id="wifi", name="Wifi", type=ShortcutType.COMMAND, command="/wifi", command_type="builtin")
+
     # Mock data manager
     class FakeSettings:
         pass
+
     class FakeDataManager:
         @staticmethod
         def get_settings():
             return FakeSettings()
-    
+
     import core
+
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
-    
+
     popup._executing = False
     popup.search_query = ""
-    
+
     # Run _execute_item (which fails safely or executes)
     try:
         popup._execute_item(item)
     except Exception:
         pass
-        
+
     assert popup.search_query == "/wifi"
-    
+
     # 2. Test keyboard events when command result is active
     class FakeCommandResult:
         display_type = "text"
         actions = []
-        
+
     popup._command_result = FakeCommandResult()
     popup.clear_command_result_called = False
+
     def mock_clear_command_result():
         popup.clear_command_result_called = True
         popup._command_result = None
+
     popup.clear_command_result = mock_clear_command_result
-    
+
     # Modifier alone (Ctrl)
     event_ctrl = _FakeKeyEvent(Qt.Key_Control, modifiers=Qt.ControlModifier)
     LauncherPopup.keyPressEvent(popup, event_ctrl)
     assert event_ctrl.accepted
     assert not popup.clear_command_result_called
-    
+
     # Ctrl+C Copy shortcut
     event_ctrl_c = _FakeKeyEvent(Qt.Key_C, modifiers=Qt.ControlModifier)
     LauncherPopup.keyPressEvent(popup, event_ctrl_c)
     assert event_ctrl_c.accepted
     assert not popup.clear_command_result_called
-    
+
     # Ctrl+A SelectAll shortcut
     event_ctrl_a = _FakeKeyEvent(Qt.Key_A, modifiers=Qt.ControlModifier)
     LauncherPopup.keyPressEvent(popup, event_ctrl_a)
     assert event_ctrl_a.accepted
     assert not popup.clear_command_result_called
-    
+
     # Arrow key (Left)
     event_left = _FakeKeyEvent(Qt.Key_Left)
     LauncherPopup.keyPressEvent(popup, event_left)
     assert event_left.accepted
     assert not popup.clear_command_result_called
-    
+
     # Arrow key (Up)
     event_up = _FakeKeyEvent(Qt.Key_Up)
     LauncherPopup.keyPressEvent(popup, event_up)
     assert event_up.accepted
     assert not popup.clear_command_result_called
-    
+
     # Normal printable character (a) - should clear the command result and fall through
     event_char = _FakeKeyEvent(0, "a")
     popup._is_search_active = lambda: False
     popup._insert_or_replace_text = lambda t: None
-    
+
     LauncherPopup.keyPressEvent(popup, event_char)
     assert event_char.accepted
     assert popup.clear_command_result_called
@@ -1081,17 +1094,9 @@ def test_keyboard_slash_panel_command_preserves_typed_args(monkeypatch):
     popup.is_pinned = False
     popup.search_query = "/wifi LEI"
     popup._read_clipboard_text = lambda: ""
-    popup.show = lambda: None
-    popup.raise_ = lambda: None
-    popup.activateWindow = lambda: None
+    hidden = []
+    popup.hide = lambda: hidden.append(True)
     popup._set_search_query = lambda query: setattr(popup, "search_query", query)
-
-    captured = {}
-
-    def handler(ctx):
-        captured["raw_input"] = ctx.raw_input
-        captured["args_text"] = ctx.args_text
-        return CommandResult(success=True, message=f"password for {ctx.args_text}")
 
     cmd_def = CommandDefinition(
         id="wifi",
@@ -1099,7 +1104,7 @@ def test_keyboard_slash_panel_command_preserves_typed_args(monkeypatch):
         aliases=["wifi"],
         description="Wi-Fi password",
         category="system",
-        handler=handler,
+        handler=lambda ctx: CommandResult(success=True, message=f"password for {ctx.args_text}"),
         interaction_mode=COMMAND_INTERACTION_PANEL,
     )
 
@@ -1122,11 +1127,18 @@ def test_keyboard_slash_panel_command_preserves_typed_args(monkeypatch):
             return FakeSettings()
 
     import core
+
     monkeypatch.setattr(core, "registry", FakeRegistry())
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
 
     shown = {}
-    popup.show_command_result = lambda result, command_id="": shown.update(result=result, command_id=command_id)
+
+    class FakeTrayApp:
+        def show_command_panel(self, **kwargs):
+            shown.update(kwargs)
+            return True
+
+    popup.tray_app = FakeTrayApp()
     popup._search_execute_from_keyboard = True
 
     item = ShortcutItem(
@@ -1139,11 +1151,11 @@ def test_keyboard_slash_panel_command_preserves_typed_args(monkeypatch):
 
     popup._execute_item(item)
 
-    assert captured["args_text"] == "LEI"
-    assert captured["raw_input"] == "/wifi LEI"
-    assert popup.search_query == "/wifi LEI"
+    assert hidden == [True]
+    assert shown["args_text"] == "LEI"
+    assert shown["raw_input"] == "/wifi LEI"
     assert shown["command_id"] == "wifi"
-    assert shown["result"].message == "password for LEI"
+    assert popup.search_query == "/wifi LEI"
 
 
 def test_plain_search_panel_command_preserves_typed_args(monkeypatch):
@@ -1154,17 +1166,9 @@ def test_plain_search_panel_command_preserves_typed_args(monkeypatch):
     popup.is_pinned = False
     popup.search_query = "proc python"
     popup._read_clipboard_text = lambda: ""
-    popup.show = lambda: None
-    popup.raise_ = lambda: None
-    popup.activateWindow = lambda: None
+    hidden = []
+    popup.hide = lambda: hidden.append(True)
     popup._set_search_query = lambda query: setattr(popup, "search_query", query)
-
-    captured = {}
-
-    def handler(ctx):
-        captured["raw_input"] = ctx.raw_input
-        captured["args_text"] = ctx.args_text
-        return CommandResult(success=True, message=ctx.args_text)
 
     cmd_def = CommandDefinition(
         id="process_tools.find",
@@ -1172,7 +1176,7 @@ def test_plain_search_panel_command_preserves_typed_args(monkeypatch):
         aliases=["proc"],
         description="Find process",
         category="排障",
-        handler=handler,
+        handler=lambda ctx: CommandResult(success=True, message=ctx.args_text),
         interaction_mode=COMMAND_INTERACTION_PANEL,
     )
 
@@ -1195,11 +1199,18 @@ def test_plain_search_panel_command_preserves_typed_args(monkeypatch):
             return FakeSettings()
 
     import core
+
     monkeypatch.setattr(core, "registry", FakeRegistry())
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
 
     shown = {}
-    popup.show_command_result = lambda result, command_id="": shown.update(result=result, command_id=command_id)
+
+    class FakeTrayApp:
+        def show_command_panel(self, **kwargs):
+            shown.update(kwargs)
+            return True
+
+    popup.tray_app = FakeTrayApp()
     popup._search_execute_from_keyboard = True
 
     item = ShortcutItem(
@@ -1212,11 +1223,11 @@ def test_plain_search_panel_command_preserves_typed_args(monkeypatch):
 
     popup._execute_item(item)
 
-    assert captured["args_text"] == "python"
-    assert captured["raw_input"] == "/process_tools.find python"
-    assert popup.search_query == "proc python"
+    assert hidden == [True]
+    assert shown["args_text"] == "python"
+    assert shown["raw_input"] == "/process_tools.find python"
     assert shown["command_id"] == "process_tools.find"
-    assert shown["result"].message == "python"
+    assert popup.search_query == "proc python"
 
 
 def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
@@ -1267,13 +1278,13 @@ def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
             return True, ""
 
     import core
-    import ui.launcher_popup.popup_window as popup_window_mod
+    import ui.launcher_popup.popup_item_execution as popup_exec_mod
 
     monkeypatch.setattr(core, "registry", FakeRegistry())
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
-    monkeypatch.setattr(popup_window_mod, "HAS_EXECUTOR", True)
-    monkeypatch.setattr(popup_window_mod, "ShortcutExecutor", FakeExecutor)
-    monkeypatch.setattr(popup_window_mod.threading.Thread, "start", lambda self: self.run())
+    monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
+    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
+    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
 
     item = ShortcutItem(
         id="env",
@@ -1287,6 +1298,180 @@ def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
 
     assert hidden == [True]
     assert calls == [("env", False)]
+
+
+def test_panel_command_with_params_does_not_use_popup_input_dialog(monkeypatch):
+    from core.command_registry import COMMAND_INTERACTION_PANEL, CommandDefinition, CommandParam, CommandResult
+
+    popup = _popup_with_items([])
+    popup._executing = False
+    popup.is_pinned = False
+    popup.search_query = "/tools.param"
+    popup._read_clipboard_text = lambda: ""
+    hidden = []
+    popup.hide = lambda: hidden.append(True)
+
+    cmd_def = CommandDefinition(
+        id="tools.param",
+        title="Params",
+        aliases=["param"],
+        description="",
+        category="test",
+        handler=lambda ctx: CommandResult(success=True),
+        interaction_mode=COMMAND_INTERACTION_PANEL,
+        params=[CommandParam(name="value", required=True)],
+    )
+
+    class FakeRegistry:
+        def count(self):
+            return 1
+
+        def get_canonical(self, alias):
+            return "tools.param" if alias in ("param", "tools.param") else ""
+
+        def get(self, command_id):
+            return cmd_def if command_id == "tools.param" else None
+
+    shown = {}
+
+    class FakeTrayApp:
+        def show_command_panel(self, **kwargs):
+            shown.update(kwargs)
+            return True
+
+    import core
+    from ui.styles import themed_messagebox
+
+    monkeypatch.setattr(core, "registry", FakeRegistry())
+    monkeypatch.setattr(
+        themed_messagebox.ThemedInputDialog,
+        "getText",
+        staticmethod(lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("popup input dialog used"))),
+    )
+    popup.tray_app = FakeTrayApp()
+
+    item = ShortcutItem(
+        id="tools.param",
+        name="Params",
+        type=ShortcutType.COMMAND,
+        command="/tools.param {input}",
+        command_type="builtin",
+    )
+
+    popup._execute_item(item)
+
+    assert hidden == [True]
+    assert shown["command_id"] == "tools.param"
+    assert shown["raw_input"] == "/tools.param"
+
+
+def test_captured_command_hides_pinned_popup_and_opens_command_panel(monkeypatch):
+    from core.command_registry import CommandResult, take_pending_command_result
+    from core.command_results import CommandResultStore
+
+    take_pending_command_result()
+    popup = _popup_with_items([])
+    popup._executing = False
+    popup.is_pinned = True
+    popup.search_query = ""
+    hidden = []
+    popup.hide = lambda: hidden.append(True)
+    popup.execution_error = SimpleNamespace(emit=lambda *args, **kwargs: None)
+    popup.command_panel_result_ready = SimpleNamespace(
+        emit=lambda result, command_id, command_title: popup._on_command_panel_result_ready(
+            result, command_id, command_title
+        )
+    )
+
+    shown = {}
+
+    class FakeTrayApp:
+        def __init__(self):
+            self.command_result_store = CommandResultStore()
+
+        def show_command_panel(self, **kwargs):
+            shown.update(kwargs)
+            return True
+
+    class FakeExecutor:
+        @staticmethod
+        def run_command_capture(shortcut, timeout=None, cancel_event=None):
+            return CommandResult(
+                success=True,
+                message="stdout:\nok",
+                display_type="log",
+                payload={"command": shortcut.command, "duration": 0.1},
+            )
+
+        @staticmethod
+        def execute(shortcut, force_new=False):
+            raise AssertionError("capture path should not call ShortcutExecutor.execute")
+
+    import core
+    import ui.launcher_popup.popup_item_execution as popup_exec_mod
+
+    monkeypatch.setattr(core, "ShortcutExecutor", FakeExecutor)
+    monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
+    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
+    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    popup.tray_app = FakeTrayApp()
+
+    item = ShortcutItem(
+        id="cap",
+        name="Capture",
+        type=ShortcutType.COMMAND,
+        command="echo ok",
+        command_type="cmd",
+        capture_output=True,
+    )
+
+    popup._execute_item(item)
+
+    assert hidden == [True]
+    assert shown["result_id"]
+    stored = popup.tray_app.command_result_store.get(shown["result_id"])
+    assert stored.result.display_type == "log"
+    assert take_pending_command_result() is None
+
+
+def test_non_captured_command_does_not_open_command_panel(monkeypatch):
+    popup = _popup_with_items([])
+    popup._executing = False
+    popup.is_pinned = False
+    popup.hide = lambda: None
+    popup.execution_error = SimpleNamespace(emit=lambda *args, **kwargs: None)
+    popup.command_panel_result_ready = SimpleNamespace(emit=lambda *args, **kwargs: None)
+
+    shown = []
+
+    class FakeTrayApp:
+        def show_command_panel(self, **kwargs):
+            shown.append(kwargs)
+
+    class FakeExecutor:
+        @staticmethod
+        def execute(shortcut, force_new=False):
+            return True, ""
+
+    import ui.launcher_popup.popup_item_execution as popup_exec_mod
+
+    monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
+    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
+    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    popup.tray_app = FakeTrayApp()
+
+    item = ShortcutItem(
+        id="silent",
+        name="Silent",
+        type=ShortcutType.COMMAND,
+        command="echo ok",
+        command_type="cmd",
+        capture_output=False,
+    )
+
+    popup._execute_item(item)
+
+    assert shown == []
 
 
 def test_command_result_auto_pin_restores_previous_pin_state():
@@ -1342,7 +1527,7 @@ def test_command_result_right_click_toggles_post_close_pin_state():
 
 
 def test_search_bar_right_click_shows_context_menu_without_toggling_pin(monkeypatch):
-    import ui.launcher_popup.popup_window as popup_window_mod
+    import ui.launcher_popup.popup_search as popup_search_mod
 
     popup = _popup_with_items([])
     popup.is_pinned = False
@@ -1373,7 +1558,7 @@ def test_search_bar_right_click_shows_context_menu_without_toggling_pin(monkeypa
         def popup(self, pos):
             created["pos"] = pos
 
-    monkeypatch.setattr(popup_window_mod, "CompactResultPopupMenu", FakeMenu)
+    monkeypatch.setattr(popup_search_mod, "CompactResultPopupMenu", FakeMenu)
 
     event = _FakeMouseEvent(QPoint(10, 10), button=QtCompat.RightButton)
     LauncherPopup.mouseReleaseEvent(popup, event)

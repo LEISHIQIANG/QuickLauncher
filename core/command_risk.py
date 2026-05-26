@@ -39,7 +39,9 @@ def assess_command_risk(
     """Classify command risk without blocking execution."""
     risks: list[CommandRisk] = []
     command_text = str(command if command is not None else getattr(shortcut, "command", "") or "")
-    effective_type = str(command_type if command_type is not None else getattr(shortcut, "command_type", "cmd") or "cmd")
+    effective_type = str(
+        command_type if command_type is not None else getattr(shortcut, "command_type", "cmd") or "cmd"
+    )
 
     if getattr(shortcut, "run_as_admin", False):
         risks.append(CommandRisk("info", "run_as_admin", "以管理员身份执行"))

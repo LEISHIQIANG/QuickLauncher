@@ -34,8 +34,7 @@ _HTML_RETRIES = 2
 _HTML_RETRY_DELAY = 0.35
 _TRANSIENT_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 _USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) QuickLauncher/1.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QuickLauncher/1.0 Safari/537.36"
 )
 _HTML_HEADERS = {
     "User-Agent": _USER_AGENT,
@@ -180,11 +179,15 @@ def fetch_favicon(url: str, force_refresh: bool = False) -> str:
         try:
             html, final_url = _fetch_html(normalized)
             if html:
-                logger.debug("图标获取：页面 HTML 已读取 url=%s final_url=%s bytes=%s", normalized, final_url, len(html))
+                logger.debug(
+                    "图标获取：页面 HTML 已读取 url=%s final_url=%s bytes=%s", normalized, final_url, len(html)
+                )
             else:
                 logger.debug("图标获取：页面不是 HTML 或内容为空 url=%s final_url=%s", normalized, final_url)
         except Exception as e:
-            logger.warning("图标获取：页面读取失败，继续尝试常见 favicon 路径 url=%s error=%s", normalized, e, exc_info=True)
+            logger.warning(
+                "图标获取：页面读取失败，继续尝试常见 favicon 路径 url=%s error=%s", normalized, e, exc_info=True
+            )
             html, final_url = "", normalized
         if html:
             icon_links = _extract_icon_links(html, final_url)
@@ -209,7 +212,9 @@ def fetch_favicon(url: str, force_refresh: bool = False) -> str:
             logger.info("图标获取成功：使用常见 favicon 路径 url=%s path=%s", normalized, target)
             return target
 
-        common_manifest_icon_links = _fetch_manifest_icon_links(urljoin(origin, path) for path in _COMMON_MANIFEST_PATHS)
+        common_manifest_icon_links = _fetch_manifest_icon_links(
+            urljoin(origin, path) for path in _COMMON_MANIFEST_PATHS
+        )
         ok, icon_url = _fetch_icon_candidates(common_manifest_icon_links, target)
         if ok:
             logger.info("图标获取成功：使用常见 manifest 图标 url=%s icon_url=%s path=%s", normalized, icon_url, target)
@@ -410,9 +415,13 @@ def _validate_public_http_url(url: str) -> str:
 
 
 def _safe_urlopen(request_or_url, timeout: float):
-    original_url = request_or_url.full_url if isinstance(request_or_url, urllib.request.Request) else str(request_or_url)
+    original_url = (
+        request_or_url.full_url if isinstance(request_or_url, urllib.request.Request) else str(request_or_url)
+    )
     current_url = _validate_public_http_url(original_url)
-    headers = dict(getattr(request_or_url, "headers", {}) or {}) if isinstance(request_or_url, urllib.request.Request) else {}
+    headers = (
+        dict(getattr(request_or_url, "headers", {}) or {}) if isinstance(request_or_url, urllib.request.Request) else {}
+    )
     opener = urllib.request.build_opener(_NoRedirectHandler)
 
     for _ in range(_MAX_REDIRECTS + 1):
@@ -655,10 +664,7 @@ def _score_manifest_icon(src: str, sizes: str, type_hint: str, purpose: str) -> 
     elif "ico" in type_hint or lower_src.endswith(".ico"):
         score += 3
 
-    dimensions = [
-        min(int(width), int(height))
-        for width, height in re.findall(r"(\d+)\s*x\s*(\d+)", sizes)
-    ]
+    dimensions = [min(int(width), int(height)) for width, height in re.findall(r"(\d+)\s*x\s*(\d+)", sizes)]
     if dimensions:
         best = max(dimensions)
         score += min(best, 512) // 16
@@ -720,12 +726,16 @@ def _fetch_and_save_icon(icon_url: str, target: str) -> bool:
     except urllib.error.URLError as e:
         reason = getattr(e, "reason", None)
         if isinstance(reason, (TimeoutError, socket.timeout)):
-            logger.warning("图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs", icon_url, _ICON_TIMEOUT, exc_info=True)
+            logger.warning(
+                "图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs", icon_url, _ICON_TIMEOUT, exc_info=True
+            )
         else:
             logger.debug("图标获取：候选图标请求失败 icon_url=%s error=%s", icon_url, e, exc_info=True)
         return False
     except (TimeoutError, socket.timeout) as e:
-        logger.warning("图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs error=%s", icon_url, _ICON_TIMEOUT, e, exc_info=True)
+        logger.warning(
+            "图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs error=%s", icon_url, _ICON_TIMEOUT, e, exc_info=True
+        )
         return False
 
 
@@ -865,7 +875,9 @@ def _qt_raster_to_png(data: bytes, target: str, source: str = "") -> bool:
             )
             return False
         if image.width() * image.height() > _MAX_IMAGE_PIXELS:
-            logger.warning("鍥炬爣鑾峰彇锛歈t 鍥剧墖鍍忕礌杩囧ぇ source=%s size=%sx%s", source, image.width(), image.height())
+            logger.warning(
+                "鍥炬爣鑾峰彇锛歈t 鍥剧墖鍍忕礌杩囧ぇ source=%s size=%sx%s", source, image.width(), image.height()
+            )
             return False
         image = image.convertToFormat(QImage.Format_ARGB32)
         if min(image.width(), image.height()) <= 2 or not _qimage_has_visible_pixels(image):
@@ -920,6 +932,7 @@ def _ensure_pillow_decoders():
                 PngImagePlugin,
                 WebPImagePlugin,
             )
+
             Image.init()
         except Exception as e:
             if not _PILLOW_DECODER_WARNING_LOGGED:

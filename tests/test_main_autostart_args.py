@@ -15,8 +15,7 @@ def _load_parse_autostart_cli_args():
     source = Path(__file__).resolve().parents[1].joinpath("main.py").read_text(encoding="utf-8-sig")
     module = ast.parse(source)
     function_node = next(
-        node for node in module.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_parse_autostart_cli_args"
+        node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_parse_autostart_cli_args"
     )
     code = compile(ast.Module(body=[function_node], type_ignores=[]), "main.py", "exec")
     namespace = {"sys": sys}

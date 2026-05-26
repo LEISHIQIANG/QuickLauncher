@@ -16,8 +16,10 @@ from typing import Any, Callable
 
 from .command_registry import (
     COMMAND_INTERACTION_PANEL,
+    CommandAction,
     CommandContext,
     CommandDefinition,
+    CommandParam,
     CommandRegistry,
     CommandResult,
     _search_sources,
@@ -30,23 +32,27 @@ logger = logging.getLogger(__name__)
 # ── Data models ───────────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
 
-PERMISSIONS_KNOWN = frozenset({
-    "clipboard.read",
-    "clipboard.write",
-    "file.read",
-    "file.write",
-    "open.url",
-    "open.file",
-    "process.run",
-    "network.request",
-    "admin.required",
-})
+PERMISSIONS_KNOWN = frozenset(
+    {
+        "clipboard.read",
+        "clipboard.write",
+        "file.read",
+        "file.write",
+        "open.url",
+        "open.file",
+        "process.run",
+        "network.request",
+        "admin.required",
+    }
+)
 
-HIGH_RISK_PERMISSIONS = frozenset({
-    "process.run",
-    "file.write",
-    "admin.required",
-})
+HIGH_RISK_PERMISSIONS = frozenset(
+    {
+        "process.run",
+        "file.write",
+        "admin.required",
+    }
+)
 
 
 PLUGIN_TRUST_LEVELS = ("builtin", "local-trusted", "community-unverified")
@@ -156,7 +162,7 @@ class PluginAPI:
 
     def check_data_path(self, path: str | Path) -> Path:
         """Validate and resolve a path, ensuring it's within the plugin's data directory.
-        
+
         Raises PermissionError if the path points outside the plugin's data directory.
         This is a voluntary check — plugins using raw open() can bypass it.
         """
@@ -187,6 +193,8 @@ class PluginAPI:
         interaction_mode: str = COMMAND_INTERACTION_PANEL,
         icon_path: str = "",
         search_terms: list[str] | None = None,
+        result_window_size: str = "",
+        params: list[CommandParam | dict] | None = None,
     ) -> bool:
         if "." not in id:
             self.logger.warning("插件命令 ID 必须包含点号: %s", id)
@@ -201,6 +209,18 @@ class PluginAPI:
             return False
         resolved_icon = self._resolve_icon_path(icon_path or (self._manifest.icon if self._manifest else ""))
         plugin_terms = self._plugin_search_terms()
+        normalized_params = []
+        for param in params or []:
+            if isinstance(param, CommandParam):
+                normalized_params.append(param)
+            elif isinstance(param, dict):
+                allowed = {
+                    key: value
+                    for key, value in param.items()
+                    if key in {"name", "type", "required", "default", "choices", "sensitive"}
+                }
+                if "name" in allowed:
+                    normalized_params.append(CommandParam(**allowed))
         cmd = CommandDefinition(
             id=id,
             title=title,
@@ -212,6 +232,8 @@ class PluginAPI:
             source=f"plugin:{self._plugin_id}",
             interaction_mode=interaction_mode,
             search_terms=plugin_terms + list(search_terms or []),
+            result_window_size=result_window_size,
+            params=normalized_params,
         )
         self._staged_commands.append(cmd)
         return True
@@ -242,10 +264,12 @@ class PluginAPI:
                     _search_sources.pop(sid, None)
                 available_ids = [c.id for c in self._staged_commands]
                 logger.error(
-                    "插件 %s 命令注册失败，已回滚 %d 个已注册命令和 %d 个搜索源。"
-                    "失败命令: %s, 所有尝试: %s",
-                    self._plugin_id, len(committed_ids), len(written_sources),
-                    cmd.id, available_ids,
+                    "插件 %s 命令注册失败，已回滚 %d 个已注册命令和 %d 个搜索源。失败命令: %s, 所有尝试: %s",
+                    self._plugin_id,
+                    len(committed_ids),
+                    len(written_sources),
+                    cmd.id,
+                    available_ids,
                 )
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
@@ -281,12 +305,14 @@ class PluginAPI:
             self._plugin_id.replace("-", " "),
         ]
         if manifest is not None:
-            terms.extend([
-                manifest.name,
-                manifest.description,
-                manifest.author,
-                *list(manifest.keywords or []),
-            ])
+            terms.extend(
+                [
+                    manifest.name,
+                    manifest.description,
+                    manifest.author,
+                    *list(manifest.keywords or []),
+                ]
+            )
         return [t for t in terms if t]
 
     def _wrap_handler(
@@ -294,11 +320,35 @@ class PluginAPI:
         handler: Callable[[CommandContext], CommandResult],
     ) -> Callable[[CommandContext], CommandResult]:
         def _validate(result: Any) -> CommandResult:
+            def _normalize_actions(actions: Any) -> list[CommandAction]:
+                normalized: list[CommandAction] = []
+                if not actions:
+                    return normalized
+                if not isinstance(actions, list):
+                    return normalized
+                valid_action_keys = {"type", "label", "value", "enabled", "danger", "primary", "payload"}
+                for action in actions:
+                    if isinstance(action, CommandAction):
+                        normalized.append(action)
+                    elif isinstance(action, dict):
+                        allowed = {key: value for key, value in action.items() if key in valid_action_keys}
+                        normalized.append(CommandAction(**allowed))
+                return normalized
+
             if result is None:
                 return CommandResult(success=False, message="插件未返回结果", error="返回值无效")
             if isinstance(result, dict):
-                valid_keys = {"success", "message", "display_type", "payload",
-                              "actions", "error", "is_async", "progress", "cancellable"}
+                valid_keys = {
+                    "success",
+                    "message",
+                    "display_type",
+                    "payload",
+                    "actions",
+                    "error",
+                    "is_async",
+                    "progress",
+                    "cancellable",
+                }
                 extra = set(result.keys()) - valid_keys
                 if extra:
                     return CommandResult(
@@ -306,9 +356,12 @@ class PluginAPI:
                         message="插件返回数据无效",
                         error=f"未知字段: {', '.join(sorted(extra))}",
                     )
+                result = dict(result)
+                result["actions"] = _normalize_actions(result.get("actions"))
                 return limit_command_result_actions(CommandResult(**result))
             if not isinstance(result, CommandResult):
                 return CommandResult(success=False, message="插件返回类型错误", error="类型错误")
+            result.actions = _normalize_actions(result.actions)
             return limit_command_result_actions(result)
 
         def _safe(context: CommandContext) -> CommandResult:
@@ -318,14 +371,18 @@ class PluginAPI:
                     result = future.result()
                 return _validate(result)
             except Exception as e:
-                self.logger.error("插件命令 %s 执行异常: %s", handler.__name__ if hasattr(handler, "__name__") else "?", e)
+                self.logger.error(
+                    "插件命令 %s 执行异常: %s", handler.__name__ if hasattr(handler, "__name__") else "?", e
+                )
                 return CommandResult(success=False, message=f"插件执行失败: {e}", error=str(e))
+
         return _safe
 
     def read_clipboard(self) -> str:
         self._check_permission("clipboard.read")
         try:
             from qt_compat import QApplication
+
             cb = QApplication.clipboard()
             return cb.text() or ""
         except Exception:
@@ -335,6 +392,7 @@ class PluginAPI:
         self._check_permission("clipboard.write")
         try:
             from qt_compat import QApplication
+
             QApplication.clipboard().setText(text)
         except Exception:
             pass
@@ -343,6 +401,7 @@ class PluginAPI:
         self._check_permission("file.read")
         try:
             from ui.launcher_popup.file_selection import get_selected_files_for_process
+
             return get_selected_files_for_process() or []
         except Exception:
             return []
@@ -454,8 +513,9 @@ def has_high_risk_permissions(permissions: list[str]) -> bool:
 
 
 class PluginManager:
-    def __init__(self, registry: CommandRegistry, plugins_dir: str = "",
-                 save_callback: Callable[[list[str]], None] | None = None):
+    def __init__(
+        self, registry: CommandRegistry, plugins_dir: str = "", save_callback: Callable[[list[str]], None] | None = None
+    ):
         self._registry = registry
         self._plugins_dir = plugins_dir or self._default_plugins_dir()
         self._plugins: dict[str, PluginInfo] = {}
@@ -516,8 +576,10 @@ class PluginManager:
             err = validate_manifest(m)
             if err:
                 return PluginInfo(
-                    manifest=m, directory=directory,
-                    status="error", error=err,
+                    manifest=m,
+                    directory=directory,
+                    status="error",
+                    error=err,
                 )
             plugin_root = Path(directory).resolve()
             safe_entry = _safe_relative_plugin_path(m.entry)
@@ -616,9 +678,7 @@ class PluginManager:
         # Save pending info BEFORE commit because commit clears staging lists.
         pending_search_sources = list(api._staged_search_sources)
         if not api.commit_staged():
-            raise RuntimeError(
-                f"插件 {m.id} 命令注册事务失败，已回滚所有已注册命令和搜索源"
-            )
+            raise RuntimeError(f"插件 {m.id} 命令注册事务失败，已回滚所有已注册命令和搜索源")
         info.registered_commands = list(api._registered_ids)
         info.registered_search_sources = pending_search_sources
         self._loaded_modules[m.id] = loader
@@ -850,16 +910,12 @@ class PluginManager:
                 if file_count > 500:
                     raise ValueError(f"插件文件过多 ({file_count} 个)，最大值限制为 500 个")
                 if total_size > 50 * 1024 * 1024:
-                    raise ValueError(
-                        f"插件总大小 ({total_size / 1024 / 1024:.1f} MB) 超过限制 (50 MB)"
-                    )
+                    raise ValueError(f"插件总大小 ({total_size / 1024 / 1024:.1f} MB) 超过限制 (50 MB)")
 
                 target_dir = (plugins_dir / plugin_id).resolve()
                 if target_dir.exists():
                     if on_overwrite is None:
-                        raise ValueError(
-                            f"插件 \"{plugin_name}\" 已存在，且未提供覆盖确认回调"
-                        )
+                        raise ValueError(f'插件 "{plugin_name}" 已存在，且未提供覆盖确认回调')
                     if not on_overwrite(plugin_name):
                         return None
 

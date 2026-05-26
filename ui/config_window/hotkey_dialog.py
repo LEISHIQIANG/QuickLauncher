@@ -125,7 +125,20 @@ class HotkeyRecorderWidget(QWidget):
         key_name = self._key_name(event)
         if not key_name:
             return
-        if key_name in {"ctrl", "alt", "shift", "win", "lctrl", "rctrl", "lalt", "ralt", "lshift", "rshift", "lwin", "rwin"}:
+        if key_name in {
+            "ctrl",
+            "alt",
+            "shift",
+            "win",
+            "lctrl",
+            "rctrl",
+            "lalt",
+            "ralt",
+            "lshift",
+            "rshift",
+            "lwin",
+            "rwin",
+        }:
             return
         self.modifiers = self._current_modifiers(event)
         self.key = key_name
@@ -257,6 +270,7 @@ class HotkeyDialog(BaseDialog):
 
     def _setup_window_icon(self):
         from .base_dialog import BaseDialog
+
         if BaseDialog._is_compiled():
             return
         try:
@@ -320,7 +334,9 @@ class HotkeyDialog(BaseDialog):
         self.trigger_immediate_rb = QRadioButton("马上发送按键")
         install_tooltip(self.trigger_immediate_rb, "点击图标后立刻发送这组按键，适合不需要回到原窗口的操作")
         self.trigger_after_close_rb = QRadioButton("先关闭面板，再发送按键")
-        install_tooltip(self.trigger_after_close_rb, "先关闭快捷启动面板并把焦点还给原来的窗口，再发送这组按键，适合控制原窗口")
+        install_tooltip(
+            self.trigger_after_close_rb, "先关闭快捷启动面板并把焦点还给原来的窗口，再发送这组按键，适合控制原窗口"
+        )
         trigger_layout.addWidget(self.trigger_immediate_rb)
         trigger_layout.addWidget(self.trigger_after_close_rb)
         trigger_layout.addStretch()
@@ -396,7 +412,9 @@ class HotkeyDialog(BaseDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
-        self.setStyleSheet(base_style + f"""
+        self.setStyleSheet(
+            base_style
+            + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -414,7 +432,8 @@ class HotkeyDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """)
+        """
+        )
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
         for btn in [
             self.hotkey_input.clear_btn,
@@ -436,11 +455,15 @@ class HotkeyDialog(BaseDialog):
         self.invert_current_cb.setStyleSheet(cb_style)
 
         if theme == "dark":
-            self.icon_preview.setStyleSheet("QLabel { background-color: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; }")
+            self.icon_preview.setStyleSheet(
+                "QLabel { background-color: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; }"
+            )
             self.conflict_label.setStyleSheet("color: rgba(255,255,255,0.62); font-size: 11px;")
             self.test_result_label.setStyleSheet("color: rgba(255,255,255,0.62); font-size: 11px;")
         else:
-            self.icon_preview.setStyleSheet("QLabel { background-color: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; }")
+            self.icon_preview.setStyleSheet(
+                "QLabel { background-color: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; }"
+            )
             self.conflict_label.setStyleSheet("color: rgba(0,0,0,0.55); font-size: 11px;")
             self.test_result_label.setStyleSheet("color: rgba(0,0,0,0.55); font-size: 11px;")
 
@@ -487,15 +510,19 @@ class HotkeyDialog(BaseDialog):
         self.test_result_label.setText("发送中...")
 
         import threading
+
         def _do():
             try:
                 from core import ShortcutExecutor
+
                 success, error = ShortcutExecutor.execute(preview)
                 text = "发送成功" if success else f"发送失败: {error}"
             except Exception as e:
                 text = f"发送失败: {e}"
             from qt_compat import QTimer
+
             QTimer.singleShot(0, lambda: self._on_test_hotkey_done(text))
+
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_test_hotkey_done(self, text: str):

@@ -22,16 +22,19 @@ def _ensure_project_root_on_path():
 def _load_setup_dpi_awareness():
     _ensure_project_root_on_path()
     from bootstrap.dpi import setup_dpi_awareness
+
     return setup_dpi_awareness
 
 
 def _load_logging_helpers():
     from bootstrap.logging_init import get_log_dir, setup_faulthandler, setup_logging
+
     return get_log_dir, setup_faulthandler, setup_logging
 
 
 def _load_safe_execute():
     from core.error_handler import safe_execute
+
     return safe_execute
 
 
@@ -42,6 +45,7 @@ def _sanitize_gui_env():
     for k in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH", "QML_IMPORT_PATH"):
         os.environ.pop(k, None)
 
+
 setup_dpi_awareness = _load_setup_dpi_awareness()
 setup_dpi_awareness()
 
@@ -49,6 +53,7 @@ setup_dpi_awareness()
 # RPC_E_WRONG_THREAD (0x8001010e)。后台线程各自调用 CoInitialize 不影响此处。
 try:
     import ctypes
+
     ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED = 0x2
 except Exception:
     pass
@@ -65,37 +70,37 @@ safe_execute(
     lambda: os.environ.setdefault("PYTHONUTF8", "1"),
     "设置PYTHONUTF8环境变量失败",
     exceptions=(OSError, ValueError),
-    log_level="debug"
+    log_level="debug",
 )
 safe_execute(
     lambda: os.environ.setdefault("PYTHONIOENCODING", "utf-8"),
     "设置PYTHONIOENCODING环境变量失败",
     exceptions=(OSError, ValueError),
-    log_level="debug"
+    log_level="debug",
 )
 safe_execute(
     lambda: os.environ.__setitem__("QT_AUTO_SCREEN_SCALE_FACTOR", "0"),
     "设置QT_AUTO_SCREEN_SCALE_FACTOR失败",
     exceptions=(OSError, ValueError),
-    log_level="debug"
+    log_level="debug",
 )
 safe_execute(
     lambda: os.environ.__setitem__("QT_ENABLE_HIGHDPI_SCALING", "1"),
     "设置QT_ENABLE_HIGHDPI_SCALING失败",
     exceptions=(OSError, ValueError),
-    log_level="debug"
+    log_level="debug",
 )
 safe_execute(
     lambda: os.environ.__setitem__("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough"),
     "设置QT_SCALE_FACTOR_ROUNDING_POLICY失败",
     exceptions=(OSError, ValueError),
-    log_level="debug"
+    log_level="debug",
 )
 safe_execute(
     lambda: os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.fonts.warning=false"),
     "设置QT_LOGGING_RULES失败",
     exceptions=(OSError, ValueError),
-    log_level="debug"
+    log_level="debug",
 )
 
 
@@ -113,6 +118,7 @@ def show_config_window_direct() -> bool:
     if _tray_app is not None:
         try:
             from qt_compat import QTimer
+
             QTimer.singleShot(0, _tray_app._show_config)
             return True
         except Exception as e:
@@ -123,6 +129,7 @@ def show_config_window_direct() -> bool:
 def _native_error_box(title: str, text: str):
     try:
         import ctypes
+
         ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)
     except Exception as e:
         logger.debug("ignored startup exception %s: %s", 2, e)
@@ -134,38 +141,48 @@ def main():
     logger.info(f"QuickLauncher 启动 - {datetime.now()}")
 
     try:
-        root_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+        root_dir = (
+            os.path.dirname(sys.executable)
+            if getattr(sys, "frozen", False)
+            else os.path.dirname(os.path.abspath(__file__))
+        )
         if root_dir not in sys.path:
             sys.path.insert(0, root_dir)
 
         if getattr(sys, "frozen", False):
             try:
                 import json as _json
+
                 _cfg_path = os.path.join(root_dir, "config", "data.json")
                 _auto = False
                 if os.path.isfile(_cfg_path):
                     with open(_cfg_path, "r", encoding="utf-8") as _f:
                         _auto = _json.load(_f).get("settings", {}).get("auto_start", False)
                 from core.auto_start_manager import _ensure_auto_start
+
                 _ensure_auto_start(_auto)
             except Exception as e:
                 logger.debug(f"自启动检查失败（可忽略）: {e}")
 
         from bootstrap.venv import maybe_reexec_in_venv
+
         maybe_reexec_in_venv(root_dir)
 
         logger.debug(f"Python: {sys.executable}")
 
         from bootstrap.deps import bootstrap_requirements
+
         bootstrap_requirements(root_dir, logger, _native_error_box)
 
         try:
             from core.windows_uipi import format_process_elevation_status
+
             logger.info("启动权限状态: %s", format_process_elevation_status())
         except Exception as e:
             logger.debug("启动权限状态检测失败（可忽略）: %s", e)
 
         from qt_compat import QT_LIB, QApplication, QTimer, exec_app, setup_high_dpi
+
         logger.info(f"Qt binding: {QT_LIB}")
 
         setup_high_dpi()
@@ -175,6 +192,7 @@ def main():
 
         try:
             from core.shortcut_command_exec import init_main_thread_invoker
+
             init_main_thread_invoker()
             logger.debug("已初始化主线程 UI 命令调度器")
         except Exception as e:
@@ -183,6 +201,7 @@ def main():
 
         try:
             from qt_compat import QFont
+
             default_font = QFont("Microsoft YaHei", 9)
             default_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
             default_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
@@ -200,17 +219,22 @@ def main():
         server_name = "QuickLauncherInstance_v3"
 
         from bootstrap.ipc import try_connect_existing
+
         if try_connect_existing(server_name):
             logger.info("已有实例运行，唤起设置窗口后退出")
             return 0
 
         from bootstrap.ipc import create_ipc_server
-        _server, _ipc_pending = create_ipc_server(app, server_name, lambda: _tray_app._show_config if _tray_app else None)
+
+        _server, _ipc_pending = create_ipc_server(
+            app, server_name, lambda: _tray_app._show_config if _tray_app else None
+        )
 
         try:
             app.processEvents()
-            if getattr(sys, 'frozen', False):
+            if getattr(sys, "frozen", False):
                 import time
+
                 time.sleep(0.05)
                 app.processEvents()
         except Exception as e:
@@ -218,12 +242,14 @@ def main():
 
         logger.info("启动托盘应用...")
         from ui.tray_app import TrayApp
+
         _tray_app = TrayApp()
         logger.info("托盘应用启动成功")
 
         try:
             from core import APP_VERSION
             from core.data_models import DEFAULT_SPECIAL_APPS
+
             _version_marker = _tray_app.data_manager.app_dir / ".special_apps_merged_version"
             _last_merged = ""
             if _version_marker.exists():
@@ -247,20 +273,21 @@ def main():
 
         try:
             from core import register_callback
+
             callbacks = {
-                'show_config_window': _tray_app.show_config_signal.emit,
-                'quit_app': _tray_app._quit,
-                'restart_app': _tray_app._restart,
-                'show_log': _tray_app._show_log,
-                'show_about': _tray_app._show_about,
-                'show_help': _tray_app._show_slash_help,
-                'show_diagnostics': _tray_app._show_diagnostics,
-                'show_shortcut_health': _tray_app._show_shortcut_health,
-                'show_config_history': _tray_app._show_config_history,
-                'clean_icon_cache': _tray_app._clean_icon_cache_now,
-                'reload_hooks': _tray_app._reload_hooks_now,
-                'open_data_dir': _tray_app._open_data_dir,
-                'open_install_dir': _tray_app._open_install_dir,
+                "show_config_window": _tray_app.show_config_signal.emit,
+                "quit_app": _tray_app._quit,
+                "restart_app": _tray_app._restart,
+                "show_log": _tray_app._show_log,
+                "show_about": _tray_app._show_about,
+                "show_help": _tray_app._show_slash_help,
+                "show_diagnostics": _tray_app._show_diagnostics,
+                "show_shortcut_health": _tray_app._show_shortcut_health,
+                "show_config_history": _tray_app._show_config_history,
+                "clean_icon_cache": _tray_app._clean_icon_cache_now,
+                "reload_hooks": _tray_app._reload_hooks_now,
+                "open_data_dir": _tray_app._open_data_dir,
+                "open_install_dir": _tray_app._open_install_dir,
             }
             for name, callback in callbacks.items():
                 register_callback(name, callback)
@@ -268,27 +295,30 @@ def main():
         except Exception as e:
             logger.warning(f"注册回调失败: {e}")
 
-        if _ipc_pending.get('show_config') or _pending_show_config:
+        if _ipc_pending.get("show_config") or _pending_show_config:
             _pending_show_config = False
             QTimer.singleShot(50, _tray_app._show_config)
 
         if getattr(sys, "frozen", False):
             try:
                 from core.auto_start_manager import get_auto_start_check_result
+
                 _ts_enabled, _ts_reason = get_auto_start_check_result()
                 _cfg_settings = _tray_app.data_manager.get_settings()
-                _cfg_auto_start = bool(getattr(_cfg_settings, 'auto_start', False))
+                _cfg_auto_start = bool(getattr(_cfg_settings, "auto_start", False))
                 if _ts_enabled and not _cfg_auto_start:
                     _tray_app.data_manager.update_settings(auto_start=True)
                     logger.info("检测到有效自启动任务，已同步配置为开启: %s", _ts_reason)
                 elif _cfg_auto_start and not _ts_enabled:
                     _tray_app.data_manager.update_settings(auto_start=False)
-                    logger.warning("配置要求开机自启，但任务缺失或定义已过期；已同步配置为关闭，避免误导用户: %s", _ts_reason)
+                    logger.warning(
+                        "配置要求开机自启，但任务缺失或定义已过期；已同步配置为关闭，避免误导用户: %s", _ts_reason
+                    )
             except Exception as e:
                 logger.debug(f"同步自启动状态失败（可忽略）: {e}")
 
         settings = _tray_app.data_manager.get_settings()
-        if getattr(settings, 'show_on_startup', True):
+        if getattr(settings, "show_on_startup", True):
             logger.info("启动时显示设置窗口...")
             QTimer.singleShot(100, _tray_app._show_config)
         else:
@@ -304,6 +334,7 @@ def main():
         try:
             from qt_compat import QApplication
             from ui.styles.themed_messagebox import ThemedMessageBox
+
             if not QApplication.instance():
                 QApplication(sys.argv)
             ThemedMessageBox.critical(
@@ -319,12 +350,14 @@ def main():
 
 def _parse_autostart_cli_args(start_index: int = 3):
     from core.auto_start_manager import HELPER_TARGET_ARG, HELPER_TARGET_ARGS_ARG, HELPER_TARGET_CWD_ARG
+
     def _get(arg):
         try:
             i = sys.argv.index(arg, start_index)
             return sys.argv[i + 1] if i + 1 < len(sys.argv) else ""
         except (ValueError, IndexError):
             return ""
+
     return _get(HELPER_TARGET_ARG), _get(HELPER_TARGET_ARGS_ARG), _get(HELPER_TARGET_CWD_ARG)
 
 
@@ -332,6 +365,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "--install-service":
             from core.service_manager import enable_service_autostart
+
             success, msg = enable_service_autostart()
             print(msg)
             sys.exit(0 if success else 1)
@@ -343,6 +377,7 @@ if __name__ == "__main__":
                 disable_auto_start,
                 enable_auto_start,
             )
+
             action = sys.argv[2] if len(sys.argv) > 2 else ""
             target_exe, target_args, target_cwd = _parse_autostart_cli_args(3)
             if action == HELPER_ACTION_ENABLE:
@@ -355,6 +390,7 @@ if __name__ == "__main__":
             sys.exit(0 if success else 1)
         elif sys.argv[1] == "--autostart-helper":
             from core.auto_start_manager import HELPER_EXIT_BAD_ARGS, run_autostart_helper
+
             action = sys.argv[2] if len(sys.argv) > 2 else ""
             target_exe, target_args, target_cwd = _parse_autostart_cli_args(3)
             if not action:
@@ -362,12 +398,14 @@ if __name__ == "__main__":
             sys.exit(run_autostart_helper(action, target_exe, target_args, target_cwd))
         elif sys.argv[1] == "--autostart-launch":
             from core.auto_start_manager import HELPER_EXIT_BAD_ARGS, run_autostart_launcher
+
             target_exe, target_args, target_cwd = _parse_autostart_cli_args(2)
             if not target_exe:
                 sys.exit(HELPER_EXIT_BAD_ARGS)
             sys.exit(run_autostart_launcher(target_exe, target_args, target_cwd))
         elif sys.argv[1] == "--uninstall-service":
             from core.service_manager import disable_service_autostart
+
             success, msg = disable_service_autostart()
             print(msg)
             sys.exit(0 if success else 1)
@@ -375,6 +413,7 @@ if __name__ == "__main__":
             import servicemanager
 
             from core.windows_service import QuickLauncherService
+
             servicemanager.Initialize()
             servicemanager.PrepareToHostSingle(QuickLauncherService)
             servicemanager.StartServiceCtrlDispatcher()

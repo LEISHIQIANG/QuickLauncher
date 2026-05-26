@@ -32,13 +32,13 @@ class PopupRendererMixin:
             return cache[1]
         if theme == "dark":
             colors = (
-                QColor(28, 28, 30),        # theme_bg
-                QColor(255, 255, 255, 230), # text_color
+                QColor(28, 28, 30),  # theme_bg
+                QColor(255, 255, 255, 230),  # text_color
                 QColor(255, 255, 255, 50),  # hover_color
                 QColor(255, 255, 255, 40),  # border_color
-                QColor(10, 132, 255),       # accent_color
+                QColor(10, 132, 255),  # accent_color
                 QColor(255, 255, 255, 18),  # dock_bg
-                QColor(10, 132, 255),       # drop_highlight_color
+                QColor(10, 132, 255),  # drop_highlight_color
             )
         else:
             colors = (
@@ -65,15 +65,16 @@ class PopupRendererMixin:
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
         dirty_rect = event.rect()
 
-        (theme_bg, text_color, hover_color, border_color,
-         accent_color, dock_bg, drop_highlight_color) = self._get_theme_colors()
+        (theme_bg, text_color, hover_color, border_color, accent_color, dock_bg, drop_highlight_color) = (
+            self._get_theme_colors()
+        )
 
         # 确定背景颜色和模式
-        bg_mode = getattr(self.settings, 'bg_mode', 'theme')
-        blur_radius = getattr(self.settings, 'bg_blur_radius', 0)
+        bg_mode = getattr(self.settings, "bg_mode", "theme")
+        blur_radius = getattr(self.settings, "bg_blur_radius", 0)
 
         # 统一计算绘制区域 (用于背景路径和后续高光计算)
-        margin = getattr(self, 'shadow_margin', 0)
+        margin = getattr(self, "shadow_margin", 0)
         top_inset = self._background_top_inset() if hasattr(self, "_background_top_inset") else 0
         rect = QRectF(self.rect()).adjusted(margin, margin + top_inset, -margin, -margin)
         radius = self._get_paint_corner_radius(bg_mode, blur_radius)
@@ -132,7 +133,7 @@ class PopupRendererMixin:
             painter.fillPath(self._cached_outside_path, QtCompat.transparent)
             painter.restore()
         # 绘制背景
-        if bg_mode == 'image' and self.settings.custom_bg_path and os.path.exists(self.settings.custom_bg_path):
+        if bg_mode == "image" and self.settings.custom_bg_path and os.path.exists(self.settings.custom_bg_path):
             # 图片模式
             bg_pixmap = self._get_cached_bg_pixmap()
             if bg_pixmap:
@@ -157,10 +158,10 @@ class PopupRendererMixin:
                 c.setAlpha(int(255 * (self.settings.bg_alpha / 100.0)))
                 painter.fillPath(path, QBrush(c))
 
-        elif bg_mode == 'acrylic':
+        elif bg_mode == "acrylic":
             # ===== 亚克力模式：与配置窗口 RoundedWindow 相同的绘制方式 =====
             # bg_alpha 0-100: 0=最透明/最强磨砂, 100=最不透明/实色
-            user_alpha = getattr(self.settings, 'bg_alpha', 90)
+            user_alpha = getattr(self.settings, "bg_alpha", 90)
 
             tint_color = QColor(theme_bg)
             if is_win10():
@@ -187,23 +188,17 @@ class PopupRendererMixin:
                 soften_color.setAlpha(int(soften_color.alpha() * 0.6))
                 painter.setPen(QPen(soften_color, 0.5))
                 inner_path = QPainterPath()
-                inner_path.addRoundedRect(
-                    rect.adjusted(0.75, 0.75, -0.75, -0.75),
-                    radius, radius
-                )
+                inner_path.addRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), radius, radius)
                 painter.drawPath(inner_path)
 
                 soften_color2 = QColor(theme_bg)
                 soften_color2.setAlpha(int(soften_color2.alpha() * 0.3))
                 painter.setPen(QPen(soften_color2, 0.5))
                 outer_path = QPainterPath()
-                outer_path.addRoundedRect(
-                    rect.adjusted(0.25, 0.25, -0.25, -0.25),
-                    radius + 0.5, radius + 0.5
-                )
+                outer_path.addRoundedRect(rect.adjusted(0.25, 0.25, -0.25, -0.25), radius + 0.5, radius + 0.5)
                 painter.drawPath(outer_path)
 
-        else: # theme mode
+        else:  # theme mode
             c = QColor(theme_bg)
             # 计算透明度 (0=透明/0, 100=不透明/255)
             alpha_val = int(255 * (self.settings.bg_alpha / 100.0))
@@ -211,12 +206,12 @@ class PopupRendererMixin:
             painter.fillPath(path, QBrush(c))
 
         # 绘制边缘高光 / 边框（亚克力模式已在上方绘制完毕，这里只处理 theme 和 image 模式）
-        if bg_mode != 'acrylic':
-            edge_opacity = getattr(self.settings, 'edge_highlight_opacity', 0.0)
+        if bg_mode != "acrylic":
+            edge_opacity = getattr(self.settings, "edge_highlight_opacity", 0.0)
 
             if edge_opacity > 0:
                 # 用户自定义高光 (模拟玻璃质感)
-                edge_color_str = getattr(self.settings, 'edge_highlight_color', '#ffffff')
+                edge_color_str = getattr(self.settings, "edge_highlight_color", "#ffffff")
                 try:
                     edge_c = QColor(edge_color_str)
                 except Exception as e:
@@ -289,15 +284,22 @@ class PopupRendererMixin:
             painter.setBrush(QBrush(accent_color))
             painter.setPen(QtCompat.NoPen)
             painter.drawEllipse(self.width() - 14, pin_y_offset + 6, 8, 8)
-    def _draw_icons(self, painter: QPainter, text_color: QColor, hover_color: QColor,
-                    drop_highlight_color: QColor, bg_mode: str = 'theme'):
+
+    def _draw_icons(
+        self,
+        painter: QPainter,
+        text_color: QColor,
+        hover_color: QColor,
+        drop_highlight_color: QColor,
+        bg_mode: str = "theme",
+    ):
         """绘制图标网格"""
         if not self.pages or self.current_page >= len(self.pages):
             return
 
         painter.setFont(self._label_font)
 
-        page_pos = float(getattr(self, '_page_position', getattr(self, '_page_offset', float(self.current_page))))
+        page_pos = float(getattr(self, "_page_position", getattr(self, "_page_offset", float(self.current_page))))
         self._page_offset = page_pos
         y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else 0
         page_base = math.floor(page_pos)
@@ -331,23 +333,48 @@ class PopupRendererMixin:
             else:
                 painter.save()
                 painter.translate(int(-w * page_fraction), 0)
-                self._draw_page_items(painter, first_index, text_color, hover_color,
-                                      drop_highlight_color, bg_mode, is_prev=True, y_offset=y_offset)
+                self._draw_page_items(
+                    painter,
+                    first_index,
+                    text_color,
+                    hover_color,
+                    drop_highlight_color,
+                    bg_mode,
+                    is_prev=True,
+                    y_offset=y_offset,
+                )
                 painter.restore()
 
                 painter.save()
                 painter.translate(int(w * (1.0 - page_fraction)), 0)
-                self._draw_page_items(painter, second_index, text_color, hover_color,
-                                      drop_highlight_color, bg_mode, is_prev=False, y_offset=y_offset)
+                self._draw_page_items(
+                    painter,
+                    second_index,
+                    text_color,
+                    hover_color,
+                    drop_highlight_color,
+                    bg_mode,
+                    is_prev=False,
+                    y_offset=y_offset,
+                )
                 painter.restore()
             return
 
         display_page = round(page_pos) % len(self.pages)
-        self._draw_page_items(painter, display_page, text_color, hover_color,
-                              drop_highlight_color, bg_mode, is_prev=False, y_offset=y_offset)
+        self._draw_page_items(
+            painter,
+            display_page,
+            text_color,
+            hover_color,
+            drop_highlight_color,
+            bg_mode,
+            is_prev=False,
+            y_offset=y_offset,
+        )
 
-    def _get_page_animation_pixmap(self, page_index: int, text_color: QColor, hover_color: QColor,
-                                   drop_highlight_color: QColor, bg_mode: str):
+    def _get_page_animation_pixmap(
+        self, page_index: int, text_color: QColor, hover_color: QColor, drop_highlight_color: QColor, bg_mode: str
+    ):
         if not self.pages:
             return None
         page_index = page_index % len(self.pages)
@@ -521,6 +548,7 @@ class PopupRendererMixin:
             if not self._animation_icon_ready(item):
                 return False
         return True
+
     def _draw_search_bar(self, painter: QPainter, text_color: QColor, accent_color: QColor):
         query = getattr(self, "search_query", "")
         full_h = self._search_bar_full_height() if hasattr(self, "_search_bar_full_height") else 34
@@ -600,8 +628,9 @@ class PopupRendererMixin:
                 painter.fillRect(cursor_rect, accent_color)
         painter.restore()
 
-    def _draw_search_results(self, painter: QPainter, text_color: QColor, hover_color: QColor,
-                             drop_highlight_color: QColor, bg_mode: str):
+    def _draw_search_results(
+        self, painter: QPainter, text_color: QColor, hover_color: QColor, drop_highlight_color: QColor, bg_mode: str
+    ):
         all_results = getattr(self, "search_results", []) or []
         results = all_results
         if not all_results:
@@ -614,14 +643,19 @@ class PopupRendererMixin:
                 action_hint = "按 Enter 进行网页搜索"
             else:
                 action_hint = "无匹配结果"
-            y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", 30)
-            painter.drawText(QRect(0, self.padding + y_offset, self.width(), self.content_height),
-                             QtCompat.AlignCenter, action_hint)
+            y_offset = (
+                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", 30)
+            )
+            painter.drawText(
+                QRect(0, self.padding + y_offset, self.width(), self.content_height), QtCompat.AlignCenter, action_hint
+            )
             return
         if not results:
             return
 
-        items = [{"item": result.shortcut, "text": (getattr(result.shortcut, "name", "") or "")[:6]} for result in results]
+        items = [
+            {"item": result.shortcut, "text": (getattr(result.shortcut, "name", "") or "")[:6]} for result in results
+        ]
         selected = -1
         selected_index = getattr(self, "search_selected_index", -1)
         if 0 <= selected_index < len(all_results):
@@ -637,24 +671,44 @@ class PopupRendererMixin:
             hover_color,
             drop_highlight_color,
             bg_mode,
-            y_offset=self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", 30),
+            y_offset=self._body_y_offset()
+            if hasattr(self, "_body_y_offset")
+            else getattr(self, "search_bar_height", 30),
             selected_index=selected,
         )
 
-    def _draw_page_items(self, painter: QPainter, page_index: int, text_color: QColor,
-                          hover_color: QColor, drop_highlight_color: QColor,
-                          bg_mode: str, is_prev: bool, y_offset: int = 0):
+    def _draw_page_items(
+        self,
+        painter: QPainter,
+        page_index: int,
+        text_color: QColor,
+        hover_color: QColor,
+        drop_highlight_color: QColor,
+        bg_mode: str,
+        is_prev: bool,
+        y_offset: int = 0,
+    ):
         """绘制指定页的图标"""
         if hasattr(self, "_get_page_render_items"):
             items = self._get_page_render_items(page_index)
         else:
             items = self.pages[page_index].items
-        self._draw_items_grid(painter, items, text_color, hover_color, drop_highlight_color, bg_mode, is_prev=is_prev, y_offset=y_offset)
+        self._draw_items_grid(
+            painter, items, text_color, hover_color, drop_highlight_color, bg_mode, is_prev=is_prev, y_offset=y_offset
+        )
 
-    def _draw_items_grid(self, painter: QPainter, items, text_color: QColor,
-                         hover_color: QColor, drop_highlight_color: QColor,
-                         bg_mode: str, is_prev: bool = False, y_offset: int = 0,
-                         selected_index: int | None = None):
+    def _draw_items_grid(
+        self,
+        painter: QPainter,
+        items,
+        text_color: QColor,
+        hover_color: QColor,
+        drop_highlight_color: QColor,
+        bg_mode: str,
+        is_prev: bool = False,
+        y_offset: int = 0,
+        selected_index: int | None = None,
+    ):
         """绘制图标网格项目"""
         painter.setFont(self._label_font)
 
@@ -668,7 +722,7 @@ class PopupRendererMixin:
         text_h = fm.height()
         text_spacing = 1
         is_dark = self.settings.theme == "dark"
-        use_card = (bg_mode == 'acrylic')
+        use_card = bg_mode == "acrylic"
         icon_alpha = self.settings.icon_alpha
 
         for i, entry in enumerate(items):
@@ -700,9 +754,12 @@ class PopupRendererMixin:
             # 只记录第一个图标的位置
             if i == 0:
                 import logging
+
                 logger = logging.getLogger(__name__)
-                logger.debug(f"[PAINT] 绘制图标0: height={self.height()}, icons_bottom={icons_bottom}, "
-                             f"row={row}, y={y}, window_y={self.geometry().y()}, screen_y={self.geometry().y() + y}")
+                logger.debug(
+                    f"[PAINT] 绘制图标0: height={self.height()}, icons_bottom={icons_bottom}, "
+                    f"row={row}, y={y}, window_y={self.geometry().y()}, screen_y={self.geometry().y() + y}"
+                )
 
             opacity = 1.0 if reveal_done else reveal_opacity
             if opacity <= 0:
@@ -763,10 +820,10 @@ class PopupRendererMixin:
             painter.setOpacity(opacity)
             painter.setPen(QPen(text_color))
             text_y = card_y + card_size + text_spacing
-            painter.drawText(x, text_y, self.cell_size, text_h,
-                             QtCompat.AlignHCenter | QtCompat.AlignTop, name_str)
+            painter.drawText(x, text_y, self.cell_size, text_h, QtCompat.AlignHCenter | QtCompat.AlignTop, name_str)
 
             painter.restore()
+
     def _tick_indicator(self):
         """动画tick - 平滑过渡到目标页面"""
         frame_start = time.perf_counter()
@@ -802,13 +859,14 @@ class PopupRendererMixin:
             self._request_page_animation_update()
         else:
             self.update()
+
     def _draw_indicator(self, painter: QPainter, text_color: QColor, accent_color: QColor):
         """绘制页面指示器"""
         dot_size = 5
         active_w = 14
         spacing = 10
         n = len(self.pages)
-        pos = float(getattr(self, '_indicator_pos', self.current_page)) % max(1, n)
+        pos = float(getattr(self, "_indicator_pos", self.current_page)) % max(1, n)
 
         # 计算每个点的实际宽度（插值）
         def dot_w(i):
@@ -829,9 +887,9 @@ class PopupRendererMixin:
             raw_dist = abs(i - pos)
             dist = min(raw_dist, n - raw_dist)
             t = max(0.0, 1.0 - dist)
-            r = int(dim_color.red()   + (accent_color.red()   - dim_color.red())   * t)
+            r = int(dim_color.red() + (accent_color.red() - dim_color.red()) * t)
             g = int(dim_color.green() + (accent_color.green() - dim_color.green()) * t)
-            b = int(dim_color.blue()  + (accent_color.blue()  - dim_color.blue())  * t)
+            b = int(dim_color.blue() + (accent_color.blue() - dim_color.blue()) * t)
             a = int(dim_color.alpha() + (accent_color.alpha() - dim_color.alpha()) * t)
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(QColor(r, g, b, a)))
@@ -852,8 +910,16 @@ class PopupRendererMixin:
             return QColor(255, 159, 10)
         return QColor(201, 92, 0)
 
-    def _draw_dock(self, painter: QPainter, text_color: QColor, hover_color: QColor,
-                   dock_bg: QColor, drop_highlight_color: QColor, bg_mode: str = 'theme', border_color: QColor = None):
+    def _draw_dock(
+        self,
+        painter: QPainter,
+        text_color: QColor,
+        hover_color: QColor,
+        dock_bg: QColor,
+        drop_highlight_color: QColor,
+        bg_mode: str = "theme",
+        border_color: QColor = None,
+    ):
         """绘制 Dock 栏"""
         if self.dock_height <= 0:
             return
@@ -864,7 +930,7 @@ class PopupRendererMixin:
         dock_bg.setAlpha(self.settings.dock_bg_alpha_255)
         painter.setBrush(QBrush(dock_bg))
         painter.setPen(QtCompat.NoPen)
-        radius = getattr(self.settings, 'dock_corner_radius', 10)
+        radius = getattr(self.settings, "dock_corner_radius", 10)
         painter.drawRoundedRect(6, dock_y, self.width() - 12, self.dock_height, radius, radius)
 
         # 顶部分隔线 — 极细纯黑（关闭抗锯齿保证清晰）
@@ -874,7 +940,7 @@ class PopupRendererMixin:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         # Dock 行数模式
-        dock_height_mode = getattr(self.settings, 'dock_height_mode', 1)
+        dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
         visible_count = len(self.dock_items)
 
         # 如果只有一行，按列数限制
@@ -887,9 +953,9 @@ class PopupRendererMixin:
         # 计算起始X坐标 (居中)
         # 如果是多行，按满行计算居中；如果是单行且不足满行，按实际数量计算居中
         if dock_height_mode > 1 and visible_count > max_cols:
-             line_width = max_cols * self.cell_size
+            line_width = max_cols * self.cell_size
         else:
-             line_width = min(visible_count, max_cols) * self.cell_size
+            line_width = min(visible_count, max_cols) * self.cell_size
 
         start_x = (self.width() - line_width) // 2
 
@@ -918,7 +984,7 @@ class PopupRendererMixin:
 
             # ===== 绘制背景 =====
             is_dark = self.settings.theme == "dark"
-            use_card = (bg_mode == 'acrylic')
+            use_card = bg_mode == "acrylic"
 
             if use_card:
                 card_pad = 2
@@ -968,9 +1034,10 @@ class PopupRendererMixin:
         if not hasattr(self, "pages") or not self.pages:
             return
         try:
-            (theme_bg, text_color, hover_color, border_color,
-             accent_color, dock_bg, drop_highlight_color) = self._get_theme_colors()
-            bg_mode = getattr(self.settings, 'bg_mode', 'theme')
+            (theme_bg, text_color, hover_color, border_color, accent_color, dock_bg, drop_highlight_color) = (
+                self._get_theme_colors()
+            )
+            bg_mode = getattr(self.settings, "bg_mode", "theme")
 
             # Pre-render animation pixmaps for all pages
             for page_idx in range(len(self.pages)):
@@ -985,9 +1052,7 @@ class PopupRendererMixin:
                             pass
 
                 # Pre-render the page animation pixmap
-                self._get_page_animation_pixmap(
-                    page_idx, text_color, hover_color, drop_highlight_color, bg_mode
-                )
+                self._get_page_animation_pixmap(page_idx, text_color, hover_color, drop_highlight_color, bg_mode)
             logger.debug(f"Preloaded page animation pixmaps for {len(self.pages)} pages successfully.")
         except Exception as e:
             logger.debug(f"preload page animation pixmaps failed: {e}")

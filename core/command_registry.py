@@ -33,6 +33,10 @@ class CommandAction:
     type: str = "copy"
     label: str = ""
     value: str = ""
+    enabled: bool = True
+    danger: bool = False
+    primary: bool = False
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -59,9 +63,11 @@ class CommandResult:
 
 
 def limit_command_result_actions(result: CommandResult) -> CommandResult:
-    """Keep the compact result panel from overflowing with action buttons."""
-    if result.actions and len(result.actions) > MAX_COMMAND_RESULT_ACTIONS:
-        result.actions = result.actions[:MAX_COMMAND_RESULT_ACTIONS]
+    """Compatibility hook retained for old callers.
+
+    Compact legacy surfaces decide how many actions to render; the model keeps
+    the full action list for the independent command panel.
+    """
     return result
 
 
@@ -80,6 +86,7 @@ class CommandDefinition:
     sensitive: bool = False
     interaction_mode: str = COMMAND_INTERACTION_PANEL
     search_terms: list[str] = field(default_factory=list)
+    result_window_size: str = ""
 
 
 # ============================================================

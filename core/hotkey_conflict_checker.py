@@ -62,13 +62,13 @@ def normalize_hotkey(hotkey_str: str) -> str:
 
     return result.title()
 
+
 # 新增：在模块加载时一次性计算出规范化后的哈希字典，将冲突判断优化至 O(1)
-_NORMALIZED_SYSTEM_HOTKEYS = {
-    normalize_hotkey(k): v for k, v in SYSTEM_HOTKEYS.items()
-}
+_NORMALIZED_SYSTEM_HOTKEYS = {normalize_hotkey(k): v for k, v in SYSTEM_HOTKEYS.items()}
 
 _NORMALIZED_COMMON_CONFLICTS = {
-    normalize_hotkey(k): v for k, v in {
+    normalize_hotkey(k): v
+    for k, v in {
         "Ctrl+S": "保存（常用）",
         "Ctrl+O": "打开（常用）",
         "Ctrl+N": "新建（常用）",
@@ -151,21 +151,40 @@ def _get_vk_code(key: str) -> int:
 
     # 字母和数字
     if len(key_upper) == 1:
-        if 'A' <= key_upper <= 'Z':
+        if "A" <= key_upper <= "Z":
             return ord(key_upper)
-        if '0' <= key_upper <= '9':
+        if "0" <= key_upper <= "9":
             return ord(key_upper)
 
     # 功能键
     vk_map = {
-        "F1": 0x70, "F2": 0x71, "F3": 0x72, "F4": 0x73,
-        "F5": 0x74, "F6": 0x75, "F7": 0x76, "F8": 0x77,
-        "F9": 0x78, "F10": 0x79, "F11": 0x7A, "F12": 0x7B,
-        "SPACE": 0x20, "ENTER": 0x0D, "ESC": 0x1B,
-        "TAB": 0x09, "BACKSPACE": 0x08, "DELETE": 0x2E,
-        "INSERT": 0x2D, "HOME": 0x24, "END": 0x23,
-        "PAGEUP": 0x21, "PAGEDOWN": 0x22,
-        "LEFT": 0x25, "UP": 0x26, "RIGHT": 0x27, "DOWN": 0x28,
+        "F1": 0x70,
+        "F2": 0x71,
+        "F3": 0x72,
+        "F4": 0x73,
+        "F5": 0x74,
+        "F6": 0x75,
+        "F7": 0x76,
+        "F8": 0x77,
+        "F9": 0x78,
+        "F10": 0x79,
+        "F11": 0x7A,
+        "F12": 0x7B,
+        "SPACE": 0x20,
+        "ENTER": 0x0D,
+        "ESC": 0x1B,
+        "TAB": 0x09,
+        "BACKSPACE": 0x08,
+        "DELETE": 0x2E,
+        "INSERT": 0x2D,
+        "HOME": 0x24,
+        "END": 0x23,
+        "PAGEUP": 0x21,
+        "PAGEDOWN": 0x22,
+        "LEFT": 0x25,
+        "UP": 0x26,
+        "RIGHT": 0x27,
+        "DOWN": 0x28,
     }
 
     return vk_map.get(key_upper, 0)

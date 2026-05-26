@@ -76,9 +76,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
                                 theme = self._get_theme()
                                 self._timer = QTimer()
                                 self._timer.setSingleShot(True)
-                                self._timer.timeout.connect(
-                                    lambda t=tip, th=theme: CustomToolTip.showToolTip(t, th)
-                                )
+                                self._timer.timeout.connect(lambda t=tip, th=theme: CustomToolTip.showToolTip(t, th))
                                 self._timer.start(500)
                 elif event.type() == QEvent.Leave:
                     if self._timer:
@@ -87,9 +85,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
                     CustomToolTip.hideToolTip()
                 return False
 
-        viewport._tooltip_filter = _TooltipFilter(
-            self.list_widget, lambda: getattr(self, "_theme", "dark")
-        )
+        viewport._tooltip_filter = _TooltipFilter(self.list_widget, lambda: getattr(self, "_theme", "dark"))
         viewport.installEventFilter(viewport._tooltip_filter)
 
     def _apply_content_theme(self):

@@ -7,18 +7,16 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from core import DEFAULT_SPECIAL_APPS, DataManager
+from core import DataManager
 from core.i18n import tr
 from qt_compat import (
     QBrush,
     QColor,
     QDialog,
     QEasingCurve,
-    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
-    QGraphicsOpacityEffect,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -28,7 +26,6 @@ from qt_compat import (
     QPixmap,
     QPoint,
     QPropertyAnimation,
-    QParallelAnimationGroup,
     QPushButton,
     QRectF,
     QSize,
@@ -42,7 +39,6 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import StyleSheet
-from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.window_effect import get_window_effect
 
@@ -59,8 +55,10 @@ from .settings_system_page import SettingsSystemPageMixin
 
 logger = logging.getLogger(__name__)
 
+
 class CompactProgressDialog(QDialog):
     """紧凑型进度/状态对话框 - 模糊半透明背景"""
+
     def __init__(self, parent, title, theme="dark"):
         super().__init__(parent)
         self.theme = theme
@@ -74,6 +72,7 @@ class CompactProgressDialog(QDialog):
         self.setWindowOpacity(0)
 
         from ui.utils.window_effect import is_win11
+
         self.corner_radius = 8 if is_win11() else 12
         self._acrylic_applied = False
         self._dialog_finished = False
@@ -142,6 +141,7 @@ class CompactProgressDialog(QDialog):
         main_layout.addLayout(self.btn_layout)
 
         from ui.styles.style import get_dialog_stylesheet
+
         self.setStyleSheet(get_dialog_stylesheet(self.theme))
 
     def paintEvent(self, event):
@@ -150,6 +150,7 @@ class CompactProgressDialog(QDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
 
         from ui.utils.window_effect import is_win10
+
         if is_win10():
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
@@ -158,9 +159,7 @@ class CompactProgressDialog(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
         )
 
         # 磨砂玻璃模式：与ThemedMessageBox完全一致
@@ -183,6 +182,7 @@ class CompactProgressDialog(QDialog):
         self._dialog_finished = False
         self.adjustSize()
         from ui.utils.dialog_helper import center_dialog_on_main_window
+
         center_dialog_on_main_window(self)
         if not self._acrylic_applied:
             self._acrylic_applied = True
@@ -215,6 +215,7 @@ class CompactProgressDialog(QDialog):
             if self._dialog_finished or not self.isVisible():
                 return
             from ui.utils.window_effect import enable_acrylic_for_config_window, is_win11
+
             hwnd = int(self.winId())
             if not hwnd:
                 return
@@ -261,6 +262,7 @@ class CompactProgressDialog(QDialog):
         self.ok_btn.setVisible(True)
         self.adjustSize()
 
+
 from ui.utils.smooth_scroll import SmoothScrollArea
 
 
@@ -271,9 +273,10 @@ class NavigationItem(QListWidgetItem):
         self.setTextAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
         self.setSizeHint(QSize(0, 40))
 
+
 class NavigationItemWidget(QWidget):
     """Custom navigation item widget with theme-aware styling."""
-    
+
     def __init__(self, text, icon, theme="dark", parent=None):
         super().__init__(parent)
         self.text = text
@@ -281,6 +284,7 @@ class NavigationItemWidget(QWidget):
         self.theme = theme
         self.item = None  # Reference to QListWidgetItem
         self.setMouseTracking(True)
+
     def sizeHint(self) -> QSize:
         fm = self.fontMetrics()
         h = max(19, fm.height()) + 22  # 22px padding total (11px top/bottom), scales perfectly with high-DPI
@@ -289,7 +293,7 @@ class NavigationItemWidget(QWidget):
     def update_icon(self, new_icon):
         self.icon = new_icon
         self.update()
-        
+
     def leaveEvent(self, event):
         self.update()
         super().leaveEvent(event)
@@ -297,17 +301,17 @@ class NavigationItemWidget(QWidget):
     def enterEvent(self, event):
         self.update()
         super().enterEvent(event)
-        
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         # Determine selection and hover states
         is_selected = False
         if self.item is not None:
             is_selected = self.item.isSelected()
         is_hovered = self.underMouse()
-        
+
         # Draw hover background
         if is_hovered and not is_selected:
             if self.theme == "dark":
@@ -317,26 +321,33 @@ class NavigationItemWidget(QWidget):
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
             painter.drawRoundedRect(QRectF(self.rect()).adjusted(8, 2, -8, -2), 6, 6)
-            
+
         # Draw icon
         if self.icon:
             pixmap = self.icon.pixmap(19, 19)
             y = (self.height() - pixmap.height()) // 2
             painter.drawPixmap(14, y, pixmap)
-            
+
         # Draw text
         if self.theme == "dark":
-            text_color = QColor(255, 255, 255, 242) if is_selected else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 150))
+            text_color = (
+                QColor(255, 255, 255, 242)
+                if is_selected
+                else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 150))
+            )
         else:
-            text_color = QColor(0, 0, 0, 242) if is_selected else (QColor(0, 0, 0, 200) if is_hovered else QColor(0, 0, 0, 150))
-            
+            text_color = (
+                QColor(0, 0, 0, 242) if is_selected else (QColor(0, 0, 0, 200) if is_hovered else QColor(0, 0, 0, 150))
+            )
+
         painter.setPen(text_color)
         from ui.utils.font_manager import get_qfont
+
         painter.setFont(get_qfont(12))
-        
+
         text_rect = QRectF(38, 0, self.width() - 48, self.height())
         painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
-        
+
         painter.end()
 
 
@@ -350,44 +361,45 @@ class NavigationWidget(QListWidget):
         self.setSpacing(4)
         self.setIconSize(QSize(19, 19))
         from ui.utils.font_manager import get_qfont
+
         self.setFont(get_qfont(13))
-        
+
         self.theme = "dark"
         self._pill_rect = QRectF()
         self._pill_opacity = 0.0
         self._pill_rect_anim = None
         self._pill_opacity_anim = None
-        
+
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
-        
+
     @pyqtProperty(QRectF)
     def pill_rect(self) -> QRectF:
         return self._pill_rect
-        
+
     @pill_rect.setter
     def pill_rect(self, rect: QRectF):
         self._pill_rect = rect
         self.viewport().update()
-        
+
     @pyqtProperty(float)
     def pill_opacity(self) -> float:
         return self._pill_opacity
-        
+
     @pill_opacity.setter
     def pill_opacity(self, opacity: float):
         self._pill_opacity = opacity
         self.viewport().update()
-        
+
     def _on_selection_changed(self, selected, deselected):
         curr_indexes = self.selectedIndexes()
         if curr_indexes:
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
             target_rect = QRectF(visual_rect).adjusted(8, 2, -8, -2)
-            
+
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
-                
+
             if self._pill_rect.isEmpty() or self._pill_opacity < 0.1:
                 self._pill_rect = target_rect
             else:
@@ -397,7 +409,7 @@ class NavigationWidget(QListWidget):
                 self._pill_rect_anim.setEndValue(target_rect)
                 self._pill_rect_anim.setEasingCurve(QEasingCurve.OutCubic)
                 self._pill_rect_anim.start()
-                
+
             if self._pill_opacity_anim is not None:
                 self._pill_opacity_anim.stop()
             self._pill_opacity_anim = QPropertyAnimation(self, b"pill_opacity")
@@ -415,11 +427,11 @@ class NavigationWidget(QListWidget):
             self._pill_opacity_anim.setEndValue(0.0)
             self._pill_opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
             self._pill_opacity_anim.start()
-        
+
     def apply_theme(self, theme):
         self.theme = theme
         self._apply_nav_icons(theme)
-        
+
         self.setStyleSheet("""
             QListWidget {
                 background-color: transparent;
@@ -445,6 +457,7 @@ class NavigationWidget(QListWidget):
 
     def _apply_nav_icons(self, theme: str):
         from .action_button_icons import create_action_button_icon
+
         for row in range(self.count()):
             item = self.item(row)
             widget = self.itemWidget(item)
@@ -460,18 +473,19 @@ class NavigationWidget(QListWidget):
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)
-            
+
             if self.theme == "dark":
                 pill_color = QColor(255, 255, 255, int(self._pill_opacity * 38))  # rgba(255, 255, 255, 0.15)
             else:
                 pill_color = QColor(0, 0, 0, int(self._pill_opacity * 20))  # rgba(0, 0, 0, 0.08)
-                
+
             painter.setBrush(QBrush(pill_color))
             painter.setPen(QtCompat.NoPen)
             painter.drawRoundedRect(self._pill_rect, 6, 6)
             painter.end()
-            
+
         super().paintEvent(event)
+
 
 class BaseSettingPage(SmoothScrollArea):
     def __init__(self, parent=None):
@@ -482,17 +496,18 @@ class BaseSettingPage(SmoothScrollArea):
         self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)
         # 让 ScrollArea 透明
         self.setStyleSheet("QScrollArea, QWidget#Content { background: transparent; border: none; }")
-        
+
         self.content_widget = QWidget()
         self.content_widget.setObjectName("Content")
         self.setWidget(self.content_widget)
-        
+
         self.layout = QVBoxLayout(self.content_widget)
         self.layout.setContentsMargins(10, 5, 10, 5)
         self.layout.setSpacing(10)
-        
+
     def add_group(self, title):
         from ui.utils.font_manager import get_qfont
+
         group = QGroupBox(tr(title))
         group.setFont(get_qfont(14))
         group.setProperty("settingsGroupTitle", title)
@@ -841,10 +856,7 @@ class BaseSettingPage(SmoothScrollArea):
         """应用主题到所有分组标题和按钮"""
         title_color = "rgba(28,28,30,0.9)" if theme == "light" else "rgba(255,255,255,0.9)"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        self.setStyleSheet(
-            "QScrollArea, QWidget#Content { background: transparent; border: none; }"
-            + scrollbar_style
-        )
+        self.setStyleSheet("QScrollArea, QWidget#Content { background: transparent; border: none; }" + scrollbar_style)
         try:
             self.verticalScrollBar().setStyleSheet(scrollbar_style)
             self.horizontalScrollBar().setStyleSheet(scrollbar_style)
@@ -879,6 +891,7 @@ class BaseSettingPage(SmoothScrollArea):
 
         # 应用按钮样式 — 与主窗口底部按钮一致
         from ui.styles.style import Glassmorphism
+
         btn_style = Glassmorphism.get_action_button_style(theme, is_compact=False, is_delete=False)
         compact_btn_style = Glassmorphism.get_action_button_style(theme, is_compact=True, is_delete=False)
         delete_btn_style = Glassmorphism.get_action_button_style(theme, is_compact=False, is_delete=True)
@@ -893,38 +906,51 @@ class BaseSettingPage(SmoothScrollArea):
             else:
                 btn.setStyleSheet(btn_style)
 
-class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsAppearancePageMixin, SettingsPopupPageMixin, SettingsDataPageMixin, SettingsAboutPageMixin, SettingsDataActionsMixin, SettingsPluginsPageMixin, SettingsCommandsPageMixin, SettingsSupportPageMixin, QWidget):
+
+class SettingsPanel(
+    SettingsPageHelpersMixin,
+    SettingsSystemPageMixin,
+    SettingsAppearancePageMixin,
+    SettingsPopupPageMixin,
+    SettingsDataPageMixin,
+    SettingsAboutPageMixin,
+    SettingsDataActionsMixin,
+    SettingsPluginsPageMixin,
+    SettingsCommandsPageMixin,
+    SettingsSupportPageMixin,
+    QWidget,
+):
     settings_changed = pyqtSignal()
     command_settings_changed = pyqtSignal()
     import_completed = pyqtSignal(int)
     back_requested = pyqtSignal()
     hotkey_recording_changed = pyqtSignal(bool)
     special_apps_changed = pyqtSignal()
-    
+
     def __init__(self, data_manager: DataManager, tray_app=None):
         super().__init__()
         self.data_manager = data_manager
         self.tray_app = tray_app
         self._updating = False
         self.current_theme = "dark"
-        
+
         self.export_thread = None
         self.import_thread = None
-        
+
         # 滑杆防抖动定时器 - 滑动结束后才触发设置变更
         self._slider_debounce_timer = QTimer(self)
         self._slider_debounce_timer.setSingleShot(True)
         self._slider_debounce_timer.setInterval(150)  # 150ms 防抖动
         self._slider_debounce_timer.timeout.connect(self._emit_slider_settings_changed)
         self._pending_slider_change = False
-        
+
         self._setup_ui()
         self._load_settings()
 
     def _get_desc_color(self):
         """获取描述文字颜色"""
         return "#b0b0b5" if self.current_theme == "dark" else "#666666"
-        
+
     def apply_theme(self, theme: str):
         """应用主题样式"""
         self.current_theme = theme
@@ -951,59 +977,75 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             """
         self.nav_container.setStyleSheet(container_style)
         self.content_container.setStyleSheet(container_style)
-        
+
         # 内容区域统一使用 Glassmorphism 样式
         try:
             from ui.styles.style import Glassmorphism
 
             from .settings_helpers import SwitchButton
             from .theme_helper import get_radio_stylesheet, get_switch_stylesheet
-            
+
             # 综合样式表
             full_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
             full_style += get_switch_stylesheet(theme)
             full_style += get_radio_stylesheet(theme)
-            
+
             # 设置主样式
             self.setStyleSheet(full_style)
-            
+
             # 为 QLabel 标题等设置特定样式 (如果需要)
             text_color = "rgba(255, 255, 255, 0.9)" if theme == "dark" else "rgba(28, 28, 30, 0.9)"
             self.setStyleSheet(self.styleSheet() + f"\nQLabel {{ color: {text_color}; }}")
-            
+
             # 更新自定义开关按钮的主题背景与文字颜色
             for btn in self.findChildren(SwitchButton):
                 btn.set_theme(theme)
-            
+
         except Exception as e:
             logger.debug("Failed to apply SettingsPanel theme: %s", e, exc_info=True)
 
         # Apply theme to all pages (for updating group box titles)
         pages = [
-            self.page_system, self.page_appearance, self.page_popup,
-            self.page_data, self.page_plugins, self.page_commands,
-            self.page_about, self.page_support,
+            self.page_system,
+            self.page_appearance,
+            self.page_popup,
+            self.page_data,
+            self.page_plugins,
+            self.page_commands,
+            self.page_about,
+            self.page_support,
         ]
         for page in pages:
-            if hasattr(page, 'apply_theme'):
+            if hasattr(page, "apply_theme"):
                 page.apply_theme(theme)
 
         # 更新描述文字颜色
         desc_color = self._get_desc_color()
-        for obj_name in ["data_desc_1", "data_desc_2", "data_desc_3", "context_menu_desc", "plugins_desc", "fav_desc", "disable_desc"]:
+        for obj_name in [
+            "data_desc_1",
+            "data_desc_2",
+            "data_desc_3",
+            "context_menu_desc",
+            "plugins_desc",
+            "fav_desc",
+            "disable_desc",
+        ]:
             label = self.findChild(QLabel, obj_name)
             if label:
                 style = label.styleSheet()
                 import re
-                new_style = re.sub(r'color:\s*#[0-9a-fA-F]{6};', f'color: {desc_color};', style)
+
+                new_style = re.sub(r"color:\s*#[0-9a-fA-F]{6};", f"color: {desc_color};", style)
                 label.setStyleSheet(new_style)
 
         # 更新右键菜单卡片描述
-        if hasattr(self, 'context_menu_cards'):
+        if hasattr(self, "context_menu_cards"):
             for menu_id, card in self.context_menu_cards.items():
                 desc_label = card.findChild(QLabel, f"desc_{menu_id}")
                 if desc_label:
-                    desc_label.setStyleSheet(f"{get_font_css_with_size(11, 400)} color: {desc_color}; background: transparent; border: none;")
+                    desc_label.setStyleSheet(
+                        f"{get_font_css_with_size(11, 400)} color: {desc_color}; background: transparent; border: none;"
+                    )
 
         # 触发插件与命令列表的主题重绘刷新
         if 4 in self._initialized_pages:
@@ -1014,9 +1056,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
                 self._refresh_command_settings()
             finally:
                 self._command_refresh_apply_theme = True
-        
 
-        
     def _setup_ui(self):
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
@@ -1051,7 +1091,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         # === 添加页面 ===
         self._init_pages()
         self._init_nav_items()
-        
+
     def _init_pages(self):
         # 页面构建函数映射（索引 -> 构建方法）
         self._page_builders = {
@@ -1073,9 +1113,14 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
 
         # 为所有页面创建空的 BaseSettingPage 占位
         page_attrs = [
-            'page_system', 'page_appearance', 'page_popup',
-            'page_data', 'page_plugins', 'page_commands', 'page_about',
-            'page_support',
+            "page_system",
+            "page_appearance",
+            "page_popup",
+            "page_data",
+            "page_plugins",
+            "page_commands",
+            "page_about",
+            "page_support",
         ]
         for i in range(8):
             page = BaseSettingPage()
@@ -1103,7 +1148,7 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         # 应用当前主题
         try:
             theme = self.data_manager.get_settings().theme
-            if hasattr(page, 'apply_theme'):
+            if hasattr(page, "apply_theme"):
                 page.apply_theme(theme)
         except Exception:
             pass
@@ -1119,26 +1164,27 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             ("支持一下", 7, "support"),
             ("关于软件", 6, "about"),
         ]
-        
+
         for text, index, icon_name in items:
             item = NavigationItem(tr(text), icon_name)
             item.setData(QtCompat.UserRole, index)
             self.nav_widget.addItem(item)
-            
+
             # Create Custom NavigationItemWidget
             from .action_button_icons import create_action_button_icon
+
             icon = create_action_button_icon(icon_name, self.current_theme, 19)
-            
+
             widget = NavigationItemWidget(tr(text), icon, self.current_theme, self.nav_widget)
             widget.item = item
-            
+
             # Clear QListWidgetItem text to prevent default text rendering (eliminates ghosting/overlapping)
             item.setText("")
-            
+
             item.setSizeHint(widget.sizeHint())
-            
+
             self.nav_widget.setItemWidget(item, widget)
-            
+
         self.nav_widget.setCurrentRow(0)
 
     def _current_page_scroll_value(self, index: int) -> int:
@@ -1158,129 +1204,6 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             page.verticalScrollBar().setValue(value)
         except Exception:
             pass
-
-    def _rebuild_pages_for_language(self, current_index=0, scroll_value=0):
-        """Rebuild settings pages so translated source strings are recreated."""
-        self.nav_widget.blockSignals(True)
-        self.nav_widget.clear()
-
-        while self.content_stack.count():
-            widget = self.content_stack.widget(0)
-            self.content_stack.removeWidget(widget)
-            widget.deleteLater()
-
-        self._init_pages()
-        self._init_nav_items()
-
-        target_index = current_index if 0 <= current_index < self.content_stack.count() else 0
-        self._ensure_page_built(target_index)
-        self.content_stack.setCurrentIndex(target_index)
-        for row in range(self.nav_widget.count()):
-            item = self.nav_widget.item(row)
-            if item and item.data(QtCompat.UserRole) == target_index:
-                self.nav_widget.setCurrentRow(row)
-                break
-        self.nav_widget.blockSignals(False)
-        self._restore_page_scroll_value(target_index, scroll_value)
-        QTimer.singleShot(0, lambda: self._restore_page_scroll_value(target_index, scroll_value))
-
-    def _language_fade_targets(self):
-        return (self.nav_container, self.content_container)
-
-    def _set_language_fade_opacity(self, opacity: float):
-        for widget in self._language_fade_targets():
-            effect = widget.graphicsEffect()
-            if not isinstance(effect, QGraphicsOpacityEffect):
-                effect = QGraphicsOpacityEffect(widget)
-                widget.setGraphicsEffect(effect)
-            effect.setOpacity(opacity)
-
-    def _clear_language_fade_effects(self):
-        for widget in self._language_fade_targets():
-            try:
-                widget.setGraphicsEffect(None)
-            except Exception:
-                pass
-
-    def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
-        group = QParallelAnimationGroup(self)
-        for widget in self._language_fade_targets():
-            effect = widget.graphicsEffect()
-            if not isinstance(effect, QGraphicsOpacityEffect):
-                effect = QGraphicsOpacityEffect(widget)
-                widget.setGraphicsEffect(effect)
-            effect.setOpacity(start)
-            anim = QPropertyAnimation(effect, b"opacity", group)
-            anim.setDuration(duration)
-            anim.setStartValue(start)
-            anim.setEndValue(end)
-            anim.setEasingCurve(easing)
-            group.addAnimation(anim)
-        return group
-
-    def _switch_language_with_animation(self, language: str):
-        """Fade text out, switch language, then fade text back in without movement."""
-        if getattr(self, "_language_animating", False):
-            return
-
-        current_index = self.content_stack.currentIndex()
-        scroll_value = self._current_page_scroll_value(current_index)
-        self._language_animating = True
-
-        self._set_language_fade_opacity(1.0)
-        fade_out = self._build_language_fade_group(1.0, 0.0, 240, QEasingCurve.InOutQuart)
-
-        def apply_language():
-            try:
-                self.data_manager.set_language(language)
-                self._rebuild_pages_for_language(current_index, scroll_value)
-                self._load_settings()
-                self._restore_page_scroll_value(current_index, scroll_value)
-                QTimer.singleShot(0, lambda: self._restore_page_scroll_value(current_index, scroll_value))
-                self.settings_changed.emit()
-            finally:
-                fade_in = self._build_language_fade_group(0.0, 1.0, 280, QEasingCurve.OutCubic)
-
-                def finish():
-                    self._language_animating = False
-                    self._language_fade_out = None
-                    self._language_fade_in = None
-                    self._clear_language_fade_effects()
-
-                fade_in.finished.connect(finish)
-                self._language_fade_in = fade_in
-                fade_in.start()
-
-        fade_out.finished.connect(apply_language)
-        self._language_fade_out = fade_out
-        fade_out.start()
-
-
-
-
-
-
-
-
-
-
-    def _update_ui_state_for_mode(self, mode):
-        # 1. Visual Effects Group Visibility
-        # 跟随主题模式和亚克力模式都隐藏视觉特效调节
-        # 亚克力模式采用和配置窗口一样的磨砂玻璃效果，不需要手动调节模糊度/高光
-        if mode == "theme" or mode == "acrylic":
-            self.visual_effect_group.setVisible(False)
-        else:
-            self.visual_effect_group.setVisible(True)
-            
-        # 2. Window Corner Radius - 所有模式下均可调节圆角
-        # 亚克力模式使用 paintEvent 绘制完美圆角，不再依赖 DWM
-        if not self.corner_spin.isEnabled() or self.corner_spin.value() == 0:
-            settings = self.data_manager.get_settings()
-            self.corner_spin.blockSignals(True)
-            self.corner_spin.setValue(settings.corner_radius)
-            self.corner_spin.blockSignals(False)
-        self.corner_spin.setEnabled(True)
 
     def _on_nav_changed(self):
         items = self.nav_widget.selectedItems()
@@ -1328,170 +1251,14 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
         finally:
             self._updating = old_updating
 
-    def _load_system_settings(self, settings):
-        try:
-            from core.auto_start_manager import get_auto_start_check_result
-            actual_enabled, auto_start_reason = get_auto_start_check_result()
-            desired_enabled = bool(settings.auto_start)
-
-            if actual_enabled:
-                if not desired_enabled:
-                    self.data_manager.update_settings(auto_start=True)
-                self.auto_start_cb.setToolTip("")
-                self.auto_start_cb.setChecked(True)
-            elif desired_enabled:
-                logger.warning("配置要求开机自启，但任务缺失或定义已过期；设置页已同步为关闭: %s", auto_start_reason)
-                self.data_manager.update_settings(auto_start=False)
-                self.auto_start_cb.setToolTip(f"开机自启任务缺失或定义已过期，已切换为关闭。原因: {auto_start_reason}")
-                self.auto_start_cb.setChecked(False)
-            else:
-                self.auto_start_cb.setToolTip("")
-                self.auto_start_cb.setChecked(False)
-        except Exception as e:
-            logger.debug("Failed to load auto-start state: %s", e, exc_info=True)
-            self.auto_start_cb.setToolTip("检测开机自启状态失败，请查看日志。")
-            self.auto_start_cb.setChecked(False)
-
-        self.show_on_startup_cb.setChecked(settings.show_on_startup)
-        self.hw_accel_cb.setChecked(settings.hardware_acceleration)
-        self.hide_tray_cb.setChecked(settings.hide_tray_icon)
-        self.disable_logging_cb.setChecked(getattr(settings, 'disable_logging', False))
-        self.debug_log_cb.setChecked(getattr(settings, 'enable_debug_log', False))
-        self.auto_update_cb.setChecked(getattr(settings, 'auto_update_enabled', False))
-        self.sleep_mode_cb.setChecked(getattr(settings, 'sleep_mode_enabled', True))
-
-        # 排序方式
-        sort_mode = getattr(settings, 'sort_mode', 'custom')
-        if sort_mode == 'smart':
-            self.smart_sort_radio.setChecked(True)
-        else:
-            self.custom_sort_radio.setChecked(True)
-
-        # 主题设置
-        follow_system = getattr(settings, 'theme_follow_system', True)
-        if follow_system:
-            self.follow_system_radio.setChecked(True)
-        elif settings.theme == "dark":
-            self.dark_radio.setChecked(True)
-        else:
-            self.light_radio.setChecked(True)
-
-        language = getattr(settings, "language", "zh_CN")
-        if language == "en_US":
-            self.english_radio.setChecked(True)
-        else:
-            self.chinese_radio.setChecked(True)
-
-    def _load_appearance_settings(self, settings):
-        self.icon_size_spin.setValue(settings.icon_size)
-        self.cell_size_spin.setValue(settings.cell_size)
-        self.cols_spin.setValue(settings.cols)
-        self.corner_spin.setValue(settings.corner_radius)
-
-        if not settings.dock_enabled:
-            self.dock_height_spin.setValue(0)
-        else:
-            self.dock_height_spin.setValue(settings.dock_height_mode)
-
-        self.popup_max_rows_spin.setValue(getattr(settings, 'popup_max_rows', 3))
-
-        self.bg_alpha_slider.setValue(settings.bg_alpha)
-        self.bg_alpha_label.setText(f"{settings.bg_alpha}%")
-        self.dock_bg_alpha_slider.setValue(settings.dock_bg_alpha)
-        self.dock_bg_alpha_label.setText(f"{settings.dock_bg_alpha}%")
-        self.icon_alpha_slider.setValue(int(settings.icon_alpha * 100))
-        self.icon_alpha_label.setText(f"{int(settings.icon_alpha * 100)}%")
-
-        self.bg_path_edit.setText(settings.custom_bg_path)
-
-        self.blur_radius_slider.setValue(settings.bg_blur_radius)
-        self.blur_radius_label.setText(str(settings.bg_blur_radius))
-
-        self.edge_opacity_slider.setValue(int(settings.edge_highlight_opacity * 100))
-        self.edge_opacity_label.setText(f"{int(settings.edge_highlight_opacity * 100)}%")
-
-        current_alpha = settings.bg_alpha
-        current_blur = settings.bg_blur_radius
-        current_edge = settings.edge_highlight_opacity
-
-        if settings.bg_mode == "theme":
-            self.bg_theme_radio.setChecked(True)
-            self.bg_image_widget.setVisible(False)
-            current_alpha = getattr(settings, 'theme_bg_alpha', 90)
-            current_blur = getattr(settings, 'theme_blur_radius', 0)
-            current_edge = getattr(settings, 'theme_edge_opacity', 0.0)
-        elif settings.bg_mode == "image":
-            self.bg_image_radio.setChecked(True)
-            self.bg_image_widget.setVisible(True)
-            current_alpha = getattr(settings, 'image_bg_alpha', 90)
-            current_blur = getattr(settings, 'image_blur_radius', 0)
-            current_edge = getattr(settings, 'image_edge_opacity', 0.0)
-        elif settings.bg_mode == "acrylic":
-            self.bg_acrylic_radio.setChecked(True)
-            self.bg_image_widget.setVisible(False)
-            current_alpha = getattr(settings, 'acrylic_bg_alpha', 90)
-            current_blur = getattr(settings, 'acrylic_blur_radius', 0)
-            current_edge = getattr(settings, 'acrylic_edge_opacity', 0.0)
-
-        self.bg_alpha_slider.blockSignals(True)
-        self.bg_alpha_slider.setValue(current_alpha)
-        self.bg_alpha_slider.blockSignals(False)
-        self.bg_alpha_label.setText(f"{current_alpha}%")
-
-        self.blur_radius_slider.blockSignals(True)
-        self.blur_radius_slider.setValue(current_blur)
-        self.blur_radius_slider.blockSignals(False)
-        self.blur_radius_label.setText(str(current_blur))
-
-        self.edge_opacity_slider.blockSignals(True)
-        self.edge_opacity_slider.setValue(int(current_edge * 100))
-        self.edge_opacity_slider.blockSignals(False)
-        self.edge_opacity_label.setText(f"{int(current_edge * 100)}%")
-
-        self._update_ui_state_for_mode(settings.bg_mode)
-
-        self.bg_path_edit.setText(settings.custom_bg_path)
-
-    def _load_popup_settings(self, settings):
-        if settings.popup_align_mode == "mouse_top_left":
-            self.pos_mouse_tl.setChecked(True)
-        else:
-            self.pos_mouse_center.setChecked(True)
-
-        popup_auto_close = getattr(settings, 'popup_auto_close', True)
-        if popup_auto_close:
-            self.auto_close_yes.setChecked(True)
-        else:
-            self.auto_close_no.setChecked(True)
-        self.delay_widget.setVisible(popup_auto_close)
-
-        if getattr(settings, 'popup_multi_open_when_pinned', False):
-            self.multi_open_pinned_yes.setChecked(True)
-        else:
-            self.multi_open_pinned_no.setChecked(True)
-
-        self.delay_slider.setValue(settings.hover_leave_delay)
-        self.delay_label.setText(f"{settings.hover_leave_delay}ms")
-
-        double_click_interval = getattr(settings, 'double_click_interval', 300)
-        self.double_click_slider.setValue(double_click_interval)
-        self.double_click_label.setText(f"{double_click_interval}ms")
-
-        self.special_apps_list.clear()
-        for app in settings.special_apps:
-            item = QListWidgetItem(app)
-            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
-            self.special_apps_list.addItem(item)
-
-
     # === Slider Debounce ===
-    
+
     def _emit_slider_settings_changed(self):
         """防抖动定时器触发时发送设置变更信号"""
         if self._pending_slider_change:
             self._pending_slider_change = False
             self.settings_changed.emit()
-    
+
     def _schedule_slider_settings_changed(self):
         """使用防抖动延迟发送设置变更信号（用于滑杆）"""
         self._pending_slider_change = True
@@ -1500,541 +1267,4 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             self._slider_debounce_timer.stop()
         self._slider_debounce_timer.start()
 
-    # === Event Handlers ===
-    
-    def _on_auto_start_changed(self, state):
-        if self._updating:
-            return
-
-        checked = state == 2
-        import logging
-        logger = logging.getLogger(__name__)
-
-        if checked:
-            self._updating = True
-            from core.auto_start_manager import enable_auto_start
-
-            success, method = enable_auto_start()
-            logger.info(f"开机自启：启用结果 success={success}, method={method}")
-
-            if success:
-                self.data_manager.update_settings(auto_start=True)
-                self._updating = False
-                return
-
-            self.data_manager.update_settings(auto_start=False)
-            self._updating = False
-            logger.error("开机自启：启用失败")
-
-            if method == "cancelled":
-                ThemedMessageBox.warning(self, "已取消", "你取消了管理员授权，自启动未启用。")
-            else:
-                ThemedMessageBox.critical(
-                    self,
-                    "启用失败",
-                    "helper 创建开机自启失败。\n\n请检查 UAC、任务计划程序服务和日志。"
-                )
-            QTimer.singleShot(0, lambda: self._reset_checkbox_state(False))
-            return
-
-        self._updating = True
-        logger.info("开机自启：开始禁用")
-        from core.auto_start_manager import disable_auto_start
-
-        success, method = disable_auto_start()
-
-        try:
-            from core.service_manager import _cleanup_legacy_service
-            _cleanup_legacy_service()
-        except Exception:
-            pass
-
-        if success:
-            self.data_manager.update_settings(auto_start=False)
-            self._updating = False
-            logger.info("开机自启：禁用完成")
-            return
-
-        self._updating = False
-        if method == "cancelled":
-            ThemedMessageBox.warning(self, "已取消", "你取消了管理员授权，自启动保持原状。")
-        else:
-            ThemedMessageBox.critical(self, "禁用失败", "helper 禁用开机自启失败，自启动保持原状。")
-        QTimer.singleShot(0, lambda: self._reset_checkbox_state(True))
-
-    def _reset_checkbox_state(self, checked):
-        self._updating = True
-        self.auto_start_cb.setChecked(checked)
-        self._updating = False
-
-    def _on_startup_show_changed(self, state):
-        if self._updating: return
-        self.data_manager.update_settings(show_on_startup=(state == 2))
-
-    def _on_hw_accel_changed(self, state):
-        if self._updating: return
-        self.data_manager.update_settings(hardware_acceleration=(state == 2))
-
-    def _on_hide_tray_changed(self, state):
-        if self._updating: return
-        checked = state == 2
-        self.data_manager.update_settings(hide_tray_icon=checked)
-        if checked:
-            ThemedMessageBox.information(
-                self,
-                "提示",
-                "托盘图标已隐藏。\n如需再次进入设置，请使用内置命令'配置窗口' (show_config_window)。"
-            )
-
-    def _on_disable_logging_changed(self, state):
-        if self._updating: return
-        checked = state == 2
-        if checked:
-            reply = ThemedMessageBox.question(
-                self,
-                "确认关闭日志",
-                "关闭日志后将停止记录运行日志到 error.log 文件。\n\n"
-                "这将减少硬盘写入，但可能影响问题排查。\n配置信息仍会正常保存。\n\n"
-                "确定要关闭日志记录吗？"
-            )
-            if reply == ThemedMessageBox.Yes:
-                self.data_manager.update_settings(disable_logging=True)
-                # 动态移除文件日志处理器
-                import logging
-                root_logger = logging.getLogger()
-                for handler in root_logger.handlers[:]:
-                    if isinstance(handler, logging.FileHandler):
-                        handler.close()
-                        root_logger.removeHandler(handler)
-            else:
-                self.disable_logging_cb.setChecked(False)
-        else:
-            self.data_manager.update_settings(disable_logging=False)
-            # 提示需要重启才能重新启用日志
-            ThemedMessageBox.warning(
-                self,
-                "需要重启",
-                "重新启用日志需要重启程序才能生效。"
-            )
-
-    def _on_debug_log_changed(self, state):
-        if self._updating: return
-        checked = state == 2
-
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"DEBUG日志开关变更: {checked}")
-
-        # 直接设置属性
-        self.data_manager.data.settings.enable_debug_log = checked
-        logger.info(f"设置后的值: {self.data_manager.data.settings.enable_debug_log}")
-
-        # 立即保存
-        self.data_manager.save(immediate=True)
-        logger.info("已调用 save(immediate=True)")
-
-        if checked:
-            reply = ThemedMessageBox.question(
-                self,
-                "需要重启",
-                "DEBUG日志已开启，需要重启程序才能生效。\n\n是否立即重启？"
-            )
-            if reply == ThemedMessageBox.Yes:
-                self._restart_app()
-
-    def _on_sleep_mode_changed(self, state):
-        if self._updating: return
-        self.data_manager.update_settings(sleep_mode_enabled=(state == 2))
-
-    def _on_auto_update_changed(self, state):
-        if self._updating:
-            return
-        self.data_manager.update_settings(auto_update_enabled=(state == 2))
-
-    def _on_sort_mode_changed(self, button):
-        if self._updating: return
-        mode = "smart" if button == self.smart_sort_radio else "custom"
-        self.data_manager.update_settings(sort_mode=mode)
-
-    def _restart_app(self):
-        """重启应用"""
-        import logging
-        import os
-        import subprocess
-        import sys
-        import tempfile
-
-        logger = logging.getLogger(__name__)
-        logger.info("用户请求重启应用...")
-
-        try:
-            exe = sys.executable
-            is_frozen = getattr(sys, 'frozen', False)
-
-            if not is_frozen and 'python' in os.path.basename(exe).lower():
-                if sys.argv[0].lower().endswith('.exe'):
-                    exe = os.path.abspath(sys.argv[0])
-                    is_frozen = True
-
-            if is_frozen:
-                if not os.path.isabs(exe):
-                    exe = os.path.abspath(exe)
-                cwd = os.path.dirname(exe)
-
-                vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-WScript.Sleep 1000
-WshShell.Run """{exe}""", 0, False
-Set fso = CreateObject("Scripting.FileSystemObject")
-fso.DeleteFile WScript.ScriptFullName
-'''
-                vbs_file = os.path.join(tempfile.gettempdir(), 'quicklauncher_restart.vbs')
-                with open(vbs_file, 'w', encoding='utf-8') as f:
-                    f.write(vbs_content)
-
-                subprocess.Popen(['wscript.exe', vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
-            else:
-                cwd = os.path.dirname(os.path.abspath(__file__))
-                while cwd and not os.path.exists(os.path.join(cwd, 'main.py')):
-                    parent = os.path.dirname(cwd)
-                    if parent == cwd:
-                        break
-                    cwd = parent
-
-                main_py = os.path.join(cwd, 'main.py')
-
-                vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-WScript.Sleep 1000
-WshShell.Run """{exe}"" ""{main_py}""", 0, False
-Set fso = CreateObject("Scripting.FileSystemObject")
-fso.DeleteFile WScript.ScriptFullName
-'''
-                vbs_file = os.path.join(tempfile.gettempdir(), 'quicklauncher_restart.vbs')
-                with open(vbs_file, 'w', encoding='utf-8') as f:
-                    f.write(vbs_content)
-
-                subprocess.Popen(['wscript.exe', vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
-
-            from qt_compat import QApplication, QTimer
-            QTimer.singleShot(100, QApplication.quit)
-
-        except Exception as e:
-            logger.error(f"重启失败: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-
-    def _on_theme_changed(self, button):
-        if self._updating: return
-
-        if button == self.follow_system_radio:
-            system_theme = self._get_system_theme()
-            new_theme = system_theme
-            self.data_manager.update_settings(theme=system_theme, theme_follow_system=True)
-        elif button == self.dark_radio:
-            new_theme = "dark"
-            self.data_manager.update_settings(theme="dark", theme_follow_system=False)
-        else:
-            new_theme = "light"
-            self.data_manager.update_settings(theme="light", theme_follow_system=False)
-
-        # 简单淡入淡出动画
-        self.setUpdatesEnabled(False)
-        self.apply_theme(new_theme)
-        self.setUpdatesEnabled(True)
-        self.update()
-
-        self.settings_changed.emit()
-
-    def _on_language_changed(self, button):
-        if self._updating:
-            return
-
-        new_language = "en_US" if button == self.english_radio else "zh_CN"
-        current_language = getattr(self.data_manager.get_settings(), "language", "zh_CN")
-        if current_language == new_language:
-            return
-
-        self._switch_language_with_animation(new_language)
-
-    def _get_system_theme(self):
-        """检测系统主题"""
-        try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.CloseKey(key)
-            return "light" if value == 1 else "dark"
-        except Exception as e:
-            logger.debug("Failed to detect system theme: %s", e)
-            return "dark"
-
-    def _on_size_changed(self):
-        if self._updating: return
-
-        updates = {
-            "icon_size": self.icon_size_spin.value(),
-            "cell_size": self.cell_size_spin.value(),
-            "cols": self.cols_spin.value(),
-            "popup_max_rows": self.popup_max_rows_spin.value()
-        }
-
-        # Only update corner_radius if the spinbox is enabled
-        if self.corner_spin.isEnabled():
-            updates["corner_radius"] = self.corner_spin.value()
-
-        self.data_manager.update_settings(**updates)
-
-    def _on_dock_size_changed(self):
-        if self._updating: return
-
-        height_val = self.dock_height_spin.value()
-        enabled = height_val > 0
-        mode = height_val if height_val > 0 else 1 # Default to 1 if disabled
-
-        self.data_manager.update_settings(
-            dock_enabled=enabled,
-            dock_height_mode=mode
-        )
-
-    def _on_bg_alpha_changed(self, value):
-        self.bg_alpha_label.setText(f"{value}%")
-        if self._updating: return
-
-        mode = self.data_manager.get_settings().bg_mode
-        with self.data_manager.batch_update():
-            # 更新当前生效的透明度
-            self.data_manager.update_settings(bg_alpha=value)
-
-            # 根据当前模式保存到对应参数
-            if mode == "theme":
-                 self.data_manager.update_settings(theme_bg_alpha=value)
-            elif mode == "image":
-                 self.data_manager.update_settings(image_bg_alpha=value)
-            elif mode == "acrylic":
-                 self.data_manager.update_settings(acrylic_bg_alpha=value)
-
-    def _on_dock_bg_alpha_changed(self, value):
-        self.dock_bg_alpha_label.setText(f"{value}%")
-        if self._updating: return
-        self.data_manager.update_settings(dock_bg_alpha=value)
-
-    def _on_icon_alpha_changed(self, value):
-        self.icon_alpha_label.setText(f"{value}%")
-        if self._updating: return
-        self.data_manager.update_settings(icon_alpha=value/100.0)
-
-    def _on_bg_mode_changed(self, button):
-        mode = "theme"
-        if button == self.bg_image_radio: 
-            mode = "image"
-        elif button == self.bg_acrylic_radio:
-            mode = "acrylic"
-        
-        self.bg_image_widget.setVisible(mode == "image")
-        self._update_ui_state_for_mode(mode)
-        
-        # 切换模式时，加载该模式对应的参数
-        settings = self.data_manager.get_settings()
-        if mode == "theme":
-            target_alpha = getattr(settings, 'theme_bg_alpha', 90)
-            target_blur = getattr(settings, 'theme_blur_radius', 0)
-            target_edge = getattr(settings, 'theme_edge_opacity', 0.0)
-        elif mode == "image":
-            target_alpha = getattr(settings, 'image_bg_alpha', 90)
-            target_blur = getattr(settings, 'image_blur_radius', 0)
-            target_edge = getattr(settings, 'image_edge_opacity', 0.0)
-        else: # acrylic
-            target_alpha = getattr(settings, 'acrylic_bg_alpha', 90)
-            target_blur = getattr(settings, 'acrylic_blur_radius', 0)
-            target_edge = getattr(settings, 'acrylic_edge_opacity', 0.0)
-            
-        # 更新 UI (Block signals to prevent writing back immediately)
-        self.bg_alpha_slider.blockSignals(True)
-        self.bg_alpha_slider.setValue(target_alpha)
-        self.bg_alpha_slider.blockSignals(False)
-        self.bg_alpha_label.setText(f"{target_alpha}%")
-        
-        self.blur_radius_slider.blockSignals(True)
-        self.blur_radius_slider.setValue(target_blur)
-        self.blur_radius_slider.blockSignals(False)
-        self.blur_radius_label.setText(str(target_blur))
-        
-        self.edge_opacity_slider.blockSignals(True)
-        self.edge_opacity_slider.setValue(int(target_edge * 100))
-        self.edge_opacity_slider.blockSignals(False)
-        self.edge_opacity_label.setText(f"{int(target_edge * 100)}%")
-        
-        if self._updating: return
-        with self.data_manager.batch_update():
-            self.data_manager.update_settings(bg_mode=mode)
-            # 同时更新当前的 bg_alpha / bg_blur_radius / edge_opacity 以便立即生效
-            self.data_manager.update_settings(bg_alpha=target_alpha)
-            self.data_manager.update_settings(bg_blur_radius=target_blur)
-            self.data_manager.update_settings(edge_highlight_opacity=target_edge)
-        self.settings_changed.emit()
-
-    def _browse_bg_image(self):
-        # ... logic similar to old settings ...
-        # Simplified for brevity, assume similar logic
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择背景图片", "", "Images (*.png *.jpg *.jpeg *.bmp)")
-        if file_path:
-            self.bg_path_edit.setText(file_path)
-            self.data_manager.update_settings(custom_bg_path=file_path)
-            self.settings_changed.emit()
-            
-    def _on_bg_blur_changed(self, value):
-        self.bg_blur_label.setText(str(value))
-        if self._updating: return
-        self.data_manager.update_settings(bg_blur_radius=value)
-        self._schedule_slider_settings_changed()
-        
-    def _on_blur_radius_changed(self, value):
-        self.blur_radius_label.setText(str(value))
-        if self._updating: return
-
-        mode = self.data_manager.get_settings().bg_mode
-        with self.data_manager.batch_update():
-            # 更新当前生效的模糊度
-            self.data_manager.update_settings(bg_blur_radius=value)
-
-            # 根据当前模式保存到对应参数
-            if mode == "theme":
-                self.data_manager.update_settings(theme_blur_radius=value)
-            elif mode == "image":
-                 self.data_manager.update_settings(image_blur_radius=value)
-            elif mode == "acrylic":
-                 self.data_manager.update_settings(acrylic_blur_radius=value)
-
-        self._schedule_slider_settings_changed()
-        
-    def _on_edge_opacity_changed(self, value):
-        self.edge_opacity_label.setText(f"{value}%")
-        if self._updating: return
-
-        mode = self.data_manager.get_settings().bg_mode
-        with self.data_manager.batch_update():
-            # Update current effective value
-            self.data_manager.update_settings(edge_highlight_opacity=value/100.0)
-
-            # Save to specific mode
-            if mode == "theme":
-                self.data_manager.update_settings(theme_edge_opacity=value/100.0)
-            elif mode == "image":
-                 self.data_manager.update_settings(image_edge_opacity=value/100.0)
-            elif mode == "acrylic":
-                 self.data_manager.update_settings(acrylic_edge_opacity=value/100.0)
-
-    def _on_popup_pos_changed(self, button):
-        if self._updating: return
-        pos = "mouse_center"
-        if button == self.pos_mouse_tl: pos = "mouse_top_left"
-        self.data_manager.update_settings(popup_align_mode=pos)
-
-    def _on_delay_changed(self, value):
-        self.delay_label.setText(f"{value}ms")
-        if self._updating: return
-        self.data_manager.update_settings(hover_leave_delay=value)
-
-    def _on_double_click_interval_changed(self, value):
-        self.double_click_label.setText(f"{value}ms")
-        if self._updating: return
-        self.data_manager.update_settings(double_click_interval=value)
-
-    def _on_auto_close_changed(self, button):
-        if self._updating: return
-        auto_close = (button == self.auto_close_yes)
-        self.delay_widget.setVisible(auto_close)
-        self.data_manager.update_settings(popup_auto_close=auto_close)
-
-    def _on_multi_open_pinned_changed(self, button):
-        if self._updating: return
-        self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
-
-    # Removed _on_mc_* handlers as they are deleted
-
-    # Special Apps Logic (Simplified copy from old settings)
-    def _add_special_app(self):
-        item = QListWidgetItem("new_app")
-        item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
-        self.special_apps_list.addItem(item)
-        self.special_apps_list.setCurrentItem(item)
-        self.special_apps_list.editItem(item)
-
-    def _remove_special_app(self):
-        row = self.special_apps_list.currentRow()
-        if row >= 0:
-            self.special_apps_list.takeItem(row)
-
-    def _edit_special_app_item(self, item):
-        self.special_apps_list.editItem(item)
-
-    def _reset_special_apps(self):
-        self.special_apps_list.clear()
-        for app in DEFAULT_SPECIAL_APPS:
-            item = QListWidgetItem(app)
-            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
-            self.special_apps_list.addItem(item)
-        self._apply_special_apps()
-
-    def _apply_special_apps(self):
-        if self._updating: return
-        apps = []
-        for i in range(self.special_apps_list.count()):
-            item = self.special_apps_list.item(i)
-            text = item.text().strip().lower()
-            if text:
-                apps.append(text)
-        self.data_manager.update_settings(special_apps=apps)
-        self.special_apps_changed.emit()
-            
-    def _validate_hotkey(self, hotkey_str: str) -> tuple:
-        """验证快捷键是否有效
-
-        Returns:
-            (is_valid: bool, error_msg: str)
-        """
-        # 允许空快捷键（不设置）
-        if not hotkey_str or not hotkey_str.strip():
-            return True, ""
-
-        parts = [p.strip() for p in hotkey_str.split("+")]
-        modifiers = []
-        main_key = None
-
-        for part in parts:
-            part_lower = part.lower().replace("<", "").replace(">", "")
-            if part_lower in ("ctrl", "alt", "shift", "cmd", "win"):
-                modifiers.append(part_lower)
-            else:
-                main_key = part
-
-        # 不允许使用 Alt 键
-        if "alt" in modifiers:
-            return False, "不允许使用 Alt 键\n请使用 Ctrl、Shift 或 Win"
-
-        # 必须有主键
-        if not main_key:
-            return False, "必须包含一个主键（字母、数字或功能键）"
-
-        # 必须有修饰键
-        if not modifiers:
-            return False, "必须包含至少一个修饰键（Ctrl、Shift、Win）"
-
-        # 检查系统快捷键冲突
-        try:
-            from core.hotkey_conflict_checker import check_conflict
-            is_conflict, conflict_desc = check_conflict(hotkey_str)
-            if is_conflict:
-                return False, f"快捷键冲突：{conflict_desc}"
-        except Exception:
-            pass
-
-        return True, ""
-
     # Import/Export
-
-
-
-
-
-
-    

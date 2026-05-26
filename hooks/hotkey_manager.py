@@ -30,6 +30,7 @@ class HotkeyManager(QObject):
             logger.info("正在释放修饰键...")
             if self._dll is None:
                 from hooks.hooks_wrapper import HooksDLL
+
                 self._dll = HooksDLL.get_instance()
             self._dll.release_all_modifier_keys()
             logger.info("修饰键已释放")
@@ -143,14 +144,30 @@ class HotkeyManager(QObject):
         if not normalized_parts:
             return ""
 
-        mods = {"<ctrl>", "<alt>", "<shift>", "<cmd>", "<ctrl_l>", "<ctrl_r>", "<alt_l>", "<alt_r>", "<shift_l>", "<shift_r>", "<cmd_l>", "<cmd_r>"}
+        mods = {
+            "<ctrl>",
+            "<alt>",
+            "<shift>",
+            "<cmd>",
+            "<ctrl_l>",
+            "<ctrl_r>",
+            "<alt_l>",
+            "<alt_r>",
+            "<shift_l>",
+            "<shift_r>",
+            "<cmd_l>",
+            "<cmd_r>",
+        }
         if all(p in mods for p in normalized_parts):
             return ""
 
         return "+".join(normalized_parts)
 
     def _has_side_specific_modifier(self, normalized: str) -> bool:
-        return any(token in normalized for token in ("<ctrl_l>", "<ctrl_r>", "<alt_l>", "<alt_r>", "<shift_l>", "<shift_r>", "<cmd_l>", "<cmd_r>"))
+        return any(
+            token in normalized
+            for token in ("<ctrl_l>", "<ctrl_r>", "<alt_l>", "<alt_r>", "<shift_l>", "<shift_r>", "<cmd_l>", "<cmd_r>")
+        )
 
     def set_hotkey(self, hotkey_str: str):
         """设置热键 (e.g. '<alt>+<space>')"""
@@ -179,12 +196,13 @@ class HotkeyManager(QObject):
             logger.info(f"尝试使用DLL钩子设置热键: {normalized}")
             if self._dll is None:
                 # 获取全局键盘钩子实例
-                if hasattr(sys.modules.get('__main__'), 'keyboard_hook'):
-                    kb = sys.modules['__main__'].keyboard_hook
-                    if hasattr(kb, '_dll'):
+                if hasattr(sys.modules.get("__main__"), "keyboard_hook"):
+                    kb = sys.modules["__main__"].keyboard_hook
+                    if hasattr(kb, "_dll"):
                         self._dll = kb._dll
                 if self._dll is None:
                     from hooks.hooks_wrapper import HooksDLL
+
                     self._dll = HooksDLL.get_instance()
             logger.info(f"DLL实例: {self._dll}")
             if self._dll.set_hotkey(normalized, self._on_activated):
@@ -199,6 +217,7 @@ class HotkeyManager(QObject):
         except Exception as e:
             logger.error(f"DLL hook failed: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
 
         return False
@@ -212,18 +231,18 @@ class HotkeyManager(QObject):
             # 安全地在主线程启动定时器（避免跨线程操作 QTimer）
             for conn_type in (Qt.ConnectionType.QueuedConnection, Qt.QueuedConnection):
                 try:
-                    QMetaObject.invokeMethod(
-                        self._dispatch_timer, "start", conn_type
-                    )
+                    QMetaObject.invokeMethod(self._dispatch_timer, "start", conn_type)
                     return
                 except Exception:
                     continue
             # 所有 QMetaObject 方式都失败时，通过信号桥间接调度到主线程
             try:
                 from qt_compat import QApplication
+
                 app = QApplication.instance()
                 if app is not None:
                     from qt_compat import QTimer
+
                     timer = QTimer()
                     timer.setSingleShot(True)
                     timer.timeout.connect(lambda: self._dispatch_timer.start() if self._dispatch_timer else None)

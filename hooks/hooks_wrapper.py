@@ -2,6 +2,7 @@
 C++ DLL钩子的Python封装
 使用ctypes调用hooks.dll
 """
+
 import ctypes
 import logging
 import os
@@ -12,19 +13,28 @@ MOUSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
 KEYBOARD_CALLBACK = ctypes.CFUNCTYPE(None)
 logger = logging.getLogger(__name__)
 
+
 class HooksDLL:
     EXPECTED_VERSION = 3
     REQUIRED_EXPORTS = (
-        "InstallMouseHook", "UninstallMouseHook", "SetMousePaused", "IsMousePaused",
-        "SetAltDoubleClickCallback", "InstallKeyboardHook", "UninstallKeyboardHook",
-        "IsAltHeld", "IsCtrlHeld", "SetGlobalHotkey", "ClearGlobalHotkey",
+        "InstallMouseHook",
+        "UninstallMouseHook",
+        "SetMousePaused",
+        "IsMousePaused",
+        "SetAltDoubleClickCallback",
+        "InstallKeyboardHook",
+        "UninstallKeyboardHook",
+        "IsAltHeld",
+        "IsCtrlHeld",
+        "SetGlobalHotkey",
+        "ClearGlobalHotkey",
         "ReleaseAllModifierKeys",
     )
     _last_probe = {}
     _instance = None
 
     @classmethod
-    def get_instance(cls, dll_path: str = None) -> 'HooksDLL':
+    def get_instance(cls, dll_path: str = None) -> "HooksDLL":
         """获取单例实例，避免多次加载DLL导致GC回调问题"""
         if cls._instance is None or cls._instance.dll is None:
             cls._instance = cls(dll_path)
@@ -241,7 +251,7 @@ class HooksDLL:
         if not self._ready():
             return False
         self._hotkey_callback_ref = KEYBOARD_CALLBACK(callback)
-        return bool(self.dll.SetGlobalHotkey(hotkey_str.encode('utf-8'), self._hotkey_callback_ref))
+        return bool(self.dll.SetGlobalHotkey(hotkey_str.encode("utf-8"), self._hotkey_callback_ref))
 
     def clear_hotkey(self):
         """清除全局热键"""
@@ -265,7 +275,7 @@ class HooksDLL:
         # 转换为 C 字符串数组
         c_apps = (ctypes.c_char_p * len(apps))()
         for i, app in enumerate(apps):
-            c_apps[i] = app.encode('utf-8')
+            c_apps[i] = app.encode("utf-8")
 
         self.dll.SetSpecialApps(c_apps, len(apps))
 

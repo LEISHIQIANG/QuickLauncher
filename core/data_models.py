@@ -16,16 +16,19 @@ except Exception:
 
 class ShortcutType(Enum):
     """快捷方式类型"""
+
     FILE = "file"
     FOLDER = "folder"
     URL = "url"
     HOTKEY = "hotkey"
     COMMAND = "command"
+    CHAIN = "chain"
 
 
 @dataclass
 class ShortcutItem:
     """快捷方式项"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     type: ShortcutType = ShortcutType.FILE
@@ -57,6 +60,11 @@ class ShortcutItem:
     show_window: bool = False
     python_execution_mode: str = "subprocess"  # subprocess, legacy_inline
     command_variables_enabled: bool = False
+    capture_output: bool = False
+    command_timeout_seconds: float = 10.0
+    command_output_max_chars: int = 20000
+    chain_steps: List[dict] = field(default_factory=list)
+    chain_result_window: str = "medium"  # none, small, medium, large
 
     # 触发模式
     trigger_mode: str = "immediate"  # immediate (立即触发), after_close (窗口关闭后触发)
@@ -106,11 +114,16 @@ class ShortcutItem:
             "run_as_admin": self.run_as_admin,
             "show_window": self.show_window,
             "python_execution_mode": self.python_execution_mode,
-            "command_variables_enabled": self.command_variables_enabled
+            "command_variables_enabled": self.command_variables_enabled,
+            "capture_output": self.capture_output,
+            "command_timeout_seconds": self.command_timeout_seconds,
+            "command_output_max_chars": self.command_output_max_chars,
+            "chain_steps": list(self.chain_steps or []),
+            "chain_result_window": self.chain_result_window,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'ShortcutItem':
+    def from_dict(cls, data: dict) -> "ShortcutItem":
         item = cls()
         item.id = data.get("id", str(uuid.uuid4()))
         item.name = data.get("name", "")
@@ -150,10 +163,19 @@ class ShortcutItem:
         item.run_as_admin = data.get("run_as_admin", False)
         item.show_window = data.get("show_window", False)
         item.python_execution_mode = data.get("python_execution_mode", "subprocess")
-        item.command_variables_enabled = data.get(
-            "command_variables_enabled",
-            False
-        )
+        item.command_variables_enabled = data.get("command_variables_enabled", False)
+        item.capture_output = bool(data.get("capture_output", False))
+        try:
+            item.command_timeout_seconds = max(0.1, float(data.get("command_timeout_seconds", 10.0) or 10.0))
+        except Exception:
+            item.command_timeout_seconds = 10.0
+        try:
+            item.command_output_max_chars = max(1000, int(data.get("command_output_max_chars", 20000) or 20000))
+        except Exception:
+            item.command_output_max_chars = 20000
+        item.chain_steps = cls._normalize_chain_steps(data.get("chain_steps", []))
+        crw = str(data.get("chain_result_window", "medium") or "medium").lower()
+        item.chain_result_window = crw if crw in ("none", "small", "medium", "large") else "medium"
         return item
 
     @staticmethod
@@ -175,6 +197,36 @@ class ShortcutItem:
             result.append(value)
         return result
 
+    MAX_CHAIN_STEPS = 128
+
+    @staticmethod
+    def _normalize_chain_steps(steps) -> List[dict]:
+        if not isinstance(steps, list):
+            return []
+        if len(steps) > ShortcutItem.MAX_CHAIN_STEPS:
+            steps = steps[: ShortcutItem.MAX_CHAIN_STEPS]
+        normalized = []
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            shortcut_id = str(step.get("shortcut_id") or "").strip()
+            if not shortcut_id:
+                continue
+            try:
+                delay_ms = max(0, min(60000, int(step.get("delay_ms", 0) or 0)))
+            except Exception:
+                delay_ms = 0
+            normalized.append(
+                {
+                    "id": str(step.get("id") or uuid.uuid4()),
+                    "shortcut_id": shortcut_id,
+                    "enabled": bool(step.get("enabled", True)),
+                    "stop_on_error": bool(step.get("stop_on_error", True)),
+                    "delay_ms": delay_ms,
+                }
+            )
+        return normalized
+
     def mark_used(self, timestamp: float | None = None):
         try:
             self.last_used_at = float(timestamp if timestamp is not None else time.time())
@@ -192,6 +244,7 @@ class ShortcutItem:
 @dataclass
 class Folder:
     """文件夹"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     order: int = 0
@@ -214,11 +267,11 @@ class Folder:
             "items": [item.to_dict() for item in self.items],
             "linked_path": self.linked_path,
             "auto_sync": self.auto_sync,
-            "last_sync_time": self.last_sync_time
+            "last_sync_time": self.last_sync_time,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Folder':
+    def from_dict(cls, data: dict) -> "Folder":
         folder = cls()
         folder.id = data.get("id", str(uuid.uuid4()))
         folder.name = data.get("name", "")
@@ -234,20 +287,45 @@ class Folder:
 
 # 默认特殊应用列表（需要Ctrl+中键触发的软件）
 DEFAULT_SPECIAL_APPS = [
-    "acad", "autocad", "revit", "sketchup", "rhino", "rhino8",
-    "blender", "maya", "3dsmax", "zbrush", "substance",
-    "cinema4d", "houdini", "nuke", "aftereffects", "premiere",
-    "fusion360", "solidworks", "catia", "inventor", "navisworks",
+    "acad",
+    "autocad",
+    "revit",
+    "sketchup",
+    "rhino",
+    "rhino8",
+    "blender",
+    "maya",
+    "3dsmax",
+    "zbrush",
+    "substance",
+    "cinema4d",
+    "houdini",
+    "nuke",
+    "aftereffects",
+    "premiere",
+    "fusion360",
+    "solidworks",
+    "catia",
+    "inventor",
+    "navisworks",
     # 国产CAD
-    "gcad", "gstarcad", "zwcad", "caxa", "bricscad",
+    "gcad",
+    "gstarcad",
+    "zwcad",
+    "caxa",
+    "bricscad",
     # CAD看图软件
-    "cadreader", "fastcad", "dwgviewr", "cadsee",
+    "cadreader",
+    "fastcad",
+    "dwgviewr",
+    "cadsee",
 ]
 
 
 @dataclass
 class AppSettings:
     """应用设置"""
+
     theme: str = "dark"
     theme_follow_system: bool = True  # 主题跟随系统
     bg_alpha: int = 90  # 0-100 范围
@@ -318,7 +396,7 @@ class AppSettings:
     shadow_size: int = 0  # 模糊大小 (阴影/发光大小)
     shadow_distance: int = 0  # 模糊距离 (阴影偏移)
     edge_highlight_color: str = "#ffffff"
-    edge_highlight_opacity: float = 0.0 # Shared/Default, keeping for compatibility or fallback
+    edge_highlight_opacity: float = 0.0  # Shared/Default, keeping for compatibility or fallback
 
     custom_bg_path: str = ""
 
@@ -396,7 +474,7 @@ class AppSettings:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'AppSettings':
+    def from_dict(cls, data: dict) -> "AppSettings":
         settings = cls()
         for key, value in data.items():
             if hasattr(settings, key):
@@ -415,6 +493,7 @@ class AppSettings:
 @dataclass
 class AppData:
     """应用数据"""
+
     version: str = "2.5"
     settings: AppSettings = field(default_factory=AppSettings)
     folders: List[Folder] = field(default_factory=list)
@@ -424,20 +503,8 @@ class AppData:
             self._create_default_folders()
 
     def _create_default_folders(self):
-        dock = Folder(
-            id="dock",
-            name="Dock",
-            order=0,
-            is_system=True,
-            is_dock=True
-        )
-        default = Folder(
-            id="default",
-            name="常用",
-            order=1,
-            is_system=True,
-            is_dock=False
-        )
+        dock = Folder(id="dock", name="Dock", order=0, is_system=True, is_dock=True)
+        default = Folder(id="default", name="常用", order=1, is_system=True, is_dock=False)
         self.folders = [dock, default]
 
     def get_dock(self) -> Optional[Folder]:
@@ -459,11 +526,11 @@ class AppData:
         return {
             "version": self.version,
             "settings": self.settings.to_dict(),
-            "folders": [folder.to_dict() for folder in self.folders]
+            "folders": [folder.to_dict() for folder in self.folders],
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'AppData':
+    def from_dict(cls, data: dict) -> "AppData":
         app_data = cls.__new__(cls)
         app_data.version = data.get("version", "1.0")
         app_data.settings = AppSettings.from_dict(data.get("settings", {}))

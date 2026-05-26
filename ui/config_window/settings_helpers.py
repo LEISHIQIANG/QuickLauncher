@@ -2,7 +2,6 @@
 设置面板 - 精确布局版本
 """
 
-
 from qt_compat import (
     QBrush,
     QCheckBox,
@@ -40,6 +39,7 @@ class ExportThread(QThread):
     def run(self):
         try:
             from core.config_importer import ConfigImporter
+
             success = ConfigImporter.export_config(self.data_manager, self.path)
             self.finished_signal.emit(success, "导出成功" if success else "导出失败")
         except Exception as e:
@@ -57,6 +57,7 @@ class ImportThread(QThread):
     def run(self):
         try:
             from core.config_importer import ConfigImporter
+
             count = ConfigImporter.import_config(self.data_manager, self.path)
             self.finished_signal.emit(count >= 0, max(0, count), "导入成功" if count >= 0 else "导入失败")
         except Exception as e:
@@ -128,7 +129,9 @@ class NumberedListDelegate(QStyledItemDelegate):
             font.setBold(False)
             font.setPointSize(10)
             painter.setFont(font)
-            text_rect = QRectF(option.rect.left() + 38, option.rect.top(), option.rect.width() - 44, option.rect.height())
+            text_rect = QRectF(
+                option.rect.left() + 38, option.rect.top(), option.rect.width() - 44, option.rect.height()
+            )
             text = index.data(QtCompat.DisplayRole)
             if text and index.row() != self.editing_row:
                 elided_text = painter.fontMetrics().elidedText(text, QtCompat.ElideRight, int(text_rect.width()))
@@ -161,10 +164,12 @@ class NumberedListDelegate(QStyledItemDelegate):
         editor.setText(str(text))
 
     def setModelData(self, editor, model, index):
-        model.setData(index, editor.text(), 0) # EditRole/DisplayRole
+        model.setData(index, editor.text(), 0)  # EditRole/DisplayRole
+
 
 class ProgressDialog(QDialog):
     """带进度/状态的对话框 - 模糊半透明背景"""
+
     def __init__(self, parent, title, theme="dark"):
         super().__init__(parent)
         self.theme = theme
@@ -175,6 +180,7 @@ class ProgressDialog(QDialog):
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
 
         from ui.utils.window_effect import is_win11
+
         self.corner_radius = 8 if is_win11() else 12
         self._acrylic_applied = False
         self._dialog_finished = False
@@ -200,8 +206,7 @@ class ProgressDialog(QDialog):
         self.msg_label.setWordWrap(True)
         self.msg_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
         self.msg_label.setStyleSheet(
-            f"font-size: 13px; border: none; "
-            f"background: transparent; color: {self.text_color};"
+            f"font-size: 13px; border: none; background: transparent; color: {self.text_color};"
         )
         main_layout.addWidget(self.msg_label, 1)
 
@@ -217,6 +222,7 @@ class ProgressDialog(QDialog):
         main_layout.addLayout(self.btn_layout)
 
         from ui.styles.style import get_dialog_stylesheet
+
         self.setStyleSheet(get_dialog_stylesheet(self.theme))
 
     def paintEvent(self, event):
@@ -225,6 +231,7 @@ class ProgressDialog(QDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
 
         from ui.utils.window_effect import is_win10
+
         if is_win10():
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
@@ -233,9 +240,7 @@ class ProgressDialog(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
         )
 
         # 磨砂玻璃模式：与ThemedMessageBox完全一致
@@ -257,6 +262,7 @@ class ProgressDialog(QDialog):
         self._dialog_finished = False
         self.adjustSize()
         from ui.utils.dialog_helper import center_dialog_on_main_window
+
         center_dialog_on_main_window(self)
         if not self._acrylic_applied:
             self._acrylic_applied = True
@@ -268,6 +274,7 @@ class ProgressDialog(QDialog):
             if self._dialog_finished or not self.isVisible():
                 return
             from ui.utils.window_effect import enable_acrylic_for_config_window, is_win11
+
             hwnd = int(self.winId())
             if not hwnd:
                 return
@@ -308,7 +315,9 @@ class SwitchButton(QCheckBox):
         self.setCursor(QtCompat.PointingHandCursor)
 
         # Set a highly specific local stylesheet to disable standard QCheckBox indicator
-        self.setStyleSheet("QCheckBox::indicator, SwitchButton::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }")
+        self.setStyleSheet(
+            "QCheckBox::indicator, SwitchButton::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
+        )
 
         # Anim progress: 0.0 (off) to 1.0 (on)
         self._progress = 1.0 if self.isChecked() else 0.0
@@ -350,7 +359,11 @@ class SwitchButton(QCheckBox):
 
     def sizeHint(self):
         font_metrics = self.fontMetrics()
-        text_width = font_metrics.horizontalAdvance(self.text()) if hasattr(font_metrics, 'horizontalAdvance') else font_metrics.width(self.text())
+        text_width = (
+            font_metrics.horizontalAdvance(self.text())
+            if hasattr(font_metrics, "horizontalAdvance")
+            else font_metrics.width(self.text())
+        )
         text_height = font_metrics.height()
 
         w = 29 + 8 + text_width + 4
@@ -432,4 +445,3 @@ class SwitchButton(QCheckBox):
             text_x = sw_x + sw_width + spacing
             text_rect = QRectF(text_x, 0, rect.width() - text_x, rect.height())
             painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, text)
-

@@ -5,19 +5,19 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+
 import pytest
 
-from core.command_registry import CommandAction, CommandContext, CommandRegistry, CommandResult
+from core.command_registry import CommandAction, CommandContext, CommandParam, CommandRegistry, CommandResult
 from core.plugin_manager import (
-    PERMISSIONS_KNOWN,
     HIGH_RISK_PERMISSIONS,
+    PERMISSIONS_KNOWN,
     PluginAPI,
     PluginManager,
     PluginManifest,
     has_high_risk_permissions,
     validate_manifest,
 )
-
 
 # ============================================================
 # Manifest validation tests
@@ -55,7 +55,9 @@ def test_missing_version():
 
 def test_unknown_permission():
     m = PluginManifest(
-        id="test", name="Test", version="1.0",
+        id="test",
+        name="Test",
+        version="1.0",
         permissions=["unknown.perm"],
     )
     err = validate_manifest(m)
@@ -153,7 +155,9 @@ def test_plugin_run_command_uses_icon_command_privilege_path(monkeypatch):
 
 def test_command_id_must_have_dot():
     m = PluginManifest(
-        id="test", name="Test", version="1.0",
+        id="test",
+        name="Test",
+        version="1.0",
         commands=[{"id": "nodot"}],
     )
     err = validate_manifest(m)
@@ -267,7 +271,7 @@ class TestPluginManagerScan:
 # ============================================================
 
 
-_SAMPLE_MAIN_PY = '''\
+_SAMPLE_MAIN_PY = """\
 def register(api):
     api.register_command(
         id="sample.hello",
@@ -280,13 +284,13 @@ def register(api):
             success=True, message="Hello from plugin!"
         ),
     )
-'''
+"""
 
 
-_SAMPLE_MAIN_WITH_ERROR = '''\
+_SAMPLE_MAIN_WITH_ERROR = """\
 def register(api):
     raise RuntimeError("plugin error")
-'''
+"""
 
 
 class TestPluginManagerLoad:
@@ -473,8 +477,12 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("test", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="nodot", title="Bad", aliases=["bad"],
-            description="", category="", handler=lambda ctx: CommandResult(),
+            id="nodot",
+            title="Bad",
+            aliases=["bad"],
+            description="",
+            category="",
+            handler=lambda ctx: CommandResult(),
         )
         assert ok is False
 
@@ -482,8 +490,12 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("text_tools", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="other_tools.cmd", title="Bad", aliases=["bad"],
-            description="", category="", handler=lambda ctx: CommandResult(),
+            id="other_tools.cmd",
+            title="Bad",
+            aliases=["bad"],
+            description="",
+            category="",
+            handler=lambda ctx: CommandResult(),
         )
         assert ok is False
 
@@ -491,8 +503,11 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="my_plugin.hello", title="Hello", aliases=["hello"],
-            description="", category="test",
+            id="my_plugin.hello",
+            title="Hello",
+            aliases=["hello"],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(success=True, message="hi"),
         )
         assert ok is True
@@ -503,15 +518,51 @@ class TestPluginAPI:
         assert reg.get("my_plugin.hello") is not None
         assert "my_plugin.hello" in api._registered_ids
 
+    def test_register_command_result_window_size(self):
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+        ok = api.register_command(
+            id="my_plugin.panel",
+            title="Panel",
+            aliases=[],
+            description="",
+            category="test",
+            handler=lambda ctx: CommandResult(success=True),
+            result_window_size="large",
+        )
+        assert ok is True
+        assert api.commit_staged() is True
+        assert reg.get("my_plugin.panel").result_window_size == "large"
+
+    def test_register_command_params(self):
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+        ok = api.register_command(
+            id="my_plugin.params",
+            title="Params",
+            handler=lambda ctx: CommandResult(success=True),
+            params=[
+                CommandParam(name="name", required=True),
+                {"name": "mode", "type": "choice", "choices": ["a", "b"], "default": "a"},
+            ],
+        )
+        assert ok is True
+        assert api.commit_staged() is True
+        cmd = reg.get("my_plugin.params")
+        assert [p.name for p in cmd.params] == ["name", "mode"]
+        assert cmd.params[1].choices == ["a", "b"]
+
     def test_permission_check(self):
         api = PluginAPI("test", os.getcwd(), ["clipboard.read"], CommandRegistry())
         api._check_permission("clipboard.read")
         import pytest
+
         with pytest.raises(PermissionError):
             api._check_permission("process.run")
 
     def test_read_clipboard_missing_permission(self):
         import pytest
+
         api = PluginAPI("test", os.getcwd(), [], CommandRegistry())
         with pytest.raises(PermissionError):
             api.read_clipboard()
@@ -544,12 +595,20 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         ok1 = api.register_command(
-            id="my_plugin.test", title="T1", aliases=["t1"],
-            description="", category="", handler=lambda ctx: CommandResult(),
+            id="my_plugin.test",
+            title="T1",
+            aliases=["t1"],
+            description="",
+            category="",
+            handler=lambda ctx: CommandResult(),
         )
         ok2 = api.register_command(
-            id="my_plugin.test", title="T2", aliases=["t2"],
-            description="", category="", handler=lambda ctx: CommandResult(),
+            id="my_plugin.test",
+            title="T2",
+            aliases=["t2"],
+            description="",
+            category="",
+            handler=lambda ctx: CommandResult(),
         )
         # Both stages succeed (validation passes)
         assert ok1 is True
@@ -567,6 +626,7 @@ class TestPluginAPI:
         assert pm.disable_plugin("nonexistent") is False
         # Create a plugin, disable it twice
         import tempfile as tf
+
         with tf.TemporaryDirectory() as tmp:
             _create_plugin_dir(tmp, "test_p", main_py=_SAMPLE_MAIN_PY)
             pm2 = PluginManager(reg, plugins_dir=tmp)
@@ -578,6 +638,7 @@ class TestPluginAPI:
     def test_reload_error_plugin(self):
         """Reloading a plugin that had an error re-attempts loading."""
         import tempfile as tf
+
         with tf.TemporaryDirectory() as tmp:
             _create_plugin_dir(tmp, "broken", main_py=_SAMPLE_MAIN_WITH_ERROR)
             reg = CommandRegistry()
@@ -594,13 +655,19 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_command(
-            id="my_plugin.cmd1", title="Cmd1", aliases=[],
-            description="", category="test",
+            id="my_plugin.cmd1",
+            title="Cmd1",
+            aliases=[],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(success=True),
         )
         api.register_command(
-            id="my_plugin.cmd2", title="Cmd2", aliases=[],
-            description="", category="test",
+            id="my_plugin.cmd2",
+            title="Cmd2",
+            aliases=[],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(success=True),
         )
         assert api.commit_staged() is True
@@ -615,8 +682,11 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("test", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="test.dict_handler", title="Dict", aliases=["dict"],
-            description="", category="test",
+            id="test.dict_handler",
+            title="Dict",
+            aliases=["dict"],
+            description="",
+            category="test",
             handler=lambda ctx: {"success": True, "message": "from dict"},
         )
         assert ok is True
@@ -627,13 +697,16 @@ class TestPluginAPI:
         assert result.success is True
         assert result.message == "from dict"
 
-    def test_wrap_handler_limits_result_actions(self):
-        """Plugin result panels only keep two custom bottom buttons."""
+    def test_wrap_handler_keeps_all_result_actions(self):
+        """Plugin results keep the full action list for the independent command panel."""
         reg = CommandRegistry()
         api = PluginAPI("test", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="test.action_limit", title="Actions", aliases=["actions"],
-            description="", category="test",
+            id="test.action_limit",
+            title="Actions",
+            aliases=["actions"],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(
                 success=True,
                 actions=[
@@ -646,15 +719,52 @@ class TestPluginAPI:
         assert ok is True
         assert api.commit_staged() is True
         result = reg.get("test.action_limit").handler(CommandContext())
-        assert [action.label for action in result.actions] == ["A", "B"]
+        assert [action.label for action in result.actions] == ["A", "B", "C"]
+
+    def test_wrap_handler_converts_dict_action_fields(self):
+        """Plugin dict actions may use the extended command panel action fields."""
+        reg = CommandRegistry()
+        api = PluginAPI("test", os.getcwd(), [], reg)
+        ok = api.register_command(
+            id="test.dict_actions",
+            title="Actions",
+            aliases=["actions"],
+            description="",
+            category="test",
+            handler=lambda ctx: {
+                "success": True,
+                "actions": [
+                    {
+                        "type": "open_url",
+                        "label": "Open",
+                        "value": "https://example.com",
+                        "enabled": False,
+                        "danger": True,
+                        "primary": True,
+                        "payload": {"source": "test"},
+                    }
+                ],
+            },
+        )
+        assert ok is True
+        assert api.commit_staged() is True
+        result = reg.get("test.dict_actions").handler(CommandContext())
+        assert isinstance(result.actions[0], CommandAction)
+        assert result.actions[0].enabled is False
+        assert result.actions[0].danger is True
+        assert result.actions[0].primary is True
+        assert result.actions[0].payload == {"source": "test"}
 
     def test_wrap_handler_none_return(self):
         """Plugin handlers returning None should produce error result."""
         reg = CommandRegistry()
         api = PluginAPI("test", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="test.none_handler", title="None", aliases=["none"],
-            description="", category="test",
+            id="test.none_handler",
+            title="None",
+            aliases=["none"],
+            description="",
+            category="test",
             handler=lambda ctx: None,
         )
         assert ok is True
@@ -669,8 +779,11 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("test", os.getcwd(), [], reg)
         ok = api.register_command(
-            id="test.error_handler", title="Error", aliases=["err"],
-            description="", category="test",
+            id="test.error_handler",
+            title="Error",
+            aliases=["err"],
+            description="",
+            category="test",
             handler=lambda ctx: (_ for _ in ()).throw(RuntimeError("boom")),
         )
         assert ok is True
@@ -683,6 +796,7 @@ class TestPluginAPI:
     def test_search_source_lifecycle(self):
         """Search source staging → commit → appears in global _search_sources."""
         from core.command_registry import _search_sources
+
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_search_source("my_source")
@@ -698,6 +812,7 @@ class TestPluginAPI:
     def test_register_search_source_without_commit(self):
         """Staged search sources are not visible until commit."""
         from core.command_registry import _search_sources
+
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_search_source("staged_only")
@@ -707,20 +822,27 @@ class TestPluginAPI:
     def test_commit_staged_rolls_back_search_sources_on_failure(self):
         """When commit fails, search sources are rolled back along with commands."""
         from core.command_registry import _search_sources
+
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         # Register a search source
         api.register_search_source("rollback_source")
         # Register a valid command
         api.register_command(
-            id="my_plugin.ok", title="Ok", aliases=[],
-            description="", category="test",
+            id="my_plugin.ok",
+            title="Ok",
+            aliases=[],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(success=True),
         )
         # Register a duplicate command (will fail at commit)
         api.register_command(
-            id="my_plugin.ok", title="Duplicate", aliases=[],
-            description="", category="test",
+            id="my_plugin.ok",
+            title="Duplicate",
+            aliases=[],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(success=True),
         )
         # Commit fails due to duplicate
@@ -734,6 +856,7 @@ class TestPluginAPI:
     def test_commit_staged_only_search_sources(self):
         """A plugin with only search sources (no commands) commits successfully."""
         from core.command_registry import _search_sources
+
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_search_source("source_only")
@@ -746,8 +869,11 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_command(
-            id="my_plugin.cmd", title="Cmd", aliases=[],
-            description="", category="test",
+            id="my_plugin.cmd",
+            title="Cmd",
+            aliases=[],
+            description="",
+            category="test",
             handler=lambda ctx: CommandResult(success=True),
         )
         assert api.commit_staged() is True
@@ -756,9 +882,11 @@ class TestPluginAPI:
 
     def test_disable_plugin_cleans_search_sources(self):
         """Disabling a plugin removes its registered search sources."""
-        from core.command_registry import _search_sources
         import tempfile as tf
-        _SAMPLE_MAIN_WITH_SEARCH = '''\
+
+        from core.command_registry import _search_sources
+
+        _SAMPLE_MAIN_WITH_SEARCH = """\
 def register(api):
     api.register_command(
         id="search_test.cmd",
@@ -768,7 +896,7 @@ def register(api):
             fromlist=["CommandResult"]).CommandResult(success=True, message="ok"),
     )
     api.register_search_source("search_test_src")
-'''
+"""
         with tf.TemporaryDirectory() as tmp:
             _create_plugin_dir(tmp, "search_test", main_py=_SAMPLE_MAIN_WITH_SEARCH)
             reg = CommandRegistry()

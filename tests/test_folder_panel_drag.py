@@ -68,10 +68,12 @@ class _ShortcutMime:
 
 
 def test_shortcut_ids_from_mime_prefers_batch_and_dedupes():
-    mime = _ShortcutMime({
-        "application/x-shortcut-id": b"one",
-        "application/x-shortcut-ids": b"one\ntwo\none\n",
-    })
+    mime = _ShortcutMime(
+        {
+            "application/x-shortcut-id": b"one",
+            "application/x-shortcut-ids": b"one\ntwo\none\n",
+        }
+    )
 
     assert FolderPanel._shortcut_ids_from_mime(mime) == ["one", "two"]
 
@@ -120,11 +122,13 @@ def test_folder_drop_moves_batch_only_when_successful(qapp):
             self.accepted = False
             self.ignored = False
             self.success = success
-            self._mime = _ShortcutMime({
-                "application/x-shortcut-id": b"one",
-                "application/x-shortcut-ids": b"one\ntwo\n",
-                "application/x-source-folder-id": b"source",
-            })
+            self._mime = _ShortcutMime(
+                {
+                    "application/x-shortcut-id": b"one",
+                    "application/x-shortcut-ids": b"one\ntwo\n",
+                    "application/x-source-folder-id": b"source",
+                }
+            )
 
         def mimeData(self):
             return self._mime

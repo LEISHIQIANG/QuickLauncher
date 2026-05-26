@@ -275,8 +275,22 @@ CommandResult(
 | `message` | 结果文本 |
 | `display_type` | 结果类型，默认 `text` |
 | `payload` | 结构化扩展数据 |
-| `actions` | 结果按钮，最多 2 个；系统自带的“关闭”按钮不计入 |
+| `actions` | 结果动作；独立命令面板会显示完整动作区，旧弹窗兼容层只显示前两个 |
 | `error` | 错误摘要 |
+
+推荐的 `display_type`：
+
+| display_type | 适用场景 | payload 约定 |
+|---|---|---|
+| `text` | 普通短文本 | 可选 `window_size` |
+| `log` | stdout/stderr、HTTP 响应、长日志 | `wrap=False`、`window_size="large"` |
+| `table` | 进程、端口、列表型数据 | `columns` + `rows`，复制用 TSV |
+| `kv` | 系统信息、网络摘要 | `items=[[key, value], ...]` |
+| `list` | 检查报告、动作链步骤 | `items=[{"title": ..., "status": ..., "detail": ...}]` |
+| `progress` | 长任务阶段进度 | `progress` 字段 + `payload.current/total/detail` |
+| `qr` | 二维码结果 | `payload.image_path` |
+
+`payload["window_size"]` 可以是 `small`、`medium`、`large` 或 `auto`。固定模板用于稳定布局，`auto` 才允许根据内容动态调整。
 
 动作类型：
 
@@ -289,9 +303,9 @@ CommandResult(
 
 ### 结果按钮数量
 
-命令结果面板底部空间很小，插件自定义 `actions` 最多只放 2 个按钮，右下角系统自带的“关闭”按钮不计入这个数量。超过 2 个的动作会被截断，只保留前两个。
+独立命令面板会保留完整 `actions`。旧中键弹窗结果面板只作为兼容回退，空间有限时只显示前两个动作。
 
-建议把最常用、最安全的动作放在前面，例如“复制结果”和“打开目录”。不要返回自定义“关闭”按钮；关闭面板由 QuickLauncher 自动提供。
+建议给高频动作设置 `primary=True`，危险动作设置 `danger=True`，不可用动作设置 `enabled=False`。不要返回自定义“关闭”按钮；关闭面板由 QuickLauncher 自动提供。
 
 ## 权限说明
 
@@ -326,7 +340,7 @@ CommandResult(
 - 建议策略：
   - 对可能耗时的操作，分批次执行或使用内部 `timeout` 保护。
   - 捕获超时后返回带错误提示的 `CommandResult`，而不是让线程悬空。
-  - 长任务优先返回可理解的失败信息，不要卡住弹窗。
+  - 长任务优先通过 `context.update_callback(CommandResult(display_type="progress", ...))` 汇报阶段性状态，最终返回完整结果。
 - 不要在模块 import 时执行扫描、联网、读大文件等操作。
 - 外部命令使用参数数组，不要拼接 shell 字符串。
 - 文件路径用 `pathlib.Path`，展示给用户时给出完整路径。

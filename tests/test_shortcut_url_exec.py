@@ -80,7 +80,9 @@ def test_elevated_normal_url_does_not_fallback_to_current_token(monkeypatch):
             return True
 
     monkeypatch.setattr(url_exec, "ShortcutExecutor", FakeExecutor)
-    monkeypatch.setattr(url_exec.webbrowser, "open", lambda url: (_ for _ in ()).throw(AssertionError("must not fallback")))
+    monkeypatch.setattr(
+        url_exec.webbrowser, "open", lambda url: (_ for _ in ()).throw(AssertionError("must not fallback"))
+    )
 
     item = ShortcutItem(type=ShortcutType.URL)
     item.url = "example.com"

@@ -37,5 +37,9 @@ jobs:
           tests/test_release_metadata.py
           tests/test_shortcut_command_exec.py
           ui/config_window/command_dialog.py
+      - name: Lint (expanded)
+        run: python -m ruff check core/ hooks/ services/ scripts/ tests/ ui/ main.py
+      - name: Format check
+        run: python -m ruff format --check core/ hooks/ services/ scripts/ tests/ ui/ main.py
       - name: Tests
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q --cov=core --cov=ui --cov=services --cov=hooks --cov-report=term-missing --cov-fail-under=30

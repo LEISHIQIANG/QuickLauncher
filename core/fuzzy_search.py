@@ -4,8 +4,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from typing import Iterable, Optional
 from functools import lru_cache
+from typing import Iterable, Optional
 
 from .pinyin_search import pinyin_variants
 
@@ -233,10 +233,7 @@ def _single_term_score(term: str, value: str) -> Optional[float]:
         compact_pos = compact.find(term_compact) if term_compact else -1
         if compact_pos >= 0:
             candidates.append(
-                76.0
-                + len(term_compact) * 5.0
-                + max(0.0, 12.0 - compact_pos)
-                + max(0.0, 24.0 - len(compact)) * 0.5
+                76.0 + len(term_compact) * 5.0 + max(0.0, 12.0 - compact_pos) + max(0.0, 24.0 - len(compact)) * 0.5
             )
 
         subsequence = _subsequence_score(term_norm, normalized)
@@ -298,9 +295,11 @@ def _shortcut_score(shortcut, query: str) -> tuple[Optional[float], list[str]]:
     for field_name, field_value, weight in _iter_fields(shortcut):
         phrase_score = _single_term_score(query_norm, field_value)
         compact_score = _single_term_score(query_compact, field_value) if query_compact != query_norm else None
-        best_phrase = max(score for score in (phrase_score, compact_score) if score is not None) if any(
-            score is not None for score in (phrase_score, compact_score)
-        ) else None
+        best_phrase = (
+            max(score for score in (phrase_score, compact_score) if score is not None)
+            if any(score is not None for score in (phrase_score, compact_score))
+            else None
+        )
         if best_phrase is None:
             continue
         weighted_phrase = best_phrase + weight + 18.0
@@ -342,7 +341,9 @@ def _order_value(shortcut, sort_mode: str, original_index: int) -> int:
         return int(original_index)
 
 
-def search_shortcuts(pages, query: str, *, sort_mode: str = "custom", limit: int | None = None) -> list[FuzzyMatchResult]:
+def search_shortcuts(
+    pages, query: str, *, sort_mode: str = "custom", limit: int | None = None
+) -> list[FuzzyMatchResult]:
     query = _text(query)
     if not query:
         return []
@@ -370,17 +371,19 @@ def search_shortcuts(pages, query: str, *, sort_mode: str = "custom", limit: int
 
             if best_score is not None:
                 best_score += _usage_bonus(shortcut) if sort_mode == "smart" else 0.0
-                results.append(FuzzyMatchResult(
-                    shortcut=shortcut,
-                    folder_id=folder_id,
-                    folder_name=folder_name,
-                    score=best_score,
-                    original_index=original_index,
-                    matched_fields=matched_fields,
-                ))
+                results.append(
+                    FuzzyMatchResult(
+                        shortcut=shortcut,
+                        folder_id=folder_id,
+                        folder_name=folder_name,
+                        score=best_score,
+                        original_index=original_index,
+                        matched_fields=matched_fields,
+                    )
+                )
             original_index += 1
 
     results.sort(key=lambda item: (-item.score, item.original_index))
     if limit is not None:
-        return results[:max(0, int(limit))]
+        return results[: max(0, int(limit))]
     return results

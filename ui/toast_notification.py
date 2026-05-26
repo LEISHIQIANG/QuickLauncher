@@ -45,11 +45,7 @@ class ToastNotification(QWidget):
         self._acrylic_applied = False
 
         # 窗口属性：无边框、置顶、工具窗口、透明背景、不获取焦点
-        self.setWindowFlags(
-            QtCompat.FramelessWindowHint
-            | QtCompat.Tool
-            | QtCompat.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Tool | QtCompat.WindowStaysOnTopHint)
         self.setAttribute(QtCompat.WA_TranslucentBackground)
         self.setAttribute(QtCompat.WA_DeleteOnClose, False)
         # 不获取焦点
@@ -111,6 +107,7 @@ class ToastNotification(QWidget):
         pen_color = QColor(border_color)
         pen_color.setAlpha(40)
         from qt_compat import QPen
+
         painter.setPen(QPen(pen_color, 0.3))
         painter.drawPath(path)
         painter.end()
@@ -159,7 +156,7 @@ class ToastNotification(QWidget):
 
         # 根据文字长度调整宽度
         fm = self.label.fontMetrics()
-        text_width = fm.horizontalAdvance(text) if hasattr(fm, 'horizontalAdvance') else fm.width(text)
+        text_width = fm.horizontalAdvance(text) if hasattr(fm, "horizontalAdvance") else fm.width(text)
         self.setFixedWidth(max(text_width + 60, 180))
 
         # 居中定位
@@ -205,6 +202,7 @@ class ToastNotification(QWidget):
         """应用模糊效果 - 与主配置窗口一致"""
         try:
             from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
+
             hwnd = int(self.winId())
             if not hwnd:
                 return

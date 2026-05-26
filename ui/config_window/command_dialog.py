@@ -28,6 +28,7 @@ from qt_compat import (
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
+    QSpinBox,
     QStackedWidget,
     QtCompat,
     QThread,
@@ -59,6 +60,7 @@ class CommandTestThread(QThread):
     def run(self):
         try:
             from core import ShortcutExecutor
+
             if not ShortcutExecutor:
                 result = {
                     "success": False,
@@ -85,6 +87,7 @@ class CommandTestThread(QThread):
 
 class CommandDialog(BaseDialog):
     """命令编辑对话框"""
+
     _orphaned_threads = []
 
     BUILTIN_COMMANDS = [
@@ -217,8 +220,8 @@ class CommandDialog(BaseDialog):
         self._command_test_thread = None
 
         # 确保有默认值
-        if not hasattr(self.shortcut, 'command_type'):
-            self.shortcut.command_type = 'cmd'
+        if not hasattr(self.shortcut, "command_type"):
+            self.shortcut.command_type = "cmd"
 
         self.setWindowTitle(tr("编辑运行命令") if shortcut else tr("添加运行命令"))
         self.setMinimumWidth(460)
@@ -245,7 +248,8 @@ class CommandDialog(BaseDialog):
                 painter.setRenderHint(QtCompat.Antialiasing)
 
                 # 绘制一个简单的闪电形状（几何图形，不依赖字体）
-                from qt_compat import QPolygon, QPoint
+                from qt_compat import QPoint, QPolygon
+
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QColor(255, 200, 0))
 
@@ -280,7 +284,9 @@ class CommandDialog(BaseDialog):
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
         text_primary = "#FFFFFF" if theme == "dark" else "#1C1C1E"
 
-        custom_style = base_style + f"""
+        custom_style = (
+            base_style
+            + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -299,6 +305,7 @@ class CommandDialog(BaseDialog):
                 font-size: 13px;
             }}
         """
+        )
         self.setStyleSheet(custom_style)
 
         # 1. 样式重置与定义
@@ -337,14 +344,17 @@ class CommandDialog(BaseDialog):
             }}
         """
         self.command_edit.setStyleSheet(editor_style)
-        self.test_output.setStyleSheet(editor_style + f"""
+        self.test_output.setStyleSheet(
+            editor_style
+            + f"""
             QPlainTextEdit {{
                 background-color: {"rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.75)"};
                 border: 1px solid {border_color};
                 border-radius: 8px;
                 padding: 4px;
             }}
-        """)
+        """
+        )
         # 再次强制视口透明（双重保险）
         if hasattr(self.command_edit, "viewport"):
             self.command_edit.viewport().setStyleSheet("background: transparent;")
@@ -385,20 +395,27 @@ class CommandDialog(BaseDialog):
 
         # 应用单选按钮样式
         try:
-                from .theme_helper import get_radio_stylesheet
-                radio_style = get_radio_stylesheet(theme)
-                self.trigger_immediate_rb.setStyleSheet(radio_style)
-                self.trigger_after_close_rb.setStyleSheet(radio_style)
+            from .theme_helper import get_radio_stylesheet
+
+            radio_style = get_radio_stylesheet(theme)
+            self.trigger_immediate_rb.setStyleSheet(radio_style)
+            self.trigger_after_close_rb.setStyleSheet(radio_style)
         except Exception:
-                pass
+            pass
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
-        for btn in [self._browse_icon_btn, self._clear_icon_btn,
-                         self._browse_workdir_btn, self.insert_var_btn, self._test_btn,
-                         self._cancel_btn, self._ok_btn]:
-                btn.setStyleSheet(flat_btn_style)
+        for btn in [
+            self._browse_icon_btn,
+            self._clear_icon_btn,
+            self._browse_workdir_btn,
+            self.insert_var_btn,
+            self._test_btn,
+            self._cancel_btn,
+            self._ok_btn,
+        ]:
+            btn.setStyleSheet(flat_btn_style)
 
         # 应用复选框样式
         cb_style = get_small_checkbox_stylesheet(theme)
@@ -408,6 +425,7 @@ class CommandDialog(BaseDialog):
         self.run_as_admin_cb.setStyleSheet(cb_style)
         self.python_legacy_cb.setStyleSheet(cb_style)
         self.variable_expansion_cb.setStyleSheet(cb_style)
+        self.capture_output_cb.setStyleSheet(cb_style)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -512,8 +530,8 @@ class CommandDialog(BaseDialog):
         # 3. 命令设置 (移到第三位)
         cmd_group = QGroupBox("命令内容")
         cmd_layout = QVBoxLayout(cmd_group)
-        cmd_layout.setSpacing(4) # 减小间距
-        cmd_layout.setContentsMargins(8, 8, 8, 8) # 减小内部边距
+        cmd_layout.setSpacing(4)  # 减小间距
+        cmd_layout.setContentsMargins(8, 8, 8, 8)  # 减小内部边距
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
@@ -535,6 +553,7 @@ class CommandDialog(BaseDialog):
         top_row.addWidget(self._test_btn)
 
         self.show_window_cb = QCheckBox("显示执行窗口")
+        self.show_window_cb.stateChanged.connect(self._update_capture_controls)
         top_row.addWidget(self.show_window_cb)
 
         cmd_layout.addLayout(top_row)
@@ -545,10 +564,11 @@ class CommandDialog(BaseDialog):
         # 1. 文本编辑器 (CMD/Python) - 重构为容器模式
         # 外层容器：负责背景、边框、圆角
         from qt_compat import QFrame
+
         self.command_container = QFrame()
         self.command_container.setObjectName("CommandContainer")
         container_layout = QVBoxLayout(self.command_container)
-        container_layout.setContentsMargins(4, 2, 4, 4) # 内部留白，防止文字贴边
+        container_layout.setContentsMargins(4, 2, 4, 4)  # 内部留白，防止文字贴边
         container_layout.setSpacing(0)
 
         # 内层编辑器：完全透明，只负责显示文字
@@ -572,7 +592,7 @@ class CommandDialog(BaseDialog):
 
         # 2. 内置命令下拉框
         self.builtin_combo = QComboBox()
-        self.builtin_combo.setFixedHeight(48) # 同步高度
+        self.builtin_combo.setFixedHeight(48)  # 同步高度
         for name, cmd in self.BUILTIN_COMMANDS:
             self.builtin_combo.addItem(name, cmd)
         self.builtin_combo.currentIndexChanged.connect(self._on_builtin_changed)
@@ -588,7 +608,7 @@ class CommandDialog(BaseDialog):
         self.test_output.setPlaceholderText("运行结果会显示在这里")
         self.test_output.setVisible(False)
         cmd_layout.addWidget(self.test_output)
-        cmd_layout.setContentsMargins(8, 4, 8, 8) # 恢复适度边距，保持比例协调
+        cmd_layout.setContentsMargins(8, 4, 8, 8)  # 恢复适度边距，保持比例协调
         layout.addWidget(cmd_group)
 
         # 4. 高级选项
@@ -610,6 +630,7 @@ class CommandDialog(BaseDialog):
         option_row = QHBoxLayout()
         option_row.setSpacing(8)
         self.run_as_admin_cb = QCheckBox("以管理员身份运行")
+        self.run_as_admin_cb.stateChanged.connect(self._update_capture_controls)
         self.python_legacy_cb = QCheckBox("兼容旧 Python")
         install_tooltip(self.python_legacy_cb, "在主进程内执行 Python，兼容旧脚本；新命令建议关闭")
         self.variable_expansion_cb = QCheckBox("解析变量")
@@ -619,6 +640,25 @@ class CommandDialog(BaseDialog):
         option_row.addWidget(self.variable_expansion_cb)
         option_row.addStretch()
         advanced_layout.addRow("", option_row)
+
+        capture_row = QHBoxLayout()
+        capture_row.setSpacing(8)
+        self.capture_output_cb = QCheckBox("捕获输出并显示在命令面板")
+        self.capture_output_cb.stateChanged.connect(self._update_capture_controls)
+        capture_row.addWidget(self.capture_output_cb)
+        capture_row.addWidget(QLabel("超时"))
+        self.capture_timeout_spin = QSpinBox()
+        self.capture_timeout_spin.setRange(1, 3600)
+        self.capture_timeout_spin.setSuffix(" 秒")
+        capture_row.addWidget(self.capture_timeout_spin)
+        capture_row.addWidget(QLabel("最大输出"))
+        self.capture_max_chars_spin = QSpinBox()
+        self.capture_max_chars_spin.setRange(1000, 1000000)
+        self.capture_max_chars_spin.setSingleStep(1000)
+        self.capture_max_chars_spin.setSuffix(" 字符")
+        capture_row.addWidget(self.capture_max_chars_spin)
+        capture_row.addStretch()
+        advanced_layout.addRow("", capture_row)
 
         layout.addWidget(advanced_group)
 
@@ -632,7 +672,10 @@ class CommandDialog(BaseDialog):
         install_tooltip(self.trigger_immediate_rb, "点击图标后立刻运行命令，适合打开程序、网页或执行后台命令")
 
         self.trigger_after_close_rb = QRadioButton("先关闭面板，再运行")
-        install_tooltip(self.trigger_after_close_rb, "先关闭快捷启动面板并把焦点还给原来的窗口，再运行命令，适合需要操作原窗口的命令")
+        install_tooltip(
+            self.trigger_after_close_rb,
+            "先关闭快捷启动面板并把焦点还给原来的窗口，再运行命令，适合需要操作原窗口的命令",
+        )
 
         trigger_layout.addWidget(self.trigger_immediate_rb)
         trigger_layout.addWidget(self.trigger_after_close_rb)
@@ -679,6 +722,7 @@ class CommandDialog(BaseDialog):
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
             self.show_window_cb.setEnabled(True)
+            self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
             self.python_legacy_cb.setEnabled(False)
             self.variable_expansion_cb.setEnabled(True)
@@ -690,6 +734,7 @@ class CommandDialog(BaseDialog):
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
             self.show_window_cb.setEnabled(True)
+            self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
             self.python_legacy_cb.setEnabled(True)
             self.variable_expansion_cb.setEnabled(True)
@@ -701,6 +746,8 @@ class CommandDialog(BaseDialog):
             self.input_stack.setFixedHeight(48)
             self.show_window_cb.setChecked(False)
             self.show_window_cb.setEnabled(False)
+            self.capture_output_cb.setChecked(False)
+            self._update_capture_controls()
             self.insert_var_btn.setEnabled(False)
             self.python_legacy_cb.setEnabled(False)
             self.variable_expansion_cb.setChecked(False)
@@ -710,6 +757,18 @@ class CommandDialog(BaseDialog):
 
         # 更新图标
         self._update_icon_preview()
+
+    def _update_capture_controls(self):
+        if not hasattr(self, "capture_output_cb"):
+            return
+        is_builtin = getattr(self, "type_combo", None) is not None and self.type_combo.currentIndex() == 2
+        blocked = is_builtin or self.show_window_cb.isChecked() or self.run_as_admin_cb.isChecked()
+        if blocked:
+            self.capture_output_cb.setChecked(False)
+        self.capture_output_cb.setEnabled(not blocked)
+        enabled = self.capture_output_cb.isChecked() and not blocked
+        self.capture_timeout_spin.setEnabled(enabled)
+        self.capture_max_chars_spin.setEnabled(enabled)
 
     def _on_builtin_changed(self, index):
         """内置命令改变"""
@@ -722,11 +781,12 @@ class CommandDialog(BaseDialog):
             return
 
         import os
-        system32 = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32')
+
+        system32 = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32")
 
         # 自动设置图标
         icon_path = ""
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = os.path.dirname(sys.executable)
         else:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -777,10 +837,13 @@ class CommandDialog(BaseDialog):
         items = [tr("CMD 命令"), tr("Python 代码"), tr("内置命令")]
         current = self.type_combo.currentText()
         for i, item_text in enumerate(items):
+
             def _make_cb(idx):
                 def cb():
                     self.type_combo.setCurrentIndex(idx)
+
                 return cb
+
             btn = menu.add_action(item_text, _make_cb(i))
             if item_text == current:
                 sel_bg = "#0A84FF" if self.theme == "dark" else "#007AFF"
@@ -796,10 +859,13 @@ class CommandDialog(BaseDialog):
         current = self.builtin_combo.currentText()
         for i in range(self.builtin_combo.count()):
             item_text = self.builtin_combo.itemText(i)
+
             def _make_cb(idx):
                 def cb():
                     self.builtin_combo.setCurrentIndex(idx)
+
                 return cb
+
             btn = menu.add_action(item_text, _make_cb(i))
             if item_text == current:
                 sel_bg = "rgba(80, 110, 150, 180)" if self.theme == "dark" else "rgba(180, 210, 240, 180)"
@@ -823,7 +889,7 @@ class CommandDialog(BaseDialog):
             ("程序目录", "{app_dir}"),
             ("配置目录", "{config_dir}"),
             ("PowerShell 片段", "powershell -NoProfile -ExecutionPolicy Bypass -Command {clipboard:q}"),
-            ("Python 模板", 'import os\nprint(os.getcwd())'),
+            ("Python 模板", "import os\nprint(os.getcwd())"),
         ]
         for label, text in items:
             menu.add_action(label, lambda t=text: self._insert_command_text(t))
@@ -854,23 +920,30 @@ class CommandDialog(BaseDialog):
 
     def _build_preview_shortcut(self) -> ShortcutItem:
         import copy
+
         shortcut = copy.copy(self.shortcut)
         type_index = self.type_combo.currentIndex()
         shortcut.type = ShortcutType.COMMAND
         shortcut.name = self.name_edit.text().strip()[:6] or "测试"
         shortcut.command_type = "cmd" if type_index == 0 else "python" if type_index == 1 else "builtin"
-        shortcut.command = self.builtin_combo.currentData() if type_index == 2 else self.command_edit.toPlainText().strip()
+        shortcut.command = (
+            self.builtin_combo.currentData() if type_index == 2 else self.command_edit.toPlainText().strip()
+        )
         shortcut.trigger_mode = "after_close" if self.trigger_after_close_rb.isChecked() else "immediate"
         shortcut.show_window = self.show_window_cb.isChecked()
         shortcut.working_dir = self.workdir_edit.text().strip()
         shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
         shortcut.python_execution_mode = "legacy_inline" if self.python_legacy_cb.isChecked() else "subprocess"
         shortcut.command_variables_enabled = self.variable_expansion_cb.isChecked()
+        shortcut.capture_output = self.capture_output_cb.isChecked()
+        shortcut.command_timeout_seconds = float(self.capture_timeout_spin.value())
+        shortcut.command_output_max_chars = int(self.capture_max_chars_spin.value())
         return shortcut
 
     def _collect_runtime_inputs(self, command: str):
         try:
             from core.command_variables import collect_input_prompts
+
             prompts = collect_input_prompts(command)
         except Exception:
             return {}
@@ -879,6 +952,7 @@ class CommandDialog(BaseDialog):
             label = prompt or "输入内容"
             try:
                 from ui.styles.themed_messagebox import ThemedInputDialog
+
                 value, ok = ThemedInputDialog.getText(self, "运行参数", label)
             except Exception as e:
                 logger.debug(f"加载 ThemedInputDialog 失败，退回到标准输入: {e}")
@@ -908,7 +982,9 @@ class CommandDialog(BaseDialog):
 
         self._test_btn.setEnabled(False)
         self.test_output.setPlainText("正在测试...")
-        self._command_test_thread = CommandTestThread(shortcut, timeout=10.0, parent=None)
+        self._command_test_thread = CommandTestThread(
+            shortcut, timeout=float(self.capture_timeout_spin.value()), parent=None
+        )
         self._command_test_thread.finished_signal.connect(self._show_test_result)
         self._command_test_thread.start()
 
@@ -1017,16 +1093,16 @@ class CommandDialog(BaseDialog):
             self.type_combo.blockSignals(True)
 
             # 加载命令类型
-            cmd_type = getattr(self.shortcut, 'command_type', 'cmd')
+            cmd_type = getattr(self.shortcut, "command_type", "cmd")
             command = self.shortcut.command or ""
             canonical_builtin = self._canonical_builtin_command(command)
-            if cmd_type != 'python' and canonical_builtin:
-                cmd_type = 'builtin'
+            if cmd_type != "python" and canonical_builtin:
+                cmd_type = "builtin"
                 command = canonical_builtin
 
-            if cmd_type == 'python':
+            if cmd_type == "python":
                 self.type_combo.setCurrentIndex(1)
-            elif cmd_type == 'builtin':
+            elif cmd_type == "builtin":
                 self.type_combo.setCurrentIndex(2)
             else:
                 self.type_combo.setCurrentIndex(0)
@@ -1034,13 +1110,13 @@ class CommandDialog(BaseDialog):
             self.type_combo.blockSignals(False)
 
             # 加载触发模式
-            if getattr(self.shortcut, 'trigger_mode', 'immediate') == 'after_close':
+            if getattr(self.shortcut, "trigger_mode", "immediate") == "after_close":
                 self.trigger_after_close_rb.setChecked(True)
             else:
                 self.trigger_immediate_rb.setChecked(True)
 
             # 加载命令内容
-            if cmd_type == 'builtin':
+            if cmd_type == "builtin":
                 # 尝试在下拉框中选中对应命令
                 index = self.builtin_combo.findData(command)
                 if index >= 0:
@@ -1054,19 +1130,18 @@ class CommandDialog(BaseDialog):
             # 加载反转设置
             self.invert_theme_cb.setChecked(self.shortcut.icon_invert_with_theme)
             self.invert_current_cb.setChecked(self.shortcut.icon_invert_current)
-            self.show_window_cb.setChecked(getattr(self.shortcut, 'show_window', False))
-            self.workdir_edit.setText(getattr(self.shortcut, 'working_dir', '') or '')
-            self.run_as_admin_cb.setChecked(getattr(self.shortcut, 'run_as_admin', False))
+            self.show_window_cb.setChecked(getattr(self.shortcut, "show_window", False))
+            self.workdir_edit.setText(getattr(self.shortcut, "working_dir", "") or "")
+            self.run_as_admin_cb.setChecked(getattr(self.shortcut, "run_as_admin", False))
+            self.capture_output_cb.setChecked(getattr(self.shortcut, "capture_output", False))
+            self.capture_timeout_spin.setValue(int(getattr(self.shortcut, "command_timeout_seconds", 10.0) or 10.0))
+            self.capture_max_chars_spin.setValue(
+                int(getattr(self.shortcut, "command_output_max_chars", 20000) or 20000)
+            )
             self.python_legacy_cb.setChecked(
-                getattr(self.shortcut, 'python_execution_mode', 'subprocess') == 'legacy_inline'
+                getattr(self.shortcut, "python_execution_mode", "subprocess") == "legacy_inline"
             )
-            self.variable_expansion_cb.setChecked(
-                getattr(
-                    self.shortcut,
-                    'command_variables_enabled',
-                    False
-                )
-            )
+            self.variable_expansion_cb.setChecked(getattr(self.shortcut, "command_variables_enabled", False))
 
             # 手动调用一次以初始化界面状态
             self._on_type_changed(self.type_combo.currentIndex())
@@ -1079,7 +1154,7 @@ class CommandDialog(BaseDialog):
     def _update_icon_preview(self):
         """更新图标预览"""
         # 避免递归调用或死循环，如果正在更新中则返回
-        if getattr(self, '_updating_icon', False):
+        if getattr(self, "_updating_icon", False):
             return
         self._updating_icon = True
 
@@ -1090,7 +1165,7 @@ class CommandDialog(BaseDialog):
                 try:
                     should_load = False
                     # 检查是否为资源路径 (包含逗号)
-                    if ',' in self._custom_icon_path:
+                    if "," in self._custom_icon_path:
                         should_load = True
                     # 或者检查文件是否存在
                     elif os.path.exists(self._custom_icon_path):
@@ -1098,6 +1173,7 @@ class CommandDialog(BaseDialog):
 
                     if should_load:
                         from core.icon_extractor import IconExtractor
+
                         pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
                 except Exception as e:
                     logger.debug(f"加载自定义图标失败: {e}")
@@ -1106,8 +1182,14 @@ class CommandDialog(BaseDialog):
                 pixmap = self._create_command_icon(48)
 
             # 应用反转
-            if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
+            if (
+                self.invert_theme_cb.isChecked()
+                and self.invert_current_cb.isChecked()
+                and pixmap
+                and not pixmap.isNull()
+            ):
                 from core.icon_extractor import IconExtractor
+
                 pixmap = IconExtractor.invert_pixmap(pixmap)
 
             # 缩放到预览尺寸
@@ -1134,7 +1216,7 @@ class CommandDialog(BaseDialog):
                 painter.setBrush(QColor(50, 50, 50))
                 painter.setPen(QtCompat.NoPen)
                 margin = size // 8
-                painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
+                painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
 
                 painter.setPen(QColor(0, 255, 0))
                 font = QFont("Consolas", size // 3)
@@ -1143,12 +1225,12 @@ class CommandDialog(BaseDialog):
 
                 # 根据类型显示不同图标文本
                 text = ">_"
-                if self.type_combo.currentIndex() == 1: # Python
+                if self.type_combo.currentIndex() == 1:  # Python
                     text = "Py"
-                    painter.setPen(QColor(255, 215, 0)) # 金色
-                elif self.type_combo.currentIndex() == 2: # Built-in
+                    painter.setPen(QColor(255, 215, 0))  # 金色
+                elif self.type_combo.currentIndex() == 2:  # Built-in
                     text = "In"
-                    painter.setPen(QColor(100, 200, 255)) # 蓝色
+                    painter.setPen(QColor(100, 200, 255))  # 蓝色
 
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, text)
             finally:
@@ -1191,7 +1273,7 @@ class CommandDialog(BaseDialog):
         name = self.name_edit.text().strip()
 
         type_index = self.type_combo.currentIndex()
-        if type_index == 2: # Built-in
+        if type_index == 2:  # Built-in
             command = self.builtin_combo.currentData()
         else:
             command = self.command_edit.toPlainText().strip()
@@ -1200,6 +1282,7 @@ class CommandDialog(BaseDialog):
             self.name_edit.setFocus()
             try:
                 from ui.styles.themed_messagebox import ThemedMessageBox
+
                 ThemedMessageBox.warning(self, "校验失败", "请输入命令名称！")
             except Exception:
                 pass
@@ -1207,17 +1290,22 @@ class CommandDialog(BaseDialog):
 
         if not command:
             if type_index == 2:
-                pass # 内置命令一定有值
+                pass  # 内置命令一定有值
             else:
                 self.command_edit.setFocus()
                 try:
                     from ui.styles.themed_messagebox import ThemedMessageBox
+
                     ThemedMessageBox.warning(self, "校验失败", "请输入命令内容！")
                 except Exception:
                     pass
                 return
 
-        if self.variable_expansion_cb.isChecked() and "{selected_text" in command and self.trigger_immediate_rb.isChecked():
+        if (
+            self.variable_expansion_cb.isChecked()
+            and "{selected_text" in command
+            and self.trigger_immediate_rb.isChecked()
+        ):
             self.trigger_after_close_rb.setChecked(True)
 
         self.accept()
@@ -1228,26 +1316,28 @@ class CommandDialog(BaseDialog):
 
         type_index = self.type_combo.currentIndex()
         if type_index == 0:
-            self.shortcut.command_type = 'cmd'
+            self.shortcut.command_type = "cmd"
             self.shortcut.command = self.command_edit.toPlainText().strip()
         elif type_index == 1:
-            self.shortcut.command_type = 'python'
+            self.shortcut.command_type = "python"
             self.shortcut.command = self.command_edit.toPlainText().strip()
         else:
-            self.shortcut.command_type = 'builtin'
+            self.shortcut.command_type = "builtin"
             self.shortcut.command = self.builtin_combo.currentData()
 
-        self.shortcut.trigger_mode = 'after_close' if self.trigger_after_close_rb.isChecked() else 'immediate'
+        self.shortcut.trigger_mode = "after_close" if self.trigger_after_close_rb.isChecked() else "immediate"
         self.shortcut.show_window = self.show_window_cb.isChecked()
         self.shortcut.working_dir = self.workdir_edit.text().strip()
         self.shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
-        self.shortcut.python_execution_mode = 'legacy_inline' if self.python_legacy_cb.isChecked() else 'subprocess'
+        self.shortcut.python_execution_mode = "legacy_inline" if self.python_legacy_cb.isChecked() else "subprocess"
         self.shortcut.command_variables_enabled = self.variable_expansion_cb.isChecked()
+        self.shortcut.capture_output = self.capture_output_cb.isChecked()
+        self.shortcut.command_timeout_seconds = float(self.capture_timeout_spin.value())
+        self.shortcut.command_output_max_chars = int(self.capture_max_chars_spin.value())
         self.shortcut.icon_path = self._custom_icon_path
         self.shortcut.type = ShortcutType.COMMAND
         self.shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
         self.shortcut.icon_invert_current = self.invert_current_cb.isChecked()
         if self.invert_theme_cb.isChecked():
-            self.shortcut.icon_invert_theme_when_set = getattr(self, 'theme', 'dark')
+            self.shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
         return self.shortcut
-

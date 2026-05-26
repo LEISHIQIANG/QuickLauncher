@@ -26,8 +26,10 @@ def install_tooltip(widget: QWidget, text: str):
 
     def show_tooltip():
         from ui.custom_tooltip import CustomToolTip
+
         try:
             from core import DataManager
+
             dm = DataManager()
             theme = dm.get_settings().theme
         except Exception:
@@ -43,6 +45,7 @@ def install_tooltip(widget: QWidget, text: str):
             widget._tooltip_timer.stop()
 
         from ui.custom_tooltip import CustomToolTip
+
         CustomToolTip.hideToolTip()
         return widget.__class__.leaveEvent(widget, event)
 

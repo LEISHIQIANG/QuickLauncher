@@ -29,9 +29,7 @@ def _tray_like(multi_open=True):
     tray = TrayApp.__new__(TrayApp)
     tray._extra_popup_windows = []
     tray._max_extra_popup_windows = 2
-    tray.data_manager = SimpleNamespace(
-        get_settings=lambda: SimpleNamespace(popup_multi_open_when_pinned=multi_open)
-    )
+    tray.data_manager = SimpleNamespace(get_settings=lambda: SimpleNamespace(popup_multi_open_when_pinned=multi_open))
     tray.popup_window = None
     tray.config_window = None
     tray.log_window = None

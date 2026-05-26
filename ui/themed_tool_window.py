@@ -147,14 +147,17 @@ class ThemedToolWindow(QDialog):
         else:
             text_primary = "rgba(28, 28, 30, 0.9)"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(f"""
+        widget.setStyleSheet(
+            f"""
             QPlainTextEdit {{
                 background: transparent;
                 border: none;
                 color: {text_primary};
                 selection-background-color: rgba(10, 132, 255, 0.45);
             }}
-        """ + scrollbar_style)
+        """
+            + scrollbar_style
+        )
         self.style_scrollbars(widget)
 
     def style_list_widget(self, widget: QListWidget):
@@ -180,7 +183,8 @@ class ThemedToolWindow(QDialog):
         padding = "4px 7px" if compact else "8px 10px"
         radius = "4px" if compact else "6px"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(f"""
+        widget.setStyleSheet(
+            f"""
             QListWidget {{
                 background: transparent;
                 border: 1px solid {border};
@@ -200,7 +204,9 @@ class ThemedToolWindow(QDialog):
                 background: {item_selected};
                 color: {selected_text};
             }}
-        """ + scrollbar_style)
+        """
+            + scrollbar_style
+        )
         self.style_scrollbars(widget)
 
     def style_scrollbars(self, widget):
@@ -273,9 +279,9 @@ class ThemedToolWindow(QDialog):
                 if icon_path and os.path.exists(icon_path):
                     pixmap = QPixmap(icon_path)
                     if not pixmap.isNull():
-                        self.icon_label.setPixmap(pixmap.scaled(
-                            QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation
-                        ))
+                        self.icon_label.setPixmap(
+                            pixmap.scaled(QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                        )
                         return
         except Exception:
             pass
@@ -324,9 +330,12 @@ class ThemedToolWindow(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            radius, radius,
+            inset,
+            inset,
+            self.width() - inset * 2,
+            self.height() - inset * 2,
+            radius,
+            radius,
         )
         tint_color = QColor(bg)
         tint_color.setAlpha(min(tint_color.alpha(), 150 if is_win10() else 100))
@@ -352,6 +361,7 @@ class ThemedToolWindow(QDialog):
     def showEvent(self, event):
         super().showEvent(event)
         from qt_compat import QTimer
+
         QTimer.singleShot(10, self._apply_blur_effect)
         self._start_show_animation()
 
@@ -378,8 +388,10 @@ class ThemedToolWindow(QDialog):
         if event.button() == QtCompat.LeftButton:
             pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
             self._drag_pos = (
-                event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
-            ) if pos.y() <= 36 else None
+                (event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos())
+                if pos.y() <= 36
+                else None
+            )
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):

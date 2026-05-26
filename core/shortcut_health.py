@@ -74,13 +74,28 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
             linked = getattr(folder, "linked_path", "")
             if not os.path.isdir(linked):
                 dummy = ShortcutItem(id="", name=getattr(folder, "name", ""))
-                add("missing_linked_folder", "error", "同步目录不可用", f"绑定目录不存在: {linked}", folder, dummy, "disable_folder_sync")
+                add(
+                    "missing_linked_folder",
+                    "error",
+                    "同步目录不可用",
+                    f"绑定目录不存在: {linked}",
+                    folder,
+                    dummy,
+                    "disable_folder_sync",
+                )
 
         for shortcut in getattr(folder, "items", []) or []:
             name_key = (str(getattr(shortcut, "name", "")).casefold(), str(getattr(shortcut, "type", "")).casefold())
             if name_key in seen and name_key[0]:
                 first_item, first_folder = seen[name_key]
-                add("duplicate_name", "debug", "重复名称", f"全局存在同名快捷方式 (首次出现于分类: {first_folder})", folder, shortcut)
+                add(
+                    "duplicate_name",
+                    "debug",
+                    "重复名称",
+                    f"全局存在同名快捷方式 (首次出现于分类: {first_folder})",
+                    folder,
+                    shortcut,
+                )
             else:
                 seen[name_key] = (shortcut, getattr(folder, "name", ""))
 
@@ -88,7 +103,15 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
             if shortcut_type in (ShortcutType.FILE, ShortcutType.FOLDER):
                 target = str(getattr(shortcut, "target_path", "") or "").strip()
                 if not target:
-                    add("missing_target", "error", "目标路径为空", "文件/文件夹快捷方式缺少目标路径", folder, shortcut, "delete_shortcut")
+                    add(
+                        "missing_target",
+                        "error",
+                        "目标路径为空",
+                        "文件/文件夹快捷方式缺少目标路径",
+                        folder,
+                        shortcut,
+                        "delete_shortcut",
+                    )
                 elif not os.path.exists(target):
                     add("missing_target", "error", "目标路径不存在", target, folder, shortcut, "delete_shortcut")
 

@@ -22,7 +22,9 @@ def test_python_visible_window_uses_wrapper_without_nested_quotes(monkeypatch):
             return r"C:\Users\Administrator\AppData\Local\Temp\ql_py_wrapper.cmd"
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["parameters"] = parameters
             captured["directory"] = directory
@@ -327,7 +329,9 @@ def test_multiline_cmd_uses_wrapper_without_single_line_fallthrough(monkeypatch)
             return r"C:\Temp\ql_user.cmd", r"C:\Temp\ql_wrapper.cmd"
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["parameters"] = parameters
             captured["directory"] = directory
@@ -415,7 +419,9 @@ def test_command_variable_inside_real_command_still_executes(monkeypatch):
 
     class FakeExecutor(command_exec.CommandExecutionMixin):
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
             return False, ""
 
         @staticmethod
@@ -518,7 +524,9 @@ def test_quoted_external_variable_in_cmd_still_executes(monkeypatch):
 
     class FakeExecutor(command_exec.CommandExecutionMixin):
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
             return False, ""
 
         @staticmethod
@@ -703,7 +711,9 @@ def test_elevated_normal_python_uses_privilege_boundary_not_inline(monkeypatch):
             return r"C:\Temp\ql_script.py"
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["run_as_admin"] = run_as_admin
             return True, ""
@@ -738,7 +748,9 @@ def test_admin_cmd_success_after_standard_fallback_is_reported_success(monkeypat
             return [r"C:\Tools\App.exe", "--flag"]
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["parameters"] = parameters
             captured["run_as_admin"] = run_as_admin
@@ -778,7 +790,9 @@ def test_admin_cmd_in_elevated_context_uses_unified_privilege_route(monkeypatch)
             return True
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["parameters"] = parameters
             captured["directory"] = directory
@@ -812,4 +826,219 @@ def test_admin_cmd_in_elevated_context_uses_unified_privilege_route(monkeypatch)
     assert error == ""
     assert captured["target"] == r"C:\Tools\App.exe"
     assert captured["parameters"] == "--flag"
+    assert captured["run_as_admin"] is True
+
+
+def test_shortcut_item_persists_capture_output_fields():
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.capture_output = True
+    item.command_timeout_seconds = 3.5
+    item.command_output_max_chars = 12345
+
+    restored = ShortcutItem.from_dict(item.to_dict())
+
+    assert restored.capture_output is True
+    assert restored.command_timeout_seconds == 3.5
+    assert restored.command_output_max_chars == 12345
+
+
+def test_run_command_capture_cmd_stdout_stderr_and_exit(monkeypatch):
+    class FakeProcess:
+        returncode = 7
+
+        def communicate(self, timeout=None):
+            return "out", "err"
+
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo test"
+    item.capture_output = True
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert result.display_type == "log"
+    assert result.payload["stdout"] == "out"
+    assert result.payload["stderr"] == "err"
+    assert result.payload["exit_code"] == 7
+    assert captured["kwargs"]["stdout"] == command_exec.subprocess.PIPE
+    assert captured["kwargs"]["shell"] is True
+
+
+def test_run_command_capture_timeout_kills_process(monkeypatch):
+    class FakeProcess:
+        returncode = -9
+
+        def __init__(self):
+            self.calls = 0
+            self.killed = False
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise command_exec.subprocess.TimeoutExpired("cmd", timeout)
+            return "partial", ""
+
+        def kill(self):
+            self.killed = True
+
+    proc = FakeProcess()
+    monkeypatch.setattr(command_exec.subprocess, "Popen", lambda *args, **kwargs: proc)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "slow"
+    item.command_timeout_seconds = 0.1
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert result.payload["timed_out"] is True
+    assert proc.killed is True
+    assert "partial" in result.message
+
+
+def test_run_command_capture_truncates_output(monkeypatch):
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "x" * 1100, ""
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "long"
+    item.command_output_max_chars = 1000
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is True
+    assert result.payload["stdout_truncated"] is True
+    assert len(result.payload["stdout"]) < 1100
+
+
+def test_run_command_capture_python_subprocess(monkeypatch):
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "py out", "py err"
+
+    captured = {}
+    monkeypatch.setattr(
+        command_exec.subprocess, "Popen", lambda *args, **kwargs: captured.setdefault("proc", FakeProcess())
+    )
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_python_launcher", staticmethod(lambda: "python"))
+    monkeypatch.setattr(
+        command_exec.ShortcutExecutor, "_write_temp_python_script", staticmethod(lambda script: "tmp.py")
+    )
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+    monkeypatch.setattr(command_exec.os, "remove", lambda path: captured.setdefault("removed", path))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "python"
+    item.command = "print('x')"
+    item.python_execution_mode = "subprocess"
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is True
+    assert result.payload["stdout"] == "py out"
+    assert result.payload["stderr"] == "py err"
+    assert captured["removed"] == "tmp.py"
+
+
+def test_execute_command_capture_false_keeps_silent_launch(monkeypatch):
+    captured = {}
+
+    class FakeProcess:
+        def wait(self, timeout=None):
+            return 0
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def run_command_capture(shortcut, timeout=None):
+            raise AssertionError("capture branch should not run")
+
+        @staticmethod
+        def _launch_with_privilege(*args, **kwargs):
+            return False, ""
+
+        @staticmethod
+        def _popen_silent(argv, cwd=None, env=None, shell=False):
+            captured["argv"] = argv
+            captured["shell"] = shell
+            return FakeProcess()
+
+        @staticmethod
+        def _safe_split_args(command):
+            return command.split()
+
+        @staticmethod
+        def _sanitized_child_env():
+            return {}
+
+        @staticmethod
+        def restore_foreground_window():
+            pass
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo ok"
+    item.capture_output = False
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success is True
+    assert error == ""
+    assert captured["shell"] is True
+
+
+def test_execute_command_capture_disabled_for_admin(monkeypatch):
+    captured = {}
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def run_command_capture(shortcut, timeout=None):
+            raise AssertionError("admin command should not use capture branch")
+
+        @staticmethod
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
+        ):
+            captured["run_as_admin"] = run_as_admin
+            return True, ""
+
+        @staticmethod
+        def _safe_split_args(command):
+            return command.split()
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo ok"
+    item.capture_output = True
+    item.run_as_admin = True
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success is True
+    assert error == ""
     assert captured["run_as_admin"] is True

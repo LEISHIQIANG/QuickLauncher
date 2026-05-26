@@ -17,13 +17,13 @@ EXTRA_FILES = ["qt_compat.py"]
 SOURCE_DIRS = ["core", "hooks", "ui"]
 
 EXCLUDE_DIRS = [
-    '__pycache__',
-    '.git',
-    '.venv',
-    'venv',
-    'dist',
-    'build',
-    'obfuscated_src',
+    "__pycache__",
+    ".git",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "obfuscated_src",
 ]
 # ============================================
 
@@ -31,12 +31,14 @@ EXCLUDE_DIRS = [
 def install_minifier():
     try:
         import python_minifier
+
         return True
     except ImportError:
         print("  Installing python-minifier...")
         os.system(f'"{sys.executable}" -m pip install python-minifier -q -i https://pypi.tuna.tsinghua.edu.cn/simple')
         try:
             import python_minifier  # noqa: F401
+
             return True
         except ImportError:
             print("  [!] Install failed. Run: pip install python-minifier")
@@ -61,7 +63,7 @@ def obfuscate_code(code):
 
 def obfuscate_file(src_path, dst_path):
     try:
-        with open(src_path, 'r', encoding='utf-8') as f:
+        with open(src_path, "r", encoding="utf-8") as f:
             code = f.read()
 
         if not code.strip():
@@ -71,7 +73,7 @@ def obfuscate_file(src_path, dst_path):
         obfuscated = obfuscate_code(code)
 
         os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-        with open(dst_path, 'w', encoding='utf-8') as f:
+        with open(dst_path, "w", encoding="utf-8") as f:
             f.write(obfuscated)
 
         return True, "ok"
@@ -93,7 +95,7 @@ def obfuscate_directory(src_dir, dst_dir):
             rel_path = os.path.relpath(src_path, src_dir)
             dst_path = os.path.join(dst_dir, rel_path)
 
-            if filename.endswith('.py'):
+            if filename.endswith(".py"):
                 print(f"    {rel_path}", end=" ... ")
                 success, msg = obfuscate_file(src_path, dst_path)
 

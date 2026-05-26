@@ -1,4 +1,5 @@
 """内置图标选择对话框"""
+
 import math
 import os
 import sys
@@ -14,6 +15,7 @@ from ui.utils.dialog_helper import center_dialog_on_main_window
 
 class BuiltinIconWidget(QFrame):
     """内置图标控件（紧凑版）"""
+
     clicked = pyqtSignal(ShortcutItem)
 
     def __init__(self, item: ShortcutItem, theme: str = "dark", icon_size: int = 26, cell_size: int = 42):
@@ -94,6 +96,7 @@ class BuiltinIconWidget(QFrame):
 
 class BuiltinIconsDialog(QDialog):
     """内置图标选择对话框"""
+
     icon_selected = pyqtSignal(ShortcutItem)
 
     def __init__(self, parent=None):
@@ -105,11 +108,7 @@ class BuiltinIconsDialog(QDialog):
         # 使用 Popup 配合 NoDropShadowWindowHint
         # Popup 标志自带“点击外部自动关闭”特性
         # NoDropShadowWindowHint 消除系统底层可能自带的陈旧/异常阴影
-        self.setWindowFlags(
-            QtCompat.Popup |
-            QtCompat.FramelessWindowHint |
-            QtCompat.NoDropShadowWindowHint
-        )
+        self.setWindowFlags(QtCompat.Popup | QtCompat.FramelessWindowHint | QtCompat.NoDropShadowWindowHint)
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
         self.setAttribute(QtCompat.WA_DeleteOnClose, True)
 
@@ -119,6 +118,7 @@ class BuiltinIconsDialog(QDialog):
         self._close_timer.timeout.connect(self._check_auto_close)
 
         from ui.utils.window_effect import is_win11
+
         self.corner_radius = 8 if is_win11() else 12
         self._acrylic_applied = False
         self._closing = False
@@ -142,9 +142,9 @@ class BuiltinIconsDialog(QDialog):
             try:
                 parent = self._parent_window
                 while parent:
-                    if hasattr(parent, 'data_manager'):
+                    if hasattr(parent, "data_manager"):
                         return parent.data_manager.get_settings().theme
-                    parent = parent.parent() if hasattr(parent, 'parent') else None
+                    parent = parent.parent() if hasattr(parent, "parent") else None
             except Exception:
                 pass
         return "dark"
@@ -152,10 +152,12 @@ class BuiltinIconsDialog(QDialog):
     def paintEvent(self, event):
         """半透明模糊背景绘制 - 与 ThemedMessageBox 一致"""
         from qt_compat import QPainter, QPainterPath, QPen
+
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.Antialiasing)
 
         from ui.utils.window_effect import is_win10
+
         if is_win10():
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
@@ -164,9 +166,7 @@ class BuiltinIconsDialog(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
         )
 
         tint_color = QColor(self.bg_color)
@@ -191,9 +191,10 @@ class BuiltinIconsDialog(QDialog):
         center_dialog_on_main_window(self)
 
         # 启用原生 DWM 阴影和圆角
-        if not getattr(self, '_effects_applied', False):
+        if not getattr(self, "_effects_applied", False):
             self._effects_applied = True
             from ui.utils.window_effect import enable_window_shadow_and_round_corners
+
             enable_window_shadow_and_round_corners(self, radius=self.corner_radius)
 
             # 延迟应用亚克力效果以确保窗口已创建
@@ -205,6 +206,7 @@ class BuiltinIconsDialog(QDialog):
             if self._dialog_finished or self._closing or not self.isVisible():
                 return
             from ui.utils.window_effect import enable_acrylic_for_config_window
+
             enable_acrylic_for_config_window(self, self.theme, blur_amount=30, radius=self.corner_radius)
         except Exception:
             pass
@@ -240,7 +242,6 @@ class BuiltinIconsDialog(QDialog):
     def _apply_theme(self):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(self.theme)
         self.setStyleSheet(base_style + "QDialog { background: transparent; }")
-
 
     def _check_auto_close(self):
         """检查是否需要自动关闭"""

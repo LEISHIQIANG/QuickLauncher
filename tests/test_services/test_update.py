@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 from services.update.checker import UpdateChecker
-from services.update.config import UpdateConfig, UpdateInfo
+from services.update.config import UpdateConfig
 from services.update.downloader import UpdateDownloader
 from services.update.installer import UpdateInstaller
 
@@ -46,11 +46,13 @@ class TestUpdateChecker:
     @patch("services.update.checker.ApiClient.get")
     def test_check_now_no_update_api(self, mock_get):
         mock_get.return_value = {"has_update": False}
-        checker = UpdateChecker(UpdateConfig(
-            update_source="api",
-            check_url="http://localhost",
-            allowed_download_hosts=("update.quicklauncher.app",),
-        ))
+        checker = UpdateChecker(
+            UpdateConfig(
+                update_source="api",
+                check_url="http://localhost",
+                allowed_download_hosts=("update.quicklauncher.app",),
+            )
+        )
         result = checker.check_now()
         assert result is not None
         assert not result.has_update
@@ -68,11 +70,13 @@ class TestUpdateChecker:
             "mandatory": False,
         }
         events = []
-        checker = UpdateChecker(UpdateConfig(
-            update_source="api",
-            check_url="http://localhost",
-            allowed_download_hosts=("update.quicklauncher.app",),
-        ))
+        checker = UpdateChecker(
+            UpdateConfig(
+                update_source="api",
+                check_url="http://localhost",
+                allowed_download_hosts=("update.quicklauncher.app",),
+            )
+        )
         checker.add_listener(lambda event, data: events.append((event, data)))
 
         result = checker.check_now()
@@ -136,11 +140,13 @@ class TestUpdateChecker:
             "file_size": 1000000,
         }
         events = []
-        checker = UpdateChecker(UpdateConfig(
-            update_source="api",
-            check_url="http://localhost",
-            allowed_download_hosts=("update.quicklauncher.app",),
-        ))
+        checker = UpdateChecker(
+            UpdateConfig(
+                update_source="api",
+                check_url="http://localhost",
+                allowed_download_hosts=("update.quicklauncher.app",),
+            )
+        )
         checker.add_listener(lambda event, data: events.append((event, data)))
 
         assert checker.check_now() is None

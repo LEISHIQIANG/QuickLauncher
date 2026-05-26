@@ -26,14 +26,14 @@ SERVICE_DESCRIPTION = "QuickLauncher 开机自启服务，负责在用户登录�
 def _get_app_exe_path() -> str:
     """获取 QuickLauncher.exe 的路径（兼容 Nuitka）"""
     # 优先用 sys.argv[0]
-    if sys.argv and sys.argv[0].lower().endswith('.exe'):
+    if sys.argv and sys.argv[0].lower().endswith(".exe"):
         candidate = os.path.abspath(sys.argv[0])
         if os.path.isfile(candidate):
             return candidate
 
     # 从 sys.executable 所在目录查找 QuickLauncher.exe
     exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    candidate = os.path.join(exe_dir, 'QuickLauncher.exe')
+    candidate = os.path.join(exe_dir, "QuickLauncher.exe")
     if os.path.isfile(candidate):
         return candidate
 
@@ -65,9 +65,7 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
 
     def SvcDoRun(self):
         servicemanager.LogMsg(
-            servicemanager.EVENTLOG_INFORMATION_TYPE,
-            servicemanager.PYS_SERVICE_STARTED,
-            (self._svc_name_, '')
+            servicemanager.EVENTLOG_INFORMATION_TYPE, servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, "")
         )
         self.main()
 
@@ -79,13 +77,16 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
         exe_path = None
         try:
             # 从服务注册表读取启动参数
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, f"SYSTEM\\CurrentControlSet\\Services\\{SERVICE_NAME}", 0, winreg.KEY_READ)
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE, f"SYSTEM\\CurrentControlSet\\Services\\{SERVICE_NAME}", 0, winreg.KEY_READ
+            )
             image_path, _ = winreg.QueryValueEx(key, "ImagePath")
             winreg.CloseKey(key)
 
             # 解析出 QuickLauncher.exe 路径（从 ImagePath 中提取）
             if "QuickLauncher.exe" in image_path:
                 import re
+
                 match = re.search(r'([A-Za-z]:[^"]+QuickLauncher\.exe)', image_path)
                 if match:
                     exe_path = match.group(1)
@@ -95,7 +96,12 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
         # 降级方案1：从安装注册表获取
         if not exe_path:
             try:
-                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1", 0, winreg.KEY_READ)
+                key = winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1",
+                    0,
+                    winreg.KEY_READ,
+                )
                 install_path, _ = winreg.QueryValueEx(key, "InstallLocation")
                 winreg.CloseKey(key)
                 exe_path = os.path.join(install_path, "QuickLauncher.exe")
@@ -116,8 +122,9 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
             if not self.is_running:
                 return
             try:
-                result = subprocess.run(["tasklist", "/FI", "IMAGENAME eq explorer.exe"],
-                                      capture_output=True, text=True, timeout=1)
+                result = subprocess.run(
+                    ["tasklist", "/FI", "IMAGENAME eq explorer.exe"], capture_output=True, text=True, timeout=1
+                )
                 if "explorer.exe" in result.stdout:
                     time.sleep(2)  # 等待桌面加载
                     break
@@ -157,13 +164,14 @@ def install_service():
                 win32service.SERVICE_AUTO_START,
                 win32service.SERVICE_ERROR_NORMAL,
                 bin_path,
-                None, 0, None, None, None
+                None,
+                0,
+                None,
+                None,
+                None,
             )
             try:
-                win32service.ChangeServiceConfig2(
-                    hs, win32service.SERVICE_CONFIG_DESCRIPTION,
-                    SERVICE_DESCRIPTION
-                )
+                win32service.ChangeServiceConfig2(hs, win32service.SERVICE_CONFIG_DESCRIPTION, SERVICE_DESCRIPTION)
             except Exception:
                 pass
             win32service.CloseServiceHandle(hs)
@@ -195,6 +203,7 @@ def start_service():
 
         # 等待服务启动（最多5秒）
         import time
+
         for _ in range(10):
             time.sleep(0.5)
             if is_service_running():
@@ -216,6 +225,7 @@ def stop_service():
 
         # 等待服务停止（最多5秒）
         import time
+
         for _ in range(10):
             time.sleep(0.5)
             if not is_service_running():
@@ -244,7 +254,7 @@ def is_service_running():
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) == 1:
         servicemanager.Initialize()
         servicemanager.PrepareToHostSingle(QuickLauncherService)

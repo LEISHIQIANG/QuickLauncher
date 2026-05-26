@@ -9,7 +9,7 @@ from typing import Callable, Optional, Tuple, Type, TypeVar
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def safe_execute(
@@ -17,7 +17,7 @@ def safe_execute(
     error_msg: str,
     exceptions: Tuple[Type[Exception], ...] = (Exception,),
     default: Optional[T] = None,
-    log_level: str = "warning"
+    log_level: str = "warning",
 ) -> T:
     """安全执行函数，捕获特定异常
 
@@ -47,6 +47,7 @@ def safe_method(error_msg: str, default=None, exceptions=(Exception,)):
         default: 异常时返回的默认值
         exceptions: 要捕获的异常类型
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -55,5 +56,7 @@ def safe_method(error_msg: str, default=None, exceptions=(Exception,)):
             except exceptions as e:
                 logger.warning(f"{error_msg}: {e}", exc_info=True)
                 return default
+
         return wrapper
+
     return decorator

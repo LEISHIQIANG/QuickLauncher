@@ -2,7 +2,6 @@
 主题助手 - 统一管理对话框主题
 """
 
-
 import os
 import tempfile
 import traceback
@@ -12,12 +11,14 @@ from qt_compat import QBrush, QColor, QPainter, QPen, QPixmap, QRectF, QtCompat
 # 内存缓存，避免重复文件系统访问
 _icon_path_cache = {}
 
+
 def log_error(msg):
     try:
         with open("debug_crash.log", "a", encoding="utf-8") as f:
             f.write(msg + "\n")
     except Exception:
         pass
+
 
 def get_temp_icon_dir():
     try:
@@ -30,13 +31,16 @@ def get_temp_icon_dir():
     except Exception:
         return tempfile.gettempdir()
 
+
 def _get_cached_icon_path(cache_key: str) -> str:
     """从缓存获取图标路径"""
     return _icon_path_cache.get(cache_key, "")
 
+
 def _set_cached_icon_path(cache_key: str, path: str):
     """缓存图标路径"""
     _icon_path_cache[cache_key] = path
+
 
 def create_ios_radio_icon(checked: bool, theme: str) -> str:
     """创建 iOS 风格单选图标"""
@@ -57,7 +61,7 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
         file_path = os.path.join(temp_dir, filename)
 
         if os.path.exists(file_path):
-            normalized_path = file_path.replace('\\', '/')
+            normalized_path = file_path.replace("\\", "/")
             _set_cached_icon_path(cache_key, normalized_path)
             return normalized_path
 
@@ -79,25 +83,30 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
             if checked:
                 # Blue fill with white dot
                 painter.setPen(QtCompat.NoPen)
-                painter.setBrush(QBrush(QColor("#007AFF"))) # iOS System Blue
+                painter.setBrush(QBrush(QColor("#007AFF")))  # iOS System Blue
                 painter.drawEllipse(0, 0, s, s)
 
                 painter.setBrush(QBrush(QColor("#FFFFFF")))
                 # 调整中间白点大小
                 dot_s = 6
-                painter.drawEllipse(QRectF((s-dot_s)/2, (s-dot_s)/2, dot_s, dot_s))
+                painter.drawEllipse(QRectF((s - dot_s) / 2, (s - dot_s) / 2, dot_s, dot_s))
             else:
                 # High contrast off state
                 if theme == "dark":
-                    border_color = "#8E8E93" # System Gray
-                    fill_color = "#3A3A3C"   # System Gray 6
+                    border_color = "#8E8E93"  # System Gray
+                    fill_color = "#3A3A3C"  # System Gray 6
                 else:
-                    border_color = "#C7C7CC" # Light Gray
-                    fill_color = "#FFFFFF"   # White
+                    border_color = "#C7C7CC"  # Light Gray
+                    fill_color = "#FFFFFF"  # White
 
-                painter.setPen(QPen(QColor(border_color), 1.5))
+                # 填充完整个椭圆（消除四角透明）
+                painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(QColor(fill_color)))
-                painter.drawEllipse(1, 1, s-2, s-2) # inset
+                painter.drawEllipse(0, 0, s, s)
+                # 再画边框
+                painter.setPen(QPen(QColor(border_color), 1.5))
+                painter.setBrush(QtCompat.NoBrush)
+                painter.drawEllipse(1, 1, s - 2, s - 2)  # inset
         finally:
             painter.end()
 
@@ -105,12 +114,13 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
             log_error(f"Failed to save icon to {file_path}")
             return ""
 
-        normalized_path = file_path.replace('\\', '/')
+        normalized_path = file_path.replace("\\", "/")
         _set_cached_icon_path(cache_key, normalized_path)
         return normalized_path
     except Exception as e:
         log_error(f"Error creating radio icon: {e}\n{traceback.format_exc()}")
         return ""
+
 
 def create_ios_switch_icon(checked: bool, theme: str) -> str:
     """创建 iOS 风格开关图标"""
@@ -130,7 +140,7 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
         file_path = os.path.join(temp_dir, filename)
 
         if os.path.exists(file_path):
-            normalized_path = file_path.replace('\\', '/')
+            normalized_path = file_path.replace("\\", "/")
             _set_cached_icon_path(cache_key, normalized_path)
             return normalized_path
 
@@ -150,28 +160,28 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
             painter.setRenderHint(QtCompat.Antialiasing)
 
             if checked:
-                bg_color = QColor("#007AFF") # Changed to Blue from iOS Green
+                bg_color = QColor("#007AFF")  # Changed to Blue from iOS Green
                 knob_x = w - h + 2
             else:
                 if theme == "dark":
                     bg_color = QColor("#48484A")
                 else:
-                    bg_color = QColor("#E9E9EA") # Light Gray
+                    bg_color = QColor("#E9E9EA")  # Light Gray
                 knob_x = 2
 
             # Draw track
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(bg_color))
-            painter.drawRoundedRect(0, 0, w, h, h/2, h/2)
+            painter.drawRoundedRect(0, 0, w, h, h / 2, h / 2)
 
             # Draw border for off state if needed for contrast
             if not checked:
-                 if theme == "dark":
-                     painter.setPen(QPen(QColor("#8E8E93"), 1))
-                 else:
-                     painter.setPen(QPen(QColor("#D1D1D6"), 1))
-                 painter.setBrush(QtCompat.NoBrush)
-                 painter.drawRoundedRect(0, 0, w, h, h/2, h/2)
+                if theme == "dark":
+                    painter.setPen(QPen(QColor("#8E8E93"), 1))
+                else:
+                    painter.setPen(QPen(QColor("#D1D1D6"), 1))
+                painter.setBrush(QtCompat.NoBrush)
+                painter.drawRoundedRect(0, 0, w, h, h / 2, h / 2)
 
             # Draw knob
             knob_size = h - 4
@@ -187,7 +197,7 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
             log_error(f"Failed to save icon to {file_path}")
             return ""
 
-        normalized_path = file_path.replace('\\', '/')
+        normalized_path = file_path.replace("\\", "/")
         _set_cached_icon_path(cache_key, normalized_path)
         return normalized_path
     except Exception as e:
@@ -199,7 +209,7 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
     """创建 iOS 风格复选框图标 (圆角矩形)"""
     try:
         s = 14
-        filename = f"ios_check_thick_v6_{theme}_{'on' if checked else 'off'}.png"
+        filename = f"ios_check_thick_v7_{theme}_{'on' if checked else 'off'}.png"
         cache_key = f"checkbox_{filename}"
 
         # 先检查内存缓存
@@ -211,7 +221,7 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
         file_path = os.path.join(temp_dir, filename)
 
         if os.path.exists(file_path):
-            normalized_path = file_path.replace('\\', '/')
+            normalized_path = file_path.replace("\\", "/")
             _set_cached_icon_path(cache_key, normalized_path)
             return normalized_path
 
@@ -243,7 +253,7 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
                 path = [(3, 7), (6, 10), (11, 4)]
                 for i in range(len(path) - 1):
                     p1 = path[i]
-                    p2 = path[i+1]
+                    p2 = path[i + 1]
                     painter.drawLine(p1[0], p1[1], p2[0], p2[1])
             else:
                 # High contrast off state
@@ -254,9 +264,14 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
                     border_color = "#C7C7CC"
                     fill_color = "#FFFFFF"
 
-                painter.setPen(QPen(QColor(border_color), 1.5))
+                # 濉厖瀹屾暣涓渾瑙掔煩褰紙瑕嗙洊鍏ㄩ儴鍍忕礌锛屾秷闄ゅ洓瑙掗€忔槑锛?
+                painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(QColor(fill_color)))
-                painter.drawRoundedRect(1, 1, s-2, s-2, 3, 3) # inset
+                painter.drawRoundedRect(0, 0, s, s, 3, 3)
+                # 再画边框
+                painter.setPen(QPen(QColor(border_color), 1.5))
+                painter.setBrush(QtCompat.NoBrush)
+                painter.drawRoundedRect(1, 1, s - 2, s - 2, 3, 3)  # inset
         finally:
             painter.end()
 
@@ -264,12 +279,13 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
             log_error(f"Failed to save icon to {file_path}")
             return ""
 
-        normalized_path = file_path.replace('\\', '/')
+        normalized_path = file_path.replace("\\", "/")
         _set_cached_icon_path(cache_key, normalized_path)
         return normalized_path
     except Exception as e:
         log_error(f"Error creating checkbox icon: {e}\n{traceback.format_exc()}")
         return ""
+
 
 def get_radio_stylesheet(theme: str) -> str:
     """获取 iOS 风格单选按钮样式表"""
@@ -280,7 +296,7 @@ def get_radio_stylesheet(theme: str) -> str:
         QRadioButton {{
             font-size: 12px;
             spacing: 8px;
-            color: {'#ffffff' if theme == 'dark' else '#333333'};
+            color: {"#ffffff" if theme == "dark" else "#333333"};
         }}
         QRadioButton::indicator {{
             width: 14px;
@@ -296,6 +312,7 @@ def get_radio_stylesheet(theme: str) -> str:
         }}
     """
 
+
 def get_checkbox_stylesheet(theme: str) -> str:
     """获取 iOS 风格复选框样式表"""
     check_on = create_ios_checkbox_icon(True, theme)
@@ -305,7 +322,7 @@ def get_checkbox_stylesheet(theme: str) -> str:
         QCheckBox {{
             font-size: 12px;
             spacing: 8px;
-            color: {'#ffffff' if theme == 'dark' else '#333333'};
+            color: {"#ffffff" if theme == "dark" else "#333333"};
         }}
         QCheckBox::indicator {{
             width: 14px;
@@ -321,6 +338,7 @@ def get_checkbox_stylesheet(theme: str) -> str:
         }}
     """
 
+
 def get_small_checkbox_stylesheet(theme: str) -> str:
     """获取小尺寸复选框样式表（用于图标反转选项）"""
     check_on = create_ios_checkbox_icon(True, theme)
@@ -330,7 +348,7 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
         QCheckBox {{
             font-size: 10px;
             spacing: 4px;
-            color: {'#ffffff' if theme == 'dark' else '#333333'};
+            color: {"#ffffff" if theme == "dark" else "#333333"};
         }}
         QCheckBox::indicator {{
             width: 11px;
@@ -346,6 +364,27 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
         }}
     """
 
+
+def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
+    """复选框样式表 — 只设置指示器图片，不覆盖文字大小和颜色。"""
+    check_on = create_ios_checkbox_icon(True, theme)
+    check_off = create_ios_checkbox_icon(False, theme)
+
+    return f"""
+        QCheckBox::indicator {{
+            width: 11px;
+            height: 11px;
+            border: none;
+        }}
+        QCheckBox::indicator:unchecked {{
+            image: url("{check_off}");
+        }}
+        QCheckBox::indicator:checked {{
+            image: url("{check_on}");
+        }}
+    """
+
+
 def get_switch_stylesheet(theme: str) -> str:
     switch_on = create_ios_switch_icon(True, theme)
     switch_off = create_ios_switch_icon(False, theme)
@@ -354,7 +393,7 @@ def get_switch_stylesheet(theme: str) -> str:
         QCheckBox {{
             font-size: 12px;
             spacing: 8px;
-            color: {'#ffffff' if theme == 'dark' else '#333333'};
+            color: {"#ffffff" if theme == "dark" else "#333333"};
         }}
         QCheckBox::indicator {{
             width: 29px;
@@ -370,9 +409,11 @@ def get_switch_stylesheet(theme: str) -> str:
         }}
     """
 
+
 def get_dialog_stylesheet(theme: str) -> str:
     """获取对话框样式表"""
     from ui.styles.style import get_dialog_stylesheet as get_base_dialog_stylesheet
+
     return get_base_dialog_stylesheet(theme)
 
 
@@ -380,6 +421,7 @@ def apply_theme_to_dialog(dialog, theme: str):
     """应用主题到对话框 - 使用磨砂玻璃拟态风格"""
     try:
         from ui.styles.style import Glassmorphism
+
         # 结合拟态样式和对话框专用样式
         glassmorphism_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         dialog_extra = get_dialog_stylesheet(theme)

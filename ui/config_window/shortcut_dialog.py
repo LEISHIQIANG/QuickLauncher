@@ -80,7 +80,9 @@ class ShortcutDialog(BaseDialog):
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = base_style + f"""
+        custom_style = (
+            base_style
+            + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -99,13 +101,19 @@ class ShortcutDialog(BaseDialog):
                 font-size: 13px;
             }}
         """
+        )
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
-        for btn in [self._browse_target_btn, self._browse_workdir_btn,
-                     self._browse_icon_btn, self._clear_icon_btn,
-                     self._cancel_btn, self._ok_btn]:
+        for btn in [
+            self._browse_target_btn,
+            self._browse_workdir_btn,
+            self._browse_icon_btn,
+            self._clear_icon_btn,
+            self._cancel_btn,
+            self._ok_btn,
+        ]:
             btn.setStyleSheet(flat_btn_style)
 
         # 应用复选框样式
@@ -299,6 +307,7 @@ class ShortcutDialog(BaseDialog):
         if self._custom_icon_path and os.path.exists(self._custom_icon_path):
             try:
                 from core.icon_extractor import IconExtractor
+
                 pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
             except Exception:
                 pass
@@ -314,6 +323,7 @@ class ShortcutDialog(BaseDialog):
             target = self.target_edit.text().strip()
             try:
                 from core.icon_extractor import IconExtractor
+
                 pixmap = IconExtractor.extract(target, target, 48, fallback_to_default=False)
             except Exception:
                 pass
@@ -331,6 +341,7 @@ class ShortcutDialog(BaseDialog):
         # 应用反转
         if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor
+
             pixmap = IconExtractor.invert_pixmap(pixmap)
 
         # 缩放到预览尺寸
@@ -350,7 +361,7 @@ class ShortcutDialog(BaseDialog):
         painter.setBrush(QColor(70, 130, 180))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -363,8 +374,7 @@ class ShortcutDialog(BaseDialog):
     def _browse_target(self):
         """浏览目标文件"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, tr("选择目标"), "",
-            tr("可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)")
+            self, tr("选择目标"), "", tr("可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)")
         )
 
         if file_path:
@@ -376,13 +386,14 @@ class ShortcutDialog(BaseDialog):
                 self.name_edit.setText(name)
 
             # 解析 .lnk
-            if file_path.lower().endswith('.lnk'):
+            if file_path.lower().endswith(".lnk"):
                 try:
                     from core.shortcut_parser import ShortcutParser
+
                     info = ShortcutParser.parse(file_path)
-                    self.target_edit.setText(info.get('target', file_path))
-                    self.args_edit.setText(info.get('args', ''))
-                    self.workdir_edit.setText(info.get('working_dir', ''))
+                    self.target_edit.setText(info.get("target", file_path))
+                    self.args_edit.setText(info.get("args", ""))
+                    self.workdir_edit.setText(info.get("working_dir", ""))
                 except Exception:
                     pass
 
@@ -446,6 +457,5 @@ class ShortcutDialog(BaseDialog):
         self.shortcut.icon_invert_current = self.invert_current_cb.isChecked()
         self.shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
         if self.invert_theme_cb.isChecked():
-            self.shortcut.icon_invert_theme_when_set = getattr(self, 'theme', 'dark')
+            self.shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
         return self.shortcut
-

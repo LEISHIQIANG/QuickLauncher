@@ -15,6 +15,7 @@ try:
 except AttributeError:
     ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
+
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", wintypes.WORD),
@@ -24,11 +25,14 @@ class KEYBDINPUT(ctypes.Structure):
         ("dwExtraInfo", ULONG_PTR),
     ]
 
+
 class _INPUT_UNION(ctypes.Union):
     _fields_ = [("ki", KEYBDINPUT)]
 
+
 class INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("union", _INPUT_UNION)]
+
 
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
@@ -42,6 +46,7 @@ SendInput.restype = wintypes.UINT
 try:
     from pynput.keyboard import Controller as KeyboardController
     from pynput.keyboard import Key
+
     HAS_PYNPUT = True
     keyboard = KeyboardController()
 except ImportError:
@@ -78,6 +83,7 @@ class HotkeyExecutionMixin:
             return int(sent or 0) == 1
         except Exception:
             return False
+
     @staticmethod
     def _release_vk_strong(vk: int):
         KEYEVENTF_KEYUP = 0x0002
@@ -93,6 +99,7 @@ class HotkeyExecutionMixin:
             user32.keybd_event(vk, 0, flags, 0)
         except Exception:
             pass
+
     @staticmethod
     def _release_modifiers_strong():
         vks = [0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C]
@@ -102,6 +109,7 @@ class HotkeyExecutionMixin:
                     ShortcutExecutor._release_vk_strong(vk)
             except Exception:
                 continue
+
     @classmethod
     def save_foreground_window(cls):
         """保存当前前台窗口句柄"""
@@ -111,6 +119,7 @@ class HotkeyExecutionMixin:
         except Exception as e:
             logger.debug("Failed to save foreground window: %s", e, exc_info=True)
             cls._previous_hwnd = None
+
     @classmethod
     def restore_foreground_window(cls):
         """恢复之前的前台窗口
@@ -169,6 +178,7 @@ class HotkeyExecutionMixin:
             logger.debug(f"后备焦点恢复失败: {e}")
 
         return False
+
     @classmethod
     def restore_foreground_window_fast(cls, timeout_ms: int = 180, poll_ms: int = 8) -> bool:
         target = cls._previous_hwnd
@@ -185,6 +195,7 @@ class HotkeyExecutionMixin:
             time.sleep(poll_ms / 1000.0)
 
         return last_result
+
     @staticmethod
     def _vk_from_key(key_str: str) -> int:
         k = (key_str or "").strip()
@@ -193,42 +204,109 @@ class HotkeyExecutionMixin:
             return 0
 
         vk_codes = {
-            'ctrl': 0x11, 'control': 0x11, 'lctrl': 0xA2, 'rctrl': 0xA3,
-            'alt': 0x12, 'menu': 0x12, 'lalt': 0xA4, 'ralt': 0xA5,
-            'shift': 0x10, 'lshift': 0xA0, 'rshift': 0xA1,
-            'win': 0x5B, 'lwin': 0x5B, 'rwin': 0x5C,
-            'backspace': 0x08, 'back': 0x08,
-            'tab': 0x09,
-            'enter': 0x0D, 'return': 0x0D,
-            'pause': 0x13,
-            'capslock': 0x14, 'caps': 0x14,
-            'escape': 0x1B, 'esc': 0x1B,
-            'space': 0x20,
-            'pageup': 0x21, 'pgup': 0x21,
-            'pagedown': 0x22, 'pgdn': 0x22,
-            'end': 0x23,
-            'home': 0x24,
-            'left': 0x25, 'up': 0x26, 'right': 0x27, 'down': 0x28,
-            'printscreen': 0x2C, 'prtscr': 0x2C,
-            'insert': 0x2D, 'ins': 0x2D,
-            'delete': 0x2E, 'del': 0x2E,
-            'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73,
-            'f5': 0x74, 'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
-            'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
-            'f13': 0x7C, 'f14': 0x7D, 'f15': 0x7E, 'f16': 0x7F,
-            'f17': 0x80, 'f18': 0x81, 'f19': 0x82, 'f20': 0x83,
-            'f21': 0x84, 'f22': 0x85, 'f23': 0x86, 'f24': 0x87,
-            'num0': 0x60, 'num1': 0x61, 'num2': 0x62, 'num3': 0x63,
-            'num4': 0x64, 'num5': 0x65, 'num6': 0x66, 'num7': 0x67,
-            'num8': 0x68, 'num9': 0x69,
-            'numpad0': 0x60, 'numpad1': 0x61, 'numpad2': 0x62, 'numpad3': 0x63,
-            'numpad4': 0x64, 'numpad5': 0x65, 'numpad6': 0x66, 'numpad7': 0x67,
-            'numpad8': 0x68, 'numpad9': 0x69,
-            'multiply': 0x6A, 'add': 0x6B, 'subtract': 0x6D, 'decimal': 0x6E, 'divide': 0x6F,
-            'numlock': 0x90,
-            'scrolllock': 0x91,
-            ';': 0xBA, '=': 0xBB, ',': 0xBC, '-': 0xBD, '.': 0xBE, '/': 0xBF,
-            '`': 0xC0, '[': 0xDB, '\\': 0xDC, ']': 0xDD, "'": 0xDE,
+            "ctrl": 0x11,
+            "control": 0x11,
+            "lctrl": 0xA2,
+            "rctrl": 0xA3,
+            "alt": 0x12,
+            "menu": 0x12,
+            "lalt": 0xA4,
+            "ralt": 0xA5,
+            "shift": 0x10,
+            "lshift": 0xA0,
+            "rshift": 0xA1,
+            "win": 0x5B,
+            "lwin": 0x5B,
+            "rwin": 0x5C,
+            "backspace": 0x08,
+            "back": 0x08,
+            "tab": 0x09,
+            "enter": 0x0D,
+            "return": 0x0D,
+            "pause": 0x13,
+            "capslock": 0x14,
+            "caps": 0x14,
+            "escape": 0x1B,
+            "esc": 0x1B,
+            "space": 0x20,
+            "pageup": 0x21,
+            "pgup": 0x21,
+            "pagedown": 0x22,
+            "pgdn": 0x22,
+            "end": 0x23,
+            "home": 0x24,
+            "left": 0x25,
+            "up": 0x26,
+            "right": 0x27,
+            "down": 0x28,
+            "printscreen": 0x2C,
+            "prtscr": 0x2C,
+            "insert": 0x2D,
+            "ins": 0x2D,
+            "delete": 0x2E,
+            "del": 0x2E,
+            "f1": 0x70,
+            "f2": 0x71,
+            "f3": 0x72,
+            "f4": 0x73,
+            "f5": 0x74,
+            "f6": 0x75,
+            "f7": 0x76,
+            "f8": 0x77,
+            "f9": 0x78,
+            "f10": 0x79,
+            "f11": 0x7A,
+            "f12": 0x7B,
+            "f13": 0x7C,
+            "f14": 0x7D,
+            "f15": 0x7E,
+            "f16": 0x7F,
+            "f17": 0x80,
+            "f18": 0x81,
+            "f19": 0x82,
+            "f20": 0x83,
+            "f21": 0x84,
+            "f22": 0x85,
+            "f23": 0x86,
+            "f24": 0x87,
+            "num0": 0x60,
+            "num1": 0x61,
+            "num2": 0x62,
+            "num3": 0x63,
+            "num4": 0x64,
+            "num5": 0x65,
+            "num6": 0x66,
+            "num7": 0x67,
+            "num8": 0x68,
+            "num9": 0x69,
+            "numpad0": 0x60,
+            "numpad1": 0x61,
+            "numpad2": 0x62,
+            "numpad3": 0x63,
+            "numpad4": 0x64,
+            "numpad5": 0x65,
+            "numpad6": 0x66,
+            "numpad7": 0x67,
+            "numpad8": 0x68,
+            "numpad9": 0x69,
+            "multiply": 0x6A,
+            "add": 0x6B,
+            "subtract": 0x6D,
+            "decimal": 0x6E,
+            "divide": 0x6F,
+            "numlock": 0x90,
+            "scrolllock": 0x91,
+            ";": 0xBA,
+            "=": 0xBB,
+            ",": 0xBC,
+            "-": 0xBD,
+            ".": 0xBE,
+            "/": 0xBF,
+            "`": 0xC0,
+            "[": 0xDB,
+            "\\": 0xDC,
+            "]": 0xDD,
+            "'": 0xDE,
         }
 
         if k_lower in vk_codes:
@@ -239,13 +317,26 @@ class HotkeyExecutionMixin:
         if len(k) == 1 and k.isdigit():
             return ord(k)
         return 0
+
     @staticmethod
     def _is_extended_vk(vk: int) -> bool:
         return vk in {
-            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E,
-            0x5B, 0x5C,
-            0xA3, 0xA5,
+            0x21,
+            0x22,
+            0x23,
+            0x24,
+            0x25,
+            0x26,
+            0x27,
+            0x28,
+            0x2D,
+            0x2E,
+            0x5B,
+            0x5C,
+            0xA3,
+            0xA5,
         }
+
     @staticmethod
     def _execute_hotkey_sendinput(modifiers: List[str], key: str) -> bool:
         """使用 keybd_event + 随机延迟模拟真实按键"""
@@ -309,6 +400,7 @@ class HotkeyExecutionMixin:
             for vk in [0x12, 0xA4, 0xA5, 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1]:
                 user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
             return False
+
     @staticmethod
     def _force_release_modifiers():
         """强制释放所有修饰键，防止卡键"""
@@ -324,6 +416,7 @@ class HotkeyExecutionMixin:
             ShortcutExecutor._release_modifiers_strong()
         except Exception:
             pass
+
     @staticmethod
     def _force_release_key(key: str):
         vk = ShortcutExecutor._vk_from_key(key)
@@ -338,6 +431,7 @@ class HotkeyExecutionMixin:
             user32.keybd_event(vk, 0, flags, 0)
         except Exception:
             pass
+
     @staticmethod
     def _verify_and_release_all_modifiers():
         """验证并释放所有可能卡住的修饰键
@@ -431,6 +525,7 @@ class HotkeyExecutionMixin:
                     logger.debug(f"成功释放修饰键: {name}")
                 else:
                     logger.warning(f"无法释放修饰键: {name} (VK=0x{vk:02X})")
+
     @staticmethod
     def _pre_execution_cleanup():
         """执行快捷键前的清理工作
@@ -452,12 +547,16 @@ class HotkeyExecutionMixin:
         # 所有需要清理的修饰键
         all_modifier_vks = [
             0x10,  # VK_SHIFT
-            0xA0, 0xA1,  # VK_LSHIFT, VK_RSHIFT
+            0xA0,
+            0xA1,  # VK_LSHIFT, VK_RSHIFT
             0x11,  # VK_CONTROL
-            0xA2, 0xA3,  # VK_LCONTROL, VK_RCONTROL
+            0xA2,
+            0xA3,  # VK_LCONTROL, VK_RCONTROL
             0x12,  # VK_MENU (Alt)
-            0xA4, 0xA5,  # VK_LMENU, VK_RMENU
-            0x5B, 0x5C,  # VK_LWIN, VK_RWIN
+            0xA4,
+            0xA5,  # VK_LMENU, VK_RMENU
+            0x5B,
+            0x5C,  # VK_LWIN, VK_RWIN
         ]
 
         # 第一轮：无条件释放所有修饰键（使用 keybd_event）
@@ -494,7 +593,7 @@ class HotkeyExecutionMixin:
             if not still_stuck:
                 break
 
-            logger.warning(f"执行前检测到残留按键(尝试{attempt+1}): {[hex(vk) for vk in still_stuck]}")
+            logger.warning(f"执行前检测到残留按键(尝试{attempt + 1}): {[hex(vk) for vk in still_stuck]}")
             for vk in still_stuck:
                 try:
                     ShortcutExecutor._release_vk_strong(vk)
@@ -505,6 +604,7 @@ class HotkeyExecutionMixin:
             time.sleep(0.020)
 
         logger.debug("执行前清理完成")
+
     @staticmethod
     def _execute_hotkey_safe(shortcut: ShortcutItem):
         """安全执行快捷键"""
@@ -515,10 +615,10 @@ class HotkeyExecutionMixin:
                 logger.warning("快捷键执行跳过: 上一个执行尚未完成")
                 return False
 
-            trigger_mode = getattr(shortcut, 'trigger_mode', 'immediate')
+            trigger_mode = getattr(shortcut, "trigger_mode", "immediate")
 
             # 先恢复前台窗口，再发送快捷键
-            if trigger_mode == 'after_close':
+            if trigger_mode == "after_close":
                 logger.info("[Hotkey] 触发模式: after_close，恢复前台窗口")
                 target_hwnd = ShortcutExecutor._previous_hwnd
 
@@ -561,6 +661,7 @@ class HotkeyExecutionMixin:
         finally:
             if acquired:
                 ShortcutExecutor._hotkey_lock.release()
+
     @staticmethod
     def _get_pynput_key(key_str: str):
         """将字符串转换为 pynput 键"""
@@ -576,6 +677,7 @@ class HotkeyExecutionMixin:
 
         logger.warning(f"未知键: {key_str}")
         return None
+
     @staticmethod
     def _execute_hotkey_pynput(shortcut: ShortcutItem) -> bool:
         """使用 pynput 执行快捷键（模拟真实按键）"""
@@ -650,6 +752,7 @@ class HotkeyExecutionMixin:
                 except Exception:
                     pass
             return False
+
     @staticmethod
     def _execute_hotkey_ctypes(shortcut: ShortcutItem) -> bool:
         """使用 ctypes 执行快捷键（备用方案）"""
@@ -689,7 +792,7 @@ class HotkeyExecutionMixin:
                     flags |= KEYEVENTF_EXTENDEDKEY
                 user32.keybd_event(vk_main, 0, flags, 0)
                 pressed_vks.append(vk_main)
-                time.sleep(0.05) # 稍微增加保持时间
+                time.sleep(0.05)  # 稍微增加保持时间
 
             return True
 

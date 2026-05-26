@@ -12,14 +12,13 @@ from pathlib import Path
 import pytest
 
 from core.command_registry import CommandRegistry
-from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, PluginManager
-
+from core.plugin_manager import PluginManager
 
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
 
-_PLUGIN_MAIN_PY = '''\
+_PLUGIN_MAIN_PY = """\
 def register(api):
     api.register_command(
         id="test_p.hello", title="Hello", aliases=[],
@@ -27,7 +26,7 @@ def register(api):
         handler=lambda ctx: __import__("core.command_registry",
             fromlist=["CommandResult"]).CommandResult(success=True, message="ok"),
     )
-'''
+"""
 
 
 def _make_plugin_zip(
@@ -152,7 +151,7 @@ class TestInstallFromZipSuccess:
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
             pid = pm.install_from_package(
                 zip_path,
-                on_overwrite=lambda name: (confirmed.append(name) or True),
+                on_overwrite=lambda name: confirmed.append(name) or True,
             )
             assert pid == "test_p"
             assert confirmed == ["Test Plugin"]
@@ -266,9 +265,7 @@ class TestInstallFromZipValidation:
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "duplicate.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
-                zf.writestr("plugin.json", json.dumps(
-                    {"id": "dup", "name": "Dup", "version": "1", "entry": "main.py"}
-                ))
+                zf.writestr("plugin.json", json.dumps({"id": "dup", "name": "Dup", "version": "1", "entry": "main.py"}))
                 zf.writestr("main.py", "def register(api): pass\n")
                 zf.writestr("MAIN.py", "def register(api): raise RuntimeError('shadowed')\n")
 
@@ -295,9 +292,7 @@ class TestInstallFromZipValidation:
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "too_many.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
-                zf.writestr("plugin.json", json.dumps(
-                    {"id": "big", "name": "Big", "version": "1", "entry": "main.py"}
-                ))
+                zf.writestr("plugin.json", json.dumps({"id": "big", "name": "Big", "version": "1", "entry": "main.py"}))
                 for i in range(501):
                     zf.writestr(f"file_{i}.txt", "x")
 
@@ -310,9 +305,7 @@ class TestInstallFromZipValidation:
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "traversal.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
-                zf.writestr("plugin.json", json.dumps(
-                    {"id": "safe", "name": "Safe", "version": "1"}
-                ))
+                zf.writestr("plugin.json", json.dumps({"id": "safe", "name": "Safe", "version": "1"}))
                 zf.writestr("../evil.txt", "gotcha")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
@@ -443,8 +436,8 @@ class TestInstallFromZipRollback:
 
 def _make_mixin_instance(plugin_manager, monkeypatch):
     """Create a minimal SettingsPluginsPageMixin instance for testing."""
-    from unittest.mock import MagicMock
     from types import SimpleNamespace
+    from unittest.mock import MagicMock
 
     # Build a minimal object with the mixin's required attributes
     mixin = SimpleNamespace()
@@ -456,9 +449,11 @@ def _make_mixin_instance(plugin_manager, monkeypatch):
 
     # Replace core.plugin_manager with our instance
     import core
+
     monkeypatch.setattr(core, "plugin_manager", plugin_manager)
 
     from ui.config_window.settings_plugins_page import SettingsPluginsPageMixin
+
     for name in (
         "_on_install_plugin_clicked",
         "_install_plugin_package",
@@ -475,6 +470,7 @@ class TestInstallUIIntegration:
     def test_install_flow_success(self, monkeypatch, qapp):
         """End-to-end: dialog → install → scan → rebuild → success message."""
         from unittest.mock import MagicMock
+
         from ui.styles.themed_messagebox import ThemedMessageBox
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -489,7 +485,7 @@ class TestInstallUIIntegration:
             dialog_calls = []
             monkeypatch.setattr(
                 "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
-                lambda *a, **kw: (dialog_calls.append((a, kw)) or (zip_path, "*.qlzip")),
+                lambda *a, **kw: dialog_calls.append((a, kw)) or (zip_path, "*.qlzip"),
             )
 
             # Mock ThemedMessageBox so it doesn't block
@@ -522,6 +518,7 @@ class TestInstallUIIntegration:
     def test_install_flow_failure_shows_error(self, monkeypatch, qapp):
         """When install_from_package raises, error dialog is shown."""
         from unittest.mock import MagicMock
+
         from ui.styles.themed_messagebox import ThemedMessageBox
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -550,6 +547,7 @@ class TestInstallUIIntegration:
     def test_install_flow_user_cancels_dialog(self, monkeypatch, qapp):
         """When file dialog is cancelled, nothing happens."""
         from unittest.mock import MagicMock
+
         from ui.styles.themed_messagebox import ThemedMessageBox
 
         monkeypatch.setattr(
@@ -568,8 +566,9 @@ class TestInstallUIIntegration:
     def test_install_flow_preserves_enabled_state(self, monkeypatch, qapp):
         """Existing enabled plugins should remain enabled after install."""
         from unittest.mock import MagicMock
+
+        from tests.test_plugin_manager import _SAMPLE_MAIN_PY, _create_plugin_dir
         from ui.styles.themed_messagebox import ThemedMessageBox
-        from tests.test_plugin_manager import _create_plugin_dir, _SAMPLE_MAIN_PY
 
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
@@ -596,6 +595,7 @@ class TestInstallUIIntegration:
             monkeypatch.setattr(ThemedMessageBox, "information", msgbox.information)
 
             import core
+
             monkeypatch.setattr(core, "plugin_manager", pm)
 
             mixin = _make_mixin_instance(pm, monkeypatch)
@@ -609,6 +609,7 @@ class TestInstallUIIntegration:
 
     def test_install_flow_overwrite_still_asks_confirmation(self, monkeypatch, qapp):
         from unittest.mock import MagicMock
+
         from ui.styles.themed_messagebox import ThemedMessageBox
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -640,8 +641,9 @@ class TestInstallUIIntegration:
 
     def test_install_flow_cancelled_enable_persists_disabled_state(self, monkeypatch, qapp):
         from unittest.mock import MagicMock
-        from ui.styles.themed_messagebox import ThemedMessageBox
+
         from tests.test_plugin_manager import _SAMPLE_MAIN_PY, _create_plugin_dir
+        from ui.styles.themed_messagebox import ThemedMessageBox
 
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
@@ -728,6 +730,7 @@ class _FakeDropEvent:
 class TestPluginPackageDragDrop:
     def test_drop_single_qlzip_installs_package(self, monkeypatch):
         from unittest.mock import MagicMock
+
         from qt_compat import QEvent
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -747,6 +750,7 @@ class TestPluginPackageDragDrop:
 
     def test_drop_zip_or_multiple_files_is_ignored(self, monkeypatch):
         from unittest.mock import MagicMock
+
         from qt_compat import QEvent
 
         with tempfile.TemporaryDirectory() as tmp:

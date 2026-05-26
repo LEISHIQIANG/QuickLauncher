@@ -94,7 +94,9 @@ class ThemedMessageBox(QDialog):
         # 文本内容
         text_label = QLabel(text)
         text_label.setWordWrap(True)
-        text_label.setStyleSheet("font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; font-size: 11px; line-height: 1.4; padding-left: 32px;")
+        text_label.setStyleSheet(
+            "font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; font-size: 11px; line-height: 1.4; padding-left: 32px;"
+        )
         text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         layout.addWidget(text_label)
 
@@ -168,18 +170,19 @@ class ThemedMessageBox(QDialog):
                 parent = self.parent()
                 # 优先从 _theme 属性获取（如 LogWindow 等自定义窗口）
                 while parent:
-                    if hasattr(parent, '_theme'):
+                    if hasattr(parent, "_theme"):
                         theme = parent._theme
                         break
-                    if hasattr(parent, 'data_manager'):
+                    if hasattr(parent, "data_manager"):
                         theme = parent.data_manager.get_settings().theme
                         break
-                    parent = parent.parent() if hasattr(parent, 'parent') else None
+                    parent = parent.parent() if hasattr(parent, "parent") else None
             except Exception:
                 pass
         if theme == "dark" and not self.parent():
             try:
                 from core import DataManager
+
                 dm = DataManager()
                 theme = dm.get_settings().theme
             except Exception:
@@ -214,9 +217,7 @@ class ThemedMessageBox(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
         )
 
         # 磨砂玻璃模式：与RoundedWindow完全一致
@@ -279,6 +280,7 @@ class ThemedMessageBox(QDialog):
             if self._dialog_finished or not self.isVisible():
                 return
             from ui.utils.window_effect import enable_acrylic_for_config_window
+
             hwnd = int(self.winId())
             if not hwnd:
                 return
@@ -393,6 +395,7 @@ class ThemedInputDialog(QDialog):
 
         # 输入框
         from qt_compat import QFont, QLineEdit
+
         self.line_edit = QLineEdit()
         self.line_edit.setText(text)
         self.line_edit.setFixedHeight(28)
@@ -437,6 +440,7 @@ class ThemedInputDialog(QDialog):
         self._theme = theme
 
         from .style import get_dialog_stylesheet
+
         self.setStyleSheet(get_dialog_stylesheet(theme))
 
         if theme == "dark":
@@ -459,9 +463,7 @@ class ThemedInputDialog(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
         )
 
         # 磨砂玻璃模式：与RoundedWindow完全一致
@@ -522,6 +524,7 @@ class ThemedInputDialog(QDialog):
             if self._dialog_finished or not self.isVisible():
                 return
             from ui.utils.window_effect import enable_acrylic_for_config_window
+
             hwnd = int(self.winId())
             if not hwnd:
                 return

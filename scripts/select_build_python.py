@@ -53,7 +53,7 @@ def _quote_arg(arg: str) -> str:
     if not arg:
         return '""'
     if any(ch.isspace() for ch in arg) or any(ch in arg for ch in '()&^=;!,+"'):
-        return '"' + arg.replace('"', r'\"') + '"'
+        return '"' + arg.replace('"', r"\"") + '"'
     return arg
 
 

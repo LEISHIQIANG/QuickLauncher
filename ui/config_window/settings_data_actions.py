@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 def CompactProgressDialog(*args, **kwargs):
     from ui.config_window.settings_panel import CompactProgressDialog as Dialog
+
     return Dialog(*args, **kwargs)
+
 
 class SettingsDataActionsMixin:
     def _is_progress_dialog_alive(self, progress) -> bool:
@@ -31,21 +33,24 @@ class SettingsDataActionsMixin:
             file_path, _ = QFileDialog.getSaveFileName(self, "导出配置", "", "QuickLauncher 配置包 (*.qlpack)")
             if not file_path:
                 return
-            if not file_path.endswith('.qlpack'):
-                file_path += '.qlpack'
+            if not file_path.endswith(".qlpack"):
+                file_path += ".qlpack"
 
             progress = CompactProgressDialog(self, "导出配置", self.data_manager.get_settings().theme)
             progress.show()
 
             self.export_thread = ExportThread(self.data_manager, file_path)
+
             def on_finished(success, msg):
                 if not self._is_progress_dialog_alive(progress):
                     return
                 progress.show_success(msg) if success else progress.show_failure(msg)
+
             self.export_thread.finished_signal.connect(on_finished)
             self.export_thread.start()
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
+
     def _on_import_clicked(self):
         try:
             file_path, _ = QFileDialog.getOpenFileName(self, "导入配置", "", "QuickLauncher 配置包 (*.qlpack)")
@@ -56,6 +61,7 @@ class SettingsDataActionsMixin:
             progress.show()
 
             self.import_thread = ImportThread(self.data_manager, file_path)
+
             def on_finished(success, count, msg):
                 if not self._is_progress_dialog_alive(progress):
                     return
@@ -73,17 +79,18 @@ class SettingsDataActionsMixin:
                         logger.debug("Failed to refresh settings after import: %s", e)
                 else:
                     progress.show_failure(msg)
+
             self.import_thread.finished_signal.connect(on_finished)
             self.import_thread.start()
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
+
     def _on_backup_full_clicked(self):
         try:
             from datetime import datetime
+
             default_name = f"QuickLauncher_FullBackup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            path, _ = QFileDialog.getSaveFileName(
-                self, "保存全量备份", default_name, "Zip Files (*.zip)"
-            )
+            path, _ = QFileDialog.getSaveFileName(self, "保存全量备份", default_name, "Zip Files (*.zip)")
             if not path:
                 return
 
@@ -94,16 +101,15 @@ class SettingsDataActionsMixin:
 
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
+
     def _on_restore_full_clicked(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "选择全量备份文件", "", "Zip Files (*.zip)"
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "选择全量备份文件", "", "Zip Files (*.zip)")
         if not path:
             return
 
-        if not path.lower().endswith('.zip'):
-             ThemedMessageBox.warning(self, "错误", "请选择 .zip 格式的备份文件")
-             return
+        if not path.lower().endswith(".zip"):
+            ThemedMessageBox.warning(self, "错误", "请选择 .zip 格式的备份文件")
+            return
 
         self.data_manager.get_settings().theme
 
@@ -111,7 +117,7 @@ class SettingsDataActionsMixin:
             self,
             "确认恢复",
             "确认要从备份恢复吗？\n\n此操作将覆盖当前所有配置、图标和背景图片。\n操作完成后程序将自动重启。",
-            ThemedMessageBox.Yes | ThemedMessageBox.No
+            ThemedMessageBox.Yes | ThemedMessageBox.No,
         )
 
         if result == ThemedMessageBox.Yes:
@@ -130,34 +136,31 @@ class SettingsDataActionsMixin:
                 self._restart_application()
             else:
                 ThemedMessageBox.warning(self, "恢复失败", "无法恢复备份，文件可能已损坏或格式不正确。")
+
     def _on_export_shareable_clicked(self):
         """导出分享配置"""
         try:
             from datetime import datetime
+
             default_name = f"QuickLauncher_Share_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            path, _ = QFileDialog.getSaveFileName(
-                self, "导出分享配置", default_name, "Zip Files (*.zip)"
-            )
+            path, _ = QFileDialog.getSaveFileName(self, "导出分享配置", default_name, "Zip Files (*.zip)")
             if not path:
                 return
 
             if self.data_manager.export_shareable_config(path):
                 ThemedMessageBox.information(
-                    self,
-                    "导出成功",
-                    f"分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用"
+                    self, "导出成功", f"分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用"
                 )
             else:
                 ThemedMessageBox.warning(self, "导出失败", "无法导出分享配置，请检查日志。")
 
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
+
     def _on_import_shareable_clicked(self):
         """导入分享配置"""
         try:
-            path, _ = QFileDialog.getOpenFileName(
-                self, "选择分享配置文件", "", "Zip Files (*.zip)"
-            )
+            path, _ = QFileDialog.getOpenFileName(self, "选择分享配置文件", "", "Zip Files (*.zip)")
             if not path:
                 return
 
@@ -166,9 +169,7 @@ class SettingsDataActionsMixin:
                 if report.get("has_warnings"):
                     ThemedMessageBox.warning(self, "导入提示", "部分不安全内容已跳过，请查看日志或诊断信息。")
                 ThemedMessageBox.information(
-                    self,
-                    "导入成功",
-                    "分享配置已导入到「导入图标」分类\n\n请重启应用以查看效果"
+                    self, "导入成功", "分享配置已导入到「导入图标」分类\n\n请重启应用以查看效果"
                 )
                 # 导入成功后需要刷新以显示新分类
                 self.settings_changed.emit()
@@ -182,6 +183,7 @@ class SettingsDataActionsMixin:
         """打开配置历史窗口。"""
         try:
             from ui.config_history_window import ConfigHistoryWindow
+
             if not hasattr(self, "_config_history_window") or self._config_history_window is None:
                 self._config_history_window = ConfigHistoryWindow(self.data_manager, parent=self)
             else:
@@ -214,7 +216,7 @@ class SettingsDataActionsMixin:
             "• 开机自启设置\n"
             "• 所有个性化设置\n\n"
             "此操作不可撤销！",
-            ThemedMessageBox.Yes | ThemedMessageBox.No
+            ThemedMessageBox.Yes | ThemedMessageBox.No,
         )
 
         if result != ThemedMessageBox.Yes:
@@ -225,7 +227,7 @@ class SettingsDataActionsMixin:
             self,
             "最后确认",
             "🚨 最后确认\n\n所有数据将被永久删除，应用将自动重启。\n\n确定继续吗？",
-            ThemedMessageBox.Yes | ThemedMessageBox.No
+            ThemedMessageBox.Yes | ThemedMessageBox.No,
         )
 
         if result2 != ThemedMessageBox.Yes:
@@ -250,6 +252,7 @@ class SettingsDataActionsMixin:
 
             def run(self):
                 try:
+
                     def on_progress(msg, pct):
                         try:
                             self.progress_signal.emit(msg, pct)
@@ -288,7 +291,7 @@ class SettingsDataActionsMixin:
                 f"• {stats.get('files_removed', 0)} 个文件\n"
                 f"• {stats.get('dirs_removed', 0)} 个目录\n"
                 f"• {stats.get('registry_keys_removed', 0)} 个注册表项\n\n"
-                "点击「确定」重启应用程序。"
+                "点击「确定」重启应用程序。",
             )
 
             # 重启应用
@@ -302,6 +305,7 @@ class SettingsDataActionsMixin:
 
         # 保存线程引用防止被回收
         self._factory_reset_thread = thread
+
     def _restart_application(self, theme: str = "light"):
         """重启应用程序
 
@@ -313,33 +317,31 @@ class SettingsDataActionsMixin:
         try:
             # 关闭 IPC 服务器，避免新进程单实例检查误判
             import main as _main_mod
-            _srv = getattr(_main_mod, '_server', None)
+
+            _srv = getattr(_main_mod, "_server", None)
             if _srv:
                 _srv.close()
                 _main_mod._server = None
 
             # 获取当前exe路径
-            if getattr(sys, 'frozen', False):
+            if getattr(sys, "frozen", False):
                 # 打包后的exe：直接启动 exe
                 exe_path = sys.executable
                 # 使用 CREATE_NEW_PROCESS_GROUP 和 DETACHED_PROCESS
                 # CREATE_BREAKAWAY_FROM_JOB (0x01000000) 确保新进程不受当前作业对象限制
                 creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | 0x01000000
-                subprocess.Popen(
-                    [exe_path],
-                    creationflags=creationflags
-                )
+                subprocess.Popen([exe_path], creationflags=creationflags)
             else:
                 # 开发模式：重启 Python 脚本
                 exe_path = sys.executable
                 script_path = os.path.abspath(sys.argv[0])
                 subprocess.Popen(
-                    [exe_path, script_path],
-                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+                    [exe_path, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
                 )
 
             # 退出当前进程
             from qt_compat import QApplication
+
             QApplication.instance().quit()
 
         except Exception as e:

@@ -10,5 +10,6 @@ import pytest
 @pytest.fixture(scope="module")
 def qapp():
     from qt_compat import QApplication
+
     app = QApplication.instance() or QApplication([])
     return app

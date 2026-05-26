@@ -12,6 +12,7 @@ try:
 except AttributeError:
     ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
+
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", wintypes.WORD),
@@ -21,11 +22,14 @@ class KEYBDINPUT(ctypes.Structure):
         ("dwExtraInfo", ULONG_PTR),
     ]
 
+
 class _INPUT_UNION(ctypes.Union):
     _fields_ = [("ki", KEYBDINPUT)]
 
+
 class INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("union", _INPUT_UNION)]
+
 
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
@@ -74,6 +78,7 @@ class WindowControlMixin:
         except Exception as e:
             logger.error(f"获取鼠标位置窗口失败: {e}")
             return None
+
     @staticmethod
     def _get_window_title(hwnd: int) -> str:
         """获取窗口标题"""
@@ -84,6 +89,7 @@ class WindowControlMixin:
         except Exception as e:
             logger.debug("Failed to get window title for hwnd=%s: %s", hwnd, e)
             return "(未知)"
+
     @staticmethod
     def _is_topmost(hwnd: int) -> bool:
         """检查窗口是否置顶"""
@@ -91,6 +97,7 @@ class WindowControlMixin:
         WS_EX_TOPMOST = 0x00000008
         ex_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         return bool(ex_style & WS_EX_TOPMOST)
+
     @staticmethod
     def _set_topmost(topmost: bool) -> bool:
         """设置置顶状态
@@ -137,12 +144,7 @@ class WindowControlMixin:
             hwnd_handle = wintypes.HWND(hwnd)
 
             # 设置置顶状态
-            result = user32.SetWindowPos(
-                hwnd_handle,
-                target,
-                0, 0, 0, 0,
-                flags
-            )
+            result = user32.SetWindowPos(hwnd_handle, target, 0, 0, 0, 0, flags)
 
             if result:
                 status = "已置顶" if topmost else "取消置顶"
@@ -158,8 +160,10 @@ class WindowControlMixin:
         except Exception as e:
             logger.error(f"设置置顶失败: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return False
+
     @staticmethod
     def _toggle_topmost() -> bool:
         """切换置顶状态
@@ -208,12 +212,7 @@ class WindowControlMixin:
 
             hwnd_handle = wintypes.HWND(hwnd)
 
-            result = user32.SetWindowPos(
-                hwnd_handle,
-                target,
-                0, 0, 0, 0,
-                flags
-            )
+            result = user32.SetWindowPos(hwnd_handle, target, 0, 0, 0, 0, flags)
 
             if result:
                 new_state = not is_topmost
@@ -228,5 +227,6 @@ class WindowControlMixin:
         except Exception as e:
             logger.error(f"切换置顶失败: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return False

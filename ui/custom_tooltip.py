@@ -11,12 +11,7 @@ class CustomToolTip(QWidget):
 
     def __init__(self):
         super().__init__(None)
-        self.setWindowFlags(
-            Qt.ToolTip |
-            Qt.FramelessWindowHint |
-            Qt.WindowStaysOnTopHint |
-            Qt.NoDropShadowWindowHint
-        )
+        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
 

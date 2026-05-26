@@ -7,36 +7,54 @@ from qt_compat import QFont, QLabel
 from ui.themed_tool_window import ThemedToolWindow
 
 _ABOUT_SECTIONS = [
-    ("简介", (
-        "QuickLauncher 是一款面向 Windows 桌面的快速启动与轻量自动化工具。"
-        "按下鼠标中键呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；"
-        "支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。"
-    )),
-    ("基本操作", (
-        "中键呼出弹窗，再次中键 / Esc / 点击外部区域即隐藏；"
-        "输入关键字模糊搜索名称、别名和标签，Enter 执行、方向键切换；"
-        "右键锁定弹窗防止自动隐藏，滚轮或 ←→ 翻页切换分类。"
-    )),
-    ("快捷方式", (
-        "四类快捷方式：启动程序或文件（支持参数、工作目录、管理员运行），"
-        "打开文件夹，访问网址（支持指定浏览器和延迟测试），"
-        "运行命令（CMD / Python / 内置命令，支持变量解析），"
-        "录制快捷键（区分左右修饰键、测试发送）。"
-    )),
-    ("分类与同步", (
-        "左侧分类栏可创建、重命名、拖拽排序；Dock 分类放置高频项目；"
-        "拖入物理文件夹自动导入 .lnk 和 .exe，支持手动或自动同步。"
-    )),
-    ("高级功能", (
-        "命令变量：{clipboard}、{input}、{date}、{time} 等动态替换；"
-        "拖放文件到图标即用该程序打开；Ctrl + 滚轮调节背景透明度；"
-        "Alt + 双击暂停/恢复中键弹窗；轻睡眠、图标缓存清理等稳定性辅助。"
-    )),
-    ("配置管理", (
-        "支持完整配置包的导出、导入和分享；"
-        "自动保存最近 20 次配置快照，可随时回滚；"
-        "图标路径失效时自动在同目录重定向修复。"
-    )),
+    (
+        "简介",
+        (
+            "QuickLauncher 是一款面向 Windows 桌面的快速启动与轻量自动化工具。"
+            "按下鼠标中键呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；"
+            "支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。"
+        ),
+    ),
+    (
+        "基本操作",
+        (
+            "中键呼出弹窗，再次中键 / Esc / 点击外部区域即隐藏；"
+            "输入关键字模糊搜索名称、别名和标签，Enter 执行、方向键切换；"
+            "右键锁定弹窗防止自动隐藏，滚轮或 ←→ 翻页切换分类。"
+        ),
+    ),
+    (
+        "快捷方式",
+        (
+            "四类快捷方式：启动程序或文件（支持参数、工作目录、管理员运行），"
+            "打开文件夹，访问网址（支持指定浏览器和延迟测试），"
+            "运行命令（CMD / Python / 内置命令，支持变量解析），"
+            "录制快捷键（区分左右修饰键、测试发送）。"
+        ),
+    ),
+    (
+        "分类与同步",
+        (
+            "左侧分类栏可创建、重命名、拖拽排序；Dock 分类放置高频项目；"
+            "拖入物理文件夹自动导入 .lnk 和 .exe，支持手动或自动同步。"
+        ),
+    ),
+    (
+        "高级功能",
+        (
+            "命令变量：{clipboard}、{input}、{date}、{time} 等动态替换；"
+            "拖放文件到图标即用该程序打开；Ctrl + 滚轮调节背景透明度；"
+            "Alt + 双击暂停/恢复中键弹窗；轻睡眠、图标缓存清理等稳定性辅助。"
+        ),
+    ),
+    (
+        "配置管理",
+        (
+            "支持完整配置包的导出、导入和分享；"
+            "自动保存最近 20 次配置快照，可随时回滚；"
+            "图标路径失效时自动在同目录重定向修复。"
+        ),
+    ),
 ]
 
 
@@ -96,13 +114,9 @@ class AboutWindow(ThemedToolWindow):
         for widget in self.findChildren(QLabel):
             name = widget.objectName()
             if name == "about_title":
-                widget.setStyleSheet(
-                    f"color: {title_color}; background: transparent; font-weight: 600;"
-                )
+                widget.setStyleSheet(f"color: {title_color}; background: transparent; font-weight: 600;")
             elif name == "about_version":
-                widget.setStyleSheet(
-                    f"color: {version_color}; background: transparent; padding-left: 2px;"
-                )
+                widget.setStyleSheet(f"color: {version_color}; background: transparent; padding-left: 2px;")
             elif name == "about_section":
                 widget.setStyleSheet(
                     f"color: {section_color}; background: transparent; font-weight: 600; margin-top: 6px;"
@@ -119,9 +133,7 @@ class AboutWindow(ThemedToolWindow):
         root_margins = self.root_layout.contentsMargins()
         content_margins = self.content_layout.contentsMargins()
         available_w = (
-            560
-            - root_margins.left() - root_margins.right()
-            - content_margins.left() - content_margins.right()
+            560 - root_margins.left() - root_margins.right() - content_margins.left() - content_margins.right()
         )
 
         total_h = 0

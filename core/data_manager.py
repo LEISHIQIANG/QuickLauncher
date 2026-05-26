@@ -66,22 +66,24 @@ class DataManager:
         self._initialized = True
 
         import sys
-        if getattr(sys, 'frozen', False):
+
+        if getattr(sys, "frozen", False):
             install_dir = Path(sys.executable).parent
         else:
             install_dir = Path(__file__).parent.parent
 
         self.install_dir = install_dir
-        self.app_dir = install_dir / 'config'
-        self.data_file = self.app_dir / 'data.json'
-        self.icons_dir = install_dir / 'icons'
-        self.auto_backup_dir = self.app_dir / 'auto_backups'
-        self.history_dir = self.app_dir / 'history'
+        self.app_dir = install_dir / "config"
+        self.data_file = self.app_dir / "data.json"
+        self.icons_dir = install_dir / "icons"
+        self.auto_backup_dir = self.app_dir / "auto_backups"
+        self.history_dir = self.app_dir / "history"
         self._max_auto_backups = 5
         self._max_history_snapshots = 20
 
         # 执行配置迁移
         from .config_migrator import ConfigMigrator
+
         if ConfigMigrator.needs_migration():
             ConfigMigrator.migrate()
 
@@ -260,7 +262,7 @@ class DataManager:
             try:
                 self._create_auto_backup()
 
-                with open(temp_file, 'w', encoding='utf-8') as f:
+                with open(temp_file, "w", encoding="utf-8") as f:
                     f.write(payload)
 
                 self._replace_data_file(temp_file)
@@ -288,7 +290,7 @@ class DataManager:
             raise ValueError(f"fatal config schema issues: {issues}")
         if issues:
             logger.warning("保存前配置结构校验告警: %s", issues)
-        payload = json.dumps(data_dict, ensure_ascii=False, separators=(',', ':'))
+        payload = json.dumps(data_dict, ensure_ascii=False, separators=(",", ":"))
         json.loads(payload)
         return payload
 
@@ -422,7 +424,7 @@ class DataManager:
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
-            for old_backup in backups[self._max_auto_backups:]:
+            for old_backup in backups[self._max_auto_backups :]:
                 try:
                     old_backup.unlink()
                 except Exception as e:
@@ -583,6 +585,11 @@ class DataManager:
                 if item.id == shortcut_id:
                     return folder, item
         return None, None
+
+    def get_shortcut_by_id(self, shortcut_id: str):
+        """根据 ID 返回快捷方式，找不到返回 None。"""
+        _, item = self._find_shortcut_with_folder(shortcut_id)
+        return item
 
     def recalculate_smart_order(self, folder_id: str | None = None) -> dict:
         """重新计算并保存智能排序快照，不修改用户自定义 order。"""
@@ -828,6 +835,7 @@ class DataManager:
         """
         import hashlib
         import logging
+
         logger = logging.getLogger(__name__)
 
         stats = {
@@ -841,7 +849,7 @@ class DataManager:
             "duplicate_files_size_mb": 0,
             "total_removed": 0,
             "total_size_freed_mb": 0,
-            "dry_run": dry_run
+            "dry_run": dry_run,
         }
 
         if not self.icons_dir.exists():
@@ -959,13 +967,7 @@ class DataManager:
         Returns:
             dict: 缓存统计信息
         """
-        stats = {
-            "total_files": 0,
-            "total_size_mb": 0,
-            "by_extension": {},
-            "invalid_files": 0,
-            "invalid_size_mb": 0
-        }
+        stats = {"total_files": 0, "total_size_mb": 0, "by_extension": {}, "invalid_files": 0, "invalid_size_mb": 0}
 
         if not self.icons_dir.exists():
             return stats
@@ -1017,7 +1019,7 @@ class DataManager:
             "icons_dir": str(self.icons_dir),
             "files": [],
             "directories": [],
-            "registry_keys": []
+            "registry_keys": [],
         }
 
         # 应用数据文件
@@ -1056,15 +1058,11 @@ class DataManager:
         import logging
         import shutil
         import winreg
+
         logger = logging.getLogger(__name__)
 
         with self._save_lock:
-            stats = {
-                "files_removed": 0,
-                "dirs_removed": 0,
-                "registry_keys_removed": 0,
-                "errors": []
-            }
+            stats = {"files_removed": 0, "dirs_removed": 0, "registry_keys_removed": 0, "errors": []}
 
             def report(msg, progress):
                 if callback:
@@ -1078,9 +1076,7 @@ class DataManager:
             report("正在清理注册表...", 0.1)
             try:
                 reg_key = winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run",
-                    0, winreg.KEY_ALL_ACCESS
+                    winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_ALL_ACCESS
                 )
                 try:
                     winreg.DeleteValue(reg_key, "QuickLauncher")
@@ -1129,13 +1125,13 @@ class DataManager:
             report("正在重置配置...", 0.9)
             try:
                 from .data_models import AppData
+
                 self._mark_history("恢复出厂设置", "清除所有配置和缓存")
                 self.data = AppData()
             except Exception as e:
                 stats["errors"].append(f"重置数据失败: {e}")
 
             return stats
-
 
     def backup_full_config(self, save_path: str) -> bool:
         """备份本机所有配置（包括图标、背景图、设置等）
@@ -1150,29 +1146,28 @@ class DataManager:
             # 确保当前数据已保存
             self.save(immediate=True)
 
-            with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 # 1. 准备数据字典
                 data_dict = self.data.to_dict()
 
                 # 2. 处理背景图片
-                bg_path = getattr(self.data.settings, 'custom_bg_path', '')
+                bg_path = getattr(self.data.settings, "custom_bg_path", "")
                 if bg_path and os.path.exists(bg_path):
                     ext = os.path.splitext(bg_path)[1]
                     arc_bg_name = f"background{ext}"
                     # 添加到 zip
                     zf.write(bg_path, arc_bg_name)
                     # 修改配置中的路径为相对路径
-                    data_dict['settings']['custom_bg_path'] = arc_bg_name
+                    data_dict["settings"]["custom_bg_path"] = arc_bg_name
 
                 # 3. 写入 data.json
-                zf.writestr('data.json', json.dumps(data_dict, ensure_ascii=False, indent=2))
+                zf.writestr("data.json", json.dumps(data_dict, ensure_ascii=False, indent=2))
 
                 # 4. 备份图标文件夹
                 if self.icons_dir.exists():
                     for file_path in self.icons_dir.iterdir():
                         if file_path.is_file():
                             zf.write(file_path, f"icons/{file_path.name}")
-
 
             return True
         except Exception as e:
@@ -1198,7 +1193,7 @@ class DataManager:
                     return False
 
                 self._mark_history("恢复全量备份", f"恢复备份: {backup_path}")
-                with zipfile.ZipFile(backup_path, 'r') as zf:
+                with zipfile.ZipFile(backup_path, "r") as zf:
                     safe_index = build_safe_zip_index(zf, report)
                     if not has_zip_entry(safe_index, "data.json"):
                         logger.warning("invalid backup file: missing data.json")
@@ -1217,10 +1212,14 @@ class DataManager:
                     data_dict = sanitize_app_data_dict(json.loads(data_json), report)
 
                     temp_icons_dir = Path(tempfile.mkdtemp(prefix="ql_restore_icons_", dir=str(self.install_dir)))
-                    bg_rel_path = data_dict.get('settings', {}).get('custom_bg_path', '')
+                    bg_rel_path = data_dict.get("settings", {}).get("custom_bg_path", "")
                     if bg_rel_path and not os.path.isabs(bg_rel_path):
                         normalized_bg = normalize_zip_name(bg_rel_path)
-                        if normalized_bg and has_zip_entry(safe_index, normalized_bg) and is_allowed_background_path(normalized_bg):
+                        if (
+                            normalized_bg
+                            and has_zip_entry(safe_index, normalized_bg)
+                            and is_allowed_background_path(normalized_bg)
+                        ):
                             bg_bytes = read_zip_bytes(
                                 zf,
                                 safe_index,
@@ -1229,19 +1228,19 @@ class DataManager:
                                 report=report,
                             )
                             if bg_bytes is None:
-                                data_dict['settings']['custom_bg_path'] = ''
+                                data_dict["settings"]["custom_bg_path"] = ""
                             else:
                                 target_bg_path = self.app_dir / f"restored_bg_{os.path.basename(bg_rel_path)}"
-                                with open(target_bg_path, 'wb') as f:
+                                with open(target_bg_path, "wb") as f:
                                     f.write(bg_bytes)
-                                data_dict['settings']['custom_bg_path'] = str(target_bg_path)
+                                data_dict["settings"]["custom_bg_path"] = str(target_bg_path)
                         else:
                             if normalized_bg:
                                 skip_file(report, normalized_bg, "missing or unsupported background image")
-                            data_dict['settings']['custom_bg_path'] = ''
+                            data_dict["settings"]["custom_bg_path"] = ""
 
                     for name in list(safe_index.keys()):
-                        if name.startswith('icons/') and not name.endswith('/'):
+                        if name.startswith("icons/") and not name.endswith("/"):
                             if not is_allowed_icon_path(name):
                                 skip_file(report, name, "unsupported icon extension")
                                 continue
@@ -1257,7 +1256,7 @@ class DataManager:
                             filename = os.path.basename(name)
                             if filename:
                                 target_path = temp_icons_dir / filename
-                                with open(target_path, 'wb') as f:
+                                with open(target_path, "wb") as f:
                                     f.write(icon_bytes)
 
                     restored_data = AppData.from_dict(data_dict)
@@ -1314,104 +1313,99 @@ class DataManager:
             data_dict = self.data.to_dict()
 
             # 创建可分享的配置副本
-            shareable_dict = {
-                'version': data_dict.get('version', '1.0'),
-                'items': []
-            }
+            shareable_dict = {"version": data_dict.get("version", "1.0"), "items": []}
 
             # 收集需要导出的图标文件
             icon_entries = []  # [(source_path, mode, archive_name)]
 
             # 遍历所有文件夹，只导出快捷键、命令、网址类型
-            folders = data_dict.get('folders', [])
+            folders = data_dict.get("folders", [])
             for folder in folders:
-                items = folder.get('items', folder.get('shortcuts', []))
+                items = folder.get("items", folder.get("shortcuts", []))
                 for shortcut in items:
-                    shortcut_type = shortcut.get('type', 'file')
+                    shortcut_type = shortcut.get("type", "file")
                     # 只导出这三种类型，排除 file（快捷方式）类型
-                    if shortcut_type in ['hotkey', 'command', 'url']:
+                    if shortcut_type in ["hotkey", "command", "url"]:
                         # 完整复制所有字段
-                        original_id = shortcut.get('id') or str(uuid.uuid4())
+                        original_id = shortcut.get("id") or str(uuid.uuid4())
                         item_copy = {
-                            'id': original_id,
-                            'name': shortcut.get('name', ''),
-                            'type': shortcut.get('type', ''),
-                            'order': shortcut.get('order', 0),
-                            'enabled': shortcut.get('enabled', True),
-                            'tags': shortcut.get('tags', []),
-                            'last_used_at': shortcut.get('last_used_at', 0.0),
-                            'use_count': shortcut.get('use_count', 0),
-                            'alias': shortcut.get('alias', ''),
-                            'target_path': shortcut.get('target_path', ''),
-                            'target_args': shortcut.get('target_args', ''),
-                            'working_dir': shortcut.get('working_dir', ''),
-                            'hotkey': shortcut.get('hotkey', ''),
-                            'hotkey_modifiers': shortcut.get('hotkey_modifiers', []),
-                            'hotkey_key': shortcut.get('hotkey_key', ''),
-                            'url': shortcut.get('url', ''),
-                            'preferred_browser_path': shortcut.get('preferred_browser_path', ''),
-                            'preferred_browser_args': shortcut.get('preferred_browser_args', ''),
-                            'command': shortcut.get('command', ''),
-                            'command_type': shortcut.get('command_type', 'cmd'),
-                            'trigger_mode': shortcut.get('trigger_mode', 'immediate'),
-                            'show_window': shortcut.get('show_window', False),
-                            'run_as_admin': shortcut.get('run_as_admin', False),
-                            'python_execution_mode': shortcut.get('python_execution_mode', 'legacy_inline'),
-                            'command_variables_enabled': shortcut.get(
-                                'command_variables_enabled',
-                                False
-                            ),
-                            'icon_data': shortcut.get('icon_data', ''),
-                            'icon_invert_with_theme': shortcut.get('icon_invert_with_theme', False),
-                            'icon_invert_current': shortcut.get('icon_invert_current', False),
-                            'icon_invert_theme_when_set': shortcut.get('icon_invert_theme_when_set', '')
+                            "id": original_id,
+                            "name": shortcut.get("name", ""),
+                            "type": shortcut.get("type", ""),
+                            "order": shortcut.get("order", 0),
+                            "enabled": shortcut.get("enabled", True),
+                            "tags": shortcut.get("tags", []),
+                            "last_used_at": shortcut.get("last_used_at", 0.0),
+                            "use_count": shortcut.get("use_count", 0),
+                            "alias": shortcut.get("alias", ""),
+                            "target_path": shortcut.get("target_path", ""),
+                            "target_args": shortcut.get("target_args", ""),
+                            "working_dir": shortcut.get("working_dir", ""),
+                            "hotkey": shortcut.get("hotkey", ""),
+                            "hotkey_modifiers": shortcut.get("hotkey_modifiers", []),
+                            "hotkey_key": shortcut.get("hotkey_key", ""),
+                            "url": shortcut.get("url", ""),
+                            "preferred_browser_path": shortcut.get("preferred_browser_path", ""),
+                            "preferred_browser_args": shortcut.get("preferred_browser_args", ""),
+                            "command": shortcut.get("command", ""),
+                            "command_type": shortcut.get("command_type", "cmd"),
+                            "trigger_mode": shortcut.get("trigger_mode", "immediate"),
+                            "show_window": shortcut.get("show_window", False),
+                            "run_as_admin": shortcut.get("run_as_admin", False),
+                            "python_execution_mode": shortcut.get("python_execution_mode", "legacy_inline"),
+                            "command_variables_enabled": shortcut.get("command_variables_enabled", False),
+                            "icon_data": shortcut.get("icon_data", ""),
+                            "icon_invert_with_theme": shortcut.get("icon_invert_with_theme", False),
+                            "icon_invert_current": shortcut.get("icon_invert_current", False),
+                            "icon_invert_theme_when_set": shortcut.get("icon_invert_theme_when_set", ""),
                         }
 
                         # 处理图标
-                        icon_path = shortcut.get('icon_path', '')
+                        icon_path = shortcut.get("icon_path", "")
                         if icon_path:
                             # 处理带图标索引的路径（如 "path.exe,0"）
-                            actual_path = icon_path.split(',')[0] if ',' in icon_path else icon_path
+                            actual_path = icon_path.split(",")[0] if "," in icon_path else icon_path
 
                             if os.path.exists(actual_path):
                                 # 如果是 exe/dll 文件，需要提取图标，使用 ICO 格式
                                 ext = os.path.splitext(actual_path)[1].lower()
-                                if ext in ['.exe', '.dll']:
+                                if ext in [".exe", ".dll"]:
                                     new_icon_name = f"{original_id}.png"
                                     # 标记需要提取图标，保留完整路径（包含索引）
-                                    icon_entries.append((icon_path, 'extract', new_icon_name))
+                                    icon_entries.append((icon_path, "extract", new_icon_name))
                                 else:
                                     # 直接复制图标文件，保持原扩展名
-                                    original_ext = os.path.splitext(actual_path)[1] or '.png'
+                                    original_ext = os.path.splitext(actual_path)[1] or ".png"
                                     new_icon_name = f"{original_id}{original_ext}"
-                                    icon_entries.append((actual_path, 'copy', new_icon_name))
+                                    icon_entries.append((actual_path, "copy", new_icon_name))
 
-                                item_copy['icon_path'] = f"icons/{new_icon_name}"
+                                item_copy["icon_path"] = f"icons/{new_icon_name}"
                             else:
-                                item_copy['icon_path'] = ''
+                                item_copy["icon_path"] = ""
                         else:
-                            item_copy['icon_path'] = ''
+                            item_copy["icon_path"] = ""
 
-                        shareable_dict['items'].append(item_copy)
+                        shareable_dict["items"].append(item_copy)
 
             # 创建 ZIP 压缩包
-            with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 # 写入配置文件
-                zf.writestr('config.json', json.dumps(shareable_dict, ensure_ascii=False, indent=2))
+                zf.writestr("config.json", json.dumps(shareable_dict, ensure_ascii=False, indent=2))
 
                 # 写入图标文件
                 for orig_path, mode, new_name in icon_entries:
                     try:
-                        if mode == 'extract':
+                        if mode == "extract":
                             # 从 exe/dll 提取图标
                             from core.icon_extractor import IconExtractor
+
                             # 使用 from_file 方法，它支持带索引的路径
                             pixmap = IconExtractor.from_file(orig_path, size=256, return_image=False)
                             if pixmap and not pixmap.isNull():
                                 # 保存为临时文件
                                 temp_path = os.path.join(tempfile.gettempdir(), new_name)
                                 # 使用 PNG 格式保存更可靠
-                                success = pixmap.save(temp_path, 'PNG')
+                                success = pixmap.save(temp_path, "PNG")
                                 if success:
                                     zf.write(temp_path, f"icons/{new_name}")
                                     os.remove(temp_path)
@@ -1449,7 +1443,7 @@ class DataManager:
 
             with self._save_lock:
                 self._mark_history("导入分享配置", f"导入配置: {import_path}")
-                with zipfile.ZipFile(import_path, 'r') as zf:
+                with zipfile.ZipFile(import_path, "r") as zf:
                     safe_index = build_safe_zip_index(zf, report)
                     config_text = read_zip_text(
                         zf,
@@ -1462,12 +1456,13 @@ class DataManager:
                     if config_text is None:
                         return False
                     import_dict = json.loads(config_text)
-                    import_items = import_dict.get('items', []) if isinstance(import_dict, dict) else []
+                    import_items = import_dict.get("items", []) if isinstance(import_dict, dict) else []
                     if not isinstance(import_items, list) or not import_items:
                         return False
 
                     # 查找或创建"导入图标"分类
                     from .data_models import Folder, ShortcutItem
+
                     target_folder = None
                     for folder in self.data.folders:
                         if folder.name == "导入图标":
@@ -1493,18 +1488,18 @@ class DataManager:
                     for item_dict in import_items[:2048]:
                         if not isinstance(item_dict, dict):
                             continue
-                        item_type = item_dict.get('type', 'file')
-                        if item_type not in ['hotkey', 'command', 'url']:
+                        item_type = item_dict.get("type", "file")
+                        if item_type not in ["hotkey", "command", "url"]:
                             continue
                         item_dict = dict(item_dict)
-                        item_dict['id'] = str(uuid.uuid4())
-                        item_dict['run_as_admin'] = False
-                        if item_type == 'command' and item_dict.get('python_execution_mode') == 'legacy_inline':
-                            item_dict['python_execution_mode'] = 'subprocess'
-                        icon_path = item_dict.get('icon_path', '')
-                        if icon_path and icon_path.startswith('icons/'):
+                        item_dict["id"] = str(uuid.uuid4())
+                        item_dict["run_as_admin"] = False
+                        if item_type == "command" and item_dict.get("python_execution_mode") == "legacy_inline":
+                            item_dict["python_execution_mode"] = "subprocess"
+                        icon_path = item_dict.get("icon_path", "")
+                        if icon_path and icon_path.startswith("icons/"):
                             if has_zip_entry(safe_index, icon_path) and is_allowed_icon_path(icon_path):
-                                icon_ext = os.path.splitext(icon_path)[1] or '.png'
+                                icon_ext = os.path.splitext(icon_path)[1] or ".png"
                                 icon_filename = f"{item_dict['id']}{icon_ext}"
                                 local_icon_path = self.icons_dir / icon_filename
                                 icon_bytes = read_zip_bytes(
@@ -1515,16 +1510,16 @@ class DataManager:
                                     report=report,
                                 )
                                 if icon_bytes is not None:
-                                    with open(local_icon_path, 'wb') as f:
+                                    with open(local_icon_path, "wb") as f:
                                         f.write(icon_bytes)
-                                    item_dict['icon_path'] = str(local_icon_path)
+                                    item_dict["icon_path"] = str(local_icon_path)
                                 else:
-                                    item_dict['icon_path'] = ''
+                                    item_dict["icon_path"] = ""
                             else:
                                 skip_file(report, icon_path, "missing or unsupported icon")
-                                item_dict['icon_path'] = ''
+                                item_dict["icon_path"] = ""
                         else:
-                            item_dict['icon_path'] = ''
+                            item_dict["icon_path"] = ""
 
                         shortcut = ShortcutItem.from_dict(item_dict)
                         max_order += 1
@@ -1556,16 +1551,17 @@ class DataManager:
             return 0
 
         with self._save_lock:
+
             def _split_icon_location(path: str):
-                raw = (path or '').strip()
+                raw = (path or "").strip()
                 if not raw:
-                    return '', ''
-                if ',' in raw:
-                    file_part, suffix = raw.rsplit(',', 1)
+                    return "", ""
+                if "," in raw:
+                    file_part, suffix = raw.rsplit(",", 1)
                     suffix = suffix.strip()
-                    if suffix.lstrip('-').isdigit():
+                    if suffix.lstrip("-").isdigit():
                         return file_part.strip(), f",{suffix}"
-                return raw, ''
+                return raw, ""
 
             new_icon_file, _ = _split_icon_location(new_icon_path)
             if not new_icon_file or not os.path.isfile(new_icon_file):
@@ -1578,7 +1574,7 @@ class DataManager:
                 for item in folder.items:
                     if not item.icon_path:
                         continue
-                    raw_icon_path = (item.icon_path or '').strip()
+                    raw_icon_path = (item.icon_path or "").strip()
                     if os.path.normcase(raw_icon_path) == os.path.normcase(new_icon_path):
                         continue
                     item_icon_file, item_icon_suffix = _split_icon_location(raw_icon_path)

@@ -1,6 +1,7 @@
-from core.pinyin_search import pinyin_variants
 from core.data_models import Folder, ShortcutItem
 from core.fuzzy_search import search_shortcuts
+from core.pinyin_search import pinyin_variants
+
 
 def test_expanded_pinyin_dictionary_matches_common_apps():
     # "微信" -> wx, weixin
@@ -20,11 +21,13 @@ def test_expanded_pinyin_dictionary_matches_common_apps():
 
 
 def test_fuzzy_search_supports_expanded_pinyin():
-    page = Folder(items=[
-        ShortcutItem(name="微信", alias="WeChat"),
-        ShortcutItem(name="支付宝", alias="Alipay"),
-        ShortcutItem(name="控制面板")
-    ])
+    page = Folder(
+        items=[
+            ShortcutItem(name="微信", alias="WeChat"),
+            ShortcutItem(name="支付宝", alias="Alipay"),
+            ShortcutItem(name="控制面板"),
+        ]
+    )
 
     # Search initials
     assert search_shortcuts([page], "wx")[0].shortcut.name == "微信"
@@ -50,13 +53,15 @@ def test_dynamic_pinyin_discovery_mocked(monkeypatch):
         NORMAL = 2
 
     MockPyPinyin.Style = MockStyle
-    
+
     import sys
+
     sys.modules["pypinyin"] = MockPyPinyin
-    
+
     import core.pinyin_search as pinyin_search
+
     monkeypatch.setattr(pinyin_search, "_HAS_PYPINYIN", None)
-    
+
     try:
         variants = pinyin_search.pinyin_variants("任意汉字")
         assert "weixin" in variants

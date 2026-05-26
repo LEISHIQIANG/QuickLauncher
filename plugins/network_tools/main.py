@@ -1,10 +1,10 @@
 """Network Tools plugin — Ping and DNS lookup with robust command execution."""
 
-import os
-import subprocess
-import socket
 import ctypes
 import locale
+import os
+import socket
+import subprocess
 
 from core.command_registry import CommandAction, CommandResult
 
@@ -44,7 +44,7 @@ def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
             output += proc.stdout
         if proc.stderr:
             output += b"\n" + proc.stderr
-            
+
         encodings = []
         if os.name == 'nt':
             try:
@@ -53,21 +53,21 @@ def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
                     encodings.append(f"cp{oem_cp}")
             except Exception:
                 pass
-        
+
         pref_enc = locale.getpreferredencoding(False)
         if pref_enc:
             encodings.append(pref_enc.lower())
         for e in ["gbk", "utf-8", "utf-16", "cp437"]:
             if e not in encodings:
                 encodings.append(e)
-                
+
         for encoding in encodings:
             try:
                 decoded = output.decode(encoding)
                 return proc.returncode == 0, decoded
             except UnicodeDecodeError:
                 continue
-                
+
         primary_encoding = encodings[0] if encodings else "utf-8"
         return proc.returncode == 0, output.decode(primary_encoding, errors="replace")
     except Exception as e:
@@ -97,6 +97,14 @@ def handle_ping(context):
         return CommandResult(
             success=success,
             message=output[:2000],
+            display_type="log",
+            payload={
+                "window_size": "large",
+                "wrap": False,
+                "host": host_clean,
+                "command": "ping",
+                "truncated": len(output) > 2000,
+            },
             actions=[CommandAction(type="copy", label="复制结果", value=output)],
         )
     except Exception as e:
@@ -127,7 +135,7 @@ def handle_dns(context):
 
     try:
         success, output = _run_cmd(["nslookup", host_clean], timeout=12)
-        
+
         # Fallback to socket resolution if output is empty or nslookup failed
         if not output.strip() or not success:
             try:
@@ -142,6 +150,14 @@ def handle_dns(context):
         return CommandResult(
             success=success,
             message=output[:2000],
+            display_type="log",
+            payload={
+                "window_size": "large",
+                "wrap": False,
+                "host": host_clean,
+                "command": "nslookup",
+                "truncated": len(output) > 2000,
+            },
             actions=[CommandAction(type="copy", label="复制结果", value=output)],
         )
     except Exception as e:

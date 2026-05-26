@@ -411,9 +411,7 @@ def _get_app_launch_spec() -> tuple[str, str, str]:
         return exe_path, "", os.path.dirname(exe_path)
 
     main_script = (
-        os.path.abspath(sys.argv[0])
-        if sys.argv and sys.argv[0]
-        else os.path.join(_get_project_root(), "main.py")
+        os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else os.path.join(_get_project_root(), "main.py")
     )
     python_exe = sys.executable
     arguments = subprocess.list2cmdline([main_script])
@@ -505,10 +503,7 @@ def _is_allowed_helper_target(
         sys.argv[0] if sys.argv and sys.argv[0] else os.path.join(_get_project_root(), "main.py")
     )
     expected_args = subprocess.list2cmdline([main_script])
-    return (
-        _normalize_abs_path(path) == _normalize_abs_path(sys.executable)
-        and (args or "").strip() == expected_args
-    )
+    return _normalize_abs_path(path) == _normalize_abs_path(sys.executable) and (args or "").strip() == expected_args
 
 
 def _validate_task_launch_spec(
@@ -730,10 +725,7 @@ def enable_impersonate_privilege() -> bool:
             _fields_ = [("Luid", LUID), ("Attributes", wintypes.DWORD)]
 
         class TOKEN_PRIVILEGES(ctypes.Structure):
-            _fields_ = [
-                ("PrivilegeCount", wintypes.DWORD),
-                ("Privileges", LUID_AND_ATTRIBUTES * 1)
-            ]
+            _fields_ = [("PrivilegeCount", wintypes.DWORD), ("Privileges", LUID_AND_ATTRIBUTES * 1)]
 
         # Define function signatures locally to prevent collision
         OpenProcessToken = advapi32.OpenProcessToken
@@ -751,12 +743,14 @@ def enable_impersonate_privilege() -> bool:
             ctypes.c_void_p,
             wintypes.DWORD,
             ctypes.c_void_p,
-            ctypes.c_void_p
+            ctypes.c_void_p,
         ]
         AdjustTokenPrivileges.restype = wintypes.BOOL
 
         h_token = wintypes.HANDLE()
-        if not OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, ctypes.byref(h_token)):
+        if not OpenProcessToken(
+            kernel32.GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, ctypes.byref(h_token)
+        ):
             return False
 
         try:
@@ -770,7 +764,9 @@ def enable_impersonate_privilege() -> bool:
             tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED
 
             if not AdjustTokenPrivileges(h_token, False, ctypes.byref(tp), 0, None, None):
-                logger.warning("Failed to adjust token privileges for SeImpersonatePrivilege: %s", kernel32.GetLastError())
+                logger.warning(
+                    "Failed to adjust token privileges for SeImpersonatePrivilege: %s", kernel32.GetLastError()
+                )
                 return False
             return True
         finally:
@@ -927,11 +923,7 @@ def _get_shell_explorer_primary_token() -> tuple[object | None, int | None, str]
 
     token = _open_process_token_for_pid(
         pid,
-        TOKEN_QUERY
-        | TOKEN_DUPLICATE
-        | TOKEN_ASSIGN_PRIMARY
-        | TOKEN_ADJUST_DEFAULT
-        | TOKEN_ADJUST_SESSIONID,
+        TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID,
     )
     if not token:
         token = _open_process_token_for_pid(pid, TOKEN_QUERY | TOKEN_DUPLICATE)

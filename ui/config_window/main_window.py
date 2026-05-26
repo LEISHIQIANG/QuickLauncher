@@ -56,7 +56,6 @@ class DotWidget(QWidget):
         p.end()
 
 
-
 class TitleBar(QWidget):
     """自定义标题栏"""
 
@@ -105,7 +104,7 @@ class TitleBar(QWidget):
         # 图标 (默认显示)
         icon_size = 25
         # 兼容打包环境
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = os.path.dirname(sys.executable)
         else:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -128,7 +127,9 @@ class TitleBar(QWidget):
 
                 pixmap = QIcon(icon_path).pixmap(icon_size, icon_size)
                 if pixmap and not pixmap.isNull():
-                    self.icon_label.setPixmap(pixmap.scaled(icon_size, icon_size, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation))
+                    self.icon_label.setPixmap(
+                        pixmap.scaled(icon_size, icon_size, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                    )
         except Exception:
             pass
         layout.addWidget(self.icon_label, alignment=QtCompat.AlignVCenter)
@@ -163,7 +164,7 @@ class TitleBar(QWidget):
             else:
                 self.settings_btn.setText("⚙")
         except Exception:
-             self.settings_btn.setText("⚙")
+            self.settings_btn.setText("⚙")
 
         self.settings_btn.setCursor(QtCompat.PointingHandCursor)
         self.settings_btn.clicked.connect(self._on_settings)
@@ -214,7 +215,9 @@ class TitleBar(QWidget):
             subtext_color = "#555555"
             btn_hover_bg = "rgba(0, 0, 0, 0.05)"
 
-        self.title_label.setStyleSheet(f"font-size: 13px; font-weight: 400; background: transparent; color: {text_color};")
+        self.title_label.setStyleSheet(
+            f"font-size: 13px; font-weight: 400; background: transparent; color: {text_color};"
+        )
 
         # 更新按钮样式
         btn_base_style = f"""
@@ -276,12 +279,7 @@ class TitleBar(QWidget):
                     for x in range(image.width()):
                         pixel = image.pixelColor(x, y)
                         # 保持 alpha，反转 RGB
-                        inverted = QColor(
-                            255 - pixel.red(),
-                            255 - pixel.green(),
-                            255 - pixel.blue(),
-                            pixel.alpha()
-                        )
+                        inverted = QColor(255 - pixel.red(), 255 - pixel.green(), 255 - pixel.blue(), pixel.alpha())
                         image.setPixelColor(x, y, inverted)
 
                 # 转回 QPixmap
@@ -333,14 +331,14 @@ class TitleBar(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == QtCompat.LeftButton:
-            if hasattr(event, 'globalPosition'):
+            if hasattr(event, "globalPosition"):
                 self._drag_pos = event.globalPosition().toPoint()
             else:
                 self._drag_pos = event.globalPos()
 
     def mouseMoveEvent(self, event):
         if self._drag_pos and event.buttons() & QtCompat.LeftButton:
-            if hasattr(event, 'globalPosition'):
+            if hasattr(event, "globalPosition"):
                 new_pos = event.globalPosition().toPoint()
             else:
                 new_pos = event.globalPos()
@@ -401,6 +399,7 @@ class RoundedWindow(QWidget):
             # Win10 特殊优化：使用更高质量的抗锯齿渲染
             try:
                 from ui.utils.window_effect import is_win10
+
                 if is_win10():
                     painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
                     painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
@@ -409,21 +408,26 @@ class RoundedWindow(QWidget):
 
             try:
                 from ui.utils.window_effect import is_win10
+
                 inset = 1.0 if is_win10() else 0.5
             except Exception:
                 inset = 0.5
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset,
-                self.width() - inset * 2, self.height() - inset * 2,
-                self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             if self.use_acrylic:
                 tint_color = QColor(self.bg_color)
                 try:
                     from ui.utils.window_effect import is_win10
+
                     if is_win10():
                         tint_color.setAlpha(min(tint_color.alpha(), 150))
                     else:
@@ -441,15 +445,14 @@ class RoundedWindow(QWidget):
 
             try:
                 from ui.utils.window_effect import is_win10
+
                 if is_win10():
                     soften_color_inner = QColor(self.bg_color)
                     soften_color_inner.setAlpha(int(soften_color_inner.alpha() * 0.6))
                     painter.setPen(QPen(soften_color_inner, 0.5))
                     inner_path = QPainterPath()
                     inner_path.addRoundedRect(
-                        0.75, 0.75,
-                        self.width() - 1.5, self.height() - 1.5,
-                        self.corner_radius, self.corner_radius
+                        0.75, 0.75, self.width() - 1.5, self.height() - 1.5, self.corner_radius, self.corner_radius
                     )
                     painter.drawPath(inner_path)
 
@@ -458,9 +461,12 @@ class RoundedWindow(QWidget):
                     painter.setPen(QPen(soften_color_outer, 0.5))
                     outer_path = QPainterPath()
                     outer_path.addRoundedRect(
-                        0.25, 0.25,
-                        self.width() - 0.5, self.height() - 0.5,
-                        self.corner_radius + 0.5, self.corner_radius + 0.5
+                        0.25,
+                        0.25,
+                        self.width() - 0.5,
+                        self.height() - 0.5,
+                        self.corner_radius + 0.5,
+                        self.corner_radius + 0.5,
                     )
                     painter.drawPath(outer_path)
             except Exception:
@@ -496,18 +502,21 @@ class ConfigWindow(QMainWindow):
         self._active_hotkey_dialog = None
         self._active_url_dialog = None
         self._active_command_dialog = None
+        self._active_chain_dialog = None
         # 对话框历史强引用，防止因 Python 垃圾回收机制过早销毁窗口包装对象导致的 C++ 崩溃
         self._dialog_history = []
 
         # 无边框 + 透明背景
-        self.setWindowFlags(
-            QtCompat.FramelessWindowHint
-        )
+        self.setWindowFlags(QtCompat.FramelessWindowHint)
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
         self.setWindowOpacity(0)  # 初始透明度为 0
 
         # 计算固定窗口大小 - 增加宽度使左右边距一致
-        icon_grid_width = self.ICON_GRID_PADDING * 2 + self.ICON_COLS * self.ICON_WIDGET_SIZE + (self.ICON_COLS - 1) * self.ICON_GRID_SPACING
+        icon_grid_width = (
+            self.ICON_GRID_PADDING * 2
+            + self.ICON_COLS * self.ICON_WIDGET_SIZE
+            + (self.ICON_COLS - 1) * self.ICON_GRID_SPACING
+        )
         # total_width = self.FOLDER_PANEL_WIDTH + icon_grid_width + self.SETTINGS_PANEL_WIDTH + 8
         # Remove settings panel width, add some padding
         total_width = self.FOLDER_PANEL_WIDTH + icon_grid_width
@@ -531,11 +540,14 @@ class ConfigWindow(QMainWindow):
             self._guide_shown = True
             try:
                 from .welcome_integration import show_welcome_if_first_run
+
                 show_welcome_if_first_run(self, self.data_manager)
             except Exception as e:
                 import logging
+
                 logging.error(f"新手引导加载失败: {e}")
                 import traceback
+
                 traceback.print_exc()
 
     def showEvent(self, event):
@@ -584,6 +596,7 @@ class ConfigWindow(QMainWindow):
 
         # 左侧：文件夹面板
         from .folder_panel import FolderPanel
+
         self.folder_panel = FolderPanel(self.data_manager)
         self.folder_panel.setFixedWidth(self.FOLDER_PANEL_WIDTH)
         self.folder_panel.folder_selected.connect(self._on_folder_selected)
@@ -591,6 +604,7 @@ class ConfigWindow(QMainWindow):
 
         # 中间：图标网格
         from .icon_grid import IconGrid
+
         self.icon_grid = IconGrid(self.data_manager)
         self.icon_grid.shortcut_edit_requested.connect(self._on_shortcut_edit)
         self.icon_grid.shortcut_delete_requested.connect(self._on_shortcut_delete)
@@ -599,6 +613,7 @@ class ConfigWindow(QMainWindow):
         self.icon_grid.add_hotkey_requested.connect(self._on_add_hotkey)
         self.icon_grid.add_url_requested.connect(self._on_add_url)
         self.icon_grid.add_command_requested.connect(self._on_add_command)
+        self.icon_grid.add_chain_requested.connect(self._on_add_chain)
         self.icon_grid.builtin_icon_requested.connect(self._on_builtin_icon)
         launcher_layout.addWidget(self.icon_grid, 1)
 
@@ -620,16 +635,20 @@ class ConfigWindow(QMainWindow):
 
         # 右侧版本信息 - 纯文本QLabel
         import platform
+
         # 判断 Windows 版本
         if platform.system() == "Windows":
-            build = int(platform.version().split('.')[-1])
+            build = int(platform.version().split(".")[-1])
             system_version = f"Win{'11' if build >= 22000 else '10'}"
         else:
             system_version = platform.system()
 
         # 管理员指示灯：紫色=代码运行，绿色=非管理员，红色=管理员
         import ctypes
-        is_compiled = getattr(sys, 'frozen', False) or '__compiled__' in dir(__builtins__) or globals().get('__compiled__', False)
+
+        is_compiled = (
+            getattr(sys, "frozen", False) or "__compiled__" in dir(__builtins__) or globals().get("__compiled__", False)
+        )
         if is_compiled:
             is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
             dot_color = "#ff6b6b" if is_admin else "#6bcb77"
@@ -653,10 +672,12 @@ class ConfigWindow(QMainWindow):
             return
         try:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info("开始创建设置面板...")
 
             from .settings_panel import SettingsPanel
+
             self.settings_panel = SettingsPanel(self.data_manager, self.tray_app)
             self.settings_panel.settings_changed.connect(self._on_settings_panel_changed)
             self.settings_panel.command_settings_changed.connect(self.settings_changed.emit)
@@ -678,6 +699,7 @@ class ConfigWindow(QMainWindow):
         except Exception as e:
             import logging
             import traceback
+
             logger = logging.getLogger(__name__)
             logger.error(f"创建设置面板失败: {e}")
             logger.error(traceback.format_exc())
@@ -685,6 +707,7 @@ class ConfigWindow(QMainWindow):
             # 显示错误提示
             try:
                 from ui.styles.themed_messagebox import ThemedMessageBox
+
                 ThemedMessageBox.critical(self, "错误", f"无法加载设置面板:\n{e}")
             except Exception:
                 QMessageBox.critical(self, "错误", f"无法加载设置面板:\n{e}")
@@ -698,6 +721,7 @@ class ConfigWindow(QMainWindow):
             self.status_bar.setVisible(False)
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"显示设置面板失败: {e}")
 
@@ -725,7 +749,6 @@ class ConfigWindow(QMainWindow):
     def _slide_to_page(self, index, direction="left"):
         """切换页面"""
         self.stack.setCurrentIndex(index)
-
 
     def _load_initial_folder(self):
         """加载初始文件夹"""
@@ -847,9 +870,10 @@ class ConfigWindow(QMainWindow):
 
         # 设置状态栏颜色
         status_color = "rgba(255, 255, 255, 0.5)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
-        self.status_bar.setStyleSheet(f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}")
+        self.status_bar.setStyleSheet(
+            f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}"
+        )
         self.version_label.setStyleSheet(f"font-size: 11px; color: {status_color}; padding: 0; margin-right: 10px;")
-
 
         # 设置标题栏和设置面板主题
         self.title_bar.set_theme(theme)
@@ -898,7 +922,14 @@ class ConfigWindow(QMainWindow):
         if folder:
             # 计算所有文件夹的总项数
             total_items = sum(len(f.items) for f in self.data_manager.data.folders)
-            self.status_bar.showMessage(tr("当前: {folder} {count}项  共计: {total} 项", folder=folder.name, count=len(folder.items), total=total_items))
+            self.status_bar.showMessage(
+                tr(
+                    "当前: {folder} {count}项  共计: {total} 项",
+                    folder=folder.name,
+                    count=len(folder.items),
+                    total=total_items,
+                )
+            )
 
     def _begin_shortcut_dialog_action(self) -> bool:
         if self._shortcut_edit_active:
@@ -936,6 +967,7 @@ class ConfigWindow(QMainWindow):
                 on_accept(dialog.get_shortcut())
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"对话框执行失败: {e}", exc_info=True)
         finally:
             self._end_shortcut_dialog_action()
@@ -955,15 +987,23 @@ class ConfigWindow(QMainWindow):
 
         if shortcut.type == ShortcutType.HOTKEY:
             from .hotkey_dialog import HotkeyDialog
+
             dialog = HotkeyDialog(self, shortcut)
         elif shortcut.type == ShortcutType.URL:
             from .url_dialog import UrlDialog
+
             dialog = UrlDialog(self, shortcut)
         elif shortcut.type == ShortcutType.COMMAND:
             from .command_dialog import CommandDialog
+
             dialog = CommandDialog(self, shortcut)
+        elif shortcut.type == ShortcutType.CHAIN:
+            from .chain_dialog import ChainDialog
+
+            dialog = ChainDialog(self, shortcut)
         else:
             from .shortcut_dialog import ShortcutDialog
+
             dialog = ShortcutDialog(self, shortcut)
 
         old_icon = (shortcut.icon_path if shortcut else "") or ""
@@ -975,6 +1015,7 @@ class ConfigWindow(QMainWindow):
                 redirected = self.data_manager.redirect_missing_icon_paths(updated.icon_path)
                 if redirected:
                     import logging
+
                     logging.getLogger(__name__).info(f"批量重定向图标路径: {redirected} 个")
             self.icon_grid.load_folder(folder_id)
             self.settings_changed.emit()  # 通知弹窗刷新数据
@@ -986,10 +1027,7 @@ class ConfigWindow(QMainWindow):
         theme = self.data_manager.get_settings().theme
 
         confirmed = ThemedMessageBox.question(
-            self,
-            tr("确认删除"),
-            tr("确定要删除 '{name}' 吗?", name=shortcut.name),
-            theme
+            self, tr("确认删除"), tr("确定要删除 '{name}' 吗?", name=shortcut.name), theme
         )
 
         if confirmed:
@@ -1018,6 +1056,7 @@ class ConfigWindow(QMainWindow):
 
         try:
             from .shortcut_dialog import ShortcutDialog
+
             dialog = ShortcutDialog(self)
             self._active_file_dialog = dialog
             dialog.finished.connect(lambda: setattr(self, "_active_file_dialog", None))
@@ -1030,6 +1069,7 @@ class ConfigWindow(QMainWindow):
             self._run_shortcut_dialog(dialog, _apply_add)
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"创建文件对话框失败: {e}")
             self._end_shortcut_dialog_action()
 
@@ -1053,6 +1093,7 @@ class ConfigWindow(QMainWindow):
 
         try:
             from .hotkey_dialog import HotkeyDialog
+
             dialog = HotkeyDialog(self)
             self._active_hotkey_dialog = dialog
             dialog.finished.connect(lambda: setattr(self, "_active_hotkey_dialog", None))
@@ -1065,6 +1106,7 @@ class ConfigWindow(QMainWindow):
             self._run_shortcut_dialog(dialog, _apply_add)
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"创建快捷键对话框失败: {e}")
             self._end_shortcut_dialog_action()
 
@@ -1088,6 +1130,7 @@ class ConfigWindow(QMainWindow):
 
         try:
             from .url_dialog import UrlDialog
+
             dialog = UrlDialog(self)
             self._active_url_dialog = dialog
             dialog.finished.connect(lambda: setattr(self, "_active_url_dialog", None))
@@ -1100,6 +1143,7 @@ class ConfigWindow(QMainWindow):
             self._run_shortcut_dialog(dialog, _apply_add)
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"创建URL对话框失败: {e}")
             self._end_shortcut_dialog_action()
 
@@ -1123,6 +1167,7 @@ class ConfigWindow(QMainWindow):
 
         try:
             from .command_dialog import CommandDialog
+
             dialog = CommandDialog(self)
             self._active_command_dialog = dialog
             dialog.finished.connect(lambda: setattr(self, "_active_command_dialog", None))
@@ -1135,7 +1180,44 @@ class ConfigWindow(QMainWindow):
             self._run_shortcut_dialog(dialog, _apply_add)
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"创建命令对话框失败: {e}")
+            self._end_shortcut_dialog_action()
+
+    def _on_add_chain(self):
+        """Create an action chain."""
+        if self._active_chain_dialog is not None:
+            try:
+                self._active_chain_dialog.activateWindow()
+                self._active_chain_dialog.raise_()
+                return
+            except RuntimeError:
+                self._active_chain_dialog = None
+
+        if not self._begin_shortcut_dialog_action():
+            return
+        folder_id = self.icon_grid.current_folder_id
+        if not folder_id:
+            self._end_shortcut_dialog_action()
+            return
+
+        try:
+            from .chain_dialog import ChainDialog
+
+            dialog = ChainDialog(self)
+            self._active_chain_dialog = dialog
+            dialog.finished.connect(lambda: setattr(self, "_active_chain_dialog", None))
+
+            def _apply_add(shortcut):
+                self.data_manager.add_shortcut(folder_id, shortcut)
+                self.icon_grid.load_folder(folder_id)
+                self.settings_changed.emit()
+
+            self._run_shortcut_dialog(dialog, _apply_add)
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).error(f"Create chain dialog failed: {e}", exc_info=True)
             self._end_shortcut_dialog_action()
 
     def _on_builtin_icon(self):
@@ -1145,7 +1227,7 @@ class ConfigWindow(QMainWindow):
             return
 
         # 检查是否已有实例
-        if hasattr(self, '_builtin_icons_dialog') and self._builtin_icons_dialog:
+        if hasattr(self, "_builtin_icons_dialog") and self._builtin_icons_dialog:
             try:
                 self._builtin_icons_dialog.activateWindow()
                 self._builtin_icons_dialog.raise_()
@@ -1154,6 +1236,7 @@ class ConfigWindow(QMainWindow):
                 self._builtin_icons_dialog = None
 
         from .builtin_icons_dialog import BuiltinIconsDialog
+
         self._builtin_icons_dialog = BuiltinIconsDialog(self)
         self._builtin_icons_dialog.icon_selected.connect(lambda item: self._add_builtin_icon(folder_id, item))
         # 窗口关闭后清除引用
@@ -1180,7 +1263,7 @@ class ConfigWindow(QMainWindow):
         self._apply_theme()
 
         # 刷新文件夹列表（不触发选中事件）
-        if hasattr(self.folder_panel, '_load_folders'):
+        if hasattr(self.folder_panel, "_load_folders"):
             # 临时断开信号
             try:
                 self.folder_panel.folder_selected.disconnect()
@@ -1214,7 +1297,7 @@ class ConfigWindow(QMainWindow):
             self.icon_grid.load_folder(folder_id)
 
         # 刷新文件夹列表（因为可能新建了文件夹）
-        if hasattr(self.folder_panel, '_load_folders'):
+        if hasattr(self.folder_panel, "_load_folders"):
             self.folder_panel._load_folders()
 
         self.settings_changed.emit()
@@ -1244,7 +1327,7 @@ class ConfigWindow(QMainWindow):
         # 动画参数
         self._anim_step = 0
         self._anim_duration_ms = 240  # 240ms 流畅的主窗口动效
-        self._anim_interval_ms = 16   # 16ms (60 FPS) 完美同步显示器刷新率，防止 DWM 阻塞
+        self._anim_interval_ms = 16  # 16ms (60 FPS) 完美同步显示器刷新率，防止 DWM 阻塞
         self._anim_total_steps = max(1, self._anim_duration_ms // self._anim_interval_ms)
 
         # 创建并启动定时器
@@ -1268,7 +1351,7 @@ class ConfigWindow(QMainWindow):
 
         # 加速透明度淡入：在 67% 的进度时透明度就达到 1.0，从而提前关闭 DWM 混合层以消除卡顿
         self.setWindowOpacity(min(1.0, progress * 1.5))
-        
+
         target_y = self._anim_target_pos.y()
         current_y = int(target_y + (1.0 - eased) * 16)
         self.move(self._anim_target_pos.x(), current_y)

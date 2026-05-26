@@ -102,5 +102,11 @@ def sync_folder(data_manager: DataManager, folder_id: str) -> Tuple[int, int]:
         removed=removed_count,
         total=len(scanned_shortcuts),
     )
-    logger.info("文件夹同步完成: folder=%s added=%s removed=%s total=%s", folder_id, added_count, removed_count, len(scanned_shortcuts))
+    logger.info(
+        "文件夹同步完成: folder=%s added=%s removed=%s total=%s",
+        folder_id,
+        added_count,
+        removed_count,
+        len(scanned_shortcuts),
+    )
     return added_count, removed_count

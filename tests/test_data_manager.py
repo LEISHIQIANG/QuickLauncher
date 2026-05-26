@@ -12,7 +12,8 @@ import pytest
 from core.config_history import ConfigHistoryManager
 from core.data_manager import DataManager
 from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
-data_manager_module = sys.modules['core.data_manager']
+
+data_manager_module = sys.modules["core.data_manager"]
 
 
 def _manager_with_data(data):

@@ -129,7 +129,7 @@ class DragDropListWidget(QListWidget):
                 widget.setGraphicsEffect(None)
             except Exception:
                 pass
-            
+
             # ALWAYS trigger the drag-finished callback to cleanly refresh the entire UI list and prevent disappearing widgets!
             if self.on_drag_finished_callback:
                 self.on_drag_finished_callback()
@@ -148,7 +148,7 @@ class DragDropListWidget(QListWidget):
         event.acceptProposedAction()
 
         # Find target item under the cursor
-        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
         index = self.indexAt(pos)
 
         if not index.isValid():
@@ -187,7 +187,7 @@ class DragDropListWidget(QListWidget):
 
                 self.takeItem(source_row)
                 self.insertItem(dest_row, source_item)
-                
+
                 if widget:
                     self.setItemWidget(source_item, widget)
                     # Force set size hint of the item to invalidate list layout cache on the first swap!
@@ -206,6 +206,7 @@ class DragDropListWidget(QListWidget):
 
             # Trigger QPropertyAnimation for all shifted items
             from qt_compat import QEasingCurve, QPropertyAnimation
+
             for r in range(self.count()):
                 it = self.item(r)
                 try:
@@ -276,6 +277,7 @@ class DragDropListWidget(QListWidget):
                 self.doItemsLayout()
 
                 from qt_compat import QEasingCurve, QPropertyAnimation
+
                 for r in range(self.count()):
                     it = self.item(r)
                     try:
@@ -334,7 +336,11 @@ class SettingsCommandsPageMixin:
         # ── Favorites ──
         layout2, group2 = page.add_group("收藏命令")
 
-        fav_desc = QLabel(tr("收藏的命令会显示在 / 默认页顶部，方便快速访问。\n可以使用下方“内置命令管理”中的“收藏”按钮或从结果卡片的星标按钮添加。"))
+        fav_desc = QLabel(
+            tr(
+                "收藏的命令会显示在 / 默认页顶部，方便快速访问。\n可以使用下方“内置命令管理”中的“收藏”按钮或从结果卡片的星标按钮添加。"
+            )
+        )
         fav_desc.setObjectName("fav_desc")
         fav_desc.setWordWrap(True)
         fav_desc.setMinimumWidth(0)
@@ -351,7 +357,7 @@ class SettingsCommandsPageMixin:
             page,
             theme=self.current_theme,
             on_reordered_callback=self._on_favorites_reordered,
-            on_drag_finished_callback=self._schedule_refresh
+            on_drag_finished_callback=self._schedule_refresh,
         )
         self.fav_list_widget.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.fav_list_widget.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
@@ -409,14 +415,15 @@ class SettingsCommandsPageMixin:
         """Refresh displayed values from current settings."""
         try:
             from core import data_manager
+
             if data_manager is None:
                 return
             settings = data_manager.get_settings()
 
             # Suppress all intermediate repaints during bulk widget refresh
-            if hasattr(self, 'builtin_container'):
+            if hasattr(self, "builtin_container"):
                 self.builtin_container.setUpdatesEnabled(False)
-            if hasattr(self, 'fav_list_widget'):
+            if hasattr(self, "fav_list_widget"):
                 self.fav_list_widget.setUpdatesEnabled(False)
 
             # Dynamic Colors
@@ -440,7 +447,7 @@ class SettingsCommandsPageMixin:
                         w.deleteLater()
 
             # Stop and clear all running animations in favorite command item widgets before clear()
-            if hasattr(self, 'fav_list_widget') and self.fav_list_widget:
+            if hasattr(self, "fav_list_widget") and self.fav_list_widget:
                 for r in range(self.fav_list_widget.count()):
                     try:
                         it = self.fav_list_widget.item(r)
@@ -456,37 +463,40 @@ class SettingsCommandsPageMixin:
             favs = settings.favorite_commands
             if favs:
                 from core import registry
+
                 for fid in favs:
                     cmd = registry.get(fid) if registry else None
                     name = cmd.title if cmd else fid
-                    
+
                     item_widget = QWidget()
                     item_widget.setObjectName("FavItem")
-                    item_widget.setStyleSheet(f"QWidget#FavItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}")
-                    
+                    item_widget.setStyleSheet(
+                        f"QWidget#FavItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                    )
+
                     item_layout = QGridLayout(item_widget)
                     item_layout.setContentsMargins(10, 6, 10, 6)
                     item_layout.setHorizontalSpacing(8)
                     item_layout.setVerticalSpacing(2)
-                    
+
                     star_lbl = QLabel("⭐")
                     item_layout.addWidget(star_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
-                    
+
                     fid_display = fid.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
                     name_display = name.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
-                    
+
                     name_lbl = QLabel(name_display)
                     name_lbl.setStyleSheet(f"font-weight: bold; color: {text_color}; font-size: 12px;")
                     name_lbl.setWordWrap(True)
                     name_lbl.setMinimumWidth(0)
                     item_layout.addWidget(name_lbl, 0, 1, 1, 1)
-                    
+
                     key_lbl = QLabel(f"/{fid_display}")
                     key_lbl.setStyleSheet("color: rgba(10,132,255,0.85); font-size: 11px;")
                     key_lbl.setWordWrap(True)
                     key_lbl.setMinimumWidth(0)
                     item_layout.addWidget(key_lbl, 1, 1, 1, 1)
-                    
+
                     unfav_btn = QPushButton(tr("取消收藏"))
                     unfav_btn.setFixedWidth(72)
                     unfav_btn.setMinimumHeight(20)
@@ -494,26 +504,28 @@ class SettingsCommandsPageMixin:
                     unfav_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px 4px; }")
                     unfav_btn.clicked.connect(lambda checked, cmd_id=fid: self._on_unfavorite_command(cmd_id))
                     item_layout.addWidget(unfav_btn, 0, 2, 2, 1, QtCompat.AlignVCenter)
-                    
+
                     item_layout.setColumnStretch(0, 0)
                     item_layout.setColumnStretch(1, 1)
                     item_layout.setColumnStretch(2, 0)
-                    
+
                     item = QListWidgetItem()
-                    item.setFlags(item.flags() | QtCompat.ItemIsDragEnabled | QtCompat.ItemIsSelectable | QtCompat.ItemIsEnabled)
-                    
+                    item.setFlags(
+                        item.flags() | QtCompat.ItemIsDragEnabled | QtCompat.ItemIsSelectable | QtCompat.ItemIsEnabled
+                    )
+
                     widget_size = item_widget.sizeHint()
                     widget_size.setHeight(widget_size.height() + 4)
                     item.setSizeHint(widget_size)
-                    
+
                     self.fav_list_widget.addItem(item)
                     self.fav_list_widget.setItemWidget(item, item_widget)
-                
+
                 total_height = 0
                 for i in range(self.fav_list_widget.count()):
                     total_height += self.fav_list_widget.sizeHintForRow(i)
                 self.fav_list_widget.setFixedHeight(total_height + 4)
-                
+
                 self.fav_list_widget.show()
                 self.fav_placeholder_lbl.hide()
             else:
@@ -523,77 +535,82 @@ class SettingsCommandsPageMixin:
 
             # 2. Built-in Commands List Rebuild (Optimized: Cache and update in-place to eliminate 99% of UI freeze/lag)
             from core import registry
+
             if registry:
                 all_cmds = registry.list()
                 builtin_cmds = [cmd for cmd in all_cmds if cmd.source == "builtin"]
                 builtin_cmds.sort(key=lambda c: c.id)
-                
+
                 query = self.builtin_filter_edit.text().strip().lower() if hasattr(self, "builtin_filter_edit") else ""
 
                 # Lazy initial creation of widgets
                 if not hasattr(self, "_builtin_widgets") or not self._builtin_widgets:
                     self._builtin_widgets = {}
                     clear_layout(self.builtin_layout)
-                    
+
                     for cmd in builtin_cmds:
                         item_widget = QWidget()
                         item_widget.setObjectName("BuiltinItem")
-                        
+
                         item_layout = QGridLayout(item_widget)
                         item_layout.setContentsMargins(10, 8, 10, 8)
                         item_layout.setHorizontalSpacing(8)
                         item_layout.setVerticalSpacing(2)
-                        
+
                         dot_lbl = QLabel("●")
                         item_layout.addWidget(dot_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
-                        
-                        cmd_title_display = cmd.title.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
+
+                        cmd_title_display = (
+                            cmd.title.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
+                        )
                         cmd_id_display = cmd.id.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
-                        
+
                         title_lbl = QLabel(cmd_title_display)
                         title_lbl.setWordWrap(True)
                         title_lbl.setMinimumWidth(0)
                         item_layout.addWidget(title_lbl, 0, 1, 1, 1)
-                        
+
                         key_lbl = QLabel(f"/{cmd_id_display}")
                         key_lbl.setWordWrap(True)
                         key_lbl.setMinimumWidth(0)
                         item_layout.addWidget(key_lbl, 1, 1, 1, 1)
-                        
+
                         actions_layout = QHBoxLayout()
                         actions_layout.setContentsMargins(0, 0, 0, 0)
                         actions_layout.setSpacing(6)
-                        
+
                         fav_btn = QPushButton()
                         fav_btn.setFixedWidth(60)
                         fav_btn.setMinimumHeight(20)
                         fav_btn.setProperty("is_compact_btn", True)
                         fav_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px 4px; }")
                         actions_layout.addWidget(fav_btn)
-                        
+
                         toggle_btn = QPushButton()
                         toggle_btn.setFixedWidth(60)
                         toggle_btn.setMinimumHeight(20)
                         toggle_btn.setProperty("is_compact_btn", True)
                         toggle_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px 4px; }")
                         actions_layout.addWidget(toggle_btn)
-                        
+
                         item_layout.addLayout(actions_layout, 0, 2, 2, 1, QtCompat.AlignVCenter)
-                        
+
                         desc_lbl = None
                         if cmd.description:
-                            desc_display = cmd.description.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
+                            desc_display = (
+                                cmd.description.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
+                            )
                             desc_lbl = QLabel(desc_display)
                             desc_lbl.setWordWrap(True)
                             desc_lbl.setMinimumWidth(0)
                             item_layout.addWidget(desc_lbl, 2, 1, 1, 1)
-                            
+
                         item_layout.setColumnStretch(0, 0)
                         item_layout.setColumnStretch(1, 1)
                         item_layout.setColumnStretch(2, 0)
-                        
+
                         self.builtin_layout.addWidget(item_widget)
-                        
+
                         self._builtin_widgets[cmd.id] = {
                             "widget": item_widget,
                             "dot_lbl": dot_lbl,
@@ -601,17 +618,23 @@ class SettingsCommandsPageMixin:
                             "toggle_btn": toggle_btn,
                             "title_lbl": title_lbl,
                             "desc_lbl": desc_lbl,
-                            "key_lbl": key_lbl
+                            "key_lbl": key_lbl,
                         }
 
-                self._update_builtin_command_rows(builtin_cmds, settings, colors=(bg, border, text_color, sub_text_color), query=query)
+                self._update_builtin_command_rows(
+                    builtin_cmds, settings, colors=(bg, border, text_color, sub_text_color), query=query
+                )
             else:
                 clear_layout(self.builtin_layout)
                 lbl = QLabel(tr("无法读取注册表命令"))
                 lbl.setStyleSheet("color: #f44336;")
                 self.builtin_layout.addWidget(lbl)
 
-            if getattr(self, "_command_refresh_apply_theme", True) and hasattr(self, "page_commands") and self.page_commands:
+            if (
+                getattr(self, "_command_refresh_apply_theme", True)
+                and hasattr(self, "page_commands")
+                and self.page_commands
+            ):
                 self.page_commands.apply_theme(self.current_theme)
 
         except Exception as e:
@@ -619,14 +642,15 @@ class SettingsCommandsPageMixin:
         finally:
             # Resume painting — single
             # repaint for all accumulated changes
-            if hasattr(self, 'builtin_container'):
+            if hasattr(self, "builtin_container"):
                 self.builtin_container.setUpdatesEnabled(True)
-            if hasattr(self, 'fav_list_widget'):
+            if hasattr(self, "fav_list_widget"):
                 self.fav_list_widget.setUpdatesEnabled(True)
 
     def _iter_builtin_commands(self):
         try:
             from core import registry
+
             if not registry:
                 return []
             return sorted(
@@ -656,6 +680,7 @@ class SettingsCommandsPageMixin:
             return
         try:
             from core import data_manager
+
             if settings is None:
                 settings = data_manager.get_settings() if data_manager else None
             if settings is None:
@@ -674,7 +699,9 @@ class SettingsCommandsPageMixin:
                 is_disabled = cmd.id in disabled_list
                 is_fav = cmd.id in favs
 
-                entry["widget"].setStyleSheet(f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}")
+                entry["widget"].setStyleSheet(
+                    f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                )
                 entry["title_lbl"].setStyleSheet(f"font-weight: bold; color: {text_color}; font-size: 12px;")
                 entry["key_lbl"].setStyleSheet("color: rgba(10,132,255,0.85); font-size: 11px;")
                 if entry["desc_lbl"]:
@@ -727,7 +754,7 @@ class SettingsCommandsPageMixin:
 
     def _schedule_refresh(self):
         """Debounced refresh — coalesces rapid clicks into one rebuild."""
-        if not hasattr(self, '_refresh_timer'):
+        if not hasattr(self, "_refresh_timer"):
             self._refresh_timer = QTimer()
             self._refresh_timer.setSingleShot(True)
             self._refresh_timer.setInterval(50)
@@ -737,6 +764,7 @@ class SettingsCommandsPageMixin:
     def _on_unfavorite_command(self, cmd_id):
         try:
             from core import data_manager
+
             if data_manager is None:
                 return
             settings = data_manager.get_settings()
@@ -753,17 +781,18 @@ class SettingsCommandsPageMixin:
     def _on_toggle_builtin_command(self, cmd_id, enable):
         try:
             from core import data_manager
+
             if data_manager is None:
                 return
             settings = data_manager.get_settings()
-            
+
             if enable:
                 if cmd_id in settings.disabled_builtin_commands:
                     settings.disabled_builtin_commands.remove(cmd_id)
             else:
                 if cmd_id not in settings.disabled_builtin_commands:
                     settings.disabled_builtin_commands.append(cmd_id)
-                    
+
             data_manager.save()
             if hasattr(self, "command_settings_changed"):
                 self.command_settings_changed.emit()
@@ -775,6 +804,7 @@ class SettingsCommandsPageMixin:
     def _on_favorite_command(self, cmd_id):
         try:
             from core import data_manager
+
             if data_manager is None:
                 return
             settings = data_manager.get_settings()
@@ -791,6 +821,7 @@ class SettingsCommandsPageMixin:
     def _on_favorites_reordered(self, source_row, dest_row):
         try:
             from core import data_manager
+
             if data_manager is None:
                 return
             settings = data_manager.get_settings()

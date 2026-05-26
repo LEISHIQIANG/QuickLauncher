@@ -10,6 +10,7 @@ from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, Qt, QtComp
 try:
     from core import IconExtractor
     from core.icon_extractor import should_invert_icon as _should_invert_icon
+
     HAS_ICON_EXTRACTOR = True
 except ImportError:
     IconExtractor = None

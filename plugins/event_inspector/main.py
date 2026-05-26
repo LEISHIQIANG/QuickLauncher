@@ -224,6 +224,26 @@ def _handle_recent(context) -> CommandResult:
     return CommandResult(
         success=True,
         message=result,
+        display_type="list",
+        payload={
+            "window_size": "large",
+            "items": [
+                {
+                    "title": f"{e.get('source', '')} (ID:{e.get('event_id', '')})",
+                    "status": "failed" if "error" in e.get("level", "").lower() else "warning",
+                    "detail": f"{e.get('time', '')}\n{e.get('message', '')[:160]}",
+                }
+                for e in errors[:MAX_RESULTS]
+            ]
+            or [
+                {
+                    "title": source,
+                    "status": "warning",
+                    "detail": f"{count} 次",
+                }
+                for source, count in top_sources
+            ],
+        },
         actions=[CommandAction(type="copy", label="复制报告", value=result)],
     )
 
@@ -268,6 +288,18 @@ def _handle_search(context) -> CommandResult:
     return CommandResult(
         success=True,
         message=result,
+        display_type="list",
+        payload={
+            "window_size": "large",
+            "items": [
+                {
+                    "title": f"{e.get('source', '')} (ID:{e.get('event_id', '')})",
+                    "status": "failed" if "error" in e.get("level", "").lower() else "warning",
+                    "detail": f"{e.get('time', '')}\n{e.get('message', '')[:160]}",
+                }
+                for e in all_events[:MAX_RESULTS]
+            ],
+        },
         actions=[CommandAction(type="copy", label="复制结果", value=result)],
     )
 
@@ -298,6 +330,13 @@ def _handle_source(context) -> CommandResult:
         return CommandResult(
             success=True,
             message=result,
+            display_type="table",
+            payload={
+                "window_size": "large",
+                "columns": ["Source", "Events", "Errors"],
+                "rows": [[source, count, src_errors.get(source, 0)] for source, count in sorted_src],
+                "copy_format": "tsv",
+            },
             actions=[CommandAction(type="copy", label="复制聚合", value=result)],
         )
 
@@ -322,5 +361,17 @@ def _handle_source(context) -> CommandResult:
     return CommandResult(
         success=True,
         message=result,
+        display_type="list",
+        payload={
+            "window_size": "large",
+            "items": [
+                {
+                    "title": f"ID:{e.get('event_id', '')}",
+                    "status": "failed" if "error" in e.get("level", "").lower() else "warning",
+                    "detail": f"{e.get('time', '')}\n{e.get('message', '')[:160]}",
+                }
+                for e in filtered[:MAX_RESULTS]
+            ],
+        },
         actions=[CommandAction(type="copy", label="复制结果", value=result)],
     )

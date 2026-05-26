@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-import ui.launcher_popup.popup_window as popup_window_mod
+import ui.launcher_popup.popup_search as popup_search_mod
 from core.data_models import Folder, ShortcutItem
 from ui.launcher_popup.popup_window import LauncherPopup
 
@@ -62,7 +62,7 @@ def test_preload_animation_pages_queues_incremental_work(monkeypatch):
         def stop(self):
             self.started = False
 
-    monkeypatch.setattr(popup_window_mod, "QTimer", _Timer)
+    monkeypatch.setattr(popup_search_mod, "QTimer", _Timer)
 
     LauncherPopup._preload_animation_pages(popup)
 

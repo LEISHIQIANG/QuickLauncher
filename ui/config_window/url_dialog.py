@@ -100,6 +100,7 @@ class UrlIconFetchThread(QThread):
 
 class UrlDialog(BaseDialog):
     """URL编辑对话框"""
+
     _orphaned_threads = []
 
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
@@ -125,6 +126,7 @@ class UrlDialog(BaseDialog):
     def _setup_window_icon(self):
         """设置窗口图标"""
         from .base_dialog import BaseDialog
+
         if BaseDialog._is_compiled():
             return
         try:
@@ -176,7 +178,9 @@ class UrlDialog(BaseDialog):
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = base_style + f"""
+        custom_style = (
+            base_style
+            + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -195,14 +199,21 @@ class UrlDialog(BaseDialog):
                 font-size: 13px;
             }}
         """
+        )
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
-        for btn in [self._browse_browser_btn, self._clear_browser_btn,
-                     self._auto_icon_btn,
-                     self._browse_icon_btn, self._clear_icon_btn,
-                     self._cancel_btn, self._ok_btn, self._latency_btn]:
+        for btn in [
+            self._browse_browser_btn,
+            self._clear_browser_btn,
+            self._auto_icon_btn,
+            self._browse_icon_btn,
+            self._clear_icon_btn,
+            self._cancel_btn,
+            self._ok_btn,
+            self._latency_btn,
+        ]:
             btn.setStyleSheet(flat_btn_style)
         for btn in getattr(self, "_url_var_buttons", []):
             btn.setStyleSheet(flat_btn_style)
@@ -511,6 +522,7 @@ class UrlDialog(BaseDialog):
     def _normalize_latency_target(self, raw_url: str) -> tuple[str, str]:
         try:
             from core.shortcut_url_exec import UrlExecutionMixin
+
             return UrlExecutionMixin._prepare_url(raw_url, {"input": "test"})
         except Exception as e:
             return "", str(e)
@@ -580,6 +592,7 @@ class UrlDialog(BaseDialog):
         if self._custom_icon_path and os.path.exists(self._custom_icon_path):
             try:
                 from core.icon_extractor import IconExtractor
+
                 pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
             except Exception:
                 pass
@@ -591,6 +604,7 @@ class UrlDialog(BaseDialog):
         # 应用反转
         if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor
+
             pixmap = IconExtractor.invert_pixmap(pixmap)
 
         # 缩放到预览尺寸
@@ -611,7 +625,7 @@ class UrlDialog(BaseDialog):
         painter.setBrush(QColor(60, 160, 120))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 8, 8)
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 8, 8)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -662,6 +676,7 @@ class UrlDialog(BaseDialog):
 
         try:
             from core.shortcut_url_exec import UrlExecutionMixin
+
             _, error = UrlExecutionMixin._prepare_url(url, {"input": "test"})
             if error:
                 self.url_edit.setFocus()
@@ -682,7 +697,7 @@ class UrlDialog(BaseDialog):
         self.shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
         self.shortcut.icon_invert_current = self.invert_current_cb.isChecked()
         if self.invert_theme_cb.isChecked():
-            self.shortcut.icon_invert_theme_when_set = getattr(self, 'theme', 'dark')
+            self.shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
         return self.shortcut
 
     def done(self, result):

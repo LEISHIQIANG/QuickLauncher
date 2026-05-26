@@ -103,11 +103,14 @@ class UpdateChecker:
             if self._config.update_source == "github":
                 return self._do_github_release_check(APP_VERSION)
 
-            resp = self._api.get("/check", {
-                "version": APP_VERSION,
-                "channel": self._config.channel,
-                "platform": "win64",
-            })
+            resp = self._api.get(
+                "/check",
+                {
+                    "version": APP_VERSION,
+                    "channel": self._config.channel,
+                    "platform": "win64",
+                },
+            )
             if not resp.get("has_update"):
                 return UpdateInfo(has_update=False)
             changelog = resp.get("changelog", {})

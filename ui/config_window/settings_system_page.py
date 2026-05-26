@@ -1,18 +1,30 @@
-"""System settings page builder."""
+"""System settings page builder and event handlers."""
 
+import logging
 import os
+import subprocess
+import sys
+import tempfile
 
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
+    QEasingCurve,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
+    QParallelAnimationGroup,
+    QPropertyAnimation,
     QPushButton,
     QRadioButton,
+    QtCompat,
+    QTimer,
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
 
 from .settings_helpers import SwitchButton
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsSystemPageMixin:
@@ -166,8 +178,10 @@ class SettingsSystemPageMixin:
 
     def _on_runtime_log_clicked(self):
         """打开运行日志窗口。"""
+
         def create_window(theme):
             from ui.log_window import LogWindow
+
             log_file = os.path.join(str(self.data_manager.app_dir), "error.log")
             return LogWindow(log_file, theme=theme, parent=self)
 
@@ -175,16 +189,431 @@ class SettingsSystemPageMixin:
 
     def _on_diagnostics_clicked(self):
         """打开诊断中心。"""
+
         def create_window(theme):
             from ui.diagnostics_window import DiagnosticsWindow
-            return DiagnosticsWindow(self.data_manager, tray_app=getattr(self, 'tray_app', None), parent=self)
+
+            return DiagnosticsWindow(self.data_manager, tray_app=getattr(self, "tray_app", None), parent=self)
 
         self._show_utility_window("_diagnostics_window", create_window, "refresh")
 
     def _on_shortcut_health_clicked(self):
         """打开图标检查。"""
+
         def create_window(theme):
             from ui.shortcut_health_window import ShortcutHealthWindow
+
             return ShortcutHealthWindow(self.data_manager, parent=self)
 
         self._show_utility_window("_shortcut_health_window", create_window, "refresh")
+
+    # === Settings Load ===
+
+    def _load_system_settings(self, settings):
+        try:
+            from core.auto_start_manager import get_auto_start_check_result
+
+            actual_enabled, auto_start_reason = get_auto_start_check_result()
+            desired_enabled = bool(settings.auto_start)
+
+            if actual_enabled:
+                if not desired_enabled:
+                    self.data_manager.update_settings(auto_start=True)
+                self.auto_start_cb.setToolTip("")
+                self.auto_start_cb.setChecked(True)
+            elif desired_enabled:
+                logger.warning("配置要求开机自启，但任务缺失或定义已过期；设置页已同步为关闭: %s", auto_start_reason)
+                self.data_manager.update_settings(auto_start=False)
+                self.auto_start_cb.setToolTip(f"开机自启任务缺失或定义已过期，已切换为关闭。原因: {auto_start_reason}")
+                self.auto_start_cb.setChecked(False)
+            else:
+                self.auto_start_cb.setToolTip("")
+                self.auto_start_cb.setChecked(False)
+        except Exception as e:
+            logger.debug("Failed to load auto-start state: %s", e, exc_info=True)
+            self.auto_start_cb.setToolTip("检测开机自启状态失败，请查看日志。")
+            self.auto_start_cb.setChecked(False)
+
+        self.show_on_startup_cb.setChecked(settings.show_on_startup)
+        self.hw_accel_cb.setChecked(settings.hardware_acceleration)
+        self.hide_tray_cb.setChecked(settings.hide_tray_icon)
+        self.disable_logging_cb.setChecked(getattr(settings, "disable_logging", False))
+        self.debug_log_cb.setChecked(getattr(settings, "enable_debug_log", False))
+        self.auto_update_cb.setChecked(getattr(settings, "auto_update_enabled", False))
+        self.sleep_mode_cb.setChecked(getattr(settings, "sleep_mode_enabled", True))
+
+        # 排序方式
+        sort_mode = getattr(settings, "sort_mode", "custom")
+        if sort_mode == "smart":
+            self.smart_sort_radio.setChecked(True)
+        else:
+            self.custom_sort_radio.setChecked(True)
+
+        # 主题设置
+        follow_system = getattr(settings, "theme_follow_system", True)
+        if follow_system:
+            self.follow_system_radio.setChecked(True)
+        elif settings.theme == "dark":
+            self.dark_radio.setChecked(True)
+        else:
+            self.light_radio.setChecked(True)
+
+        language = getattr(settings, "language", "zh_CN")
+        if language == "en_US":
+            self.english_radio.setChecked(True)
+        else:
+            self.chinese_radio.setChecked(True)
+
+    # === Event Handlers ===
+
+    def _on_auto_start_changed(self, state):
+        if self._updating:
+            return
+
+        checked = state == 2
+
+        if checked:
+            self._updating = True
+            from core.auto_start_manager import enable_auto_start
+
+            success, method = enable_auto_start()
+            logger.info(f"开机自启：启用结果 success={success}, method={method}")
+
+            if success:
+                self.data_manager.update_settings(auto_start=True)
+                self._updating = False
+                return
+
+            self.data_manager.update_settings(auto_start=False)
+            self._updating = False
+            logger.error("开机自启：启用失败")
+
+            if method == "cancelled":
+                ThemedMessageBox.warning(self, "已取消", "你取消了管理员授权，自启动未启用。")
+            else:
+                ThemedMessageBox.critical(
+                    self, "启用失败", "helper 创建开机自启失败。\n\n请检查 UAC、任务计划程序服务和日志。"
+                )
+            QTimer.singleShot(0, lambda: self._reset_checkbox_state(False))
+            return
+
+        self._updating = True
+        logger.info("开机自启：开始禁用")
+        from core.auto_start_manager import disable_auto_start
+
+        success, method = disable_auto_start()
+
+        try:
+            from core.service_manager import _cleanup_legacy_service
+
+            _cleanup_legacy_service()
+        except Exception:
+            pass
+
+        if success:
+            self.data_manager.update_settings(auto_start=False)
+            self._updating = False
+            logger.info("开机自启：禁用完成")
+            return
+
+        self._updating = False
+        if method == "cancelled":
+            ThemedMessageBox.warning(self, "已取消", "你取消了管理员授权，自启动保持原状。")
+        else:
+            ThemedMessageBox.critical(self, "禁用失败", "helper 禁用开机自启失败，自启动保持原状。")
+        QTimer.singleShot(0, lambda: self._reset_checkbox_state(True))
+
+    def _reset_checkbox_state(self, checked):
+        self._updating = True
+        self.auto_start_cb.setChecked(checked)
+        self._updating = False
+
+    def _on_startup_show_changed(self, state):
+        if self._updating:
+            return
+        self.data_manager.update_settings(show_on_startup=(state == 2))
+
+    def _on_hw_accel_changed(self, state):
+        if self._updating:
+            return
+        self.data_manager.update_settings(hardware_acceleration=(state == 2))
+
+    def _on_hide_tray_changed(self, state):
+        if self._updating:
+            return
+        checked = state == 2
+        self.data_manager.update_settings(hide_tray_icon=checked)
+        if checked:
+            ThemedMessageBox.information(
+                self, "提示", "托盘图标已隐藏。\n如需再次进入设置，请使用内置命令'配置窗口' (show_config_window)。"
+            )
+
+    def _on_disable_logging_changed(self, state):
+        if self._updating:
+            return
+        checked = state == 2
+        if checked:
+            reply = ThemedMessageBox.question(
+                self,
+                "确认关闭日志",
+                "关闭日志后将停止记录运行日志到 error.log 文件。\n\n"
+                "这将减少硬盘写入，但可能影响问题排查。\n配置信息仍会正常保存。\n\n"
+                "确定要关闭日志记录吗？",
+            )
+            if reply == ThemedMessageBox.Yes:
+                self.data_manager.update_settings(disable_logging=True)
+                import logging
+
+                root_logger = logging.getLogger()
+                for handler in root_logger.handlers[:]:
+                    if isinstance(handler, logging.FileHandler):
+                        handler.close()
+                        root_logger.removeHandler(handler)
+            else:
+                self.disable_logging_cb.setChecked(False)
+        else:
+            self.data_manager.update_settings(disable_logging=False)
+            ThemedMessageBox.warning(self, "需要重启", "重新启用日志需要重启程序才能生效。")
+
+    def _on_debug_log_changed(self, state):
+        if self._updating:
+            return
+        checked = state == 2
+
+        logger.info(f"DEBUG日志开关变更: {checked}")
+
+        self.data_manager.data.settings.enable_debug_log = checked
+        logger.info(f"设置后的值: {self.data_manager.data.settings.enable_debug_log}")
+
+        self.data_manager.save(immediate=True)
+        logger.info("已调用 save(immediate=True)")
+
+        if checked:
+            reply = ThemedMessageBox.question(
+                self, "需要重启", "DEBUG日志已开启，需要重启程序才能生效。\n\n是否立即重启？"
+            )
+            if reply == ThemedMessageBox.Yes:
+                self._restart_app()
+
+    def _on_sleep_mode_changed(self, state):
+        if self._updating:
+            return
+        self.data_manager.update_settings(sleep_mode_enabled=(state == 2))
+
+    def _on_auto_update_changed(self, state):
+        if self._updating:
+            return
+        self.data_manager.update_settings(auto_update_enabled=(state == 2))
+
+    def _on_sort_mode_changed(self, button):
+        if self._updating:
+            return
+        mode = "smart" if button == self.smart_sort_radio else "custom"
+        self.data_manager.update_settings(sort_mode=mode)
+
+    def _restart_app(self):
+        """重启应用"""
+        logger.info("用户请求重启应用...")
+
+        try:
+            exe = sys.executable
+            is_frozen = getattr(sys, "frozen", False)
+
+            if not is_frozen and "python" in os.path.basename(exe).lower():
+                if sys.argv[0].lower().endswith(".exe"):
+                    exe = os.path.abspath(sys.argv[0])
+                    is_frozen = True
+
+            if is_frozen:
+                if not os.path.isabs(exe):
+                    exe = os.path.abspath(exe)
+                cwd = os.path.dirname(exe)
+
+                vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
+WScript.Sleep 1000
+WshShell.Run """{exe}""", 0, False
+Set fso = CreateObject("Scripting.FileSystemObject")
+fso.DeleteFile WScript.ScriptFullName
+'''
+                vbs_file = os.path.join(tempfile.gettempdir(), "quicklauncher_restart.vbs")
+                with open(vbs_file, "w", encoding="utf-8") as f:
+                    f.write(vbs_content)
+
+                subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
+            else:
+                cwd = os.path.dirname(os.path.abspath(__file__))
+                while cwd and not os.path.exists(os.path.join(cwd, "main.py")):
+                    parent = os.path.dirname(cwd)
+                    if parent == cwd:
+                        break
+                    cwd = parent
+
+                main_py = os.path.join(cwd, "main.py")
+
+                vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
+WScript.Sleep 1000
+WshShell.Run """{exe}"" ""{main_py}""", 0, False
+Set fso = CreateObject("Scripting.FileSystemObject")
+fso.DeleteFile WScript.ScriptFullName
+'''
+                vbs_file = os.path.join(tempfile.gettempdir(), "quicklauncher_restart.vbs")
+                with open(vbs_file, "w", encoding="utf-8") as f:
+                    f.write(vbs_content)
+
+                subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
+
+            from qt_compat import QApplication
+
+            QTimer.singleShot(100, QApplication.quit)
+
+        except Exception as e:
+            logger.error(f"重启失败: {e}")
+            import traceback
+
+            logger.error(traceback.format_exc())
+
+    def _on_theme_changed(self, button):
+        if self._updating:
+            return
+
+        if button == self.follow_system_radio:
+            system_theme = self._get_system_theme()
+            new_theme = system_theme
+            self.data_manager.update_settings(theme=system_theme, theme_follow_system=True)
+        elif button == self.dark_radio:
+            new_theme = "dark"
+            self.data_manager.update_settings(theme="dark", theme_follow_system=False)
+        else:
+            new_theme = "light"
+            self.data_manager.update_settings(theme="light", theme_follow_system=False)
+
+        self.setUpdatesEnabled(False)
+        self.apply_theme(new_theme)
+        self.setUpdatesEnabled(True)
+        self.update()
+
+        self.settings_changed.emit()
+
+    def _on_language_changed(self, button):
+        if self._updating:
+            return
+
+        new_language = "en_US" if button == self.english_radio else "zh_CN"
+        current_language = getattr(self.data_manager.get_settings(), "language", "zh_CN")
+        if current_language == new_language:
+            return
+
+        self._switch_language_with_animation(new_language)
+
+    def _get_system_theme(self):
+        """检测系统主题"""
+        try:
+            import winreg
+
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            )
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            winreg.CloseKey(key)
+            return "light" if value == 1 else "dark"
+        except Exception as e:
+            logger.debug("Failed to detect system theme: %s", e)
+            return "dark"
+
+    # === Language Animation ===
+
+    def _rebuild_pages_for_language(self, current_index=0, scroll_value=0):
+        """Rebuild settings pages so translated source strings are recreated."""
+        self.nav_widget.blockSignals(True)
+        self.nav_widget.clear()
+
+        while self.content_stack.count():
+            widget = self.content_stack.widget(0)
+            self.content_stack.removeWidget(widget)
+            widget.deleteLater()
+
+        self._init_pages()
+        self._init_nav_items()
+
+        target_index = current_index if 0 <= current_index < self.content_stack.count() else 0
+        self._ensure_page_built(target_index)
+        self.content_stack.setCurrentIndex(target_index)
+        for row in range(self.nav_widget.count()):
+            item = self.nav_widget.item(row)
+            if item and item.data(QtCompat.UserRole) == target_index:
+                self.nav_widget.setCurrentRow(row)
+                break
+        self.nav_widget.blockSignals(False)
+        self._restore_page_scroll_value(target_index, scroll_value)
+        QTimer.singleShot(0, lambda: self._restore_page_scroll_value(target_index, scroll_value))
+
+    def _language_fade_targets(self):
+        return (self.nav_container, self.content_container)
+
+    def _set_language_fade_opacity(self, opacity: float):
+        for widget in self._language_fade_targets():
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(opacity)
+
+    def _clear_language_fade_effects(self):
+        for widget in self._language_fade_targets():
+            try:
+                widget.setGraphicsEffect(None)
+            except Exception:
+                pass
+
+    def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
+        group = QParallelAnimationGroup(self)
+        for widget in self._language_fade_targets():
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(start)
+            anim = QPropertyAnimation(effect, b"opacity", group)
+            anim.setDuration(duration)
+            anim.setStartValue(start)
+            anim.setEndValue(end)
+            anim.setEasingCurve(easing)
+            group.addAnimation(anim)
+        return group
+
+    def _switch_language_with_animation(self, language: str):
+        """Fade text out, switch language, then fade text back in without movement."""
+        if getattr(self, "_language_animating", False):
+            return
+
+        current_index = self.content_stack.currentIndex()
+        scroll_value = self._current_page_scroll_value(current_index)
+        self._language_animating = True
+
+        self._set_language_fade_opacity(1.0)
+        fade_out = self._build_language_fade_group(1.0, 0.0, 240, QEasingCurve.InOutQuart)
+
+        def apply_language():
+            try:
+                self.data_manager.set_language(language)
+                self._rebuild_pages_for_language(current_index, scroll_value)
+                self._load_settings()
+                self._restore_page_scroll_value(current_index, scroll_value)
+                QTimer.singleShot(0, lambda: self._restore_page_scroll_value(current_index, scroll_value))
+                self.settings_changed.emit()
+            finally:
+                fade_in = self._build_language_fade_group(0.0, 1.0, 280, QEasingCurve.OutCubic)
+
+                def finish():
+                    self._language_animating = False
+                    self._language_fade_out = None
+                    self._language_fade_in = None
+                    self._clear_language_fade_effects()
+
+                fade_in.finished.connect(finish)
+                self._language_fade_in = fade_in
+                fade_in.start()
+
+        fade_out.finished.connect(apply_language)
+        self._language_fade_out = fade_out
+        fade_out.start()

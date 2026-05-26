@@ -2,12 +2,14 @@
 鼠标钩子 - DLL版本兼容封装
 保持与原Python版本相同的接口
 """
+
 import logging
 from typing import Callable, List, Optional
 
 from .hooks_wrapper import HooksDLL
 
 logger = logging.getLogger(__name__)
+
 
 class MouseHook:
     """鼠标钩子 - 使用C++ DLL实现"""

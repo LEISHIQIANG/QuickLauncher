@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import win32com.client  # type: ignore
+
     HAS_WIN32COM = True
 except ImportError:
     win32com = None  # type: ignore[assignment]
@@ -96,15 +97,15 @@ class ShortcutParser:
     def _parse_lnk_with_powershell(file_path: str) -> Dict[str, Any] | None:
         escaped = file_path.replace("`", "``").replace('"', '`"')
         script = (
-            f'$shell = New-Object -ComObject WScript.Shell; '
+            f"$shell = New-Object -ComObject WScript.Shell; "
             f'$shortcut = $shell.CreateShortcut("{escaped}"); '
-            f'Write-Output $shortcut.TargetPath; '
+            f"Write-Output $shortcut.TargetPath; "
             f'Write-Output "___QL_SPLIT___"; '
-            f'Write-Output $shortcut.Arguments; '
+            f"Write-Output $shortcut.Arguments; "
             f'Write-Output "___QL_SPLIT___"; '
-            f'Write-Output $shortcut.WorkingDirectory; '
+            f"Write-Output $shortcut.WorkingDirectory; "
             f'Write-Output "___QL_SPLIT___"; '
-            f'Write-Output $shortcut.IconLocation'
+            f"Write-Output $shortcut.IconLocation"
         )
 
         try:

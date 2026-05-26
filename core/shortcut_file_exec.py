@@ -24,6 +24,7 @@ try:
 except AttributeError:
     ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
+
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", wintypes.WORD),
@@ -33,11 +34,14 @@ class KEYBDINPUT(ctypes.Structure):
         ("dwExtraInfo", ULONG_PTR),
     ]
 
+
 class _INPUT_UNION(ctypes.Union):
     _fields_ = [("ki", KEYBDINPUT)]
 
+
 class INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("union", _INPUT_UNION)]
+
 
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
@@ -60,6 +64,7 @@ STANDARD_USER_LAUNCH_FAILED_MESSAGE = (
 
 try:
     from .window_manager import WindowManager
+
     HAS_WINDOW_MANAGER = True
 except ImportError:
     WindowManager = None
@@ -81,7 +86,7 @@ class FileExecutionMixin:
             return None
 
         # 如果不是 .lnk 文件，直接返回
-        if not path.lower().endswith('.lnk'):
+        if not path.lower().endswith(".lnk"):
             return path
 
         if not os.path.exists(path):
@@ -95,10 +100,7 @@ class FileExecutionMixin:
             pythoncom.CoInitialize()
             try:
                 link = pythoncom.CoCreateInstance(
-                    shell.CLSID_ShellLink,
-                    None,
-                    pythoncom.CLSCTX_INPROC_SERVER,
-                    shell.IID_IShellLink
+                    shell.CLSID_ShellLink, None, pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink
                 )
                 persist_file = link.QueryInterface(pythoncom.IID_IPersistFile)
                 persist_file.Load(path)
@@ -124,12 +126,14 @@ class FileExecutionMixin:
 
             # 使用更隐蔽的参数
             ps_cmd = [
-                'powershell',
-                '-NoLogo',
-                '-NoProfile',
-                '-NonInteractive',
-                '-WindowStyle', 'Hidden',
-                '-Command', ps_script
+                "powershell",
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                ps_script,
             ]
 
             output = ShortcutExecutor._run_silent_output(ps_cmd)
@@ -143,6 +147,7 @@ class FileExecutionMixin:
 
         # 如果都失败，返回原路径
         return path
+
     @staticmethod
     def _open_folder_with_files(folder: str, files: List[str], run_as_admin: bool = False) -> bool:
         """打开文件夹并选中文件（用于文件夹类型快捷方式）
@@ -182,13 +187,10 @@ class FileExecutionMixin:
         except Exception as e:
             logger.error(f"打开文件夹失败: {e}")
             return False
+
     @staticmethod
     def _open_exe_with_files(
-        exe_path: str,
-        files: List[str],
-        extra_args: str = "",
-        working_dir: str = "",
-        run_as_admin: bool = False
+        exe_path: str, files: List[str], extra_args: str = "", working_dir: str = "", run_as_admin: bool = False
     ) -> bool:
         """使用可执行文件打开文件列表
 
@@ -277,12 +279,15 @@ class FileExecutionMixin:
                         logger.warning("Privilege-boundary launch failed without fallback: %s", exe_path)
                         return False
 
-                ShortcutExecutor._popen_silent(cmd, cwd=cwd or exe_dir or None, env=ShortcutExecutor._sanitized_child_env())
+                ShortcutExecutor._popen_silent(
+                    cmd, cwd=cwd or exe_dir or None, env=ShortcutExecutor._sanitized_child_env()
+                )
                 logger.info(f"用 {exe_path} 打开: {file_path}")
             except Exception as e:
                 logger.error(f"逐个打开文件失败 {file_path}: {e}")
                 success = False
         return success
+
     @staticmethod
     def _open_file_with_files(target: str, files: List[str], run_as_admin: bool = False) -> bool:
         """使用非 exe 文件（如脚本、文档等）关联的程序打开文件"""
@@ -326,9 +331,11 @@ class FileExecutionMixin:
                 except Exception:
                     pass
         return success
+
     @staticmethod
     def _is_launch_context_elevated() -> bool:
         return os.name == "nt" and is_process_elevated()
+
     @staticmethod
     def _shell_execute_open_raw(
         target: str,
@@ -359,6 +366,7 @@ class FileExecutionMixin:
         except Exception as e:
             logger.debug("ShellExecuteW exception: %s", e)
             return False
+
     @staticmethod
     def _shell_execute_open_raw_result(
         target: str,
@@ -371,6 +379,7 @@ class FileExecutionMixin:
             ShortcutExecutor._shell_execute_open_raw(target, parameters, directory, show_cmd, verb=verb),
             "",
         )
+
     @staticmethod
     def _launch_with_privilege(
         target: str,
@@ -432,6 +441,7 @@ class FileExecutionMixin:
         if run_as_admin:
             return False, open_error or admin_failure_message
         return False, ""
+
     @staticmethod
     def _select_privilege_launch_route(current_elevated: bool, target_run_as_admin: bool) -> str:
         """Return the route for the current-process/target-admin quadrant.
@@ -446,6 +456,7 @@ class FileExecutionMixin:
         if current_elevated:
             return PRIVILEGE_ROUTE_OPEN if target_run_as_admin else PRIVILEGE_ROUTE_DOWNGRADE
         return PRIVILEGE_ROUTE_RUNAS if target_run_as_admin else PRIVILEGE_ROUTE_OPEN
+
     @staticmethod
     def _launch_as_standard_user_direct(
         target: str,
@@ -464,6 +475,7 @@ class FileExecutionMixin:
             error = str(exc)
 
         return False, error or "standard-user launch failed"
+
     @staticmethod
     def _shell_execute_open(
         target: str,
@@ -480,6 +492,7 @@ class FileExecutionMixin:
             run_as_admin=run_as_admin,
         )
         return success
+
     @staticmethod
     def _activate_launched_app_async(exe_path: str):
         """【平滑置顶】后台异步监测并激活刚启动的程序窗口。"""
@@ -499,10 +512,11 @@ class FileExecutionMixin:
                     # 如果已经是前台了，且不是隐藏状态，就没必要再激活了
                     target_pids = []
                     import psutil
+
                     process_name = os.path.splitext(os.path.basename(exe_path))[0].lower()
-                    for proc in psutil.process_iter(['name', 'pid']):
-                        if proc.info['name'] and proc.info['name'].lower().startswith(process_name):
-                            target_pids.append(proc.info['pid'])
+                    for proc in psutil.process_iter(["name", "pid"]):
+                        if proc.info["name"] and proc.info["name"].lower().startswith(process_name):
+                            target_pids.append(proc.info["pid"])
 
                     if not target_pids:
                         continue
@@ -523,6 +537,7 @@ class FileExecutionMixin:
                     continue
 
         threading.Thread(target=run, daemon=True, name="ActivateLaunchedApp").start()
+
     def _shell_execute_cmd(command: str, cwd: Optional[str] = None, run_as_admin: bool = False) -> bool:
         """通过 cmd.exe 执行命令，并统一走 ShellExecute 的提权/降权路径。"""
         if os.name != "nt":
@@ -541,6 +556,7 @@ class FileExecutionMixin:
             show_cmd=0,
             run_as_admin=run_as_admin,
         )
+
     @staticmethod
     def _execute_file(shortcut: ShortcutItem, force_new: bool) -> tuple[bool, str]:
         """【稳健方案】统一的文件/程序执行入口。
@@ -561,11 +577,17 @@ class FileExecutionMixin:
         working_dir = (getattr(shortcut, "working_dir", "") or "").strip()
         real_target = ShortcutExecutor._resolve_shortcut(target) or target
         t1 = time.perf_counter()
-        logger.info("Launch: name=%s target=%s admin=%s resolve=%.1fms", getattr(shortcut, "name", ""), real_target, run_as_admin, (t1-t0)*1000)
+        logger.info(
+            "Launch: name=%s target=%s admin=%s resolve=%.1fms",
+            getattr(shortcut, "name", ""),
+            real_target,
+            run_as_admin,
+            (t1 - t0) * 1000,
+        )
 
         # 2. 自动激活逻辑 (优化：仅在普通启动且非强制新窗口时尝试)
         if not force_new and not run_as_admin and HAS_WINDOW_MANAGER:
-            if real_target.lower().endswith('.exe'):
+            if real_target.lower().endswith(".exe"):
                 try:
                     if WindowManager.try_activate(real_target):
                         return True, ""
@@ -582,12 +604,14 @@ class FileExecutionMixin:
         )
         t3 = time.perf_counter()
         if launched:
-            logger.info("Launch OK: launch=%.1fms total=%.1fms", (t3-t2)*1000, (t3-t0)*1000)
+            logger.info("Launch OK: launch=%.1fms total=%.1fms", (t3 - t2) * 1000, (t3 - t0) * 1000)
             if not run_as_admin and real_target.lower().endswith(".exe"):
                 ShortcutExecutor._activate_launched_app_async(real_target)
             return True, ""
         if launch_error:
-            logger.warning("Launch failed: launch=%.1fms total=%.1fms error=%s", (t3-t2)*1000, (t3-t0)*1000, launch_error)
+            logger.warning(
+                "Launch failed: launch=%.1fms total=%.1fms error=%s", (t3 - t2) * 1000, (t3 - t0) * 1000, launch_error
+            )
             return False, launch_error
         if os.name == "nt" and (run_as_admin or ShortcutExecutor._is_launch_context_elevated()):
             return False, "Privilege-boundary launch failed without fallback."
@@ -606,6 +630,7 @@ class FileExecutionMixin:
             return True, ""
         except Exception as e:
             return False, f"Launch failed: {str(e)}"
+
     @staticmethod
     def _safe_split_args(args_text: str) -> List[str]:
         args_text = (args_text or "").strip()
@@ -615,6 +640,7 @@ class FileExecutionMixin:
             return shlex.split(args_text, posix=False)
         except Exception:
             return args_text.split()
+
     @staticmethod
     def _sanitized_child_env():
         env = os.environ.copy()
@@ -625,9 +651,10 @@ class FileExecutionMixin:
         for k in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH", "QML_IMPORT_PATH"):
             env.pop(k, None)
         return env
+
     @staticmethod
     def _get_silent_startupinfo():
-        if os.name != 'nt':
+        if os.name != "nt":
             return None
         try:
             startupinfo = subprocess.STARTUPINFO()
@@ -636,15 +663,16 @@ class FileExecutionMixin:
             return startupinfo
         except Exception:
             return None
+
     @staticmethod
     def _get_silent_creationflags(shell=False):
-        if os.name != 'nt':
+        if os.name != "nt":
             return 0
 
         # Windows 进程创建标志
-        DETACHED_PROCESS = 0x00000008          # 脱离控制台
+        DETACHED_PROCESS = 0x00000008  # 脱离控制台
         CREATE_NEW_PROCESS_GROUP = 0x00000200  # 新进程组
-        CREATE_BREAKAWAY_FROM_JOB = 0x01000000 # 脱离作业对象，完全独立
+        CREATE_BREAKAWAY_FROM_JOB = 0x01000000  # 脱离作业对象，完全独立
 
         if shell:
             # shell=True 需要 cmd.exe 控制台，用 CREATE_NO_WINDOW 隐藏
@@ -659,6 +687,7 @@ class FileExecutionMixin:
         # 3. 退出 QuickLauncher 后子进程继续运行
         flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
         return flags
+
     @staticmethod
     def _popen_silent(argv, cwd=None, env=None, shell=False):
         kwargs = {
@@ -668,7 +697,7 @@ class FileExecutionMixin:
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.DEVNULL,
             "stderr": subprocess.DEVNULL,
-            "close_fds": True
+            "close_fds": True,
         }
 
         if os.name == "nt":

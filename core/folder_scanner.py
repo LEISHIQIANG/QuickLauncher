@@ -25,8 +25,11 @@ class FolderScanner:
 
     # 排除的文件名模式(避免扫描无用文件)
     EXCLUDE_PATTERNS = [
-        "unins", "uninst", "uninstall",  # 卸载程序
-        "setup", "install",  # 安装程序
+        "unins",
+        "uninst",
+        "uninstall",  # 卸载程序
+        "setup",
+        "install",  # 安装程序
     ]
 
     @staticmethod

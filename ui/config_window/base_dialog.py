@@ -6,7 +6,7 @@ import logging
 import os
 from datetime import datetime
 
-from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QPoint, QtCompat, QTimer
+from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, QTimer
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
 
@@ -18,6 +18,7 @@ def _trace_to_crash_log(msg: str):
     try:
         import sys
         from pathlib import Path
+
         if getattr(sys, "frozen", False):
             log_dir = str(Path(sys.executable).parent / "config")
         else:
@@ -35,9 +36,12 @@ class BaseDialog(QDialog):
     def _is_compiled():
         """检测是否为 Nuitka 编译版本 — 跳过不可靠的 Qt 回调操作"""
         import sys
-        return ("__compiled__" in dir(__builtins__)
-                or bool(globals().get("__compiled__"))
-                or bool(getattr(sys, "frozen", False)))
+
+        return (
+            "__compiled__" in dir(__builtins__)
+            or bool(globals().get("__compiled__"))
+            or bool(getattr(sys, "frozen", False))
+        )
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,7 +77,7 @@ class BaseDialog(QDialog):
             try:
                 parent = self.parent()
                 while parent:
-                    if hasattr(parent, 'data_manager'):
+                    if hasattr(parent, "data_manager"):
                         return parent.data_manager.get_settings().theme
                     parent = parent.parent()
             except Exception as e:
@@ -93,9 +97,12 @@ class BaseDialog(QDialog):
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset,
-                self.width() - inset * 2, self.height() - inset * 2,
-                self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             tint_color = QColor(self.bg_color)
@@ -144,7 +151,9 @@ class BaseDialog(QDialog):
         """应用窗口特效"""
         _trace_to_crash_log(f"_apply_effects.0: {type(self).__name__}")
         if self._dialog_finished or not self.isVisible():
-            _trace_to_crash_log(f"_apply_effects.skip: {type(self).__name__} finished={self._dialog_finished} visible={self.isVisible()}")
+            _trace_to_crash_log(
+                f"_apply_effects.skip: {type(self).__name__} finished={self._dialog_finished} visible={self.isVisible()}"
+            )
             return
         try:
             hwnd = int(self.winId())
@@ -195,7 +204,7 @@ class BaseDialog(QDialog):
         # 动画参数
         self._anim_step = 0
         self._anim_duration_ms = 240  # 240ms 极速且流畅的动效
-        self._anim_interval_ms = 16   # 16ms (60 FPS) 完美同步显示器刷新率，防止 DWM 阻塞
+        self._anim_interval_ms = 16  # 16ms (60 FPS) 完美同步显示器刷新率，防止 DWM 阻塞
         self._anim_total_steps = max(1, self._anim_duration_ms // self._anim_interval_ms)
 
         # 创建并启动定时器
@@ -224,7 +233,7 @@ class BaseDialog(QDialog):
 
         # 加速透明度淡入：在 67% 的进度时透明度就达到 1.0，从而提前关闭 DWM 混合层以消除卡顿
         self.setWindowOpacity(min(1.0, progress * 1.5))
-        
+
         target_y = self._anim_target_pos.y()
         current_y = int(target_y + (1.0 - eased) * 24)
         self.move(self._anim_target_pos.x(), current_y)
@@ -232,9 +241,11 @@ class BaseDialog(QDialog):
     def mousePressEvent(self, event):
         """鼠标按下 - 支持拖动"""
         if event.button() == QtCompat.LeftButton:
-            pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+            pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
             if pos.y() <= 50:
-                self._drag_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
+                self._drag_pos = (
+                    event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
+                )
                 event.accept()
             else:
                 self._drag_pos = None
@@ -242,7 +253,7 @@ class BaseDialog(QDialog):
     def mouseMoveEvent(self, event):
         """鼠标移动 - 拖动窗口"""
         if self._drag_pos is not None and event.buttons() & QtCompat.LeftButton:
-            new_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
+            new_pos = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
             self.move(self.pos() + (new_pos - self._drag_pos))
             self._drag_pos = new_pos
             event.accept()

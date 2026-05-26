@@ -37,6 +37,9 @@ def test_plugin_template_writes_readme_manifest_and_entry(tmp_path):
     assert "系统默认图标" in readme
     assert "发布前检查" in readme
     assert "my_plugin.hello" in readme
+    assert "独立命令面板会显示完整" in readme
+    assert "result_window_size" in readme
+    assert "CommandParam" in readme
 
 
 def test_command_namespace_normalizes_hyphens():

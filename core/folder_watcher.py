@@ -12,13 +12,16 @@ from typing import Callable, Dict, Optional
 try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
+
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
     logging.warning("watchdog库未安装,文件夹自动同步功能不可用")
+
     # 创建虚拟基类以避免 NameError
     class FileSystemEventHandler:
         """虚拟基类 - watchdog 不可用时使用"""
+
         pass
 
 
@@ -107,7 +110,7 @@ class FolderWatcherManager:
             watch = self.observer.schedule(
                 handler,
                 str(watch_path),
-                recursive=False  # 不递归(用户需求)
+                recursive=False,  # 不递归(用户需求)
             )
             self.watches[folder_id] = watch
             logger.info(f"开始监听文件夹: {folder_path}")

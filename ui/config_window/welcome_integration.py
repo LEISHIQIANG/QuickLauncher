@@ -20,8 +20,8 @@ def show_welcome_if_first_run(parent, data_manager):
     try:
         settings = data_manager.get_settings()
         current_version = APP_VERSION
-        last_version = getattr(settings, 'last_version', '')
-        show_welcome = getattr(settings, 'show_welcome_guide', True)
+        last_version = getattr(settings, "last_version", "")
+        show_welcome = getattr(settings, "show_welcome_guide", True)
 
         # 版本变化时强制显示，并重置 show_welcome_guide 为 True
         if last_version != current_version:
@@ -41,8 +41,9 @@ def _show_welcome(parent, data_manager):
     """显示新手引导对话框"""
     try:
         from ui.welcome_guide import WelcomeGuide
+
         settings = data_manager.get_settings()
-        theme = getattr(settings, 'theme', 'dark')
+        theme = getattr(settings, "theme", "dark")
 
         guide = WelcomeGuide(parent, theme)
         result = guide.exec_()

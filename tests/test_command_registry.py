@@ -18,7 +18,6 @@ from core.command_registry import (
     take_pending_command_result,
 )
 
-
 # ============================================================
 # Data model tests
 # ============================================================
@@ -49,6 +48,7 @@ class TestCommandDefinition:
             handler=lambda ctx: CommandResult(success=True),
         )
         assert cmd.interaction_mode == COMMAND_INTERACTION_PANEL
+        assert cmd.result_window_size == ""
 
 
 class TestCommandAction:
@@ -57,11 +57,27 @@ class TestCommandAction:
         assert a.type == "copy"
         assert a.label == ""
         assert a.value == ""
+        assert a.enabled is True
+        assert a.danger is False
+        assert a.primary is False
+        assert a.payload == {}
 
     def test_full(self):
-        a = CommandAction(type="open_url", label="打开", value="https://example.com")
+        a = CommandAction(
+            type="open_url",
+            label="打开",
+            value="https://example.com",
+            enabled=False,
+            danger=True,
+            primary=True,
+            payload={"source": "test"},
+        )
         assert a.type == "open_url"
         assert a.value == "https://example.com"
+        assert a.enabled is False
+        assert a.danger is True
+        assert a.primary is True
+        assert a.payload == {"source": "test"}
 
 
 class TestCommandContext:
@@ -339,15 +355,17 @@ class TestRegistryMigration:
 
     def test_migrate_slash_commands_merges_existing_command_aliases_without_warning(self, caplog):
         reg = CommandRegistry()
-        reg.register(CommandDefinition(
-            id="wifi",
-            title="Wi-Fi",
-            aliases=["wifi"],
-            description="new command",
-            category="system",
-            handler=lambda ctx: CommandResult(success=True),
-            interaction_mode=COMMAND_INTERACTION_PANEL,
-        ))
+        reg.register(
+            CommandDefinition(
+                id="wifi",
+                title="Wi-Fi",
+                aliases=["wifi"],
+                description="new command",
+                category="system",
+                handler=lambda ctx: CommandResult(success=True),
+                interaction_mode=COMMAND_INTERACTION_PANEL,
+            )
+        )
 
         count = reg.migrate_slash_commands()
 
@@ -367,6 +385,7 @@ class TestSlashCommandsRedirect:
     def setup_method(self):
         """Ensure the global registry is populated before each redirect test."""
         from core import ensure_registry_initialized
+
         ensure_registry_initialized()
 
     def test_find_matching_via_registry(self):
@@ -560,22 +579,54 @@ class TestPhase2Base64Command:
 
 
 class TestBuiltinRegistration:
-    _HANDLERS = ["cmd_uuid", "cmd_timestamp", "cmd_base64",
-                  "cmd_urlencode", "cmd_color", "cmd_ip", "cmd_copy_path",
-                  "cmd_hash", "cmd_qr", "cmd_plugin_list",
-                  "cmd_plugin_reload", "cmd_plugin_new", "cmd_clean_cache"]
+    _HANDLERS = [
+        "cmd_uuid",
+        "cmd_timestamp",
+        "cmd_base64",
+        "cmd_urlencode",
+        "cmd_color",
+        "cmd_ip",
+        "cmd_copy_path",
+        "cmd_hash",
+        "cmd_qr",
+        "cmd_plugin_list",
+        "cmd_plugin_reload",
+        "cmd_plugin_new",
+        "cmd_clean_cache",
+    ]
 
     def _import_all(self):
         from core.commands import (
-            cmd_base64, cmd_color, cmd_copy_path,
-            cmd_hash, cmd_ip, cmd_plugin_list, cmd_plugin_new,
-            cmd_plugin_reload, cmd_qr, cmd_timestamp, cmd_urlencode, cmd_uuid,
+            cmd_base64,
+            cmd_clean_cache,
+            cmd_color,
+            cmd_copy_path,
+            cmd_hash,
+            cmd_ip,
+            cmd_plugin_list,
+            cmd_plugin_new,
+            cmd_plugin_reload,
+            cmd_qr,
+            cmd_timestamp,
+            cmd_urlencode,
+            cmd_uuid,
+        )
+
+        return (
+            cmd_uuid,
+            cmd_timestamp,
+            cmd_base64,
+            cmd_urlencode,
+            cmd_color,
+            cmd_ip,
+            cmd_copy_path,
+            cmd_hash,
+            cmd_qr,
+            cmd_plugin_list,
+            cmd_plugin_reload,
+            cmd_plugin_new,
             cmd_clean_cache,
         )
-        return (cmd_uuid, cmd_timestamp, cmd_base64,
-                cmd_urlencode, cmd_color, cmd_ip, cmd_copy_path,
-                cmd_hash, cmd_qr, cmd_plugin_list,
-                cmd_plugin_reload, cmd_plugin_new, cmd_clean_cache)
 
     def test_builtin_commands_have_correct_defs(self):
         for fn in self._import_all():
@@ -588,13 +639,25 @@ class TestBuiltinRegistration:
     def test_builtin_commands_work_via_registry(self):
         reg = CommandRegistry()
         from core.command_registry import CommandDefinition
+
         handlers = self._import_all()
-        ids = ["uuid", "timestamp", "base64", "urlencode",
-               "color", "ip", "copy-path", "hash", "qr",
-               "plugin-list", "plugin-reload", "plugin-new", "clean-cache"]
+        ids = [
+            "uuid",
+            "timestamp",
+            "base64",
+            "urlencode",
+            "color",
+            "ip",
+            "copy-path",
+            "hash",
+            "qr",
+            "plugin-list",
+            "plugin-reload",
+            "plugin-new",
+            "clean-cache",
+        ]
         defs = [
-            CommandDefinition(id=i, title=i, aliases=[i],
-                              description="", category="", handler=h)
+            CommandDefinition(id=i, title=i, aliases=[i], description="", category="", handler=h)
             for i, h in zip(ids, handlers)
         ]
         for cmd in defs:
@@ -611,33 +674,39 @@ class TestBuiltinRegistration:
 class TestPhase3UrlencodeCommand:
     def test_encode(self):
         from core.commands import cmd_urlencode
+
         r = cmd_urlencode(CommandContext(raw_input="/urlencode", args_text="hello world"))
         assert r.success and r.message == "hello%20world"
 
     def test_decode(self):
         from core.commands import cmd_urlencode
+
         r = cmd_urlencode(CommandContext(raw_input="/urlencode", args_text="decode hello%2Bworld"))
         assert r.success and r.message == "hello+world"
 
     def test_chinese_encode(self):
         from core.commands import cmd_urlencode
+
         r = cmd_urlencode(CommandContext(raw_input="/urlencode", args_text="你好"))
         assert r.success and "%" in r.message
 
     def test_empty_input(self):
         from core.commands import cmd_urlencode
+
         r = cmd_urlencode(CommandContext(raw_input="/urlencode"))
         assert r.success is False
 
     def test_decode_symbols(self):
         """Percent-encoding decode: %20 → space."""
         from core.commands import cmd_urlencode
+
         r = cmd_urlencode(CommandContext(raw_input="/urlencode", args_text="decode hello%20world"))
         assert r.success and r.message == "hello world"
 
     def test_decode_invalid_keeps_original(self):
         """urllib.parse.unquote is lenient — invalid % sequences are kept as-is."""
         from core.commands import cmd_urlencode
+
         r = cmd_urlencode(CommandContext(raw_input="/urlencode", args_text="decode %ZZ"))
         assert r.success
         assert "%ZZ" in r.message
@@ -646,23 +715,27 @@ class TestPhase3UrlencodeCommand:
 class TestPhase3ColorCommand:
     def test_full_hex(self):
         from core.commands import cmd_color
+
         r = cmd_color(CommandContext(raw_input="/color", args_text="#ff8800"))
         assert r.success
         assert "255" in r.message and "136" in r.message
 
     def test_short_hex(self):
         from core.commands import cmd_color
+
         r = cmd_color(CommandContext(raw_input="/color", args_text="#fff"))
         assert r.success
         assert "255" in r.message
 
     def test_invalid(self):
         from core.commands import cmd_color
+
         r = cmd_color(CommandContext(raw_input="/color", args_text="notacolor"))
         assert r.success is False
 
     def test_copy_actions(self):
         from core.commands import cmd_color
+
         r = cmd_color(CommandContext(raw_input="/color", args_text="#ff8800"))
         assert len(r.actions) == 2
         assert r.actions[0].type == "copy"
@@ -671,17 +744,20 @@ class TestPhase3ColorCommand:
 class TestPhase3IpCommand:
     def test_returns_ip(self):
         from core.commands import cmd_ip
+
         r = cmd_ip(CommandContext(raw_input="/ip"))
         assert r.success
         assert "." in r.message
 
     def test_has_copy_action(self):
         from core.commands import cmd_ip
+
         r = cmd_ip(CommandContext(raw_input="/ip"))
         assert r.actions and r.actions[0].type == "copy"
 
     def test_copy_actions_are_limited_to_local_and_public(self, monkeypatch):
         from core import commands
+
         monkeypatch.setattr(commands, "_get_primary_local_ip", lambda: "192.168.1.8")
         monkeypatch.setattr(
             commands,
@@ -699,42 +775,55 @@ class TestPhase3IpCommand:
 class TestPhase3CopyPathCommand:
     def test_needs_selected_files(self):
         from core.commands import cmd_copy_path
+
         r = cmd_copy_path(CommandContext(raw_input="/copy-path"))
         assert r.success is False
 
     def test_returns_path_from_selection(self):
         from core.commands import cmd_copy_path
-        r = cmd_copy_path(CommandContext(
-            raw_input="/copy-path",
-            selected_files=["C:/test.txt"],
-        ))
+
+        r = cmd_copy_path(
+            CommandContext(
+                raw_input="/copy-path",
+                selected_files=["C:/test.txt"],
+            )
+        )
         assert r.success is True
         assert r.message == "C:/test.txt"
 
     def test_name_mode(self):
         from core.commands import cmd_copy_path
-        r = cmd_copy_path(CommandContext(
-            raw_input="/copy-path",
-            args_text="name",
-            selected_files=["C:/test.txt"],
-        ))
+
+        r = cmd_copy_path(
+            CommandContext(
+                raw_input="/copy-path",
+                args_text="name",
+                selected_files=["C:/test.txt"],
+            )
+        )
         assert r.success and r.message == "test.txt"
 
     def test_dir_mode(self):
         from core.commands import cmd_copy_path
-        r = cmd_copy_path(CommandContext(
-            raw_input="/copy-path",
-            args_text="dir",
-            selected_files=["C:/test.txt"],
-        ))
+
+        r = cmd_copy_path(
+            CommandContext(
+                raw_input="/copy-path",
+                args_text="dir",
+                selected_files=["C:/test.txt"],
+            )
+        )
         assert r.success and r.message == "C:/"
 
     def test_multi_files(self):
         from core.commands import cmd_copy_path
-        r = cmd_copy_path(CommandContext(
-            raw_input="/copy-path",
-            selected_files=["C:/a.txt", "D:/b.txt"],
-        ))
+
+        r = cmd_copy_path(
+            CommandContext(
+                raw_input="/copy-path",
+                selected_files=["C:/a.txt", "D:/b.txt"],
+            )
+        )
         assert r.success
         assert r.message == "C:/a.txt\nD:/b.txt"
 
@@ -742,17 +831,20 @@ class TestPhase3CopyPathCommand:
 class TestPhase3HashCommand:
     def test_no_file_returns_error(self):
         from core.commands import cmd_hash
+
         r = cmd_hash(CommandContext(raw_input="/hash"))
         assert r.success is False
 
     def test_missing_file_returns_error(self):
         from core.commands import cmd_hash
+
         r = cmd_hash(CommandContext(raw_input="/hash", args_text="/nonexistent/file.txt"))
         assert r.success is False
 
     def test_args_format_algo_first(self):
         """/hash md5 /some/path"""
         from core.commands import cmd_hash
+
         # File doesn't exist, so we just check the parsing path doesn't crash
         r = cmd_hash(CommandContext(raw_input="/hash", args_text="md5 /nonexistent/file.txt"))
         assert r.success is False
@@ -760,7 +852,9 @@ class TestPhase3HashCommand:
     def test_has_copy_action_on_success(self):
         """When file exists, hash returns a copy action."""
         import tempfile
+
         from core.commands import cmd_hash
+
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
             f.write(b"hello")
             path = f.name
@@ -776,7 +870,9 @@ class TestPhase3HashCommand:
 
     def test_sha256(self):
         import tempfile
+
         from core.commands import cmd_hash
+
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
             f.write(b"test data")
             path = f.name
@@ -794,11 +890,13 @@ class TestPhase3HashCommand:
 class TestPhase3QrCommand:
     def test_empty_input_returns_error(self):
         from core.commands import cmd_qr
+
         r = cmd_qr(CommandContext(raw_input="/qr"))
         assert r.success is False
 
     def test_returns_success_with_text(self):
         from core.commands import cmd_qr
+
         r = cmd_qr(CommandContext(raw_input="/qr", args_text="hello"))
         assert r.success is True
         assert r.message == "hello"
@@ -806,12 +904,14 @@ class TestPhase3QrCommand:
 
     def test_oversized_input_returns_error(self):
         from core.commands import cmd_qr
+
         long_text = "x" * 1025
         r = cmd_qr(CommandContext(raw_input="/qr", args_text=long_text))
         assert r.success is False
 
     def test_has_copy_and_open_actions(self):
         from core.commands import cmd_qr
+
         r = cmd_qr(CommandContext(raw_input="/qr", args_text="test qr"))
         assert r.success is True
         assert len(r.actions) == 2
@@ -820,6 +920,7 @@ class TestPhase3QrCommand:
 
     def test_payload_has_image_path(self):
         from core.commands import cmd_qr
+
         r = cmd_qr(CommandContext(raw_input="/qr", args_text="hello"))
         assert r.success is True
         assert "image_path" in r.payload
@@ -835,27 +936,32 @@ class TestPhase5PluginCommands:
     def test_plugin_list_no_manager(self):
         """When plugin_manager is None, list should return an error."""
         from core.commands import cmd_plugin_list
+
         r = cmd_plugin_list(CommandContext(raw_input="/plugin-list"))
         assert r.success is False
 
     def test_plugin_reload_no_manager(self):
         from core.commands import cmd_plugin_reload
+
         r = cmd_plugin_reload(CommandContext(raw_input="/plugin-reload"))
         assert r.success is False
 
     def test_plugin_new_no_manager(self):
         from core.commands import cmd_plugin_new
+
         r = cmd_plugin_new(CommandContext(raw_input="/plugin-new"))
         assert r.success is False
 
     def test_plugin_new_missing_id(self):
         from core.commands import cmd_plugin_new
+
         # Without plugin_manager, returns uninitialized error
         r = cmd_plugin_new(CommandContext(raw_input="/plugin-new"))
         assert r.success is False
 
     def test_plugin_new_invalid_id(self):
         from core.commands import cmd_plugin_new
+
         # Without plugin_manager, returns uninitialized error
         r = cmd_plugin_new(CommandContext(raw_input="/plugin-new", args_text="hello world!"))
         assert r.success is False

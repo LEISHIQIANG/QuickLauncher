@@ -14,11 +14,13 @@ def choose_custom_icon(parent, title: str = "Choose Icon") -> str:
     # 需要确保 STA 已初始化，否则抛 RPC_E_WRONG_THREAD (0x8001010e)
     try:
         import ctypes
+
         ctypes.windll.ole32.CoInitializeEx(None, 0x2)
     except Exception:
         pass
 
     from .base_dialog import _trace_to_crash_log
+
     _trace_to_crash_log(f"QFileDialog: choose_custom_icon title={title}")
     file_path, _ = QFileDialog.getOpenFileName(parent, title, "", ICON_FILE_FILTER)
     if not file_path:

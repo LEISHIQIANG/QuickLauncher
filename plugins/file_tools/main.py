@@ -116,6 +116,13 @@ def handle_hash(context):
     return CommandResult(
         success=success,
         message=result,
+        display_type="log",
+        payload={
+            "window_size": "large",
+            "wrap": False,
+            "algorithm": algorithm,
+            "file_count": len(files),
+        },
         actions=_copy_action(result, "复制哈希"),
     )
 

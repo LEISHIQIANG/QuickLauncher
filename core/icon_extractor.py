@@ -646,6 +646,7 @@ class IconExtractor:
         if not return_image:
             try:
                 from PyQt5.QtWinExtras import QtWin
+
                 pixmap = QtWin.fromHICON(hicon_handle)
                 if pixmap and not pixmap.isNull():
                     cls._diag(

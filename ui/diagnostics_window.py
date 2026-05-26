@@ -11,7 +11,6 @@ from qt_compat import (
     QFileDialog,
     QFont,
     QHBoxLayout,
-    QPlainTextEdit,
     QPushButton,
     QTextEdit,
     QThread,

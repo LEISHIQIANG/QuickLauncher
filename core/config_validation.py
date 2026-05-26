@@ -168,7 +168,9 @@ def sanitize_app_data_dict(data: object, report: dict | None = None) -> dict:
             continue
         folder_copy = dict(folder)
         items = folder_copy.get("items", [])
-        folder_copy["items"] = [dict(item) for item in items[:2048] if isinstance(item, dict)] if isinstance(items, list) else []
+        folder_copy["items"] = (
+            [dict(item) for item in items[:2048] if isinstance(item, dict)] if isinstance(items, list) else []
+        )
         sanitized_folders.append(folder_copy)
     sanitized["folders"] = sanitized_folders
     return sanitized

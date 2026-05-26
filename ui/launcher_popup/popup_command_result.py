@@ -8,17 +8,17 @@ from core.command_registry import MAX_COMMAND_RESULT_ACTIONS
 from qt_compat import (
     QApplication,
     QColor,
+    QEvent,
     QFont,
     QImage,
+    QKeySequence,
+    QObject,
     QPainter,
     QPen,
     QRect,
     Qt,
     QtCompat,
-    QObject,
-    QEvent,
     QTextEdit,
-    QKeySequence,
 )
 from ui.styles.style import PopupMenu
 
@@ -54,22 +54,30 @@ class TextEditKeyFilter(QObject):
         if event.type() == QEvent.KeyPress:
             key = event.key()
             modifiers = event.modifiers()
-            
+
             # Let standard text-editing/copying shortcuts work natively in QTextEdit
             if event.matches(QKeySequence.Copy) or (modifiers == Qt.ControlModifier and key == Qt.Key_C):
                 return False
             if event.matches(QKeySequence.SelectAll) or (modifiers == Qt.ControlModifier and key == Qt.Key_A):
                 return False
-            
+
             # Keep modifier keys themselves from being forwarded to the parent launcher
             if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta):
                 return False
-                
+
             # Keep navigation keys inside the QTextEdit for scrolling and selection
-            if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
-                       Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown):
+            if key in (
+                Qt.Key_Left,
+                Qt.Key_Right,
+                Qt.Key_Up,
+                Qt.Key_Down,
+                Qt.Key_Home,
+                Qt.Key_End,
+                Qt.Key_PageUp,
+                Qt.Key_PageDown,
+            ):
                 return False
-            
+
             # Forward all other keys to the launcher parent
             QApplication.sendEvent(self.launcher, event)
             return True
@@ -178,19 +186,14 @@ class PopupCommandResultMixin:
                 self._result_text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
                 self._result_text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
                 self._result_text_edit.setFocusPolicy(Qt.ClickFocus)
-                
+
                 # Install custom key filter
                 self._key_filter = TextEditKeyFilter(self)
                 self._result_text_edit.installEventFilter(self._key_filter)
-                
+
                 # Apply elegant stylesheet for seamless transparent look
                 self._result_text_edit.setStyleSheet(
-                    "QTextEdit {"
-                    "  background-color: transparent;"
-                    "  border: none;"
-                    "  padding: 0px;"
-                    "  margin: 0px;"
-                    "}"
+                    "QTextEdit {  background-color: transparent;  border: none;  padding: 0px;  margin: 0px;}"
                 )
             except Exception as e:
                 logger.warning("Failed to initialize result QTextEdit: %s", e)
@@ -225,8 +228,8 @@ class PopupCommandResultMixin:
             rows = result.payload.get("rows", [])
             if rows:
                 row_h = 22
-                table_top += min(len(rows), 6) * row_h + 8        
-        
+                table_top += min(len(rows), 6) * row_h + 8
+
         msg_y = table_top
         # Always reserve space for bottom button area (since Close button is always present)
         btn_h = _ACTION_BTN_H + 8
@@ -237,12 +240,7 @@ class PopupCommandResultMixin:
         padding_left = 6
         padding_right = 0
 
-        msg_rect = QRect(
-            card_x + padding_left,
-            msg_y,
-            card_w - padding_left - padding_right,
-            msg_max_h
-        )
+        msg_rect = QRect(card_x + padding_left, msg_y, card_w - padding_left - padding_right, msg_max_h)
 
         te.setGeometry(msg_rect)
 
@@ -250,10 +248,11 @@ class PopupCommandResultMixin:
         try:
             _, text_color, _, _, accent_color, _, _ = self._get_theme_colors()
             text_color_hex = text_color.name()
-            is_dark = getattr(self.settings, 'theme', 'dark') == 'dark'
+            is_dark = getattr(self.settings, "theme", "dark") == "dark"
             scrollbar_handle_color = "rgba(255, 255, 255, 60)" if is_dark else "rgba(0, 0, 0, 40)"
-            
+
             import os
+
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             te.setFont(QFont(font_family, 9))
             te.setStyleSheet(
@@ -268,7 +267,7 @@ class PopupCommandResultMixin:
                 f"  margin: 0px;"
                 f"}}"
             )
-            
+
             try:
                 te.document().setDocumentMargin(0)
                 fmt = te.document().rootFrame().frameFormat()
@@ -279,7 +278,7 @@ class PopupCommandResultMixin:
                 te.document().rootFrame().setFrameFormat(fmt)
             except Exception:
                 pass
-            
+
             # Apply styling directly to the vertical scrollbar child widget for bulletproof styling propagation
             te.verticalScrollBar().setStyleSheet(
                 f"QScrollBar:vertical {{"
@@ -424,9 +423,11 @@ class PopupCommandResultMixin:
         if card_rect.isNull():
             return QRect()
         import os
+
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family, 8)
         from PyQt5.QtGui import QFontMetrics
+
         fm = QFontMetrics(font)
         text_w = fm.horizontalAdvance("关闭") if hasattr(fm, "horizontalAdvance") else fm.width("关闭")
         close_w = max(40, text_w + 12)
@@ -440,17 +441,19 @@ class PopupCommandResultMixin:
         card_rect = self._result_card_rect()
         if card_rect.isNull():
             return []
-        
+
         btn_y = card_rect.bottom() - _ACTION_BTN_H - 6
         rects = []
-        
+
         # Get font metrics to calculate dynamic button width
         import os
+
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family, 8)
         from PyQt5.QtGui import QFontMetrics
+
         fm = QFontMetrics(font)
-        
+
         current_x = card_rect.left() + 6
         for i, action in enumerate(result.actions[:MAX_COMMAND_RESULT_ACTIONS]):
             label = action.label or action.type
@@ -468,12 +471,12 @@ class PopupCommandResultMixin:
                 label = "保存图片"
             elif label == "create_shortcut":
                 label = "创建快捷方式"
-                
+
             text_w = fm.horizontalAdvance(label) if hasattr(fm, "horizontalAdvance") else fm.width(label)
             btn_w = max(40, text_w + 12)
             rects.append((QRect(current_x, btn_y, btn_w, _ACTION_BTN_H), i))
             current_x += btn_w + _ACTION_BTN_GAP
-            
+
         return rects
 
     def _expand_btn_rect(self):
@@ -578,6 +581,7 @@ class PopupCommandResultMixin:
             return
         try:
             from core import data_manager
+
             if data_manager is None:
                 return
             settings = data_manager.get_settings()
@@ -596,34 +600,38 @@ class PopupCommandResultMixin:
             # Keep the panel open after copying — don't call clear_command_result()
         elif action.type == "open_url" and action.value:
             import webbrowser
+
             webbrowser.open(action.value)
             self.clear_command_result()
         elif action.type == "open_file" and action.value:
             import os
+
             try:
                 os.startfile(action.value)
             except Exception:
                 import subprocess
+
                 subprocess.Popen(["explorer", action.value])
             self.clear_command_result()
         elif action.type == "open_folder" and action.value:
             import os
+
             try:
                 os.startfile(action.value)
             except Exception:
                 import subprocess
+
                 subprocess.Popen(["explorer", action.value])
             self.clear_command_result()
         elif action.type == "save_file" and action.value:
             import os
             import shutil
+
             from PyQt5.QtWidgets import QFileDialog
+
             src_path = action.value
             default_name = os.path.basename(src_path) if os.path.isfile(src_path) else "qrcode.png"
-            dst, _ = QFileDialog.getSaveFileName(
-                self, "保存图片", default_name,
-                "PNG 图片 (*.png);;所有文件 (*)"
-            )
+            dst, _ = QFileDialog.getSaveFileName(self, "保存图片", default_name, "PNG 图片 (*.png);;所有文件 (*)")
             if dst:
                 try:
                     if os.path.isfile(src_path):
@@ -633,9 +641,8 @@ class PopupCommandResultMixin:
             self.clear_command_result()
         elif action.type == "save_text" and action.value:
             from PyQt5.QtWidgets import QFileDialog
-            path, _ = QFileDialog.getSaveFileName(
-                self, "保存文件", "", "文本文件 (*.txt);;所有文件 (*)"
-            )
+
+            path, _ = QFileDialog.getSaveFileName(self, "保存文件", "", "文本文件 (*.txt);;所有文件 (*)")
             if path:
                 try:
                     with open(path, "w", encoding="utf-8") as f:
@@ -645,11 +652,13 @@ class PopupCommandResultMixin:
             self.clear_command_result()
         elif action.type == "create_shortcut" and action.value:
             import webbrowser
+
             webbrowser.open(action.value)
             self.clear_command_result()
         elif action.type == "close_qr_server" and action.value:
             try:
                 from core.commands import stop_qr_file_server
+
                 stop_qr_file_server(int(action.value))
             except Exception as e:
                 logger.warning("关闭文件分享服务器失败: %s", e)
@@ -665,6 +674,7 @@ class PopupCommandResultMixin:
             return False
         try:
             from core import data_manager
+
             if data_manager is not None:
                 return self._command_id in data_manager.get_settings().favorite_commands
         except Exception:
@@ -698,7 +708,7 @@ class PopupCommandResultMixin:
         card_w = card_rect.width()
         card_h = card_rect.height()
 
-        is_dark = getattr(self.settings, 'theme', 'dark') == 'dark'
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"
 
         # Semi-transparent overlay covering the entire icon grid area, excluding the dock
         overlay = QColor(20, 20, 22, 230) if is_dark else QColor(240, 240, 243, 240)
@@ -708,8 +718,10 @@ class PopupCommandResultMixin:
         card_color = QColor(accent_color)
         card_color.setAlpha(35 if is_dark else 20)
         painter.setBrush(card_color)
-        
-        border_pen = QPen(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 60 if is_dark else 40), 1)
+
+        border_pen = QPen(
+            QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 60 if is_dark else 40), 1
+        )
         painter.setPen(border_pen)
         painter.drawRoundedRect(card_x, card_y, card_w, card_h, _CARD_RADIUS, _CARD_RADIUS)
 
@@ -741,34 +753,36 @@ class PopupCommandResultMixin:
                         cell_text = str(cell)
                         painter.drawText(
                             QRect(col_x + ci * 120, table_top + ri * row_h, 120, row_h),
-                            Qt.AlignLeft | Qt.AlignVCenter, cell_text,
+                            Qt.AlignLeft | Qt.AlignVCenter,
+                            cell_text,
                         )
                 table_top += min(len(rows), 6) * row_h + 8
 
         # Message text Y position and layout
         msg_y = table_top
         btn_h = _ACTION_BTN_H + 8
-        
+
         # Calculate dynamic maximum height inside our generous fixed container
         msg_max_h = card_h - (msg_y - card_y) - btn_h - 6
         if msg_max_h < 30:
-            msg_max_h = 60 # fallback to standard size if layout squeezed
+            msg_max_h = 60  # fallback to standard size if layout squeezed
 
         # Message text fallback (e.g. for mock tests where QTextEdit cannot be instantiated)
         te = self._ensure_text_edit()
         if te is None:
             import os
+
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             painter.setFont(QFont(font_family, 10))
             painter.setPen(text_color)
             msg = result.message or result.error or "完成"
-            
+
             _CARD_PADDING_LEFT = 6
             _CARD_PADDING_RIGHT = 6
-            
-            msg_rect = QRect(card_x + _CARD_PADDING_LEFT, msg_y,
-                             card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT,
-                             msg_max_h)
+
+            msg_rect = QRect(
+                card_x + _CARD_PADDING_LEFT, msg_y, card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT, msg_max_h
+            )
             painter.drawText(msg_rect, Qt.AlignLeft | Qt.TextWordWrap, msg)
 
         # Progress bar (display_type == "progress" or is_async)
@@ -791,15 +805,16 @@ class PopupCommandResultMixin:
         # QR text (painted directly since QTextEdit is hidden for QR mode)
         if result.display_type == "qr":
             import os
+
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             painter.setFont(QFont(font_family, 10))
             painter.setPen(text_color)
             _CARD_PADDING_LEFT = 6
             _CARD_PADDING_RIGHT = 6
             qr_msg = result.message or result.error or "完成"
-            qr_msg_rect = QRect(card_x + _CARD_PADDING_LEFT, msg_y,
-                                card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT,
-                                msg_max_h)
+            qr_msg_rect = QRect(
+                card_x + _CARD_PADDING_LEFT, msg_y, card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT, msg_max_h
+            )
             painter.drawText(qr_msg_rect, Qt.AlignLeft | Qt.TextWordWrap, qr_msg)
 
         # QR image (display_type == "qr") — drawn after text, on top
@@ -810,9 +825,7 @@ class PopupCommandResultMixin:
                 qr_size = min(120, card_h - 32)
                 qr_x = card_x + (card_w - qr_size) // 2
                 qr_y = card_y + (card_h - qr_size) // 2
-                qr_scaled = qr_img.scaled(qr_size, qr_size,
-                                          Qt.KeepAspectRatio,
-                                          Qt.SmoothTransformation)
+                qr_scaled = qr_img.scaled(qr_size, qr_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 painter.drawImage(qr_x, qr_y, qr_scaled)
 
         # Action buttons
@@ -826,7 +839,7 @@ class PopupCommandResultMixin:
                 draw_rect = QRect(btn_rect)
                 if is_pressed:
                     draw_rect.translate(1, 1)
-                
+
                 # Exquisite glassmorphic button background
                 bg_alpha = 30 if is_dark else 15
                 if is_hovered:
@@ -835,28 +848,31 @@ class PopupCommandResultMixin:
                     bg_alpha = 105 if is_dark else 50
                 btn_bg = QColor(accent_color.red(), accent_color.green(), accent_color.blue(), bg_alpha)
                 painter.setBrush(btn_bg)
-                
+
                 # Exquisite border styling for extreme crispness
                 border_alpha = 90 if is_dark else 60
                 if is_hovered:
                     border_alpha = 140 if is_dark else 95
                 if is_pressed:
                     border_alpha = 170 if is_dark else 120
-                border_pen = QPen(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), border_alpha), 1)
+                border_pen = QPen(
+                    QColor(accent_color.red(), accent_color.green(), accent_color.blue(), border_alpha), 1
+                )
                 painter.setPen(border_pen)
                 painter.drawRoundedRect(draw_rect, 5, 5)
-                
+
                 # Exquisite text color and modern font selection
                 btn_text_color = QColor(255, 255, 255, 220) if is_dark else QColor(accent_color).darker(150)
                 if is_hovered or is_pressed:
                     btn_text_color = QColor(255, 255, 255, 245) if is_dark else QColor(accent_color).darker(175)
                 painter.setPen(btn_text_color)
-                
+
                 import os
+
                 font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
                 font = QFont(font_family, 8)
                 painter.setFont(font)
-                
+
                 # Friendly localizations
                 label = action.label or action.type
                 if label == "copy":
@@ -871,12 +887,12 @@ class PopupCommandResultMixin:
                     label = "保存文本"
                 elif label == "create_shortcut":
                     label = "创建快捷方式"
-                
+
                 painter.drawText(draw_rect, Qt.AlignCenter, label)
 
         # Close button in bottom-right corner
         close_rect = self._close_button_rect()
-        
+
         # Soft highlighted styling for close button
         close_id = ("close", -1)
         close_hovered = self.__dict__.get("_result_hover_button") == close_id
@@ -900,12 +916,13 @@ class PopupCommandResultMixin:
         close_border_pen.setStyle(Qt.SolidLine)
         painter.setPen(close_border_pen)
         painter.drawRoundedRect(close_draw_rect, 5, 5)
-        
+
         close_text_color = QColor(text_color)
         if close_hovered or close_pressed:
             close_text_color.setAlpha(255)
         painter.setPen(close_text_color)
         import os
+
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family, 8)
         painter.setFont(font)
@@ -914,6 +931,7 @@ class PopupCommandResultMixin:
         # Error line below card (draw inside the card bottom area nicely)
         if result.error:
             import os
+
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             error_font = QFont(font_family)
             error_font.setPointSizeF(8.5)

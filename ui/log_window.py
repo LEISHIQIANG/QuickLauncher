@@ -64,10 +64,7 @@ class LogWindow(QDialog):
         self.resize(700, 500)
 
         # 无边框 + 透明背景
-        self.setWindowFlags(
-            Qt.Window |
-            Qt.FramelessWindowHint
-        )
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
         self._load_window_icon()
@@ -85,7 +82,7 @@ class LogWindow(QDialog):
             possible_paths = [
                 os.path.join(root_dir, "assets", "app.ico"),
                 os.path.join(root_dir, "app.ico"),
-                os.path.join(sys._MEIPASS, "assets", "app.ico") if hasattr(sys, '_MEIPASS') else None,
+                os.path.join(sys._MEIPASS, "assets", "app.ico") if hasattr(sys, "_MEIPASS") else None,
             ]
             for icon_path in possible_paths:
                 if icon_path and os.path.exists(icon_path):
@@ -199,16 +196,17 @@ class LogWindow(QDialog):
             possible_paths = [
                 os.path.join(root_dir, "assets", "app.ico"),
                 os.path.join(root_dir, "app.ico"),
-                os.path.join(sys._MEIPASS, "assets", "app.ico") if hasattr(sys, '_MEIPASS') else None,
+                os.path.join(sys._MEIPASS, "assets", "app.ico") if hasattr(sys, "_MEIPASS") else None,
             ]
             for icon_path in possible_paths:
                 if icon_path and os.path.exists(icon_path):
                     pixmap = QPixmap(icon_path)
                     if not pixmap.isNull():
                         from qt_compat import QSize
-                        self.icon_label.setPixmap(pixmap.scaled(
-                            QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation
-                        ))
+
+                        self.icon_label.setPixmap(
+                            pixmap.scaled(QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                        )
                         break
         except Exception:
             pass
@@ -343,6 +341,7 @@ class LogWindow(QDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
 
         from ui.utils.window_effect import is_win10
+
         if is_win10():
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
@@ -358,11 +357,7 @@ class LogWindow(QDialog):
             border = QColor(229, 229, 234, 150)
 
         path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            radius, radius
-        )
+        path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
 
         tint_color = QColor(bg)
         if is_win10():
@@ -398,6 +393,7 @@ class LogWindow(QDialog):
         super().showEvent(event)
         # 每次显示都重新应用模糊效果，确保重启后正常
         from qt_compat import QTimer
+
         QTimer.singleShot(10, self._apply_blur_effect)
         self._start_show_animation()
 
@@ -424,17 +420,19 @@ class LogWindow(QDialog):
     # --- 拖动支持 ---
     def mousePressEvent(self, event):
         if event.button() == QtCompat.LeftButton:
-            pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+            pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
             # 只允许在标题栏区域（顶部36px）拖动
             if pos.y() <= 36:
-                self._drag_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
+                self._drag_pos = (
+                    event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
+                )
             else:
                 self._drag_pos = None
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._drag_pos is not None:
-            new_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
+            new_pos = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
             self.move(self.pos() + new_pos - self._drag_pos)
             self._drag_pos = new_pos
         super().mouseMoveEvent(event)
@@ -523,9 +521,9 @@ class LogWindow(QDialog):
     def _count_log_levels(self, content: str):
         """统计日志中各级别的条数"""
         # 匹配常见日志格式中的级别关键字
-        info_count = len(re.findall(r'\bINFO\b', content))
-        debug_count = len(re.findall(r'\bDEBUG\b', content))
-        error_count = len(re.findall(r'\bERROR\b', content))
+        info_count = len(re.findall(r"\bINFO\b", content))
+        debug_count = len(re.findall(r"\bDEBUG\b", content))
+        error_count = len(re.findall(r"\bERROR\b", content))
         return info_count, debug_count, error_count
 
     def _update_filter_button_labels(self, content: str):
@@ -559,16 +557,14 @@ class LogWindow(QDialog):
                 hidden_levels.append("ERROR")
 
             lines = content.splitlines()
-            filtered = [
-                line for line in lines
-                if not any(lv in line for lv in hidden_levels)
-            ]
+            filtered = [line for line in lines if not any(lv in line for lv in hidden_levels)]
             if filtered:
                 self.log_edit.setPlainText("\n".join(filtered))
             else:
                 self.log_edit.setPlainText("所有日志条目均已被过滤")
 
         from qt_compat import QTextCursor
+
         self.log_edit.moveCursor(QTextCursor.MoveOperation.End)
 
     # --- 日志操作 ---
@@ -584,7 +580,7 @@ class LogWindow(QDialog):
             max_size = 100 * 1024
             file_size = os.path.getsize(self.log_path)
 
-            with open(self.log_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(self.log_path, "r", encoding="utf-8", errors="ignore") as f:
                 if file_size > max_size:
                     f.seek(max(0, file_size - max_size))
                     f.readline()
@@ -603,12 +599,10 @@ class LogWindow(QDialog):
 
     def clear_log(self):
         """清空日志"""
-        confirmed = ThemedMessageBox.question(
-            self, "确认清空", "确定要清空所有日志内容吗？"
-        )
+        confirmed = ThemedMessageBox.question(self, "确认清空", "确定要清空所有日志内容吗？")
         if confirmed == ThemedMessageBox.Yes:
             try:
-                with open(self.log_path, 'w', encoding='utf-8') as f:
+                with open(self.log_path, "w", encoding="utf-8") as f:
                     f.write("")
                 self.info_filter_btn.setChecked(True)
                 self.debug_filter_btn.setChecked(True)

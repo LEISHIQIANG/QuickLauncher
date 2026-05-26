@@ -9,6 +9,7 @@ HRGN = c_void_p
 # Windows 版本缓存
 _windows_version_cache = None
 
+
 def get_windows_version():
     """获取 Windows 版本信息（带缓存）"""
     global _windows_version_cache
@@ -30,13 +31,16 @@ def get_windows_version():
 
     return _windows_version_cache
 
+
 def is_win11():
     """检测是否为 Windows 11"""
     return get_windows_version() == "win11"
 
+
 def is_win10():
     """检测是否为 Windows 10"""
     return get_windows_version() == "win10"
+
 
 class WindowCompositionAttributeData(Structure):
     _fields_ = [
@@ -45,13 +49,10 @@ class WindowCompositionAttributeData(Structure):
         ("SizeOfData", ULONG),
     ]
 
+
 class DWM_BLURBEHIND(Structure):
-    _fields_ = [
-        ("dwFlags", DWORD),
-        ("fEnable", c_bool),
-        ("hRgnBlur", c_void_p),
-        ("fTransitionOnMaximized", c_bool)
-    ]
+    _fields_ = [("dwFlags", DWORD), ("fEnable", c_bool), ("hRgnBlur", c_void_p), ("fTransitionOnMaximized", c_bool)]
+
 
 class AccentPolicy(Structure):
     _fields_ = [
@@ -61,6 +62,7 @@ class AccentPolicy(Structure):
         ("AnimationId", DWORD),
     ]
 
+
 class WindowEffect:
     """Windows 窗口特效工具类 (Acrylic/Blur/Aero)"""
 
@@ -68,8 +70,8 @@ class WindowEffect:
     ACCENT_DISABLED = 0
     ACCENT_ENABLE_GRADIENT = 1
     ACCENT_ENABLE_TRANSPARENTGRADIENT = 2
-    ACCENT_ENABLE_BLURBEHIND = 3          # 传统 Aero Blur
-    ACCENT_ENABLE_ACRYLICBLURBEHIND = 4   # Acrylic (Win10 1709+)
+    ACCENT_ENABLE_BLURBEHIND = 3  # 传统 Aero Blur
+    ACCENT_ENABLE_ACRYLICBLURBEHIND = 4  # Acrylic (Win10 1709+)
     ACCENT_INVALID_STATE = 5
 
     # 组合属性常量
@@ -153,7 +155,7 @@ class WindowEffect:
             # 2. 如果 GetDpiForWindow 没拿到或者返回 96 (可能是窗口还未完全切换 DPI 上下文)
             # 尝试通过 MonitorFromWindow 获取
             if dpi <= 96:
-                h_monitor = self.user32.MonitorFromWindow(HWND(hwnd_val), 2) # MONITOR_DEFAULTTONEAREST
+                h_monitor = self.user32.MonitorFromWindow(HWND(hwnd_val), 2)  # MONITOR_DEFAULTTONEAREST
                 if h_monitor:
                     try:
                         dpi_x = ctypes.c_uint()
@@ -171,7 +173,9 @@ class WindowEffect:
             pass
         return 1.0
 
-    def set_acrylic(self, hwnd: int, gradient_color: str = None, enable: bool = True, animation_id: int = 0, blur: bool = True):
+    def set_acrylic(
+        self, hwnd: int, gradient_color: str = None, enable: bool = True, animation_id: int = 0, blur: bool = True
+    ):
         """
         设置亚克力/模糊效果
         :param hwnd: 窗口句柄 (int)
@@ -193,7 +197,7 @@ class WindowEffect:
             else:
                 policy.AccentState = self.ACCENT_ENABLE_TRANSPARENTGRADIENT
 
-            policy.AccentFlags = 2 # 似乎有些标志位，2 比较常用
+            policy.AccentFlags = 2  # 似乎有些标志位，2 比较常用
 
             # 颜色处理 (Windows 需要 AABBGGRR 格式的 DWORD)
             # 输入通常是 RGB 或 ARGB
@@ -201,13 +205,13 @@ class WindowEffect:
 
             if gradient_color:
                 # 清洗字符串
-                gradient_color = gradient_color.lstrip('#')
+                gradient_color = gradient_color.lstrip("#")
                 if len(gradient_color) == 6:
                     # RRGGBB -> 默认 Alpha 0xCC (204)
                     r = int(gradient_color[0:2], 16)
                     g = int(gradient_color[2:4], 16)
                     b = int(gradient_color[4:6], 16)
-                    a = 10 # 默认很透明
+                    a = 10  # 默认很透明
                 elif len(gradient_color) == 8:
                     # AARRGGBB
                     # 注意：通常配置里的 hex 是 ARGB，但 windows 可能需要 ABGR?
@@ -256,10 +260,7 @@ class WindowEffect:
 
             pref = c_int(preference_val)
             dwmapi.DwmSetWindowAttribute(
-                HWND(int(hwnd)),
-                DWORD(DWMWA_WINDOW_CORNER_PREFERENCE),
-                byref(pref),
-                sizeof(pref)
+                HWND(int(hwnd)), DWORD(DWMWA_WINDOW_CORNER_PREFERENCE), byref(pref), sizeof(pref)
             )
         except Exception:
             pass
@@ -524,6 +525,7 @@ class WindowEffect:
 # 全局共享实例，避免重复创建
 _window_effect_instance = None
 
+
 def get_window_effect() -> WindowEffect:
     """获取共享的 WindowEffect 实例"""
     global _window_effect_instance
@@ -626,10 +628,10 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
         # Windows Acrylic API 需要 AARRGGBB 格式
         if theme == "dark":
             # 深色主题：深灰色 (#1c1c1e)
-            r, g, b = 0x1c, 0x1c, 0x1e
+            r, g, b = 0x1C, 0x1C, 0x1E
         else:
             # 浅色主题：浅灰色 (#f2f2f7)
-            r, g, b = 0xf2, 0xf2, 0xf7
+            r, g, b = 0xF2, 0xF2, 0xF7
 
         if is_win11():
             # Win11: 保持原有逻辑 (Win11 效果很好)
@@ -667,8 +669,10 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
         return True
     except Exception:
         import traceback
+
         traceback.print_exc()
         return False
+
 
 def force_activate_window(hwnd: int):
     """
@@ -707,8 +711,8 @@ def force_activate_window(hwnd: int):
 
         try:
             # 4. 暴力切换 Z-Order (瞬时置顶)
-            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002) # HWND_TOPMOST
-            user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040) # HWND_NOTOPMOST
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_TOPMOST
+            user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)  # HWND_NOTOPMOST
 
             # 5. 调用系统前台切换
             user32.SetForegroundWindow(hwnd)
@@ -724,7 +728,7 @@ def force_activate_window(hwnd: int):
                 user32.AttachThreadInput(foreground_thread, current_thread, False)
 
         # 8. 最后确认归位到 Top (非 TopMost)
-        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040) # HWND_TOP
+        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)  # HWND_TOP
 
         return user32.GetForegroundWindow() == hwnd
     except Exception:

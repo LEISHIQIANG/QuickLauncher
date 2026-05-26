@@ -34,14 +34,13 @@ from qt_compat import (
     QPixmap,
     QPoint,
     QPropertyAnimation,
-    QRect,
     QPushButton,
+    QRect,
     QRegion,
     QSize,
+    Qt,
     QtCompat,
     QThread,
-    QTimer,
-    Qt,
     QVBoxLayout,
     QWidget,
     pyqtSignal,
@@ -58,6 +57,7 @@ logger = logging.getLogger(__name__)
 
 class IconContainer(QWidget):
     """图标容器 - 支持空白区域右键菜单"""
+
     context_menu_requested = pyqtSignal(QPoint)
     blank_clicked = pyqtSignal()
 
@@ -80,6 +80,7 @@ class IconContainer(QWidget):
 
 class _IconLoadWorker(QObject):
     """后台图标加载 worker（使用 QImage 保证线程安全）"""
+
     finished = pyqtSignal(str, QImage)  # (shortcut_id, image)
     completed = pyqtSignal()
 
@@ -93,8 +94,10 @@ class _IconLoadWorker(QObject):
 
     def run(self):
         from core.icon_extractor import IconExtractor
+
         try:
             import ctypes
+
             ctypes.windll.ole32.CoInitialize(None)
         except Exception:
             pass
@@ -107,17 +110,22 @@ class _IconLoadWorker(QObject):
 
                 import os
                 import sys
+
                 is_folder_type = stype == ShortcutType.FOLDER
                 if stype == ShortcutType.FILE and target_path and os.path.isdir(target_path):
                     is_folder_type = True
 
                 if not icon_path and is_folder_type:
                     possible_paths = [
-                        os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'assets', 'Folder.ico'),
-                        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'assets', 'Folder.ico')
+                        os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico"),
+                        os.path.join(
+                            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                            "assets",
+                            "Folder.ico",
+                        ),
                     ]
-                    if hasattr(sys, '_MEIPASS'):
-                        possible_paths.insert(0, os.path.join(sys._MEIPASS, 'assets', 'Folder.ico'))
+                    if hasattr(sys, "_MEIPASS"):
+                        possible_paths.insert(0, os.path.join(sys._MEIPASS, "assets", "Folder.ico"))
                     for p in possible_paths:
                         if os.path.exists(p):
                             icon_path = p
@@ -141,6 +149,7 @@ class _IconLoadWorker(QObject):
         finally:
             try:
                 import ctypes
+
                 ctypes.windll.ole32.CoUninitialize()
             except Exception:
                 pass
@@ -209,11 +218,7 @@ class IconWidget(QFrame):
         self._is_selected = False
         self._normal_bg = self.DARK_NORMAL_BG if theme == "dark" else self.LIGHT_NORMAL_BG
         self._hover_bg = self.DARK_HOVER_BG if theme == "dark" else self.LIGHT_HOVER_BG
-        self._border = (
-            "1px solid rgba(255, 255, 255, 35)"
-            if theme == "dark"
-            else "1px solid rgba(0, 0, 0, 12)"
-        )
+        self._border = "1px solid rgba(255, 255, 255, 35)" if theme == "dark" else "1px solid rgba(0, 0, 0, 12)"
 
         self._setup_ui()
         self.setAcceptDrops(True)
@@ -277,6 +282,8 @@ class IconWidget(QFrame):
             pixmap = self._create_url_icon()
         elif self.shortcut.type == ShortcutType.COMMAND:
             pixmap = self._create_command_icon()
+        elif self.shortcut.type == ShortcutType.CHAIN:
+            pixmap = self._create_chain_icon()
         else:
             pixmap = None
 
@@ -296,7 +303,7 @@ class IconWidget(QFrame):
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         radius = size // 6
-        painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, radius, radius)
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, radius, radius)
 
         first_char = self.shortcut.name[0] if self.shortcut.name else "?"
         painter.setPen(QColor(255, 255, 255))
@@ -319,7 +326,7 @@ class IconWidget(QFrame):
         painter.setBrush(QColor(70, 130, 180))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -340,7 +347,7 @@ class IconWidget(QFrame):
         painter.setBrush(QColor(60, 160, 120))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -361,7 +368,7 @@ class IconWidget(QFrame):
         painter.setBrush(QColor(50, 50, 50))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin*2, size - margin*2, 6, 6)
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
 
         painter.setPen(QColor(0, 255, 0))
         font = QFont("Consolas", size // 3)
@@ -372,24 +379,45 @@ class IconWidget(QFrame):
         painter.end()
         return pixmap
 
+    def _create_chain_icon(self) -> QPixmap:
+        size = self.icon_size
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QtCompat.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QtCompat.Antialiasing)
+
+        painter.setBrush(QColor(180, 100, 50))
+        painter.setPen(QtCompat.NoPen)
+        margin = size // 8
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+
+        painter.setPen(QColor(255, 255, 255))
+        font = QFont("Segoe UI Symbol", size // 3)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⛓")
+
+        painter.end()
+        return pixmap
+
     def _set_normal_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
-        if hasattr(self, 'icon_frame'):
+        if hasattr(self, "icon_frame"):
             self.icon_frame.setStyleSheet(self._icon_frame_style(hover=False))
 
     def _set_hover_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
-        if hasattr(self, 'icon_frame'):
+        if hasattr(self, "icon_frame"):
             self.icon_frame.setStyleSheet(self._icon_frame_style(hover=True))
 
     def _set_drop_target_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
-        if hasattr(self, 'icon_frame'):
+        if hasattr(self, "icon_frame"):
             self.icon_frame.setStyleSheet(self._icon_frame_style(drop=True))
 
     def set_selected(self, selected: bool):
         self._is_selected = bool(selected)
-        if hasattr(self, 'icon_frame'):
+        if hasattr(self, "icon_frame"):
             self.icon_frame.setStyleSheet(self._icon_frame_style())
 
     def enterEvent(self, event):
@@ -422,7 +450,7 @@ class IconWidget(QFrame):
             if not self._is_dragging:
                 self.clicked.emit()
         elif event.button() == QtCompat.RightButton:
-            pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
+            pos = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
             self.context_menu_requested.emit(pos)
 
         self._drag_start_pos = None
@@ -527,6 +555,7 @@ class IconWidget(QFrame):
                 grid_parent._drag_completed = True
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"拖动失败: {e}")
         finally:
             self._is_dragging = False
@@ -542,7 +571,7 @@ class IconWidget(QFrame):
             # Notify parent grid that drag has ended
             parent = self.parent()
             while parent:
-                if hasattr(parent, 'handle_drag_ended'):
+                if hasattr(parent, "handle_drag_ended"):
                     parent.handle_drag_ended()
                     break
                 parent = parent.parent()
@@ -558,14 +587,14 @@ class IconWidget(QFrame):
             target_id = self.shortcut.id
             pointer_pos = None
             try:
-                local_pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+                local_pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
                 pointer_pos = self.mapToGlobal(local_pos)
             except Exception:
                 pass
 
             parent = self.parent()
             while parent:
-                if hasattr(parent, 'handle_realtime_swap'):
+                if hasattr(parent, "handle_realtime_swap"):
                     parent.handle_realtime_swap(source_id, target_id, pointer_pos=pointer_pos)
                     break
                 parent = parent.parent()
@@ -583,7 +612,7 @@ class IconWidget(QFrame):
             if event.mimeData().hasFormat("application/x-shortcut-id"):
                 parent = self.parent()
                 while parent:
-                    if hasattr(parent, 'handle_final_reorder'):
+                    if hasattr(parent, "handle_final_reorder"):
                         parent.handle_final_reorder()
                         break
                     parent = parent.parent()
@@ -591,6 +620,7 @@ class IconWidget(QFrame):
                 event.acceptProposedAction()
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"放置失败: {e}")
 
 
@@ -604,6 +634,7 @@ class IconGrid(QWidget):
     add_hotkey_requested = pyqtSignal()
     add_url_requested = pyqtSignal()
     add_command_requested = pyqtSignal()
+    add_chain_requested = pyqtSignal()
     builtin_icon_requested = pyqtSignal()  # 新增：内置图标请求信号
 
     def __init__(self, data_manager: DataManager):
@@ -657,7 +688,7 @@ class IconGrid(QWidget):
         # 提示标签 - 独立的居中容器
         self.hint_container = QWidget()
         self.hint_container.setStyleSheet("background: transparent;")
-        if hasattr(Qt, 'WidgetAttribute'):
+        if hasattr(Qt, "WidgetAttribute"):
             self.hint_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         else:
             self.hint_container.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -672,7 +703,8 @@ class IconGrid(QWidget):
         self.hint_label.setAlignment(QtCompat.AlignCenter)
         self.hint_label.setStyleSheet("color: #8e8e93; font-size: 13px; line-height: 1.6;")
         from qt_compat import Qt
-        if hasattr(Qt, 'WidgetAttribute'):
+
+        if hasattr(Qt, "WidgetAttribute"):
             self.hint_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         else:
             self.hint_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -802,7 +834,9 @@ class IconGrid(QWidget):
             shadow.setColor(shadow_color)
             btn.setGraphicsEffect(shadow)
 
-        self.hint_label.setStyleSheet(f"color: {theme == 'dark' and '#8e8e93' or '#8e8e93'}; font-size: 13px; line-height: 1.6;")
+        self.hint_label.setStyleSheet(
+            f"color: {theme == 'dark' and '#8e8e93' or '#8e8e93'}; font-size: 13px; line-height: 1.6;"
+        )
 
     def retranslate_ui(self):
         if hasattr(self, "hint_label"):
@@ -824,7 +858,7 @@ class IconGrid(QWidget):
         theme = "dark"
         parent = self.parent()
         while parent:
-            if hasattr(parent, 'data_manager'):
+            if hasattr(parent, "data_manager"):
                 theme = parent.data_manager.get_settings().theme
                 break
             parent = parent.parent()
@@ -956,7 +990,11 @@ class IconGrid(QWidget):
                 folder.items,
                 key=lambda x: (
                     getattr(x, "smart_order", None) is None,
-                    int(getattr(x, "smart_order", 0) if getattr(x, "smart_order", None) is not None else getattr(x, "order", 0) or 0),
+                    int(
+                        getattr(x, "smart_order", 0)
+                        if getattr(x, "smart_order", None) is not None
+                        else getattr(x, "order", 0) or 0
+                    ),
                     int(getattr(x, "order", 0) or 0),
                 ),
             )
@@ -1035,7 +1073,7 @@ class IconGrid(QWidget):
         self.hint_container.show()
 
     def _stop_icon_thread(self):
-        worker = getattr(self, '_icon_worker', None)
+        worker = getattr(self, "_icon_worker", None)
         if worker is not None:
             try:
                 worker.cancel()
@@ -1044,7 +1082,7 @@ class IconGrid(QWidget):
             except Exception:
                 pass
 
-        thread = getattr(self, '_icon_thread', None)
+        thread = getattr(self, "_icon_thread", None)
         if thread is not None:
             try:
                 thread.quit()
@@ -1076,7 +1114,7 @@ class IconGrid(QWidget):
         else:
             return
 
-        shortcut_map = getattr(self, '_shortcut_map', {})
+        shortcut_map = getattr(self, "_shortcut_map", {})
         item = shortcut_map.get(shortcut_id)
         if image.isNull() and item:
             logger.debug(
@@ -1099,11 +1137,12 @@ class IconGrid(QWidget):
             return
 
         # 检查是否需要反转
-        shortcut_map = getattr(self, '_shortcut_map', {})
+        shortcut_map = getattr(self, "_shortcut_map", {})
         item = shortcut_map.get(shortcut_id)
         if item:
             try:
                 from core.icon_extractor import IconExtractor, should_invert_icon
+
                 theme = "dark"
                 try:
                     theme = self.data_manager.get_settings().theme
@@ -1164,7 +1203,7 @@ class IconGrid(QWidget):
         if modifiers & QtCompat.ShiftModifier and self._last_selected_index >= 0 and current_index >= 0:
             start = min(self._last_selected_index, current_index)
             end = max(self._last_selected_index, current_index)
-            self.selected_shortcut_ids.update(ids[start:end + 1])
+            self.selected_shortcut_ids.update(ids[start : end + 1])
         elif modifiers & QtCompat.ControlModifier:
             if shortcut.id in self.selected_shortcut_ids:
                 self.selected_shortcut_ids.remove(shortcut.id)
@@ -1210,11 +1249,14 @@ class IconGrid(QWidget):
             logger.error("撤销批量操作失败: %s", e, exc_info=True)
 
     def _confirm_batch(self, title: str, count: int) -> bool:
-        return QMessageBox.question(
-            self,
-            tr(title),
-            tr("确定要对 {count} 个快捷方式执行此操作吗？", count=count),
-        ) == QMessageBox.Yes
+        return (
+            QMessageBox.question(
+                self,
+                tr(title),
+                tr("确定要对 {count} 个快捷方式执行此操作吗？", count=count),
+            )
+            == QMessageBox.Yes
+        )
 
     def _batch_delete(self, ids):
         if not ids or not self._confirm_batch("批量删除", len(ids)):
@@ -1254,7 +1296,7 @@ class IconGrid(QWidget):
         theme = "dark"
         parent = self.parent()
         while parent:
-            if hasattr(parent, 'data_manager'):
+            if hasattr(parent, "data_manager"):
                 theme = parent.data_manager.get_settings().theme
                 break
             parent = parent.parent()
@@ -1293,6 +1335,7 @@ class IconGrid(QWidget):
         menu.add_action(tr("快捷键"), lambda: self.add_hotkey_requested.emit(), enabled=True)
         menu.add_action(tr("打开网址"), lambda: self.add_url_requested.emit(), enabled=True)
         menu.add_action(tr("运行命令"), lambda: self.add_command_requested.emit(), enabled=True)
+        menu.add_action(tr("新建动作链"), lambda: self.add_chain_requested.emit(), enabled=True)
         menu.add_separator()
         menu.add_action(tr("内置图标"), lambda: self.builtin_icon_requested.emit(), enabled=True)
         if self._batch_undo_snapshot:
@@ -1511,7 +1554,7 @@ class IconGrid(QWidget):
 
     def handle_drag_ended(self):
         # 如果拖放未完成即松手（取消拖拽），将所有卡片恢复到初始的排序 and 位置
-        if not vars(self).get('_drag_completed', False):
+        if not vars(self).get("_drag_completed", False):
             self._restore_drag_preview_order(animate=True)
         self._drag_completed = False
 
@@ -1530,7 +1573,7 @@ class IconGrid(QWidget):
                 continue
 
     def _restore_drag_preview_order(self, animate: bool = True):
-        initial_widgets = self._live_icon_widgets(vars(self).get('_initial_widgets') or [])
+        initial_widgets = self._live_icon_widgets(vars(self).get("_initial_widgets") or [])
         if not initial_widgets:
             return
 
@@ -1548,7 +1591,7 @@ class IconGrid(QWidget):
         self._place_icons(animate=animate)
 
     def _remove_active_drag_placeholders(self, animate: bool = True):
-        initial_widgets = self._live_icon_widgets(vars(self).get('_initial_widgets') or [])
+        initial_widgets = self._live_icon_widgets(vars(self).get("_initial_widgets") or [])
         active_ids = self._active_drag_id_set()
         if not initial_widgets or not active_ids:
             return
@@ -1678,13 +1721,14 @@ class IconGrid(QWidget):
 
         shortcut.target_path = file_path
 
-        if file_path.lower().endswith('.lnk'):
+        if file_path.lower().endswith(".lnk"):
             try:
                 from core.shortcut_parser import ShortcutParser
+
                 info = ShortcutParser.parse(file_path)
-                shortcut.target_path = info.get('target', file_path)
-                shortcut.target_args = info.get('args', '')
-                shortcut.working_dir = info.get('working_dir', '')
+                shortcut.target_path = info.get("target", file_path)
+                shortcut.target_args = info.get("args", "")
+                shortcut.working_dir = info.get("working_dir", "")
             except Exception:
                 pass
         return shortcut

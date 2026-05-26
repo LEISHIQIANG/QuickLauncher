@@ -11,6 +11,7 @@ from dataclasses import dataclass
 try:
     import win32com.client
     import win32gui
+
     HAS_WIN32_SHELL = True
 except ImportError:
     HAS_WIN32_SHELL = False
@@ -151,6 +152,7 @@ def _selected_item_paths(selected_items) -> list[str]:
 
 class FileSelectionThread(QThread):
     """文件选择检测线程"""
+
     files_found = pyqtSignal(list)
 
     def __init__(
@@ -197,6 +199,7 @@ class FileSelectionThread(QThread):
         matched_hwnd = 0
         try:
             import pythoncom
+
             pythoncom.CoInitialize()
             try:
                 found_files, matched_hwnd = self._get_files()
@@ -264,6 +267,7 @@ def get_selected_files_for_process() -> list[str]:
     try:
         from qt_compat import QApplication
         from ui.launcher_popup.popup_window import LauncherPopup
+
         for widget in QApplication.topLevelWidgets():
             if isinstance(widget, LauncherPopup) and widget.isVisible():
                 files = getattr(widget, "_selected_files", None)
@@ -277,12 +281,13 @@ def get_selected_files_for_process() -> list[str]:
 
     try:
         import pythoncom
+
         pythoncom.CoInitialize()
         try:
             fg_hwnd = win32gui.GetForegroundWindow()
             if not fg_hwnd:
                 return []
-            
+
             root_hwnd = _normalize_window_hwnd(fg_hwnd) or fg_hwnd
             target_kind = _window_selection_kind(root_hwnd)
             if target_kind not in {"explorer", "desktop"}:
@@ -299,7 +304,7 @@ def get_selected_files_for_process() -> list[str]:
                         is_target = _is_desktop_window(w_root_hwnd)
                     else:
                         is_target = w_root_hwnd == root_hwnd or w_hwnd == root_hwnd
-                    
+
                     if is_target:
                         selected_items = w.Document.SelectedItems()
                         return _selected_item_paths(selected_items)

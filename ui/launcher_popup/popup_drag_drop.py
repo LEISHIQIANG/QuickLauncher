@@ -8,6 +8,7 @@ from qt_compat import QTimer
 
 try:
     from core import ShortcutExecutor
+
     HAS_EXECUTOR = True
 except ImportError:
     ShortcutExecutor = None
@@ -29,6 +30,7 @@ class PopupDragDropMixin:
                     logger.debug("接受拖放文件")
                     return
         event.ignore()
+
     def dragMoveEvent(self, event):
         """拖拽移动事件 - 更新悬停状态"""
         if not event.mimeData().hasUrls():
@@ -41,12 +43,16 @@ class PopupDragDropMixin:
 
         # 检查 Dock 区域
         if pos.y() >= self.dock_y and self.dock_items:
-            dock_height_mode = getattr(self.settings, 'dock_height_mode', 1)
+            dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
             visible_count = len(self.dock_items)
             if dock_height_mode == 1:
                 visible_count = min(visible_count, self.cols)
             max_cols = self.cols
-            line_width = max_cols * self.cell_size if (dock_height_mode > 1 and visible_count > max_cols) else min(visible_count, max_cols) * self.cell_size
+            line_width = (
+                max_cols * self.cell_size
+                if (dock_height_mode > 1 and visible_count > max_cols)
+                else min(visible_count, max_cols) * self.cell_size
+            )
             start_x = (self.width() - line_width) // 2
             dock_row_stride = self.icon_size + 6  # 行间距6px
 
@@ -105,12 +111,14 @@ class PopupDragDropMixin:
             event.acceptProposedAction()
         else:
             event.ignore()
+
     def dragLeaveEvent(self, event):
         """拖拽离开事件"""
         self._drag_hover_index = -1
         self._drag_dock_hover_index = -1
         self._is_dragging = False
         self.update()
+
     def dropEvent(self, event):
         """拖放释放事件"""
         self._is_dragging = False
@@ -161,12 +169,14 @@ class PopupDragDropMixin:
             self._execute_drop(target_item, dropped_files)
         else:
             event.ignore()
+
     def _reset_drag_state(self):
         """重置拖放状态"""
         self._drag_hover_index = -1
         self._drag_dock_hover_index = -1
         self._is_dragging = False
         self.update()
+
     def _execute_drop(self, item: ShortcutItem, files: list):
         """执行拖放打开操作"""
         if self._executing:
@@ -181,6 +191,7 @@ class PopupDragDropMixin:
             self.hide()
 
         QTimer.singleShot(100, lambda: self._do_execute_drop(item, files, should_close))
+
     def _do_execute_drop(self, item: ShortcutItem, files: list, should_close: bool):
         """实际执行拖放打开"""
         success = False
@@ -193,9 +204,11 @@ class PopupDragDropMixin:
                 if target:
                     success = True
                     import subprocess
+
                     run_as_admin = bool(getattr(item, "run_as_admin", False))
                     from core.shortcut_file_exec import FileExecutionMixin
                     from core.windows_uipi import is_process_elevated
+
                     # 进程创建标志：确保子进程脱离 Job Object，不随父进程终止
                     DETACHED_PROCESS = 0x00000008
                     CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -205,7 +218,9 @@ class PopupDragDropMixin:
                             if os.name == "nt":
                                 workdir = os.path.dirname(os.path.abspath(target)) if os.path.isfile(target) else None
                                 if not run_as_admin and is_process_elevated():
-                                    launched, error = FileExecutionMixin._launch_as_standard_user_direct(target, file_path, workdir or "", 1)
+                                    launched, error = FileExecutionMixin._launch_as_standard_user_direct(
+                                        target, file_path, workdir or "", 1
+                                    )
                                     if not launched:
                                         raise RuntimeError(error or "standard-user fallback failed")
                                 else:
@@ -218,10 +233,12 @@ class PopupDragDropMixin:
                                     )
                                     if not launched:
                                         raise RuntimeError(launch_error or "ShellExecuteW failed")
-                            elif target.lower().endswith('.exe'):
+                            elif target.lower().endswith(".exe"):
                                 subprocess.Popen(
                                     [target, file_path],
-                                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB,
+                                    creationflags=DETACHED_PROCESS
+                                    | CREATE_NEW_PROCESS_GROUP
+                                    | CREATE_BREAKAWAY_FROM_JOB,
                                     close_fds=True,
                                     stdin=subprocess.DEVNULL,
                                     stdout=subprocess.DEVNULL,
@@ -231,7 +248,9 @@ class PopupDragDropMixin:
                                 subprocess.Popen(
                                     f'start "" "{target}" "{file_path}"',
                                     shell=True,
-                                    creationflags=subprocess.CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB,
+                                    creationflags=subprocess.CREATE_NO_WINDOW
+                                    | CREATE_NEW_PROCESS_GROUP
+                                    | CREATE_BREAKAWAY_FROM_JOB,
                                     close_fds=True,
                                     stdin=subprocess.DEVNULL,
                                     stdout=subprocess.DEVNULL,
@@ -252,6 +271,7 @@ class PopupDragDropMixin:
         except Exception as e:
             logger.error(f"拖放执行失败: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
         finally:
             self._executing = False

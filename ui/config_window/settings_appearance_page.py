@@ -1,7 +1,11 @@
-"""Appearance settings page builder."""
+"""Appearance settings page builder and event handlers."""
+
+import logging
+
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
+    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -12,6 +16,8 @@ from qt_compat import (
     QtCompat,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsAppearancePageMixin:
@@ -50,12 +56,10 @@ class SettingsAppearancePageMixin:
         img_layout.addWidget(self.bg_browse_btn)
         layout.addWidget(self.bg_image_widget)
 
-
-
         # 尺寸布局
         layout, group = page.add_group("尺寸布局")
         grid = QGridLayout()
-        grid.setVerticalSpacing(8) # 减小行间距
+        grid.setVerticalSpacing(8)  # 减小行间距
 
         # Row 1
         grid.addWidget(self._create_label("图标大小"), 0, 0)
@@ -160,3 +164,235 @@ class SettingsAppearancePageMixin:
         grid_effect.addWidget(self.edge_opacity_label, 1, 2)
 
         layout.addLayout(grid_effect)
+
+    # === Settings Load ===
+
+    def _load_appearance_settings(self, settings):
+        self.icon_size_spin.setValue(settings.icon_size)
+        self.cell_size_spin.setValue(settings.cell_size)
+        self.cols_spin.setValue(settings.cols)
+        self.corner_spin.setValue(settings.corner_radius)
+
+        if not settings.dock_enabled:
+            self.dock_height_spin.setValue(0)
+        else:
+            self.dock_height_spin.setValue(settings.dock_height_mode)
+
+        self.popup_max_rows_spin.setValue(getattr(settings, "popup_max_rows", 3))
+
+        self.bg_alpha_slider.setValue(settings.bg_alpha)
+        self.bg_alpha_label.setText(f"{settings.bg_alpha}%")
+        self.dock_bg_alpha_slider.setValue(settings.dock_bg_alpha)
+        self.dock_bg_alpha_label.setText(f"{settings.dock_bg_alpha}%")
+        self.icon_alpha_slider.setValue(int(settings.icon_alpha * 100))
+        self.icon_alpha_label.setText(f"{int(settings.icon_alpha * 100)}%")
+
+        self.bg_path_edit.setText(settings.custom_bg_path)
+
+        self.blur_radius_slider.setValue(settings.bg_blur_radius)
+        self.blur_radius_label.setText(str(settings.bg_blur_radius))
+
+        self.edge_opacity_slider.setValue(int(settings.edge_highlight_opacity * 100))
+        self.edge_opacity_label.setText(f"{int(settings.edge_highlight_opacity * 100)}%")
+
+        current_alpha = settings.bg_alpha
+        current_blur = settings.bg_blur_radius
+        current_edge = settings.edge_highlight_opacity
+
+        if settings.bg_mode == "theme":
+            self.bg_theme_radio.setChecked(True)
+            self.bg_image_widget.setVisible(False)
+            current_alpha = getattr(settings, "theme_bg_alpha", 90)
+            current_blur = getattr(settings, "theme_blur_radius", 0)
+            current_edge = getattr(settings, "theme_edge_opacity", 0.0)
+        elif settings.bg_mode == "image":
+            self.bg_image_radio.setChecked(True)
+            self.bg_image_widget.setVisible(True)
+            current_alpha = getattr(settings, "image_bg_alpha", 90)
+            current_blur = getattr(settings, "image_blur_radius", 0)
+            current_edge = getattr(settings, "image_edge_opacity", 0.0)
+        elif settings.bg_mode == "acrylic":
+            self.bg_acrylic_radio.setChecked(True)
+            self.bg_image_widget.setVisible(False)
+            current_alpha = getattr(settings, "acrylic_bg_alpha", 90)
+            current_blur = getattr(settings, "acrylic_blur_radius", 0)
+            current_edge = getattr(settings, "acrylic_edge_opacity", 0.0)
+
+        self.bg_alpha_slider.blockSignals(True)
+        self.bg_alpha_slider.setValue(current_alpha)
+        self.bg_alpha_slider.blockSignals(False)
+        self.bg_alpha_label.setText(f"{current_alpha}%")
+
+        self.blur_radius_slider.blockSignals(True)
+        self.blur_radius_slider.setValue(current_blur)
+        self.blur_radius_slider.blockSignals(False)
+        self.blur_radius_label.setText(str(current_blur))
+
+        self.edge_opacity_slider.blockSignals(True)
+        self.edge_opacity_slider.setValue(int(current_edge * 100))
+        self.edge_opacity_slider.blockSignals(False)
+        self.edge_opacity_label.setText(f"{int(current_edge * 100)}%")
+
+        self._update_ui_state_for_mode(settings.bg_mode)
+
+        self.bg_path_edit.setText(settings.custom_bg_path)
+
+    # === UI State ===
+
+    def _update_ui_state_for_mode(self, mode):
+        if mode == "theme" or mode == "acrylic":
+            self.visual_effect_group.setVisible(False)
+        else:
+            self.visual_effect_group.setVisible(True)
+
+        if not self.corner_spin.isEnabled() or self.corner_spin.value() == 0:
+            settings = self.data_manager.get_settings()
+            self.corner_spin.blockSignals(True)
+            self.corner_spin.setValue(settings.corner_radius)
+            self.corner_spin.blockSignals(False)
+        self.corner_spin.setEnabled(True)
+
+    # === Event Handlers ===
+
+    def _on_size_changed(self):
+        if self._updating:
+            return
+
+        updates = {
+            "icon_size": self.icon_size_spin.value(),
+            "cell_size": self.cell_size_spin.value(),
+            "cols": self.cols_spin.value(),
+            "popup_max_rows": self.popup_max_rows_spin.value(),
+        }
+
+        if self.corner_spin.isEnabled():
+            updates["corner_radius"] = self.corner_spin.value()
+
+        self.data_manager.update_settings(**updates)
+
+    def _on_dock_size_changed(self):
+        if self._updating:
+            return
+
+        height_val = self.dock_height_spin.value()
+        enabled = height_val > 0
+        mode = height_val if height_val > 0 else 1
+
+        self.data_manager.update_settings(dock_enabled=enabled, dock_height_mode=mode)
+
+    def _on_bg_alpha_changed(self, value):
+        self.bg_alpha_label.setText(f"{value}%")
+        if self._updating:
+            return
+
+        mode = self.data_manager.get_settings().bg_mode
+        with self.data_manager.batch_update():
+            self.data_manager.update_settings(bg_alpha=value)
+
+            if mode == "theme":
+                self.data_manager.update_settings(theme_bg_alpha=value)
+            elif mode == "image":
+                self.data_manager.update_settings(image_bg_alpha=value)
+            elif mode == "acrylic":
+                self.data_manager.update_settings(acrylic_bg_alpha=value)
+
+    def _on_dock_bg_alpha_changed(self, value):
+        self.dock_bg_alpha_label.setText(f"{value}%")
+        if self._updating:
+            return
+        self.data_manager.update_settings(dock_bg_alpha=value)
+
+    def _on_icon_alpha_changed(self, value):
+        self.icon_alpha_label.setText(f"{value}%")
+        if self._updating:
+            return
+        self.data_manager.update_settings(icon_alpha=value / 100.0)
+
+    def _on_bg_mode_changed(self, button):
+        mode = "theme"
+        if button == self.bg_image_radio:
+            mode = "image"
+        elif button == self.bg_acrylic_radio:
+            mode = "acrylic"
+
+        self.bg_image_widget.setVisible(mode == "image")
+        self._update_ui_state_for_mode(mode)
+
+        settings = self.data_manager.get_settings()
+        if mode == "theme":
+            target_alpha = getattr(settings, "theme_bg_alpha", 90)
+            target_blur = getattr(settings, "theme_blur_radius", 0)
+            target_edge = getattr(settings, "theme_edge_opacity", 0.0)
+        elif mode == "image":
+            target_alpha = getattr(settings, "image_bg_alpha", 90)
+            target_blur = getattr(settings, "image_blur_radius", 0)
+            target_edge = getattr(settings, "image_edge_opacity", 0.0)
+        else:  # acrylic
+            target_alpha = getattr(settings, "acrylic_bg_alpha", 90)
+            target_blur = getattr(settings, "acrylic_blur_radius", 0)
+            target_edge = getattr(settings, "acrylic_edge_opacity", 0.0)
+
+        self.bg_alpha_slider.blockSignals(True)
+        self.bg_alpha_slider.setValue(target_alpha)
+        self.bg_alpha_slider.blockSignals(False)
+        self.bg_alpha_label.setText(f"{target_alpha}%")
+
+        self.blur_radius_slider.blockSignals(True)
+        self.blur_radius_slider.setValue(target_blur)
+        self.blur_radius_slider.blockSignals(False)
+        self.blur_radius_label.setText(str(target_blur))
+
+        self.edge_opacity_slider.blockSignals(True)
+        self.edge_opacity_slider.setValue(int(target_edge * 100))
+        self.edge_opacity_slider.blockSignals(False)
+        self.edge_opacity_label.setText(f"{int(target_edge * 100)}%")
+
+        if self._updating:
+            return
+        with self.data_manager.batch_update():
+            self.data_manager.update_settings(bg_mode=mode)
+            self.data_manager.update_settings(bg_alpha=target_alpha)
+            self.data_manager.update_settings(bg_blur_radius=target_blur)
+            self.data_manager.update_settings(edge_highlight_opacity=target_edge)
+        self.settings_changed.emit()
+
+    def _browse_bg_image(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "选择背景图片", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        if file_path:
+            self.bg_path_edit.setText(file_path)
+            self.data_manager.update_settings(custom_bg_path=file_path)
+            self.settings_changed.emit()
+
+    def _on_blur_radius_changed(self, value):
+        self.blur_radius_label.setText(str(value))
+        if self._updating:
+            return
+
+        mode = self.data_manager.get_settings().bg_mode
+        with self.data_manager.batch_update():
+            self.data_manager.update_settings(bg_blur_radius=value)
+
+            if mode == "theme":
+                self.data_manager.update_settings(theme_blur_radius=value)
+            elif mode == "image":
+                self.data_manager.update_settings(image_blur_radius=value)
+            elif mode == "acrylic":
+                self.data_manager.update_settings(acrylic_blur_radius=value)
+
+        self._schedule_slider_settings_changed()
+
+    def _on_edge_opacity_changed(self, value):
+        self.edge_opacity_label.setText(f"{value}%")
+        if self._updating:
+            return
+
+        mode = self.data_manager.get_settings().bg_mode
+        with self.data_manager.batch_update():
+            self.data_manager.update_settings(edge_highlight_opacity=value / 100.0)
+
+            if mode == "theme":
+                self.data_manager.update_settings(theme_edge_opacity=value / 100.0)
+            elif mode == "image":
+                self.data_manager.update_settings(image_edge_opacity=value / 100.0)
+            elif mode == "acrylic":
+                self.data_manager.update_settings(acrylic_edge_opacity=value / 100.0)

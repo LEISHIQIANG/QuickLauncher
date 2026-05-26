@@ -188,7 +188,12 @@ QuickLauncher 会搜索这些字段：
 - handler 返回 `CommandResult`，或返回可转换为 `CommandResult` 的 dict。
 - 单个 handler 应尽量在 3 秒内返回，避免阻塞弹窗交互。
 - 长文本结果要控制长度，并提供 `copy` 动作。
-- `CommandResult.actions` 最多放 2 个底部按钮，系统自带“关闭”按钮不计入；超过 2 个会被截断。
+- 报告型结果优先使用结构化 `display_type`：`log` 使用 `payload={{"window_size": "large", "wrap": False}}`，`table` 使用 `columns` + `rows`，`list` 使用 `items=[{{"title": ..., "status": ..., "detail": ...}}]`。
+- 独立命令面板会显示完整 `CommandResult.actions`；旧弹窗兼容层只显示前两个 action。
+- `api.register_command(..., result_window_size="large")` 可设置结果窗口尺寸，结果 `payload["window_size"]` 可临时覆盖。
+- `CommandAction` 支持 `enabled`、`primary`、`danger`、`payload` 字段，用于控制面板 action 状态和后续扩展。
+- 需要参数输入时，在命令定义中使用 `CommandParam`；面板支持 `text`、`choice`、`bool`、`file`、`folder`，`sensitive=True` 会使用密码输入。
+- 长任务可调用 `context.update_callback(CommandResult(display_type="progress", progress=...))` 汇报进度，最终仍返回完整结果。
 - 不要在导入模块时执行耗时逻辑，把工作放到 handler 内。
 
 ## 发布前检查

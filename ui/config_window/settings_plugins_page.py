@@ -8,17 +8,17 @@ import os
 from core.i18n import tr
 from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, is_plugin_package_path
 from qt_compat import (
-    QEvent,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
     QDialog,
-    QLineEdit,
+    QEvent,
     QFileDialog,
     QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
     QtCompat,
+    QVBoxLayout,
+    QWidget,
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
@@ -195,6 +195,7 @@ class SettingsPluginsPageMixin:
             self._plugin_cards = {}
 
             from core import plugin_manager
+
             if plugin_manager is None:
                 label = QLabel("插件管理器未初始化")
                 self._plugin_layout.addWidget(label)
@@ -232,7 +233,7 @@ class SettingsPluginsPageMixin:
 
         card = QWidget()
         card.setObjectName("PluginCard")
-        
+
         # Apply theme-aware card styling
         if self.current_theme == "dark":
             bg_color = "rgba(255, 255, 255, 0.04)"
@@ -283,10 +284,12 @@ class SettingsPluginsPageMixin:
         }
         color = status_colors.get(status, "#888888")
         text = status_texts.get(status, status)
-        
+
         name_display = name.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
-        author_display = author.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b") if author else ""
-        
+        author_display = (
+            author.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b") if author else ""
+        )
+
         status_label = QLabel(f"● {text}")
         status_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 11px;")
         status_label.setWordWrap(True)
@@ -312,7 +315,7 @@ class SettingsPluginsPageMixin:
 
         # Action buttons
         action_btn = QPushButton()
-        
+
         # 2. Reload
         reload_btn = QPushButton("重载")
         reload_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_reload_plugin(pid))
@@ -323,8 +326,9 @@ class SettingsPluginsPageMixin:
 
         # 4. Delete
         delete_btn = QPushButton("删除")
-        
+
         from ui.styles.style import Glassmorphism
+
         theme = getattr(self, "current_theme", "dark")
         common_style = Glassmorphism.get_action_button_style(theme, is_compact=True, is_delete=False)
         delete_style = Glassmorphism.get_action_button_style(theme, is_compact=False, is_delete=True)
@@ -356,7 +360,7 @@ class SettingsPluginsPageMixin:
             desc_parts.append(f"作者: {author_display}")
         if description:
             desc_parts.append(description)
-        
+
         if desc_parts:
             desc_text = " | ".join(desc_parts) if author and description else (description or f"作者: {author_display}")
             desc_lbl = QLabel(desc_text)
@@ -382,9 +386,10 @@ class SettingsPluginsPageMixin:
         # Permissions list
         if permissions:
             from core.plugin_manager import HIGH_RISK_PERMISSIONS
+
             has_high_risk = any(p in HIGH_RISK_PERMISSIONS for p in permissions)
             perm_text = ", ".join(permissions).replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
-            
+
             if has_high_risk:
                 perm_lbl = QLabel(f"⚠️ 声明权限 (高风险提醒): {perm_text}")
                 perm_lbl.setStyleSheet("color: #ff9800; font-weight: 500; font-size: 11px;")
@@ -401,7 +406,9 @@ class SettingsPluginsPageMixin:
             err_lbl = QLabel(f"❌ 错误: {error_display}")
             err_lbl.setWordWrap(True)
             err_lbl.setMinimumWidth(0)
-            err_lbl.setStyleSheet("color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);")
+            err_lbl.setStyleSheet(
+                "color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);"
+            )
             info_layout.addWidget(err_lbl)
 
         # 5. Trust level
@@ -421,7 +428,7 @@ class SettingsPluginsPageMixin:
         bottom_layout.addWidget(reload_btn)
         bottom_layout.addWidget(open_btn)
         bottom_layout.addWidget(delete_btn)
-        
+
         card_layout.addWidget(info_widget)
         card_layout.addLayout(bottom_layout)
 
@@ -470,6 +477,7 @@ class SettingsPluginsPageMixin:
 
     def _refresh_plugin_card_state(self, plugin_id):
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         card = getattr(self, "_plugin_cards", {}).get(plugin_id)
@@ -485,6 +493,7 @@ class SettingsPluginsPageMixin:
 
     def _on_enable_plugin(self, plugin_id):
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         if plugin_manager.enable_plugin(plugin_id):
@@ -496,6 +505,7 @@ class SettingsPluginsPageMixin:
 
     def _on_disable_plugin(self, plugin_id):
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         plugin_manager.disable_plugin(plugin_id)
@@ -503,6 +513,7 @@ class SettingsPluginsPageMixin:
 
     def _on_reload_plugin(self, plugin_id):
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         if plugin_manager.reload_plugin(plugin_id):
@@ -514,6 +525,7 @@ class SettingsPluginsPageMixin:
 
     def _on_open_plugin_dir(self, plugin_id):
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         p = plugin_manager.get_plugin(plugin_id)
@@ -529,24 +541,26 @@ class SettingsPluginsPageMixin:
         reply = ThemedMessageBox.question(
             self,
             "确定删除",
-            f"您确定要彻底删除插件 \"{m.name}\" 吗？\n这将删除该插件的全部文件且无法恢复。",
+            f'您确定要彻底删除插件 "{m.name}" 吗？\n这将删除该插件的全部文件且无法恢复。',
         )
         if reply != ThemedMessageBox.Yes:
             return
-        
+
         from core import plugin_manager
+
         if plugin_manager is None:
             return
-            
+
         if plugin_info.status == "enabled":
             plugin_manager.disable_plugin(m.id)
-            
+
         import shutil
+
         try:
             shutil.rmtree(plugin_info.directory)
             plugin_manager.remove_plugin_record(m.id)
             self._rebuild_plugin_list(preserve_scroll=True)
-            ThemedMessageBox.information(self, "删除成功", f"插件 \"{m.name}\" 已被成功删除。")
+            ThemedMessageBox.information(self, "删除成功", f'插件 "{m.name}" 已被成功删除。')
         except Exception as e:
             logger.error("删除插件目录失败: %s", e)
             ThemedMessageBox.critical(self, "删除失败", f"删除插件文件失败:\n{e}")
@@ -554,13 +568,13 @@ class SettingsPluginsPageMixin:
     def _on_refresh_plugins(self):
         """Re-scan the plugins directory and rebuild the list."""
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         # Preserve enabled state: reload each enabled plugin individually
         # rather than disable-all/scan/enable-all which risks leaving
         # previously-enabled plugins in disabled state on re-enable failure.
-        previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
-                           if p.status == "enabled"}
+        previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins() if p.status == "enabled"}
         plugin_manager.scan_plugins()
         plugin_manager.auto_enable(list(previous_enabled))
         self._rebuild_plugin_list(preserve_scroll=True)
@@ -568,6 +582,7 @@ class SettingsPluginsPageMixin:
     def _on_open_plugins_dir(self):
         """Open the plugins directory in Explorer."""
         from core import plugin_manager
+
         if plugin_manager is None:
             return
         try:
@@ -580,24 +595,25 @@ class SettingsPluginsPageMixin:
             return
         self._plugin_create_dialog_active = True
         from core import plugin_manager
+
         if plugin_manager is None:
             self._plugin_create_dialog_active = False
             ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
             return
-            
+
         dialog = PluginCreateDialog(self, self.current_theme)
         try:
             if not dialog.exec_():
                 return
         finally:
             self._plugin_create_dialog_active = False
-            
+
         plugin_id = dialog.plugin_id
         plugin_dir = os.path.join(plugin_manager.plugins_dir, plugin_id)
         if os.path.exists(plugin_dir):
             ThemedMessageBox.warning(self, "创建失败", f"插件目录已存在: {plugin_id}")
             return
-            
+
         try:
             from core.plugin_template import write_plugin_template
 
@@ -608,34 +624,33 @@ class SettingsPluginsPageMixin:
                 dialog.plugin_author,
                 dialog.plugin_description,
             )
-                
+
             # Preserve enabled state: save and restore after scan
-            previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
-                               if p.status == "enabled"}
+            previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins() if p.status == "enabled"}
             plugin_manager.scan_plugins()
             plugin_manager.auto_enable(list(previous_enabled))
             self._rebuild_plugin_list(preserve_scroll=True)
-            
+
             # Show success message
             ThemedMessageBox.information(
-                self, 
-                "新建成功", 
-                f"插件 \"{dialog.plugin_name}\" 模板已成功创建于 plugins/{plugin_id}/。\n"
-                "即将打开该目录以供编辑。"
+                self,
+                "新建成功",
+                f'插件 "{dialog.plugin_name}" 模板已成功创建于 plugins/{plugin_id}/。\n即将打开该目录以供编辑。',
             )
-            
+
             # Open directory
             try:
                 os.startfile(plugin_dir)
             except Exception:
                 pass
-                
+
         except Exception as e:
             logger.error("新建开发插件失败: %s", e, exc_info=True)
             ThemedMessageBox.critical(self, "错误", f"新建开发插件失败:\n{e}")
 
     def _on_install_plugin_clicked(self):
         from core import plugin_manager
+
         if plugin_manager is None:
             ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
             return
@@ -653,20 +668,23 @@ class SettingsPluginsPageMixin:
 
     def _install_plugin_package(self, file_path):
         from core import plugin_manager
+
         if plugin_manager is None:
             ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
             return
 
         try:
-            previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
-                                if p.status == "enabled"}
+            previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins() if p.status == "enabled"}
             plugin_id = plugin_manager.install_from_package(
                 file_path,
-                on_overwrite=lambda name: ThemedMessageBox.question(
-                    self,
-                    "插件已存在",
-                    f"插件 \"{name}\" 已经存在。\n是否覆盖安装并替换已有文件？",
-                ) == ThemedMessageBox.Yes,
+                on_overwrite=lambda name: (
+                    ThemedMessageBox.question(
+                        self,
+                        "插件已存在",
+                        f'插件 "{name}" 已经存在。\n是否覆盖安装并替换已有文件？',
+                    )
+                    == ThemedMessageBox.Yes
+                ),
             )
         except ValueError as e:
             ThemedMessageBox.critical(self, "安装失败", f"无法安装插件:\n{e}")
@@ -690,18 +708,21 @@ class SettingsPluginsPageMixin:
         plugin_name = info.manifest.name if info else plugin_id
         if enabled:
             ThemedMessageBox.information(
-                self, "安装并启用成功",
-                f"插件 \"{plugin_name}\" 已成功安装并启用。",
+                self,
+                "安装并启用成功",
+                f'插件 "{plugin_name}" 已成功安装并启用。',
             )
         elif info and info.status == "error":
             ThemedMessageBox.warning(
-                self, "安装成功但启用失败",
-                f"插件 \"{plugin_name}\" 已安装，但启用失败:\n{info.error}",
+                self,
+                "安装成功但启用失败",
+                f'插件 "{plugin_name}" 已安装，但启用失败:\n{info.error}',
             )
         else:
             ThemedMessageBox.information(
-                self, "安装成功",
-                f"插件 \"{plugin_name}\" 已安装，但尚未启用。",
+                self,
+                "安装成功",
+                f'插件 "{plugin_name}" 已安装，但尚未启用。',
             )
 
 
@@ -712,65 +733,67 @@ class PluginCreateDialog(QDialog):
         self.setModal(True)
         self.setMinimumSize(340, 320)
         self.theme = theme
-        
+
         from ui.styles.style import get_dialog_stylesheet
+
         self.setStyleSheet(get_dialog_stylesheet(theme))
-        
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(8)
-        
+
         title_lbl = QLabel("创建新的插件开发模板")
         title_lbl.setStyleSheet("font-size: 13px; font-weight: bold;")
         layout.addWidget(title_lbl)
-        
+
         # ID
         layout.addWidget(QLabel("插件ID (仅限小写字母、数字、下划线和减号):"))
         self.id_edit = QLineEdit()
         self.id_edit.setPlaceholderText("例如: my_plugin")
         self.id_edit.setFixedHeight(26)
         layout.addWidget(self.id_edit)
-        
+
         # Name
         layout.addWidget(QLabel("插件显示名称:"))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("例如: 我的自定义插件")
         self.name_edit.setFixedHeight(26)
         layout.addWidget(self.name_edit)
-        
+
         # Author
         layout.addWidget(QLabel("作者名称 (可选):"))
         self.author_edit = QLineEdit()
         self.author_edit.setPlaceholderText("例如: 开发者名字")
         self.author_edit.setFixedHeight(26)
         layout.addWidget(self.author_edit)
-        
+
         # Description
         layout.addWidget(QLabel("插件描述 (可选):"))
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("一句话描述插件功能...")
         self.desc_edit.setFixedHeight(26)
         layout.addWidget(self.desc_edit)
-        
+
         btn_layout = QHBoxLayout()
         btn_layout.setContentsMargins(0, 8, 0, 0)
         btn_layout.setSpacing(8)
-        
+
         self.cancel_btn = QPushButton("取消")
         self.cancel_btn.clicked.connect(self.reject)
         self.cancel_btn.setFixedHeight(24)
         btn_layout.addWidget(self.cancel_btn)
-        
+
         self.ok_btn = QPushButton("创建")
         self.ok_btn.setDefault(True)
         self.ok_btn.clicked.connect(self._on_ok)
         self.ok_btn.setFixedHeight(24)
         btn_layout.addWidget(self.ok_btn)
-        
+
         layout.addLayout(btn_layout)
 
     def _on_ok(self):
         import re
+
         plugin_id = self.id_edit.text().strip()
         if not plugin_id:
             ThemedMessageBox.warning(self, "输入错误", "插件ID不能为空！")
@@ -778,7 +801,7 @@ class PluginCreateDialog(QDialog):
         if not re.match(r"^[a-z0-9_-]+$", plugin_id):
             ThemedMessageBox.warning(self, "输入错误", "插件ID只能包含小写字母、数字、下划线 and 减号！")
             return
-            
+
         self.plugin_id = plugin_id
         self.plugin_name = self.name_edit.text().strip() or plugin_id.replace("_", " ").title()
         self.plugin_author = self.author_edit.text().strip()

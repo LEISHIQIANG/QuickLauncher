@@ -5,22 +5,20 @@ Ensures absolute robustness, 100% reliability, and complete validation under all
 
 from __future__ import annotations
 
-import os
-import socket
-import sys
 import base64
 import hashlib
 import json
-import tempfile
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
-
+import os
 
 # ===========================================================================
 # ── Setup environment-level mocks before any imports ───────────────────────
 # ===========================================================================
-
 import pathlib
+import socket
+import sys
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 # Mock psutil in sys.modules so that it is globally available in tests
 mock_psutil = MagicMock()
@@ -36,6 +34,7 @@ sys.modules["psutil"] = mock_psutil
 
 # Initialize core mocks
 import core
+
 core.data_manager = MagicMock()
 
 # Setup mock data manager fields
@@ -52,42 +51,42 @@ core.data_manager.install_dir = pathlib.Path(tempfile.gettempdir())
 
 from core.command_registry import CommandContext
 from core.commands import (
-    cmd_urlencode,
+    cmd_base64,
+    cmd_cidr,
     cmd_color,
+    cmd_conflict,
+    cmd_copy_path,
+    cmd_dns,
+    cmd_env,
+    cmd_explorer,
+    cmd_god,
+    cmd_hash,
+    cmd_hosts,
     cmd_ip,
     cmd_json,
     cmd_jwt,
     cmd_netdiag,
-    cmd_cidr,
-    cmd_tls,
     cmd_path_audit,
-    cmd_process,
-    cmd_sysreport,
-    cmd_copy_path,
-    cmd_hash,
-    cmd_uuid,
-    cmd_timestamp,
-    cmd_base64,
-    cmd_qr,
     cmd_plugin_list,
-    cmd_plugin_reload,
     cmd_plugin_new,
-    cmd_wifi,
-    cmd_hosts,
+    cmd_plugin_reload,
     cmd_port,
-    cmd_env,
-    cmd_dns,
-    cmd_god,
-    cmd_explorer,
-    cmd_conflict,
+    cmd_process,
+    cmd_qr,
+    cmd_sysreport,
+    cmd_timestamp,
+    cmd_tls,
+    cmd_urlencode,
+    cmd_uuid,
+    cmd_wifi,
 )
-from plugins.network_tools.main import handle_ping, handle_dns
-from plugins.text_tools.main import reverse_text, count_text, case_text
-
+from plugins.network_tools.main import handle_dns, handle_ping
+from plugins.text_tools.main import case_text, count_text, reverse_text
 
 # ===========================================================================
 # ── String Processing (Base64 & URL) ───────────────────────────────────────
 # ===========================================================================
+
 
 def test_cmd_urlencode():
     # Simple encode
@@ -150,6 +149,7 @@ def test_cmd_base64():
 # ===========================================================================
 # ── Color & IP & Path & Hash ──────────────────────────────────────────────
 # ===========================================================================
+
 
 def test_cmd_color():
     # 6 hex digits
@@ -274,6 +274,7 @@ def test_cmd_hash():
 # ── Timestamp & UUID & QR ──────────────────────────────────────────────────
 # ===========================================================================
 
+
 def test_cmd_uuid():
     res = cmd_uuid(CommandContext())
     assert res.success is True
@@ -329,6 +330,7 @@ def test_cmd_qr():
 # ===========================================================================
 # ── Plugins & Favorites ────────────────────────────────────────────────────
 # ===========================================================================
+
 
 def test_cmd_json():
     res = cmd_json(CommandContext(args_text='{"b":2,"a":1}'))
@@ -505,6 +507,7 @@ def test_cmd_plugin_commands():
 # ── Network Commands (Wi-Fi, Hosts, Port) ──────────────────────────────────
 # ===========================================================================
 
+
 @patch("core.commands._run_cmd")
 def test_cmd_wifi(mock_run):
     # Mocking profile show lists
@@ -548,6 +551,7 @@ def test_cmd_port():
 # ── Windows System Operations ──────────────────────────────────────────────
 # ===========================================================================
 
+
 @patch("subprocess.Popen")
 def test_cmd_env(mock_popen):
     res = cmd_env(CommandContext())
@@ -589,6 +593,7 @@ def test_cmd_conflict():
 # ===========================================================================
 # ── Plugin Handlers: Text & Network ────────────────────────────────────────
 # ===========================================================================
+
 
 def test_plugin_text_tools():
     # Reverse text

@@ -113,6 +113,7 @@ def test_hotkey_manager_reports_failure_without_dll(monkeypatch):
             pass
 
     from hooks.hooks_wrapper import HooksDLL
+
     monkeypatch.setattr(HooksDLL, "get_instance", classmethod(lambda cls, path=None: FakeDll()))
 
     assert not manager.set_hotkey("Ctrl+P")

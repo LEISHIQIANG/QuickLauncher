@@ -1,6 +1,5 @@
 """Data management settings page builder."""
 
-
 import logging
 
 from core.i18n import tr
@@ -82,9 +81,7 @@ class SettingsDataPageMixin:
         danger_layout.addWidget(self.factory_reset_btn)
 
         # 说明文本
-        reset_desc = QLabel(
-            tr("清除所有配置、图标缓存、快速搜索列表、右键扩展注册表项，并重启应用")
-        )
+        reset_desc = QLabel(tr("清除所有配置、图标缓存、快速搜索列表、右键扩展注册表项，并重启应用"))
         reset_desc.setObjectName("data_desc_3")
         reset_desc.setStyleSheet(f"""
             {get_font_css_with_size(11, 400)}

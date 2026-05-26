@@ -29,14 +29,16 @@ def launch_via_explorer_com(target: str, parameters: str = "", directory: str = 
     _com_initialized = False
     try:
         import pythoncom
+
         pythoncom.CoInitialize()
         _com_initialized = True
     except Exception:
         pass
 
     try:
-        import win32com.client
         import ctypes
+
+        import win32com.client
 
         hwnd = ctypes.windll.user32.GetShellWindow()
         if not hwnd:
@@ -65,6 +67,7 @@ def launch_via_explorer_com(target: str, parameters: str = "", directory: str = 
         if _com_initialized:
             try:
                 import pythoncom
+
                 pythoncom.CoUninitialize()
             except Exception:
                 pass

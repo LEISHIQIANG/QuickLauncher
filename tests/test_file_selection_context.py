@@ -4,6 +4,7 @@ import time
 from types import SimpleNamespace
 
 import ui.launcher_popup.file_selection as file_selection
+import ui.launcher_popup.popup_data_refresh as popup_data_refresh
 import ui.launcher_popup.popup_window as popup_window
 import ui.launcher_popup.window_detection as window_detection
 from qt_compat import QColor
@@ -57,7 +58,9 @@ class _FakeShell:
 
 def _install_file_selection_fakes(monkeypatch, *, foreground, cursor, roots, desktop_roots, shell_windows):
     monkeypatch.setattr(file_selection, "HAS_WIN32_SHELL", True)
-    monkeypatch.setattr(file_selection, "win32gui", SimpleNamespace(GetForegroundWindow=lambda: foreground), raising=False)
+    monkeypatch.setattr(
+        file_selection, "win32gui", SimpleNamespace(GetForegroundWindow=lambda: foreground), raising=False
+    )
     monkeypatch.setattr(file_selection, "_window_from_point", lambda _x, _y: cursor)
     monkeypatch.setattr(file_selection, "_normalize_window_hwnd", lambda hwnd: roots.get(hwnd, hwnd))
     monkeypatch.setattr(file_selection, "_is_desktop_window", lambda hwnd: roots.get(hwnd, hwnd) in desktop_roots)
@@ -211,8 +214,8 @@ def _popup_for_selection():
 
 def test_popup_consumes_ready_selection_cache(monkeypatch):
     popup = _popup_for_selection()
-    monkeypatch.setattr(popup_window, "_is_explorer_like_window", lambda hwnd: hwnd == 100)
-    monkeypatch.setattr(popup_window, "_is_desktop_window", lambda _hwnd: False)
+    monkeypatch.setattr(popup_data_refresh, "_is_explorer_like_window", lambda hwnd: hwnd == 100)
+    monkeypatch.setattr(popup_data_refresh, "_is_desktop_window", lambda _hwnd: False)
 
     assert popup_window.LauncherPopup._take_valid_selected_files_for_click(popup) == ["C:/front.txt"]
 
@@ -220,8 +223,8 @@ def test_popup_consumes_ready_selection_cache(monkeypatch):
 def test_popup_drops_expired_selection_cache(monkeypatch):
     popup = _popup_for_selection()
     popup._selected_files_captured_at = time.monotonic() - 6.0
-    monkeypatch.setattr(popup_window, "_is_explorer_like_window", lambda hwnd: hwnd == 100)
-    monkeypatch.setattr(popup_window, "_is_desktop_window", lambda _hwnd: False)
+    monkeypatch.setattr(popup_data_refresh, "_is_explorer_like_window", lambda hwnd: hwnd == 100)
+    monkeypatch.setattr(popup_data_refresh, "_is_desktop_window", lambda _hwnd: False)
 
     assert popup_window.LauncherPopup._take_valid_selected_files_for_click(popup) == []
     assert popup._selected_files_status == "idle"
@@ -270,9 +273,9 @@ def test_invalid_selection_context_does_not_start_worker(monkeypatch):
         ignore_reason="not_explorer_or_desktop",
         started_at=time.monotonic(),
     )
-    monkeypatch.setattr(popup_window.SelectionTriggerContext, "capture", lambda **_kwargs: context)
+    monkeypatch.setattr(popup_data_refresh.SelectionTriggerContext, "capture", lambda **_kwargs: context)
     monkeypatch.setattr(
-        popup_window,
+        popup_data_refresh,
         "FileSelectionThread",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("worker should not start")),
     )

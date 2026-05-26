@@ -33,6 +33,15 @@ def _copy(value: str, label: str = "复制结果") -> list[CommandAction]:
     return [CommandAction(type="copy", label=label, value=value)]
 
 
+def _status_to_list_status(status: str) -> str:
+    normalized = (status or "").upper()
+    if normalized == "OK":
+        return "success"
+    if normalized in {"MISSING?", "UNKNOWN"}:
+        return "warning"
+    return "info"
+
+
 def handle_startup_audit(context):
     entries = []
     entries.extend(_registry_startup_entries())
@@ -48,7 +57,23 @@ def handle_startup_audit(context):
         lines.append(f"  {entry['command']}")
 
     result = "\n".join(lines)
-    return CommandResult(success=True, message=result, actions=_copy(result, "复制启动项报告"))
+    return CommandResult(
+        success=True,
+        message=f"发现 {len(entries)} 个常见启动项",
+        display_type="list",
+        payload={
+            "window_size": "medium",
+            "items": [
+                {
+                    "title": entry["name"],
+                    "status": _status_to_list_status(_entry_status(entry.get("target", ""))),
+                    "detail": f"{entry['source']}\n{entry['command']}",
+                }
+                for entry in entries
+            ],
+        },
+        actions=_copy(result, "复制启动项报告"),
+    )
 
 
 def _registry_startup_entries() -> list[dict[str, str]]:
@@ -185,4 +210,16 @@ def handle_path_audit(context):
         lines.extend(f"  {item}" for item in very_long[:8])
 
     result = "\n".join(lines)
-    return CommandResult(success=True, message=result, actions=_copy(result, "复制 PATH 报告"))
+    items = [
+        {"title": "PATH 条目数", "status": "info", "detail": str(len(entries))},
+        {"title": "重复目录", "status": "warning" if duplicates else "success", "detail": "\n".join(duplicates[:12]) or "0"},
+        {"title": "缺失目录", "status": "warning" if missing else "success", "detail": "\n".join(missing[:20]) or "0"},
+        {"title": "过长条目", "status": "warning" if very_long else "success", "detail": "\n".join(very_long[:8]) or "0"},
+    ]
+    return CommandResult(
+        success=True,
+        message=result,
+        display_type="list",
+        payload={"window_size": "medium", "items": items},
+        actions=_copy(result, "复制 PATH 报告"),
+    )

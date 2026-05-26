@@ -30,6 +30,25 @@ def _copy(value: str, label: str = "复制结果") -> list[CommandAction]:
     return [CommandAction(type="copy", label=label, value=value)]
 
 
+def _process_table_rows(rows: list[dict]) -> list[list[str]]:
+    return [
+        [
+            str(item["pid"]),
+            item["name"],
+            f"{item['cpu']:.1f}%",
+            _fmt_bytes(item["rss"]),
+            item["status"],
+            item["username"],
+            item["exe"],
+        ]
+        for item in rows
+    ]
+
+
+def _process_table_text(columns: list[str], rows: list[list[str]]) -> str:
+    return "\n".join(["\t".join(columns), *["\t".join(row) for row in rows]])
+
+
 def _fmt_bytes(value: int | float | None) -> str:
     if not value:
         return "0 B"
@@ -88,15 +107,21 @@ def handle_top(context):
         return CommandResult(success=False, message="没有读取到进程信息", error="无结果")
 
     title = "CPU" if mode == "cpu" else "内存"
-    lines = [f"按{title}占用排序 Top {len(rows)}:"]
-    for item in rows:
-        lines.append(
-            f"{item['pid']:>6}  {item['name'][:28]:<28}  "
-            f"CPU {item['cpu']:>5.1f}%  MEM {_fmt_bytes(item['rss'])}"
-        )
-
-    result = "\n".join(lines)
-    return CommandResult(success=True, message=result, actions=_copy(result, "复制进程列表"))
+    columns = ["PID", "Name", "CPU", "Memory", "Status", "User", "Path"]
+    table_rows = _process_table_rows(rows)
+    result = _process_table_text(columns, table_rows)
+    return CommandResult(
+        success=True,
+        message=f"按{title}占用排序 Top {len(rows)}",
+        display_type="table",
+        payload={
+            "window_size": "large",
+            "columns": columns,
+            "rows": table_rows,
+            "copy_format": "tsv",
+        },
+        actions=_copy(result, "复制进程列表"),
+    )
 
 
 def handle_find(context):
@@ -121,13 +146,18 @@ def handle_find(context):
     if not rows:
         return CommandResult(success=False, message=f"没有找到匹配进程: {query}", error="无结果")
 
-    lines = [f"找到 {len(rows)} 个匹配进程:"]
-    for item in rows:
-        exe = item["exe"] or "-"
-        lines.append(
-            f"{item['pid']:>6}  {item['name'][:28]:<28}  "
-            f"MEM {_fmt_bytes(item['rss'])}  {exe}"
-        )
-
-    result = "\n".join(lines)
-    return CommandResult(success=True, message=result, actions=_copy(result, "复制进程信息"))
+    columns = ["PID", "Name", "CPU", "Memory", "Status", "User", "Path"]
+    table_rows = _process_table_rows(rows)
+    result = _process_table_text(columns, table_rows)
+    return CommandResult(
+        success=True,
+        message=f"找到 {len(rows)} 个匹配进程: {query}",
+        display_type="table",
+        payload={
+            "window_size": "large",
+            "columns": columns,
+            "rows": table_rows,
+            "copy_format": "tsv",
+        },
+        actions=_copy(result, "复制进程信息"),
+    )

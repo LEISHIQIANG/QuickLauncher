@@ -14,6 +14,7 @@ try:
     import win32con
     import win32gui
     import win32process
+
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
@@ -59,7 +60,7 @@ class WindowManager:
                     try:
                         proc = psutil.Process(pid)
                         pname = proc.name()
-                        if pname and pname.lower().replace('.exe', '').startswith(process_name):
+                        if pname and pname.lower().replace(".exe", "").startswith(process_name):
                             is_match = True
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass

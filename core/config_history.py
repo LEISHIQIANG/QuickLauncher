@@ -114,7 +114,7 @@ class ConfigHistoryManager:
         """Keep only the newest configured number of snapshots."""
         paths = list(self._snapshot_paths())
         paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        for old in paths[self.max_snapshots:]:
+        for old in paths[self.max_snapshots :]:
             try:
                 old.unlink()
             except Exception as exc:

@@ -5,24 +5,19 @@ import sys
 
 from core.i18n import tr
 from qt_compat import (
+    QColor,
     QDialog,
-    QLabel,
+    QEasingCurve,
+    QFont,
     QPainter,
     QPainterPath,
+    QPen,
     QPixmap,
+    QPropertyAnimation,
     QRect,
     QRectF,
-    QPoint,
-    QPointF,
-    QColor,
-    QPen,
-    QBrush,
-    QFont,
     Qt,
-    QtCompat,
     pyqtProperty,
-    QEasingCurve,
-    QPropertyAnimation,
 )
 
 
@@ -85,12 +80,7 @@ class SupportDialog(QDialog):
         # - Dialog: 对话框类型
         # - WindowStaysOnTopHint: 置顶于主窗口之上漂浮
         # - NoDropShadowWindowHint: 自定义极其细腻的弥散阴影
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | 
-            Qt.Dialog | 
-            Qt.WindowStaysOnTopHint | 
-            Qt.NoDropShadowWindowHint
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setModal(True)
@@ -187,7 +177,7 @@ class SupportDialog(QDialog):
         card_center_x = cx + pw / 2.0
         card_center_y = cy + ph / 2.0
         painter.translate(card_center_x, card_center_y)
-        scale_val = 0.93 + 0.07 * self._anim_progress # 从 93% 缩放到 100%，过渡极其高档优雅
+        scale_val = 0.93 + 0.07 * self._anim_progress  # 从 93% 缩放到 100%，过渡极其高档优雅
         painter.scale(scale_val, scale_val)
         painter.translate(-card_center_x, -card_center_y)
 

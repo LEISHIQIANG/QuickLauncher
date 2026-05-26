@@ -52,28 +52,28 @@ class WelcomeGuide(QDialog):
             {
                 "title": "欢迎使用 QuickLauncher！",
                 "content": "QuickLauncher v2.6.7.7\n轻量级快捷启动工具\n\n• 鼠标中键快速唤出启动面板\n• 支持文件、文件夹、打开网址、快捷键、运行命令\n• 自定义主题和透明度\n\n让我们开始 30 秒快速上手教程",
-                "icon": "🚀"
+                "icon": "🚀",
             },
             {
                 "title": "第一步：添加快捷方式",
                 "content": "在设置窗口中，有三种方式添加快捷方式：\n\n1. 直接拖拽文件/文件夹到中间区域\n2. 点击底部按钮添加（快捷方式/打开网址/快捷键/运行命令）\n3. 双击图标可以编辑\n\n提示：支持拖入 .lnk 快捷方式文件",
-                "icon": "📁"
+                "icon": "📁",
             },
             {
                 "title": "第二步：使用启动器",
                 "content": "配置完成后，随时可以唤出启动器：\n\n• 默认：鼠标中键\n• 特殊软件：Ctrl + 中键（避免冲突）\n• 锁定：右键空白处锁定窗口\n• 强制新开：Alt + 左键点击图标",
-                "icon": "🖱️"
+                "icon": "🖱️",
             },
             {
                 "title": "第三步：个性化设置",
                 "content": "在右侧设置面板可以自定义：\n\n• 主题：深色/浅色\n• 透明度：背景、Dock、图标\n• 尺寸：图标大小、列数、圆角\n• 背景：纯色/图片/主题色\n\n滚轮可快速调节透明度（Ctrl/Shift+滚轮）",
-                "icon": "🎨"
+                "icon": "🎨",
             },
             {
                 "title": "开始使用！",
                 "content": "现在你已经掌握了基本用法\n\n更多功能：\n• Dock 栏：顶部/底部常驻图标\n• 拖放联动：拖文件到图标上打开\n• 分类管理：左侧创建多个分类\n\n祝你使用愉快！",
-                "icon": "✨"
-            }
+                "icon": "✨",
+            },
         ]
 
         self._setup_ui()
@@ -153,9 +153,12 @@ class WelcomeGuide(QDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         btn_style = Glassmorphism.get_flat_action_button_style(theme)
 
-        self.setStyleSheet(base_style + """
+        self.setStyleSheet(
+            base_style
+            + """
             QDialog { background: transparent; }
-        """)
+        """
+        )
 
         for btn in [self.skip_btn, self.prev_btn, self.next_btn]:
             btn.setStyleSheet(btn_style)
@@ -196,7 +199,7 @@ class WelcomeGuide(QDialog):
 
     def mousePressEvent(self, event):
         """鼠标按下事件 - 添加调试"""
-        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
         logger.info(f"WelcomeGuide mousePressEvent at ({pos.x()}, {pos.y()})")
         super().mousePressEvent(event)
 
@@ -213,9 +216,7 @@ class WelcomeGuide(QDialog):
 
         path = QPainterPath()
         path.addRoundedRect(
-            inset, inset,
-            self.width() - inset * 2, self.height() - inset * 2,
-            self.corner_radius, self.corner_radius
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
         )
 
         # 磨砂玻璃模式 - 与主配置窗口一致的 alpha 处理

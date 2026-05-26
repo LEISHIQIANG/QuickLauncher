@@ -27,6 +27,7 @@ STANDARD_USER_LAUNCH_FAILED_MESSAGE = (
 # 尝试导入 pynput 键盘控制
 try:
     from pynput.keyboard import Key
+
     HAS_PYNPUT = True
 except ImportError:
     HAS_PYNPUT = False
@@ -40,13 +41,13 @@ SendInput.restype = wintypes.UINT
 
 # SetWindowPos 参数类型
 user32.SetWindowPos.argtypes = [
-    wintypes.HWND,   # hWnd
-    wintypes.HWND,   # hWndInsertAfter
-    ctypes.c_int,    # X
-    ctypes.c_int,    # Y
-    ctypes.c_int,    # cx
-    ctypes.c_int,    # cy
-    ctypes.c_uint,   # uFlags
+    wintypes.HWND,  # hWnd
+    wintypes.HWND,  # hWndInsertAfter
+    ctypes.c_int,  # X
+    ctypes.c_int,  # Y
+    ctypes.c_int,  # cx
+    ctypes.c_int,  # cy
+    ctypes.c_uint,  # uFlags
 ]
 user32.SetWindowPos.restype = wintypes.BOOL
 
@@ -79,6 +80,7 @@ try:
 except AttributeError:
     ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
+
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", wintypes.WORD),
@@ -88,11 +90,14 @@ class KEYBDINPUT(ctypes.Structure):
         ("dwExtraInfo", ULONG_PTR),
     ]
 
+
 class _INPUT_UNION(ctypes.Union):
     _fields_ = [("ki", KEYBDINPUT)]
 
+
 class INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("union", _INPUT_UNION)]
+
 
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
@@ -100,7 +105,9 @@ KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_SCANCODE = 0x0008
 
 
-class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMixin, CommandExecutionMixin, WindowControlMixin):
+class ShortcutExecutor(
+    HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMixin, CommandExecutionMixin, WindowControlMixin
+):
     """快捷方式执行器"""
 
     # 记录弹窗显示前的前台窗口
@@ -114,41 +121,57 @@ class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMix
     if HAS_PYNPUT:
         PYNPUT_SPECIAL_KEYS = {
             # 修饰键
-            'ctrl': Key.ctrl, 'control': Key.ctrl,
-            'alt': Key.alt, 'menu': Key.alt,
-            'shift': Key.shift,
-            'win': Key.cmd, 'lwin': Key.cmd, 'rwin': Key.cmd_r,
-
+            "ctrl": Key.ctrl,
+            "control": Key.ctrl,
+            "alt": Key.alt,
+            "menu": Key.alt,
+            "shift": Key.shift,
+            "win": Key.cmd,
+            "lwin": Key.cmd,
+            "rwin": Key.cmd_r,
             # 功能键
-            'tab': Key.tab,
-            'enter': Key.enter, 'return': Key.enter,
-            'escape': Key.esc, 'esc': Key.esc,
-            'space': Key.space,
-            'backspace': Key.backspace, 'back': Key.backspace,
-            'delete': Key.delete, 'del': Key.delete,
-            'insert': Key.insert, 'ins': Key.insert,
-            'home': Key.home,
-            'end': Key.end,
-            'pageup': Key.page_up, 'pgup': Key.page_up,
-            'pagedown': Key.page_down, 'pgdn': Key.page_down,
-
+            "tab": Key.tab,
+            "enter": Key.enter,
+            "return": Key.enter,
+            "escape": Key.esc,
+            "esc": Key.esc,
+            "space": Key.space,
+            "backspace": Key.backspace,
+            "back": Key.backspace,
+            "delete": Key.delete,
+            "del": Key.delete,
+            "insert": Key.insert,
+            "ins": Key.insert,
+            "home": Key.home,
+            "end": Key.end,
+            "pageup": Key.page_up,
+            "pgup": Key.page_up,
+            "pagedown": Key.page_down,
+            "pgdn": Key.page_down,
             # 方向键
-            'up': Key.up,
-            'down': Key.down,
-            'left': Key.left,
-            'right': Key.right,
-
+            "up": Key.up,
+            "down": Key.down,
+            "left": Key.left,
+            "right": Key.right,
             # F键
-            'f1': Key.f1, 'f2': Key.f2, 'f3': Key.f3, 'f4': Key.f4,
-            'f5': Key.f5, 'f6': Key.f6, 'f7': Key.f7, 'f8': Key.f8,
-            'f9': Key.f9, 'f10': Key.f10, 'f11': Key.f11, 'f12': Key.f12,
-
+            "f1": Key.f1,
+            "f2": Key.f2,
+            "f3": Key.f3,
+            "f4": Key.f4,
+            "f5": Key.f5,
+            "f6": Key.f6,
+            "f7": Key.f7,
+            "f8": Key.f8,
+            "f9": Key.f9,
+            "f10": Key.f10,
+            "f11": Key.f11,
+            "f12": Key.f12,
             # 其他
-            'capslock': Key.caps_lock,
-            'numlock': Key.num_lock,
-            'scrolllock': Key.scroll_lock,
-            'printscreen': Key.print_screen,
-            'pause': Key.pause,
+            "capslock": Key.caps_lock,
+            "numlock": Key.num_lock,
+            "scrolllock": Key.scroll_lock,
+            "printscreen": Key.print_screen,
+            "pause": Key.pause,
         }
 
     # ===== POINT 结构体（用于获取鼠标位置）=====
@@ -168,7 +191,9 @@ class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMix
                     "Shortcut admin audit: shortcut=%s type=%s target=%s",
                     getattr(shortcut, "name", "") or getattr(shortcut, "id", ""),
                     getattr(getattr(shortcut, "type", ""), "value", getattr(shortcut, "type", "")),
-                    getattr(shortcut, "target_path", "") or getattr(shortcut, "url", "") or getattr(shortcut, "command", ""),
+                    getattr(shortcut, "target_path", "")
+                    or getattr(shortcut, "url", "")
+                    or getattr(shortcut, "command", ""),
                 )
             if shortcut.type == ShortcutType.HOTKEY:
                 # 快捷键执行：已经在内部处理了线程，这里返回状态
@@ -183,6 +208,12 @@ class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMix
                 # 命令执行：有些是内置命令，有些是系统命令
                 return ShortcutExecutor._execute_command(shortcut)
 
+            elif shortcut.type == ShortcutType.CHAIN:
+                from core.shortcut_chain_exec import execute_shortcut_chain
+
+                result = execute_shortcut_chain(shortcut)
+                return bool(result.success), result.error or ""
+
             else:
                 # 文件/文件夹执行
                 return ShortcutExecutor._execute_file(shortcut, force_new)
@@ -191,6 +222,7 @@ class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMix
             error_msg = str(e)
             logger.error(f"执行快捷方式失败: {error_msg}")
             import traceback
+
             logger.error(traceback.format_exc())
             return False, error_msg
 
@@ -237,14 +269,14 @@ class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMix
         if os.path.isdir(real_target):
             # 目标是文件夹：在资源管理器中打开并选中文件，或复制文件到该文件夹
             success = ShortcutExecutor._open_folder_with_files(real_target, files, run_as_admin=run_as_admin)
-        elif real_target.lower().endswith('.exe'):
+        elif real_target.lower().endswith(".exe"):
             # 目标是可执行文件：将所有文件作为参数传递
             success = ShortcutExecutor._open_exe_with_files(
                 real_target,
                 files,
                 shortcut.target_args,
                 getattr(shortcut, "working_dir", "") or "",
-                run_as_admin=run_as_admin
+                run_as_admin=run_as_admin,
             )
         else:
             # 其他文件类型（如 .lnk 快捷方式本身指向程序）
@@ -254,10 +286,17 @@ class ShortcutExecutor(HotkeyExecutionMixin, FileExecutionMixin, UrlExecutionMix
 
     # ===== 窗口置顶功能（已修复）=====
 
+
 def _bind_shortcut_executor_mixins():
     from . import shortcut_command_exec, shortcut_file_exec, shortcut_hotkey, shortcut_url_exec, shortcut_window_control
 
-    for module in (shortcut_command_exec, shortcut_file_exec, shortcut_hotkey, shortcut_url_exec, shortcut_window_control):
+    for module in (
+        shortcut_command_exec,
+        shortcut_file_exec,
+        shortcut_hotkey,
+        shortcut_url_exec,
+        shortcut_window_control,
+    ):
         module.ShortcutExecutor = ShortcutExecutor
 
 

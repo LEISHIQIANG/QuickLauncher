@@ -8,7 +8,9 @@ def test_folder_launch_receives_admin_flag(monkeypatch):
 
     class FakeExecutor(FileExecutionMixin):
         @staticmethod
-        def _launch_with_privilege(target, parameters=None, directory=None, show_cmd=1, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters=None, directory=None, show_cmd=1, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["run_as_admin"] = run_as_admin
             return True, ""

@@ -17,20 +17,19 @@ import ssl
 import tempfile
 import threading
 import time
-import uuid
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 
 try:
     import qrcode
+
     _HAS_QRCODE = True
 except ImportError:
     _HAS_QRCODE = False
 
 from .command_registry import CommandAction, CommandContext, CommandResult
-
-
 
 # ---------------------------------------------------------------------------
 # ── /urlencode ─────────────────────────────────────────────────────────────
@@ -40,10 +39,10 @@ from .command_registry import CommandAction, CommandContext, CommandResult
 def cmd_urlencode(context: CommandContext) -> CommandResult:
     raw_text = (context.args_text or "").strip()
     clipboard = (context.clipboard_text or "").strip()
-    
+
     is_decode = False
     target = ""
-    
+
     first_word = raw_text.split(None, 1)[0].lower() if raw_text.split(None, 1) else ""
     if first_word in ("decode", "d", "解码"):
         is_decode = True
@@ -58,13 +57,13 @@ def cmd_urlencode(context: CommandContext) -> CommandResult:
         if mode_arg in ("decode", "d", "解码"):
             is_decode = True
         target = raw_text
-        
+
     if not target:
         target = clipboard
-        
+
     if not target:
         return CommandResult(success=False, message="请输入文本或确保剪贴板有内容", error="缺少输入")
-        
+
     if is_decode:
         try:
             decoded = urllib.parse.unquote(target)
@@ -95,7 +94,7 @@ def _hex_to_rgb(hex_str: str) -> tuple[int, int, int, int | None] | None:
         h = "".join(c * 2 for c in h)
     elif len(h) == 4:
         h = "".join(c * 2 for c in h)
-    
+
     if len(h) == 6:
         try:
             return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), None)
@@ -128,10 +127,10 @@ def cmd_color(context: CommandContext) -> CommandResult:
     else:
         hex_upper = f"#{r:02X}{g:02X}{b:02X}{a:02X}"
         hex_lower = f"#{r:02x}{g:02x}{b:02x}{a:02x}"
-        msg = f"HEX: {hex_upper}\nRGBA: rgba({r}, {g}, {b}, {a/255:.2f})"
+        msg = f"HEX: {hex_upper}\nRGBA: rgba({r}, {g}, {b}, {a / 255:.2f})"
         actions = [
             CommandAction(type="copy", label="复制 HEX", value=hex_lower),
-            CommandAction(type="copy", label="复制 RGBA", value=f"rgba({r},{g},{b},{a/255:.2f})"),
+            CommandAction(type="copy", label="复制 RGBA", value=f"rgba({r},{g},{b},{a / 255:.2f})"),
         ]
     return CommandResult(
         success=True,
@@ -323,26 +322,26 @@ def cmd_hash(context: CommandContext) -> CommandResult:
     args = context.args_text.strip()
     algo = "md5"
     file_path = None
-    
+
     if args:
         first_word = args.split(None, 1)[0].lower() if args.split(None, 1) else ""
         if first_word in ("md5", "sha1", "sha256"):
             algo = first_word
-            file_path = args[len(first_word):].strip()
+            file_path = args[len(first_word) :].strip()
         else:
             last_word = args.rsplit(None, 1)[-1].lower() if args.rsplit(None, 1) else ""
             if last_word in ("md5", "sha1", "sha256"):
                 algo = last_word
-                file_path = args[:-len(last_word)].strip()
+                file_path = args[: -len(last_word)].strip()
             else:
                 file_path = args
-                
+
     if file_path:
-        file_path = file_path.strip('\'"')
-        
+        file_path = file_path.strip("'\"")
+
     if not file_path and context.selected_files:
         file_path = context.selected_files[0]
-        
+
     if not file_path:
         return CommandResult(success=False, message="请指定文件路径或选中文件", error="缺少输入")
     if not os.path.isfile(file_path):
@@ -406,10 +405,10 @@ def cmd_timestamp(context: CommandContext) -> CommandResult:
 def cmd_base64(context: CommandContext) -> CommandResult:
     raw_text = (context.args_text or "").strip()
     clipboard = (context.clipboard_text or "").strip()
-    
+
     is_decode = False
     target = ""
-    
+
     first_word = raw_text.split(None, 1)[0].lower() if raw_text.split(None, 1) else ""
     if first_word in ("decode", "d", "解码"):
         is_decode = True
@@ -424,30 +423,30 @@ def cmd_base64(context: CommandContext) -> CommandResult:
         if mode_arg in ("decode", "d", "解码"):
             is_decode = True
         target = raw_text
-        
+
     if not target:
         target = clipboard
-        
+
     if not target:
         return CommandResult(
             success=False,
             message="请输入文本或确保剪贴板有内容",
             error="缺少输入",
         )
-        
+
     if len(target.encode("utf-8")) > 256 * 1024:
         return CommandResult(
             success=False,
             message="输入文本超过 256KB 限制",
             error="输入过大",
         )
-        
+
     if is_decode:
         try:
             missing_padding = len(target) % 4
             padded_target = target
             if missing_padding:
-                padded_target += '=' * (4 - missing_padding)
+                padded_target += "=" * (4 - missing_padding)
             decoded = base64.b64decode(padded_target.encode("utf-8")).decode("utf-8")
             return CommandResult(
                 success=True,
@@ -475,7 +474,7 @@ def cmd_base64(context: CommandContext) -> CommandResult:
 # ── QR smart helpers ──────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
 
-_URL_DETECT = re.compile(r'^(https?://|ftp://)[^\s]+$', re.I)
+_URL_DETECT = re.compile(r"^(https?://|ftp://)[^\s]+$", re.I)
 _qr_file_servers: dict[int, tuple] = {}
 _qr_server_lock = threading.Lock()
 
@@ -535,7 +534,9 @@ def _start_qr_file_server(dir_path: str, file_path: str):
 
 def cmd_qr(context: CommandContext) -> CommandResult:
     if not _HAS_QRCODE:
-        return CommandResult(success=False, message="二维码生成器 (qrcode) 未安装，打包时请将 qrcode 加入依赖", error="缺少 qrcode 库")
+        return CommandResult(
+            success=False, message="二维码生成器 (qrcode) 未安装，打包时请将 qrcode 加入依赖", error="缺少 qrcode 库"
+        )
     text = context.args_text.strip() or context.clipboard_text.strip()
     if not text:
         return CommandResult(success=False, message="请输入文本或确保剪贴板有内容", error="缺少输入")
@@ -711,7 +712,9 @@ def _parse_ping_summary(output: str) -> str:
 def cmd_netdiag(context: CommandContext) -> CommandResult:
     host, requested_port = _normalize_host_input(context.args_text or context.clipboard_text)
     if not host:
-        return CommandResult(success=False, message="请输入要诊断的域名或 IP，例如 /netdiag example.com", error="缺少目标")
+        return CommandResult(
+            success=False, message="请输入要诊断的域名或 IP，例如 /netdiag example.com", error="缺少目标"
+        )
 
     lines = [f"网络诊断: {host}"]
 
@@ -845,7 +848,9 @@ def cmd_tls(context: CommandContext) -> CommandResult:
     if not host:
         return CommandResult(success=False, message="请输入域名，例如 /tls example.com", error="缺少目标")
     if any(ch.isspace() for ch in host):
-        return CommandResult(success=False, message="域名格式无效。示例: /tls example.com 或 /tls example.com 443", error="格式错误")
+        return CommandResult(
+            success=False, message="域名格式无效。示例: /tls example.com 或 /tls example.com 443", error="格式错误"
+        )
 
     try:
         ssl_context = ssl.create_default_context()
@@ -864,13 +869,17 @@ def cmd_tls(context: CommandContext) -> CommandResult:
             error="DNS 解析失败",
         )
     except TimeoutError:
-        return CommandResult(success=False, message=f"连接 {display_host or host}:{port} 超时，请检查网络或端口。", error="连接超时")
+        return CommandResult(
+            success=False, message=f"连接 {display_host or host}:{port} 超时，请检查网络或端口。", error="连接超时"
+        )
     except ssl.SSLCertVerificationError as e:
         return CommandResult(success=False, message=f"证书校验失败: {e}", error="证书校验失败")
     except ssl.SSLError as e:
         return CommandResult(success=False, message=f"TLS 握手失败: {e}", error="TLS 握手失败")
     except Exception as e:
-        return CommandResult(success=False, message=f"TLS 检查失败: {display_host or host}:{port}\n{e}", error="连接失败")
+        return CommandResult(
+            success=False, message=f"TLS 检查失败: {display_host or host}:{port}\n{e}", error="连接失败"
+        )
 
     not_after_raw = cert.get("notAfter", "")
     days_left_text = "未知"
@@ -881,10 +890,7 @@ def cmd_tls(context: CommandContext) -> CommandResult:
     except Exception:
         pass
 
-    san_entries = [
-        value for key, value in cert.get("subjectAltName", [])
-        if key.lower() == "dns"
-    ]
+    san_entries = [value for key, value in cert.get("subjectAltName", []) if key.lower() == "dns"]
     san_display = ", ".join(san_entries[:8])
     if len(san_entries) > 8:
         san_display += f" ... (+{len(san_entries) - 8})"
@@ -949,7 +955,8 @@ def cmd_path_audit(context: CommandContext) -> CommandResult:
             continue
 
     shadowed = {
-        name: paths for name, paths in executable_names.items()
+        name: paths
+        for name, paths in executable_names.items()
         if len(paths) > 1 and name in {"python", "pip", "node", "npm", "git", "java", "code"}
     }
 
@@ -1065,7 +1072,9 @@ def cmd_process(context: CommandContext) -> CommandResult:
     else:
         sort_cpu = mode == "cpu"
         rows.sort(
-            key=lambda item: (item.get("cpu_percent") or 0) if sort_cpu else (getattr(item.get("memory_info"), "rss", 0) or 0),
+            key=lambda item: (
+                (item.get("cpu_percent") or 0) if sort_cpu else (getattr(item.get("memory_info"), "rss", 0) or 0)
+            ),
             reverse=True,
         )
         selected = rows[:10]
@@ -1120,8 +1129,10 @@ def cmd_sysreport(context: CommandContext) -> CommandResult:
 
 def _get_plugin_manager():
     try:
-        import core
         import types
+
+        import core
+
         pm = getattr(core, "plugin_manager", None)
         if pm is not None and not isinstance(pm, types.ModuleType):
             return pm
@@ -1186,6 +1197,7 @@ def cmd_plugin_new(context: CommandContext) -> CommandResult:
         return CommandResult(success=False, message="插件 ID 只能包含字母、数字、短横线和下划线", error="格式错误")
 
     import os
+
     base = pm.plugins_dir
     plugin_dir = os.path.join(base, plugin_id)
     if os.path.exists(plugin_dir):
@@ -1194,23 +1206,22 @@ def cmd_plugin_new(context: CommandContext) -> CommandResult:
     from core.plugin_template import write_plugin_template
 
     write_plugin_template(plugin_dir, plugin_id)
-    return CommandResult(
-        success=True,
-        message=f"已创建插件模板: {plugin_dir}\n使用 /plugin reload {plugin_id} 加载"
-    )
+    return CommandResult(success=True, message=f"已创建插件模板: {plugin_dir}\n使用 /plugin reload {plugin_id} 加载")
 
 
 # ---------------------------------------------------------------------------
 # ── Phase 3 Power-User Superpower Commands ─────────────────────────────────
 # ---------------------------------------------------------------------------
 
+
 def _run_cmd(args: list[str]) -> tuple[bool, str]:
     """静默执行命令并自动解码输出（动态检测系统 OEM 编码）"""
-    import subprocess
     import ctypes
     import locale
+    import subprocess
+
     try:
-        creationflags = 0x08000000 if os.name == 'nt' else 0
+        creationflags = 0x08000000 if os.name == "nt" else 0
         proc = subprocess.run(
             args,
             stdout=subprocess.PIPE,
@@ -1223,30 +1234,30 @@ def _run_cmd(args: list[str]) -> tuple[bool, str]:
             output += proc.stdout
         if proc.stderr:
             output += b"\n" + proc.stderr
-            
+
         encodings = []
-        if os.name == 'nt':
+        if os.name == "nt":
             try:
                 oem_cp = ctypes.windll.kernel32.GetOEMCP()
                 if oem_cp:
                     encodings.append(f"cp{oem_cp}")
             except Exception:
                 pass
-        
+
         pref_enc = locale.getpreferredencoding(False)
         if pref_enc:
             encodings.append(pref_enc.lower())
         for e in ["gbk", "utf-8", "utf-16", "cp437"]:
             if e not in encodings:
                 encodings.append(e)
-                
+
         for encoding in encodings:
             try:
                 decoded = output.decode(encoding)
                 return proc.returncode == 0, decoded
             except UnicodeDecodeError:
                 continue
-                
+
         primary_encoding = encodings[0] if encodings else "utf-8"
         return proc.returncode == 0, output.decode(primary_encoding, errors="replace")
     except Exception as e:
@@ -1265,12 +1276,8 @@ def cmd_wifi(context: CommandContext) -> CommandResult:
                 friendly_tip = "\n\n提示：系统的无线自动配置服务 (wlansvc) 未运行，请尝试在系统服务中启动它并重试。"
             elif "没有无线接口" in out_lower or "no wireless interface" in out_lower or "无无线接口" in out_lower:
                 friendly_tip = "\n\n提示：系统上未检测到无线网卡，该命令仅支持带有无线网卡的设备。"
-            return CommandResult(
-                success=False,
-                message=f"无法获取 Wi-Fi 列表：{out}{friendly_tip}",
-                error="执行失败"
-            )
-        
+            return CommandResult(success=False, message=f"无法获取 Wi-Fi 列表：{out}{friendly_tip}", error="执行失败")
+
         profiles = []
         for line in out.splitlines():
             if ":" in line or "：" in line:
@@ -1278,26 +1285,28 @@ def cmd_wifi(context: CommandContext) -> CommandResult:
                 key, val = line.split(delim, 1)
                 key_strip = key.strip()
                 val_strip = val.strip()
-                if any(k in key_strip for k in ["All User Profile", "所有用户配置文件", "用户配置文件", "User Profile"]):
+                if any(
+                    k in key_strip for k in ["All User Profile", "所有用户配置文件", "用户配置文件", "User Profile"]
+                ):
                     if val_strip:
                         profiles.append(val_strip)
         if not profiles:
             return CommandResult(success=True, message="未找到已保存的 Wi-Fi 配置文件。")
-        
+
         msg = "已保存的 Wi-Fi 配置文件列表：\n" + "\n".join(f"- {p}" for p in profiles)
         msg += "\n\n提示: 输入 '/wifi <名称>' 可查询该 Wi-Fi 的密码"
         return CommandResult(
-            success=True,
-            message=msg,
-            actions=[CommandAction(type="copy", label="复制列表", value="\n".join(profiles))]
+            success=True, message=msg, actions=[CommandAction(type="copy", label="复制列表", value="\n".join(profiles))]
         )
     else:
         # 查询特定 Wi-Fi 的明文密码
         name = args
         success, out = _run_cmd(["netsh", "wlan", "show", "profile", f"name={name}", "key=clear"])
         if not success:
-            return CommandResult(success=False, message=f"查询失败，未找到名为 '{name}' 的 Wi-Fi 配置文件。", error="未找到")
-        
+            return CommandResult(
+                success=False, message=f"查询失败，未找到名为 '{name}' 的 Wi-Fi 配置文件。", error="未找到"
+            )
+
         password = None
         for line in out.splitlines():
             if ":" in line or "：" in line:
@@ -1310,19 +1319,15 @@ def cmd_wifi(context: CommandContext) -> CommandResult:
                 if any(k in key_strip for k in ["Key Content", "关键内容", "金鑰內容", "关键", "金鑰", "Key"]):
                     password = val_strip
                     break
-        
+
         if password is not None:
             msg = f"Wi-Fi 名称: {name}\n明文密码: {password}"
             return CommandResult(
-                success=True,
-                message=msg,
-                actions=[CommandAction(type="copy", label="复制密码", value=password)]
+                success=True, message=msg, actions=[CommandAction(type="copy", label="复制密码", value=password)]
             )
         else:
             return CommandResult(
-                success=True,
-                message=f"Wi-Fi '{name}' 可能为无密码开放网络或未保存密码。",
-                error="无密码"
+                success=True, message=f"Wi-Fi '{name}' 可能为无密码开放网络或未保存密码。", error="无密码"
             )
 
 
@@ -1347,19 +1352,20 @@ def cmd_hosts(context: CommandContext) -> CommandResult:
 
 def cmd_port(context: CommandContext) -> CommandResult:
     import psutil
+
     args = context.args_text.strip().split()
     if not args:
         return CommandResult(success=False, message="请输入要查询的端口号，如: /port 8080", error="缺少参数")
-    
+
     try:
         port_number = int(args[0])
     except ValueError:
         return CommandResult(success=False, message="端口号必须为整数，如: /port 8080", error="格式错误")
-        
+
     should_kill = False
     if len(args) > 1 and args[1].lower() in ("kill", "free", "杀死", "关闭"):
         should_kill = True
-        
+
     pids = set()
     try:
         for conn in psutil.net_connections(kind="inet"):
@@ -1384,10 +1390,10 @@ def cmd_port(context: CommandContext) -> CommandResult:
                                     pids.add(int(pid))
                                 except ValueError:
                                     pass
-                                    
+
     if not pids:
         return CommandResult(success=True, message=f"目前没有进程占用 TCP/UDP 端口 {port_number}。")
-        
+
     process_details = []
     for pid in pids:
         try:
@@ -1397,7 +1403,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
             process_details.append({"pid": pid, "name": name, "exe": exe})
         except Exception:
             process_details.append({"pid": pid, "name": "未知进程", "exe": "未知路径"})
-            
+
     if should_kill:
         killed_pids = []
         errors = []
@@ -1418,16 +1424,17 @@ def cmd_port(context: CommandContext) -> CommandResult:
                     success_term = True
                 except Exception:
                     pass
-            
+
             if not success_term:
                 import subprocess
+
                 try:
                     proc_kill = subprocess.run(
                         ["taskkill", "/F", "/PID", str(pid)],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         creationflags=0x08000000,
-                        timeout=3
+                        timeout=3,
                     )
                     if proc_kill.returncode == 0:
                         killed_pids.append(pid)
@@ -1435,16 +1442,16 @@ def cmd_port(context: CommandContext) -> CommandResult:
                         errors.append(f"PID {pid}: taskkill 失败")
                 except Exception as ex:
                     errors.append(f"PID {pid}: {ex}")
-                    
+
         if killed_pids:
             msg = f"已成功终止占用端口 {port_number} 的进程:\n"
             msg += "\n".join(f"- PID {pid}" for pid in killed_pids)
             if errors:
-                msg += f"\n部分进程终止失败:\n" + "\n".join(errors)
+                msg += "\n部分进程终止失败:\n" + "\n".join(errors)
             return CommandResult(success=True, message=msg)
         else:
             return CommandResult(success=False, message="终止进程失败:\n" + "\n".join(errors), error="终止失败")
-            
+
     # List occupier details
     lines = [f"端口 {port_number} 被以下进程占用:"]
     for d in process_details:
@@ -1452,23 +1459,24 @@ def cmd_port(context: CommandContext) -> CommandResult:
         lines.append(f"  PID 进程号: {d['pid']}")
         lines.append(f"  路径: {d['exe']}")
         lines.append("")
-        
+
     lines.append(f"提示: 输入 '/port {port_number} kill' 可强行终止该占用进程。")
     msg = "\n".join(lines).strip()
-    
-    first_pid = str(process_details[0]['pid']) if process_details else ""
+
+    first_pid = str(process_details[0]["pid"]) if process_details else ""
     return CommandResult(
         success=True,
         message=msg,
         actions=[
             CommandAction(type="copy", label="复制第一个PID", value=first_pid),
-            CommandAction(type="copy", label="复制终止命令", value=f"/port {port_number} kill")
-        ]
+            CommandAction(type="copy", label="复制终止命令", value=f"/port {port_number} kill"),
+        ],
     )
 
 
 def cmd_env(context: CommandContext) -> CommandResult:
     import subprocess
+
     try:
         subprocess.Popen(["rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"])
         return CommandResult(success=True, message="已成功启动 Windows 系统环境变量编辑器。")
@@ -1525,6 +1533,7 @@ def cmd_clean_cache(context: CommandContext) -> CommandResult:
 
 def cmd_god(context: CommandContext) -> CommandResult:
     import subprocess
+
     god_mode_guid = "shell:::{ED7BA470-8E54-465E-825C-99712043E01C}"
     try:
         os.startfile(god_mode_guid)
@@ -1540,8 +1549,9 @@ def cmd_god(context: CommandContext) -> CommandResult:
 def cmd_explorer(context: CommandContext) -> CommandResult:
     import subprocess
     import time
+
     import psutil
-    
+
     try:
         subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], creationflags=0x08000000, timeout=5)
     except Exception:
@@ -1551,9 +1561,9 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
                     proc.kill()
                 except Exception:
                     pass
-                    
+
     time.sleep(1.0)
-    
+
     already_running = False
     try:
         for proc in psutil.process_iter(["name"]):
@@ -1562,16 +1572,16 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
                 break
     except Exception:
         pass
-        
+
     if already_running:
         return CommandResult(success=True, message="Windows 资源管理器已成功自动重启！")
-        
+
     explorer_path = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "explorer.exe")
     if not os.path.exists(explorer_path):
         explorer_path = "explorer.exe"
-        
+
     try:
-        subprocess.Popen([explorer_path], creationflags=0x00000008) # DETACHED_PROCESS
+        subprocess.Popen([explorer_path], creationflags=0x00000008)  # DETACHED_PROCESS
         return CommandResult(success=True, message="Windows 资源管理器已安全重启！")
     except Exception:
         try:
@@ -1585,10 +1595,10 @@ def cmd_conflict(context: CommandContext) -> CommandResult:
     try:
         from core import data_manager
         from core.hotkey_conflict_checker import check_conflict, is_hotkey_registered
-        
+
         if data_manager is None:
             return CommandResult(success=False, message="数据管理器未初始化", error="不可用")
-            
+
         app_data = data_manager.data
         all_items = []
         for folder in app_data.folders:
@@ -1597,55 +1607,55 @@ def cmd_conflict(context: CommandContext) -> CommandResult:
                     all_items.append(item)
     except Exception as e:
         return CommandResult(success=False, message=f"读取配置或检查热键冲突失败: {e}", error="错误")
-                
+
     if not all_items:
         return CommandResult(success=True, message="当前应用内没有启用任何带有快捷键的快捷方式项目。")
-        
+
     lines = []
     hotkey_to_items = {}
     for item in all_items:
         hotkey_to_items.setdefault(item.hotkey.strip().lower(), []).append(item)
-        
+
     internal_conflicts = []
     for hk, items in hotkey_to_items.items():
         if len(items) > 1:
             names = [it.name for it in items]
             internal_conflicts.append(f"- 快捷键 '{items[0].hotkey}' 被多个项目同时使用: {', '.join(names)}")
-            
+
     if internal_conflicts:
         lines.append("【应用内快捷键冲突】")
         lines.extend(internal_conflicts)
         lines.append("")
-        
+
     system_conflicts = []
     registration_status = []
-    
+
     for item in all_items:
         has_sys_conflict, sys_desc = check_conflict(item.hotkey)
         if has_sys_conflict:
             system_conflicts.append(f"- 项目 '{item.name}' 的快捷键 '{item.hotkey}' {sys_desc}")
-            
+
         if item.hotkey_modifiers and item.hotkey_key:
             occupied = is_hotkey_registered(item.hotkey_modifiers, item.hotkey_key)
             if occupied:
-                registration_status.append(f"- 项目 '{item.name}' 的快捷键 '{item.hotkey}' 注册失败，已被其他外部软件占用！")
-                
+                registration_status.append(
+                    f"- 项目 '{item.name}' 的快捷键 '{item.hotkey}' 注册失败，已被其他外部软件占用！"
+                )
+
     if system_conflicts:
         lines.append("【与系统快捷键或常用快捷键冲突】")
         lines.extend(system_conflicts)
         lines.append("")
-        
+
     if registration_status:
         lines.append("【系统全局热键占用检查 (Windows API)】")
         lines.extend(registration_status)
         lines.append("")
-        
+
     if not lines:
         return CommandResult(success=True, message="恭喜！所有已启用的快捷键均状态正常，没有发现任何冲突或占用。")
-        
+
     report_msg = "\n".join(lines).strip()
     return CommandResult(
-        success=True,
-        message=report_msg,
-        actions=[CommandAction(type="copy", label="复制报告", value=report_msg)]
+        success=True, message=report_msg, actions=[CommandAction(type="copy", label="复制报告", value=report_msg)]
     )
