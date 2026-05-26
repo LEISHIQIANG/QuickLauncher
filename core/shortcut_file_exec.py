@@ -118,11 +118,11 @@ class FileExecutionMixin:
 
         # 备用方案：使用 PowerShell 解析
         try:
-            ps_script = f'''
+            ps_script = f"""
             $shell = New-Object -ComObject WScript.Shell
             $shortcut = $shell.CreateShortcut("{path}")
             $shortcut.TargetPath
-            '''
+            """
 
             # 使用更隐蔽的参数
             ps_cmd = [

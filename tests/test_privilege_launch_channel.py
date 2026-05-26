@@ -60,10 +60,7 @@ def test_cmd_start_quotes_shell_metacharacter_arguments():
         r'"C:\A B\file.txt" ok&calc ok|more ok>file ok^escape',
     )
 
-    assert line == (
-        r'start "" "C:\Temp\doc.txt" "C:\A B\file.txt" '
-        r'"ok&calc" "ok|more" "ok>file" "ok^escape"'
-    )
+    assert line == (r'start "" "C:\Temp\doc.txt" "C:\A B\file.txt" ' r'"ok&calc" "ok|more" "ok>file" "ok^escape"')
 
 
 def test_cmd_start_rejects_control_characters():
