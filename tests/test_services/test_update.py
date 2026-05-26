@@ -242,8 +242,11 @@ class TestUpdateDownloader:
 
         assert any(event == "failed" and "哈希校验失败" in str(data) for event, data in events)
 
+    @patch("services.update.downloader._is_allowed_host", side_effect=[True, False])
     @patch("services.update.downloader.urlopen")
-    def test_download_rejects_redirect_to_untrusted_host(self, mock_urlopen):
+    def test_download_rejects_redirect_to_untrusted_host(self, mock_urlopen, _mock_allowed):
+        from urllib.request import Request
+
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Length": "5"}
         mock_resp.geturl.return_value = "https://evil.example/test.exe"
