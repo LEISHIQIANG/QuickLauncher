@@ -1,4 +1,4 @@
-"""Tests for PluginManager.install_from_zip — ZIP installation with rollback."""
+"""Tests for PluginManager.install_from_package — ZIP installation with rollback."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from core.command_registry import CommandRegistry
-from core.plugin_manager import PluginManager
+from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, PluginManager
 
 
 # ---------------------------------------------------------------------------
@@ -90,11 +90,11 @@ class TestInstallFromZipSuccess:
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
             os.makedirs(plugins_dir)
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
-            pid = pm.install_from_zip(zip_path)
+            pid = pm.install_from_package(zip_path)
             assert pid == "test_p"
             # Files should be in place
             assert _plugin_dir_contains(plugins_dir, "test_p", "plugin.json", "main.py")
@@ -106,11 +106,11 @@ class TestInstallFromZipSuccess:
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
             os.makedirs(plugins_dir)
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path, plugin_id="sub_test", subfolder="my_plugin")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
-            pid = pm.install_from_zip(zip_path)
+            pid = pm.install_from_package(zip_path)
             assert pid == "sub_test"
             assert _plugin_dir_contains(plugins_dir, "sub_test", "plugin.json", "main.py")
 
@@ -118,7 +118,7 @@ class TestInstallFromZipSuccess:
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
             os.makedirs(plugins_dir)
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             manifest = {
                 "id": "sub_test",
                 "name": "Sub Test",
@@ -132,7 +132,7 @@ class TestInstallFromZipSuccess:
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
             with pytest.raises(ValueError, match="outside its root folder"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_install_overwrite_with_confirmation(self):
         """When plugin already exists and user confirms, it is overwritten."""
@@ -145,12 +145,12 @@ class TestInstallFromZipSuccess:
             with open(os.path.join(existing, "old.txt"), "w") as f:
                 f.write("old")
 
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path, extra_files={"new.txt": "new"})
 
             confirmed = []
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
-            pid = pm.install_from_zip(
+            pid = pm.install_from_package(
                 zip_path,
                 on_overwrite=lambda name: (confirmed.append(name) or True),
             )
@@ -170,11 +170,11 @@ class TestInstallFromZipSuccess:
             with open(os.path.join(existing, "keep.txt"), "w") as f:
                 f.write("keep")
 
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
-            pid = pm.install_from_zip(
+            pid = pm.install_from_package(
                 zip_path,
                 on_overwrite=lambda name: False,
             )
@@ -189,54 +189,82 @@ class TestInstallFromZipValidation:
 
     def test_missing_plugin_json(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "empty.zip")
+            zip_path = os.path.join(tmp, "empty.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("random.txt", "data")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="plugin.json"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_invalid_manifest_json(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "bad.zip")
+            zip_path = os.path.join(tmp, "bad.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", "{bad json")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="解析 plugin.json"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
+
+    def test_rejects_zip_extension_even_when_archive_is_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "plugin.zip")
+            _make_plugin_zip(zip_path)
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            with pytest.raises(ValueError, match=r"\.qlzip"):
+                pm.install_from_package(zip_path)
+
+    def test_accepts_uppercase_qlzip_extension(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins_dir = os.path.join(tmp, "plugins")
+            os.makedirs(plugins_dir)
+            zip_path = os.path.join(tmp, "plugin.QLZIP")
+            _make_plugin_zip(zip_path)
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
+            assert pm.install_from_package(zip_path) == "test_p"
+
+    def test_invalid_qlzip_archive_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "not_zip.qlzip")
+            Path(zip_path).write_text("not a zip archive", encoding="utf-8")
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            with pytest.raises(ValueError, match=r"\.qlzip"):
+                pm.install_from_package(zip_path)
 
     def test_empty_plugin_id(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "no_id.zip")
+            zip_path = os.path.join(tmp, "no_id.qlzip")
             _make_plugin_zip(zip_path, plugin_id="")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="插件ID无效"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_invalid_plugin_id_format(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "bad_id.zip")
+            zip_path = os.path.join(tmp, "bad_id.qlzip")
             _make_plugin_zip(zip_path, plugin_id="has spaces")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="插件ID无效"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_rejects_unsafe_entry_path(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "bad_entry.zip")
+            zip_path = os.path.join(tmp, "bad_entry.qlzip")
             _make_plugin_zip(zip_path, manifest_overrides={"entry": "../outside.py"})
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="plugin.entry"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_rejects_duplicate_archive_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "duplicate.zip")
+            zip_path = os.path.join(tmp, "duplicate.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", json.dumps(
                     {"id": "dup", "name": "Dup", "version": "1", "entry": "main.py"}
@@ -246,7 +274,7 @@ class TestInstallFromZipValidation:
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="重复路径"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_install_existing_without_callback_raises(self):
         """When target exists and on_overwrite is None, ValueError is raised."""
@@ -256,16 +284,16 @@ class TestInstallFromZipValidation:
             existing = os.path.join(plugins_dir, "test_p")
             os.makedirs(existing)
 
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
             with pytest.raises(ValueError, match="已存在"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_too_many_files(self):
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "too_many.zip")
+            zip_path = os.path.join(tmp, "too_many.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", json.dumps(
                     {"id": "big", "name": "Big", "version": "1", "entry": "main.py"}
@@ -275,12 +303,12 @@ class TestInstallFromZipValidation:
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="文件过多|500"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
     def test_path_traversal_prevented(self):
         """ZIP with ``../`` paths should be rejected."""
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "traversal.zip")
+            zip_path = os.path.join(tmp, "traversal.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", json.dumps(
                     {"id": "safe", "name": "Safe", "version": "1"}
@@ -289,7 +317,7 @@ class TestInstallFromZipValidation:
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="路径穿越"):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
 
 
 class TestInstallFromZipRollback:
@@ -300,7 +328,7 @@ class TestInstallFromZipRollback:
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
             os.makedirs(plugins_dir)
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
 
             # Make a valid ZIP
             _make_plugin_zip(zip_path)
@@ -311,7 +339,7 @@ class TestInstallFromZipRollback:
             # OR: just verify that staging doesn't linger on success.
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
-            pid = pm.install_from_zip(zip_path)
+            pid = pm.install_from_package(zip_path)
             assert pid == "test_p"
             assert not (Path(plugins_dir) / ".staging").exists()
 
@@ -326,7 +354,7 @@ class TestInstallFromZipRollback:
             with open(os.path.join(target, "original.txt"), "w") as f:
                 f.write("original content")
 
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path, extra_files={"new.txt": "new content"})
 
             # Monkey-patch shutil.move to fail AFTER backup is created
@@ -347,7 +375,7 @@ class TestInstallFromZipRollback:
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
             with pytest.raises(OSError, match="模拟磁盘写入失败"):
-                pm.install_from_zip(
+                pm.install_from_package(
                     zip_path,
                     on_overwrite=lambda name: True,
                 )
@@ -362,13 +390,13 @@ class TestInstallFromZipRollback:
         with tempfile.TemporaryDirectory() as tmp:
             plugins_dir = os.path.join(tmp, "plugins")
             os.makedirs(plugins_dir)
-            zip_path = os.path.join(tmp, "bad.zip")
+            zip_path = os.path.join(tmp, "bad.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", "{}")  # missing id
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
             with pytest.raises(ValueError):
-                pm.install_from_zip(zip_path)
+                pm.install_from_package(zip_path)
             # No plugin directories created
             assert not os.path.exists(os.path.join(plugins_dir, "test_p"))
 
@@ -382,7 +410,7 @@ class TestInstallFromZipRollback:
             with open(os.path.join(target, "original.txt"), "w") as f:
                 f.write("original")
 
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
 
             # Make the primary move fail → triggers rollback
@@ -402,7 +430,7 @@ class TestInstallFromZipRollback:
 
             pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
             with pytest.raises(OSError, match="主移动失败"):
-                pm.install_from_zip(
+                pm.install_from_package(
                     zip_path,
                     on_overwrite=lambda name: True,
                 )
@@ -430,10 +458,14 @@ def _make_mixin_instance(plugin_manager, monkeypatch):
     import core
     monkeypatch.setattr(core, "plugin_manager", plugin_manager)
 
-    # Need to bind the method to the mixin instance
     from ui.config_window.settings_plugins_page import SettingsPluginsPageMixin
-    bound = SettingsPluginsPageMixin._on_install_plugin_clicked.__get__(mixin, SettingsPluginsPageMixin)
-    mixin._on_install_plugin_clicked = bound
+    for name in (
+        "_on_install_plugin_clicked",
+        "_install_plugin_package",
+        "_plugin_package_path_from_mime",
+        "eventFilter",
+    ):
+        setattr(mixin, name, getattr(SettingsPluginsPageMixin, name).__get__(mixin, SettingsPluginsPageMixin))
     return mixin
 
 
@@ -450,13 +482,14 @@ class TestInstallUIIntegration:
             os.makedirs(plugins_dir)
 
             # Create a valid plugin ZIP
-            zip_path = os.path.join(tmp, "plugin.zip")
+            zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
 
             # Mock QFileDialog
+            dialog_calls = []
             monkeypatch.setattr(
                 "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
-                lambda *a, **kw: (zip_path, "*.zip"),
+                lambda *a, **kw: (dialog_calls.append((a, kw)) or (zip_path, "*.qlzip")),
             )
 
             # Mock ThemedMessageBox so it doesn't block
@@ -477,15 +510,17 @@ class TestInstallUIIntegration:
             # Verify plugin was installed
             info = pm.get_plugin("test_p")
             assert info is not None
+            assert info.status == "enabled"
+            assert ".qlzip" in dialog_calls[0][0][3]
             # Verify scan was triggered
             assert mixin._rebuild_plugin_list.called
             # Verify success message was shown
             msgbox.information.assert_called_once()
             args, _ = msgbox.information.call_args
-            assert "安装成功" in args[1]
+            assert "启用成功" in args[1]
 
     def test_install_flow_failure_shows_error(self, monkeypatch, qapp):
-        """When install_from_zip raises, error dialog is shown."""
+        """When install_from_package raises, error dialog is shown."""
         from unittest.mock import MagicMock
         from ui.styles.themed_messagebox import ThemedMessageBox
 
@@ -493,13 +528,13 @@ class TestInstallUIIntegration:
             plugins_dir = os.path.join(tmp, "plugins")
             os.makedirs(plugins_dir)
 
-            zip_path = os.path.join(tmp, "bad.zip")
+            zip_path = os.path.join(tmp, "bad.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", "{bad")
 
             monkeypatch.setattr(
                 "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
-                lambda *a, **kw: (zip_path, "*.zip"),
+                lambda *a, **kw: (zip_path, "*.qlzip"),
             )
             msgbox = MagicMock()
             monkeypatch.setattr(ThemedMessageBox, "critical", msgbox.critical)
@@ -519,7 +554,7 @@ class TestInstallUIIntegration:
 
         monkeypatch.setattr(
             "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
-            lambda *a, **kw: ("", "*.zip"),
+            lambda *a, **kw: ("", "*.qlzip"),
         )
         msgbox = MagicMock()
         monkeypatch.setattr(ThemedMessageBox, "critical", msgbox.critical)
@@ -549,11 +584,11 @@ class TestInstallUIIntegration:
             assert pm.get_plugin("existing").status == "enabled"
 
             # Install a new plugin via ZIP
-            zip_path = os.path.join(tmp, "new.zip")
+            zip_path = os.path.join(tmp, "new.qlzip")
             _make_plugin_zip(zip_path, plugin_id="new_p")
             monkeypatch.setattr(
                 "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
-                lambda *a, **kw: (zip_path, "*.zip"),
+                lambda *a, **kw: (zip_path, "*.qlzip"),
             )
             msgbox = MagicMock()
             monkeypatch.setattr(ThemedMessageBox, "question", lambda *a, **kw: ThemedMessageBox.Yes)
@@ -569,3 +604,171 @@ class TestInstallUIIntegration:
             # Existing plugin should still be enabled
             info = pm.get_plugin("existing")
             assert info is not None and info.status == "enabled"
+            new_info = pm.get_plugin("new_p")
+            assert new_info is not None and new_info.status == "enabled"
+
+    def test_install_flow_overwrite_still_asks_confirmation(self, monkeypatch, qapp):
+        from unittest.mock import MagicMock
+        from ui.styles.themed_messagebox import ThemedMessageBox
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins_dir = os.path.join(tmp, "plugins")
+            os.makedirs(plugins_dir)
+            existing = os.path.join(plugins_dir, "test_p")
+            os.makedirs(existing)
+            Path(existing, "old.txt").write_text("old", encoding="utf-8")
+
+            zip_path = os.path.join(tmp, "plugin.qlzip")
+            _make_plugin_zip(zip_path)
+            monkeypatch.setattr(
+                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                lambda *a, **kw: (zip_path, "*.qlzip"),
+            )
+
+            msgbox = MagicMock()
+            msgbox.question.return_value = ThemedMessageBox.Yes
+            monkeypatch.setattr(ThemedMessageBox, "question", msgbox.question)
+            monkeypatch.setattr(ThemedMessageBox, "critical", msgbox.critical)
+            monkeypatch.setattr(ThemedMessageBox, "information", msgbox.information)
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
+            mixin = _make_mixin_instance(pm, monkeypatch)
+            mixin._on_install_plugin_clicked()
+
+            msgbox.question.assert_called_once()
+            assert pm.get_plugin("test_p").status == "enabled"
+
+    def test_install_flow_cancelled_enable_persists_disabled_state(self, monkeypatch, qapp):
+        from unittest.mock import MagicMock
+        from ui.styles.themed_messagebox import ThemedMessageBox
+        from tests.test_plugin_manager import _SAMPLE_MAIN_PY, _create_plugin_dir
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins_dir = os.path.join(tmp, "plugins")
+            os.makedirs(plugins_dir)
+            saved_states = []
+
+            _create_plugin_dir(plugins_dir, "test_p", main_py=_SAMPLE_MAIN_PY)
+            pm = PluginManager(
+                CommandRegistry(),
+                plugins_dir=plugins_dir,
+                save_callback=lambda ids: saved_states.append(list(ids)),
+            )
+            pm.scan_plugins()
+            assert pm.enable_plugin("test_p")
+            assert saved_states[-1] == ["test_p"]
+            pm.set_confirm_high_risk_callback(lambda info: False)
+
+            package_path = os.path.join(tmp, "plugin.qlzip")
+            _make_plugin_zip(
+                package_path,
+                manifest_overrides={"permissions": ["process.run"]},
+            )
+            monkeypatch.setattr(
+                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                lambda *a, **kw: (package_path, "*.qlzip"),
+            )
+
+            msgbox = MagicMock()
+            msgbox.question.return_value = ThemedMessageBox.Yes
+            monkeypatch.setattr(ThemedMessageBox, "question", msgbox.question)
+            monkeypatch.setattr(ThemedMessageBox, "critical", msgbox.critical)
+            monkeypatch.setattr(ThemedMessageBox, "information", msgbox.information)
+
+            mixin = _make_mixin_instance(pm, monkeypatch)
+            mixin._on_install_plugin_clicked()
+
+            assert pm.get_plugin("test_p").status == "loaded"
+            assert saved_states[-1] == []
+
+
+class _FakeUrl:
+    def __init__(self, path, local=True):
+        self._path = path
+        self._local = local
+
+    def isLocalFile(self):
+        return self._local
+
+    def toLocalFile(self):
+        return self._path
+
+
+class _FakeMime:
+    def __init__(self, urls):
+        self._urls = urls
+
+    def hasUrls(self):
+        return bool(self._urls)
+
+    def urls(self):
+        return self._urls
+
+
+class _FakeDropEvent:
+    def __init__(self, event_type, mime):
+        self._event_type = event_type
+        self._mime = mime
+        self.accepted = False
+        self.ignored = False
+
+    def type(self):
+        return self._event_type
+
+    def mimeData(self):
+        return self._mime
+
+    def acceptProposedAction(self):
+        self.accepted = True
+
+    def ignore(self):
+        self.ignored = True
+
+
+class TestPluginPackageDragDrop:
+    def test_drop_single_qlzip_installs_package(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from qt_compat import QEvent
+
+        with tempfile.TemporaryDirectory() as tmp:
+            package_path = os.path.join(tmp, "plugin.qlzip")
+            _make_plugin_zip(package_path)
+            pm = PluginManager(CommandRegistry(), plugins_dir=os.path.join(tmp, "plugins"))
+            mixin = _make_mixin_instance(pm, monkeypatch)
+            target = object()
+            mixin._plugin_package_drop_targets = [target]
+            mixin._install_plugin_package = MagicMock()
+
+            event = _FakeDropEvent(QEvent.Drop, _FakeMime([_FakeUrl(package_path)]))
+            assert mixin.eventFilter(target, event) is True
+
+            assert event.accepted is True
+            mixin._install_plugin_package.assert_called_once_with(package_path)
+
+    def test_drop_zip_or_multiple_files_is_ignored(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from qt_compat import QEvent
+
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "plugin.zip")
+            qlzip_path = os.path.join(tmp, "plugin.qlzip")
+            _make_plugin_zip(zip_path)
+            _make_plugin_zip(qlzip_path)
+            pm = PluginManager(CommandRegistry(), plugins_dir=os.path.join(tmp, "plugins"))
+            mixin = _make_mixin_instance(pm, monkeypatch)
+            target = object()
+            mixin._plugin_package_drop_targets = [target]
+            mixin._install_plugin_package = MagicMock()
+
+            zip_event = _FakeDropEvent(QEvent.Drop, _FakeMime([_FakeUrl(zip_path)]))
+            multi_event = _FakeDropEvent(
+                QEvent.Drop,
+                _FakeMime([_FakeUrl(qlzip_path), _FakeUrl(qlzip_path)]),
+            )
+
+            assert mixin.eventFilter(target, zip_event) is True
+            assert mixin.eventFilter(target, multi_event) is True
+
+            assert zip_event.ignored is True
+            assert multi_event.ignored is True
+            mixin._install_plugin_package.assert_not_called()

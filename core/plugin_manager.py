@@ -50,6 +50,11 @@ HIGH_RISK_PERMISSIONS = frozenset({
 
 
 PLUGIN_TRUST_LEVELS = ("builtin", "local-trusted", "community-unverified")
+PLUGIN_PACKAGE_EXTENSION = ".qlzip"
+
+
+def is_plugin_package_path(path: str | os.PathLike[str]) -> bool:
+    return Path(path).suffix.lower() == PLUGIN_PACKAGE_EXTENSION
 
 
 def _safe_relative_plugin_path(raw: str) -> str | None:
@@ -473,6 +478,10 @@ class PluginManager:
             except Exception:
                 logger.exception("保存插件启用状态失败")
 
+    def save_enabled_state(self) -> None:
+        """Persist the current enabled plugin ids without changing plugin state."""
+        self._save_enabled()
+
     @staticmethod
     def _default_plugins_dir() -> str:
         return os.path.join(os.path.dirname(__file__), "..", "plugins")
@@ -741,20 +750,45 @@ class PluginManager:
 
     # ---- installation ----
 
+    def install_from_package(
+        self,
+        package_path: str,
+        *,
+        on_overwrite: Callable[[str], bool] | None = None,
+    ) -> str | None:
+        """Install a plugin from a .qlzip archive.
+
+        Returns the ``plugin_id`` on success, or ``None`` if the user declined
+        to overwrite an existing plugin (requires *on_overwrite*).
+
+        Raises ``ValueError`` on any error (invalid package, manifest error,
+        validation failure, no *on_overwrite* callback when target exists).
+        """
+        import zipfile
+
+        if not is_plugin_package_path(package_path):
+            raise ValueError(f"插件安装包必须使用 {PLUGIN_PACKAGE_EXTENSION} 扩展名")
+
+        try:
+            return self._install_zip_archive(package_path, on_overwrite=on_overwrite)
+        except zipfile.BadZipFile as e:
+            raise ValueError(f"无效的 {PLUGIN_PACKAGE_EXTENSION} 插件包:\n{e}") from e
+
     def install_from_zip(
         self,
         zip_path: str,
         *,
         on_overwrite: Callable[[str], bool] | None = None,
     ) -> str | None:
-        """Install a plugin from a ZIP archive.
+        """Compatibility wrapper for plugin package installation."""
+        return self.install_from_package(zip_path, on_overwrite=on_overwrite)
 
-        Returns the ``plugin_id`` on success, or ``None`` if the user declined
-        to overwrite an existing plugin (requires *on_overwrite*).
-
-        Raises ``ValueError`` on any error (invalid ZIP, manifest error,
-        validation failure, no *on_overwrite* callback when target exists).
-        """
+    def _install_zip_archive(
+        self,
+        zip_path: str,
+        *,
+        on_overwrite: Callable[[str], bool] | None = None,
+    ) -> str | None:
         import json as json_mod
         import re
         import shutil

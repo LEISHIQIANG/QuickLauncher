@@ -120,8 +120,9 @@ class TrayApp(QObject):
                 risk_line = (
                     f"\n高风险权限: {', '.join(high_risk)}\n" if high_risk else "\n"
                 )
+                parent = getattr(self, "config_window", None) or QApplication.activeWindow()
                 reply = ThemedMessageBox.question(
-                    self.tray_icon if self.tray_icon else None,
+                    parent,
                     "启用插件",
                     f"插件「{name}」将与 QuickLauncher 主程序同权限运行。"
                     f"{risk_line}\n仅启用您信任的插件。确定要启用吗？",

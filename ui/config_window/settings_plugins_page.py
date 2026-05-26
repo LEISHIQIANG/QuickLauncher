@@ -6,7 +6,9 @@ import logging
 import os
 
 from core.i18n import tr
+from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, is_plugin_package_path
 from qt_compat import (
+    QEvent,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -28,6 +30,7 @@ logger = logging.getLogger(__name__)
 class SettingsPluginsPageMixin:
     def _setup_plugins_page(self, page):
         layout, group = page.add_group(tr("插件管理"))
+        self._setup_plugin_package_drop_targets(page, group)
 
         # Description
         desc = QLabel(
@@ -65,9 +68,9 @@ class SettingsPluginsPageMixin:
         install_tooltip(self.create_plugin_btn, "输入信息以创建并生成新的插件开发模板")
         btn_layout1.addWidget(self.create_plugin_btn)
 
-        self.install_plugin_btn = QPushButton("安装插件 (.zip)...")
+        self.install_plugin_btn = QPushButton("安装插件 (.qlzip)...")
         self.install_plugin_btn.clicked.connect(self._on_install_plugin_clicked)
-        install_tooltip(self.install_plugin_btn, "选择并安装 .zip 格式的插件包")
+        install_tooltip(self.install_plugin_btn, "选择并安装 .qlzip 格式的插件包")
         btn_layout1.addWidget(self.install_plugin_btn)
 
         layout.addLayout(btn_layout1)
@@ -91,6 +94,70 @@ class SettingsPluginsPageMixin:
 
         # Initial load
         self._rebuild_plugin_list()
+
+    def _setup_plugin_package_drop_targets(self, *widgets):
+        targets = list(getattr(self, "_plugin_package_drop_targets", []) or [])
+        for widget in widgets:
+            if widget is None or widget in targets:
+                continue
+            try:
+                widget.setAcceptDrops(True)
+                widget.installEventFilter(self)
+            except Exception:
+                continue
+            targets.append(widget)
+
+            viewport = getattr(widget, "viewport", lambda: None)()
+            if viewport is not None and viewport not in targets:
+                try:
+                    viewport.setAcceptDrops(True)
+                    viewport.installEventFilter(self)
+                    targets.append(viewport)
+                except Exception:
+                    pass
+
+            content_widget = getattr(widget, "content_widget", None)
+            if content_widget is not None and content_widget not in targets:
+                try:
+                    content_widget.setAcceptDrops(True)
+                    content_widget.installEventFilter(self)
+                    targets.append(content_widget)
+                except Exception:
+                    pass
+        self._plugin_package_drop_targets = targets
+
+    def eventFilter(self, obj, event):
+        if obj in (getattr(self, "_plugin_package_drop_targets", []) or []):
+            event_type = event.type()
+            if event_type in (QEvent.DragEnter, QEvent.DragMove):
+                if self._plugin_package_path_from_mime(event.mimeData()):
+                    event.acceptProposedAction()
+                    return True
+                event.ignore()
+                return True
+            if event_type == QEvent.Drop:
+                package_path = self._plugin_package_path_from_mime(event.mimeData())
+                if package_path:
+                    event.acceptProposedAction()
+                    self._install_plugin_package(package_path)
+                    return True
+                event.ignore()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _plugin_package_path_from_mime(self, mime_data):
+        if not mime_data or not mime_data.hasUrls():
+            return ""
+        urls = mime_data.urls()
+        if len(urls) != 1:
+            return ""
+        url = urls[0]
+        if not url.isLocalFile():
+            return ""
+        path = url.toLocalFile()
+        if not is_plugin_package_path(path) or not os.path.isfile(path):
+            return ""
+        return path
 
     def _plugin_scroll_value(self):
         try:
@@ -573,12 +640,27 @@ class SettingsPluginsPageMixin:
             ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
             return
 
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择插件安装包", "", "插件压缩包 (*.zip)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择插件安装包",
+            "",
+            f"QuickLauncher 插件包 (*{PLUGIN_PACKAGE_EXTENSION})",
+        )
         if not file_path:
             return
 
+        self._install_plugin_package(file_path)
+
+    def _install_plugin_package(self, file_path):
+        from core import plugin_manager
+        if plugin_manager is None:
+            ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
+            return
+
         try:
-            plugin_id = plugin_manager.install_from_zip(
+            previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
+                                if p.status == "enabled"}
+            plugin_id = plugin_manager.install_from_package(
                 file_path,
                 on_overwrite=lambda name: ThemedMessageBox.question(
                     self,
@@ -593,19 +675,34 @@ class SettingsPluginsPageMixin:
         if plugin_id is None:
             return  # user declined overwrite
 
-        # Success: scan & rebuild, preserving enabled state
-        previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins()
-                           if p.status == "enabled"}
+        # Success: scan & rebuild, preserving enabled state except the new plugin,
+        # which is enabled through the interactive risk-confirmation path below.
         plugin_manager.scan_plugins()
+        previous_enabled.discard(plugin_id)
         plugin_manager.auto_enable(list(previous_enabled))
+
+        enabled = plugin_manager.enable_plugin(plugin_id, interactive=True)
+        if not enabled:
+            plugin_manager.save_enabled_state()
         self._rebuild_plugin_list(preserve_scroll=True)
 
         info = plugin_manager.get_plugin(plugin_id)
         plugin_name = info.manifest.name if info else plugin_id
-        ThemedMessageBox.information(
-            self, "安装成功",
-            f"插件 \"{plugin_name}\" 已成功安装！\n\n安装不等于启用；启用时会再次确认插件执行风险。",
-        )
+        if enabled:
+            ThemedMessageBox.information(
+                self, "安装并启用成功",
+                f"插件 \"{plugin_name}\" 已成功安装并启用。",
+            )
+        elif info and info.status == "error":
+            ThemedMessageBox.warning(
+                self, "安装成功但启用失败",
+                f"插件 \"{plugin_name}\" 已安装，但启用失败:\n{info.error}",
+            )
+        else:
+            ThemedMessageBox.information(
+                self, "安装成功",
+                f"插件 \"{plugin_name}\" 已安装，但尚未启用。",
+            )
 
 
 class PluginCreateDialog(QDialog):

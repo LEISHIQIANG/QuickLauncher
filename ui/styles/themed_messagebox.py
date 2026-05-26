@@ -18,6 +18,7 @@ from qt_compat import (
     QtCompat,
     QTimer,
     QVBoxLayout,
+    QWidget,
 )
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11
@@ -41,6 +42,7 @@ class ThemedMessageBox(QDialog):
     No = 0x00010000
 
     def __init__(self, parent=None, icon_type=Information, title="", text="", buttons=Ok):
+        parent = self._coerce_parent(parent)
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
@@ -141,6 +143,10 @@ class ThemedMessageBox(QDialog):
 
         # 应用主题
         self._apply_theme()
+
+    @staticmethod
+    def _coerce_parent(parent):
+        return parent if parent is None or isinstance(parent, QWidget) else None
 
     def _get_icon_text(self, icon_type):
         """获取图标文本"""

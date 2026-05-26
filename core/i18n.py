@@ -348,7 +348,7 @@ _EN_US: dict[str, str] = {
     "没有找到任何插件": "No plugin",
     "插件管理器未初始化": "No manager",
     "新建开发插件...": "New...",
-    "安装插件 (.zip)...": "Install...",
+    "安装插件 (.qlzip)...": "Install...",
     "刷新插件列表": "Refresh",
     "打开插件目录": "Folder",
     "打开目录": "Open",
