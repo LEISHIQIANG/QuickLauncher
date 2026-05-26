@@ -253,6 +253,7 @@ class TestUpdateDownloader:
         class _UrlOpenCtx:
             """Plain context manager that doesn't suppress exceptions (unlike MagicMock whose
             __exit__ may return truthy by default)."""
+
             def __init__(self, resp):
                 self._resp = resp
 
