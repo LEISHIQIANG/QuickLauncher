@@ -1088,17 +1088,4 @@ ruff format core/ ui/ hooks/ services/
 
 ---
 
-## 致谢
-
-QuickLauncher 的开发离不开以下优秀的开源项目：
-
-- [PyQt5](https://www.riverbankcomputing.com/software/pyqt/) — 跨平台 GUI 框架
-- [Pillow](https://python-pillow.org/) — 图片处理库
-- [psutil](https://github.com/giampaolo/psutil) — 进程和系统监控
-- [pynput](https://github.com/moses-palmer/pynput) — 输入监控和模拟
-- [watchdog](https://github.com/gorakhargosh/watchdog) — 文件系统事件监控
-- [qrcode](https://github.com/lincolnloop/python-qrcode) — 二维码生成
-
----
-
 > **QuickLauncher** — 让效率从指尖开始。
