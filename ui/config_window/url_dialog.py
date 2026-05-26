@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import ShortcutItem, ShortcutType
+from core.i18n import tr
 from qt_compat import (
     QCheckBox,
     QColor,
@@ -107,7 +108,7 @@ class UrlDialog(BaseDialog):
         self._custom_icon_path = self.shortcut.icon_path or ""
         self._dialog_finished = False
 
-        self.setWindowTitle("编辑打开网址" if shortcut else "添加打开网址")
+        self.setWindowTitle(tr("编辑打开网址") if shortcut else tr("添加打开网址"))
         self.setMinimumWidth(420)
         self._latency_thread = None
         self._latency_request_id = 0
@@ -234,13 +235,13 @@ class UrlDialog(BaseDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
-        basic_layout.addRow("名称:", self.name_edit)
+        basic_layout.addRow(tr("名称:"), self.name_edit)
 
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("例如: https://www.google.com/search?q={input}")
         self.url_edit.textChanged.connect(self._update_icon_preview)
         self.url_edit.textChanged.connect(self._reset_latency_result)
-        basic_layout.addRow("网址:", self.url_edit)
+        basic_layout.addRow(tr("网址:"), self.url_edit)
 
         latency_layout = QHBoxLayout()
         latency_layout.setSpacing(6)
@@ -253,7 +254,7 @@ class UrlDialog(BaseDialog):
         self._latency_result_label.setStyleSheet("font-size: 12px; color: rgba(128, 128, 128, 0.9);")
         latency_layout.addWidget(self._latency_result_label)
         latency_layout.addStretch()
-        basic_layout.addRow("延迟:", latency_layout)
+        basic_layout.addRow(tr("延迟:"), latency_layout)
 
         var_layout = QHBoxLayout()
         var_layout.setSpacing(6)
@@ -270,7 +271,7 @@ class UrlDialog(BaseDialog):
             var_layout.addWidget(var_btn)
             self._url_var_buttons.append(var_btn)
         var_layout.addStretch()
-        basic_layout.addRow("参数:", var_layout)
+        basic_layout.addRow(tr("参数:"), var_layout)
 
         layout.addWidget(basic_group)
 
@@ -292,11 +293,11 @@ class UrlDialog(BaseDialog):
         self._clear_browser_btn = QPushButton("清除")
         self._clear_browser_btn.clicked.connect(self._clear_browser)
         browser_path_layout.addWidget(self._clear_browser_btn)
-        browser_layout.addRow("路径:", browser_path_layout)
+        browser_layout.addRow(tr("路径:"), browser_path_layout)
 
         self.browser_args_edit = QLineEdit()
         self.browser_args_edit.setPlaceholderText("可选，例如 --profile-directory=Default {url}")
-        browser_layout.addRow("参数:", self.browser_args_edit)
+        browser_layout.addRow(tr("参数:"), self.browser_args_edit)
         layout.addWidget(browser_group)
 
         # 图标设置
@@ -517,7 +518,7 @@ class UrlDialog(BaseDialog):
     def _browse_browser(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择浏览器",
+            tr("选择浏览器"),
             "",
             "可执行文件 (*.exe);;所有文件 (*.*)",
         )

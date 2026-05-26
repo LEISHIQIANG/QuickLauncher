@@ -3,6 +3,7 @@
 import os
 import sys
 
+from core.i18n import tr
 from qt_compat import (
     QDialog,
     QLabel,
@@ -223,7 +224,7 @@ class SupportDialog(QDialog):
             text_color = QColor(28, 28, 30, 140)
         painter.setPen(QPen(text_color))
         # 居中绘制在海报正下方 20px 处
-        painter.drawText(QRect(0, cy + ph + 20, self.width(), 25), Qt.AlignCenter, "✕ 点击空白处关闭")
+        painter.drawText(QRect(0, cy + ph + 20, self.width(), 25), Qt.AlignCenter, tr("✕ 点击空白处关闭"))
 
         painter.restore()
         painter.end()

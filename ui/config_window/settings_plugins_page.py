@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
+from core.i18n import tr
 from qt_compat import (
     QHBoxLayout,
     QLabel,
@@ -26,14 +27,16 @@ logger = logging.getLogger(__name__)
 
 class SettingsPluginsPageMixin:
     def _setup_plugins_page(self, page):
-        layout, group = page.add_group("插件管理")
+        layout, group = page.add_group(tr("插件管理"))
 
         # Description
         desc = QLabel(
-            "插件是扩展 QuickLauncher 功能的扩展模块。\n"
-            "当前兼容模式：插件与主程序同权限运行，仅安装您信任的插件。\n"
-            "插件声明权限为高风险提示，并非强权限隔离。\n"
-            "插件目录: plugins/"
+            tr(
+                "插件是扩展 QuickLauncher 功能的扩展模块。\n"
+                "当前兼容模式：插件与主程序同权限运行，仅安装您信任的插件。\n"
+                "插件声明权限为高风险提示，并非强权限隔离。\n"
+                "插件目录: plugins/"
+            )
         )
         desc.setObjectName("plugins_desc")
         desc.setWordWrap(True)

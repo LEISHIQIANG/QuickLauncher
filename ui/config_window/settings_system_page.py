@@ -93,6 +93,20 @@ class SettingsSystemPageMixin:
         theme_layout.addStretch()
         layout.addLayout(theme_layout)
 
+        # 语言
+        layout, group = page.add_group("语言")
+        language_layout = QHBoxLayout()
+        self.language_group = QButtonGroup(self)
+        self.chinese_radio = QRadioButton(tr("中文"))
+        self.english_radio = QRadioButton(tr("English"))
+        self.language_group.addButton(self.chinese_radio, 0)
+        self.language_group.addButton(self.english_radio, 1)
+        self.language_group.buttonClicked.connect(self._on_language_changed)
+        language_layout.addWidget(self.chinese_radio)
+        language_layout.addWidget(self.english_radio)
+        language_layout.addStretch()
+        layout.addLayout(language_layout)
+
         # 日志修复
         layout, group = page.add_group("日志修复")
         tools_layout = QHBoxLayout()

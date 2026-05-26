@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import random
+from core.i18n import tr
 from PyQt5.QtWidgets import QGraphicsOpacityEffect
 from PyQt5.QtGui import QRadialGradient, QLinearGradient
 from PyQt5.QtCore import Qt, QEasingCurve  # 引入核心 Qt 常量与缓动曲线
@@ -558,7 +559,7 @@ class DrinkCard(QFrame):
 class SettingsSupportPageMixin:
     def _setup_support_page(self, page):
         # 1. 页面头部卡片组件
-        layout, group = page.add_group("支持一下")
+        layout, group = page.add_group(tr("支持一下"))
         
         container = QFrame(page)
         container.setObjectName("SupportPageContainer")
@@ -580,13 +581,15 @@ class SettingsSupportPageMixin:
         self._cup_widget = WobblyCoffeeCup("☕", container)
         header_layout.addWidget(self._cup_widget)
         
-        self._support_title_lbl = QLabel("请开发者喝杯咖啡吧")
+        self._support_title_lbl = QLabel(tr("请开发者喝杯咖啡吧"))
         self._support_title_lbl.setAlignment(QtCompat.AlignCenter)
         header_layout.addWidget(self._support_title_lbl)
         
         self._support_desc_lbl = QLabel(
-            "QuickLauncher 是一款开源且免费的桌面效率工具，由开发者在业余时间独立开发维护。\n"
-            "您的赞助将被全额用于产品的日常维护与服务器开销。非常感谢您的暖心支持！❤️"
+            tr(
+                "QuickLauncher 是一款开源且免费的桌面效率工具，由开发者在业余时间独立开发维护。\n"
+                "您的赞助将被全额用于产品的日常维护与服务器开销。非常感谢您的暖心支持！❤️"
+            )
         )
         self._support_desc_lbl.setAlignment(QtCompat.AlignCenter)
         self._support_desc_lbl.setWordWrap(True)
@@ -603,10 +606,10 @@ class SettingsSupportPageMixin:
         drink_grid.setAlignment(QtCompat.AlignCenter)
         
         drinks_data = [
-            ("💧", "纯净矿泉水", 2.00, "#34C759", 0, 0),
-            ("☕", "香浓拿铁", 5.19, "#FF9500", 0, 1),
-            ("🍵", "沁心绿茶", 9.90, "#00C7BE", 1, 0),
-            ("🍹", "芝芝莓莓", 15.00, "#FF2D55", 1, 1)
+            ("💧", tr("纯净矿泉水"), 2.00, "#34C759", 0, 0),
+            ("☕", tr("香浓拿铁"), 5.19, "#FF9500", 0, 1),
+            ("🍵", tr("沁心绿茶"), 9.90, "#00C7BE", 1, 0),
+            ("🍹", tr("芝芝莓莓"), 15.00, "#FF2D55", 1, 1)
         ]
         
         for emoji, name, price, color, row, col in drinks_data:
@@ -617,7 +620,7 @@ class SettingsSupportPageMixin:
         v_layout.addWidget(drink_bar_widget)
         
         # 互动反馈消息标签
-        self._reaction_label = QLabel("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)")
+        self._reaction_label = QLabel(tr("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)"))
         self._reaction_label.setAlignment(QtCompat.AlignCenter)
         self._reaction_label.setWordWrap(True)
         v_layout.addWidget(self._reaction_label)
@@ -660,11 +663,11 @@ class SettingsSupportPageMixin:
         qr_btn_layout.setSpacing(8)
         qr_btn_layout.addStretch()  # 左侧拉伸，使按钮组在容器内完美水平居中
         
-        self._view_fullscreen_btn = QPushButton("⛶ 放大查看", self._qr_container)
+        self._view_fullscreen_btn = QPushButton(tr("⛶ 放大查看"), self._qr_container)
         self._view_fullscreen_btn.clicked.connect(self._on_support)
         self._view_fullscreen_btn.setProperty("is_custom_styled_btn", True)
         
-        self._close_qr_btn = QPushButton("✕ 关闭二维码", self._qr_container)
+        self._close_qr_btn = QPushButton(tr("✕ 关闭二维码"), self._qr_container)
         self._close_qr_btn.clicked.connect(self._close_qr)
         self._close_qr_btn.setProperty("is_custom_styled_btn", True)
         
@@ -684,10 +687,10 @@ class SettingsSupportPageMixin:
         footer_layout.setSpacing(12)
         footer_layout.setAlignment(QtCompat.AlignCenter)
         
-        self._star_btn = QPushButton("⭐ 点个 Star 鼓励一下", footer_widget)
+        self._star_btn = QPushButton(tr("⭐ 点个 Star 鼓励一下"), footer_widget)
         self._star_btn.clicked.connect(self._on_star_clicked)
         
-        self._feedback_btn = QPushButton("💬 反馈建议 / 进群交流", footer_widget)
+        self._feedback_btn = QPushButton(tr("💬 反馈建议 / 进群交流"), footer_widget)
         self._feedback_btn.clicked.connect(self._on_feedback_clicked)
         
         footer_layout.addWidget(self._star_btn)
@@ -856,10 +859,10 @@ class SettingsSupportPageMixin:
             
             # 根据饮品品类，定制具有专属氛围色彩的微章粒子组合
             emoji_presets = {
-                "纯净矿泉水": ["💧", "🧊", "✨", "❤️", "👍"],
-                "香浓拿铁": ["☕", "💖", "✨", "🔥", "🎉"],
-                "沁心绿茶": ["🍵", "🍃", "✨", "💚", "🍀"],
-                "芝芝莓莓": ["🍹", "🍓", "🌸", "✨", "🌈"]
+                tr("纯净矿泉水"): ["💧", "🧊", "✨", "❤️", "👍"],
+                tr("香浓拿铁"): ["☕", "💖", "✨", "🔥", "🎉"],
+                tr("沁心绿茶"): ["🍵", "🍃", "✨", "💚", "🍀"],
+                tr("芝芝莓莓"): ["🍹", "🍓", "🌸", "✨", "🌈"],
             }
             emojis = emoji_presets.get(name, ["❤️", "✨", "🎉"])
             for _ in range(4):
@@ -867,12 +870,12 @@ class SettingsSupportPageMixin:
  
         # 2. 定制温馨的反应消息
         reactions = {
-            "纯净矿泉水": "「感谢这瓶清爽的矿泉水！开发者喝完活力满满，瞬间充满干劲～ 💧🧊」",
-            "香浓拿铁": "「哇，是一杯拿铁咖啡！开发者大受鼓舞，今晚又要敲几百行代码了！🚀☕」",
-            "沁心绿茶": "「静心品茗，灵感如潮。感谢您的支持与厚爱，愿您每天工作顺心！🍃🍵」",
-            "芝芝莓莓": "「超棒的芝芝莓莓！开发者开心到起飞，甜度直接拉满啦！🍓✨🌈」"
+            tr("纯净矿泉水"): tr("「感谢这瓶清爽的矿泉水！开发者喝完活力满满，瞬间充满干劲～ 💧🧊」"),
+            tr("香浓拿铁"): tr("「哇，是一杯拿铁咖啡！开发者大受鼓舞，今晚又要敲几百行代码了！🚀☕」"),
+            tr("沁心绿茶"): tr("「静心品茗，灵感如潮。感谢您的支持与厚爱，愿您每天工作顺心！🍃🍵」"),
+            tr("芝芝莓莓"): tr("「超棒的芝芝莓莓！开发者开心到起飞，甜度直接拉满啦！🍓✨🌈」"),
         }
-        msg = reactions.get(name, f"「感谢您的支持！赞助金额: ¥{price:.2f} ❤️」")
+        msg = reactions.get(name, tr("「感谢您的支持！赞助金额: ¥{price:.2f} ❤️」", price=price))
         self._reaction_label.setText(msg)
  
         # 3. 平滑渐显主页面里的折叠式二维码卡片
@@ -924,8 +927,7 @@ class SettingsSupportPageMixin:
             anim.finished.connect(self._qr_container.hide)
             anim.start()
             self._qr_anim = anim
-            
-            self._reaction_label.setText("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)")
+            self._reaction_label.setText(tr("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)"))
  
     def _on_support(self):
         """触发全新全屏玻璃拟态收款弹窗，并智能携带当前点击的饮料数据。"""
@@ -937,10 +939,10 @@ class SettingsSupportPageMixin:
             color_hex = "#FF9500"
             
             drinks_data = [
-                ("纯净矿泉水", 2.00, "#34C759"),
-                ("香浓拿铁", 5.19, "#FF9500"),
-                ("沁心绿茶", 9.90, "#00C7BE"),
-                ("芝芝莓莓", 15.00, "#FF2D55")
+                (tr("纯净矿泉水"), 2.00, "#34C759"),
+                (tr("香浓拿铁"), 5.19, "#FF9500"),
+                (tr("沁心绿茶"), 9.90, "#00C7BE"),
+                (tr("芝芝莓莓"), 15.00, "#FF2D55"),
             ]
             for name, p, col in drinks_data:
                 if name in reaction_text:
@@ -954,7 +956,7 @@ class SettingsSupportPageMixin:
             dlg.exec_()
         except Exception as e:
             logger.exception("无法拉起全屏收款窗口")
-            ThemedMessageBox.critical(self, "错误", str(e))
+            ThemedMessageBox.critical(self, tr("错误"), str(e))
  
     def _on_star_clicked(self):
         """前往开源社区点星。"""

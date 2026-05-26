@@ -8,6 +8,7 @@ import sys
 
 from core import ShortcutItem, ShortcutType
 from core.builtin_commands import canonical_builtin_command
+from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
     QCheckBox,
@@ -219,7 +220,7 @@ class CommandDialog(BaseDialog):
         if not hasattr(self.shortcut, 'command_type'):
             self.shortcut.command_type = 'cmd'
 
-        self.setWindowTitle("编辑运行命令" if shortcut else "添加运行命令")
+        self.setWindowTitle(tr("编辑运行命令") if shortcut else tr("添加运行命令"))
         self.setMinimumWidth(460)
 
         self._setup_window_icon()
@@ -430,15 +431,15 @@ class CommandDialog(BaseDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
-        basic_layout.addRow("名称:", self.name_edit)
+        basic_layout.addRow(tr("名称:"), self.name_edit)
 
         # 类型
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["CMD 命令", "Python 代码", "内置命令"])
+        self.type_combo.addItems([tr("CMD 命令"), tr("Python 代码"), tr("内置命令")])
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         self.type_combo.showPopup = lambda: self._show_type_popup()
 
-        basic_layout.addRow("类型:", self.type_combo)
+        basic_layout.addRow(tr("类型:"), self.type_combo)
 
         layout.addWidget(basic_group)
 
@@ -604,7 +605,7 @@ class CommandDialog(BaseDialog):
         self._browse_workdir_btn = QPushButton("浏览...")
         self._browse_workdir_btn.clicked.connect(self._browse_workdir)
         workdir_layout.addWidget(self._browse_workdir_btn)
-        advanced_layout.addRow("工作目录:", workdir_layout)
+        advanced_layout.addRow(tr("工作目录:"), workdir_layout)
 
         option_row = QHBoxLayout()
         option_row.setSpacing(8)
@@ -773,7 +774,7 @@ class CommandDialog(BaseDialog):
         """显示类型选择弹出菜单"""
         menu = PopupMenu(theme=self.theme, radius=12, parent=self)
         self._type_menu = menu
-        items = ["CMD 命令", "Python 代码", "内置命令"]
+        items = [tr("CMD 命令"), tr("Python 代码"), tr("内置命令")]
         current = self.type_combo.currentText()
         for i, item_text in enumerate(items):
             def _make_cb(idx):
@@ -847,7 +848,7 @@ class CommandDialog(BaseDialog):
             self.variable_expansion_cb.setChecked(True)
 
     def _browse_workdir(self):
-        folder = QFileDialog.getExistingDirectory(self, "选择工作目录")
+        folder = QFileDialog.getExistingDirectory(self, tr("选择工作目录"))
         if folder:
             self.workdir_edit.setText(folder)
 

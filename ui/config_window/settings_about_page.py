@@ -2,6 +2,7 @@
 
 import os
 from core import APP_VERSION
+from core.i18n import tr
 from qt_compat import (
     QHBoxLayout,
     QIcon,
@@ -179,8 +180,8 @@ def _generate_html_content(items, theme):
     
     html = '<div style="font-family: \'Segoe UI\', \'Microsoft YaHei UI\'; padding: 4px 6px;">'
     for idx, item in enumerate(items):
-        title = item["title"]
-        points = item["points"]
+        title = tr(item["title"])
+        points = [tr(point) for point in item["points"]]
         
         margin_top = "0px" if idx == 0 else "12px"
         
@@ -204,9 +205,9 @@ def _generate_intro_html(theme):
     text_color = "#d1d1d6" if theme == "dark" else "#3a3a3c"
     return f"""
     <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 13px; color: {text_color}; line-height: 1.6;">
-        QuickLauncher 是一款面向 Windows 桌面的极速启动与轻量自动化效率工具。<br/><br/>
-        按下鼠标中键即可快速呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；
-        同时支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。
+        {tr("QuickLauncher 是一款面向 Windows 桌面的极速启动与轻量自动化效率工具。")}<br/><br/>
+        {tr("按下鼠标中键即可快速呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；")}
+        {tr("同时支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。")}
     </div>
     """
 
@@ -220,7 +221,7 @@ class SettingsAboutPageMixin:
             self.theme = self.data_manager.get_settings().theme
             
         # 1. 软件信息头部区域
-        layout, group = page.add_group("关于 QuickLauncher")
+        layout, group = page.add_group(tr("关于 QuickLauncher"))
         layout.setContentsMargins(0, 0, 0, 0)
         
         header_card = AboutCardFrame(self.theme, group)
@@ -280,7 +281,7 @@ class SettingsAboutPageMixin:
         page._developer_lbl = developer_lbl
         
         # 2. 软件简介 quote 卡片
-        layout, group = page.add_group("软件简介")
+        layout, group = page.add_group(tr("软件简介"))
         layout.setContentsMargins(0, 0, 0, 0)
         intro_card = AboutQuoteFrame(self.theme, group)
         intro_layout = QVBoxLayout(intro_card)
@@ -303,7 +304,7 @@ class SettingsAboutPageMixin:
         page._feature_card_data = []
         
         for section_title, items in SECTION_DATA.items():
-            layout, group = page.add_group(section_title)
+            layout, group = page.add_group(tr(section_title))
             layout.setContentsMargins(0, 0, 0, 0)
             
             card = AboutCardFrame(self.theme, group)
@@ -323,7 +324,7 @@ class SettingsAboutPageMixin:
             page._feature_card_data.append((section_title, items))
             
         # 4. 精致极简底栏区 (作者与开源信息)
-        layout, group = page.add_group("作者信息")
+        layout, group = page.add_group(tr("作者信息"))
         layout.setContentsMargins(0, 0, 0, 0)
         footer_card = AboutCardFrame(self.theme, group)
         footer_layout = QHBoxLayout(footer_card)
@@ -426,7 +427,7 @@ class SettingsAboutPageMixin:
         if hasattr(page, "_slogan_lbl") and page._slogan_lbl:
             slogan_html = f"""
             <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; margin-bottom: 8px;">
-                Windows 极速快捷启动与轻量自动化效率工具
+                {tr("Windows 极速快捷启动与轻量自动化效率工具")}
             </div>
             """
             page._slogan_lbl.setText(slogan_html)
@@ -434,7 +435,7 @@ class SettingsAboutPageMixin:
         if hasattr(page, "_developer_lbl") and page._developer_lbl:
             dev_html = f"""
             <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 11px; line-height: 1.3;">
-                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ 开发者: NAYTON</span><br/>
+                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ {tr("开发者: NAYTON")}</span><br/>
                 <a href="https://github.com/LEISHIQIANG/QuickLauncher"
                    style="color: {dev_badge_color}; font-size: 11px; text-decoration: none;"
                 >GitHub.com/LEISHIQIANG/QuickLauncher</a>
@@ -450,13 +451,13 @@ class SettingsAboutPageMixin:
                 lbl.setText(_generate_html_content(data, theme))
                 
         if hasattr(page, "_footer_lbl") and page._footer_lbl:
-            left_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color};">⚡ 开发者: NAYTON</div>"""
+            left_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color};">⚡ {tr("开发者: NAYTON")}</div>"""
             page._footer_lbl.setText(left_html)
             
         if hasattr(page, "_center_footer_lbl") and page._center_footer_lbl:
-            center_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; text-align: center;">开源协议：MIT License</div>"""
+            center_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; text-align: center;">{tr("开源协议：MIT License")}</div>"""
             page._center_footer_lbl.setText(center_html)
             
         if hasattr(page, "_right_footer_lbl") and page._right_footer_lbl:
-            right_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; text-align: right;">⭐ 感谢您的支持！</div>"""
+            right_html = f"""<div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; color: {desc_color}; text-align: right;">⭐ {tr("感谢您的支持！")}</div>"""
             page._right_footer_lbl.setText(right_html)

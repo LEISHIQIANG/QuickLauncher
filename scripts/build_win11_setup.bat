@@ -523,11 +523,6 @@ echo   [OK] Build successful! (Win11 optimized version)
 echo   Installer: dist\QuickLauncher_Setup_%APP_VERSION%.exe
 echo ========================================
 echo.
-echo   Starting packaged QuickLauncher.exe...
-if exist "dist\QuickLauncher\QuickLauncher.exe" (
-    start "" /D "%CD%\dist\QuickLauncher" "%CD%\dist\QuickLauncher\QuickLauncher.exe"
-    exit /b 0
-)
-
-echo   [!] Packaged executable not found: dist\QuickLauncher\QuickLauncher.exe
-exit /b 1
+echo   Starting installer...
+start "" "dist\QuickLauncher_Setup_%APP_VERSION%.exe"
+exit

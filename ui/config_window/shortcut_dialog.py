@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import ShortcutItem, ShortcutType
+from core.i18n import tr
 from qt_compat import (
     QCheckBox,
     QColor,
@@ -42,7 +43,7 @@ class ShortcutDialog(BaseDialog):
         self.shortcut = shortcut or ShortcutItem(type=ShortcutType.FILE)
         self._custom_icon_path = self.shortcut.icon_path or ""
 
-        self.setWindowTitle("编辑快捷方式" if shortcut else "添加快捷方式")
+        self.setWindowTitle(tr("编辑快捷方式") if shortcut else tr("添加快捷方式"))
         self.setMinimumWidth(380)
 
         self._setup_window_icon()
@@ -136,7 +137,7 @@ class ShortcutDialog(BaseDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
-        basic_layout.addRow("名称:", self.name_edit)
+        basic_layout.addRow(tr("名称:"), self.name_edit)
 
         # 目标路径
         target_layout = QHBoxLayout()
@@ -149,7 +150,7 @@ class ShortcutDialog(BaseDialog):
         browse_btn.clicked.connect(self._browse_target)
         target_layout.addWidget(browse_btn)
         self._browse_target_btn = browse_btn
-        basic_layout.addRow("目标:", target_layout)
+        basic_layout.addRow(tr("目标:"), target_layout)
 
         layout.addWidget(basic_group)
 
@@ -161,7 +162,7 @@ class ShortcutDialog(BaseDialog):
         # 参数
         self.args_edit = QLineEdit()
         self.args_edit.setPlaceholderText("可选，启动参数")
-        launch_layout.addRow("参数:", self.args_edit)
+        launch_layout.addRow(tr("参数:"), self.args_edit)
 
         # 工作目录
         workdir_layout = QHBoxLayout()
@@ -174,7 +175,7 @@ class ShortcutDialog(BaseDialog):
         workdir_btn.clicked.connect(self._browse_workdir)
         workdir_layout.addWidget(workdir_btn)
         self._browse_workdir_btn = workdir_btn
-        launch_layout.addRow("工作目录:", workdir_layout)
+        launch_layout.addRow(tr("工作目录:"), workdir_layout)
 
         # 以管理员身份运行
         self.run_as_admin_cb = QCheckBox("以管理员身份运行")
@@ -362,8 +363,8 @@ class ShortcutDialog(BaseDialog):
     def _browse_target(self):
         """浏览目标文件"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择目标", "",
-            "可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)"
+            self, tr("选择目标"), "",
+            tr("可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)")
         )
 
         if file_path:
@@ -390,7 +391,7 @@ class ShortcutDialog(BaseDialog):
 
     def _browse_workdir(self):
         """浏览工作目录"""
-        folder = QFileDialog.getExistingDirectory(self, "选择工作目录")
+        folder = QFileDialog.getExistingDirectory(self, tr("选择工作目录"))
         if folder:
             self.workdir_edit.setText(folder)
 

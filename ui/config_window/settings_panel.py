@@ -18,6 +18,7 @@ from qt_compat import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QGraphicsOpacityEffect,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -27,6 +28,7 @@ from qt_compat import (
     QPixmap,
     QPoint,
     QPropertyAnimation,
+    QParallelAnimationGroup,
     QPushButton,
     QRectF,
     QSize,
@@ -549,6 +551,8 @@ class BaseSettingPage(SmoothScrollArea):
             return "sort"
         if "主题" in title or "背景" in title or "外观" in title:
             return "palette"
+        if "语言" in title:
+            return "info"
         if "日志" in title:
             return "log"
         if "尺寸" in title or "布局" in title:
@@ -592,6 +596,8 @@ class BaseSettingPage(SmoothScrollArea):
             return QColor(54, 176, 116)
         if "主题" in title or "背景" in title or "外观" in title or "视觉" in title:
             return QColor(112, 101, 242)
+        if "语言" in title:
+            return QColor(28, 150, 130)
         if "弹窗" in title or "位置" in title or "触发" in title or "交互" in title:
             return QColor(45, 126, 235)
         if "关于" in title or "简介" in title or "作者" in title:
@@ -1135,6 +1141,120 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             
         self.nav_widget.setCurrentRow(0)
 
+    def _current_page_scroll_value(self, index: int) -> int:
+        page = self._pages.get(index)
+        if page is None or not hasattr(page, "verticalScrollBar"):
+            return 0
+        try:
+            return page.verticalScrollBar().value()
+        except Exception:
+            return 0
+
+    def _restore_page_scroll_value(self, index: int, value: int):
+        page = self._pages.get(index)
+        if page is None or not hasattr(page, "verticalScrollBar"):
+            return
+        try:
+            page.verticalScrollBar().setValue(value)
+        except Exception:
+            pass
+
+    def _rebuild_pages_for_language(self, current_index=0, scroll_value=0):
+        """Rebuild settings pages so translated source strings are recreated."""
+        self.nav_widget.blockSignals(True)
+        self.nav_widget.clear()
+
+        while self.content_stack.count():
+            widget = self.content_stack.widget(0)
+            self.content_stack.removeWidget(widget)
+            widget.deleteLater()
+
+        self._init_pages()
+        self._init_nav_items()
+
+        target_index = current_index if 0 <= current_index < self.content_stack.count() else 0
+        self._ensure_page_built(target_index)
+        self.content_stack.setCurrentIndex(target_index)
+        for row in range(self.nav_widget.count()):
+            item = self.nav_widget.item(row)
+            if item and item.data(QtCompat.UserRole) == target_index:
+                self.nav_widget.setCurrentRow(row)
+                break
+        self.nav_widget.blockSignals(False)
+        self._restore_page_scroll_value(target_index, scroll_value)
+        QTimer.singleShot(0, lambda: self._restore_page_scroll_value(target_index, scroll_value))
+
+    def _language_fade_targets(self):
+        return (self.nav_container, self.content_container)
+
+    def _set_language_fade_opacity(self, opacity: float):
+        for widget in self._language_fade_targets():
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(opacity)
+
+    def _clear_language_fade_effects(self):
+        for widget in self._language_fade_targets():
+            try:
+                widget.setGraphicsEffect(None)
+            except Exception:
+                pass
+
+    def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
+        group = QParallelAnimationGroup(self)
+        for widget in self._language_fade_targets():
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            effect.setOpacity(start)
+            anim = QPropertyAnimation(effect, b"opacity", group)
+            anim.setDuration(duration)
+            anim.setStartValue(start)
+            anim.setEndValue(end)
+            anim.setEasingCurve(easing)
+            group.addAnimation(anim)
+        return group
+
+    def _switch_language_with_animation(self, language: str):
+        """Fade text out, switch language, then fade text back in without movement."""
+        if getattr(self, "_language_animating", False):
+            return
+
+        current_index = self.content_stack.currentIndex()
+        scroll_value = self._current_page_scroll_value(current_index)
+        self._language_animating = True
+
+        self._set_language_fade_opacity(1.0)
+        fade_out = self._build_language_fade_group(1.0, 0.0, 240, QEasingCurve.InOutQuart)
+
+        def apply_language():
+            try:
+                self.data_manager.set_language(language)
+                self._rebuild_pages_for_language(current_index, scroll_value)
+                self._load_settings()
+                self._restore_page_scroll_value(current_index, scroll_value)
+                QTimer.singleShot(0, lambda: self._restore_page_scroll_value(current_index, scroll_value))
+                self.settings_changed.emit()
+            finally:
+                fade_in = self._build_language_fade_group(0.0, 1.0, 280, QEasingCurve.OutCubic)
+
+                def finish():
+                    self._language_animating = False
+                    self._language_fade_out = None
+                    self._language_fade_in = None
+                    self._clear_language_fade_effects()
+
+                fade_in.finished.connect(finish)
+                self._language_fade_in = fade_in
+                fade_in.start()
+
+        fade_out.finished.connect(apply_language)
+        self._language_fade_out = fade_out
+        fade_out.start()
+
 
 
 
@@ -1255,6 +1375,12 @@ class SettingsPanel(SettingsPageHelpersMixin, SettingsSystemPageMixin, SettingsA
             self.dark_radio.setChecked(True)
         else:
             self.light_radio.setChecked(True)
+
+        language = getattr(settings, "language", "zh_CN")
+        if language == "en_US":
+            self.english_radio.setChecked(True)
+        else:
+            self.chinese_radio.setChecked(True)
 
     def _load_appearance_settings(self, settings):
         self.icon_size_spin.setValue(settings.icon_size)
@@ -1617,6 +1743,17 @@ fso.DeleteFile WScript.ScriptFullName
         self.update()
 
         self.settings_changed.emit()
+
+    def _on_language_changed(self, button):
+        if self._updating:
+            return
+
+        new_language = "en_US" if button == self.english_radio else "zh_CN"
+        current_language = getattr(self.data_manager.get_settings(), "language", "zh_CN")
+        if current_language == new_language:
+            return
+
+        self._switch_language_with_animation(new_language)
 
     def _get_system_theme(self):
         """检测系统主题"""

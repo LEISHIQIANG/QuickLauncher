@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import AppData, DataManager, ShortcutItem, ShortcutType
+from core.i18n import tr
 from qt_compat import (
     QApplication,
     QColor,
@@ -247,7 +248,7 @@ class IconWidget(QFrame):
 
         layout.addWidget(self.icon_frame, alignment=QtCompat.AlignCenter)
 
-        self.name_label = QLabel(self.shortcut.name[:6] if self.shortcut.name else "未命名")
+        self.name_label = QLabel(self.shortcut.name[:6] if self.shortcut.name else tr("未命名"))
         self.name_label.setAlignment(QtCompat.AlignCenter)
         self.name_label.setStyleSheet("font-size: 11px; background: transparent; border: none;")
         self.name_label.setWordWrap(True)
@@ -658,7 +659,7 @@ class IconGrid(QWidget):
         # 添加弹性空间使标签垂直居中
         hint_layout.addStretch(1)
 
-        self.hint_label = QLabel("拖拽文件到此处添加\n或点击下方按钮新建\n\n拖拽图标可调整顺序")
+        self.hint_label = QLabel(tr("拖拽文件到此处添加\n或点击下方按钮新建\n\n拖拽图标可调整顺序"))
         self.hint_label.setAlignment(QtCompat.AlignCenter)
         self.hint_label.setStyleSheet("color: #8e8e93; font-size: 13px; line-height: 1.6;")
         from qt_compat import Qt
@@ -691,22 +692,22 @@ class IconGrid(QWidget):
         btn_layout.setSpacing(12)
         btn_layout.setAlignment(QtCompat.AlignHCenter)
 
-        self.add_file_btn = QPushButton("快捷方式")
+        self.add_file_btn = QPushButton(tr("快捷方式"))
         self.add_file_btn.setFixedHeight(36)
         self.add_file_btn.clicked.connect(self.add_file_requested.emit)
         btn_layout.addWidget(self.add_file_btn, 1)
 
-        self.add_hotkey_btn = QPushButton("快捷键")
+        self.add_hotkey_btn = QPushButton(tr("快捷键"))
         self.add_hotkey_btn.setFixedHeight(36)
         self.add_hotkey_btn.clicked.connect(self.add_hotkey_requested.emit)
         btn_layout.addWidget(self.add_hotkey_btn, 1)
 
-        self.add_url_btn = QPushButton("打开网址")
+        self.add_url_btn = QPushButton(tr("打开网址"))
         self.add_url_btn.setFixedHeight(36)
         self.add_url_btn.clicked.connect(self.add_url_requested.emit)
         btn_layout.addWidget(self.add_url_btn, 1)
 
-        self.add_command_btn = QPushButton("运行命令")
+        self.add_command_btn = QPushButton(tr("运行命令"))
         self.add_command_btn.setFixedHeight(36)
         self.add_command_btn.clicked.connect(self.add_command_requested.emit)
         btn_layout.addWidget(self.add_command_btn, 1)
@@ -722,6 +723,7 @@ class IconGrid(QWidget):
 
     def apply_theme(self, theme: str):
         """应用主题样式"""
+        self.retranslate_ui()
         if theme == "dark":
             btn_bg = "rgba(255, 255, 255, 0.18)"
             btn_border = "rgba(255, 255, 255, 0.22)"
@@ -792,6 +794,20 @@ class IconGrid(QWidget):
             btn.setGraphicsEffect(shadow)
 
         self.hint_label.setStyleSheet(f"color: {theme == 'dark' and '#8e8e93' or '#8e8e93'}; font-size: 13px; line-height: 1.6;")
+
+    def retranslate_ui(self):
+        if hasattr(self, "hint_label"):
+            self.hint_label.setText(tr("拖拽文件到此处添加\n或点击下方按钮新建\n\n拖拽图标可调整顺序"))
+        labels = (
+            ("add_file_btn", "快捷方式"),
+            ("add_hotkey_btn", "快捷键"),
+            ("add_url_btn", "打开网址"),
+            ("add_command_btn", "运行命令"),
+        )
+        for attr, text in labels:
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                btn.setText(tr(text))
 
     def _get_menu_stylesheet(self) -> str:
         """获取右键菜单样式 — 半透明背景配合模糊效果"""
@@ -1144,7 +1160,11 @@ class IconGrid(QWidget):
             logger.error("撤销批量操作失败: %s", e, exc_info=True)
 
     def _confirm_batch(self, title: str, count: int) -> bool:
-        return QMessageBox.question(self, title, f"确定要对 {count} 个快捷方式执行此操作吗？") == QMessageBox.Yes
+        return QMessageBox.question(
+            self,
+            tr(title),
+            tr("确定要对 {count} 个快捷方式执行此操作吗？", count=count),
+        ) == QMessageBox.Yes
 
     def _batch_delete(self, ids):
         if not ids or not self._confirm_batch("批量删除", len(ids)):
@@ -1199,12 +1219,12 @@ class IconGrid(QWidget):
         menu.add_action("移动所选到...", lambda ids=ids: self._batch_move(ids), enabled=bool(ids))
         menu.add_separator()
         if multi:
-            menu.add_action("删除所选", lambda ids=ids: self._batch_delete(ids), enabled=True)
+            menu.add_action(tr("删除所选"), lambda ids=ids: self._batch_delete(ids), enabled=True)
         else:
-            menu.add_action("删除", lambda: self.shortcut_delete_requested.emit(shortcut), enabled=True)
+            menu.add_action(tr("删除"), lambda: self.shortcut_delete_requested.emit(shortcut), enabled=True)
         if self._batch_undo_snapshot:
             menu.add_separator()
-            menu.add_action("撤销上次批量操作", self._restore_batch_snapshot, enabled=True)
+            menu.add_action(tr("撤销上次批量操作"), self._restore_batch_snapshot, enabled=True)
         menu.popup(pos)
 
     def _show_grid_context_menu(self, pos: QPoint):
@@ -1219,15 +1239,15 @@ class IconGrid(QWidget):
             pass
 
         menu = PopupMenu(theme=theme, radius=12, parent=None)
-        menu.add_action("快捷方式", lambda: self.add_file_requested.emit(), enabled=True)
-        menu.add_action("快捷键", lambda: self.add_hotkey_requested.emit(), enabled=True)
-        menu.add_action("打开网址", lambda: self.add_url_requested.emit(), enabled=True)
-        menu.add_action("运行命令", lambda: self.add_command_requested.emit(), enabled=True)
+        menu.add_action(tr("快捷方式"), lambda: self.add_file_requested.emit(), enabled=True)
+        menu.add_action(tr("快捷键"), lambda: self.add_hotkey_requested.emit(), enabled=True)
+        menu.add_action(tr("打开网址"), lambda: self.add_url_requested.emit(), enabled=True)
+        menu.add_action(tr("运行命令"), lambda: self.add_command_requested.emit(), enabled=True)
         menu.add_separator()
-        menu.add_action("内置图标", lambda: self.builtin_icon_requested.emit(), enabled=True)
+        menu.add_action(tr("内置图标"), lambda: self.builtin_icon_requested.emit(), enabled=True)
         if self._batch_undo_snapshot:
             menu.add_separator()
-            menu.add_action("撤销上次批量操作", self._restore_batch_snapshot, enabled=True)
+            menu.add_action(tr("撤销上次批量操作"), self._restore_batch_snapshot, enabled=True)
         menu.popup(pos)
 
     def _apply_menu_mask(self, menu: QMenu):

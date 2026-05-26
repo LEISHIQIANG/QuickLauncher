@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from core import ShortcutItem, ShortcutType
+from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
     QCheckBox,
@@ -246,7 +247,7 @@ class HotkeyDialog(BaseDialog):
         self.shortcut = shortcut or ShortcutItem(type=ShortcutType.HOTKEY)
         self._custom_icon_path = self.shortcut.icon_path or ""
 
-        self.setWindowTitle("编辑快捷键" if shortcut else "添加快捷键")
+        self.setWindowTitle(tr("编辑快捷键") if shortcut else tr("添加快捷键"))
         self.setMinimumWidth(420)
 
         self._setup_window_icon()
@@ -289,7 +290,7 @@ class HotkeyDialog(BaseDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
-        basic_layout.addRow("名称:", self.name_edit)
+        basic_layout.addRow(tr("名称:"), self.name_edit)
         layout.addWidget(basic_group)
 
         hotkey_group = QGroupBox("快捷键")

@@ -300,15 +300,20 @@ class TitleBar(QWidget):
         self.back_btn.setVisible(is_settings)
         self.icon_label.setVisible(not is_settings)
         self.settings_btn.setVisible(not is_settings)
+        self.retranslate_ui()
 
-        if is_settings:
-            self.title_label.setText(tr("设置"))
-            self.title_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
-            self.title_label.setContentsMargins(0, 0, 0, 0)
-        else:
+    def retranslate_ui(self):
+        self.icon_label.setToolTip(tr("检查更新"))
+        self.title_label.setToolTip(tr("检查更新"))
+        if not self._in_settings_mode:
             self.title_label.setText(f"QuickLauncher {APP_VERSION}")
             self.title_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
             self.title_label.setContentsMargins(0, 0, 0, 0)
+            return
+
+        self.title_label.setText(tr("设置"))
+        self.title_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
+        self.title_label.setContentsMargins(0, 0, 0, 0)
 
     def _on_back(self):
         self.back_requested.emit()
@@ -640,7 +645,7 @@ class ConfigWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.version_label)
 
         main_layout.addWidget(self.status_bar)
-        self.status_bar.showMessage("就绪")
+        self.status_bar.showMessage(tr("就绪"))
 
     def _ensure_settings_panel(self):
         """确保设置面板已创建（延迟初始化）"""
@@ -848,6 +853,10 @@ class ConfigWindow(QMainWindow):
 
         # 设置标题栏和设置面板主题
         self.title_bar.set_theme(theme)
+        if hasattr(self.title_bar, "retranslate_ui"):
+            self.title_bar.retranslate_ui()
+        if hasattr(self, "_refresh_status_bar"):
+            self._refresh_status_bar()
         if hasattr(self, "settings_panel") and hasattr(self.settings_panel, "apply_theme"):
             self.settings_panel.apply_theme(theme)
 
@@ -877,6 +886,14 @@ class ConfigWindow(QMainWindow):
     def _on_folder_selected(self, folder_id: str):
         """选中文件夹"""
         self.icon_grid.load_folder(folder_id)
+        self._refresh_status_bar(folder_id)
+
+    def _refresh_status_bar(self, folder_id: str | None = None):
+        if folder_id is None:
+            folder_id = getattr(self.icon_grid, "current_folder_id", None)
+        if not folder_id:
+            self.status_bar.showMessage(tr("就绪"))
+            return
         folder = self.data_manager.data.get_folder_by_id(folder_id)
         if folder:
             # 计算所有文件夹的总项数

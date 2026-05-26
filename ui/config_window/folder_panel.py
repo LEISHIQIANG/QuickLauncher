@@ -20,6 +20,7 @@ from qt_compat import (
 
 from ui.utils.window_effect import enable_window_shadow_and_round_corners, enable_acrylic_for_config_window, is_win11, get_window_effect
 from core import DataManager
+from core.i18n import tr
 from ui.styles.style import PopupMenu, get_dialog_stylesheet
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.dialog_helper import center_dialog_on_main_window
@@ -86,11 +87,11 @@ class FolderInputDialog(BaseDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(tr("取消"))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         
-        ok_btn = QPushButton("确定")
+        ok_btn = QPushButton(tr("确定"))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
@@ -118,7 +119,7 @@ class FolderImportDialog(BaseDialog):
 
     def __init__(self, parent=None, folder_name=""):
         super().__init__(parent)
-        self.setWindowTitle("导入文件夹")
+        self.setWindowTitle(tr("导入文件夹"))
         self.setModal(True)
         self.setMinimumWidth(240)
 
@@ -127,17 +128,17 @@ class FolderImportDialog(BaseDialog):
         layout.setContentsMargins(12, 12, 12, 12)
 
         # 标题
-        title_label = QLabel(f"将创建新分类: {folder_name}")
+        title_label = QLabel(tr("将创建新分类: {folder_name}", folder_name=folder_name))
         title_label.setStyleSheet("font-weight: 400; font-size: 14px;")
         layout.addWidget(title_label)
 
         # 说明文本
-        info_label = QLabel("是否启用文件夹自动同步?\n(启用后,文件夹内容变化时会自动更新)")
+        info_label = QLabel(tr("是否启用文件夹自动同步?\n(启用后,文件夹内容变化时会自动更新)"))
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
         # 复选框
-        self.sync_check = QCheckBox("启用自动同步")
+        self.sync_check = QCheckBox(tr("启用自动同步"))
         self.sync_check.setChecked(True)  # 默认启用
         layout.addWidget(self.sync_check)
 
@@ -145,11 +146,11 @@ class FolderImportDialog(BaseDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(tr("取消"))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
-        ok_btn = QPushButton("确定")
+        ok_btn = QPushButton(tr("确定"))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self.accept)
         btn_layout.addWidget(ok_btn)
@@ -409,7 +410,7 @@ class FolderPanel(QWidget):
         list_frame_layout.addWidget(self.folder_list)
 
         # 新建按钮 - 放在 list_frame 内部，底框包含按钮
-        self.add_btn = QPushButton("＋ 新建分类")
+        self.add_btn = QPushButton(tr("＋ 新建分类"))
         self.add_btn.clicked.connect(self._add_folder)
         self.add_btn.setFixedHeight(36)
         list_frame_layout.addWidget(self.add_btn)
@@ -420,6 +421,7 @@ class FolderPanel(QWidget):
         self.apply_theme(self._get_current_theme())
 
     def apply_theme(self, theme: str):
+        self.retranslate_ui()
         if theme == "dark":
             frame_bg = "rgba(255, 255, 255, 0.06)"
             frame_border = "rgba(255, 255, 255, 0.10)"
@@ -502,6 +504,10 @@ class FolderPanel(QWidget):
         shadow.setOffset(0, 2)
         shadow.setColor(QColor(0, 0, 0, 35 if theme == "dark" else 20))
         self.add_btn.setGraphicsEffect(shadow)
+
+    def retranslate_ui(self):
+        if hasattr(self, "add_btn"):
+            self.add_btn.setText(tr("＋ 新建分类"))
     
     def _get_current_theme(self) -> str:
         """获取当前主题"""
@@ -1023,7 +1029,7 @@ class FolderPanel(QWidget):
 
         theme = self._get_current_theme()
         menu = PopupMenu(theme=theme, radius=12, parent=None)
-        menu.add_action("重命名", lambda: self._rename_folder(folder_id), enabled=True)
+        menu.add_action(tr("重命名"), lambda: self._rename_folder(folder_id), enabled=True)
 
         # 新增: 绑定文件夹相关菜单
         if folder.linked_path:
@@ -1040,12 +1046,12 @@ class FolderPanel(QWidget):
 
         if not folder.is_system:
             menu.add_separator()
-            menu.add_action("删除", lambda: self._delete_folder(folder_id), enabled=True)
+            menu.add_action(tr("删除"), lambda: self._delete_folder(folder_id), enabled=True)
         menu.popup(self.folder_list.mapToGlobal(pos))
 
     def _add_folder(self):
         """添加文件夹"""
-        dialog = FolderInputDialog(self, "新建分类", "请输入分类名称:")
+        dialog = FolderInputDialog(self, tr("新建分类"), tr("请输入分类名称:"))
         if dialog.exec_():
             name = dialog.get_text()
             if name:
@@ -1066,7 +1072,7 @@ class FolderPanel(QWidget):
         if not folder:
             return
         
-        dialog = FolderInputDialog(self, "重命名", "请输入新名称:", folder.name)
+        dialog = FolderInputDialog(self, tr("重命名"), tr("请输入新名称:"), folder.name)
         if dialog.exec_():
             name = dialog.get_text()
             if name:
@@ -1085,8 +1091,8 @@ class FolderPanel(QWidget):
 
         confirmed = ThemedMessageBox.question(
             self,
-            "确认删除",
-            f"确定要删除文件夹 '{folder.name}' 吗?\n其中的快捷方式也会被删除。",
+            tr("确认删除"),
+            tr("确定要删除文件夹 '{name}' 吗?\n其中的快捷方式也会被删除。", name=folder.name),
             theme
         )
 
