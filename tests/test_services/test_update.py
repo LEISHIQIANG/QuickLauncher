@@ -251,17 +251,16 @@ class TestUpdateDownloader:
         mock_resp.read.return_value = b""
         mock_urlopen.return_value.__enter__.return_value = mock_resp
         downloader = UpdateDownloader()
-        events = []
-        downloader.add_listener(lambda event, data: events.append((event, data)))
-
-        downloader._do_download(
-            "https://github.com/test.exe",
-            "G:/updates",
-            "sha256:" + "f" * 64,
-            allowed_hosts=("github.com",),
-        )
-
-        assert any(event == "failed" and "最终下载域名不受信任" in str(data) for event, data in events)
+        with patch.object(downloader, "_notify") as mock_notify:
+            downloader._do_download(
+                "https://github.com/test.exe",
+                "G:/updates",
+                "sha256:" + "f" * 64,
+                allowed_hosts=("github.com",),
+            )
+            failed_calls = [c for c in mock_notify.call_args_list if c[0][0] == "failed"]
+            assert failed_calls, f"_notify('failed', ...) never called. All calls: {mock_notify.call_args_list}"
+            assert any("最终下载域名不受信任" in str(c[0][1]) for c in failed_calls)
 
 
 class TestUpdateInstaller:
