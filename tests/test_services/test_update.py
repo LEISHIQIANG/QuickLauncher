@@ -250,6 +250,7 @@ class TestUpdateDownloader:
         mock_resp.geturl.return_value = "https://evil.example/test.exe"
         mock_resp.read.return_value = b""
         mock_urlopen.return_value.__enter__.return_value = mock_resp
+        mock_urlopen.return_value.__exit__.return_value = False
         downloader = UpdateDownloader()
         with patch.object(downloader, "_notify") as mock_notify:
             downloader._do_download(
