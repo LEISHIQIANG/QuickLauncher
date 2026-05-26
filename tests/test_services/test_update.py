@@ -265,7 +265,11 @@ class TestUpdateDownloader:
 
         mock_urlopen.return_value = _UrlOpenCtx(mock_resp)
         downloader = UpdateDownloader()
-        with patch.object(downloader, "_notify") as mock_notify:
+        with (
+            patch.object(downloader, "_notify") as mock_notify,
+            patch("services.update.downloader.os.makedirs"),
+            patch("builtins.open", mock_open()),
+        ):
             downloader._do_download(
                 "https://github.com/test.exe",
                 "G:/updates",
