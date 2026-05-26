@@ -620,7 +620,8 @@ class StyleSheet:
         selection_text = Colors.get_selection_text(theme)
         """获取下拉框样式"""
         if theme == "dark":
-            return """
+            return (
+                """
                 QComboBox {
                     background-color: rgba(190, 190, 197, 0.22);
                     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -674,9 +675,13 @@ class StyleSheet:
                     color: {selection_text};
                     border: 1px solid rgba(10, 132, 255, 0.45);
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
+            """.replace("{selection_bg}", selection_bg)
+                .replace("{selection_hover_bg}", selection_hover_bg)
+                .replace("{selection_text}", selection_text)
+            )
         else:
-            return """
+            return (
+                """
                 QComboBox {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -730,7 +735,10 @@ class StyleSheet:
                     color: {selection_text};
                     border: 1px solid rgba(0, 122, 255, 0.25);
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
+            """.replace("{selection_bg}", selection_bg)
+                .replace("{selection_hover_bg}", selection_hover_bg)
+                .replace("{selection_text}", selection_text)
+            )
 
     @staticmethod
     def get_groupbox_style(theme: str) -> str:
@@ -1252,7 +1260,8 @@ class Glassmorphism:
         selection_text = Colors.get_selection_text(theme)
         """获取拟态列表样式"""
         if theme == "dark":
-            return """
+            return (
+                """
                 QListWidget {
                     background: rgba(30, 30, 34, 0.5);
                     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1274,9 +1283,13 @@ class Glassmorphism:
                 QListWidget::item:hover:!selected {
                     background: {selection_hover_bg};
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
+            """.replace("{selection_bg}", selection_bg)
+                .replace("{selection_hover_bg}", selection_hover_bg)
+                .replace("{selection_text}", selection_text)
+            )
         else:
-            return """
+            return (
+                """
                 QListWidget {
                     background: rgba(240, 240, 245, 0.4);
                     border: 1px solid rgba(0, 0, 0, 0.05);
@@ -1298,7 +1311,10 @@ class Glassmorphism:
                 QListWidget::item:hover:!selected {
                     background: {selection_hover_bg};
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
+            """.replace("{selection_bg}", selection_bg)
+                .replace("{selection_hover_bg}", selection_hover_bg)
+                .replace("{selection_text}", selection_text)
+            )
 
     @staticmethod
     def get_full_glassmorphism_stylesheet(theme: str) -> str:

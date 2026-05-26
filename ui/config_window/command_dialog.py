@@ -823,7 +823,9 @@ class CommandDialog(BaseDialog):
         params_layout = QVBoxLayout()
         self.command_params_edit = QPlainTextEdit()
         self.command_params_edit.setFixedHeight(72)
-        self.command_params_edit.setPlaceholderText("每行一个参数: name,type,required,default,choice1|choice2\n例如: host,text,true,,")
+        self.command_params_edit.setPlaceholderText(
+            "每行一个参数: name,type,required,default,choice1|choice2\n例如: host,text,true,,"
+        )
         params_btn_row = QHBoxLayout()
         add_param_btn = QPushButton("新增参数")
         add_param_btn.clicked.connect(self._add_param_template_line)
@@ -1481,7 +1483,9 @@ class CommandDialog(BaseDialog):
             self.capture_output_cb.setChecked(getattr(self.shortcut, "capture_output", False))
             self.capture_timeout_spin.setValue(int(getattr(self.shortcut, "command_timeout_seconds", 10.0) or 10.0))
             self._set_command_panel_size(getattr(self.shortcut, "command_panel_size", "medium"))
-            self.command_params_edit.setPlainText(self._format_command_params(getattr(self.shortcut, "command_params", [])))
+            self.command_params_edit.setPlainText(
+                self._format_command_params(getattr(self.shortcut, "command_params", []))
+            )
             self.command_env_edit.setPlainText(self._format_env(getattr(self.shortcut, "command_env", {})))
             enc = str(getattr(self.shortcut, "command_encoding", "auto") or "auto").lower()
             idx = self.command_encoding_combo.findData(enc)

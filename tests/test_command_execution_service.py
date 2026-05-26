@@ -129,6 +129,8 @@ def test_shortcut_capture_cancel_kills_process(monkeypatch):
     assert done.wait(2)
     assert killed == [True]
     assert results[0].error == "已取消"
+
+
 def test_shortcut_command_forwards_stream_updates(monkeypatch):
     import core
 

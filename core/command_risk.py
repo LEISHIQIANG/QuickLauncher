@@ -25,11 +25,19 @@ _DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
     ("shutdown", re.compile(r"\bshutdown\s+/(s|r|g|p)\b", re.I), "关机或重启"),
     ("registry_delete", re.compile(r"\breg\s+delete\b", re.I), "删除注册表项"),
     ("powershell_remove", re.compile(r"\b(remove-item|rm)\b.*\b(-recurse|-force)\b", re.I), "PowerShell 强制删除"),
-    ("powershell_exec_policy", re.compile(r"\bset-executionpolicy\b|(?:^|\s)-executionpolicy\s+bypass\b", re.I), "修改或绕过 PowerShell 执行策略"),
+    (
+        "powershell_exec_policy",
+        re.compile(r"\bset-executionpolicy\b|(?:^|\s)-executionpolicy\s+bypass\b", re.I),
+        "修改或绕过 PowerShell 执行策略",
+    ),
     ("service_control", re.compile(r"\b(sc|net)\s+(delete|stop|start|config)\b", re.I), "控制系统服务"),
     ("diskpart", re.compile(r"\bdiskpart\b|\bbcdedit\b|\bbootrec\b", re.I), "磁盘或启动配置命令"),
     ("takeown_icacls", re.compile(r"\b(takeown|icacls)\b.*\b(/grant|/reset|/f)\b", re.I), "修改文件所有权或 ACL"),
-    ("cmd_chain_delete", re.compile(r"\bcmd(?:\.exe)?\b.*\s/[ck]\s+.*\b(del|erase|rd|rmdir)\b", re.I), "通过 cmd 链式删除"),
+    (
+        "cmd_chain_delete",
+        re.compile(r"\bcmd(?:\.exe)?\b.*\s/[ck]\s+.*\b(del|erase|rd|rmdir)\b", re.I),
+        "通过 cmd 链式删除",
+    ),
     ("taskkill_force", re.compile(r"\btaskkill\b.*\s/f\b", re.I), "强制结束进程"),
 ]
 
@@ -64,4 +72,3 @@ def assess_command_risk(
                 risks.append(CommandRisk("warn", code, message))
 
     return risks
-

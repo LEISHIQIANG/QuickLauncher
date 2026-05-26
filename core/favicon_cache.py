@@ -875,9 +875,7 @@ def _qt_raster_to_png(data: bytes, target: str, source: str = "") -> bool:
             )
             return False
         if image.width() * image.height() > _MAX_IMAGE_PIXELS:
-            logger.warning(
-                "图标获取：Qt 图片像素过大 source=%s size=%sx%s", source, image.width(), image.height()
-            )
+            logger.warning("图标获取：Qt 图片像素过大 source=%s size=%sx%s", source, image.width(), image.height())
             return False
         image = image.convertToFormat(QImage.Format_ARGB32)
         if min(image.width(), image.height()) <= 2 or not _qimage_has_visible_pixels(image):

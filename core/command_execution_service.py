@@ -200,6 +200,7 @@ class CommandExecutionService:
                 and not bool(getattr(shortcut, "show_window", False))
                 and not bool(getattr(shortcut, "run_as_admin", False))
             ):
+
                 def _update(result: CommandResult) -> None:
                     if not handle.cancelled and on_update is not None:
                         on_update(handle.request_id, result, None)

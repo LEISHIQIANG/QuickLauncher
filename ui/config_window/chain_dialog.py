@@ -82,7 +82,15 @@ class StepCardWidget(QFrame):
     clicked = pyqtSignal(int)
     step_changed = pyqtSignal(int)  # 参数变更通知
 
-    def __init__(self, index: int, step: dict, shortcut_name: str, shortcut_type: ShortcutType, icon: QPixmap | None = None, parent=None):
+    def __init__(
+        self,
+        index: int,
+        step: dict,
+        shortcut_name: str,
+        shortcut_type: ShortcutType,
+        icon: QPixmap | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.step_index = index
         self._selected = False
@@ -120,8 +128,7 @@ class StepCardWidget(QFrame):
         display_name = shortcut_name or step.get("shortcut_id", "???")
         name_label = QLabel(display_name)
         name_label.setStyleSheet(
-            "font-size: 13px; font-weight: 400; "
-            "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
+            "font-size: 13px; font-weight: 400; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
         )
         layout.addWidget(name_label, 1)
 
@@ -200,8 +207,7 @@ class StepCardWidget(QFrame):
                 f" border-right: 1px solid rgba(0, 122, 255, 0.4);"
                 f" border-bottom: 1px solid rgba(0, 122, 255, 0.4);"
                 f" border-radius: 8px;"
-                f"}}"
-                + child_rules
+                f"}}" + child_rules
             )
         else:
             self.setStyleSheet(
@@ -215,8 +221,7 @@ class StepCardWidget(QFrame):
                 f"}}"
                 f"StepCardWidget:hover {{"
                 f" background-color: rgba(128, 128, 128, 0.15);"
-                f"}}"
-                + child_rules
+                f"}}" + child_rules
             )
 
     def mousePressEvent(self, event):
@@ -312,8 +317,7 @@ class ChainDialog(BaseDialog):
         # 顶部标题
         title_label = QLabel(tr("编辑动作链") if self.shortcut.name else tr("新建动作链"))
         title_label.setStyleSheet(
-            "font-size: 12px; font-weight: 400; color: gray; "
-            "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
+            "font-size: 12px; font-weight: 400; color: gray; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
         )
         root.addWidget(title_label)
 
@@ -579,9 +583,17 @@ class ChainDialog(BaseDialog):
             }
         """
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + refined_button_font
-        for btn in (self.file_btn, self.cmd_btn, self.hotkey_btn, self.url_btn,
-                     self.test_btn, self._browse_icon_btn, self._clear_icon_btn,
-                     self._cancel_btn, self._save_btn):
+        for btn in (
+            self.file_btn,
+            self.cmd_btn,
+            self.hotkey_btn,
+            self.url_btn,
+            self.test_btn,
+            self._browse_icon_btn,
+            self._clear_icon_btn,
+            self._cancel_btn,
+            self._save_btn,
+        ):
             btn.setStyleSheet(flat_btn_style)
         # 测试按钮用强调色
         # 所有复选框统一使用 get_small_checkbox_stylesheet
@@ -599,6 +611,7 @@ class ChainDialog(BaseDialog):
         )
         # viewport 必须用 palette 强制上色，否则 BaseDialog 透明背景会让点击时闪白
         from PyQt5.QtGui import QPalette
+
         vp = self.result_view.viewport()
         pal = self.result_view.palette()
         bg_color = QColor(28, 28, 30) if theme == "dark" else QColor(242, 242, 247)

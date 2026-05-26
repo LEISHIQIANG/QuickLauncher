@@ -772,6 +772,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self._update_subtitle("执行中")
         size_key = getattr(shortcut, "command_panel_size", "medium") or "medium"
         self._apply_size_for_result(CommandResult(display_type="text", payload={"window_size": size_key}), None)
+
         def finished_callback(token, result, cmd, duration, result_id):
             self.result_ready.emit(token, result, cmd, {"duration": duration, "result_id": result_id})
 

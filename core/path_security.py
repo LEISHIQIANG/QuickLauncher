@@ -42,7 +42,9 @@ def resolve_under(
     raise UnsafePathError(f"Refusing path outside root: {candidate_path} (root: {root_path})")
 
 
-def safe_rmtree_child(root: str | os.PathLike[str], target: str | os.PathLike[str], *, missing_ok: bool = False) -> None:
+def safe_rmtree_child(
+    root: str | os.PathLike[str], target: str | os.PathLike[str], *, missing_ok: bool = False
+) -> None:
     raw_target = Path(target).expanduser()
     if raw_target.is_symlink():
         raise UnsafePathError(f"Refusing to remove symlink: {raw_target}")

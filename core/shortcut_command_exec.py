@@ -179,7 +179,9 @@ class CommandExecutionMixin:
             items.append({"title": "命令内容", "status": "failed", "detail": "命令不能只包含一个变量占位符。"})
         if items:
             message = "\n".join(f"[{item['status'].upper()}] {item['title']}: {item['detail']}" for item in items)
-            return CommandResult(success=False, message=message, display_type="list", payload={"items": items}, error="预检失败")
+            return CommandResult(
+                success=False, message=message, display_type="list", payload={"items": items}, error="预检失败"
+            )
         return None
 
     @staticmethod
@@ -256,8 +258,7 @@ class CommandExecutionMixin:
     @staticmethod
     def _python_launcher_error() -> str:
         return (
-            "找不到可用的系统 Python。打包版不能直接复用程序目录内的 python312.dll；"
-            "请安装系统 Python 或 py launcher。"
+            "找不到可用的系统 Python。打包版不能直接复用程序目录内的 python312.dll；请安装系统 Python 或 py launcher。"
         )
 
     @staticmethod

@@ -1001,6 +1001,7 @@ def test_run_command_capture_python_subprocess(monkeypatch):
             return "py out", "py err"
 
     captured = {}
+
     def fake_popen(*args, **kwargs):
         captured["args"] = args
         captured["kwargs"] = kwargs

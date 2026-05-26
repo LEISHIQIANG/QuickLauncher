@@ -131,7 +131,9 @@ def test_chain_passes_previous_output_to_later_step(monkeypatch):
     class Executor:
         @staticmethod
         def run_command_capture(shortcut, cancel_event=None):
-            seen.append((shortcut.id, getattr(shortcut, "_runtime_input_values", {}), getattr(shortcut, "_chain_values", {})))
+            seen.append(
+                (shortcut.id, getattr(shortcut, "_runtime_input_values", {}), getattr(shortcut, "_chain_values", {}))
+            )
             if shortcut.id == "first":
                 return CommandResult(success=True, message="done", display_type="log", payload={"stdout": "hello"})
             return CommandResult(success=True, message="done", display_type="log", payload={"stdout": "ok"})
