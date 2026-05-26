@@ -249,8 +249,20 @@ class TestUpdateDownloader:
         mock_resp.headers = {"Content-Length": "5"}
         mock_resp.geturl.return_value = "https://evil.example/test.exe"
         mock_resp.read.return_value = b""
-        mock_urlopen.return_value.__enter__.return_value = mock_resp
-        mock_urlopen.return_value.__exit__.return_value = False
+
+        class _UrlOpenCtx:
+            """Plain context manager that doesn't suppress exceptions (unlike MagicMock whose
+            __exit__ may return truthy by default)."""
+            def __init__(self, resp):
+                self._resp = resp
+
+            def __enter__(self):
+                return self._resp
+
+            def __exit__(self, *args):
+                return False
+
+        mock_urlopen.return_value = _UrlOpenCtx(mock_resp)
         downloader = UpdateDownloader()
         with patch.object(downloader, "_notify") as mock_notify:
             downloader._do_download(
