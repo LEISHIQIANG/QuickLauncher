@@ -90,7 +90,7 @@ class IconFlashOverlay(QWidget):
         self.launcher = launcher
         self._opacity = 0.0
         self._started_at = 0.0
-        self._duration_ms = 220
+        self._duration_ms = 300
         self._items = []
         self._timer = QTimer(self)
         self._timer.setInterval(16)
@@ -107,7 +107,7 @@ class IconFlashOverlay(QWidget):
             return
         self.raise_()
         self._started_at = time.perf_counter()
-        self._opacity = 0.18
+        self._opacity = 0.35
         self.show()
         if not self._timer.isActive():
             self._timer.start()
@@ -129,10 +129,10 @@ class IconFlashOverlay(QWidget):
 
         if t < 0.42:
             pulse_t = t / 0.42
-            self._opacity = 0.68 * (1.0 - abs(2.0 * pulse_t - 1.0))
+            self._opacity = 0.85 * (1.0 - abs(2.0 * pulse_t - 1.0))
         else:
             pulse_t = (t - 0.42) / 0.58
-            self._opacity = 0.48 * (1.0 - abs(2.0 * pulse_t - 1.0))
+            self._opacity = 0.65 * (1.0 - abs(2.0 * pulse_t - 1.0))
         self.update()
 
     def _snapshot_icons(self):
@@ -230,7 +230,7 @@ class IconFlashOverlay(QWidget):
         painter.drawPixmap(0, 0, pixmap)
         painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
         theme = getattr(getattr(self.launcher, "settings", None), "theme", "dark")
-        color = QColor(28, 28, 30) if theme == "dark" else QColor(242, 242, 247)
+        color = QColor(200, 200, 200) if theme == "dark" else QColor(255, 255, 255)
         painter.fillRect(cover.rect(), color)
         painter.end()
         return cover
