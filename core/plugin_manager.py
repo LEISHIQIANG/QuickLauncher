@@ -25,6 +25,7 @@ from .command_registry import (
     _search_sources,
     limit_command_result_actions,
 )
+from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
 logger = logging.getLogger(__name__)
 
@@ -166,11 +167,11 @@ class PluginAPI:
         Raises PermissionError if the path points outside the plugin's data directory.
         This is a voluntary check — plugins using raw open() can bypass it.
         """
-        p = Path(path).resolve()
-        data = self.data_dir.resolve()
-        if p != data and data not in p.parents:
-            raise PermissionError(f"路径 {p} 不在插件数据目录 {data} 内")
-        return p
+        data = self.data_dir.resolve(strict=False)
+        try:
+            return resolve_under(data, path, allow_root=True)
+        except UnsafePathError as exc:
+            raise PermissionError(f"path is outside plugin data directory: {path}") from exc
 
     def register_search_source(
         self,
@@ -488,9 +489,9 @@ def validate_manifest(m: PluginManifest) -> str:
     if not m.entry:
         return "缺少 plugin.entry"
     if _safe_relative_plugin_path(m.entry) is None:
-        return f"plugin.entry 鍖呭惈涓嶅畨鍏ㄨ矾寰? {m.entry}"
+        return f"plugin.entry 包含不安全路径: {m.entry}"
     if m.icon and _safe_relative_plugin_path(m.icon) is None:
-        return f"plugin.icon 鍖呭惈涓嶅畨鍏ㄨ矾寰? {m.icon}"
+        return f"plugin.icon 包含不安全路径: {m.icon}"
     if not m.id.isidentifier() and not all(c.isalnum() or c in "-_" for c in m.id):
         return f"plugin.id 包含非法字符: {m.id}"
     for perm in m.permissions:
@@ -552,7 +553,7 @@ class PluginManager:
         for plugin_id in [p.manifest.id for p in self._plugins.values() if p.status == "enabled"]:
             self.disable_plugin(plugin_id, persist=False)
         self._plugins.clear()
-        base = Path(self._plugins_dir)
+        base = Path(self._plugins_dir).resolve(strict=False)
         if not base.is_dir():
             logger.info("插件目录不存在: %s", base)
             return []
@@ -573,6 +574,13 @@ class PluginManager:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
             m = PluginManifest.from_dict(raw)
+            if m.id and Path(directory).name != m.id:
+                return PluginInfo(
+                    manifest=m,
+                    directory=directory,
+                    status="error",
+                    error=f"plugin.id must match directory name: {m.id} != {Path(directory).name}",
+                )
             err = validate_manifest(m)
             if err:
                 return PluginInfo(
@@ -581,22 +589,23 @@ class PluginManager:
                     status="error",
                     error=err,
                 )
-            plugin_root = Path(directory).resolve()
+            plugin_root = Path(directory).resolve(strict=False)
             safe_entry = _safe_relative_plugin_path(m.entry)
             if safe_entry is None:
                 return PluginInfo(
                     manifest=m,
                     directory=directory,
                     status="error",
-                    error=f"plugin.entry 鍖呭惈涓嶅畨鍏ㄨ矾寰? {m.entry}",
+                    error=f"plugin.entry 包含不安全路径: {m.entry}",
                 )
-            entry_path = (plugin_root / safe_entry).resolve()
-            if entry_path != plugin_root and plugin_root not in entry_path.parents:
+            try:
+                entry_path = resolve_under(plugin_root, plugin_root / safe_entry)
+            except UnsafePathError:
                 return PluginInfo(
                     manifest=m,
                     directory=directory,
                     status="error",
-                    error=f"plugin.entry 鍖呭惈涓嶅畨鍏ㄨ矾寰? {m.entry}",
+                    error=f"plugin.entry 包含不安全路径: {m.entry}",
                 )
             if not entry_path.is_file():
                 return PluginInfo(
@@ -645,10 +654,8 @@ class PluginManager:
         safe_entry = _safe_relative_plugin_path(m.entry)
         if safe_entry is None:
             raise ValueError(f"plugin.entry unsafe path: {m.entry}")
-        plugin_root = Path(info.directory).resolve()
-        entry_path = (plugin_root / safe_entry).resolve()
-        if entry_path != plugin_root and plugin_root not in entry_path.parents:
-            raise ValueError(f"plugin.entry unsafe path: {m.entry}")
+        plugin_root = Path(info.directory).resolve(strict=False)
+        entry_path = resolve_under(plugin_root, plugin_root / safe_entry)
         if not os.path.isfile(entry_path):
             raise FileNotFoundError(f"插件入口文件不存在: {entry_path}")
 
@@ -857,11 +864,11 @@ class PluginManager:
         import zipfile
         from pathlib import Path
 
-        plugins_dir = Path(self._plugins_dir).resolve()
-        staging_base = plugins_dir / ".staging"
+        plugins_dir = Path(self._plugins_dir).resolve(strict=False)
+        staging_base = resolve_under(plugins_dir, plugins_dir / ".staging")
         staging_base.mkdir(parents=True, exist_ok=True)
 
-        staging_dir = staging_base / f"install-{uuid.uuid4().hex[:12]}"
+        staging_dir = resolve_under(staging_base, staging_base / f"install-{uuid.uuid4().hex[:12]}")
         backup_dir: Path | None = None
         plugin_id: str | None = None
 
@@ -903,8 +910,14 @@ class PluginManager:
                 file_count = 0
                 for member in zf.infolist():
                     if not member.is_dir():
+                        if member.flag_bits & 0x1:
+                            raise ValueError("plugin archive contains encrypted files, which are not supported")
                         file_count += 1
-                        total_size += member.file_size
+                        total_size += max(0, int(member.file_size))
+                        if total_size > 50 * 1024 * 1024:
+                            raise ValueError(
+                                f"plugin archive uncompressed size exceeds limit ({total_size / 1024 / 1024:.1f} MB)"
+                            )
                 if file_count == 0:
                     raise ValueError("压缩包为空，没有可安装的文件")
                 if file_count > 500:
@@ -912,8 +925,10 @@ class PluginManager:
                 if total_size > 50 * 1024 * 1024:
                     raise ValueError(f"插件总大小 ({total_size / 1024 / 1024:.1f} MB) 超过限制 (50 MB)")
 
-                target_dir = (plugins_dir / plugin_id).resolve()
+                target_dir = resolve_under(plugins_dir, plugins_dir / plugin_id)
                 if target_dir.exists():
+                    if target_dir.is_symlink():
+                        raise ValueError(f"插件目标目录不安全: {target_dir}")
                     if on_overwrite is None:
                         raise ValueError(f'插件 "{plugin_name}" 已存在，且未提供覆盖确认回调')
                     if not on_overwrite(plugin_name):
@@ -943,8 +958,9 @@ class PluginManager:
                     if lower_rel_path in seen_paths:
                         raise ValueError(f"插件压缩包包含重复路径，安装已终止: {filename}")
                     seen_paths.add(lower_rel_path)
-                    dst = (staging_dir / safe_rel_path).resolve()
-                    if not dst.is_relative_to(staging_dir):
+                    try:
+                        dst = resolve_under(staging_dir, staging_dir / safe_rel_path)
+                    except UnsafePathError:
                         raise ValueError(f"检测到路径穿越攻击，安装已终止: {filename}")
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     with zf.open(member) as src, open(dst, "wb") as fd:
@@ -954,19 +970,20 @@ class PluginManager:
                     raise ValueError("解压后的插件包缺少 plugin.json 文件")
 
                 if target_dir.exists():
-                    backup_dir = plugins_dir / ".backup" / plugin_id
+                    backup_base = resolve_under(plugins_dir, plugins_dir / ".backup")
+                    backup_dir = resolve_under(backup_base, backup_base / plugin_id)
                     if backup_dir.exists():
-                        shutil.rmtree(backup_dir)
+                        safe_rmtree_child(backup_base, backup_dir)
                     backup_dir.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copytree(target_dir, backup_dir)
 
                 if target_dir.exists():
-                    shutil.rmtree(target_dir)
+                    safe_rmtree_child(plugins_dir, target_dir)
                 shutil.move(str(staging_dir), str(target_dir))
                 staging_dir = None
 
             if backup_dir and backup_dir.exists():
-                shutil.rmtree(backup_dir)
+                safe_rmtree_child(backup_dir.parent, backup_dir)
                 backup_dir = None
 
             return plugin_id
@@ -975,17 +992,20 @@ class PluginManager:
             _exc_info = sys.exc_info()
             if backup_dir and backup_dir.exists() and plugin_id:
                 try:
-                    tgt = (plugins_dir / plugin_id).resolve()
+                    tgt = resolve_under(plugins_dir, plugins_dir / plugin_id)
                     if tgt.exists():
-                        shutil.rmtree(tgt)
+                        safe_rmtree_child(plugins_dir, tgt)
                     shutil.copytree(backup_dir, tgt)
-                    shutil.rmtree(backup_dir)
+                    safe_rmtree_child(backup_dir.parent, backup_dir)
                 except Exception as rollback_err:
                     logger.error("回滚插件安装失败: %s", rollback_err)
             raise _exc_info[1].with_traceback(_exc_info[2])
         finally:
             if staging_dir and staging_dir.exists():
-                shutil.rmtree(staging_dir, ignore_errors=True)
+                try:
+                    safe_rmtree_child(staging_base, staging_dir)
+                except Exception:
+                    logger.debug("failed to remove plugin staging dir: %s", staging_dir, exc_info=True)
             if staging_base.exists():
                 try:
                     if not any(staging_base.iterdir()):
@@ -1008,6 +1028,23 @@ class PluginManager:
         """Remove a plugin from internal tracking (e.g. after deleting its directory)."""
         self._plugins.pop(plugin_id, None)
         self._loaded_modules.pop(plugin_id, None)
+        self._active_apis.pop(plugin_id, None)
+
+    def delete_plugin_files(self, plugin_id: str) -> None:
+        """Delete a managed plugin directory after validating its boundary."""
+        info = self._plugins.get(plugin_id)
+        if info is None:
+            raise ValueError(f"plugin not found: {plugin_id}")
+        plugins_dir = Path(self._plugins_dir).resolve(strict=False)
+        target = resolve_under(plugins_dir, info.directory)
+        if target.name != plugin_id:
+            raise UnsafePathError(f"plugin directory name mismatch: {target.name} != {plugin_id}")
+        if target.is_symlink():
+            raise UnsafePathError(f"refusing to delete symlinked plugin directory: {target}")
+        if info.status == "enabled":
+            self.disable_plugin(plugin_id)
+        safe_rmtree_child(plugins_dir, target)
+        self.remove_plugin_record(plugin_id)
 
     @property
     def plugins_dir(self) -> str:

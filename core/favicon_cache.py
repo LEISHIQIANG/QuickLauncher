@@ -819,7 +819,7 @@ def _raster_to_png(data: bytes, target: str, source: str = "") -> bool:
 
         with Image.open(BytesIO(data)) as image:
             if image.width * image.height > _MAX_IMAGE_PIXELS:
-                logger.warning("鍥炬爣鑾峰彇锛氬浘鐗囧儚绱犺繃澶?source=%s size=%s", source, image.size)
+                logger.warning("图标获取：图片像素过大 source=%s size=%s", source, image.size)
                 return False
             image = image.convert("RGBA")
             if min(image.size) <= 2 or not _has_visible_pixels(image):
@@ -876,7 +876,7 @@ def _qt_raster_to_png(data: bytes, target: str, source: str = "") -> bool:
             return False
         if image.width() * image.height() > _MAX_IMAGE_PIXELS:
             logger.warning(
-                "鍥炬爣鑾峰彇锛歈t 鍥剧墖鍍忕礌杩囧ぇ source=%s size=%sx%s", source, image.width(), image.height()
+                "图标获取：Qt 图片像素过大 source=%s size=%sx%s", source, image.width(), image.height()
             )
             return False
         image = image.convertToFormat(QImage.Format_ARGB32)

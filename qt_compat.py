@@ -50,6 +50,9 @@ from PyQt5.QtGui import (
     QRegion,
     QTextCursor,
 )
+from PyQt5.QtGui import (
+    QTextOption as QTextOption,
+)
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
     QAbstractSpinBox,
@@ -75,7 +78,6 @@ from PyQt5.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QSplitter,
@@ -111,6 +113,9 @@ from PyQt5.QtWidgets import (
     QListWidgetItem as _QListWidgetItem,
 )
 from PyQt5.QtWidgets import (
+    QProgressBar as QProgressBar,
+)
+from PyQt5.QtWidgets import (
     QPushButton as _QPushButton,
 )
 from PyQt5.QtWidgets import (
@@ -130,7 +135,7 @@ PYQT_VERSION = 5
 QT_LIB = "PyQt5"
 logger = logging.getLogger(__name__)
 
-from core.i18n import tr
+from core.i18n import tr  # noqa: E402
 
 logger.debug("Using %s", QT_LIB)
 

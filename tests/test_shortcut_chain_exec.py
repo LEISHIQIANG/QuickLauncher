@@ -104,6 +104,47 @@ def test_chain_uses_capture_for_captured_command(monkeypatch):
     assert "hello" in result.payload["items"][0]["detail"]
 
 
+def test_chain_passes_previous_output_to_later_step(monkeypatch):
+    first = ShortcutItem(
+        id="first",
+        name="First",
+        type=ShortcutType.COMMAND,
+        command_type="cmd",
+        capture_output=True,
+    )
+    second = ShortcutItem(
+        id="second",
+        name="Second",
+        type=ShortcutType.COMMAND,
+        command_type="cmd",
+        capture_output=True,
+    )
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {"shortcut_id": "first"},
+            {"shortcut_id": "second", "use_previous_output": True},
+        ],
+    )
+    seen = []
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            seen.append((shortcut.id, getattr(shortcut, "_runtime_input_values", {}), getattr(shortcut, "_chain_values", {})))
+            if shortcut.id == "first":
+                return CommandResult(success=True, message="done", display_type="log", payload={"stdout": "hello"})
+            return CommandResult(success=True, message="done", display_type="log", payload={"stdout": "ok"})
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([first, second]))
+
+    assert result.success is True
+    assert seen[1][1]["input"] == "hello"
+    assert seen[1][2]["prev.stdout"] == "hello"
+
+
 def test_chain_guards_nested_missing_max_and_cancel(monkeypatch):
     nested = ShortcutItem(id="nested", name="Nested", type=ShortcutType.CHAIN)
     chain = ShortcutItem(type=ShortcutType.CHAIN)

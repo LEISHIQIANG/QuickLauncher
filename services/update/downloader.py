@@ -75,6 +75,20 @@ class UpdateDownloader:
             os.makedirs(target_dir, exist_ok=True)
             req = Request(url, headers={"User-Agent": f"QuickLauncher/{APP_VERSION}"})
             with urlopen(req, timeout=30) as resp:
+                final_url = ""
+                geturl = getattr(resp, "geturl", None)
+                if callable(geturl):
+                    final_url = str(geturl() or "")
+                if not final_url:
+                    final_url = str(getattr(resp, "url", "") or "")
+                if final_url and "://" in final_url:
+                    final_parsed = urlparse(final_url)
+                    final_scheme = (final_parsed.scheme or "").lower()
+                    final_host = (final_parsed.hostname or "").lower()
+                    if final_scheme not in ("http", "https"):
+                        raise ValueError("最终下载地址协议无效")
+                    if allowed_hosts and not _is_allowed_host(final_host, allowed_hosts):
+                        raise ValueError(f"最终下载域名不受信任: {final_host}")
                 total = int(resp.headers.get("Content-Length", 0) or 0)
                 if max_bytes and total > max_bytes:
                     raise ValueError("下载文件超过安全大小限制")

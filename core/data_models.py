@@ -58,11 +58,14 @@ class ShortcutItem:
     command: str = ""
     command_type: str = "cmd"  # cmd, python, builtin
     show_window: bool = False
-    python_execution_mode: str = "subprocess"  # subprocess, legacy_inline
     command_variables_enabled: bool = False
     capture_output: bool = False
     command_timeout_seconds: float = 10.0
     command_output_max_chars: int = 20000
+    command_panel_size: str = "medium"  # small, medium, large
+    command_params: List[dict] = field(default_factory=list)
+    command_env: dict = field(default_factory=dict)
+    command_encoding: str = "auto"
     chain_steps: List[dict] = field(default_factory=list)
     chain_result_window: str = "medium"  # none, small, medium, large
 
@@ -113,11 +116,14 @@ class ShortcutItem:
             "icon_invert_theme_when_set": self.icon_invert_theme_when_set,
             "run_as_admin": self.run_as_admin,
             "show_window": self.show_window,
-            "python_execution_mode": self.python_execution_mode,
             "command_variables_enabled": self.command_variables_enabled,
             "capture_output": self.capture_output,
             "command_timeout_seconds": self.command_timeout_seconds,
             "command_output_max_chars": self.command_output_max_chars,
+            "command_panel_size": self.command_panel_size,
+            "command_params": list(self.command_params or []),
+            "command_env": dict(self.command_env or {}),
+            "command_encoding": self.command_encoding,
             "chain_steps": list(self.chain_steps or []),
             "chain_result_window": self.chain_result_window,
         }
@@ -162,7 +168,6 @@ class ShortcutItem:
         item.icon_invert_theme_when_set = data.get("icon_invert_theme_when_set", "")
         item.run_as_admin = data.get("run_as_admin", False)
         item.show_window = data.get("show_window", False)
-        item.python_execution_mode = data.get("python_execution_mode", "subprocess")
         item.command_variables_enabled = data.get("command_variables_enabled", False)
         item.capture_output = bool(data.get("capture_output", False))
         try:
@@ -173,6 +178,12 @@ class ShortcutItem:
             item.command_output_max_chars = max(1000, int(data.get("command_output_max_chars", 20000) or 20000))
         except Exception:
             item.command_output_max_chars = 20000
+        cps = str(data.get("command_panel_size", "medium") or "medium").lower().strip()
+        item.command_panel_size = cps if cps in ("small", "medium", "large") else "medium"
+        item.command_params = cls._normalize_command_params(data.get("command_params", []))
+        item.command_env = cls._normalize_command_env(data.get("command_env", {}))
+        encoding = str(data.get("command_encoding", "auto") or "auto").lower().strip()
+        item.command_encoding = encoding if encoding in ("auto", "utf-8", "gbk", "mbcs") else "auto"
         item.chain_steps = cls._normalize_chain_steps(data.get("chain_steps", []))
         crw = str(data.get("chain_result_window", "medium") or "medium").lower()
         item.chain_result_window = crw if crw in ("none", "small", "medium", "large") else "medium"
@@ -200,6 +211,54 @@ class ShortcutItem:
     MAX_CHAIN_STEPS = 128
 
     @staticmethod
+    def _normalize_command_params(params) -> List[dict]:
+        if not isinstance(params, list):
+            return []
+        normalized = []
+        for param in params:
+            if not isinstance(param, dict):
+                continue
+            name = str(param.get("name") or "").strip()
+            if not name:
+                continue
+            param_type = str(param.get("type") or "text").lower().strip()
+            if param_type not in ("text", "choice", "bool", "file", "folder"):
+                param_type = "text"
+            choices = param.get("choices", [])
+            if isinstance(choices, str):
+                choices = [part.strip() for part in choices.split(",") if part.strip()]
+            elif not isinstance(choices, list):
+                choices = []
+            normalized.append(
+                {
+                    "name": name,
+                    "type": param_type,
+                    "required": bool(param.get("required", False)),
+                    "default": str(param.get("default") or ""),
+                    "choices": [str(choice) for choice in choices],
+                    "sensitive": bool(param.get("sensitive", False)),
+                }
+            )
+        return normalized
+
+    @staticmethod
+    def _normalize_command_env(env) -> dict:
+        if isinstance(env, str):
+            pairs = {}
+            for line in env.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key:
+                    pairs[key] = value.strip()
+            return pairs
+        if not isinstance(env, dict):
+            return {}
+        return {str(k).strip(): str(v) for k, v in env.items() if str(k).strip()}
+
+    @staticmethod
     def _normalize_chain_steps(steps) -> List[dict]:
         if not isinstance(steps, list):
             return []
@@ -223,6 +282,7 @@ class ShortcutItem:
                     "enabled": bool(step.get("enabled", True)),
                     "stop_on_error": bool(step.get("stop_on_error", True)),
                     "delay_ms": delay_ms,
+                    "use_previous_output": bool(step.get("use_previous_output", False)),
                 }
             )
         return normalized
@@ -250,6 +310,7 @@ class Folder:
     order: int = 0
     is_system: bool = False
     is_dock: bool = False
+    is_icon_repo: bool = False
     items: List[ShortcutItem] = field(default_factory=list)
 
     # 文件夹自动导入功能
@@ -264,6 +325,7 @@ class Folder:
             "order": self.order,
             "is_system": self.is_system,
             "is_dock": self.is_dock,
+            "is_icon_repo": self.is_icon_repo,
             "items": [item.to_dict() for item in self.items],
             "linked_path": self.linked_path,
             "auto_sync": self.auto_sync,
@@ -278,6 +340,7 @@ class Folder:
         folder.order = data.get("order", 0)
         folder.is_system = data.get("is_system", False)
         folder.is_dock = data.get("is_dock", False)
+        folder.is_icon_repo = data.get("is_icon_repo", False)
         folder.items = [ShortcutItem.from_dict(item) for item in data.get("items", [])]
         folder.linked_path = data.get("linked_path", "")
         folder.auto_sync = data.get("auto_sync", False)
@@ -505,7 +568,8 @@ class AppData:
     def _create_default_folders(self):
         dock = Folder(id="dock", name="Dock", order=0, is_system=True, is_dock=True)
         default = Folder(id="default", name="常用", order=1, is_system=True, is_dock=False)
-        self.folders = [dock, default]
+        icon_repo = Folder(id="icon_repo", name="图标仓库", order=2, is_system=True, is_icon_repo=True)
+        self.folders = [dock, default, icon_repo]
 
     def get_dock(self) -> Optional[Folder]:
         for folder in self.folders:

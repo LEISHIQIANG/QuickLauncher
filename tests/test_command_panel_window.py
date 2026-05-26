@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 from core.command_registry import CommandAction, CommandDefinition, CommandParam, CommandResult
 from core.command_results import CommandResultStore
-from qt_compat import QEvent, QPixmap, Qt, QTimer
+from core.data_models import ShortcutItem, ShortcutType
+from qt_compat import QEvent, QPixmap, QPlainTextEdit, Qt, QTextOption, QTimer
 from ui.command_panel_window import COMMAND_PANEL_SIZE_PRESETS, CommandPanelWindow
 
 
@@ -27,6 +28,79 @@ def test_command_panel_renders_text_and_log(qapp):
 
     win.show_transient_result(CommandResult(message="line 1\nline 2", display_type="log"))
     assert win.text.toPlainText() == "line 1\nline 2"
+
+
+def test_live_log_update_preserves_manual_scroll_position(qapp):
+    win = _window(qapp)
+    win.resize(433, 300)
+    win.show()
+    qapp.processEvents()
+
+    win.show_transient_result(
+        CommandResult(message="\n".join(f"line {i}" for i in range(120)), display_type="log", payload={"running": True})
+    )
+    qapp.processEvents()
+    scrollbar = win.text.verticalScrollBar()
+    scrollbar.setValue(max(1, scrollbar.maximum() // 3))
+    old_value = scrollbar.value()
+
+    win._running = True
+    win._render_text_like(
+        CommandResult(
+            message="\n".join(f"line {i}" for i in range(140)),
+            display_type="log",
+            payload={"running": True},
+        ),
+        "\n".join(f"line {i}" for i in range(140)),
+        "log",
+    )
+    qapp.processEvents()
+
+    assert scrollbar.value() == old_value
+
+
+def test_live_log_update_follows_when_already_at_bottom(qapp):
+    win = _window(qapp)
+    win.resize(433, 300)
+    win.show()
+    qapp.processEvents()
+
+    win.show_transient_result(
+        CommandResult(message="\n".join(f"line {i}" for i in range(80)), display_type="log", payload={"running": True})
+    )
+    qapp.processEvents()
+    scrollbar = win.text.verticalScrollBar()
+    scrollbar.setValue(scrollbar.maximum())
+
+    win._running = True
+    win._render_text_like(
+        CommandResult(
+            message="\n".join(f"line {i}" for i in range(120)),
+            display_type="log",
+            payload={"running": True},
+        ),
+        "\n".join(f"line {i}" for i in range(120)),
+        "log",
+    )
+    qapp.processEvents()
+
+    assert scrollbar.value() == scrollbar.maximum()
+
+
+def test_command_panel_forces_long_result_wrapping(qapp):
+    win = _window(qapp)
+
+    win.show_transient_result(
+        CommandResult(
+            message="https://example.com/" + ("very-long-segment" * 20),
+            display_type="log",
+            payload={"wrap": False},
+        )
+    )
+
+    assert win.text.lineWrapMode() == QPlainTextEdit.WidgetWidth
+    assert win.text.wordWrapMode() == QTextOption.WrapAnywhere
+    assert win.text.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
 
 
 def test_command_panel_only_exposes_titlebar_close_and_blocks_dialog_keys(qapp):
@@ -352,6 +426,52 @@ def test_param_inputs_required_validation_and_execution(qapp):
     assert win._run_token == "token"
 
 
+def test_shortcut_params_execute_through_panel(qapp):
+    win = _window(qapp)
+    captured = {}
+
+    class FakeService:
+        def run_shortcut_command(self, request, on_finished=None):
+            captured["request"] = request
+            return SimpleNamespace(request_id="shortcut-token", cancel=lambda: None)
+
+    shortcut = ShortcutItem(
+        id="cmd1",
+        name="Cmd",
+        type=ShortcutType.COMMAND,
+        command="echo {param:host:q}",
+        command_type="cmd",
+        command_params=[{"name": "host", "type": "text", "required": True}],
+    )
+    win.execution_service = FakeService()
+    win.run_shortcut(shortcut)
+    win._param_widgets["host"][1].setText("example.com")
+    win._execute_current_request()
+
+    assert captured["request"].shortcut is shortcut
+    assert captured["request"].args["host"] == "example.com"
+    assert win._run_token == "shortcut-token"
+
+
+def test_escape_cancels_running_command(qapp):
+    win = _window(qapp)
+    cancelled = []
+    win._running = True
+    win._current_handle = SimpleNamespace(cancel=lambda: cancelled.append(True))
+
+    class Event:
+        def key(self):
+            return Qt.Key_Escape
+
+        def accept(self):
+            pass
+
+    win.keyPressEvent(Event())
+
+    assert cancelled == [True]
+    assert "取消" in win.text.toPlainText()
+
+
 def test_cancel_and_rerun_use_handle_and_request(qapp):
     win = _window(qapp)
     cancelled = []
@@ -403,8 +523,8 @@ def test_history_dropdown_uses_input_width_and_shows_recent_commands(qapp, monke
     import ui.command_panel_window as panel_mod
 
     store = CommandResultStore()
-    old_id = store.add(CommandResult(message="old"), command_id="old", command_title="Old", raw_input="/old")
-    new_id = store.add(CommandResult(message="new"), command_id="new", command_title="New", raw_input="/new")
+    store.add(CommandResult(message="old"), command_id="old", command_title="Old", raw_input="/old")
+    store.add(CommandResult(message="new"), command_id="new", command_title="New", raw_input="/new")
     win = CommandPanelWindow(FakeDataManager(), store)
     win.command_input_group.resize(360, 28)
     labels = []

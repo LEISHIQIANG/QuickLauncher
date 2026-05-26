@@ -110,7 +110,8 @@ def find_unquoted_external_command_variables(text: str) -> list[str]:
         spec = match.group(1).strip()
         base, should_quote = _split_spec(spec)
         root = base.split(":", 1)[0]
-        if root in _EXTERNAL_INPUT_VARIABLES and not should_quote and spec not in seen:
+        is_external = root in _EXTERNAL_INPUT_VARIABLES or base.startswith("param:") or base.startswith("chain:")
+        if is_external and not should_quote and spec not in seen:
             seen.add(spec)
             unsafe.append(spec)
     return unsafe
@@ -134,6 +135,8 @@ def resolve_command_variables(
     text: str,
     *,
     input_values: Optional[Dict[str, str]] = None,
+    param_values: Optional[Dict[str, str]] = None,
+    chain_values: Optional[Dict[str, str]] = None,
     selected_text_provider: Optional[Callable[[], str]] = None,
     clipboard_provider: Optional[Callable[[], str]] = None,
     app_dir: Optional[str] = None,
@@ -152,6 +155,8 @@ def resolve_command_variables(
     guarded = text.replace("{{", left_guard).replace("}}", right_guard)
     now = datetime.now()
     inputs = input_values or {}
+    params = param_values or {}
+    chain = chain_values or {}
     clipboard_reader = clipboard_provider or read_clipboard_text
 
     def repl(match: re.Match) -> str:
@@ -177,6 +182,16 @@ def resolve_command_variables(
         elif base.startswith("input:"):
             prompt = base[6:].strip()
             value = _sanitize_external_input(_lookup_input_value(inputs, prompt))
+        elif base.startswith("param:"):
+            name = base[6:].strip()
+            if not name:
+                raise CommandVariableError(f"变量名称无效: {{{spec}}}")
+            value = _sanitize_external_input(_lookup_named_value(params, name, "参数"))
+        elif base.startswith("chain:"):
+            name = base[6:].strip()
+            if not name:
+                raise CommandVariableError(f"变量名称无效: {{{spec}}}")
+            value = _sanitize_external_input(_lookup_named_value(chain, name, "动作链变量"))
         else:
             if not strict_unknown:
                 return match.group(0)
@@ -192,6 +207,12 @@ def _split_spec(spec: str) -> tuple[str, bool]:
     if spec.endswith(":q"):
         return spec[:-2].strip(), True
     return spec, False
+
+
+def _lookup_named_value(values: Dict[str, str], name: str, label: str) -> str:
+    if name in values:
+        return values[name]
+    raise CommandVariableError(f"缺少{label}: {name}")
 
 
 def _lookup_input_value(input_values: Dict[str, str], prompt: str) -> str:

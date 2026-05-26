@@ -119,9 +119,19 @@ class UpdateMixin:
     def _install_update(self, installer_path: str):
         if self._update_installer:
             update_info = getattr(self, "_pending_update_info", None)
+            trusted_dir = ""
+            try:
+                trusted_dir = os.path.join(
+                    str(self.data_manager.app_dir),
+                    "downloads",
+                    self._update_checker._config.download_dir_name,
+                )
+            except Exception:
+                pass
             self._update_installer.install(
                 installer_path,
                 expected_hash=getattr(update_info, "file_hash", "") if update_info else "",
+                trusted_dir=trusted_dir,
             )
 
     def _on_install_event(self, event: str, data=None):

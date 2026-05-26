@@ -627,8 +627,16 @@ class FolderPanel(QWidget):
             icon_path = os.path.join(base_dir, "Folder.ico")
 
         folder_icon = QIcon(icon_path) if os.path.exists(icon_path) else None
+        theme = self._get_current_theme()
+
+        icon_repo_folder = None
 
         for folder in self.data_manager.data.folders:
+            # 图标仓库固定在最后加载
+            if getattr(folder, "is_icon_repo", False):
+                icon_repo_folder = folder
+                continue
+
             item = QListWidgetItem()
             item.setData(QtCompat.UserRole, folder.id)
 
@@ -647,11 +655,24 @@ class FolderPanel(QWidget):
                 item.setFlags(flags)
 
             # Create Custom FolderItemWidget
-            widget = FolderItemWidget(display_text, folder_icon, self._get_current_theme(), self.folder_list)
+            widget = FolderItemWidget(display_text, folder_icon, theme, self.folder_list)
             widget.item = item
 
             item.setSizeHint(widget.sizeHint())
 
+            self.folder_list.addItem(item)
+            self.folder_list.setItemWidget(item, widget)
+
+        # 图标仓库固定在底部（"新建分类"按钮上方）
+        if icon_repo_folder:
+            item = QListWidgetItem()
+            item.setData(QtCompat.UserRole, icon_repo_folder.id)
+            flags = item.flags()
+            flags &= ~QtCompat.ItemIsDragEnabled
+            item.setFlags(flags)
+            widget = FolderItemWidget(icon_repo_folder.name, folder_icon, theme, self.folder_list)
+            widget.item = item
+            item.setSizeHint(widget.sizeHint())
             self.folder_list.addItem(item)
             self.folder_list.setItemWidget(item, widget)
 
@@ -660,7 +681,7 @@ class FolderPanel(QWidget):
             item = self.folder_list.item(i)
             folder_id = item.data(QtCompat.UserRole)
             folder = self.data_manager.data.get_folder_by_id(folder_id)
-            if folder and not folder.is_dock:
+            if folder and not folder.is_dock and not folder.is_icon_repo:
                 self.folder_list.setCurrentItem(item)
                 self.folder_selected.emit(folder_id)
                 break
@@ -1116,6 +1137,10 @@ class FolderPanel(QWidget):
         folder_id = item.data(QtCompat.UserRole)
         folder = self.data_manager.data.get_folder_by_id(folder_id)
         if not folder:
+            return
+
+        # 图标仓库不允许重命名、删除等操作
+        if getattr(folder, "is_icon_repo", False):
             return
 
         theme = self._get_current_theme()

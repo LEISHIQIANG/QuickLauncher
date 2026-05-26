@@ -10,12 +10,9 @@ from core.command_variables import (
 from core.data_models import ShortcutItem
 
 
-def test_shortcut_item_python_mode_defaults_to_subprocess():
-    assert ShortcutItem().python_execution_mode == "subprocess"
-
+def test_shortcut_item_command_variables_default_disabled():
     restored = ShortcutItem.from_dict({"type": "command", "command_type": "python"})
 
-    assert restored.python_execution_mode == "subprocess"
     assert restored.command_variables_enabled is False
 
     restored_cmd = ShortcutItem.from_dict({"type": "command", "command_type": "cmd"})
@@ -98,6 +95,23 @@ def test_find_unquoted_external_command_variables():
     )
 
     assert unsafe == ["clipboard", "input:Name"]
+
+
+def test_resolve_param_and_chain_variables():
+    text = resolve_command_variables(
+        "ping {param:host:q} && echo {chain:prev.stdout:q}",
+        param_values={"host": "example.com"},
+        chain_values={"prev.stdout": "hello world"},
+    )
+
+    assert "example.com" in text
+    assert "hello world" in text
+
+
+def test_param_and_chain_variables_require_quoting_in_cmd():
+    unsafe = find_unquoted_external_command_variables("echo {param:host} {chain:prev.stdout}")
+
+    assert unsafe == ["param:host", "chain:prev.stdout"]
 
 
 def test_value_only_variable_commands_are_detected():

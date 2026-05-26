@@ -70,3 +70,16 @@ def test_clean_unused_project_cache_dry_run_preserves_files(tmp_path):
 
     assert stats["total_removed"] == 1
     assert orphan.exists()
+
+
+def test_clean_unused_project_cache_refuses_paths_outside_root(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / ".pytest_cache"
+    target.mkdir()
+    (target / "nodeids").write_text("x", encoding="utf-8")
+
+    stats = clean_unused_project_cache(Manager(tmp_path / "missing", AppData()))
+
+    assert target.exists()
+    assert stats["total_removed"] == 0

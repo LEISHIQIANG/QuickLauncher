@@ -1365,8 +1365,8 @@ def test_panel_command_with_params_does_not_use_popup_input_dialog(monkeypatch):
     assert shown["raw_input"] == "/tools.param"
 
 
-def test_captured_command_hides_pinned_popup_and_opens_command_panel(monkeypatch):
-    from core.command_registry import CommandResult, take_pending_command_result
+def test_captured_command_hides_pinned_popup_and_runs_in_command_panel(monkeypatch):
+    from core.command_registry import take_pending_command_result
     from core.command_results import CommandResultStore
 
     take_pending_command_result()
@@ -1393,26 +1393,10 @@ def test_captured_command_hides_pinned_popup_and_opens_command_panel(monkeypatch
             shown.update(kwargs)
             return True
 
-    class FakeExecutor:
-        @staticmethod
-        def run_command_capture(shortcut, timeout=None, cancel_event=None):
-            return CommandResult(
-                success=True,
-                message="stdout:\nok",
-                display_type="log",
-                payload={"command": shortcut.command, "duration": 0.1},
-            )
-
-        @staticmethod
-        def execute(shortcut, force_new=False):
-            raise AssertionError("capture path should not call ShortcutExecutor.execute")
-
-    import core
     import ui.launcher_popup.popup_item_execution as popup_exec_mod
 
-    monkeypatch.setattr(core, "ShortcutExecutor", FakeExecutor)
     monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
-    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
+    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", object())
     monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
     popup.tray_app = FakeTrayApp()
 
@@ -1428,10 +1412,37 @@ def test_captured_command_hides_pinned_popup_and_opens_command_panel(monkeypatch
     popup._execute_item(item)
 
     assert hidden == [True]
-    assert shown["result_id"]
-    stored = popup.tray_app.command_result_store.get(shown["result_id"])
-    assert stored.result.display_type == "log"
+    assert shown["shortcut"] is item
+    assert shown["raw_input"] == "echo ok"
     assert take_pending_command_result() is None
+
+
+def test_captured_command_falls_back_when_command_panel_fails(monkeypatch):
+    from core.command_registry import CommandResult
+    from core.command_results import CommandResultStore
+
+    popup = _popup_with_items([])
+    shown_inline = []
+    popup.show_command_result = lambda result, command_id: shown_inline.append((result, command_id))
+
+    class FakeTrayApp:
+        def __init__(self):
+            self.command_result_store = CommandResultStore()
+
+        def show_command_panel(self, **kwargs):
+            return False
+
+    popup.tray_app = FakeTrayApp()
+    result = CommandResult(
+        success=True,
+        message="stdout:\nok",
+        display_type="log",
+        payload={"command": "echo ok", "duration": 0.1},
+    )
+
+    popup._on_command_panel_result_ready(result, "cap", "Capture")
+
+    assert shown_inline == [(result, "cap")]
 
 
 def test_non_captured_command_does_not_open_command_panel(monkeypatch):

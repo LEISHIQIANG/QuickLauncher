@@ -19,6 +19,7 @@ from qt_compat import (
     Qt,
     QtCompat,
     QTextEdit,
+    QTextOption,
 )
 from ui.styles.style import PopupMenu
 
@@ -185,6 +186,8 @@ class PopupCommandResultMixin:
                 self._result_text_edit.setFrameStyle(0)  # NoFrame
                 self._result_text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
                 self._result_text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                self._result_text_edit.setLineWrapMode(QTextEdit.WidgetWidth)
+                self._result_text_edit.setWordWrapMode(QTextOption.WrapAnywhere)
                 self._result_text_edit.setFocusPolicy(Qt.ClickFocus)
 
                 # Install custom key filter

@@ -242,6 +242,25 @@ class TestUpdateDownloader:
 
         assert any(event == "failed" and "哈希校验失败" in str(data) for event, data in events)
 
+    @patch("services.update.downloader.urlopen")
+    def test_download_rejects_redirect_to_untrusted_host(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Length": "5"}
+        mock_resp.geturl.return_value = "https://evil.example/test.exe"
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+        downloader = UpdateDownloader()
+        events = []
+        downloader.add_listener(lambda event, data: events.append((event, data)))
+
+        downloader._do_download(
+            "https://github.com/test.exe",
+            "G:/updates",
+            "sha256:" + "f" * 64,
+            allowed_hosts=("github.com",),
+        )
+
+        assert any(event == "failed" and "最终下载域名不受信任" in str(data) for event, data in events)
+
 
 class TestUpdateInstaller:
     def test_install_file_not_found(self):
@@ -294,3 +313,38 @@ class TestUpdateInstaller:
 
         mock_popen.assert_not_called()
         assert any(event == "failed" and "哈希" in str(data) for event, data in events)
+
+    @patch("services.update.installer.subprocess.Popen")
+    def test_install_rejects_untrusted_directory(self, mock_popen, tmp_path):
+        installer = UpdateInstaller()
+        events = []
+        installer.add_listener(lambda event, data: events.append((event, data)))
+        trusted = tmp_path / "downloads"
+        outside = tmp_path / "outside"
+        trusted.mkdir()
+        outside.mkdir()
+        path = outside / "QuickLauncher_Setup.exe"
+        path.write_bytes(b"installer")
+
+        installer.install(str(path), trusted_dir=str(trusted))
+
+        mock_popen.assert_not_called()
+        assert any(event == "failed" and "可信下载目录" in str(data) for event, data in events)
+
+    @patch("services.update.installer.subprocess.Popen")
+    def test_install_rejects_symlink_installer(self, mock_popen, tmp_path):
+        installer = UpdateInstaller()
+        events = []
+        installer.add_listener(lambda event, data: events.append((event, data)))
+        real = tmp_path / "QuickLauncher_Setup.exe"
+        link = tmp_path / "link.exe"
+        real.write_bytes(b"installer")
+        try:
+            link.symlink_to(real)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlink creation is not available on this system")
+
+        installer.install(str(link))
+
+        mock_popen.assert_not_called()
+        assert any(event == "failed" and "symlink" in str(data) for event, data in events)

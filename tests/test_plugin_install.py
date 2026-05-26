@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from core.command_registry import CommandRegistry
+from core.path_security import UnsafePathError
 from core.plugin_manager import PluginManager
 
 # ---------------------------------------------------------------------------
@@ -300,6 +301,43 @@ class TestInstallFromZipValidation:
             with pytest.raises(ValueError, match="文件过多|500"):
                 pm.install_from_package(zip_path)
 
+    def test_rejects_encrypted_archive_entries(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "encrypted.qlzip")
+            _make_plugin_zip(zip_path)
+            original_zipfile = zipfile.ZipFile
+
+            class FakeEncryptedZip:
+                def __init__(self, *args, **kwargs):
+                    self._inner = original_zipfile(*args, **kwargs)
+
+                def __enter__(self):
+                    self._inner.__enter__()
+                    return self
+
+                def __exit__(self, *args):
+                    return self._inner.__exit__(*args)
+
+                def namelist(self):
+                    return self._inner.namelist()
+
+                def read(self, *args, **kwargs):
+                    return self._inner.read(*args, **kwargs)
+
+                def infolist(self):
+                    infos = self._inner.infolist()
+                    infos[0].flag_bits |= 0x1
+                    return infos
+
+                def open(self, *args, **kwargs):
+                    return self._inner.open(*args, **kwargs)
+
+            monkeypatch.setattr(zipfile, "ZipFile", FakeEncryptedZip)
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+
+            with pytest.raises(ValueError, match="encrypted"):
+                pm.install_from_package(zip_path)
+
     def test_path_traversal_prevented(self):
         """ZIP with ``../`` paths should be rejected."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -311,6 +349,24 @@ class TestInstallFromZipValidation:
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match="路径穿越"):
                 pm.install_from_package(zip_path)
+
+    def test_scan_rejects_manifest_id_directory_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins_dir = os.path.join(tmp, "plugins")
+            os.makedirs(plugins_dir)
+            plugin_dir = Path(plugins_dir) / "actual_dir"
+            plugin_dir.mkdir()
+            (plugin_dir / "plugin.json").write_text(
+                json.dumps({"id": "declared_id", "name": "Mismatch", "version": "1", "entry": "main.py"}),
+                encoding="utf-8",
+            )
+            (plugin_dir / "main.py").write_text("def register(api): pass\n", encoding="utf-8")
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
+            infos = pm.scan_plugins()
+
+            assert infos[0].status == "error"
+            assert "directory name" in infos[0].error
 
 
 class TestInstallFromZipRollback:
@@ -427,6 +483,47 @@ class TestInstallFromZipRollback:
                     zip_path,
                     on_overwrite=lambda name: True,
                 )
+
+
+class TestPluginDeleteSafety:
+    def test_delete_plugin_files_removes_active_api_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins_dir = os.path.join(tmp, "plugins")
+            os.makedirs(plugins_dir)
+            zip_path = os.path.join(tmp, "plugin.qlzip")
+            _make_plugin_zip(zip_path)
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
+            pm.install_from_package(zip_path)
+            pm.scan_plugins()
+            assert pm.enable_plugin("test_p")
+            assert "test_p" in pm._active_apis
+
+            pm.delete_plugin_files("test_p")
+
+            assert pm.get_plugin("test_p") is None
+            assert "test_p" not in pm._active_apis
+            assert not (Path(plugins_dir) / "test_p").exists()
+
+    def test_delete_plugin_files_rejects_directory_outside_plugins_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins_dir = Path(tmp) / "plugins"
+            outside_dir = Path(tmp) / "outside"
+            plugins_dir.mkdir()
+            outside_dir.mkdir()
+
+            pm = PluginManager(CommandRegistry(), plugins_dir=str(plugins_dir))
+            pm._plugins["evil"] = type(
+                "Info",
+                (),
+                {
+                    "directory": str(outside_dir),
+                    "status": "loaded",
+                },
+            )()
+
+            with pytest.raises(UnsafePathError):
+                pm.delete_plugin_files("evil")
 
 
 # ---------------------------------------------------------------------------

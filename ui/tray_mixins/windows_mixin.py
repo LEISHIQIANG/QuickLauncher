@@ -240,7 +240,7 @@ class WindowsMixin:
         except Exception as e:
             logger.error("显示图标检查失败: %s", e, exc_info=True)
 
-    def show_command_panel(self, command_id="", args_text="", raw_input="", result_id=None, context_meta=None):
+    def show_command_panel(self, command_id="", args_text="", raw_input="", result_id=None, context_meta=None, shortcut=None):
         """显示独立命令面板。"""
         self._wake_from_sleep("command_panel")
         try:
@@ -258,6 +258,12 @@ class WindowsMixin:
 
             if result_id:
                 self.command_panel_window.show_result(result_id)
+            elif shortcut is not None:
+                self.command_panel_window.run_shortcut(
+                    shortcut,
+                    raw_input=raw_input or getattr(shortcut, "command", "") or getattr(shortcut, "name", ""),
+                    context_meta=context_meta or {},
+                )
             elif command_id:
                 self.command_panel_window.run_command(
                     command_id=command_id,

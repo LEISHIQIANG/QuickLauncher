@@ -136,6 +136,25 @@ class CommandExecutionService:
         threading.Thread(target=_worker, daemon=True, name="ShortcutChainService").start()
         return handle
 
+    def run_shortcut_command(
+        self,
+        request: CommandExecutionRequest,
+        *,
+        on_update: Callable[[str, CommandResult, CommandDefinition | None], None] | None = None,
+        on_finished: Callable[[str, CommandResult, CommandDefinition | None, float, str], None] | None = None,
+    ) -> CommandExecutionHandle:
+        handle = CommandExecutionHandle()
+
+        def _worker() -> None:
+            result, duration, result_id = self.execute_shortcut_command_sync(request, handle, on_update=on_update)
+            if handle.cancelled and not self._is_cancel_result(result):
+                return
+            if on_finished is not None:
+                on_finished(handle.request_id, result, None, duration, result_id)
+
+        threading.Thread(target=_worker, daemon=True, name="ShortcutCommandService").start()
+        return handle
+
     def execute_shortcut_capture_sync(
         self,
         request: CommandExecutionRequest,
@@ -157,6 +176,50 @@ class CommandExecutionService:
             result = CommandResult(
                 success=False, message=f"Captured command failed: {e}", display_type="log", error=str(e)
             )
+        duration = time.perf_counter() - started
+        result_id = self._store_result(request, result, None, duration)
+        return result, duration, result_id
+
+    def execute_shortcut_command_sync(
+        self,
+        request: CommandExecutionRequest,
+        handle: CommandExecutionHandle | None = None,
+        on_update: Callable[[str, CommandResult, CommandDefinition | None], None] | None = None,
+    ) -> tuple[CommandResult, float, str]:
+        handle = handle or CommandExecutionHandle()
+        started = time.perf_counter()
+        try:
+            from core import ShortcutExecutor
+
+            shortcut = request.shortcut
+            if shortcut is not None and request.args:
+                setattr(shortcut, "_runtime_param_values", dict(request.args))
+            if (
+                shortcut is not None
+                and getattr(shortcut, "command_type", "cmd") in ("cmd", "python")
+                and not bool(getattr(shortcut, "show_window", False))
+                and not bool(getattr(shortcut, "run_as_admin", False))
+            ):
+                def _update(result: CommandResult) -> None:
+                    if not handle.cancelled and on_update is not None:
+                        on_update(handle.request_id, result, None)
+
+                result = ShortcutExecutor.run_command_capture(
+                    shortcut,
+                    cancel_event=handle.cancel_event,
+                    on_update=_update if on_update is not None else None,
+                )
+            else:
+                ok, err = ShortcutExecutor.execute(shortcut, False)
+                result = CommandResult(
+                    success=bool(ok),
+                    message="命令已启动。" if ok else str(err or "命令执行失败。"),
+                    display_type="text",
+                    error="" if ok else str(err or "命令执行失败。"),
+                )
+        except Exception as e:
+            logger.exception("Shortcut command execution failed: %s", e)
+            result = CommandResult(success=False, message=f"Command failed: {e}", display_type="log", error=str(e))
         duration = time.perf_counter() - started
         result_id = self._store_result(request, result, None, duration)
         return result, duration, result_id

@@ -32,7 +32,7 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
-from ui.styles.style import Glassmorphism, PopupMenu
+from ui.styles.style import Colors, Glassmorphism, PopupMenu
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -506,6 +506,8 @@ class ChainDialog(BaseDialog):
         tip_bg = "rgba(44, 44, 48, 240)" if theme == "dark" else "rgba(255, 255, 255, 240)"
         tip_fg = "#ffffff" if theme == "dark" else "#1c1c1e"
         tip_border = "rgba(255, 255, 255, 0.15)" if theme == "dark" else "rgba(0, 0, 0, 0.1)"
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
 
         custom = (
             base_style
@@ -547,7 +549,8 @@ class ChainDialog(BaseDialog):
                 color: {text_primary};
                 font-size: 13px;
                 padding: 4px 8px;
-                selection-background-color: #007aff;
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
             }}
             QScrollArea {{
                 background: transparent;

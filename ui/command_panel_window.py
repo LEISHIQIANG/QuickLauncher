@@ -8,6 +8,7 @@ import webbrowser
 
 from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
 from core.command_registry import CommandParam, CommandResult
+from core.data_models import ShortcutItem
 from qt_compat import (
     QApplication,
     QCheckBox,
@@ -33,11 +34,12 @@ from qt_compat import (
     Qt,
     QTableWidget,
     QTableWidgetItem,
+    QTextOption,
     QTimer,
     QWidget,
     pyqtSignal,
 )
-from ui.styles.style import PopupMenu
+from ui.styles.style import Colors, PopupMenu
 from ui.themed_tool_window import ThemedToolWindow
 
 logger = logging.getLogger(__name__)
@@ -112,6 +114,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self._run_token = ""
         self._current_handle = None
         self._current_request = None
+        self._current_shortcut = None
         self._param_widgets = {}
         self._history_expanded = False
         self._suppress_command_suggestions = False
@@ -193,6 +196,8 @@ class CommandPanelWindow(ThemedToolWindow):
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
         self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.text.setWordWrapMode(QTextOption.WrapAnywhere)
+        self.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         font = QFont("Microsoft YaHei UI", 9)
         if not font.exactMatch():
             font = QFont("Segoe UI", 9)
@@ -340,13 +345,13 @@ class CommandPanelWindow(ThemedToolWindow):
             placeholder = "rgba(255, 255, 255, 0.42)"
             border = "rgba(10, 132, 255, 0.82)"
             bg = "rgba(255, 255, 255, 0.13)"
-            button_hover = "rgba(255, 255, 255, 0.10)"
         else:
             text = "rgba(28, 28, 30, 0.9)"
             placeholder = "rgba(60, 60, 67, 0.45)"
             border = "rgba(0, 122, 255, 0.78)"
             bg = "rgba(255, 255, 255, 0.70)"
-            button_hover = "rgba(0, 0, 0, 0.05)"
+        selection_bg = Colors.get_selection_bg(self._theme)
+        selection_text = Colors.get_selection_text(self._theme)
         if hasattr(self, "command_input_group"):
             self.command_input_group.setStyleSheet(f"""
                 QWidget {{
@@ -364,7 +369,8 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-radius: 8px;
                 background: transparent;
                 color: {text};
-                selection-background-color: rgba(10, 132, 255, 0.45);
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
             }}
             QLineEdit::placeholder {{
                 color: {placeholder};
@@ -420,6 +426,8 @@ class CommandPanelWindow(ThemedToolWindow):
             grid = "rgba(0, 0, 0, 0.08)"
             bg = "rgba(0, 0, 0, 0.02)"
             header = "rgba(0, 0, 0, 0.04)"
+        selection_bg = Colors.get_selection_bg(self._theme)
+        selection_text = Colors.get_selection_text(self._theme)
         self.table.setStyleSheet(f"""
             QTableWidget {{
                 background: {bg};
@@ -427,7 +435,8 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-radius: 8px;
                 color: {text};
                 gridline-color: {grid};
-                selection-background-color: rgba(10, 132, 255, 0.45);
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
             }}
             QHeaderView::section {{
                 background: {header};
@@ -614,6 +623,8 @@ class CommandPanelWindow(ThemedToolWindow):
             event.accept()
             return
         if key == Qt.Key_Escape:
+            if self._running:
+                self.cancel_current()
             event.accept()
             return
         if key in (Qt.Key_Return, Qt.Key_Enter):
@@ -635,6 +646,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self._set_running(False)
         self._current_result_id = stored.id
         self._current_result = stored.result
+        self._current_shortcut = None
         self._current_command_id = stored.command_id
         self._current_command_title = stored.command_title
         self._current_raw_input = stored.raw_input
@@ -660,6 +672,7 @@ class CommandPanelWindow(ThemedToolWindow):
     ):
         command_id = (command_id or "").strip()
         self._current_command_id = command_id
+        self._current_shortcut = None
         self._current_args_text = args_text or ""
         self._current_raw_input = raw_input or (f"/{command_id} {args_text}".strip() if command_id else "")
         self._current_context_meta = dict(context_meta or {})
@@ -681,7 +694,32 @@ class CommandPanelWindow(ThemedToolWindow):
             return
         self._execute_current_request()
 
+    def run_shortcut(self, shortcut: ShortcutItem, raw_input: str = "", context_meta: dict | None = None):
+        self._current_shortcut = shortcut
+        self._current_definition = None
+        self._current_command_id = getattr(shortcut, "id", "") or ""
+        self._current_command_title = getattr(shortcut, "name", "") or self._current_command_id
+        self._current_raw_input = raw_input or getattr(shortcut, "command", "") or self._current_command_title
+        self._current_context_meta = dict(context_meta or {})
+        self.command_input.setText(self._current_raw_input)
+        self._defer_focus_command_input()
+        self._hide_command_suggestions()
+        self._render_shortcut_params(shortcut)
+        if self._param_widgets:
+            self._set_running(False)
+            self._show_widget("text")
+            self.text.setPlainText("请填写参数后执行。")
+            self._rendered_text = "请填写参数后执行。"
+            self._update_subtitle("等待输入")
+            size_key = getattr(shortcut, "command_panel_size", "medium") or "medium"
+            self._apply_size_for_result(CommandResult(display_type="text", payload={"window_size": size_key}), None)
+            return
+        self._execute_current_request()
+
     def _execute_current_request(self):
+        if self._current_shortcut is not None:
+            self._execute_current_shortcut_request()
+            return
         command_def = self._current_definition
         args = self._collect_param_args(command_def)
         if args is None:
@@ -713,11 +751,51 @@ class CommandPanelWindow(ThemedToolWindow):
         self._run_token = handle.request_id
         self._defer_focus_command_input()
 
+    def _execute_current_shortcut_request(self):
+        shortcut = self._current_shortcut
+        args = self._collect_param_args(None)
+        if args is None:
+            return
+        request = CommandExecutionRequest(
+            command_id=getattr(shortcut, "id", "") or "",
+            raw_input=self._current_raw_input,
+            context_meta=dict(self._current_context_meta),
+            source="shortcut",
+            shortcut=shortcut,
+            args=args,
+        )
+        self._current_request = request
+        self._set_running(True)
+        self._show_widget("text")
+        self.text.setPlainText("执行中...")
+        self._rendered_text = "执行中..."
+        self._update_subtitle("执行中")
+        size_key = getattr(shortcut, "command_panel_size", "medium") or "medium"
+        self._apply_size_for_result(CommandResult(display_type="text", payload={"window_size": size_key}), None)
+        def finished_callback(token, result, cmd, duration, result_id):
+            self.result_ready.emit(token, result, cmd, {"duration": duration, "result_id": result_id})
+
+        try:
+            handle = self.execution_service.run_shortcut_command(
+                request,
+                on_update=lambda token, result, cmd: self.result_update.emit(token, result, cmd),
+                on_finished=finished_callback,
+            )
+        except TypeError:
+            handle = self.execution_service.run_shortcut_command(
+                request,
+                on_finished=finished_callback,
+            )
+        self._current_handle = handle
+        self._run_token = handle.request_id
+        self._defer_focus_command_input()
+
     def _defer_focus_command_input(self):
         return
 
     def show_transient_result(self, result: CommandResult, command_def=None):
         self._set_running(False)
+        self._current_shortcut = None
         self._current_definition = command_def
         self._current_result_id = ""
         self._current_result = result
@@ -772,6 +850,15 @@ class CommandPanelWindow(ThemedToolWindow):
             self._param_widgets[param.name] = (param, widget)
         self.param_container.setVisible(True)
         self.param_error_label.setVisible(False)
+
+    def _render_shortcut_params(self, shortcut):
+        from core.data_models import ShortcutItem
+
+        params = []
+        for raw in ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", [])):
+            params.append(CommandParam(**raw))
+        holder = type("ShortcutCommandDef", (), {"params": params})()
+        self._render_params(holder)
 
     def _clear_params(self):
         self._param_widgets = {}
@@ -1067,6 +1154,9 @@ class CommandPanelWindow(ThemedToolWindow):
         self._update_subtitle("已取消")
 
     def rerun_current(self):
+        if self._current_shortcut is not None:
+            self._execute_current_shortcut_request()
+            return
         request = self._current_request
         if request is not None and request.command_id:
             self._current_command_id = request.command_id
@@ -1141,11 +1231,25 @@ class CommandPanelWindow(ThemedToolWindow):
         if not font.exactMatch() and font_family == "Consolas":
             font = QFont("Courier New", 9)
         self.text.setFont(font)
-        wrap = payload.get("wrap", True)
-        mode = QPlainTextEdit.WidgetWidth if wrap else QPlainTextEdit.NoWrap
-        self.text.setLineWrapMode(mode)
-        self.text.setPlainText(message)
+        self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.text.setWordWrapMode(QTextOption.WrapAnywhere)
+        self.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._set_result_text_preserving_scroll(message, live_update=bool(payload.get("running")))
         self._rendered_text = message
+
+    def _set_result_text_preserving_scroll(self, message: str, *, live_update: bool = False):
+        scrollbar = self.text.verticalScrollBar()
+        old_value = scrollbar.value()
+        old_max = scrollbar.maximum()
+        was_at_bottom = old_value >= max(0, old_max - 2)
+        preserve_position = (live_update or self._running) and old_max > 0 and not was_at_bottom
+
+        self.text.setPlainText(message)
+
+        if preserve_position:
+            scrollbar.setValue(min(old_value, scrollbar.maximum()))
+        elif live_update or self._running:
+            scrollbar.setValue(scrollbar.maximum())
 
     def _render_table(self, result: CommandResult, message: str):
         self._show_widget("table")
@@ -1191,6 +1295,9 @@ class CommandPanelWindow(ThemedToolWindow):
         payload = result.payload if isinstance(result.payload, dict) else {}
         items = payload.get("items") or []
         self.list_widget.clear()
+        fm = self.list_widget.fontMetrics()
+        line_height = fm.height()
+        vertical_padding = 17  # 8px padding top + 8px padding bottom + 1px border
         for item in items:
             if isinstance(item, dict):
                 title = str(item.get("title") or item.get("name") or "")
@@ -1203,7 +1310,10 @@ class CommandPanelWindow(ThemedToolWindow):
                     text += f"\n{detail}"
             else:
                 text = str(item)
-            self.list_widget.addItem(QListWidgetItem(text))
+            qlwi = QListWidgetItem(text)
+            line_count = text.count("\n") + 1
+            qlwi.setSizeHint(QSize(0, line_count * line_height + vertical_padding))
+            self.list_widget.addItem(qlwi)
         self._rendered_text = "\n".join(self.list_widget.item(i).text() for i in range(self.list_widget.count()))
         if not items:
             self.text.setPlainText(message)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from typing import Any
 
@@ -25,6 +26,8 @@ def execute_shortcut_chain(
     steps = list(getattr(chain, "chain_steps", []) or [])
     success = True
     error = ""
+    chain_values: dict[str, str] = {}
+    previous_output = ""
 
     if len(steps) > max_steps:
         steps = steps[:max_steps]
@@ -86,6 +89,7 @@ def execute_shortcut_chain(
 
         target = shortcut_map.get(str(step.get("shortcut_id") or ""))
         item_started = time.perf_counter()
+        step_result = None
         if target is None:
             step_success = False
             detail = "Referenced shortcut was not found."
@@ -95,10 +99,38 @@ def execute_shortcut_chain(
             detail = "Nested or circular chains are not supported in MVP."
             step_error = detail
         else:
-            step_success, detail, step_error = _execute_step(target, cancel_event)
+            target_for_step = target
+            if target is not None:
+                target_for_step = copy.copy(target)
+                setattr(target_for_step, "_chain_values", dict(chain_values))
+                if step.get("use_previous_output", False):
+                    setattr(target_for_step, "_runtime_input_values", {"input": previous_output})
+            step_success, detail, step_error, step_result = _execute_step(target_for_step, cancel_event)
 
         duration = time.perf_counter() - item_started
         status = "ok" if step_success else "failed"
+        step_payload = getattr(step_result, "payload", {}) if step_result is not None else {}
+        if not isinstance(step_payload, dict):
+            step_payload = {}
+        stdout = str(step_payload.get("stdout") or "")
+        stderr = str(step_payload.get("stderr") or "")
+        exit_code = str(step_payload.get("exit_code") if step_payload.get("exit_code") is not None else "")
+        output = stdout or str(getattr(step_result, "message", "") if step_result is not None else detail or "")
+        previous_output = output
+        chain_values.update(
+            {
+                f"{index}.success": "true" if step_success else "false",
+                f"{index}.exit_code": exit_code,
+                f"{index}.stdout": stdout,
+                f"{index}.stderr": stderr,
+                f"{index}.output": output,
+                "prev.success": "true" if step_success else "false",
+                "prev.exit_code": exit_code,
+                "prev.stdout": stdout,
+                "prev.stderr": stderr,
+                "prev.output": output,
+            }
+        )
         items.append(
             {
                 "title": title_prefix
@@ -138,7 +170,7 @@ def execute_shortcut_chain(
     )
 
 
-def _execute_step(target: ShortcutItem, cancel_event=None) -> tuple[bool, str, str]:
+def _execute_step(target: ShortcutItem, cancel_event=None) -> tuple[bool, str, str, CommandResult | None]:
     from core import ShortcutExecutor
 
     if (
@@ -153,10 +185,10 @@ def _execute_step(target: ShortcutItem, cancel_event=None) -> tuple[bool, str, s
         except TypeError:
             result = ShortcutExecutor.run_command_capture(target)
         summary = _capture_summary(result)
-        return bool(result.success), summary, result.error or ""
+        return bool(result.success), summary, result.error or "", result
 
     ok, error = ShortcutExecutor.execute(target, False)
-    return bool(ok), "Completed." if ok else str(error or "Failed."), str(error or "")
+    return bool(ok), "Completed." if ok else str(error or "Failed."), str(error or ""), None
 
 
 def _capture_summary(result: CommandResult) -> str:

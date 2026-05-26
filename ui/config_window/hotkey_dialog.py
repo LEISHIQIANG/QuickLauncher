@@ -331,9 +331,9 @@ class HotkeyDialog(BaseDialog):
         trigger_layout = QHBoxLayout(trigger_group)
         trigger_layout.setSpacing(12)
         trigger_layout.setContentsMargins(8, 0, 8, 8)
-        self.trigger_immediate_rb = QRadioButton("马上发送按键")
+        self.trigger_immediate_rb = QRadioButton("无延迟发送")
         install_tooltip(self.trigger_immediate_rb, "点击图标后立刻发送这组按键，适合不需要回到原窗口的操作")
-        self.trigger_after_close_rb = QRadioButton("先关闭面板，再发送按键")
+        self.trigger_after_close_rb = QRadioButton("窗口淡出后发送")
         install_tooltip(
             self.trigger_after_close_rb, "先关闭快捷启动面板并把焦点还给原来的窗口，再发送这组按键，适合控制原窗口"
         )

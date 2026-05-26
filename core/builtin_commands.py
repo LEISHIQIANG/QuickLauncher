@@ -221,6 +221,10 @@ BUILTIN_COMMAND_ALIASES = {
     "conflict": "conflict",
     "冲突": "conflict",
     "hotkey-conflict": "conflict",
+    "git": "git",
+    "git-status": "git",
+    "git-pull": "git",
+    "git-checkout": "git",
 }
 
 

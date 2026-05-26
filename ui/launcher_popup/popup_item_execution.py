@@ -221,13 +221,32 @@ class PopupItemExecutionMixin:
             and not bool(getattr(item, "show_window", False))
             and not bool(getattr(item, "run_as_admin", False))
         )
+        force_close_param_command = (
+            item.type == ShortcutType.COMMAND
+            and getattr(item, "command_type", "cmd") in ("cmd", "python")
+            and bool(getattr(item, "command_params", []))
+        )
         force_close_chain = item.type == ShortcutType.CHAIN
         should_close = (
-            force_close_builtin_direct or force_close_capture_command or force_close_chain or not self.is_pinned
+            force_close_builtin_direct
+            or force_close_capture_command
+            or force_close_param_command
+            or force_close_chain
+            or not self.is_pinned
         )
 
         if should_close:
             self.hide()
+
+        if force_close_param_command or force_close_capture_command:
+            tray_app = getattr(self, "tray_app", None)
+            if tray_app is not None and hasattr(tray_app, "show_command_panel"):
+                try:
+                    if tray_app.show_command_panel(shortcut=item, raw_input=item.command or ""):
+                        self._executing = False
+                        return
+                except Exception:
+                    logger.exception("Command panel handoff failed; falling back to worker execution")
 
         # 使用线程执行，避免阻塞 UI
         def do_execute_thread():
@@ -346,8 +365,9 @@ class PopupItemExecutionMixin:
                         source="shortcut",
                         duration=payload.get("duration", 0.0),
                     )
-                tray_app.show_command_panel(result_id=result_id)
-                return
+                if tray_app.show_command_panel(result_id=result_id):
+                    return
+                logger.warning("Command panel did not open; falling back to popup command result")
             except Exception:
                 logger.exception("显示命令面板结果失败")
         if hasattr(self, "show_command_result"):

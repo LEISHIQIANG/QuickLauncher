@@ -655,7 +655,6 @@ def test_frozen_visible_python_without_system_launcher_returns_clear_error(monke
     item.command_type = "python"
     item.command = "print('hello')"
     item.show_window = True
-    item.python_execution_mode = "subprocess"
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
 
@@ -666,16 +665,10 @@ def test_frozen_visible_python_without_system_launcher_returns_clear_error(monke
 
 
 def test_frozen_silent_python_without_launcher_does_not_fall_back_to_inline(monkeypatch):
-    executed = {}
-
     class FakeExecutor(command_exec.CommandExecutionMixin):
         @staticmethod
         def _python_launcher():
             return None
-
-        @staticmethod
-        def _python_inline_context():
-            return executed
 
     monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
     monkeypatch.setattr(command_exec.sys, "frozen", True, raising=False)
@@ -684,16 +677,14 @@ def test_frozen_silent_python_without_launcher_does_not_fall_back_to_inline(monk
     item.command_type = "python"
     item.command = "value = 42"
     item.show_window = False
-    item.python_execution_mode = "subprocess"
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
 
     assert not success
     assert "系统 Python" in error
-    assert executed == {}
 
 
-def test_elevated_normal_python_uses_privilege_boundary_not_inline(monkeypatch):
+def test_python_uses_subprocess_even_in_elevated_context(monkeypatch):
     captured = {}
 
     class FakeExecutor(command_exec.CommandExecutionMixin):
@@ -711,16 +702,14 @@ def test_elevated_normal_python_uses_privilege_boundary_not_inline(monkeypatch):
             return r"C:\Temp\ql_script.py"
 
         @staticmethod
-        def _launch_with_privilege(
-            target, parameters, directory, show_cmd=0, run_as_admin=False, admin_failure_message=""
-        ):
-            captured["target"] = target
-            captured["run_as_admin"] = run_as_admin
-            return True, ""
+        def _popen_silent(argv, cwd=None, env=None, shell=False):
+            captured["argv"] = argv
+            captured["shell"] = shell
+            return None
 
         @staticmethod
-        def _python_inline_context():
-            raise AssertionError("elevated launcher must not run normal python inline")
+        def _sanitized_child_env():
+            return {}
 
     monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
 
@@ -728,15 +717,14 @@ def test_elevated_normal_python_uses_privilege_boundary_not_inline(monkeypatch):
     item.command_type = "python"
     item.command = "value = 42"
     item.show_window = False
-    item.python_execution_mode = "legacy_inline"
     item.run_as_admin = False
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
 
     assert success
     assert error == ""
-    assert captured["target"] == r"C:\Python312\python.exe"
-    assert captured["run_as_admin"] is False
+    assert captured["argv"] == [r"C:\Python312\python.exe", r"C:\Temp\ql_script.py"]
+    assert captured["shell"] is False
 
 
 def test_admin_cmd_success_after_standard_fallback_is_reported_success(monkeypatch):
@@ -834,12 +822,83 @@ def test_shortcut_item_persists_capture_output_fields():
     item.capture_output = True
     item.command_timeout_seconds = 3.5
     item.command_output_max_chars = 12345
+    item.command_panel_size = "small"
 
     restored = ShortcutItem.from_dict(item.to_dict())
 
     assert restored.capture_output is True
     assert restored.command_timeout_seconds == 3.5
     assert restored.command_output_max_chars == 12345
+    assert restored.command_panel_size == "small"
+
+
+def test_shortcut_item_persists_command_profile_fields():
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_params = [{"name": "host", "type": "text", "required": True}]
+    item.command_env = {"QL_TEST": "1"}
+    item.command_encoding = "gbk"
+
+    restored = ShortcutItem.from_dict(item.to_dict())
+
+    assert restored.command_params[0]["name"] == "host"
+    assert restored.command_env == {"QL_TEST": "1"}
+    assert restored.command_encoding == "gbk"
+
+
+def test_run_command_capture_resolves_param_and_env_and_decodes_fallback(monkeypatch):
+    import core.shortcut_command_exec as command_exec
+
+    captured = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "中文".encode("gbk"), b""
+
+        def poll(self):
+            return 0
+
+    def fake_popen(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {"BASE": "1"}))
+
+    item = ShortcutItem(
+        type=ShortcutType.COMMAND,
+        command_type="cmd",
+        command="echo {param:host:q}",
+        command_params=[{"name": "host", "required": True}],
+        command_env={"QL_TEST": "yes"},
+        command_encoding="auto",
+    )
+    item._runtime_param_values = {"host": "example.com"}
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert "example.com" in captured["args"][0]
+    assert captured["kwargs"]["env"]["QL_TEST"] == "yes"
+    assert result.payload["stdout"] == "中文"
+    assert result.payload["stdout_encoding"].lower() in ("cp936", "gbk", "mbcs")
+    assert result.payload["decode_fallback_used"] is True
+
+
+def test_run_command_capture_preflight_rejects_missing_workdir(tmp_path):
+    item = ShortcutItem(
+        type=ShortcutType.COMMAND,
+        command_type="cmd",
+        command="echo ok",
+        working_dir=str(tmp_path / "missing"),
+    )
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert result.display_type == "list"
+    assert "工作目录" in result.message
 
 
 def test_run_command_capture_cmd_stdout_stderr_and_exit(monkeypatch):
@@ -863,15 +922,18 @@ def test_run_command_capture_cmd_stdout_stderr_and_exit(monkeypatch):
     item.command_type = "cmd"
     item.command = "echo test"
     item.capture_output = True
+    item.command_panel_size = "small"
 
     result = command_exec.CommandExecutionMixin.run_command_capture(item)
 
     assert result.success is False
     assert result.display_type == "log"
+    assert result.payload["window_size"] == "small"
     assert result.payload["stdout"] == "out"
     assert result.payload["stderr"] == "err"
     assert result.payload["exit_code"] == 7
     assert captured["kwargs"]["stdout"] == command_exec.subprocess.PIPE
+    assert captured["kwargs"]["stdin"] == command_exec.subprocess.DEVNULL
     assert captured["kwargs"]["shell"] is True
 
 
@@ -939,9 +1001,12 @@ def test_run_command_capture_python_subprocess(monkeypatch):
             return "py out", "py err"
 
     captured = {}
-    monkeypatch.setattr(
-        command_exec.subprocess, "Popen", lambda *args, **kwargs: captured.setdefault("proc", FakeProcess())
-    )
+    def fake_popen(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return captured.setdefault("proc", FakeProcess())
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(command_exec.ShortcutExecutor, "_python_launcher", staticmethod(lambda: "python"))
     monkeypatch.setattr(
         command_exec.ShortcutExecutor, "_write_temp_python_script", staticmethod(lambda script: "tmp.py")
@@ -952,7 +1017,6 @@ def test_run_command_capture_python_subprocess(monkeypatch):
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "python"
     item.command = "print('x')"
-    item.python_execution_mode = "subprocess"
 
     result = command_exec.CommandExecutionMixin.run_command_capture(item)
 
@@ -960,6 +1024,8 @@ def test_run_command_capture_python_subprocess(monkeypatch):
     assert result.payload["stdout"] == "py out"
     assert result.payload["stderr"] == "py err"
     assert captured["removed"] == "tmp.py"
+    assert captured["args"][0] == ["python", "-u", "tmp.py"]
+    assert captured["kwargs"]["stdin"] == command_exec.subprocess.DEVNULL
 
 
 def test_execute_command_capture_false_keeps_silent_launch(monkeypatch):

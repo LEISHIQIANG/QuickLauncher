@@ -6,6 +6,8 @@ import re
 import subprocess
 import sys
 
+from core.path_security import UnsafePathError, resolve_under
+
 _SHA256_RE = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
 
 
@@ -25,10 +27,19 @@ class UpdateInstaller:
             except Exception:
                 pass
 
-    def install(self, installer_path: str, expected_hash: str = ""):
+    def install(self, installer_path: str, expected_hash: str = "", trusted_dir: str = ""):
         if not os.path.isfile(installer_path):
             self._notify("failed", f"安装文件不存在: {installer_path}")
             return
+        if os.path.islink(installer_path):
+            self._notify("failed", "installer file must not be a symlink")
+            return
+        if trusted_dir:
+            try:
+                installer_path = str(resolve_under(trusted_dir, installer_path))
+            except UnsafePathError:
+                self._notify("failed", "安装文件不在可信下载目录内")
+                return
         if os.path.splitext(installer_path)[1].lower() != ".exe":
             self._notify("failed", "安装文件类型无效")
             return

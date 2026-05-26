@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
+
+from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
 _CACHE_DIR_NAMES = {".pytest_cache", ".ruff_cache", "__pycache__"}
 _BYTECODE_SUFFIXES = {".pyc", ".pyo"}
@@ -39,8 +40,8 @@ def get_project_cache_stats(data_manager=None) -> dict:
 
 def _get_install_dir(data_manager) -> Path:
     if data_manager is not None and getattr(data_manager, "install_dir", None):
-        return Path(getattr(data_manager, "install_dir")).resolve()
-    return Path(__file__).resolve().parent.parent
+        return Path(getattr(data_manager, "install_dir")).resolve(strict=False)
+    return Path(__file__).resolve(strict=False).parent.parent
 
 
 def _collect_protected_paths(data) -> set[str]:
@@ -99,7 +100,10 @@ def _current_theme_temp_icon_paths(root: Path, data) -> set[str]:
 
 
 def _clean_temp_icons(root: Path, protected_paths: set[str], dry_run: bool, stats: dict):
-    temp_icons = root / "temp_icons"
+    temp_icons = _safe_child_or_none(root, root / "temp_icons")
+    if temp_icons is None:
+        stats["failed"] += 1
+        return
     if not temp_icons.exists():
         return
 
@@ -151,6 +155,12 @@ def _iter_dirs(root: Path):
 
 
 def _remove_file(path: Path, area: str, dry_run: bool, stats: dict):
+    root = Path(stats["root"])
+    try:
+        path = resolve_under(root, path)
+    except UnsafePathError:
+        stats["failed"] += 1
+        return
     try:
         size = path.stat().st_size
     except Exception:
@@ -165,12 +175,18 @@ def _remove_file(path: Path, area: str, dry_run: bool, stats: dict):
 
 
 def _remove_dir_tree(path: Path, area: str, dry_run: bool, stats: dict):
+    root = Path(stats["root"])
+    try:
+        path = resolve_under(root, path)
+    except UnsafePathError:
+        stats["failed"] += 1
+        return
     files = [p for p in _iter_files(path)]
     count = len(files)
     size = sum(_safe_size(p) for p in files)
     if not dry_run:
         try:
-            shutil.rmtree(path)
+            safe_rmtree_child(root, path)
         except Exception:
             stats["failed"] += 1
             return
@@ -213,6 +229,13 @@ def _safe_size(path: Path) -> int:
 
 def _normalize_path(path) -> str:
     return os.path.normcase(os.path.abspath(os.path.normpath(str(path or ""))))
+
+
+def _safe_child_or_none(root: Path, candidate: Path) -> Path | None:
+    try:
+        return resolve_under(root, candidate)
+    except UnsafePathError:
+        return None
 
 
 def _round_stats(stats: dict):

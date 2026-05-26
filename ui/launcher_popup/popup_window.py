@@ -134,7 +134,7 @@ class LauncherPopup(
         self.settings = data_manager.get_settings()
 
         # 获取数据
-        self.pages = data_manager.data.get_pages()
+        self.pages = [f for f in data_manager.data.get_pages() if not getattr(f, "is_icon_repo", False)]
         dock = data_manager.data.get_dock()
         self.dock_items = dock.items if dock else []
         self._model_revision = data_manager.get_runtime_revision()
@@ -625,7 +625,7 @@ class LauncherPopup(
         prev_page_count = len(self.pages) if self.pages else 0
 
         # 重新获取数据
-        self.pages = self.data_manager.data.get_pages()
+        self.pages = [f for f in self.data_manager.data.get_pages() if not getattr(f, "is_icon_repo", False)]
         dock = self.data_manager.data.get_dock()
         self.dock_items = dock.items if dock else []
 

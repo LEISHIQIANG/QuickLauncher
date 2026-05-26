@@ -129,3 +129,30 @@ def test_shortcut_capture_cancel_kills_process(monkeypatch):
     assert done.wait(2)
     assert killed == [True]
     assert results[0].error == "已取消"
+def test_shortcut_command_forwards_stream_updates(monkeypatch):
+    import core
+
+    updates = []
+
+    class FakeExecutor:
+        @staticmethod
+        def run_command_capture(shortcut, timeout=None, cancel_event=None, on_update=None):
+            assert on_update is not None
+            on_update(CommandResult(success=True, message="partial", display_type="log"))
+            return CommandResult(success=True, message="done", display_type="log")
+
+    monkeypatch.setattr(core, "ShortcutExecutor", FakeExecutor)
+
+    done = threading.Event()
+    results = []
+    service = CommandExecutionService(CommandResultStore())
+    item = ShortcutItem(id="cap", name="Capture", type=ShortcutType.COMMAND, command="slow", command_type="cmd")
+    service.run_shortcut_command(
+        CommandExecutionRequest(command_id="cap", raw_input="slow", source="shortcut", shortcut=item),
+        on_update=lambda token, result, command_def: updates.append((token, result.message, command_def)),
+        on_finished=lambda token, result, command_def, duration, result_id: (results.append(result), done.set()),
+    )
+
+    assert done.wait(2)
+    assert updates and updates[0][1:] == ("partial", None)
+    assert results[0].message == "done"

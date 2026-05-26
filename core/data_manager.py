@@ -42,6 +42,7 @@ from .import_security import (
     set_imported_items,
     skip_file,
 )
+from .path_security import resolve_under, safe_rmtree_child
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ class DataManager:
         self._ensure_dirs()
         self.history_manager = ConfigHistoryManager(self.history_dir, self._max_history_snapshots)
         self.data = self._load()
+        self._ensure_icon_repo_folder()
         set_language(getattr(self.data.settings, "language", "zh_CN"))
         self._last_saved_data_dict = self.data.to_dict()
 
@@ -119,6 +121,16 @@ class DataManager:
         self.app_dir.mkdir(parents=True, exist_ok=True)
         self.icons_dir.mkdir(parents=True, exist_ok=True)
         self.history_dir.mkdir(parents=True, exist_ok=True)
+
+    def _ensure_icon_repo_folder(self):
+        """确保图标仓库文件夹存在（为已有配置迁移）"""
+        for folder in self.data.folders:
+            if folder.id == "icon_repo":
+                return
+        max_order = max((f.order for f in self.data.folders), default=0)
+        icon_repo = Folder(id="icon_repo", name="图标仓库", order=max_order + 1, is_system=True, is_icon_repo=True)
+        self.data.folders.append(icon_repo)
+        self.save()
 
     def _load(self) -> AppData:
         """加载数据"""
@@ -521,6 +533,8 @@ class DataManager:
         """重命名文件夹"""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
+            if folder and folder.is_icon_repo:
+                return False
             if folder:
                 self._mark_history("重命名分类", f"{folder.name} -> {new_name}")
                 folder.name = new_name
@@ -1056,13 +1070,28 @@ class DataManager:
             dict: 清理统计信息
         """
         import logging
-        import shutil
         import winreg
 
         logger = logging.getLogger(__name__)
 
         with self._save_lock:
             stats = {"files_removed": 0, "dirs_removed": 0, "registry_keys_removed": 0, "errors": []}
+
+            def remove_children_safely(root: Path, label: str):
+                root_path = Path(root).resolve(strict=False)
+                if not root_path.exists() or root_path.is_symlink():
+                    return
+                for item in root_path.iterdir():
+                    try:
+                        target = resolve_under(root_path, item)
+                        if target.is_symlink() or target.is_file():
+                            target.unlink()
+                            stats["files_removed"] += 1
+                        elif target.is_dir():
+                            safe_rmtree_child(root_path, target)
+                            stats["dirs_removed"] += 1
+                    except Exception as e:
+                        stats["errors"].append(f"删除 {label} 子项 {item} 失败: {e}")
 
             def report(msg, progress):
                 if callback:
@@ -1089,37 +1118,17 @@ class DataManager:
 
             # 2. 删除图标缓存目录
             report("正在清理图标缓存...", 0.3)
-            if self.icons_dir.exists():
-                try:
-                    for item in self.icons_dir.iterdir():
-                        try:
-                            if item.is_file():
-                                item.unlink()
-                                stats["files_removed"] += 1
-                            elif item.is_dir():
-                                shutil.rmtree(item)
-                                stats["dirs_removed"] += 1
-                        except Exception as e:
-                            stats["errors"].append(f"删除 {item} 失败: {e}")
-                except Exception as e:
-                    stats["errors"].append(f"遍历图标目录失败: {e}")
+            try:
+                remove_children_safely(self.icons_dir, "icons")
+            except Exception as e:
+                stats["errors"].append(f"遍历图标目录失败: {e}")
 
             # 3. 删除应用数据目录下的所有文件
             report("正在清理应用数据...", 0.6)
-            if self.app_dir.exists():
-                try:
-                    for item in self.app_dir.iterdir():
-                        try:
-                            if item.is_file():
-                                item.unlink()
-                                stats["files_removed"] += 1
-                            elif item.is_dir():
-                                shutil.rmtree(item)
-                                stats["dirs_removed"] += 1
-                        except Exception as e:
-                            stats["errors"].append(f"删除 {item} 失败: {e}")
-                except Exception as e:
-                    stats["errors"].append(f"遍历应用目录失败: {e}")
+            try:
+                remove_children_safely(self.app_dir, "app data")
+            except Exception as e:
+                stats["errors"].append(f"遍历应用目录失败: {e}")
 
             # 4. 重置内存中的数据
             report("正在重置配置...", 0.9)
@@ -1211,7 +1220,13 @@ class DataManager:
                         return False
                     data_dict = sanitize_app_data_dict(json.loads(data_json), report)
 
-                    temp_icons_dir = Path(tempfile.mkdtemp(prefix="ql_restore_icons_", dir=str(self.install_dir)))
+                    install_root = Path(self.install_dir).resolve(strict=False)
+                    app_root = Path(self.app_dir).resolve(strict=False)
+                    icons_root = Path(self.icons_dir).resolve(strict=False)
+                    temp_icons_dir = resolve_under(
+                        install_root,
+                        tempfile.mkdtemp(prefix="ql_restore_icons_", dir=str(install_root)),
+                    )
                     bg_rel_path = data_dict.get("settings", {}).get("custom_bg_path", "")
                     if bg_rel_path and not os.path.isabs(bg_rel_path):
                         normalized_bg = normalize_zip_name(bg_rel_path)
@@ -1230,7 +1245,10 @@ class DataManager:
                             if bg_bytes is None:
                                 data_dict["settings"]["custom_bg_path"] = ""
                             else:
-                                target_bg_path = self.app_dir / f"restored_bg_{os.path.basename(bg_rel_path)}"
+                                target_bg_path = resolve_under(
+                                    app_root,
+                                    app_root / f"restored_bg_{os.path.basename(bg_rel_path)}",
+                                )
                                 with open(target_bg_path, "wb") as f:
                                     f.write(bg_bytes)
                                 data_dict["settings"]["custom_bg_path"] = str(target_bg_path)
@@ -1255,7 +1273,7 @@ class DataManager:
                                 continue
                             filename = os.path.basename(name)
                             if filename:
-                                target_path = temp_icons_dir / filename
+                                target_path = resolve_under(temp_icons_dir, temp_icons_dir / filename)
                                 with open(target_path, "wb") as f:
                                     f.write(icon_bytes)
 
@@ -1264,28 +1282,34 @@ class DataManager:
                     backup_icons_dir = None
                     try:
                         if self.icons_dir.exists():
-                            backup_icons_dir = self.icons_dir.with_name(f"{self.icons_dir.name}_backup_restore")
+                            backup_icons_dir = resolve_under(
+                                icons_root.parent,
+                                icons_root.with_name(f"{icons_root.name}_backup_restore"),
+                            )
                             if backup_icons_dir.exists():
-                                shutil.rmtree(backup_icons_dir, ignore_errors=True)
-                            self.icons_dir.replace(backup_icons_dir)
+                                safe_rmtree_child(icons_root.parent, backup_icons_dir)
+                            icons_root.replace(backup_icons_dir)
 
-                        self.icons_dir.mkdir(parents=True, exist_ok=True)
+                        icons_root.mkdir(parents=True, exist_ok=True)
                         for item in temp_icons_dir.iterdir():
-                            shutil.move(str(item), str(self.icons_dir / item.name))
+                            target_icon = resolve_under(icons_root, icons_root / item.name)
+                            shutil.move(str(resolve_under(temp_icons_dir, item)), str(target_icon))
 
                         self.data = restored_data
                         self.save(immediate=True)
                         set_imported_items(report, sum(len(f.items) for f in self.data.folders))
                     except Exception:
-                        shutil.rmtree(self.icons_dir, ignore_errors=True)
+                        if icons_root.exists():
+                            safe_rmtree_child(icons_root.parent, icons_root)
                         if backup_icons_dir and backup_icons_dir.exists():
-                            backup_icons_dir.replace(self.icons_dir)
+                            backup_icons_dir.replace(icons_root)
                         raise
                     finally:
-                        shutil.rmtree(temp_icons_dir, ignore_errors=True)
+                        if temp_icons_dir.exists():
+                            safe_rmtree_child(install_root, temp_icons_dir)
 
                     if backup_icons_dir and backup_icons_dir.exists():
-                        shutil.rmtree(backup_icons_dir, ignore_errors=True)
+                        safe_rmtree_child(backup_icons_dir.parent, backup_icons_dir)
 
                     return True
 
@@ -1352,7 +1376,6 @@ class DataManager:
                             "trigger_mode": shortcut.get("trigger_mode", "immediate"),
                             "show_window": shortcut.get("show_window", False),
                             "run_as_admin": shortcut.get("run_as_admin", False),
-                            "python_execution_mode": shortcut.get("python_execution_mode", "legacy_inline"),
                             "command_variables_enabled": shortcut.get("command_variables_enabled", False),
                             "icon_data": shortcut.get("icon_data", ""),
                             "icon_invert_with_theme": shortcut.get("icon_invert_with_theme", False),
@@ -1472,7 +1495,7 @@ class DataManager:
                     # 向后兼容: 修复曾被写入的编码损坏文件夹名
                     if not target_folder:
                         for folder in self.data.folders:
-                            if folder.name == "瀵煎叆鍥炬爣":
+                            if folder.name == "导入图标":
                                 folder.name = "导入图标"
                                 target_folder = folder
                                 break
@@ -1494,8 +1517,6 @@ class DataManager:
                         item_dict = dict(item_dict)
                         item_dict["id"] = str(uuid.uuid4())
                         item_dict["run_as_admin"] = False
-                        if item_type == "command" and item_dict.get("python_execution_mode") == "legacy_inline":
-                            item_dict["python_execution_mode"] = "subprocess"
                         icon_path = item_dict.get("icon_path", "")
                         if icon_path and icon_path.startswith("icons/"):
                             if has_zip_entry(safe_index, icon_path) and is_allowed_icon_path(icon_path):

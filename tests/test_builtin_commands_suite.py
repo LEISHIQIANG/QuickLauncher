@@ -59,6 +59,7 @@ from core.commands import (
     cmd_dns,
     cmd_env,
     cmd_explorer,
+    cmd_git,
     cmd_god,
     cmd_hash,
     cmd_hosts,
@@ -564,6 +565,31 @@ def test_cmd_dns(mock_run):
     mock_run.return_value = (True, "dns flushed")
     res = cmd_dns(CommandContext())
     assert res.success is True
+
+
+def test_cmd_git_status(monkeypatch, tmp_path):
+    calls = []
+
+    class Proc:
+        def __init__(self, argv, cwd=None, **kwargs):
+            self.argv = argv
+            self.cwd = cwd
+            self.returncode = 0
+            calls.append((argv, cwd))
+
+        def communicate(self, timeout=None):
+            if self.argv[1:3] == ["rev-parse", "--is-inside-work-tree"]:
+                return "true\n", ""
+            return "## main\n M file.txt\n", ""
+
+    monkeypatch.setattr("subprocess.Popen", Proc)
+
+    res = cmd_git(CommandContext(args_text=f"status {tmp_path}"))
+
+    assert res.success is True
+    assert res.display_type == "table"
+    assert res.payload["repo"] == str(tmp_path)
+    assert res.payload["rows"][0][0] == "branch"
 
 
 @patch("os.startfile")

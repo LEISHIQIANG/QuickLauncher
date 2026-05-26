@@ -62,10 +62,10 @@ def count_text(context):
 def case_text(context):
     raw_text = (context.args_text or "").strip()
     clipboard = (context.clipboard_text or "").strip()
-    
+
     mode = "upper"
     remaining = ""
-    
+
     first_word = raw_text.split(None, 1)[0].lower() if raw_text.split(None, 1) else ""
     if first_word in ("upper", "lower", "大写", "小写"):
         mode = first_word
@@ -73,13 +73,13 @@ def case_text(context):
         remaining = parts[1].strip() if len(parts) > 1 else ""
     else:
         remaining = raw_text
-        
+
     if not remaining:
         remaining = clipboard
-        
+
     if not remaining:
         return CommandResult(success=False, message="请输入文本或确保剪贴板有内容", error="缺少输入")
-        
+
     if mode in ("upper", "大写"):
         result = remaining.upper()
         label = "大写"
@@ -89,7 +89,7 @@ def case_text(context):
     else:
         result = remaining.upper()
         label = "大写"
-        
+
     return CommandResult(
         success=True,
         message=result,

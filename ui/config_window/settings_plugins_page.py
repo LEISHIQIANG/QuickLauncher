@@ -551,14 +551,8 @@ class SettingsPluginsPageMixin:
         if plugin_manager is None:
             return
 
-        if plugin_info.status == "enabled":
-            plugin_manager.disable_plugin(m.id)
-
-        import shutil
-
         try:
-            shutil.rmtree(plugin_info.directory)
-            plugin_manager.remove_plugin_record(m.id)
+            plugin_manager.delete_plugin_files(m.id)
             self._rebuild_plugin_list(preserve_scroll=True)
             ThemedMessageBox.information(self, "删除成功", f'插件 "{m.name}" 已被成功删除。')
         except Exception as e:

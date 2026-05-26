@@ -222,7 +222,7 @@ def test_replace_data_file_restores_original_when_fallback_copy_fails(monkeypatc
     assert manager.data_file.read_text(encoding="utf-8") == "original"
 
 
-def test_import_shareable_config_strips_elevated_and_inline_python(tmp_path):
+def test_import_shareable_config_strips_elevated_commands(tmp_path):
     manager = _file_backed_manager(tmp_path)
     import_path = tmp_path / "share.zip"
     payload = {
@@ -233,7 +233,6 @@ def test_import_shareable_config_strips_elevated_and_inline_python(tmp_path):
                 "command_type": "python",
                 "command": "print('x')",
                 "run_as_admin": True,
-                "python_execution_mode": "legacy_inline",
             }
         ]
     }
@@ -244,7 +243,6 @@ def test_import_shareable_config_strips_elevated_and_inline_python(tmp_path):
 
     imported = manager.data.folders[-1].items[0]
     assert imported.run_as_admin is False
-    assert imported.python_execution_mode == "subprocess"
 
 
 def test_restore_full_config_preserves_security_sensitive_fields(tmp_path):
@@ -253,7 +251,6 @@ def test_restore_full_config_preserves_security_sensitive_fields(tmp_path):
     shortcut.command_type = "python"
     shortcut.command = "print('x')"
     shortcut.run_as_admin = True
-    shortcut.python_execution_mode = "legacy_inline"
     data = AppData(folders=[Folder(name="Commands", items=[shortcut])])
     manager = _file_backed_manager(tmp_path, data)
     backup_path = tmp_path / "backup.zip"
@@ -264,7 +261,7 @@ def test_restore_full_config_preserves_security_sensitive_fields(tmp_path):
     assert manager.restore_full_config(str(backup_path))
     restored = manager.data.folders[0].items[0]
     assert restored.run_as_admin is True
-    assert restored.python_execution_mode == "legacy_inline"
+    assert restored.command_type == "python"
 
 
 def test_load_recovers_from_latest_valid_auto_backup(tmp_path):

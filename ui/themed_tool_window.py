@@ -24,7 +24,7 @@ from qt_compat import (
     QtCompat,
     QVBoxLayout,
 )
-from ui.styles.style import StyleSheet
+from ui.styles.style import Colors, StyleSheet
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
 
 
@@ -146,6 +146,8 @@ class ThemedToolWindow(QDialog):
             text_primary = "rgba(255, 255, 255, 0.9)"
         else:
             text_primary = "rgba(28, 28, 30, 0.9)"
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
         widget.setStyleSheet(
             f"""
@@ -153,7 +155,8 @@ class ThemedToolWindow(QDialog):
                 background: transparent;
                 border: none;
                 color: {text_primary};
-                selection-background-color: rgba(10, 132, 255, 0.45);
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
             }}
         """
             + scrollbar_style
@@ -171,15 +174,14 @@ class ThemedToolWindow(QDialog):
         if theme == "dark":
             text_primary = "rgba(255, 255, 255, 0.9)"
             item_hover = "rgba(255, 255, 255, 0.08)"
-            item_selected = "rgba(10, 132, 255, 0.62)"
-            selected_text = "#ffffff"
             border = "rgba(255, 255, 255, 0.12)"
         else:
             text_primary = "rgba(28, 28, 30, 0.9)"
             item_hover = "rgba(0, 0, 0, 0.04)"
-            item_selected = "rgba(0, 122, 255, 0.72)"
-            selected_text = "#ffffff"
             border = "rgba(0, 0, 0, 0.06)"
+        item_selected = Colors.get_selection_bg(theme)
+        selected_text = Colors.get_selection_text(theme)
+        selected_border = "rgba(10, 132, 255, 0.42)" if theme == "dark" else "rgba(0, 122, 255, 0.22)"
         padding = "4px 7px" if compact else "8px 10px"
         radius = "4px" if compact else "6px"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
@@ -196,6 +198,7 @@ class ThemedToolWindow(QDialog):
             QListWidget::item {{
                 padding: {padding};
                 border-radius: {radius};
+                border: 1px solid transparent;
             }}
             QListWidget::item:hover {{
                 background: {item_hover};
@@ -203,6 +206,7 @@ class ThemedToolWindow(QDialog):
             QListWidget::item:selected {{
                 background: {item_selected};
                 color: {selected_text};
+                border: 1px solid {selected_border};
             }}
         """
             + scrollbar_style

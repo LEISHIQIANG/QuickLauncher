@@ -100,6 +100,18 @@ class Colors:
     def get_accent(cls, theme: str) -> str:
         return cls.BLUE_LIGHT if theme == "dark" else cls.BLUE
 
+    @classmethod
+    def get_selection_bg(cls, theme: str) -> str:
+        return "rgba(10, 132, 255, 0.30)" if theme == "dark" else "rgba(0, 122, 255, 0.14)"
+
+    @classmethod
+    def get_selection_hover_bg(cls, theme: str) -> str:
+        return "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.05)"
+
+    @classmethod
+    def get_selection_text(cls, theme: str) -> str:
+        return "rgba(255, 255, 255, 0.95)" if theme == "dark" else "rgba(28, 28, 30, 0.96)"
+
 
 class PopupMenu(QWidget):
     """
@@ -498,6 +510,8 @@ class StyleSheet:
 
     @staticmethod
     def get_input_style(theme: str) -> str:
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
         """获取输入框样式 - 紧凑版"""
         if theme == "dark":
             return """
@@ -509,7 +523,8 @@ class StyleSheet:
                     color: #ffffff;
                     font-size: 11px;
                     font-weight: 400;
-                    selection-background-color: #0A84FF;
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                 }
                 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
                     border: 1px solid #0A84FF;
@@ -519,7 +534,7 @@ class StyleSheet:
                     background-color: rgba(190, 190, 197, 0.12);
                     color: rgba(235, 235, 245, 0.3);
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
         else:
             return """
                 QLineEdit, QTextEdit, QPlainTextEdit {
@@ -530,7 +545,8 @@ class StyleSheet:
                     color: #1c1c1e;
                     font-size: 11px;
                     font-weight: 400;
-                    selection-background-color: rgba(0, 122, 255, 0.3);
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                 }
                 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
                     border: 1px solid #007AFF;
@@ -540,7 +556,7 @@ class StyleSheet:
                     background-color: #f5f5f7;
                     color: rgba(60, 60, 67, 0.3);
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
 
     @staticmethod
     def get_scrollbar_style(theme: str) -> str:
@@ -599,6 +615,9 @@ class StyleSheet:
 
     @staticmethod
     def get_combobox_style(theme: str) -> str:
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_hover_bg = Colors.get_selection_hover_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
         """获取下拉框样式"""
         if theme == "dark":
             return """
@@ -637,8 +656,8 @@ class StyleSheet:
                     border: 1px solid rgba(255, 255, 255, 0.12);
                     border-radius: 8px;
                     padding: 4px;
-                    selection-background-color: rgba(10, 132, 255, 0.8);
-                    selection-color: #ffffff;
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                     color: #ffffff;
                     outline: none;
                 }
@@ -648,12 +667,14 @@ class StyleSheet:
                     margin: 2px;
                 }
                 QComboBox QAbstractItemView::item:hover {
-                    background-color: rgba(10, 132, 255, 0.4);
+                    background-color: {selection_hover_bg};
                 }
                 QComboBox QAbstractItemView::item:selected {
-                    background-color: rgba(10, 132, 255, 0.8);
+                    background-color: {selection_bg};
+                    color: {selection_text};
+                    border: 1px solid rgba(10, 132, 255, 0.45);
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
         else:
             return """
                 QComboBox {
@@ -691,8 +712,8 @@ class StyleSheet:
                     border: 1px solid rgba(0, 0, 0, 0.08);
                     border-radius: 8px;
                     padding: 4px;
-                    selection-background-color: rgba(0, 122, 255, 0.8);
-                    selection-color: #ffffff;
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                     color: #1c1c1e;
                     outline: none;
                 }
@@ -702,13 +723,14 @@ class StyleSheet:
                     margin: 2px;
                 }
                 QComboBox QAbstractItemView::item:hover {
-                    background-color: rgba(0, 122, 255, 0.1);
+                    background-color: {selection_hover_bg};
                 }
                 QComboBox QAbstractItemView::item:selected {
-                    background-color: rgba(0, 122, 255, 0.8);
-                    color: #ffffff;
+                    background-color: {selection_bg};
+                    color: {selection_text};
+                    border: 1px solid rgba(0, 122, 255, 0.25);
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
 
     @staticmethod
     def get_groupbox_style(theme: str) -> str:
@@ -1051,6 +1073,8 @@ class Glassmorphism:
 
     @staticmethod
     def get_neumorphism_input_style(theme: str) -> str:
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
         """获取拟态输入框样式"""
         if theme == "dark":
             return """
@@ -1065,7 +1089,8 @@ class Glassmorphism:
                     font-weight: 400;
                     margin: 0px;
                     color: rgba(255, 255, 255, 0.9);
-                    selection-background-color: rgba(10, 132, 255, 0.5);
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                 }
                 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
                     border: 1px solid rgba(10, 132, 255, 0.8);
@@ -1086,7 +1111,8 @@ class Glassmorphism:
                     font-size: 12px;
                     margin: 0px;
                     color: rgba(255, 255, 255, 0.9);
-                    selection-background-color: rgba(10, 132, 255, 0.5);
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                 }
                 QSpinBox:focus, QSpinBox:hover {
                     border: 1px solid rgba(10, 132, 255, 0.8);
@@ -1109,7 +1135,7 @@ class Glassmorphism:
                     background: transparent;
                     border: none;
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
         else:
             return """
                 /* Text Inputs */
@@ -1123,7 +1149,8 @@ class Glassmorphism:
                     font-weight: 400;
                     margin: 0px;
                     color: rgba(28, 28, 30, 0.9);
-                    selection-background-color: rgba(10, 132, 255, 0.3);
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                 }
                 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
                     border: 1px solid rgba(0, 122, 255, 0.5);
@@ -1144,7 +1171,8 @@ class Glassmorphism:
                     font-size: 12px;
                     margin: 0px;
                     color: rgba(28, 28, 30, 0.9);
-                    selection-background-color: rgba(0, 122, 255, 0.2);
+                    selection-background-color: {selection_bg};
+                    selection-color: {selection_text};
                 }
                 QSpinBox:focus, QSpinBox:hover {
                     border: 1px solid rgba(0, 122, 255, 0.5);
@@ -1167,7 +1195,7 @@ class Glassmorphism:
                     background: transparent;
                     border: none;
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
 
     @staticmethod
     def get_neumorphism_groupbox_style(theme: str) -> str:
@@ -1219,6 +1247,9 @@ class Glassmorphism:
 
     @staticmethod
     def get_neumorphism_list_style(theme: str) -> str:
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_hover_bg = Colors.get_selection_hover_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
         """获取拟态列表样式"""
         if theme == "dark":
             return """
@@ -1236,15 +1267,14 @@ class Glassmorphism:
                     color: rgba(255, 255, 255, 0.85);
                 }
                 QListWidget::item:selected {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 rgba(10, 132, 255, 0.7),
-                        stop:1 rgba(0, 100, 220, 0.7));
-                    color: #ffffff;
+                    background: {selection_bg};
+                    color: {selection_text};
+                    border: 1px solid rgba(10, 132, 255, 0.42);
                 }
                 QListWidget::item:hover:!selected {
-                    background: rgba(255, 255, 255, 0.06);
+                    background: {selection_hover_bg};
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
         else:
             return """
                 QListWidget {
@@ -1261,15 +1291,14 @@ class Glassmorphism:
                     color: rgba(28, 28, 30, 0.85);
                 }
                 QListWidget::item:selected {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 rgba(0, 122, 255, 0.7),
-                        stop:1 rgba(0, 100, 220, 0.7));
-                    color: #ffffff;
+                    background: {selection_bg};
+                    color: {selection_text};
+                    border: 1px solid rgba(0, 122, 255, 0.22);
                 }
                 QListWidget::item:hover:!selected {
-                    background: rgba(0, 0, 0, 0.03);
+                    background: {selection_hover_bg};
                 }
-            """
+            """.replace("{selection_bg}", selection_bg).replace("{selection_hover_bg}", selection_hover_bg).replace("{selection_text}", selection_text)
 
     @staticmethod
     def get_full_glassmorphism_stylesheet(theme: str) -> str:
@@ -1405,6 +1434,8 @@ class Glassmorphism:
 
 
 def get_menu_stylesheet(theme: str) -> str:
+    selection_bg = Colors.get_selection_bg(theme)
+    selection_text = Colors.get_selection_text(theme)
     """获取菜单样式表（用于 QMenu）— 半透明背景配合模糊效果"""
     if theme == "dark":
         return """
@@ -1422,8 +1453,8 @@ def get_menu_stylesheet(theme: str) -> str:
                 margin: 2px 4px;
             }
             QMenu::item:selected {
-                background-color: #0A84FF;
-                color: #ffffff;
+                background-color: {selection_bg};
+                color: {selection_text};
             }
             QMenu::item:disabled {
                 color: rgba(255, 255, 255, 110);
@@ -1433,7 +1464,7 @@ def get_menu_stylesheet(theme: str) -> str:
                 background-color: rgba(255, 255, 255, 16);
                 margin: 6px 10px;
             }
-        """
+        """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
     else:
         return """
             QMenu {
@@ -1450,8 +1481,8 @@ def get_menu_stylesheet(theme: str) -> str:
                 margin: 2px 4px;
             }
             QMenu::item:selected {
-                background-color: #007AFF;
-                color: #ffffff;
+                background-color: {selection_bg};
+                color: {selection_text};
             }
             QMenu::item:disabled {
                 color: rgba(60, 60, 67, 120);
@@ -1461,7 +1492,7 @@ def get_menu_stylesheet(theme: str) -> str:
                 background-color: rgba(60, 60, 67, 18);
                 margin: 6px 10px;
             }
-        """
+        """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
 
 
 def get_dialog_stylesheet(theme: str) -> str:

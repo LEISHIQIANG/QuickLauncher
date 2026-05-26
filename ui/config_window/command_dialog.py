@@ -17,6 +17,7 @@ from qt_compat import (
     QFileDialog,
     QFont,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QIcon,
@@ -24,6 +25,7 @@ from qt_compat import (
     QLabel,
     QLineEdit,
     QPainter,
+    QPen,
     QPixmap,
     QPlainTextEdit,
     QPushButton,
@@ -32,10 +34,11 @@ from qt_compat import (
     QStackedWidget,
     QtCompat,
     QThread,
+    QTimer,
     QVBoxLayout,
     pyqtSignal,
 )
-from ui.styles.style import Glassmorphism, PopupMenu
+from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 
 from .base_dialog import BaseDialog
@@ -283,6 +286,8 @@ class CommandDialog(BaseDialog):
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
         text_primary = "#FFFFFF" if theme == "dark" else "#1C1C1E"
+        selection_bg = Colors.get_selection_bg(theme)
+        selection_text = Colors.get_selection_text(theme)
 
         custom_style = (
             base_style
@@ -318,12 +323,64 @@ class CommandDialog(BaseDialog):
             border-radius: 10px;
             color: {text_primary};
             font-size: 13px;
-            selection-background-color: #007aff;
+            selection-background-color: {selection_bg};
+            selection-color: {selection_text};
         """
 
         self.name_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
         self.icon_path_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
         self.workdir_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
+        capture_label_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
+        capture_spin_bg = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.68)"
+        capture_spin_disabled_bg = "rgba(255, 255, 255, 0.035)" if theme == "dark" else "rgba(255, 255, 255, 0.38)"
+        capture_spin_disabled_text = "rgba(255, 255, 255, 0.34)" if theme == "dark" else "rgba(60, 60, 67, 0.32)"
+
+        capture_option_style = f"""
+            QLabel#CaptureOptionLabel {{
+                color: {capture_label_color};
+                font-size: 12px;
+                font-weight: 400;
+                background: transparent;
+                padding: 0px;
+            }}
+            QLabel#CaptureOptionLabel:disabled {{
+                color: {capture_spin_disabled_text};
+            }}
+            QSpinBox#CaptureOptionSpin {{
+                background-color: {capture_spin_bg};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                color: {text_primary};
+                font-size: 12px;
+                font-weight: 400;
+                padding: 1px 6px;
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
+            }}
+            QSpinBox#CaptureOptionSpin:disabled {{
+                background-color: {capture_spin_disabled_bg};
+                color: {capture_spin_disabled_text};
+            }}
+            QCheckBox#CommandPanelSizeCheck {{
+                color: {text_primary};
+                font-size: 12px;
+                font-weight: 400;
+                spacing: 6px;
+                background: transparent;
+            }}
+            QCheckBox#CommandPanelSizeCheck:disabled {{
+                color: {capture_spin_disabled_text};
+            }}
+            QCheckBox#CommandPanelSizeCheck::indicator {{
+                width: 12px;
+                height: 12px;
+            }}
+        """
+        self.capture_timeout_label.setStyleSheet(capture_option_style)
+        self.command_panel_size_label.setStyleSheet(capture_option_style)
+        for button in self.command_panel_size_buttons:
+            button.setStyleSheet(capture_option_style)
+        self.capture_timeout_spin.setStyleSheet(capture_option_style)
 
         # --- 命令输入框容器样式 ---
         # 只有容器负责背景和边框，内部编辑器完全透明
@@ -340,7 +397,8 @@ class CommandDialog(BaseDialog):
                 border: none;
                 color: {text_primary};
                 font-size: 13px;
-                selection-background-color: #007aff;
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
             }}
         """
         self.command_edit.setStyleSheet(editor_style)
@@ -390,8 +448,43 @@ class CommandDialog(BaseDialog):
                     height: 14px;
                 }}
             """
+        combo_qss = StyleSheet.get_combobox_style(theme)
         self.type_combo.setStyleSheet(combo_qss)
         self.builtin_combo.setStyleSheet(combo_qss)
+        self.command_encoding_combo.setStyleSheet(StyleSheet.get_combobox_style(theme))
+
+        profile_toggle_bg = "rgba(255, 255, 255, 0.025)" if theme == "dark" else "rgba(255, 255, 255, 0.42)"
+        profile_toggle_hover = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(255, 255, 255, 0.82)"
+        profile_toggle_border = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(0, 0, 0, 0.08)"
+        profile_toggle_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
+        self.advanced_profile_toggle.setStyleSheet(f"""
+            QPushButton#CommandProfileToggle {{
+                background-color: {profile_toggle_bg};
+                border: 1px solid {profile_toggle_border};
+                border-radius: 6px;
+                color: {profile_toggle_color};
+                font-size: 9px;
+                font-weight: 400;
+                padding: 0px;
+                margin: 0px;
+                text-align: center;
+            }}
+            QPushButton#CommandProfileToggle:hover {{
+                background-color: {profile_toggle_hover};
+                border: 1px solid {"rgba(10, 132, 255, 0.75)" if theme == "dark" else "rgba(0, 122, 255, 0.75)"};
+                color: {"rgba(255, 255, 255, 0.9)" if theme == "dark" else "rgba(28, 28, 30, 0.86)"};
+            }}
+            QPushButton#CommandProfileToggle:checked {{
+                background-color: {profile_toggle_hover};
+            }}
+        """)
+        self.advanced_profile_frame.setStyleSheet("""
+            QFrame#CommandProfileFrame {
+                background: transparent;
+                border: none;
+            }
+        """)
+        self._set_command_profile_toggle_icon(self.advanced_profile_toggle.isChecked())
 
         # 应用单选按钮样式
         try:
@@ -411,6 +504,8 @@ class CommandDialog(BaseDialog):
             self._clear_icon_btn,
             self._browse_workdir_btn,
             self.insert_var_btn,
+            self._add_param_btn,
+            self._insert_param_btn,
             self._test_btn,
             self._cancel_btn,
             self._ok_btn,
@@ -421,11 +516,30 @@ class CommandDialog(BaseDialog):
         cb_style = get_small_checkbox_stylesheet(theme)
         self.invert_theme_cb.setStyleSheet(cb_style)
         self.invert_current_cb.setStyleSheet(cb_style)
-        self.show_window_cb.setStyleSheet(cb_style)
-        self.run_as_admin_cb.setStyleSheet(cb_style)
-        self.python_legacy_cb.setStyleSheet(cb_style)
-        self.variable_expansion_cb.setStyleSheet(cb_style)
-        self.capture_output_cb.setStyleSheet(cb_style)
+        compact_option_cb_style = (
+            cb_style
+            + """
+            QCheckBox {
+                font-size: 12px;
+                spacing: 6px;
+                font-weight: 400;
+            }
+            QCheckBox:disabled {
+                color: %s;
+            }
+            QCheckBox::indicator {
+                width: 12px;
+                height: 12px;
+            }
+            """
+            % capture_spin_disabled_text
+        )
+        self.show_window_cb.setStyleSheet(compact_option_cb_style)
+        self.run_as_admin_cb.setStyleSheet(compact_option_cb_style)
+        self.variable_expansion_cb.setStyleSheet(compact_option_cb_style)
+        self.capture_output_cb.setStyleSheet(compact_option_cb_style)
+        for button in self.command_panel_size_buttons:
+            button.setStyleSheet(compact_option_cb_style)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -539,22 +653,17 @@ class CommandDialog(BaseDialog):
 
         self.hint_label = QLabel("输入命令内容:")
         self.hint_label.setStyleSheet("color: gray; font-size: 11px; margin-top: -2px;")
-        top_row.addWidget(self.hint_label)
-        top_row.addStretch()
+        top_row.addWidget(self.hint_label, 1)
 
         self.insert_var_btn = QPushButton("插入")
         self.insert_var_btn.setFixedSize(54, 24)
         self.insert_var_btn.clicked.connect(self._show_insert_popup)
-        top_row.addWidget(self.insert_var_btn)
+        top_row.addWidget(self.insert_var_btn, 0, QtCompat.AlignRight)
 
         self._test_btn = QPushButton("测试")
         self._test_btn.setFixedSize(54, 24)
         self._test_btn.clicked.connect(self._test_command)
-        top_row.addWidget(self._test_btn)
-
-        self.show_window_cb = QCheckBox("显示执行窗口")
-        self.show_window_cb.stateChanged.connect(self._update_capture_controls)
-        top_row.addWidget(self.show_window_cb)
+        top_row.addWidget(self._test_btn, 0, QtCompat.AlignRight)
 
         cmd_layout.addLayout(top_row)
 
@@ -563,8 +672,6 @@ class CommandDialog(BaseDialog):
 
         # 1. 文本编辑器 (CMD/Python) - 重构为容器模式
         # 外层容器：负责背景、边框、圆角
-        from qt_compat import QFrame
-
         self.command_container = QFrame()
         self.command_container.setObjectName("CommandContainer")
         container_layout = QVBoxLayout(self.command_container)
@@ -629,14 +736,25 @@ class CommandDialog(BaseDialog):
 
         option_row = QHBoxLayout()
         option_row.setSpacing(8)
+        self.advanced_profile_toggle = QPushButton()
+        self.advanced_profile_toggle.setObjectName("CommandProfileToggle")
+        self.advanced_profile_toggle.setCheckable(True)
+        self.advanced_profile_toggle.setChecked(False)
+        self.advanced_profile_toggle.setFixedSize(42, 12)
+        self.advanced_profile_toggle.setToolTip("高级设置")
+        self.advanced_profile_toggle.setCursor(QtCompat.PointingHandCursor)
+        self.advanced_profile_toggle.clicked.connect(self._toggle_command_profile_panel)
+        self.show_window_cb = QCheckBox("显示执行窗口")
+        self.show_window_cb.setFixedHeight(26)
+        self.show_window_cb.stateChanged.connect(self._update_capture_controls)
         self.run_as_admin_cb = QCheckBox("以管理员身份运行")
+        self.run_as_admin_cb.setFixedHeight(26)
         self.run_as_admin_cb.stateChanged.connect(self._update_capture_controls)
-        self.python_legacy_cb = QCheckBox("兼容旧 Python")
-        install_tooltip(self.python_legacy_cb, "在主进程内执行 Python，兼容旧脚本；新命令建议关闭")
         self.variable_expansion_cb = QCheckBox("解析变量")
+        self.variable_expansion_cb.setFixedHeight(26)
         install_tooltip(self.variable_expansion_cb, "替换 {clipboard}、{input}、{date} 等占位符；Python 默认关闭")
+        option_row.addWidget(self.show_window_cb)
         option_row.addWidget(self.run_as_admin_cb)
-        option_row.addWidget(self.python_legacy_cb)
         option_row.addWidget(self.variable_expansion_cb)
         option_row.addStretch()
         advanced_layout.addRow("", option_row)
@@ -644,21 +762,82 @@ class CommandDialog(BaseDialog):
         capture_row = QHBoxLayout()
         capture_row.setSpacing(8)
         self.capture_output_cb = QCheckBox("捕获输出并显示在命令面板")
+        self.capture_output_cb.setFixedHeight(26)
         self.capture_output_cb.stateChanged.connect(self._update_capture_controls)
         capture_row.addWidget(self.capture_output_cb)
-        capture_row.addWidget(QLabel("超时"))
+        self.command_panel_size_label = QLabel("面板大小")
+        self.command_panel_size_label.setObjectName("CaptureOptionLabel")
+        capture_row.addWidget(self.command_panel_size_label)
+        self.command_panel_size_group = QButtonGroup(self)
+        self.command_panel_size_group.setExclusive(True)
+        self.command_panel_size_buttons = []
+        for text, value in (("小", "small"), ("中", "medium"), ("大", "large")):
+            button = QCheckBox(text)
+            button.setObjectName("CommandPanelSizeCheck")
+            button.setProperty("panel_size", value)
+            button.setFixedHeight(26)
+            self.command_panel_size_group.addButton(button)
+            self.command_panel_size_buttons.append(button)
+            capture_row.addWidget(button)
+        self.command_panel_size_buttons[1].setChecked(True)
+        self.capture_timeout_label = QLabel("超时")
+        self.capture_timeout_label.setObjectName("CaptureOptionLabel")
+        capture_row.addWidget(self.capture_timeout_label)
         self.capture_timeout_spin = QSpinBox()
+        self.capture_timeout_spin.setObjectName("CaptureOptionSpin")
+        self.capture_timeout_spin.setButtonSymbols(QSpinBox.NoButtons)
         self.capture_timeout_spin.setRange(1, 3600)
         self.capture_timeout_spin.setSuffix(" 秒")
+        self.capture_timeout_spin.setFixedSize(72, 26)
         capture_row.addWidget(self.capture_timeout_spin)
-        capture_row.addWidget(QLabel("最大输出"))
-        self.capture_max_chars_spin = QSpinBox()
-        self.capture_max_chars_spin.setRange(1000, 1000000)
-        self.capture_max_chars_spin.setSingleStep(1000)
-        self.capture_max_chars_spin.setSuffix(" 字符")
-        capture_row.addWidget(self.capture_max_chars_spin)
         capture_row.addStretch()
-        advanced_layout.addRow("", capture_row)
+        capture_toggle_widget = QFrame()
+        capture_toggle_widget.setObjectName("CommandProfileToggleCell")
+        capture_toggle_cell = QHBoxLayout(capture_toggle_widget)
+        capture_toggle_cell.setContentsMargins(0, 3, 0, 0)
+        capture_toggle_cell.addStretch()
+        capture_toggle_cell.addWidget(self.advanced_profile_toggle, 0, QtCompat.AlignVCenter | QtCompat.AlignRight)
+        advanced_layout.addRow(capture_toggle_widget, capture_row)
+
+        self.advanced_profile_frame = QFrame()
+        self.advanced_profile_frame.setObjectName("CommandProfileFrame")
+        self.advanced_profile_frame.setVisible(False)
+        profile_layout = QFormLayout(self.advanced_profile_frame)
+        profile_layout.setSpacing(6)
+        profile_layout.setContentsMargins(0, 2, 0, 0)
+
+        self.command_encoding_combo = QComboBox()
+        self.command_encoding_combo.setFixedHeight(32)
+        self.command_encoding_combo.addItem("自动识别", "auto")
+        self.command_encoding_combo.addItem("UTF-8", "utf-8")
+        self.command_encoding_combo.addItem("GBK", "gbk")
+        self.command_encoding_combo.addItem("系统 ANSI (mbcs)", "mbcs")
+        self.command_encoding_combo.showPopup = lambda: self._show_encoding_popup()
+        profile_layout.addRow("输出编码:", self.command_encoding_combo)
+
+        self.command_env_edit = QPlainTextEdit()
+        self.command_env_edit.setFixedHeight(52)
+        self.command_env_edit.setPlaceholderText("每行一个 KEY=VALUE")
+        profile_layout.addRow("环境变量:", self.command_env_edit)
+
+        params_layout = QVBoxLayout()
+        self.command_params_edit = QPlainTextEdit()
+        self.command_params_edit.setFixedHeight(72)
+        self.command_params_edit.setPlaceholderText("每行一个参数: name,type,required,default,choice1|choice2\n例如: host,text,true,,")
+        params_btn_row = QHBoxLayout()
+        add_param_btn = QPushButton("新增参数")
+        add_param_btn.clicked.connect(self._add_param_template_line)
+        self._add_param_btn = add_param_btn
+        insert_param_btn = QPushButton("插入占位符")
+        insert_param_btn.clicked.connect(self._insert_selected_param_placeholder)
+        self._insert_param_btn = insert_param_btn
+        params_btn_row.addWidget(add_param_btn)
+        params_btn_row.addWidget(insert_param_btn)
+        params_btn_row.addStretch()
+        params_layout.addWidget(self.command_params_edit)
+        params_layout.addLayout(params_btn_row)
+        profile_layout.addRow("参数模板:", params_layout)
+        advanced_layout.addRow("", self.advanced_profile_frame)
 
         layout.addWidget(advanced_group)
 
@@ -668,10 +847,10 @@ class CommandDialog(BaseDialog):
         trigger_layout.setSpacing(12)
         trigger_layout.setContentsMargins(8, 0, 8, 8)
 
-        self.trigger_immediate_rb = QRadioButton("点击后马上运行")
+        self.trigger_immediate_rb = QRadioButton("无延迟运行")
         install_tooltip(self.trigger_immediate_rb, "点击图标后立刻运行命令，适合打开程序、网页或执行后台命令")
 
-        self.trigger_after_close_rb = QRadioButton("先关闭面板，再运行")
+        self.trigger_after_close_rb = QRadioButton("窗口淡出后运行")
         install_tooltip(
             self.trigger_after_close_rb,
             "先关闭快捷启动面板并把焦点还给原来的窗口，再运行命令，适合需要操作原窗口的命令",
@@ -724,19 +903,17 @@ class CommandDialog(BaseDialog):
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
-            self.python_legacy_cb.setEnabled(False)
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
         elif index == 1:  # Python
-            self.hint_label.setText("输入要执行的Python代码（提供 os, sys, subprocess 等上下文）:")
+            self.hint_label.setText("输入要执行的 Python 代码（通过系统 Python 运行）:")
             self.command_edit.setPlaceholderText("例如: os.system('notepad')")
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
-            self.python_legacy_cb.setEnabled(True)
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
@@ -749,7 +926,6 @@ class CommandDialog(BaseDialog):
             self.capture_output_cb.setChecked(False)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(False)
-            self.python_legacy_cb.setEnabled(False)
             self.variable_expansion_cb.setChecked(False)
             self.variable_expansion_cb.setEnabled(False)
             # 触发一次内置命令变更，以更新图标
@@ -767,8 +943,11 @@ class CommandDialog(BaseDialog):
             self.capture_output_cb.setChecked(False)
         self.capture_output_cb.setEnabled(not blocked)
         enabled = self.capture_output_cb.isChecked() and not blocked
+        self.command_panel_size_label.setEnabled(enabled)
+        for button in self.command_panel_size_buttons:
+            button.setEnabled(enabled)
+        self.capture_timeout_label.setEnabled(enabled)
         self.capture_timeout_spin.setEnabled(enabled)
-        self.capture_max_chars_spin.setEnabled(enabled)
 
     def _on_builtin_changed(self, index):
         """内置命令改变"""
@@ -830,6 +1009,12 @@ class CommandDialog(BaseDialog):
                 self.icon_path_edit.clear()
         self._update_icon_preview()
 
+    def _selected_popup_button_qss(self) -> str:
+        bg = Colors.get_selection_bg(self.theme)
+        fg = Colors.get_selection_text(self.theme)
+        border = "rgba(10, 132, 255, 0.42)" if self.theme == "dark" else "rgba(0, 122, 255, 0.22)"
+        return f"QPushButton{{ background:{bg}; color:{fg}; border:1px solid {border}; }}"
+
     def _show_type_popup(self):
         """显示类型选择弹出菜单"""
         menu = PopupMenu(theme=self.theme, radius=12, parent=self)
@@ -846,8 +1031,7 @@ class CommandDialog(BaseDialog):
 
             btn = menu.add_action(item_text, _make_cb(i))
             if item_text == current:
-                sel_bg = "#0A84FF" if self.theme == "dark" else "#007AFF"
-                btn.setStyleSheet(btn.styleSheet() + f"QPushButton{{ background:{sel_bg}; color:#ffffff; }}")
+                btn.setStyleSheet(btn.styleSheet() + self._selected_popup_button_qss())
         pos = self.type_combo.mapToGlobal(self.type_combo.rect().bottomLeft())
         menu.setMinimumWidth(self.type_combo.width())
         menu.popup(pos)
@@ -868,10 +1052,30 @@ class CommandDialog(BaseDialog):
 
             btn = menu.add_action(item_text, _make_cb(i))
             if item_text == current:
-                sel_bg = "rgba(80, 110, 150, 180)" if self.theme == "dark" else "rgba(180, 210, 240, 180)"
-                btn.setStyleSheet(btn.styleSheet() + f"QPushButton{{ background:{sel_bg}; color:#ffffff; }}")
+                btn.setStyleSheet(btn.styleSheet() + self._selected_popup_button_qss())
         pos = self.builtin_combo.mapToGlobal(self.builtin_combo.rect().bottomLeft())
         menu.setMinimumWidth(self.builtin_combo.width())
+        menu.popup(pos)
+
+    def _show_encoding_popup(self):
+        """显示输出编码选择弹出菜单"""
+        menu = PopupMenu(theme=self.theme, radius=12, parent=self)
+        self._encoding_menu = menu
+        current = self.command_encoding_combo.currentText()
+        for i in range(self.command_encoding_combo.count()):
+            item_text = self.command_encoding_combo.itemText(i)
+
+            def _make_cb(idx):
+                def cb():
+                    self.command_encoding_combo.setCurrentIndex(idx)
+
+                return cb
+
+            btn = menu.add_action(item_text, _make_cb(i))
+            if item_text == current:
+                btn.setStyleSheet(btn.styleSheet() + self._selected_popup_button_qss())
+        pos = self.command_encoding_combo.mapToGlobal(self.command_encoding_combo.rect().bottomLeft())
+        menu.setMinimumWidth(self.command_encoding_combo.width())
         menu.popup(pos)
 
     def _show_insert_popup(self):
@@ -913,10 +1117,149 @@ class CommandDialog(BaseDialog):
         elif text.startswith("{") or "{input" in text or "{clipboard" in text:
             self.variable_expansion_cb.setChecked(True)
 
+    def _add_param_template_line(self):
+        text = self.command_params_edit.toPlainText().rstrip()
+        line = "name,text,true,,"
+        self.command_params_edit.setPlainText((text + "\n" + line).strip())
+
+    def _insert_selected_param_placeholder(self):
+        params = self._parse_command_params_text()
+        if not params:
+            self._add_param_template_line()
+            params = self._parse_command_params_text()
+        if not params:
+            return
+        name = params[0]["name"]
+        self._insert_command_text(f"{{param:{name}:q}}")
+
+    def _parse_command_params_text(self):
+        params = []
+        for line in self.command_params_edit.toPlainText().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [part.strip() for part in line.split(",", 4)]
+            while len(parts) < 5:
+                parts.append("")
+            name, param_type, required, default, choices = parts
+            if not name:
+                continue
+            param_type = (param_type or "text").lower()
+            if param_type not in ("text", "choice", "bool", "file", "folder"):
+                param_type = "text"
+            params.append(
+                {
+                    "name": name,
+                    "type": param_type,
+                    "required": required.lower() in ("1", "true", "yes", "on", "required", "必填"),
+                    "default": default,
+                    "choices": [choice.strip() for choice in choices.split("|") if choice.strip()],
+                    "sensitive": False,
+                }
+            )
+        return ShortcutItem._normalize_command_params(params)
+
+    @staticmethod
+    def _format_command_params(params) -> str:
+        lines = []
+        for param in ShortcutItem._normalize_command_params(params):
+            choices = "|".join(str(choice) for choice in param.get("choices", []))
+            lines.append(
+                ",".join(
+                    [
+                        param.get("name", ""),
+                        param.get("type", "text"),
+                        "true" if param.get("required") else "false",
+                        str(param.get("default", "")),
+                        choices,
+                    ]
+                )
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _parse_env_text(text: str) -> dict:
+        return ShortcutItem._normalize_command_env(text)
+
+    @staticmethod
+    def _format_env(env: dict) -> str:
+        if not isinstance(env, dict):
+            return ""
+        return "\n".join(f"{key}={value}" for key, value in env.items() if str(key).strip())
+
+    def _set_command_profile_panel_expanded(self, expanded: bool):
+        if not hasattr(self, "advanced_profile_frame"):
+            return
+        self.advanced_profile_frame.setVisible(expanded)
+        self.advanced_profile_toggle.setChecked(expanded)
+        self.advanced_profile_toggle.setText("")
+        self._set_command_profile_toggle_icon(expanded)
+        self._schedule_command_profile_resize()
+
+    def _toggle_command_profile_panel(self):
+        self._set_command_profile_panel_expanded(self.advanced_profile_toggle.isChecked())
+
+    def _set_command_profile_toggle_icon(self, expanded: bool):
+        if not hasattr(self, "advanced_profile_toggle"):
+            return
+        pixmap = QPixmap(18, 8)
+        pixmap.fill(QtCompat.transparent)
+        painter = QPainter(pixmap)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            color = QColor(255, 255, 255, 150) if self.theme == "dark" else QColor(60, 60, 67, 150)
+            painter.setPen(QPen(color, 1.4))
+            if expanded:
+                painter.drawLine(4, 5, 9, 2)
+                painter.drawLine(9, 2, 14, 5)
+            else:
+                painter.drawLine(4, 2, 9, 5)
+                painter.drawLine(9, 5, 14, 2)
+        finally:
+            painter.end()
+        self.advanced_profile_toggle.setIcon(QIcon(pixmap))
+
+    def _schedule_command_profile_resize(self):
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        self.updateGeometry()
+        self._resize_to_layout_hint()
+        QTimer.singleShot(0, self._resize_to_layout_hint)
+
+    def _resize_to_layout_hint(self):
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        hint = self.sizeHint()
+        target_width = max(self.minimumWidth(), self.width(), hint.width())
+        target_height = max(self.minimumHeight(), hint.height())
+        if target_height > 0:
+            self.resize(target_width, target_height)
+
     def _browse_workdir(self):
         folder = QFileDialog.getExistingDirectory(self, tr("选择工作目录"))
         if folder:
             self.workdir_edit.setText(folder)
+
+    def _selected_command_panel_size(self) -> str:
+        for button in getattr(self, "command_panel_size_buttons", []):
+            if button.isChecked():
+                value = str(button.property("panel_size") or "").lower().strip()
+                if value in ("small", "medium", "large"):
+                    return value
+        return "medium"
+
+    def _set_command_panel_size(self, size: str):
+        size = str(size or "medium").lower().strip()
+        if size not in ("small", "medium", "large"):
+            size = "medium"
+        for button in getattr(self, "command_panel_size_buttons", []):
+            if button.property("panel_size") == size:
+                button.setChecked(True)
+                return
 
     def _build_preview_shortcut(self) -> ShortcutItem:
         import copy
@@ -933,11 +1276,13 @@ class CommandDialog(BaseDialog):
         shortcut.show_window = self.show_window_cb.isChecked()
         shortcut.working_dir = self.workdir_edit.text().strip()
         shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
-        shortcut.python_execution_mode = "legacy_inline" if self.python_legacy_cb.isChecked() else "subprocess"
         shortcut.command_variables_enabled = self.variable_expansion_cb.isChecked()
         shortcut.capture_output = self.capture_output_cb.isChecked()
         shortcut.command_timeout_seconds = float(self.capture_timeout_spin.value())
-        shortcut.command_output_max_chars = int(self.capture_max_chars_spin.value())
+        shortcut.command_panel_size = self._selected_command_panel_size()
+        shortcut.command_params = self._parse_command_params_text()
+        shortcut.command_env = self._parse_env_text(self.command_env_edit.toPlainText())
+        shortcut.command_encoding = self.command_encoding_combo.currentData() or "auto"
         return shortcut
 
     def _collect_runtime_inputs(self, command: str):
@@ -1135,13 +1480,19 @@ class CommandDialog(BaseDialog):
             self.run_as_admin_cb.setChecked(getattr(self.shortcut, "run_as_admin", False))
             self.capture_output_cb.setChecked(getattr(self.shortcut, "capture_output", False))
             self.capture_timeout_spin.setValue(int(getattr(self.shortcut, "command_timeout_seconds", 10.0) or 10.0))
-            self.capture_max_chars_spin.setValue(
-                int(getattr(self.shortcut, "command_output_max_chars", 20000) or 20000)
-            )
-            self.python_legacy_cb.setChecked(
-                getattr(self.shortcut, "python_execution_mode", "subprocess") == "legacy_inline"
-            )
+            self._set_command_panel_size(getattr(self.shortcut, "command_panel_size", "medium"))
+            self.command_params_edit.setPlainText(self._format_command_params(getattr(self.shortcut, "command_params", [])))
+            self.command_env_edit.setPlainText(self._format_env(getattr(self.shortcut, "command_env", {})))
+            enc = str(getattr(self.shortcut, "command_encoding", "auto") or "auto").lower()
+            idx = self.command_encoding_combo.findData(enc)
+            self.command_encoding_combo.setCurrentIndex(idx if idx >= 0 else 0)
             self.variable_expansion_cb.setChecked(getattr(self.shortcut, "command_variables_enabled", False))
+            has_profile_options = (
+                enc != "auto"
+                or bool(getattr(self.shortcut, "command_env", {}))
+                or bool(getattr(self.shortcut, "command_params", []))
+            )
+            self._set_command_profile_panel_expanded(has_profile_options)
 
             # 手动调用一次以初始化界面状态
             self._on_type_changed(self.type_combo.currentIndex())
@@ -1329,11 +1680,13 @@ class CommandDialog(BaseDialog):
         self.shortcut.show_window = self.show_window_cb.isChecked()
         self.shortcut.working_dir = self.workdir_edit.text().strip()
         self.shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
-        self.shortcut.python_execution_mode = "legacy_inline" if self.python_legacy_cb.isChecked() else "subprocess"
         self.shortcut.command_variables_enabled = self.variable_expansion_cb.isChecked()
         self.shortcut.capture_output = self.capture_output_cb.isChecked()
         self.shortcut.command_timeout_seconds = float(self.capture_timeout_spin.value())
-        self.shortcut.command_output_max_chars = int(self.capture_max_chars_spin.value())
+        self.shortcut.command_panel_size = self._selected_command_panel_size()
+        self.shortcut.command_params = self._parse_command_params_text()
+        self.shortcut.command_env = self._parse_env_text(self.command_env_edit.toPlainText())
+        self.shortcut.command_encoding = self.command_encoding_combo.currentData() or "auto"
         self.shortcut.icon_path = self._custom_icon_path
         self.shortcut.type = ShortcutType.COMMAND
         self.shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()

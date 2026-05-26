@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import ctypes
+import locale
 import logging
 import os
+import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -22,7 +25,6 @@ from .command_registry import (
     set_pending_command_result,
     take_pending_command_result,
 )
-from .command_risk import audit_command_execution
 from .command_variables import (
     CommandVariableError,
     find_unquoted_external_command_variables,
@@ -61,6 +63,125 @@ def init_main_thread_invoker():
 
 
 class CommandExecutionMixin:
+    _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{param:([^{}\r\n:]+)(?::q)?\}(?!\})")
+    _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{chain:([^{}\r\n:]+)(?::q)?\}(?!\})")
+
+    @staticmethod
+    def _command_param_defs(shortcut: ShortcutItem) -> list[dict]:
+        try:
+            return ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", []))
+        except Exception:
+            return []
+
+    @staticmethod
+    def _command_param_values(shortcut: ShortcutItem) -> dict[str, str]:
+        values = {}
+        for param in ShortcutExecutor._command_param_defs(shortcut):
+            values[param["name"]] = str(param.get("default") or "")
+        runtime = getattr(shortcut, "_runtime_param_values", None)
+        if isinstance(runtime, dict):
+            values.update({str(k): str(v) for k, v in runtime.items()})
+        return values
+
+    @staticmethod
+    def _chain_values(shortcut: ShortcutItem) -> dict[str, str]:
+        values = getattr(shortcut, "_chain_values", None)
+        return dict(values or {}) if isinstance(values, dict) else {}
+
+    @staticmethod
+    def _runtime_env(shortcut: ShortcutItem) -> dict:
+        env = ShortcutExecutor._sanitized_child_env()
+        command_env = getattr(shortcut, "command_env", {}) or {}
+        if isinstance(command_env, str):
+            command_env = ShortcutItem._normalize_command_env(command_env)
+        if isinstance(command_env, dict):
+            for key, value in command_env.items():
+                key = str(key or "").strip()
+                if key:
+                    env[key] = str(value)
+        return env
+
+    @staticmethod
+    def _command_panel_size(shortcut: ShortcutItem) -> str:
+        size = str(getattr(shortcut, "command_panel_size", "medium") or "medium").lower().strip()
+        return size if size in ("small", "medium", "large") else "medium"
+
+    @staticmethod
+    def _decode_bytes(data: bytes, preferred: str = "auto") -> tuple[str, str, bool]:
+        if isinstance(data, str):
+            return data, "text", False
+        data = data or b""
+        candidates: list[str] = []
+        preferred = str(preferred or "auto").lower().strip()
+        if preferred and preferred != "auto":
+            candidates.append(preferred)
+        candidates.append("utf-8")
+        if os.name == "nt":
+            try:
+                oem_cp = ctypes.windll.kernel32.GetOEMCP()
+                if oem_cp:
+                    candidates.append(f"cp{oem_cp}")
+            except Exception:
+                pass
+        try:
+            pref = locale.getpreferredencoding(False)
+            if pref:
+                candidates.append(pref)
+        except Exception:
+            pass
+        candidates.extend(["mbcs", "gbk"])
+
+        seen = set()
+        ordered = []
+        for enc in candidates:
+            key = enc.lower()
+            if key not in seen:
+                seen.add(key)
+                ordered.append(enc)
+
+        for idx, enc in enumerate(ordered):
+            try:
+                return data.decode(enc), enc, idx > 0
+            except Exception:
+                continue
+        return data.decode("utf-8", errors="replace"), "utf-8", True
+
+    @staticmethod
+    def _preflight_command(shortcut: ShortcutItem, command: str, command_type: str, *, capture: bool = False):
+        items = []
+        cwd = (getattr(shortcut, "working_dir", "") or "").strip()
+        if not command:
+            items.append({"title": "命令内容", "status": "failed", "detail": "命令内容为空。"})
+        if cwd and not os.path.isdir(cwd):
+            items.append({"title": "工作目录", "status": "failed", "detail": f"目录不存在: {cwd}"})
+        if command_type == "python" and not ShortcutExecutor._python_launcher():
+            items.append({"title": "Python", "status": "failed", "detail": ShortcutExecutor._python_launcher_error()})
+        if capture and bool(getattr(shortcut, "show_window", False)):
+            items.append({"title": "捕获输出", "status": "failed", "detail": "显示执行窗口时不能捕获输出。"})
+        if capture and bool(getattr(shortcut, "run_as_admin", False)):
+            items.append({"title": "捕获输出", "status": "failed", "detail": "管理员命令暂不支持捕获输出。"})
+        if command_type == "cmd":
+            unsafe = find_unquoted_external_command_variables(command)
+            if unsafe:
+                examples = ", ".join(f"{{{name}:q}}" for name in unsafe[:3])
+                items.append(
+                    {
+                        "title": "命令参数引用",
+                        "status": "failed",
+                        "detail": f"外部输入变量用于 CMD 时必须使用 :q 引用，例如: {examples}",
+                    }
+                )
+        param_values = ShortcutExecutor._command_param_values(shortcut)
+        for param in ShortcutExecutor._command_param_defs(shortcut):
+            if param.get("required") and not str(param_values.get(param["name"], "")).strip():
+                items.append({"title": "命令参数", "status": "failed", "detail": f"缺少必填参数: {param['name']}"})
+        if command_type == "cmd" and is_value_only_variable_command(command):
+            items.append({"title": "命令内容", "status": "failed", "detail": "命令不能只包含一个变量占位符。"})
+        if items:
+            message = "\n".join(f"[{item['status'].upper()}] {item['title']}: {item['detail']}" for item in items)
+            return CommandResult(success=False, message=message, display_type="list", payload={"items": items}, error="预检失败")
+        return None
+
     @staticmethod
     def _python_launcher() -> Optional[str]:
         """Return a Python executable suitable for user scripts."""
@@ -136,7 +257,7 @@ class CommandExecutionMixin:
     def _python_launcher_error() -> str:
         return (
             "找不到可用的系统 Python。打包版不能直接复用程序目录内的 python312.dll；"
-            "请安装系统 Python/py launcher，或勾选“兼容旧 Python”在主进程执行。"
+            "请安装系统 Python 或 py launcher。"
         )
 
     @staticmethod
@@ -293,9 +414,11 @@ class CommandExecutionMixin:
             except Exception as e:
                 logger.debug("内置命令规范化失败（可忽略）: %s", e)
 
-        audit_command_execution(shortcut, command, command_type=command_type)
-
         capture_output = bool(getattr(shortcut, "capture_output", False))
+        preflight = ShortcutExecutor._preflight_command(shortcut, command, command_type, capture=False)
+        if preflight is not None:
+            set_pending_command_result(preflight)
+            return False, preflight.message or preflight.error
         if (
             capture_output
             and command_type in ("cmd", "python")
@@ -351,54 +474,23 @@ class CommandExecutionMixin:
                     except Exception:
                         pass
                     return False, f"Python 代码执行失败: {e}"
-            force_subprocess = bool(
-                getattr(ShortcutExecutor, "_is_launch_context_elevated", lambda: False)()
-            ) and not bool(getattr(shortcut, "run_as_admin", False))
-            if getattr(shortcut, "python_execution_mode", "legacy_inline") == "subprocess" or force_subprocess:
-                try:
-                    python_exe = ShortcutExecutor._python_launcher()
-                    if not python_exe:
-                        raise FileNotFoundError(ShortcutExecutor._python_launcher_error())
-                    tmp_path = ShortcutExecutor._write_temp_python_script(command)
-                    if force_subprocess and os.name == "nt":
-                        launched, launch_error = ShortcutExecutor._launch_with_privilege(
-                            python_exe,
-                            subprocess.list2cmdline([tmp_path]),
-                            (getattr(shortcut, "working_dir", "") or "").strip() or None,
-                            show_cmd=0,
-                            run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
-                            admin_failure_message="Administrator launch failed.",
-                        )
-                        if launched:
-                            ShortcutExecutor._cleanup_file_later(None, tmp_path)
-                            return True, ""
-                        if launch_error:
-                            return False, launch_error
-                    process = ShortcutExecutor._popen_silent(
-                        [python_exe, tmp_path],
-                        cwd=(getattr(shortcut, "working_dir", "") or "").strip() or None,
-                        env=ShortcutExecutor._sanitized_child_env(),
-                        shell=False,
-                    )
-                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
-                    return True, ""
-                except FileNotFoundError:
-                    return False, ShortcutExecutor._python_launcher_error()
-                except Exception as e:
-                    return False, f"Python 代码启动失败: {e}"
             try:
-                # 提供一些常用的上下文
-                context = ShortcutExecutor._python_inline_context()
-                exec(command, context)
-                logger.info("执行Python代码成功")
+                python_exe = ShortcutExecutor._python_launcher()
+                if not python_exe:
+                    raise FileNotFoundError(ShortcutExecutor._python_launcher_error())
+                tmp_path = ShortcutExecutor._write_temp_python_script(command)
+                process = ShortcutExecutor._popen_silent(
+                    [python_exe, tmp_path],
+                    cwd=(getattr(shortcut, "working_dir", "") or "").strip() or None,
+                    env=ShortcutExecutor._runtime_env(shortcut),
+                    shell=False,
+                )
+                ShortcutExecutor._cleanup_file_later(process, tmp_path)
                 return True, ""
+            except FileNotFoundError:
+                return False, ShortcutExecutor._python_launcher_error()
             except Exception as e:
-                error_msg = f"Python 代码执行失败: {e}"
-                logger.error(error_msg)
-                import traceback
-
-                logger.error(traceback.format_exc())
-                return False, error_msg
+                return False, f"Python 代码启动失败: {e}"
 
         # 内置命令
         elif command_type == "builtin":
@@ -436,7 +528,7 @@ class CommandExecutionMixin:
                     process = ShortcutExecutor._popen_silent(
                         [comspec, "/d", "/s", "/c", wrapper_path],
                         cwd=cwd,
-                        env=ShortcutExecutor._sanitized_child_env(),
+                        env=ShortcutExecutor._runtime_env(shortcut),
                         shell=False,
                     )
                     ShortcutExecutor._cleanup_file_later(process, user_cmd_path, wrapper_path)
@@ -477,7 +569,7 @@ class CommandExecutionMixin:
                         process = subprocess.Popen(parsed, cwd=cwd or exe_dir or None)
                     else:
                         process = ShortcutExecutor._popen_silent(
-                            parsed, cwd=cwd or exe_dir or None, env=ShortcutExecutor._sanitized_child_env(), shell=False
+                            parsed, cwd=cwd or exe_dir or None, env=ShortcutExecutor._runtime_env(shortcut), shell=False
                         )
                     logger.info(f"执行程序({'Visible' if show_window else 'Silent'}): {exe_path}")
                 else:
@@ -506,7 +598,7 @@ class CommandExecutionMixin:
                         process = subprocess.Popen(command, cwd=cwd, shell=True)
                     else:
                         process = ShortcutExecutor._popen_silent(
-                            command, cwd=cwd, env=ShortcutExecutor._sanitized_child_env(), shell=True
+                            command, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=True
                         )
                     logger.info(f"执行命令({'Visible' if show_window else 'Silent'} Shell): {command}")
 
@@ -546,6 +638,8 @@ class CommandExecutionMixin:
         return resolve_command_variables(
             command,
             input_values=input_values,
+            param_values=ShortcutExecutor._command_param_values(shortcut),
+            chain_values=ShortcutExecutor._chain_values(shortcut),
             clipboard_provider=read_clipboard_text,
             selected_text_provider=selected_provider,
             strict_unknown=True,
@@ -555,31 +649,9 @@ class CommandExecutionMixin:
     def _should_expand_command_variables(shortcut: ShortcutItem) -> bool:
         command_type = getattr(shortcut, "command_type", "cmd")
         enabled = getattr(shortcut, "command_variables_enabled", None)
+        if ShortcutExecutor._command_param_defs(shortcut) or ShortcutExecutor._chain_values(shortcut):
+            return command_type != "builtin"
         return should_expand_command_variables(command_type, enabled)
-
-    @staticmethod
-    def _python_inline_context() -> dict:
-        return {
-            "os": os,
-            "sys": sys,
-            "subprocess": subprocess,
-            "time": time,
-            "ctypes": ctypes,
-            "ShortcutExecutor": ShortcutExecutor,
-            "logger": logger,
-            "run_silent": lambda cmd, shell=False: ShortcutExecutor._popen_silent(cmd, shell=shell),
-        }
-
-    @staticmethod
-    def _legacy_python_test_script(command: str) -> str:
-        return (
-            "import os, sys, subprocess, time, ctypes, logging\n"
-            "logger = logging.getLogger('QuickLauncherCommandTest')\n"
-            "def run_silent(cmd, shell=False):\n"
-            "    return subprocess.Popen(cmd, shell=shell, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
-            "ShortcutExecutor = None\n\n"
-            f"{command}"
-        )
 
     @staticmethod
     def _capture_selected_text() -> str:
@@ -830,12 +902,14 @@ class CommandExecutionMixin:
         shortcut: ShortcutItem,
         timeout: float | None = None,
         cancel_event: threading.Event | None = None,
+        on_update=None,
     ) -> CommandResult:
         """Run a CMD/Python/builtin command and return a CommandResult with captured output."""
         start = time.monotonic()
         command = shortcut.command or ""
         command_type = getattr(shortcut, "command_type", "cmd")
         max_chars = getattr(shortcut, "command_output_max_chars", 20000)
+        panel_size = ShortcutExecutor._command_panel_size(shortcut)
         timeout_value = float(
             timeout if timeout is not None else getattr(shortcut, "command_timeout_seconds", 10.0) or 10.0
         )
@@ -847,14 +921,14 @@ class CommandExecutionMixin:
                     message=f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}",
                     display_type="log",
                     error="命令无效",
-                    payload={"window_size": "large"},
+                    payload={"window_size": panel_size},
                 )
             return CommandResult(
                 success=False,
                 message=f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}",
                 display_type="log",
                 error="命令无效",
-                payload={"window_size": "large"},
+                payload={"window_size": panel_size},
             )
         if command_type == "cmd" and ShortcutExecutor._should_expand_command_variables(shortcut):
             unsafe_variables = find_unquoted_external_command_variables(command)
@@ -866,7 +940,7 @@ class CommandExecutionMixin:
                     message=message,
                     display_type="log",
                     error=message,
-                    payload={"window_size": "large"},
+                    payload={"window_size": panel_size},
                 )
 
         try:
@@ -878,7 +952,7 @@ class CommandExecutionMixin:
                 message=str(e),
                 display_type="log",
                 error="变量解析失败",
-                payload={"window_size": "large"},
+                payload={"window_size": panel_size},
             )
 
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
@@ -900,7 +974,7 @@ class CommandExecutionMixin:
             success = ShortcutExecutor._execute_builtin_command(command)
             pending = take_pending_command_result()
             if pending is not None:
-                pending.payload.setdefault("window_size", "large")
+                pending.payload.setdefault("window_size", panel_size)
                 return pending
             return CommandResult(
                 success=success,
@@ -908,13 +982,17 @@ class CommandExecutionMixin:
                 display_type="log",
                 error="" if success else "执行失败",
                 payload={
-                    "window_size": "large",
+                    "window_size": panel_size,
                     "exit_code": 0 if success else 1,
                     "duration": time.monotonic() - start,
                 },
             )
 
-        audit_command_execution(shortcut, command, command_type=command_type)
+        preflight = ShortcutExecutor._preflight_command(shortcut, command, command_type, capture=True)
+        if preflight is not None:
+            if isinstance(getattr(preflight, "payload", None), dict):
+                preflight.payload.setdefault("window_size", panel_size)
+            return preflight
 
         tmp_path = None
         try:
@@ -926,13 +1004,10 @@ class CommandExecutionMixin:
                         message=ShortcutExecutor._python_launcher_error(),
                         display_type="log",
                         error="Python 不可用",
-                        payload={"window_size": "large"},
+                        payload={"window_size": panel_size},
                     )
-                script = command
-                if getattr(shortcut, "python_execution_mode", "legacy_inline") == "legacy_inline":
-                    script = ShortcutExecutor._legacy_python_test_script(command)
-                tmp_path = ShortcutExecutor._write_temp_python_script(script)
-                popen_args = [python_exe, tmp_path]
+                tmp_path = ShortcutExecutor._write_temp_python_script(command)
+                popen_args = [python_exe, "-u", tmp_path]
                 shell = False
             else:
                 popen_args = command
@@ -941,17 +1016,200 @@ class CommandExecutionMixin:
             process = subprocess.Popen(
                 popen_args,
                 cwd=cwd,
-                env=ShortcutExecutor._sanitized_child_env(),
+                env=ShortcutExecutor._runtime_env(shortcut),
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                text=False,
                 shell=shell,
             )
+            if on_update is not None:
+                output_queue = queue.Queue()
+
+                def _reader(pipe, name):
+                    try:
+                        while True:
+                            chunk = pipe.readline()
+                            if not chunk:
+                                break
+                            output_queue.put((name, chunk))
+                    finally:
+                        try:
+                            pipe.close()
+                        except Exception:
+                            pass
+
+                threading.Thread(target=_reader, args=(process.stdout, "stdout"), daemon=True).start()
+                threading.Thread(target=_reader, args=(process.stderr, "stderr"), daemon=True).start()
+                stdout_parts = []
+                stderr_parts = []
+                deadline = time.monotonic() + timeout_value
+                last_update = 0.0
+                timed_out = False
+                cancelled = False
+
+                while process.poll() is None or not output_queue.empty():
+                    while True:
+                        try:
+                            name, chunk = output_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if name == "stdout":
+                            stdout_parts.append(chunk)
+                        else:
+                            stderr_parts.append(chunk)
+
+                    now = time.monotonic()
+                    if (stdout_parts or stderr_parts) and now - last_update >= 0.15:
+                        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+                            b"".join(stdout_parts), getattr(shortcut, "command_encoding", "auto")
+                        )
+                        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+                            b"".join(stderr_parts), getattr(shortcut, "command_encoding", "auto")
+                        )
+                        update_stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
+                        update_stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+                        parts = []
+                        if update_stdout:
+                            parts.extend(["stdout:", update_stdout])
+                        if update_stderr:
+                            parts.extend(["stderr:", update_stderr])
+                        on_update(
+                            CommandResult(
+                                success=True,
+                                message="\n".join(parts) or "执行中...",
+                                display_type="log",
+                                payload={
+                                    "window_size": panel_size,
+                                    "wrap": False,
+                                    "duration": now - start,
+                                    "stdout": update_stdout,
+                                    "stderr": update_stderr,
+                                    "stdout_truncated": stdout_truncated,
+                                    "stderr_truncated": stderr_truncated,
+                                    "stdout_encoding": stdout_encoding,
+                                    "stderr_encoding": stderr_encoding,
+                                    "decode_fallback_used": stdout_fallback or stderr_fallback,
+                                    "command": command,
+                                    "running": True,
+                                },
+                                cancellable=True,
+                            )
+                        )
+                        last_update = now
+
+                    if cancel_event is not None and cancel_event.is_set():
+                        cancelled = True
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
+                        break
+                    if time.monotonic() >= deadline:
+                        timed_out = True
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
+                        break
+                    time.sleep(0.03)
+
+                try:
+                    process.wait(timeout=2.0)
+                except Exception:
+                    pass
+                while True:
+                    try:
+                        name, chunk = output_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if name == "stdout":
+                        stdout_parts.append(chunk)
+                    else:
+                        stderr_parts.append(chunk)
+                stdout_bytes = b"".join(stdout_parts)
+                stderr_bytes = b"".join(stderr_parts)
+                returncode = process.returncode
+                if cancelled:
+                    stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+                        stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                    )
+                    stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+                        stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                    )
+                    stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
+                    stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+                    message = "\n".join(part for part in ["命令执行已取消。", stdout, stderr] if part)
+                    return CommandResult(
+                        success=False,
+                        message=message,
+                        display_type="log",
+                        payload={
+                            "window_size": panel_size,
+                            "wrap": False,
+                            "exit_code": returncode,
+                            "duration": time.monotonic() - start,
+                            "stdout": stdout,
+                            "stderr": stderr,
+                            "stdout_truncated": stdout_truncated,
+                            "stderr_truncated": stderr_truncated,
+                            "stdout_encoding": stdout_encoding,
+                            "stderr_encoding": stderr_encoding,
+                            "decode_fallback_used": stdout_fallback or stderr_fallback,
+                            "command": command,
+                            "cancelled": True,
+                        },
+                        error="已取消",
+                    )
+                stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+                    stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                )
+                stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+                    stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                )
+                stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
+                stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+                parts = []
+                if stdout:
+                    parts.extend(["stdout:", stdout])
+                if stderr:
+                    parts.extend(["stderr:", stderr])
+                if not parts:
+                    parts.append("(无输出)")
+                message = "\n".join(parts)
+                if timed_out:
+                    message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
+                success = (returncode == 0) and not timed_out
+                error = ""
+                if timed_out:
+                    error = "执行超时"
+                elif returncode != 0:
+                    error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
+                return CommandResult(
+                    success=success,
+                    message=message,
+                    display_type="log",
+                    payload={
+                        "window_size": panel_size,
+                        "wrap": False,
+                        "exit_code": returncode,
+                        "duration": time.monotonic() - start,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "stdout_truncated": stdout_truncated,
+                        "stderr_truncated": stderr_truncated,
+                        "stdout_encoding": stdout_encoding,
+                        "stderr_encoding": stderr_encoding,
+                        "decode_fallback_used": stdout_fallback or stderr_fallback,
+                        "command": command,
+                        "timed_out": timed_out,
+                    },
+                    actions=[CommandAction(type="copy", label="复制输出", value=message)],
+                    error=error,
+                )
             try:
                 if cancel_event is None:
-                    stdout, stderr = process.communicate(timeout=timeout_value)
+                    stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_value)
                 else:
                     deadline = time.monotonic() + timeout_value
                     while process.poll() is None:
@@ -960,7 +1218,13 @@ class CommandExecutionMixin:
                                 process.kill()
                             except Exception:
                                 pass
-                            stdout, stderr = process.communicate()
+                            stdout_bytes, stderr_bytes = process.communicate()
+                            stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+                                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                            )
+                            stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+                                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                            )
                             stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
                             stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
                             message = "\n".join(part for part in ["命令执行已取消。", stdout, stderr] if part)
@@ -969,7 +1233,7 @@ class CommandExecutionMixin:
                                 message=message,
                                 display_type="log",
                                 payload={
-                                    "window_size": "large",
+                                    "window_size": panel_size,
                                     "wrap": False,
                                     "exit_code": process.returncode,
                                     "duration": time.monotonic() - start,
@@ -977,6 +1241,9 @@ class CommandExecutionMixin:
                                     "stderr": stderr,
                                     "stdout_truncated": stdout_truncated,
                                     "stderr_truncated": stderr_truncated,
+                                    "stdout_encoding": stdout_encoding,
+                                    "stderr_encoding": stderr_encoding,
+                                    "decode_fallback_used": stdout_fallback or stderr_fallback,
                                     "command": command,
                                     "cancelled": True,
                                 },
@@ -986,7 +1253,7 @@ class CommandExecutionMixin:
                         if remaining <= 0:
                             raise subprocess.TimeoutExpired(popen_args, timeout_value)
                         time.sleep(min(0.05, remaining))
-                    stdout, stderr = process.communicate()
+                    stdout_bytes, stderr_bytes = process.communicate()
                 returncode = process.returncode
                 timed_out = False
             except subprocess.TimeoutExpired:
@@ -994,10 +1261,16 @@ class CommandExecutionMixin:
                     process.kill()
                 except Exception:
                     pass
-                stdout, stderr = process.communicate()
+                stdout_bytes, stderr_bytes = process.communicate()
                 returncode = process.returncode
                 timed_out = True
 
+            stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+            )
+            stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+            )
             stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
             stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
             parts = []
@@ -1021,7 +1294,7 @@ class CommandExecutionMixin:
                 message=message,
                 display_type="log",
                 payload={
-                    "window_size": "large",
+                    "window_size": panel_size,
                     "wrap": False,
                     "exit_code": returncode,
                     "duration": time.monotonic() - start,
@@ -1029,6 +1302,9 @@ class CommandExecutionMixin:
                     "stderr": stderr,
                     "stdout_truncated": stdout_truncated,
                     "stderr_truncated": stderr_truncated,
+                    "stdout_encoding": stdout_encoding,
+                    "stderr_encoding": stderr_encoding,
+                    "decode_fallback_used": stdout_fallback or stderr_fallback,
                     "command": command,
                     "timed_out": timed_out,
                 },
@@ -1041,7 +1317,7 @@ class CommandExecutionMixin:
                 message=f"命令捕获执行失败: {e}",
                 display_type="log",
                 error=str(e),
-                payload={"window_size": "large", "duration": time.monotonic() - start},
+                payload={"window_size": panel_size, "duration": time.monotonic() - start},
             )
         finally:
             if tmp_path:

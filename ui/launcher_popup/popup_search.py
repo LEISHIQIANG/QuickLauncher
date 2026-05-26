@@ -566,7 +566,7 @@ class PopupSearchMixin:
                 pass
         else:
             # 3. 本地快捷图标 + Dock 图标的拼音/Fuzzy混合检索
-            search_folders = list(self.pages or [])
+            search_folders = [f for f in (self.pages or []) if not getattr(f, "is_icon_repo", False)]
 
             dock_folder = getattr(self, "dock_folder", None)
             if dock_folder is not None:
@@ -587,7 +587,7 @@ class PopupSearchMixin:
                     matched_cmds = find_matching_commands(query)
                     append_command_results(matched_cmds, "Commands", 80.0)
                 except Exception:
-                    logger.exception("鍛戒护鎼滅储澶辫触: %s", query)
+                    logger.exception("命令搜索失败: %s", query)
 
         self.search_results = results
         if results:

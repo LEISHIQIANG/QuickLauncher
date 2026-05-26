@@ -120,9 +120,8 @@ def _install_native_crash_handler(crash_log_path: str):
 
 def setup_faulthandler(log_dir: str):
     import faulthandler
-    import sys
     import platform
-    import signal as _signal
+    import sys
     from datetime import datetime
     try:
         fh_path = os.path.join(log_dir, "faulthandler.log")

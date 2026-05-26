@@ -175,6 +175,7 @@ def _register_builtin_commands():
         cmd_copy_path,
         cmd_dns,
         cmd_explorer,
+        cmd_git,
         cmd_hash,
         cmd_hosts,
         cmd_ip,
@@ -422,6 +423,15 @@ def _register_builtin_commands():
             category="system",
             handler=cmd_conflict,
         ),
+        CommandDefinition(
+            id="git",
+            title="Git",
+            aliases=["git", "git-status", "git-pull", "git-checkout"],
+            description="Git status/branch/log/diff/fetch/pull/checkout",
+            category="developer",
+            handler=cmd_git,
+            result_window_size="large",
+        ),
     ]
 
     panel_command_ids = {
@@ -448,6 +458,7 @@ def _register_builtin_commands():
         "port",
         "conflict",
         "clean-cache",
+        "git",
     }
 
     count = 0
