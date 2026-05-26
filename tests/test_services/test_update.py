@@ -247,6 +247,7 @@ class TestUpdateDownloader:
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Length": "5"}
         mock_resp.geturl.return_value = "https://evil.example/test.exe"
+        mock_resp.read.return_value = b""
         mock_urlopen.return_value.__enter__.return_value = mock_resp
         downloader = UpdateDownloader()
         events = []

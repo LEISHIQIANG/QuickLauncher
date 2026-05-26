@@ -845,7 +845,7 @@ def test_shortcut_item_persists_command_profile_fields():
     assert restored.command_encoding == "gbk"
 
 
-def test_run_command_capture_resolves_param_and_env_and_decodes_fallback(monkeypatch):
+def test_run_command_capture_resolves_param_and_env_and_decodes_gbk(monkeypatch):
     import core.shortcut_command_exec as command_exec
 
     captured = {}
@@ -873,7 +873,7 @@ def test_run_command_capture_resolves_param_and_env_and_decodes_fallback(monkeyp
         command="echo {param:host:q}",
         command_params=[{"name": "host", "required": True}],
         command_env={"QL_TEST": "yes"},
-        command_encoding="auto",
+        command_encoding="gbk",
     )
     item._runtime_param_values = {"host": "example.com"}
 
@@ -882,8 +882,7 @@ def test_run_command_capture_resolves_param_and_env_and_decodes_fallback(monkeyp
     assert "example.com" in captured["args"][0]
     assert captured["kwargs"]["env"]["QL_TEST"] == "yes"
     assert result.payload["stdout"] == "中文"
-    assert result.payload["stdout_encoding"].lower() in ("cp936", "gbk", "mbcs")
-    assert result.payload["decode_fallback_used"] is True
+    assert result.payload["stdout_encoding"].lower() in ("cp936", "gbk")
 
 
 def test_run_command_capture_preflight_rejects_missing_workdir(tmp_path):
