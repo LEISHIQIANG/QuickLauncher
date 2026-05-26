@@ -36,7 +36,10 @@ if not defined QL_LOGGING (
         if "%QL_NO_PAUSE%"=="" pause
         exit /b 1
     )
-    exit /b 0
+    if exist "dist\QuickLauncher_Setup_%APP_VERSION%.exe" (
+        start "" "dist\QuickLauncher_Setup_%APP_VERSION%.exe"
+    )
+    exit
 )
 
 echo.
@@ -522,7 +525,4 @@ echo ========================================
 echo   [OK] Build successful! (Win11 optimized version)
 echo   Installer: dist\QuickLauncher_Setup_%APP_VERSION%.exe
 echo ========================================
-echo.
-echo   Starting installer...
-start "" "dist\QuickLauncher_Setup_%APP_VERSION%.exe"
-exit
+

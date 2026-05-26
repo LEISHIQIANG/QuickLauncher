@@ -6,6 +6,7 @@ import copy
 import logging
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import AppData, DataManager, ShortcutItem, ShortcutType
@@ -521,7 +522,9 @@ class IconWidget(QFrame):
                 self.setGraphicsEffect(self._drag_opacity)
 
             self.drag_started.emit(self.shortcut.id)
-            drag.exec_(QtCompat.MoveAction)
+            result = drag.exec_(QtCompat.MoveAction)
+            if grid_parent and result == QtCompat.MoveAction:
+                grid_parent._drag_completed = True
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"拖动失败: {e}")
@@ -553,11 +556,17 @@ class IconWidget(QFrame):
             # Trigger real-time swap
             source_id = event.mimeData().data("application/x-shortcut-id").data().decode()
             target_id = self.shortcut.id
+            pointer_pos = None
+            try:
+                local_pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+                pointer_pos = self.mapToGlobal(local_pos)
+            except Exception:
+                pass
 
             parent = self.parent()
             while parent:
                 if hasattr(parent, 'handle_realtime_swap'):
-                    parent.handle_realtime_swap(source_id, target_id)
+                    parent.handle_realtime_swap(source_id, target_id, pointer_pos=pointer_pos)
                     break
                 parent = parent.parent()
 
@@ -890,6 +899,9 @@ class IconGrid(QWidget):
         """手动定位所有图标 widget，支持平滑动画过渡"""
         if not self.icon_widgets:
             return
+        live_widgets = self._live_icon_widgets(self.icon_widgets)
+        if len(live_widgets) != len(self.icon_widgets):
+            self.icon_widgets = live_widgets
         cell = self._get_cell_size()
         pad_x = 10
         pad_top = 14
@@ -991,19 +1003,54 @@ class IconGrid(QWidget):
             self._start_async_icon_load(icon_tasks)
 
     def _clear_icons(self):
+        self._icon_load_generation = getattr(self, "_icon_load_generation", 0) + 1
         self._stop_icon_thread()
-        for widget in self.icon_widgets:
-            if hasattr(widget, "_pos_anim") and widget._pos_anim is not None:
-                widget._pos_anim.stop()
-                widget._pos_anim = None
-            widget.deleteLater()
+
+        widgets_to_clear = []
+        seen = set()
+        for source in (
+            self.icon_widgets,
+            vars(self).get("_initial_widgets", []) or [],
+            vars(self).get("_drag_visual_widgets", []) or [],
+        ):
+            for widget in source:
+                if id(widget) in seen:
+                    continue
+                seen.add(id(widget))
+                widgets_to_clear.append(widget)
+
+        for widget in widgets_to_clear:
+            try:
+                pos_anim = getattr(widget, "_pos_anim", None)
+                if pos_anim is not None:
+                    pos_anim.stop()
+                    widget._pos_anim = None
+                widget.deleteLater()
+            except RuntimeError:
+                pass
         self.icon_widgets.clear()
+        self._initial_widgets = []
+        self._drag_visual_widgets = []
+        self._active_drag_ids = []
         self.hint_container.show()
 
     def _stop_icon_thread(self):
-        if hasattr(self, '_icon_thread') and self._icon_thread is not None:
-            self._icon_thread.quit()
-            self._icon_thread.wait(2000)
+        worker = getattr(self, '_icon_worker', None)
+        if worker is not None:
+            try:
+                worker.cancel()
+            except RuntimeError:
+                pass
+            except Exception:
+                pass
+
+        thread = getattr(self, '_icon_thread', None)
+        if thread is not None:
+            try:
+                thread.quit()
+                thread.wait(2000)
+            except RuntimeError:
+                pass
             self._icon_thread = None
             self._icon_worker = None
 
@@ -1068,10 +1115,13 @@ class IconGrid(QWidget):
                 pass
 
         pixmap = QPixmap.fromImage(image)
-        for w in self.icon_widgets:
-            if w.shortcut.id == shortcut_id:
-                w.icon_label.setPixmap(pixmap)
-                break
+        for w in list(self.icon_widgets):
+            try:
+                if w.shortcut.id == shortcut_id:
+                    w.icon_label.setPixmap(pixmap)
+                    break
+            except RuntimeError:
+                continue
 
     def _load_icon_on_main_thread(self, item: ShortcutItem):
         try:
@@ -1264,16 +1314,32 @@ class IconGrid(QWidget):
         except Exception:
             pass
 
+    @staticmethod
+    def _widget_shortcut_id(widget) -> str | None:
+        try:
+            shortcut = getattr(widget, "shortcut", None)
+            return getattr(shortcut, "id", None)
+        except RuntimeError:
+            return None
+
+    def _live_icon_widgets(self, widgets=None):
+        return [widget for widget in (widgets or []) if self._widget_shortcut_id(widget)]
+
     def get_drag_shortcut_ids(self, source_id: str) -> list[str]:
         """Return the shortcut ids that should move with this drag."""
         if source_id in self.selected_shortcut_ids:
             selected = set(self.selected_shortcut_ids)
-            ids = [w.shortcut.id for w in self.icon_widgets if w.shortcut.id in selected]
+            ids = []
+            for widget in self.icon_widgets:
+                sid = self._widget_shortcut_id(widget)
+                if sid in selected:
+                    ids.append(sid)
             return ids or [source_id]
         return [source_id]
 
     def create_drag_preview_pixmap(self, shortcut_ids: list[str], source_widget: IconWidget) -> QPixmap:
-        widgets = [w for w in self.icon_widgets if w.shortcut.id in set(shortcut_ids or [])]
+        shortcut_id_set = set(shortcut_ids or [])
+        widgets = [w for w in self.icon_widgets if self._widget_shortcut_id(w) in shortcut_id_set]
         if len(widgets) <= 1:
             return source_widget.create_drag_preview_pixmap()
 
@@ -1314,9 +1380,9 @@ class IconGrid(QWidget):
         self._drag_visual_widgets = []
         active_ids = set(self._active_drag_ids)
         for widget in self.icon_widgets:
-            if widget.shortcut.id not in active_ids:
-                continue
             try:
+                if self._widget_shortcut_id(widget) not in active_ids:
+                    continue
                 effect = QGraphicsOpacityEffect(widget)
                 effect.setOpacity(0.4)
                 widget.setGraphicsEffect(effect)
@@ -1325,8 +1391,9 @@ class IconGrid(QWidget):
                 pass
 
     def end_drag_visuals(self):
-        for widget in getattr(self, "_drag_visual_widgets", []):
+        for widget in vars(self).get("_drag_visual_widgets", []) or []:
             try:
+                widget.setVisible(True)
                 widget.setGraphicsEffect(None)
                 widget._set_normal_style()
             except RuntimeError:
@@ -1335,28 +1402,79 @@ class IconGrid(QWidget):
         self._active_drag_ids = []
 
     def _on_drag_started(self, source_id):
-        self._initial_widgets = list(self.icon_widgets)
+        self._initial_widgets = self._live_icon_widgets(self.icon_widgets)
         self._drag_completed = False
+        self._last_realtime_swap_target_id = None
+        self._last_realtime_swap_global_pos = None
+        self._last_realtime_swap_at = 0.0
 
-    def handle_realtime_swap(self, source_id: str, target_id: str, drag_ids: list[str] | None = None):
+    def handle_realtime_swap(
+        self,
+        source_id: str,
+        target_id: str,
+        drag_ids: list[str] | None = None,
+        pointer_pos: QPoint | None = None,
+    ):
         if source_id == target_id:
             return
         if getattr(self.data_manager.get_settings(), "sort_mode", "custom") == "smart":
             return
 
-        moving_ids = drag_ids or getattr(self, "_active_drag_ids", None) or [source_id]
+        moving_ids = drag_ids or vars(self).get("_active_drag_ids") or [source_id]
+        try:
+            current_ids = {self._widget_shortcut_id(w) for w in self.icon_widgets}
+            current_ids.discard(None)
+        except RuntimeError:
+            current_ids = set()
+        if any(sid not in current_ids for sid in moving_ids):
+            self._restore_drag_preview_order(animate=False)
+
+        if self._should_suppress_realtime_swap(target_id, pointer_pos):
+            return
+
         if self._move_drag_group(source_id, target_id, moving_ids):
+            self._record_realtime_swap(target_id, pointer_pos)
             self._place_icons(animate=True)
 
+    def _should_suppress_realtime_swap(self, target_id: str, pointer_pos: QPoint | None) -> bool:
+        state = vars(self)
+        last_target_id = state.get("_last_realtime_swap_target_id")
+        last_pos = state.get("_last_realtime_swap_global_pos")
+        last_at = float(state.get("_last_realtime_swap_at", 0.0) or 0.0)
+
+        if not last_target_id or pointer_pos is None or last_pos is None:
+            return False
+
+        elapsed_ms = (time.monotonic() - last_at) * 1000.0
+        if elapsed_ms > 260:
+            return False
+
+        try:
+            moved_px = (pointer_pos - last_pos).manhattanLength()
+        except Exception:
+            return False
+
+        return moved_px < max(16, int(self._get_cell_size() * 0.45))
+
+    def _record_realtime_swap(self, target_id: str, pointer_pos: QPoint | None):
+        self._last_realtime_swap_target_id = target_id
+        self._last_realtime_swap_global_pos = QPoint(pointer_pos) if pointer_pos is not None else None
+        self._last_realtime_swap_at = time.monotonic()
+
     def _move_drag_group(self, source_id: str, target_id: str, drag_ids: list[str]) -> bool:
-        id_to_index = {w.shortcut.id: i for i, w in enumerate(self.icon_widgets)}
+        self.icon_widgets = self._live_icon_widgets(self.icon_widgets)
+        id_to_index = {}
+        for i, widget in enumerate(self.icon_widgets):
+            sid = self._widget_shortcut_id(widget)
+            if sid:
+                id_to_index[sid] = i
         if target_id not in id_to_index:
             return False
 
         ordered_ids = []
         seen = set()
         for widget in self.icon_widgets:
-            sid = widget.shortcut.id
+            sid = self._widget_shortcut_id(widget)
             if sid in drag_ids and sid not in seen:
                 ordered_ids.append(sid)
                 seen.add(sid)
@@ -1366,15 +1484,17 @@ class IconGrid(QWidget):
         source_idx = id_to_index.get(source_id, id_to_index[ordered_ids[0]])
         target_idx = id_to_index[target_id]
         moving_set = set(ordered_ids)
-        moving_widgets = [w for w in self.icon_widgets if w.shortcut.id in moving_set]
-        remaining_widgets = [w for w in self.icon_widgets if w.shortcut.id not in moving_set]
-        target_pos = next((i for i, w in enumerate(remaining_widgets) if w.shortcut.id == target_id), -1)
+        moving_widgets = [w for w in self.icon_widgets if self._widget_shortcut_id(w) in moving_set]
+        remaining_widgets = [w for w in self.icon_widgets if self._widget_shortcut_id(w) not in moving_set]
+        target_pos = next((i for i, w in enumerate(remaining_widgets) if self._widget_shortcut_id(w) == target_id), -1)
         if target_pos < 0:
             return False
 
         insert_at = target_pos + 1 if source_idx < target_idx else target_pos
         new_widgets = remaining_widgets[:insert_at] + moving_widgets + remaining_widgets[insert_at:]
-        if [w.shortcut.id for w in new_widgets] == [w.shortcut.id for w in self.icon_widgets]:
+        new_ids = [self._widget_shortcut_id(w) for w in new_widgets]
+        current_ids = [self._widget_shortcut_id(w) for w in self.icon_widgets]
+        if new_ids == current_ids:
             return False
         self.icon_widgets = new_widgets
         return True
@@ -1391,10 +1511,61 @@ class IconGrid(QWidget):
 
     def handle_drag_ended(self):
         # 如果拖放未完成即松手（取消拖拽），将所有卡片恢复到初始的排序 and 位置
-        if not getattr(self, '_drag_completed', False) and hasattr(self, '_initial_widgets') and self._initial_widgets:
-            self.icon_widgets = list(self._initial_widgets)
-            self._place_icons(animate=True)
+        if not vars(self).get('_drag_completed', False):
+            self._restore_drag_preview_order(animate=True)
         self._drag_completed = False
+
+    def _active_drag_id_set(self) -> set[str]:
+        return set(vars(self).get("_active_drag_ids", []) or [])
+
+    def _set_active_drag_widgets_visible(self, visible: bool):
+        active_ids = self._active_drag_id_set()
+        if not active_ids:
+            return
+        for widget in vars(self).get("_initial_widgets", []) or []:
+            try:
+                if self._widget_shortcut_id(widget) in active_ids:
+                    widget.setVisible(visible)
+            except RuntimeError:
+                continue
+
+    def _restore_drag_preview_order(self, animate: bool = True):
+        initial_widgets = self._live_icon_widgets(vars(self).get('_initial_widgets') or [])
+        if not initial_widgets:
+            return
+
+        self._set_active_drag_widgets_visible(True)
+        try:
+            current_ids = [self._widget_shortcut_id(w) for w in self.icon_widgets]
+            initial_ids = [self._widget_shortcut_id(w) for w in initial_widgets]
+        except RuntimeError:
+            return
+
+        if current_ids == initial_ids:
+            return
+
+        self.icon_widgets = list(initial_widgets)
+        self._place_icons(animate=animate)
+
+    def _remove_active_drag_placeholders(self, animate: bool = True):
+        initial_widgets = self._live_icon_widgets(vars(self).get('_initial_widgets') or [])
+        active_ids = self._active_drag_id_set()
+        if not initial_widgets or not active_ids:
+            return
+
+        try:
+            remaining_widgets = [w for w in initial_widgets if self._widget_shortcut_id(w) not in active_ids]
+            current_ids = [self._widget_shortcut_id(w) for w in self.icon_widgets]
+            remaining_ids = [self._widget_shortcut_id(w) for w in remaining_widgets]
+        except RuntimeError:
+            return
+
+        self._set_active_drag_widgets_visible(False)
+        if current_ids == remaining_ids:
+            return
+
+        self.icon_widgets = remaining_widgets
+        self._place_icons(animate=animate)
 
     def handle_reorder(self, source_id: str, target_id: str):
         self.handle_final_reorder()
@@ -1421,6 +1592,8 @@ class IconGrid(QWidget):
             has_valid_file = True
 
         if has_valid_file:
+            if event.mimeData().hasFormat("application/x-shortcut-id"):
+                self._restore_drag_preview_order(animate=True)
             event.acceptProposedAction()
             theme = "dark"
             try:
@@ -1446,6 +1619,7 @@ class IconGrid(QWidget):
             event.ignore()
 
     def dragLeaveEvent(self, event):
+        self._remove_active_drag_placeholders(animate=True)
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme

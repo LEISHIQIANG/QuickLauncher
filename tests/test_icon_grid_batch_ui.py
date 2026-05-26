@@ -12,9 +12,13 @@ class _Widget:
     def __init__(self, shortcut_id):
         self.shortcut = SimpleNamespace(id=shortcut_id)
         self.selected = False
+        self.visible = True
 
     def set_selected(self, selected):
         self.selected = bool(selected)
+
+    def setVisible(self, visible):
+        self.visible = bool(visible)
 
 
 def _grid_with_widgets():
@@ -106,6 +110,68 @@ def test_multi_drag_over_selected_target_is_noop():
     assert [widget.shortcut.id for widget in grid.icon_widgets] == ["one", "two", "three"]
 
 
+def test_drag_leave_removes_active_placeholder_and_restore_adds_it_back():
+    grid = _grid_with_widgets()
+    grid._initial_widgets = list(grid.icon_widgets)
+    grid._active_drag_ids = ["one"]
+    place_calls = []
+    grid._place_icons = lambda animate=False: place_calls.append(animate)
+
+    IconGrid._remove_active_drag_placeholders(grid, animate=True)
+
+    assert [widget.shortcut.id for widget in grid.icon_widgets] == ["two", "three"]
+    assert grid._initial_widgets[0].visible is False
+    assert place_calls == [True]
+
+    IconGrid._restore_drag_preview_order(grid, animate=False)
+
+    assert [widget.shortcut.id for widget in grid.icon_widgets] == ["one", "two", "three"]
+    assert grid._initial_widgets[0].visible is True
+    assert place_calls == [True, False]
+
+
+def test_realtime_swap_restores_placeholder_after_drag_returns():
+    grid = _grid_with_widgets()
+    grid._initial_widgets = list(grid.icon_widgets)
+    grid._active_drag_ids = ["one"]
+    grid.data_manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(sort_mode="custom"),
+    )
+    place_calls = []
+    grid._place_icons = lambda animate=False: place_calls.append(animate)
+
+    IconGrid._remove_active_drag_placeholders(grid, animate=True)
+    IconGrid.handle_realtime_swap(grid, "one", "three")
+
+    assert [widget.shortcut.id for widget in grid.icon_widgets] == ["two", "three", "one"]
+    assert grid._initial_widgets[0].visible is True
+    assert place_calls == [True, False, True]
+
+
+def test_realtime_swap_suppresses_boundary_jitter(monkeypatch):
+    grid = _grid_with_widgets()
+    grid.data_manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(sort_mode="custom"),
+    )
+    grid._get_cell_size = lambda: 60
+    place_calls = []
+    grid._place_icons = lambda animate=False: place_calls.append(animate)
+    times = [10.0, 10.05, 10.08, 10.10, 10.11]
+    monkeypatch.setattr(grid_mod.time, "monotonic", lambda: times.pop(0))
+
+    IconGrid.handle_realtime_swap(grid, "one", "three", pointer_pos=QPoint(100, 100))
+    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(104, 101))
+    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(122, 101))
+
+    assert [widget.shortcut.id for widget in grid.icon_widgets] == ["two", "three", "one"]
+    assert place_calls == [True]
+
+    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(136, 100))
+
+    assert [widget.shortcut.id for widget in grid.icon_widgets] == ["one", "two", "three"]
+    assert place_calls == [True, True]
+
+
 def test_double_click_edit_emits_signal_directly(monkeypatch, qapp):
     """mouseDoubleClickEvent emits the double_clicked signal."""
     widget = IconWidget(ShortcutItem(id="one", name="One", type=ShortcutType.FILE))
@@ -129,6 +195,56 @@ def test_stale_icon_load_generation_is_ignored():
     IconGrid._on_icon_loaded(grid, 1, "one", None)
 
     assert grid._icon_load_generation == 2
+
+
+def test_clear_icons_skips_deleted_wrappers():
+    class DeletedWidget:
+        def __getattribute__(self, name):
+            if name in {"_pos_anim", "deleteLater"}:
+                raise RuntimeError("wrapped C/C++ object has been deleted")
+            return object.__getattribute__(self, name)
+
+    grid = IconGrid.__new__(IconGrid)
+    grid._icon_load_generation = 0
+    grid.icon_widgets = [DeletedWidget()]
+    grid._stop_icon_thread = lambda: None
+    grid.hint_container = SimpleNamespace(show=lambda: None)
+
+    IconGrid._clear_icons(grid)
+
+    assert grid.icon_widgets == []
+    assert grid._icon_load_generation == 1
+
+
+def test_clear_icons_deletes_drag_widget_removed_from_layout():
+    class ClearWidget:
+        def __init__(self, shortcut_id):
+            self.shortcut = SimpleNamespace(id=shortcut_id)
+            self.deleted = False
+            self._pos_anim = None
+
+        def deleteLater(self):
+            self.deleted = True
+
+    dragged = ClearWidget("one")
+    remaining = ClearWidget("two")
+    grid = IconGrid.__new__(IconGrid)
+    grid._icon_load_generation = 0
+    grid.icon_widgets = [remaining]
+    grid._initial_widgets = [dragged, remaining]
+    grid._drag_visual_widgets = [dragged]
+    grid._active_drag_ids = ["one"]
+    grid._stop_icon_thread = lambda: None
+    grid.hint_container = SimpleNamespace(show=lambda: None)
+
+    IconGrid._clear_icons(grid)
+
+    assert dragged.deleted is True
+    assert remaining.deleted is True
+    assert grid.icon_widgets == []
+    assert grid._initial_widgets == []
+    assert grid._drag_visual_widgets == []
+    assert grid._active_drag_ids == []
 
 
 def test_icon_widget_child_widgets_do_not_steal_mouse_events(qapp):
@@ -177,6 +293,7 @@ def test_icon_drag_starts_normally_when_custom_sort(monkeypatch, qapp):
         get_settings=lambda: SimpleNamespace(sort_mode="custom"),
     )
     parent.current_folder_id = "source"
+    parent._drag_completed = False
     widget = IconWidget(ShortcutItem(id="one", name="One", type=ShortcutType.FILE))
     widget.setParent(parent)
     exec_calls = []
@@ -199,6 +316,7 @@ def test_icon_drag_starts_normally_when_custom_sort(monkeypatch, qapp):
 
         def exec_(self, action):
             exec_calls.append(action)
+            return action
 
     monkeypatch.setattr(grid_mod, "QDrag", FakeDrag)
 
@@ -206,6 +324,7 @@ def test_icon_drag_starts_normally_when_custom_sort(monkeypatch, qapp):
         widget._start_drag()
 
         assert exec_calls == [grid_mod.QtCompat.MoveAction]
+        assert parent._drag_completed is True
         assert drag_objects[0].mime_data.data("application/x-shortcut-id").data().decode() == "one"
         assert drag_objects[0].mime_data.data("application/x-source-folder-id").data().decode() == "source"
     finally:
@@ -274,7 +393,7 @@ def test_drag_enter_triggers_realtime_swap(monkeypatch, qapp):
     """dragEnterEvent calls parent handle_realtime_swap when mime type matches."""
     parent = grid_mod.QWidget()
     swaps = []
-    parent.handle_realtime_swap = lambda source_id, target_id: swaps.append((source_id, target_id))
+    parent.handle_realtime_swap = lambda source_id, target_id, pointer_pos=None: swaps.append((source_id, target_id, pointer_pos))
     widget = IconWidget(ShortcutItem(id="target", name="Target", type=ShortcutType.FILE))
     widget.setParent(parent)
 
@@ -295,7 +414,7 @@ def test_drag_enter_triggers_realtime_swap(monkeypatch, qapp):
 
     try:
         widget.dragEnterEvent(FakeEvent())
-        assert swaps == [("source", "target")]
+        assert swaps == [("source", "target", None)]
     finally:
         widget.deleteLater()
         parent.deleteLater()

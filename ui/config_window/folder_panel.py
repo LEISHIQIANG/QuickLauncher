@@ -914,6 +914,44 @@ class FolderPanel(QWidget):
             list_item.setData(QtCompat.UserRole + 1, False)
         self.folder_list.viewport().update()
 
+    @staticmethod
+    def _decode_mime_text(mime_data, fmt: str) -> str:
+        try:
+            payload = mime_data.data(fmt)
+            if hasattr(payload, "data"):
+                payload = payload.data()
+            return bytes(payload).decode("utf-8", errors="ignore")
+        except Exception:
+            return ""
+
+    @classmethod
+    def _shortcut_ids_from_mime(cls, mime_data) -> list[str]:
+        raw_ids = ""
+        try:
+            if mime_data.hasFormat("application/x-shortcut-ids"):
+                raw_ids = cls._decode_mime_text(mime_data, "application/x-shortcut-ids")
+        except Exception:
+            raw_ids = ""
+
+        ids = [sid.strip() for sid in raw_ids.splitlines() if sid.strip()]
+        if not ids:
+            try:
+                if mime_data.hasFormat("application/x-shortcut-id"):
+                    single_id = cls._decode_mime_text(mime_data, "application/x-shortcut-id").strip()
+                    if single_id:
+                        ids = [single_id]
+            except Exception:
+                ids = []
+
+        deduped = []
+        seen = set()
+        for shortcut_id in ids:
+            if shortcut_id in seen:
+                continue
+            seen.add(shortcut_id)
+            deduped.append(shortcut_id)
+        return deduped
+
     def _list_drop_event(self, event):
         """处理放下事件"""
         while QApplication.overrideCursor():
@@ -967,6 +1005,13 @@ class FolderPanel(QWidget):
         self.folder_list.viewport().update()
 
         # 外部文件/文件夹拖入
+        if target_item is None:
+            try:
+                pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+                target_item = self.folder_list.itemAt(pos)
+            except Exception:
+                target_item = None
+
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
             for url in urls:
@@ -982,23 +1027,38 @@ class FolderPanel(QWidget):
             event.ignore()
         # 图标拖动到文件夹
         elif event.mimeData().hasFormat("application/x-shortcut-id"):
-            if target_item:
-                target_folder_id = target_item.data(QtCompat.UserRole)
-                folder = self.data_manager.data.get_folder_by_id(target_folder_id)
+            if not target_item:
+                event.ignore()
+                return
 
-                if folder and folder.linked_path and folder.auto_sync:
+            target_folder_id = target_item.data(QtCompat.UserRole)
+            folder = self.data_manager.data.get_folder_by_id(target_folder_id)
+
+            if folder and folder.linked_path and folder.auto_sync:
+                event.ignore()
+                return
+
+            if event.mimeData().hasFormat("application/x-source-folder-id"):
+                source_folder_id = self._decode_mime_text(event.mimeData(), "application/x-source-folder-id").strip()
+                source_folder = self.data_manager.data.get_folder_by_id(source_folder_id)
+                if source_folder and source_folder.linked_path and source_folder.auto_sync:
                     event.ignore()
                     return
 
-                shortcut_id = event.mimeData().data("application/x-shortcut-id").data().decode()
+            shortcut_ids = self._shortcut_ids_from_mime(event.mimeData())
+            if not shortcut_ids:
+                event.ignore()
+                return
 
-                if self.data_manager.move_shortcut_to_folder(shortcut_id, target_folder_id):
-                    current_item = self.folder_list.currentItem()
-                    if current_item:
-                        current_folder_id = current_item.data(QtCompat.UserRole)
-                        self.folder_selected.emit(current_folder_id)
-
+            result = self.data_manager.move_shortcuts_batch(shortcut_ids, target_folder_id)
+            if result.get("success", 0) > 0:
+                current_item = self.folder_list.currentItem()
+                if current_item:
+                    current_folder_id = current_item.data(QtCompat.UserRole)
+                    self.folder_selected.emit(current_folder_id)
                 event.acceptProposedAction()
+            else:
+                event.ignore()
         else:
             event.ignore()
     
