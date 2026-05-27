@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.shortcut_health import apply_health_fixes, check_shortcuts
+from core.shortcut_health import apply_health_fixes, check_shortcuts, save_health_state
 from qt_compat import (
     QApplication,
     QFont,
@@ -20,13 +20,17 @@ from ui.themed_tool_window import ThemedToolWindow
 class ShortcutHealthScanThread(QThread):
     finished_signal = pyqtSignal(list, str)
 
-    def __init__(self, data):
+    def __init__(self, data, state_dir=None):
         super().__init__()
         self.data = data
+        self.state_dir = state_dir
 
     def run(self):
         try:
-            self.finished_signal.emit(check_shortcuts(self.data), "")
+            issues = check_shortcuts(self.data)
+            if self.state_dir:
+                save_health_state(self.state_dir, issues)
+            self.finished_signal.emit(issues, "")
         except Exception as exc:
             self.finished_signal.emit([], str(exc))
 
@@ -112,7 +116,7 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self.refresh_btn.setEnabled(False)
         self.fix_btn.setEnabled(False)
         self.clean_cache_btn.setEnabled(False)
-        self._scan_thread = ShortcutHealthScanThread(self.data_manager.data)
+        self._scan_thread = ShortcutHealthScanThread(self.data_manager.data, state_dir=self.data_manager.config_dir)
         self._scan_thread.finished_signal.connect(self._on_scan_finished)
         self._scan_thread.finished.connect(lambda: setattr(self, "_scan_thread", None))
         self._scan_thread.finished.connect(self._scan_thread.deleteLater)

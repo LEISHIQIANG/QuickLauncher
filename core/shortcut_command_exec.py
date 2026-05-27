@@ -1097,9 +1097,8 @@ class CommandExecutionMixin:
                         update_stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
                         parts = []
                         if update_stdout:
-                            parts.extend(["stdout:", update_stdout])
-                        if update_stderr:
-                            parts.extend(["stderr:", update_stderr])
+                            parts.append(update_stdout)
+                        # stderr 仅在命令最终失败时才显示（在最终结果中处理）
                         on_update(
                             CommandResult(
                                 success=True,
@@ -1189,17 +1188,17 @@ class CommandExecutionMixin:
                 )
                 stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
                 stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+                success = (returncode == 0) and not timed_out
                 parts = []
                 if stdout:
-                    parts.extend(["stdout:", stdout])
-                if stderr:
-                    parts.extend(["stderr:", stderr])
+                    parts.append(stdout)
+                if stderr and not success:
+                    parts.append(stderr)
                 if not parts:
                     parts.append("(无输出)")
                 message = "\n".join(parts)
                 if timed_out:
                     message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
-                success = (returncode == 0) and not timed_out
                 error = ""
                 if timed_out:
                     error = "执行超时"
@@ -1287,17 +1286,17 @@ class CommandExecutionMixin:
             )
             stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
             stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+            success = (returncode == 0) and not timed_out
             parts = []
             if stdout:
-                parts.extend(["stdout:", stdout])
-            if stderr:
-                parts.extend(["stderr:", stderr])
+                parts.append(stdout)
+            if stderr and not success:
+                parts.append(stderr)
             if not parts:
                 parts.append("(无输出)")
             message = "\n".join(parts)
             if timed_out:
                 message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
-            success = (returncode == 0) and not timed_out
             error = ""
             if timed_out:
                 error = "执行超时"

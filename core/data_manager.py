@@ -16,6 +16,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from .config_history import ConfigHistoryManager
+from .config_recovery import (
+    ConfigRecoveryReport,
+    quarantine_bad_config,
+    read_recovery_report,
+    write_recovery_report,
+)
 from .config_validation import (
     latest_valid_backup,
     load_valid_data_file,
@@ -79,7 +85,17 @@ class DataManager:
         self.icons_dir = install_dir / "icons"
         self.auto_backup_dir = self.app_dir / "auto_backups"
         self.history_dir = self.app_dir / "history"
+        self.recovery_dir = self.app_dir / "recovery"
+        self.config_dir = self.app_dir
         self._max_auto_backups = 5
+
+        # Initialize event log
+        try:
+            from .event_log import init_event_log
+
+            init_event_log(self.app_dir)
+        except Exception:
+            pass
         self._max_history_snapshots = 20
 
         # 执行配置迁移
@@ -121,6 +137,7 @@ class DataManager:
         self.app_dir.mkdir(parents=True, exist_ok=True)
         self.icons_dir.mkdir(parents=True, exist_ok=True)
         self.history_dir.mkdir(parents=True, exist_ok=True)
+        self.recovery_dir.mkdir(parents=True, exist_ok=True)
 
     def _ensure_icon_repo_folder(self):
         """确保图标仓库文件夹存在（为已有配置迁移）"""
@@ -144,37 +161,74 @@ class DataManager:
                 }
                 if issues:
                     logger.warning("配置结构存在可恢复问题: %s", issues)
+                self._write_recovery_report(
+                    ConfigRecoveryReport(
+                        status="ok",
+                        reason="loaded",
+                        source_path=str(self.data_file),
+                        issues=issues,
+                    )
+                )
                 return loaded
             except Exception as e:
                 logger.warning("加载数据失败: %s", e)
-                recovered = self._recover_from_latest_backup()
+                quarantined = quarantine_bad_config(self.data_file, self.recovery_dir)
+                recovered = self._recover_from_latest_backup(str(e), quarantined)
                 if recovered is not None:
                     return recovered
                 self._config_status = {
-                    "status": "error",
+                    "status": "warn",
                     "source": str(self.data_file),
-                    "issues": [str(e)],
+                    "issues": ["fallback_default", str(e)],
                 }
+                self._write_recovery_report(
+                    ConfigRecoveryReport(
+                        status="fallback_default",
+                        reason=str(e),
+                        source_path=str(self.data_file),
+                        quarantined_path=str(quarantined or ""),
+                        issues=[str(e)],
+                    )
+                )
         else:
             self._config_status = {"status": "ok", "source": "default", "issues": []}
+            self._write_recovery_report(
+                ConfigRecoveryReport(status="ok", reason="default config", source_path="default")
+            )
         return AppData()
 
-    def _recover_from_latest_backup(self) -> Optional[AppData]:
+    def _recover_from_latest_backup(
+        self, reason: str = "", quarantined_path: Path | str | None = None
+    ) -> Optional[AppData]:
         """Recover data.json from the newest valid auto backup."""
         try:
             backup_path = latest_valid_backup(self.auto_backup_dir)
             if not backup_path:
                 return None
             loaded, issues = load_valid_data_file(backup_path)
+            status = "recovered"
+            recovery_issues = ["recovered_from_auto_backup"] + issues
             try:
                 shutil.copy2(backup_path, self.data_file)
             except Exception as copy_error:
+                status = "recovered_memory_only"
+                recovery_issues.append(f"persist_failed:{copy_error}")
                 logger.warning("恢复配置备份时复制失败: %s", copy_error)
             self._config_status = {
                 "status": "warn",
                 "source": str(backup_path),
-                "issues": ["recovered_from_auto_backup"] + issues,
+                "issues": recovery_issues,
             }
+            self._write_recovery_report(
+                ConfigRecoveryReport(
+                    status=status,
+                    reason=reason or "auto backup recovery",
+                    source_path=str(self.data_file),
+                    recovered_from=str(backup_path),
+                    quarantined_path=str(quarantined_path or ""),
+                    issues=recovery_issues,
+                )
+            )
             logger.warning("已从自动备份恢复配置: %s", backup_path)
             return loaded
         except Exception as exc:
@@ -322,10 +376,31 @@ class DataManager:
         self._pending_history_action = action or "配置变更"
         self._pending_history_summary = summary or action or "配置变更"
 
+    def _write_recovery_report(self, report: ConfigRecoveryReport) -> None:
+        write_recovery_report(self.recovery_dir, report)
+        if report.status not in ("ok",):
+            try:
+                from .event_log import log_event
+
+                log_event(
+                    f"config.{report.status}",
+                    f"Config {report.status}: {report.reason}",
+                    {"source": report.source_path, "recovered_from": report.recovered_from},
+                )
+            except Exception:
+                pass
+
+    def get_recovery_report(self) -> dict:
+        report = read_recovery_report(self.recovery_dir)
+        return report.to_dict() if report else {}
+
     def get_config_status(self) -> dict:
         """Return latest configuration load/save validation status."""
         with self._save_lock:
             status = dict(getattr(self, "_config_status", {}) or {})
+            report = self.get_recovery_report()
+            if report:
+                status["recovery"] = report
             try:
                 status["current_issues"] = validate_app_data(self.data)
             except Exception as exc:
@@ -364,8 +439,15 @@ class DataManager:
                     logger.warning("拒绝恢复无效历史快照: %s", issues)
                     return False
                 self._mark_history("恢复历史快照", f"恢复快照 {snapshot_id}")
+                old_data = self.data
+                old_saved = getattr(self, "_last_saved_data_dict", None)
+                old_config_status = dict(getattr(self, "_config_status", {}) or {})
                 self.data = AppData.from_dict(data_dict)
-                self.save(immediate=True)
+                if not self.save(immediate=True):
+                    self.data = old_data
+                    self._last_saved_data_dict = old_saved
+                    self._config_status = old_config_status
+                    return False
                 return True
             except Exception as exc:
                 logger.exception("restore config history failed: %s", exc)
@@ -1145,7 +1227,8 @@ class DataManager:
         """
         try:
             # 确保当前数据已保存
-            self.save(immediate=True)
+            if not self.save(immediate=True):
+                return False
 
             with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 # 1. 准备数据字典
@@ -1273,6 +1356,9 @@ class DataManager:
 
                     restored_data = AppData.from_dict(data_dict)
 
+                    old_data = self.data
+                    old_saved = getattr(self, "_last_saved_data_dict", None)
+                    old_config_status = dict(getattr(self, "_config_status", {}) or {})
                     backup_icons_dir = None
                     try:
                         if self.icons_dir.exists():
@@ -1290,9 +1376,13 @@ class DataManager:
                             shutil.move(str(resolve_under(temp_icons_dir, item)), str(target_icon))
 
                         self.data = restored_data
-                        self.save(immediate=True)
+                        if not self.save(immediate=True):
+                            raise RuntimeError("save restored config failed")
                         set_imported_items(report, sum(len(f.items) for f in self.data.folders))
                     except Exception:
+                        self.data = old_data
+                        self._last_saved_data_dict = old_saved
+                        self._config_status = old_config_status
                         if icons_root.exists():
                             safe_rmtree_child(icons_root.parent, icons_root)
                         if backup_icons_dir and backup_icons_dir.exists():

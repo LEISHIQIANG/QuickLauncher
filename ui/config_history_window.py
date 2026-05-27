@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
-from qt_compat import QEvent, QFont, QHBoxLayout, QListWidget, QListWidgetItem, QObject, QPushButton, QSize, Qt, QTimer
+from qt_compat import (
+    QEvent,
+    QFont,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QObject,
+    QPushButton,
+    QSize,
+    Qt,
+    QTimer,
+)
 from ui.custom_tooltip import CustomToolTip
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
@@ -24,6 +37,29 @@ class ConfigHistoryWindow(ThemedToolWindow):
 
     def _setup_ui(self):
         self.set_subtitle("最近 20 次重要配置变更快照，可用于恢复")
+
+        self.recovery_label = QLabel("")
+        self.recovery_label.setWordWrap(True)
+        self.content_layout.addWidget(self.recovery_label)
+
+        # Recovery action buttons
+        recovery_btn_layout = QHBoxLayout()
+        recovery_btn_layout.setSpacing(8)
+
+        self.open_recovery_dir_btn = QPushButton("打开恢复目录")
+        self.open_recovery_dir_btn.clicked.connect(self._open_recovery_dir)
+        recovery_btn_layout.addWidget(self.open_recovery_dir_btn)
+
+        self.open_backup_dir_btn = QPushButton("打开备份目录")
+        self.open_backup_dir_btn.clicked.connect(self._open_backup_dir)
+        recovery_btn_layout.addWidget(self.open_backup_dir_btn)
+
+        self.copy_report_btn = QPushButton("复制恢复报告")
+        self.copy_report_btn.clicked.connect(self._copy_recovery_report)
+        recovery_btn_layout.addWidget(self.copy_report_btn)
+
+        recovery_btn_layout.addStretch()
+        self.content_layout.addLayout(recovery_btn_layout)
 
         self.list_widget = QListWidget()
         self.list_widget.setWordWrap(False)
@@ -91,13 +127,22 @@ class ConfigHistoryWindow(ThemedToolWindow):
     def _apply_content_theme(self):
         if hasattr(self, "list_widget"):
             self.style_compact_list_widget(self.list_widget)
+        if hasattr(self, "recovery_label"):
+            color = (
+                "rgba(255, 255, 255, 0.62)" if getattr(self, "_theme", "light") == "dark" else "rgba(60, 60, 67, 0.72)"
+            )
+            self.recovery_label.setStyleSheet(f"font-size: 11px; color: {color}; background: transparent;")
         buttons = [
             getattr(self, "refresh_btn", None),
             getattr(self, "restore_btn", None),
+            getattr(self, "open_recovery_dir_btn", None),
+            getattr(self, "open_backup_dir_btn", None),
+            getattr(self, "copy_report_btn", None),
         ]
         self.style_buttons(*(button for button in buttons if button is not None))
 
     def refresh(self):
+        self._refresh_recovery_status()
         self.list_widget.clear()
         self.snapshots = self.data_manager.list_config_history()
         if not self.snapshots:
@@ -120,6 +165,62 @@ class ConfigHistoryWindow(ThemedToolWindow):
             item.setData(Qt.UserRole, tip)
             item.setData(32, snapshot.id)
             self.list_widget.addItem(item)
+
+    def _refresh_recovery_status(self):
+        report = getattr(self.data_manager, "get_recovery_report", lambda: {})()
+        if not report:
+            self.recovery_label.setText("配置恢复状态：暂无恢复记录。")
+            return
+        status = report.get("status", "unknown")
+        status_labels = {
+            "ok": "正常",
+            "recovered": "已自动恢复",
+            "fallback_default": "使用默认配置",
+            "failed": "恢复失败",
+        }
+        status_text = status_labels.get(status, status)
+        source = report.get("recovered_from") or report.get("source_path") or "-"
+        quarantined = report.get("quarantined_path") or "-"
+        issues = report.get("issues", [])
+        parts = [f"状态: {status_text}", f"来源: {source}"]
+        if quarantined and quarantined != "-":
+            parts.append(f"隔离文件: {quarantined}")
+        if issues:
+            parts.append(f"问题: {', '.join(issues[:3])}")
+        self.recovery_label.setText(" | ".join(parts))
+
+    def _open_recovery_dir(self):
+        recovery_dir = getattr(self.data_manager, "recovery_dir", None)
+        if recovery_dir and os.path.isdir(str(recovery_dir)):
+            try:
+                os.startfile(str(recovery_dir))
+            except OSError as exc:
+                ThemedMessageBox.warning(self, "打开失败", f"无法打开目录: {exc}")
+        else:
+            ThemedMessageBox.information(self, "提示", "恢复目录不存在。")
+
+    def _open_backup_dir(self):
+        backup_dir = getattr(self.data_manager, "auto_backup_dir", None)
+        if backup_dir and os.path.isdir(str(backup_dir)):
+            try:
+                os.startfile(str(backup_dir))
+            except OSError as exc:
+                ThemedMessageBox.warning(self, "打开失败", f"无法打开目录: {exc}")
+        else:
+            ThemedMessageBox.information(self, "提示", "备份目录不存在。")
+
+    def _copy_recovery_report(self):
+        report = getattr(self.data_manager, "get_recovery_report", lambda: {})()
+        if report:
+            import json
+
+            from qt_compat import QApplication
+
+            text = json.dumps(report, ensure_ascii=False, indent=2)
+            QApplication.clipboard().setText(text)
+            ThemedMessageBox.information(self, "已复制", "恢复报告已复制到剪贴板。")
+        else:
+            ThemedMessageBox.information(self, "提示", "暂无恢复报告。")
 
     def restore_selected(self):
         item = self.list_widget.currentItem()

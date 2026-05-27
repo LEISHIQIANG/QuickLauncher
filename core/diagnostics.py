@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import platform
+import re
+import threading
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +16,41 @@ from pathlib import Path
 from .config_validation import validate_app_data
 
 logger = logging.getLogger(__name__)
+
+MAX_DIAGNOSTIC_TEXT_BYTES = 512 * 1024
+MAX_PLUGIN_ERROR_LINES = 200
+MAX_SHORTCUT_ISSUES = 50
+MAX_EVENTS_LINES = 200
+
+# Per-export redaction counter (reset before each export)
+_redaction_lock = threading.Lock()
+_redaction_counts: dict[str, int] = {}
+
+# Pre-compiled sensitive patterns for _sanitize_text
+_SENSITIVE_PATTERNS = [
+    # --token=<value>, --token <value>, --api-key=<value>
+    (
+        re.compile(
+            r"(--(?:token|api[-_]?key|password|passwd|secret|bearer|auth[-_]?token)[=\s]+)\S+",
+            re.IGNORECASE,
+        ),
+        r"\1<REDACTED>",
+        "cli_token",
+    ),
+    # token=<value>, apikey=<value>, password=<value> in query strings or env
+    (
+        re.compile(
+            r"((?:token|apikey|api_key|password|passwd|secret|bearer|authorization)[=:])" r"(['\"]?)([^\s&'\"]{4,})\2",
+            re.IGNORECASE,
+        ),
+        r"\1\2<REDACTED>\2",
+        "param_token",
+    ),
+    # Bearer <token> in Authorization headers
+    (re.compile(r"(Bearer\s+)\S{8,}", re.IGNORECASE), r"\1<REDACTED>", "bearer_token"),
+    # Basic <base64> in Authorization headers
+    (re.compile(r"(Basic\s+)\S{8,}", re.IGNORECASE), r"\1<REDACTED>", "basic_auth"),
+]
 
 
 @dataclass
@@ -50,6 +87,22 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
             "如状态为 error，请从数据设置中恢复备份。",
         )
     )
+
+    recovery = config_status.get("recovery", {}) if isinstance(config_status, dict) else {}
+    if isinstance(recovery, dict) and recovery:
+        recovery_status = str(recovery.get("status") or "unknown")
+        item_status = "ok" if recovery_status == "ok" else "warn"
+        if recovery_status == "failed":
+            item_status = "error"
+        items.append(
+            DiagnosticItem(
+                "配置恢复",
+                item_status,
+                recovery_status,
+                json.dumps(recovery, ensure_ascii=False),
+                "打开配置历史或导入完整备份进行恢复。",
+            )
+        )
 
     try:
         schema_issues = validate_app_data(data_manager.data)
@@ -196,6 +249,33 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
     except Exception as exc:
         items.append(DiagnosticItem("图标检查", "unknown", "无法执行图标检查", str(exc)))
 
+    # Cached health state from shortcut_health_window scans
+    try:
+        from .shortcut_health import load_health_state
+
+        config_dir = getattr(data_manager, "config_dir", None)
+        if config_dir:
+            cached = load_health_state(config_dir)
+            if cached:
+                last_scan = cached.get("last_scan_at", "未知")
+                cached_errors = cached.get("error_count", 0)
+                cached_warns = cached.get("warn_count", 0)
+                cached_fixable = cached.get("fixable_count", 0)
+                items.append(
+                    DiagnosticItem(
+                        "健康检查缓存",
+                        "error" if cached_errors else ("warn" if cached_warns else "ok"),
+                        (
+                            f"上次扫描: {last_scan} | ERROR {cached_errors}"
+                            f" / WARN {cached_warns} / 可修复 {cached_fixable}"
+                        ),
+                        json.dumps(cached, ensure_ascii=False),
+                        "可在图标检查窗口中重新扫描。",
+                    )
+                )
+    except Exception:
+        pass
+
     try:
         memory_guard = getattr(tray_app, "memory_guard", None)
         if memory_guard:
@@ -257,32 +337,167 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         )
     except Exception as exc:
         items.append(DiagnosticItem("最近错误", "unknown", "无法读取错误日志", str(exc)))
+
+    # Update system status
+    try:
+        from services.update.session import latest_session_state
+
+        from . import APP_VERSION
+
+        update_root = str(Path(getattr(data_manager, "app_dir", "")) / "downloads" / "updates")
+        session = latest_session_state(update_root)
+        if session:
+            install_info = session.get("install", {}) if isinstance(session.get("install"), dict) else {}
+            install_status = install_info.get("status", "unknown")
+            target_version = session.get("version", "")
+            pre_backup = install_info.get("pre_install_backup", "")
+            session_status = session.get("status", "unknown")
+
+            status_map = {
+                "pending": "ok",
+                "created": "ok",
+                "installed": "ok",
+                "first_start_confirmed": "ok",
+                "failed": "error",
+                "installing": "warn",
+            }
+            diag_status = status_map.get(session_status, "warn")
+
+            parts = [f"当前版本: {APP_VERSION}"]
+            if target_version:
+                parts.append(f"目标版本: {target_version}")
+            parts.append(f"会话状态: {session_status}")
+            if install_status and install_status != "pending":
+                parts.append(f"安装状态: {install_status}")
+            if pre_backup:
+                parts.append(f"安装前备份: {'已创建' if os.path.isfile(pre_backup) else '未找到'}")
+
+            items.append(
+                DiagnosticItem(
+                    "更新系统",
+                    diag_status,
+                    " | ".join(parts),
+                    json.dumps(session, ensure_ascii=False),
+                    "如更新失败，可从安装前备份恢复配置。",
+                )
+            )
+        else:
+            items.append(
+                DiagnosticItem(
+                    "更新系统",
+                    "ok",
+                    f"当前版本: {APP_VERSION}，无更新会话记录",
+                    "",
+                )
+            )
+    except Exception as exc:
+        items.append(DiagnosticItem("更新系统", "unknown", "无法读取更新状态", str(exc)))
+
     return items
 
 
-def export_diagnostics_zip(data_manager, export_path: str, tray_app=None) -> bool:
-    """Export diagnostics and recent logs to a zip package."""
+def export_diagnostics_zip(data_manager, export_path: str, tray_app=None, export_level: str = "standard") -> bool:
+    """Export diagnostics and recent logs to a zip package.
+
+    export_level: "standard" (default), "full" (more logs), "minimal" (diagnostics.json only).
+    """
+    _reset_redaction_counts()
     try:
         items = collect_diagnostics(data_manager, tray_app)
+        log_dir = Path(getattr(data_manager, "app_dir", ""))
+        config_dir = Path(getattr(data_manager, "config_dir", ""))
+        logging_disabled = _is_logging_disabled(data_manager)
         payload = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "platform": platform.platform(),
             "cwd": os.getcwd(),
             "diagnostics": [item.to_dict() for item in items],
             "config_status": getattr(data_manager, "get_config_status", lambda: {})(),
+            "logging_disabled": logging_disabled,
+            "export_level": export_level,
         }
         payload = _sanitize_dict(payload)
         with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("diagnostics.json", json.dumps(payload, ensure_ascii=False, indent=2))
-            log_dir = Path(getattr(data_manager, "app_dir", ""))
-            for name in ("error.log", "faulthandler.log"):
+            included_files: list[str] = []
+            _write_json(zf, included_files, "diagnostics.json", payload)
+
+            if export_level == "minimal":
+                # Minimal: only diagnostics.json + manifest
+                redaction = get_redaction_counts()
+                if redaction:
+                    _write_json(zf, included_files, "redaction_report.json", redaction)
+                manifest = _build_manifest(payload, included_files, logging_disabled)
+                zf.writestr("manifest.json", json.dumps(_sanitize_dict(manifest), ensure_ascii=False, indent=2))
+                return True
+
+            recovery_state = _read_json_file(log_dir / "recovery" / "recovery_state.json")
+            if recovery_state is not None:
+                _write_json(zf, included_files, "recovery_state.json", recovery_state)
+
+            update_state = _read_json_file(log_dir / ".update_state.json")
+            if update_state is not None:
+                _write_json(zf, included_files, "update_state.json", update_state)
+            update_session = _read_latest_update_session(log_dir)
+            if update_session is not None:
+                _write_json(zf, included_files, "update_session.json", update_session)
+
+            plugin_errors = _read_tail_lines(log_dir / "plugin_errors.jsonl", MAX_PLUGIN_ERROR_LINES)
+            if plugin_errors:
+                zf.writestr("plugin_errors_tail.jsonl", "\n".join(_sanitize_jsonl_lines(plugin_errors)))
+                included_files.append("plugin_errors_tail.jsonl")
+
+            shortcut_summary = _build_shortcut_health_summary(data_manager)
+            if shortcut_summary is not None:
+                _write_json(zf, included_files, "shortcut_health_summary.json", shortcut_summary)
+
+            # Include events.jsonl (operation timeline)
+            events_path = config_dir / "events.jsonl"
+            if events_path.exists() and events_path.is_file():
+                events_lines = _read_tail_lines(events_path, MAX_EVENTS_LINES)
+                if events_lines:
+                    zf.writestr("events.jsonl", "\n".join(_sanitize_jsonl_lines(events_lines)))
+                    included_files.append("events.jsonl")
+
+            for name in ("error.log", "faulthandler.log", "crash.log"):
                 path = log_dir / name
                 if path.exists() and path.is_file():
-                    zf.write(path, name)
+                    zf.writestr(name, _sanitize_text(_read_tail_text(path)))
+                    included_files.append(name)
+
+            # Full level: include rotated logs
+            if export_level == "full":
+                for name in ("error.log.1", "faulthandler.log.1"):
+                    path = log_dir / name
+                    if path.exists() and path.is_file():
+                        zf.writestr(f"logs/{name}", _sanitize_text(_read_tail_text(path)))
+                        included_files.append(f"logs/{name}")
+
+            redaction = get_redaction_counts()
+            if redaction:
+                _write_json(zf, included_files, "redaction_report.json", redaction)
+
+            manifest = _build_manifest(payload, included_files, logging_disabled)
+            zf.writestr("manifest.json", json.dumps(_sanitize_dict(manifest), ensure_ascii=False, indent=2))
         return True
     except Exception as exc:
         logger.exception("export diagnostics failed: %s", exc)
         return False
+
+
+def _build_manifest(payload: dict, included_files: list[str], logging_disabled: bool) -> dict:
+    return {
+        "schema": 1,
+        "generated_at": payload["generated_at"],
+        "export_level": payload.get("export_level", "standard"),
+        "files": ["manifest.json"] + included_files,
+        "limits": {
+            "max_text_bytes_per_file": MAX_DIAGNOSTIC_TEXT_BYTES,
+            "max_plugin_error_lines": MAX_PLUGIN_ERROR_LINES,
+            "max_shortcut_issues": MAX_SHORTCUT_ISSUES,
+            "max_events_lines": MAX_EVENTS_LINES,
+        },
+        "logging_disabled": logging_disabled,
+    }
 
 
 def _recent_error_lines(log_file: Path) -> list[str]:
@@ -296,16 +511,130 @@ def _recent_error_lines(log_file: Path) -> list[str]:
         return []
 
 
+def _is_logging_disabled(data_manager) -> bool:
+    settings = getattr(getattr(data_manager, "data", None), "settings", None)
+    if settings is None:
+        return False
+    if hasattr(settings, "enable_logging"):
+        return not bool(getattr(settings, "enable_logging"))
+    return bool(getattr(settings, "disable_logging", False))
+
+
+def _write_json(zf: zipfile.ZipFile, included_files: list[str], name: str, payload: object) -> None:
+    zf.writestr(name, json.dumps(_sanitize_dict(payload), ensure_ascii=False, indent=2))
+    included_files.append(name)
+
+
+def _read_json_file(path: Path) -> object | None:
+    try:
+        if not path.exists() or not path.is_file():
+            return None
+        return json.loads(_read_tail_text(path))
+    except Exception:
+        return None
+
+
+def _read_latest_update_session(log_dir: Path) -> object | None:
+    try:
+        from services.update.session import latest_session_state
+
+        state = latest_session_state(log_dir / "downloads" / "updates")
+        return state or None
+    except Exception:
+        return None
+
+
+def _read_tail_lines(path: Path, max_lines: int) -> list[str]:
+    text = _read_tail_text(path)
+    if not text:
+        return []
+    return text.splitlines()[-max(1, int(max_lines)) :]
+
+
+def _sanitize_jsonl_lines(lines: list[str]) -> list[str]:
+    sanitized = []
+    for line in lines:
+        try:
+            payload = json.loads(line)
+            sanitized.append(json.dumps(_sanitize_dict(payload), ensure_ascii=False, separators=(",", ":")))
+        except Exception:
+            sanitized.append(_sanitize_text(line))
+    return sanitized
+
+
+def _build_shortcut_health_summary(data_manager) -> dict | None:
+    try:
+        from .shortcut_health import check_shortcuts
+
+        issues = check_shortcuts(data_manager.data)
+        counts: dict[str, int] = {}
+        for issue in issues:
+            severity = str(getattr(issue, "severity", "unknown") or "unknown")
+            counts[severity] = counts.get(severity, 0) + 1
+        return {
+            "total": len(issues),
+            "counts": counts,
+            "fixable": sum(1 for issue in issues if getattr(issue, "fix_action", "")),
+            "issues": [issue.to_dict() for issue in issues[:MAX_SHORTCUT_ISSUES]],
+            "truncated": len(issues) > MAX_SHORTCUT_ISSUES,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _read_tail_text(path: Path, max_bytes: int = MAX_DIAGNOSTIC_TEXT_BYTES) -> str:
+    try:
+        if not path.exists() or not path.is_file():
+            return ""
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size > max_bytes:
+                handle.seek(size - max_bytes)
+                prefix = f"[truncated first {size - max_bytes} bytes]\n"
+            else:
+                prefix = ""
+            return prefix + handle.read(max_bytes).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _reset_redaction_counts() -> None:
+    """Reset redaction counters before a new export."""
+    with _redaction_lock:
+        _redaction_counts.clear()
+
+
+def _bump_redaction(category: str, count: int = 1) -> None:
+    """Increment redaction counter for a category."""
+    with _redaction_lock:
+        _redaction_counts[category] = _redaction_counts.get(category, 0) + count
+
+
+def get_redaction_counts() -> dict[str, int]:
+    """Return a snapshot of current redaction counters."""
+    with _redaction_lock:
+        return dict(_redaction_counts)
+
+
 def _sanitize_text(value: str) -> str:
-    """Replace user-specific paths with '<USER_HOME>' placeholder."""
+    """Replace user-specific paths and sensitive tokens with placeholders."""
     result = str(value or "")
     home = os.path.expanduser("~")
     if home and len(home) > 3:
-        result = result.replace(home, "<USER_HOME>")
+        if home in result:
+            _bump_redaction("user_home")
+            result = result.replace(home, "<USER_HOME>")
     for var in ("USERPROFILE", "USERNAME", "COMPUTERNAME"):
         val = os.environ.get(var, "")
-        if val and len(val) > 2:
+        if val and len(val) > 2 and val in result:
+            _bump_redaction(var.lower())
             result = result.replace(val, f"<{var}>")
+
+    for pattern, replacement, category in _SENSITIVE_PATTERNS:
+        matches = pattern.findall(result)
+        if matches:
+            _bump_redaction(category, len(matches))
+            result = pattern.sub(replacement, result)
     return result
 
 

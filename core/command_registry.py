@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
+import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -12,6 +14,9 @@ logger = logging.getLogger(__name__)
 COMMAND_INTERACTION_DIRECT = "direct"
 COMMAND_INTERACTION_PANEL = "panel"
 MAX_COMMAND_RESULT_ACTIONS = 2
+MAX_SEARCH_SOURCE_RESULTS = 50
+SEARCH_SOURCE_RESULT_KEYS = {"id", "title", "name", "command", "folder", "icon_path"}
+SEARCH_SOURCE_TIMEOUT_SECONDS = 5
 
 
 # ============================================================
@@ -128,6 +133,45 @@ def snapshot_search_sources() -> list[tuple[str, dict]]:
     """Return a stable copy for callers that iterate while plugins may change."""
     with _search_sources_lock:
         return [(source_id, dict(source_info)) for source_id, source_info in _search_sources.items()]
+
+
+def execute_search_source(source_id: str, query: str) -> list[dict]:
+    """Execute one plugin search source with validation, timeout, and failure reporting."""
+    with _search_sources_lock:
+        source_info = dict(_search_sources.get(source_id) or {})
+    handler = source_info.get("handler")
+    if handler is None:
+        return []
+    plugin_id = str(source_info.get("plugin_id") or "")
+    pool = None
+    try:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(handler, query)
+        try:
+            raw_results = future.result(timeout=SEARCH_SOURCE_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError:
+            logger.warning("plugin search source timed out: %s", source_id)
+            callback = source_info.get("error_callback")
+            if callable(callback):
+                callback(plugin_id, "search", source_id, TimeoutError("search source timed out"), "")
+            return []
+        if not isinstance(raw_results, list):
+            return []
+        results = []
+        for item in raw_results[:MAX_SEARCH_SOURCE_RESULTS]:
+            if not isinstance(item, dict):
+                continue
+            results.append({key: value for key, value in item.items() if key in SEARCH_SOURCE_RESULT_KEYS})
+        return results
+    except Exception as exc:
+        callback = source_info.get("error_callback")
+        if callable(callback):
+            callback(plugin_id, "search", source_id, exc, traceback.format_exc())
+        logger.exception("plugin search source failed: %s", source_id)
+        return []
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
 
 
 def take_pending_command_result() -> CommandResult | None:

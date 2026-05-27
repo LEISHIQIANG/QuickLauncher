@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 
 import pytest
 
@@ -293,6 +294,47 @@ def register(api):
     raise RuntimeError("plugin error")
 """
 
+_SAMPLE_MAIN_COMMAND_FAILURE = """\
+def fail(ctx):
+    raise RuntimeError("boom")
+
+def register(api):
+    api.register_command(
+        id="fail_plugin.fail",
+        title="Fail",
+        aliases=["fail"],
+        description="",
+        category="test",
+        handler=fail,
+)
+"""
+
+_SAMPLE_MAIN_COMMAND_TIMEOUT = """\
+import time
+
+def slow(ctx):
+    time.sleep(0.2)
+    return {"success": True, "message": "too late"}
+
+def register(api):
+    api.register_command(
+        id="timeout_plugin.slow",
+        title="Slow",
+        aliases=["slow"],
+        description="",
+        category="test",
+        handler=slow,
+    )
+"""
+
+_SAMPLE_MAIN_SEARCH_FAILURE = """\
+def search(query):
+    raise RuntimeError("search boom")
+
+def register(api):
+    api.register_search_source("search_plugin_search", search)
+"""
+
 
 class TestPluginManagerLoad:
     def test_load_and_enable_plugin(self):
@@ -412,6 +454,82 @@ class TestPluginManagerLoad:
 
             assert second.get_plugin("sample").status == "enabled"
             assert second_reg.get("sample.hello") is not None
+
+    def test_repeated_command_failures_quarantine_plugin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "fail_plugin", main_py=_SAMPLE_MAIN_COMMAND_FAILURE)
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp)
+            pm.scan_plugins()
+            assert pm.enable_plugin("fail_plugin")
+            handler = reg.get("fail_plugin.fail").handler
+
+            for _ in range(3):
+                result = handler(CommandContext())
+                assert result.success is False
+
+            info = pm.get_plugin("fail_plugin")
+            assert info.status == "quarantined"
+            assert info.quarantined is True
+            assert reg.get("fail_plugin.fail") is None
+            state_path = os.path.join(tmp, ".config", "plugin_state.json")
+            with open(state_path, encoding="utf-8") as handle:
+                state = json.load(handle)
+            assert state["plugins"]["fail_plugin"]["status"] == "quarantined"
+            assert os.path.exists(os.path.join(tmp, ".config", "plugin_errors.jsonl"))
+
+    def test_plugin_command_timeout_returns_without_waiting_for_handler(self, monkeypatch):
+        import core.plugin_manager as plugin_manager
+
+        monkeypatch.setattr(plugin_manager, "PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS", 0.01)
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "timeout_plugin", main_py=_SAMPLE_MAIN_COMMAND_TIMEOUT)
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp)
+            pm.scan_plugins()
+            assert pm.enable_plugin("timeout_plugin")
+            handler = reg.get("timeout_plugin.slow").handler
+
+            started = time.perf_counter()
+            result = handler(CommandContext())
+            elapsed = time.perf_counter() - started
+
+            assert result.success is False
+            assert result.error == "timeout"
+            assert elapsed < 0.15
+
+    def test_auto_enable_skips_persisted_quarantine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "fail_plugin", main_py=_SAMPLE_MAIN_COMMAND_FAILURE)
+            reg = CommandRegistry()
+            first = PluginManager(reg, plugins_dir=tmp)
+            first.scan_plugins()
+            assert first.enable_plugin("fail_plugin")
+            handler = reg.get("fail_plugin.fail").handler
+            for _ in range(3):
+                handler(CommandContext())
+
+            second = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            second.scan_plugins()
+
+            assert second.auto_enable(["fail_plugin"]) == 0
+            assert second.get_plugin("fail_plugin").status == "quarantined"
+
+    def test_repeated_search_source_failures_quarantine_plugin(self):
+        from core.command_registry import execute_search_source
+
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "search_plugin", main_py=_SAMPLE_MAIN_SEARCH_FAILURE)
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp)
+            pm.scan_plugins()
+            assert pm.enable_plugin("search_plugin")
+
+            for _ in range(3):
+                assert execute_search_source("search_plugin_search", "x") == []
+
+            info = pm.get_plugin("search_plugin")
+            assert info.status == "quarantined"
 
     def test_reload_enabled_plugin_keeps_saved_state(self):
         with tempfile.TemporaryDirectory() as tmp:

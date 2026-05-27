@@ -43,6 +43,7 @@ def _file_backed_manager(tmp_path, data=None):
     manager.icons_dir = tmp_path / "icons"
     manager.auto_backup_dir = manager.app_dir / "auto_backups"
     manager.history_dir = manager.app_dir / "history"
+    manager.recovery_dir = manager.app_dir / "recovery"
     manager.data_file = manager.app_dir / "data.json"
     manager._max_auto_backups = 5
     manager._max_history_snapshots = 20
@@ -51,6 +52,7 @@ def _file_backed_manager(tmp_path, data=None):
     manager.app_dir.mkdir(parents=True, exist_ok=True)
     manager.icons_dir.mkdir(parents=True, exist_ok=True)
     manager.auto_backup_dir.mkdir(parents=True, exist_ok=True)
+    manager.recovery_dir.mkdir(parents=True, exist_ok=True)
     manager.history_manager = ConfigHistoryManager(manager.history_dir, manager._max_history_snapshots)
     return manager
 
@@ -244,6 +246,76 @@ def test_failed_save_does_not_advance_saved_snapshot(monkeypatch, tmp_path):
     assert len(snapshots) == 1
     previous = manager.history_manager.load_snapshot_data(snapshots[0].id)
     assert previous["folders"][0]["id"] == "old"
+
+
+def test_load_quarantines_bad_config_and_recovers_from_auto_backup(tmp_path):
+    manager = _file_backed_manager(tmp_path)
+    backup_data = AppData(folders=[Folder(id="backup", name="Backup")])
+    manager.data_file.write_text("{broken", encoding="utf-8")
+    backup_path = manager.auto_backup_dir / "data_20260527_120000_000000.json"
+    backup_path.write_text(json.dumps(backup_data.to_dict(), ensure_ascii=False), encoding="utf-8")
+
+    loaded = manager._load()
+
+    assert loaded.folders[0].id == "backup"
+    assert json.loads(manager.data_file.read_text(encoding="utf-8"))["folders"][0]["id"] == "backup"
+    bad_files = list(manager.recovery_dir.glob("bad_data_*.json"))
+    assert len(bad_files) == 1
+    report = manager.get_recovery_report()
+    assert report["status"] == "recovered"
+    assert report["recovered_from"] == str(backup_path)
+    assert report["quarantined_path"] == str(bad_files[0])
+
+
+def test_load_falls_back_to_default_when_no_backup(tmp_path):
+    manager = _file_backed_manager(tmp_path)
+    manager.data_file.write_text("{broken", encoding="utf-8")
+
+    loaded = manager._load()
+
+    assert isinstance(loaded, AppData)
+    assert manager.get_recovery_report()["status"] == "fallback_default"
+    assert list(manager.recovery_dir.glob("bad_data_*.json"))
+
+
+def test_restore_config_history_rolls_back_memory_when_save_fails(monkeypatch, tmp_path):
+    old_data = AppData(folders=[Folder(id="old", name="Old")])
+    new_data = AppData(folders=[Folder(id="new", name="New")])
+    manager = _file_backed_manager(tmp_path, old_data)
+    snapshot = manager.history_manager.record_snapshot(new_data.to_dict(), action="test")
+    monkeypatch.setattr(manager, "save", lambda immediate=False: False)
+
+    assert snapshot is not None
+    assert not manager.restore_config_history(snapshot.id)
+    assert manager.data.folders[0].id == "old"
+    assert manager._last_saved_data_dict == old_data.to_dict()
+
+
+def test_backup_full_config_rejects_failed_save(monkeypatch, tmp_path):
+    manager = _file_backed_manager(tmp_path)
+    backup_path = tmp_path / "backup.zip"
+    monkeypatch.setattr(manager, "save", lambda immediate=False: False)
+
+    assert not manager.backup_full_config(str(backup_path))
+    assert not backup_path.exists()
+
+
+def test_restore_full_config_rolls_back_icons_and_memory_when_save_fails(monkeypatch, tmp_path):
+    old_data = AppData(folders=[Folder(id="old", name="Old")])
+    new_data = AppData(folders=[Folder(id="new", name="New")])
+    manager = _file_backed_manager(tmp_path, old_data)
+    old_icon = manager.icons_dir / "old.ico"
+    old_icon.write_text("old", encoding="utf-8")
+    backup = tmp_path / "full.zip"
+    with zipfile.ZipFile(backup, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data.json", json.dumps(new_data.to_dict(), ensure_ascii=False))
+        zf.writestr("icons/new.ico", b"new")
+    monkeypatch.setattr(manager, "save", lambda immediate=False: False)
+
+    assert not manager.restore_full_config(str(backup))
+    assert manager.data.folders[0].id == "old"
+    assert (manager.icons_dir / "old.ico").read_text(encoding="utf-8") == "old"
+    assert not (manager.icons_dir / "new.ico").exists()
 
 
 def test_import_shareable_config_strips_elevated_commands(tmp_path):

@@ -270,18 +270,23 @@ class SettingsPluginsPageMixin:
         top_layout.setVerticalSpacing(2)
 
         # Status badge / indicator
+        is_quarantined = getattr(plugin_info, "quarantined", False)
         status_colors = {
             "enabled": "#4caf50",
             "disabled": "#888888",
             "loaded": "#ff9800",
             "error": "#f44336",
+            "quarantined": "#ff5722",
         }
         status_texts = {
             "enabled": "已启用",
             "disabled": "已禁用",
             "loaded": "已加载",
             "error": "错误",
+            "quarantined": "已隔离",
         }
+        if is_quarantined:
+            status = "quarantined"
         color = status_colors.get(status, "#888888")
         text = status_texts.get(status, status)
 
@@ -400,16 +405,33 @@ class SettingsPluginsPageMixin:
             perm_lbl.setMinimumWidth(0)
             info_layout.addWidget(perm_lbl)
 
-        # 4. Error message
+        # 4. Error message and failure details
+        failure_count = getattr(plugin_info, "failure_count", 0)
+        last_error_stage = getattr(plugin_info, "last_error_stage", "")
         if error:
-            error_display = error.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
-            err_lbl = QLabel(f"❌ 错误: {error_display}")
+            error_display = error.replace("_", "_​").replace("-", "-​").replace("/", "/​")
+            err_parts = [f"❌ 错误: {error_display}"]
+            if failure_count:
+                err_parts.append(f"失败次数: {failure_count}")
+            if last_error_stage:
+                stage_labels = {"load": "加载", "command": "命令执行", "search": "搜索源", "unload": "卸载"}
+                err_parts.append(f"阶段: {stage_labels.get(last_error_stage, last_error_stage)}")
+            err_lbl = QLabel(" | ".join(err_parts))
             err_lbl.setWordWrap(True)
             err_lbl.setMinimumWidth(0)
             err_lbl.setStyleSheet(
                 "color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);"
             )
             info_layout.addWidget(err_lbl)
+
+            # View error details button
+            err_detail_btn = QPushButton("查看错误详情")
+            err_detail_btn.setStyleSheet(common_style)
+            err_detail_btn.setProperty("is_compact_btn", True)
+            err_detail_btn.setMinimumWidth(68)
+            err_detail_btn.setMinimumHeight(20)
+            err_detail_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_view_error_details(pid))
+            info_layout.addWidget(err_detail_btn)
 
         # 5. Trust level
         trust_text = plugin_info.manifest.trust_level
@@ -446,20 +468,28 @@ class SettingsPluginsPageMixin:
             return
         status = plugin_info.status
         plugin_id = plugin_info.manifest.id
+        is_quarantined = getattr(plugin_info, "quarantined", False)
+        if is_quarantined:
+            status = "quarantined"
         status_colors = {
             "enabled": "#4caf50",
             "disabled": "#888888",
             "loaded": "#ff9800",
             "error": "#f44336",
+            "quarantined": "#ff5722",
         }
         status_texts = {
             "enabled": "已启用",
             "disabled": "已禁用",
             "loaded": "已加载",
             "error": "错误",
+            "quarantined": "已隔离",
         }
         color = status_colors.get(status, "#888888")
         text = status_texts.get(status, status)
+        failure_count = getattr(plugin_info, "failure_count", 0)
+        if is_quarantined and failure_count:
+            text = f"已隔离 ({failure_count}次失败)"
         refs["status_label"].setText(f"● {text}")
         refs["status_label"].setStyleSheet(f"color: {color}; font-weight: bold; font-size: 11px;")
 
@@ -468,12 +498,15 @@ class SettingsPluginsPageMixin:
             action_btn.clicked.disconnect()
         except Exception:
             pass
-        if status == "enabled":
+        if is_quarantined:
+            action_btn.setText("清除隔离")
+            action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_clear_quarantine(pid))
+        elif status == "enabled":
             action_btn.setText("禁用")
             action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_disable_plugin(pid))
         else:
             action_btn.setText("启用")
-            action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_enable_plugin(pid))
+            action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_enable_plugin(plugin_id))
 
     def _refresh_plugin_card_state(self, plugin_id):
         from core import plugin_manager
@@ -510,6 +543,91 @@ class SettingsPluginsPageMixin:
             return
         plugin_manager.disable_plugin(plugin_id)
         self._refresh_plugin_card_state(plugin_id)
+
+    def _on_clear_quarantine(self, plugin_id):
+        from core import plugin_manager
+
+        if plugin_manager is None:
+            return
+        reply = ThemedMessageBox.question(
+            self,
+            "清除隔离",
+            f"确定要清除插件 {plugin_id} 的隔离状态？\n" "清除后插件将变为禁用状态，可重新启用。",
+        )
+        if not reply:
+            return
+        if plugin_manager.clear_quarantine(plugin_id):
+            self._refresh_plugin_card_state(plugin_id)
+            ThemedMessageBox.information(self, "已清除", f"插件 {plugin_id} 已解除隔离。")
+        else:
+            ThemedMessageBox.critical(self, "操作失败", f"无法清除插件 {plugin_id} 的隔离状态。")
+
+    def _on_view_error_details(self, plugin_id):
+        """Show recent plugin errors from plugin_errors.jsonl."""
+        import json
+        from pathlib import Path
+
+        from qt_compat import QTextEdit
+
+        try:
+            config_dir = Path(str(self.data_manager.config_dir))
+            errors_file = config_dir / "plugin_errors.jsonl"
+            if not errors_file.exists():
+                ThemedMessageBox.information(self, "错误详情", "暂无错误记录。")
+                return
+
+            # Guard against reading very large files on main thread
+            max_read_bytes = 512 * 1024  # 512 KB
+            raw = errors_file.read_bytes()
+            if len(raw) > max_read_bytes:
+                raw = raw[-max_read_bytes:]
+            lines = raw.decode("utf-8", errors="replace").splitlines()
+            plugin_errors = []
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if isinstance(entry, dict) and entry.get("plugin_id") == plugin_id:
+                        plugin_errors.append(entry)
+                except Exception:
+                    continue
+
+            if not plugin_errors:
+                ThemedMessageBox.information(self, "错误详情", f"插件 {plugin_id} 暂无错误记录。")
+                return
+
+            # Show last 20 errors
+            recent = plugin_errors[-20:]
+            stage_labels = {"load": "加载", "command": "命令执行", "search": "搜索源", "unload": "卸载"}
+            lines_out = []
+            for entry in recent:
+                time_str = entry.get("time", "?")
+                stage = stage_labels.get(entry.get("stage", ""), entry.get("stage", ""))
+                action = entry.get("action", "")
+                error_msg = entry.get("error", "")
+                trace = entry.get("trace", "")
+                lines_out.append(f"[{time_str}] 阶段: {stage}" + (f" | 动作: {action}" if action else ""))
+                lines_out.append(f"  错误: {error_msg}")
+                if trace:
+                    lines_out.append(f"  堆栈: {trace[:500]}")
+                lines_out.append("")
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"错误详情 - {plugin_id}")
+            dialog.resize(600, 400)
+            layout = QVBoxLayout(dialog)
+            text_edit = QTextEdit()
+            text_edit.setReadOnly(True)
+            text_edit.setPlainText("\n".join(lines_out))
+            layout.addWidget(text_edit)
+            close_btn = QPushButton("关闭")
+            close_btn.clicked.connect(dialog.close)
+            layout.addWidget(close_btn)
+            dialog.exec()
+        except Exception as exc:
+            ThemedMessageBox.critical(self, "读取失败", f"无法读取错误记录: {exc}")
 
     def _on_reload_plugin(self, plugin_id):
         from core import plugin_manager

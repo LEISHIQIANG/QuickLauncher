@@ -98,12 +98,15 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         core.ensure_registry_initialized()
 
         # Check plugin degrade switch before initializing plugin manager
+        _safe_mode = bool(os.environ.get("QL_SAFE_MODE"))
         _plugins_enabled = True
         try:
             _plugins_enabled = self.data_manager.get_settings().enable_plugins
         except Exception:
             pass
-        if _plugins_enabled:
+        if _safe_mode:
+            logger.info("安全模式：插件系统已禁用")
+        elif _plugins_enabled:
             core.ensure_plugin_manager_initialized()
         else:
             logger.info("插件系统已通过功能开关禁用")
@@ -188,17 +191,23 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._install_event_signal.connect(self._on_install_event)
 
         # 安装鼠标钩子（延迟到事件循环启动后，让托盘图标先显示）
-        logger.info("安装鼠标钩子...")
         self.mouse_hook = None
         self._mouse_paused_state = False
         self._special_app_monitors_active = False
         self._hook_reinstall_cooldown_until = 0.0
-        QTimer.singleShot(0, self._install_hook)
+        if not _safe_mode:
+            logger.info("安装鼠标钩子...")
+            QTimer.singleShot(0, self._install_hook)
+        else:
+            logger.info("安全模式：鼠标钩子已禁用")
 
         # 安装键盘钩子 (Alt双击检测 + Alt按住状态跟踪)
-        logger.info("安装键盘钩子...")
         self.keyboard_hook = None
-        QTimer.singleShot(0, self._install_keyboard_hook_and_hotkey)
+        if not _safe_mode:
+            logger.info("安装键盘钩子...")
+            QTimer.singleShot(0, self._install_keyboard_hook_and_hotkey)
+        else:
+            logger.info("安全模式：键盘钩子已禁用")
 
         # 快捷键管理器（钩子安装后再共享DLL）
         from hooks.hotkey_manager import HotkeyManager
@@ -250,11 +259,14 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._pending_update_info = None
         self._pending_update_installer = ""
         self._update_dialog_parent = None
-        try:
-            if getattr(self.data_manager.get_settings(), "auto_update_enabled", False):
-                QTimer.singleShot(5000, self._init_update_system)
-        except Exception:
-            pass
+        if not _safe_mode:
+            try:
+                if getattr(self.data_manager.get_settings(), "auto_update_enabled", False):
+                    QTimer.singleShot(5000, self._init_update_system)
+            except Exception:
+                pass
+        else:
+            logger.info("安全模式：自动更新检查已禁用")
 
         self._mark_activity("startup")
 

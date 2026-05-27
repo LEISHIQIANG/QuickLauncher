@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import tempfile
 from unittest.mock import MagicMock, mock_open, patch
@@ -9,6 +10,7 @@ from services.update.checker import UpdateChecker
 from services.update.config import UpdateConfig
 from services.update.downloader import UpdateDownloader
 from services.update.installer import UpdateInstaller
+from services.update.session import mark_latest_session_first_start_confirmed, write_session_state
 
 TEST_TMP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dist", "pytest-tmp"))
 
@@ -178,6 +180,23 @@ class TestUpdateChecker:
 
         assert checker.is_version_skipped("9.9.9.9")
 
+    def test_state_file_uses_config_root_and_reads_legacy_path(self, tmp_path):
+        fake_manager = MagicMock()
+        fake_manager.app_dir = tmp_path / "config"
+        fake_manager.app_dir.mkdir()
+        legacy_dir = fake_manager.app_dir / "config"
+        legacy_dir.mkdir()
+        legacy_file = legacy_dir / ".update_state.json"
+        legacy_file.write_text('{"skipped_version": "9.9.9.9"}', encoding="utf-8")
+
+        with patch("core.data_manager.DataManager", return_value=fake_manager):
+            checker = UpdateChecker(UpdateConfig(check_interval_hours=0))
+            assert checker._get_state_file() == os.path.join(fake_manager.app_dir, ".update_state.json")
+            state = checker._load_state()
+
+        assert state["skipped_version"] == "9.9.9.9"
+        assert (fake_manager.app_dir / ".update_state.json").exists()
+
 
 class TestUpdateDownloader:
     def test_cancel(self):
@@ -186,7 +205,7 @@ class TestUpdateDownloader:
         assert downloader._cancel_flag
 
     @patch("services.update.downloader.urlopen")
-    def test_download_success(self, mock_urlopen):
+    def test_download_success(self, mock_urlopen, tmp_path):
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Length": "11"}
         mock_resp.read.side_effect = [b"hello world", b""]
@@ -198,17 +217,17 @@ class TestUpdateDownloader:
 
         with (
             patch("builtins.open", mock_open()),
-            patch("services.update.downloader.os.makedirs"),
             patch("services.update.downloader.os.replace") as mock_replace,
             patch("services.update.downloader.os.path.exists", return_value=False),
         ):
             downloader._do_download(
                 "http://localhost/test.exe",
-                "G:/updates",
+                str(tmp_path),
                 "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
                 expected_size=11,
                 max_bytes=100,
                 allowed_hosts=("localhost",),
+                version="9.9.9.9",
             )
         finished = [(event, data) for event, data in events if event == "finished"]
         failed = [(event, data) for event, data in events if event == "failed"]
@@ -216,6 +235,10 @@ class TestUpdateDownloader:
             pytest.fail(f"download failed: {failed[0][1]}")
         assert len(finished) == 1
         assert finished[0][1].endswith("test.exe")
+        assert os.path.dirname(finished[0][1]) != str(tmp_path)
+        session = json.loads((next(tmp_path.glob("*/update_session.json"))).read_text(encoding="utf-8"))
+        assert session["version"] == "9.9.9.9"
+        assert session["status"] == "downloaded"
         mock_replace.assert_called_once()
 
     @patch("services.update.downloader.urlopen")
@@ -317,6 +340,66 @@ class TestUpdateInstaller:
 
         mock_popen.assert_called_once()
         mock_exit.assert_called_once_with(0)
+
+    @patch("services.update.installer.sys.exit")
+    @patch("services.update.installer.subprocess.Popen")
+    def test_install_records_session_and_creates_preinstall_backup(self, mock_popen, mock_exit, tmp_path):
+        session_dir = tmp_path / "downloads" / "updates" / "session-1"
+        session_dir.mkdir(parents=True)
+        installer_path = session_dir / "QuickLauncher_Setup.exe"
+        content = b"installer"
+        installer_path.write_bytes(content)
+        write_session_state(
+            session_dir,
+            {
+                "schema": 1,
+                "session_id": "session-1",
+                "status": "downloaded",
+                "install": {"status": "pending"},
+                "first_start": {"confirmed": False},
+            },
+        )
+        expected_hash = "sha256:" + hashlib.sha256(content).hexdigest()
+
+        class Manager:
+            def backup_full_config(self, save_path):
+                assert save_path.endswith("pre_install_config_backup.zip")
+                return True
+
+        installer = UpdateInstaller()
+        installer.install(
+            str(installer_path),
+            expected_hash=expected_hash,
+            trusted_dir=str(tmp_path / "downloads" / "updates"),
+            data_manager=Manager(),
+        )
+
+        mock_popen.assert_called_once()
+        mock_exit.assert_called_once_with(0)
+        session = json.loads((session_dir / "update_session.json").read_text(encoding="utf-8"))
+        assert session["status"] == "installing"
+        assert session["install"]["status"] == "started"
+        assert session["install"]["pre_install_backup"].endswith("pre_install_config_backup.zip")
+        assert session["install"]["log_path"].endswith("update_install.log")
+
+    def test_mark_latest_session_first_start_confirmed(self, tmp_path):
+        session_dir = tmp_path / "session-1"
+        session_dir.mkdir()
+        write_session_state(
+            session_dir,
+            {
+                "schema": 1,
+                "session_id": "session-1",
+                "status": "installing",
+                "install": {"status": "started"},
+                "first_start": {"confirmed": False},
+            },
+        )
+
+        state = mark_latest_session_first_start_confirmed(tmp_path)
+
+        assert state["status"] == "first_start_confirmed"
+        assert state["first_start"]["confirmed"] is True
 
     @patch("services.update.installer.subprocess.Popen")
     def test_install_rejects_hash_mismatch(self, mock_popen):

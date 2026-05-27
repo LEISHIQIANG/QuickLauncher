@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from .command_risk import assess_command_risk
 from .data_models import AppData, ShortcutItem, ShortcutType
+from .shortcut_url_exec import UrlExecutionMixin
+
+MAX_CHAIN_STEPS = ShortcutItem.MAX_CHAIN_STEPS
+
+_WINDOWS_ENV_VAR_RE = re.compile(r"%[^%]+%")
 
 
 @dataclass
@@ -47,13 +53,58 @@ def _split_icon_location(path: str) -> str:
     return raw
 
 
+def _expanded_path(path: str) -> str:
+    return os.path.expanduser(os.path.expandvars(str(path or "").strip()))
+
+
+def _has_unresolved_env_var(path: str) -> bool:
+    raw = str(path or "")
+    if not raw:
+        return False
+    return bool(_WINDOWS_ENV_VAR_RE.search(_expanded_path(raw)))
+
+
+def _shortcut_type(shortcut: ShortcutItem) -> ShortcutType:
+    value = getattr(shortcut, "type", ShortcutType.FILE)
+    if isinstance(value, ShortcutType):
+        return value
+    try:
+        return ShortcutType(str(value))
+    except Exception:
+        return ShortcutType.FILE
+
+
+def _resolve_lnk_target(path: str) -> str:
+    try:
+        import win32com.client  # type: ignore
+
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortcut(path)
+        return str(getattr(shortcut, "TargetPath", "") or "").strip()
+    except Exception:
+        return ""
+
+
 def check_shortcuts(data: AppData) -> list[HealthIssue]:
     """Scan shortcuts and return health issues."""
     issues: list[HealthIssue] = []
     seen: dict[tuple[str, str], tuple[ShortcutItem, str]] = {}
+    shortcut_map: dict[str, ShortcutItem] = {}
+    _type_counter: dict[tuple[str, str, str], int] = {}
+
+    for folder in getattr(data, "folders", []) or []:
+        for shortcut in getattr(folder, "items", []) or []:
+            shortcut_id = str(getattr(shortcut, "id", "") or "")
+            if shortcut_id:
+                shortcut_map[shortcut_id] = shortcut
 
     def add(issue_type: str, severity: str, title: str, message: str, folder, shortcut, fix_action: str = ""):
-        issue_id = f"{issue_type}:{getattr(folder, 'id', '')}:{getattr(shortcut, 'id', '')}:{len(issues)}"
+        folder_id = getattr(folder, "id", "")
+        shortcut_id = getattr(shortcut, "id", "")
+        counter_key = (issue_type, folder_id, shortcut_id)
+        _type_counter[counter_key] = _type_counter.get(counter_key, 0) + 1
+        suffix = _type_counter[counter_key]
+        issue_id = f"{issue_type}:{folder_id}:{shortcut_id}:{suffix}"
         issues.append(
             HealthIssue(
                 id=issue_id,
@@ -71,77 +122,210 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
 
     for folder in getattr(data, "folders", []) or []:
         if getattr(folder, "linked_path", "") and getattr(folder, "auto_sync", False):
-            linked = getattr(folder, "linked_path", "")
-            if not os.path.isdir(linked):
+            linked = str(getattr(folder, "linked_path", "") or "").strip()
+            if _has_unresolved_env_var(linked):
+                dummy = ShortcutItem(id="", name=getattr(folder, "name", ""))
+                add(
+                    "unresolved_env_var",
+                    "warn",
+                    "Folder link has unresolved environment variable",
+                    linked,
+                    folder,
+                    dummy,
+                )
+            elif not os.path.isdir(_expanded_path(linked)):
                 dummy = ShortcutItem(id="", name=getattr(folder, "name", ""))
                 add(
                     "missing_linked_folder",
                     "error",
-                    "同步目录不可用",
-                    f"绑定目录不存在: {linked}",
+                    "Linked folder is unavailable",
+                    f"Linked folder does not exist: {linked}",
                     folder,
                     dummy,
                     "disable_folder_sync",
                 )
 
         for shortcut in getattr(folder, "items", []) or []:
-            name_key = (str(getattr(shortcut, "name", "")).casefold(), str(getattr(shortcut, "type", "")).casefold())
+            shortcut_type = _shortcut_type(shortcut)
+            name_key = (str(getattr(shortcut, "name", "")).casefold(), shortcut_type.value)
             if name_key in seen and name_key[0]:
-                first_item, first_folder = seen[name_key]
+                _first_item, first_folder = seen[name_key]
                 add(
                     "duplicate_name",
                     "debug",
-                    "重复名称",
-                    f"全局存在同名快捷方式 (首次出现于分类: {first_folder})",
+                    "Duplicate name",
+                    f"Another shortcut with the same name exists in folder: {first_folder}",
                     folder,
                     shortcut,
                 )
             else:
                 seen[name_key] = (shortcut, getattr(folder, "name", ""))
 
-            shortcut_type = getattr(shortcut, "type", ShortcutType.FILE)
             if shortcut_type in (ShortcutType.FILE, ShortcutType.FOLDER):
                 target = str(getattr(shortcut, "target_path", "") or "").strip()
                 if not target:
                     add(
                         "missing_target",
                         "error",
-                        "目标路径为空",
-                        "文件/文件夹快捷方式缺少目标路径",
+                        "Target path is empty",
+                        "File/folder shortcut has no target path.",
                         folder,
                         shortcut,
                         "delete_shortcut",
                     )
-                elif not os.path.exists(target):
-                    add("missing_target", "error", "目标路径不存在", target, folder, shortcut, "delete_shortcut")
+                elif _has_unresolved_env_var(target):
+                    add(
+                        "unresolved_env_var",
+                        "warn",
+                        "Target path has unresolved environment variable",
+                        target,
+                        folder,
+                        shortcut,
+                    )
+                elif not os.path.exists(_expanded_path(target)):
+                    add(
+                        "missing_target",
+                        "error",
+                        "Target path does not exist",
+                        target,
+                        folder,
+                        shortcut,
+                        "delete_shortcut",
+                    )
+                elif target.lower().endswith(".lnk"):
+                    link_target = _resolve_lnk_target(_expanded_path(target))
+                    if link_target and _has_unresolved_env_var(link_target):
+                        add(
+                            "unresolved_env_var",
+                            "warn",
+                            "Shortcut target has unresolved environment variable",
+                            link_target,
+                            folder,
+                            shortcut,
+                        )
+                    elif link_target and not os.path.exists(_expanded_path(link_target)):
+                        add(
+                            "lnk_target_missing",
+                            "error",
+                            "Shortcut target does not exist",
+                            link_target,
+                            folder,
+                            shortcut,
+                            "delete_shortcut",
+                        )
 
             working_dir = str(getattr(shortcut, "working_dir", "") or "").strip()
-            if working_dir and not os.path.isdir(working_dir):
-                add("missing_working_dir", "warn", "工作目录不存在", working_dir, folder, shortcut, "clear_working_dir")
+            if working_dir and _has_unresolved_env_var(working_dir):
+                add(
+                    "unresolved_env_var",
+                    "warn",
+                    "Working directory has unresolved environment variable",
+                    working_dir,
+                    folder,
+                    shortcut,
+                )
+            elif working_dir and not os.path.isdir(_expanded_path(working_dir)):
+                add(
+                    "missing_working_dir",
+                    "warn",
+                    "Working directory does not exist",
+                    working_dir,
+                    folder,
+                    shortcut,
+                    "clear_working_dir",
+                )
 
             icon_path = _split_icon_location(getattr(shortcut, "icon_path", ""))
-            if icon_path and not os.path.exists(icon_path):
-                add("missing_icon", "warn", "图标路径不存在", icon_path, folder, shortcut, "clear_icon")
+            if icon_path and _has_unresolved_env_var(icon_path):
+                add(
+                    "unresolved_env_var",
+                    "warn",
+                    "Icon path has unresolved environment variable",
+                    icon_path,
+                    folder,
+                    shortcut,
+                )
+            elif icon_path and not os.path.exists(_expanded_path(icon_path)):
+                add("missing_icon", "warn", "Icon path does not exist", icon_path, folder, shortcut, "clear_icon")
 
             if shortcut_type == ShortcutType.URL:
                 raw_url = str(getattr(shortcut, "url", "") or "").strip()
-                parsed = urlparse(raw_url)
-                if parsed.scheme and parsed.scheme.lower() not in ("http", "https"):
-                    add("url_scheme", "warn", "URL 协议非常规", parsed.scheme, folder, shortcut)
-                elif not parsed.scheme and not parsed.netloc and (not raw_url or "." not in parsed.path):
-                    add("url_invalid", "error", "URL 格式无效", raw_url, folder, shortcut)
+                prepared_url, error = UrlExecutionMixin._prepare_url(raw_url)
+                if error:
+                    add("url_invalid", "error", "URL is invalid", error or raw_url, folder, shortcut)
+                else:
+                    parsed = urlparse(prepared_url)
+                    if not parsed.scheme:
+                        add("url_invalid", "error", "URL is invalid", prepared_url, folder, shortcut)
+
+            if shortcut_type == ShortcutType.CHAIN:
+                _check_chain(shortcut, folder, shortcut_map, add)
 
             if shortcut_type == ShortcutType.COMMAND:
                 for risk in assess_command_risk(shortcut):
-                    add("command_risk", risk.level, "命令风险提示", risk.message, folder, shortcut)
+                    add("command_risk", risk.level, "Command risk", risk.message, folder, shortcut)
                 command_text = str(getattr(shortcut, "command", "") or "").strip()
                 cmd_type = str(getattr(shortcut, "command_type", "cmd") or "cmd")
                 if cmd_type == "cmd" and command_text:
                     exe_path = _extract_command_executable(command_text)
-                    if exe_path and not os.path.exists(exe_path):
-                        add("missing_command_target", "warn", "命令入口文件不存在", exe_path, folder, shortcut)
+                    if exe_path and _has_unresolved_env_var(exe_path):
+                        add(
+                            "unresolved_env_var",
+                            "warn",
+                            "Command entry has unresolved environment variable",
+                            exe_path,
+                            folder,
+                            shortcut,
+                        )
+                    elif exe_path and not os.path.exists(_expanded_path(exe_path)):
+                        add(
+                            "missing_command_target",
+                            "warn",
+                            "Command entry file does not exist",
+                            exe_path,
+                            folder,
+                            shortcut,
+                        )
 
     return issues
+
+
+def _check_chain(shortcut: ShortcutItem, folder, shortcut_map: dict[str, ShortcutItem], add) -> None:
+    steps = list(getattr(shortcut, "chain_steps", []) or [])
+    if not steps:
+        add("chain_empty", "warn", "Chain has no steps", "CHAIN shortcut has no steps.", folder, shortcut)
+        return
+
+    if len(steps) > MAX_CHAIN_STEPS:
+        add(
+            "chain_too_long",
+            "warn",
+            "Chain has too many steps",
+            f"CHAIN shortcut has more than {MAX_CHAIN_STEPS} steps.",
+            folder,
+            shortcut,
+        )
+
+    for step in steps:
+        step_id = str(step.get("shortcut_id") or "").strip() if isinstance(step, dict) else ""
+        if not step_id:
+            add(
+                "chain_step_missing_id",
+                "error",
+                "Chain step has no shortcut",
+                "CHAIN step is missing a shortcut id.",
+                folder,
+                shortcut,
+            )
+            continue
+        target = shortcut_map.get(step_id)
+        if target is None:
+            add("chain_missing_reference", "error", "Chain step target is missing", step_id, folder, shortcut)
+            continue
+        if getattr(target, "id", "") == getattr(shortcut, "id", ""):
+            add("chain_self_reference", "error", "Chain references itself", step_id, folder, shortcut)
+        elif _shortcut_type(target) == ShortcutType.CHAIN:
+            add("chain_nested", "error", "Nested chains are not supported", step_id, folder, shortcut)
 
 
 def _extract_command_executable(command: str) -> str:
@@ -159,6 +343,48 @@ def _extract_command_executable(command: str) -> str:
     return ""
 
 
+@dataclass
+class HealthFixPreview:
+    issue_id: str
+    issue_type: str
+    action: str
+    shortcut_id: str
+    shortcut_name: str
+    description: str
+    safe: bool  # True = low-risk fix, False = destructive (e.g. delete)
+
+
+def preview_health_fixes(data_manager, issue_ids: list[str]) -> list[HealthFixPreview]:
+    """Dry-run: return preview of what each fix would do, without modifying data."""
+    wanted = set(issue_ids or [])
+    if not wanted:
+        return []
+
+    issues = [issue for issue in check_shortcuts(data_manager.data) if issue.id in wanted and issue.fix_action]
+    previews: list[HealthFixPreview] = []
+    for issue in issues:
+        action = issue.fix_action
+        safe = action in ("clear_icon", "clear_working_dir", "disable_folder_sync")
+        descriptions = {
+            "delete_shortcut": f"Will delete shortcut: {issue.shortcut_name}",
+            "clear_icon": f"Will clear icon path for: {issue.shortcut_name}",
+            "clear_working_dir": f"Will clear working directory for: {issue.shortcut_name}",
+            "disable_folder_sync": f"Will disable folder sync: {issue.folder_name}",
+        }
+        previews.append(
+            HealthFixPreview(
+                issue_id=issue.id,
+                issue_type=issue.issue_type,
+                action=action,
+                shortcut_id=issue.shortcut_id,
+                shortcut_name=issue.shortcut_name,
+                description=descriptions.get(action, f"Apply {action} to {issue.shortcut_name}"),
+                safe=safe,
+            )
+        )
+    return previews
+
+
 def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
     """Apply safe automated fixes for selected issue ids."""
     wanted = set(issue_ids or [])
@@ -171,12 +397,17 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
         "clear_icon": 1,
         "clear_working_dir": 1,
         "disable_folder_sync": 1,
-        "disable_shortcut": 2,
     }
     issues.sort(key=lambda issue: action_priority.get(issue.fix_action, 9))
     applied = 0
     skipped = 0
     deleted_shortcuts: set[str] = set()
+    mark_history = getattr(data_manager, "_mark_history", None)
+    if callable(mark_history):
+        try:
+            mark_history("Shortcut health fixes", f"Applying {len(issues)} selected health fix(es)")
+        except Exception:
+            pass
     with data_manager.batch_update(immediate=True):
         for issue in issues:
             if issue.shortcut_id in deleted_shortcuts:
@@ -207,23 +438,30 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
                     applied += 1
             elif issue.fix_action == "clear_icon":
                 icon_location = _split_icon_location(getattr(shortcut, "icon_path", ""))
-                if icon_location and not os.path.exists(icon_location):
+                if icon_location and not os.path.exists(_expanded_path(icon_location)):
                     shortcut.icon_path = ""
                     applied += 1
                 else:
                     skipped += 1
             elif issue.fix_action == "clear_working_dir":
                 wd = str(getattr(shortcut, "working_dir", "") or "").strip()
-                if wd and not os.path.isdir(wd):
+                if wd and not os.path.isdir(_expanded_path(wd)):
                     shortcut.working_dir = ""
                     applied += 1
                 else:
                     skipped += 1
-            elif issue.fix_action == "disable_shortcut":
-                shortcut.enabled = False
-                applied += 1
         if applied:
             data_manager.save(immediate=True)
+            try:
+                from .event_log import log_event
+
+                log_event(
+                    "shortcut.health_fix",
+                    f"Applied {applied} health fix(es)",
+                    {"applied": applied, "skipped": skipped, "failed": len(issues) - applied - skipped},
+                )
+            except Exception:
+                pass
 
     failed = max(0, len(issues) - applied - skipped)
     return {"requested": len(issues), "applied": applied, "skipped": skipped, "failed": failed}
@@ -234,3 +472,43 @@ def _find_folder(data: AppData, folder_id: str):
         if getattr(folder, "id", "") == folder_id:
             return folder
     return None
+
+
+def save_health_state(state_dir, issues: list[HealthIssue]) -> bool:
+    """Save shortcut health scan summary to shortcut_health_state.json."""
+    import json
+    from datetime import datetime
+    from pathlib import Path
+
+    try:
+        state_path = Path(state_dir) / "shortcut_health_state.json"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        error_count = sum(1 for i in issues if i.severity == "error")
+        warn_count = sum(1 for i in issues if i.severity in ("warn", "warning"))
+        fixable_count = sum(1 for i in issues if i.fix_action)
+        state = {
+            "last_scan_at": datetime.now().isoformat(timespec="seconds"),
+            "error_count": error_count,
+            "warn_count": warn_count,
+            "fixable_count": fixable_count,
+            "total_issues": len(issues),
+        }
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def load_health_state(state_dir) -> dict | None:
+    """Load shortcut health scan summary if available."""
+    import json
+    from pathlib import Path
+
+    try:
+        state_path = Path(state_dir) / "shortcut_health_state.json"
+        if not state_path.exists():
+            return None
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None

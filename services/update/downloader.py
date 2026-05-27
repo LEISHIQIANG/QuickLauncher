@@ -1,4 +1,6 @@
-"""Update package downloader with progress, size, host, and hash checks."""
+"""Update package downloader with progress, size, host, hash, and session checks."""
+
+from __future__ import annotations
 
 import hashlib
 import logging
@@ -12,6 +14,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from core.version import APP_VERSION
+from services.update.session import create_update_session, update_session_state, utc_now_text
 
 logger = logging.getLogger(__name__)
 _SHA256_RE = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
@@ -42,11 +45,12 @@ class UpdateDownloader:
         expected_size: int = 0,
         max_bytes: int = 0,
         allowed_hosts: tuple[str, ...] | None = None,
+        version: str = "",
     ):
         self._cancel_flag = False
         threading.Thread(
             target=self._do_download,
-            args=(url, target_dir, expected_hash, expected_size, max_bytes, allowed_hosts),
+            args=(url, target_dir, expected_hash, expected_size, max_bytes, allowed_hosts, version),
             daemon=True,
         ).start()
 
@@ -61,46 +65,55 @@ class UpdateDownloader:
         expected_size: int = 0,
         max_bytes: int = 0,
         allowed_hosts: tuple[str, ...] | None = None,
+        version: str = "",
     ):
         tmp_path = None
+        session_dir = ""
         try:
             parsed = urlparse(url)
             scheme = (parsed.scheme or "").lower()
             host = (parsed.hostname or "").lower()
             if scheme not in ("http", "https"):
-                raise ValueError("下载地址协议无效")
+                raise ValueError("invalid download URL scheme")
             if allowed_hosts and not _is_allowed_host(host, allowed_hosts):
-                raise ValueError(f"下载域名不受信任: {host}")
+                raise ValueError(f"untrusted download host: {host}")
+
             target_dir = target_dir or tempfile.gettempdir()
             os.makedirs(target_dir, exist_ok=True)
+            _session_id, session_dir = create_update_session(
+                target_dir,
+                version=version,
+                download_url=url,
+                file_hash=expected_hash or "",
+                expected_size=expected_size,
+            )
+            update_session_state(
+                session_dir,
+                status="downloading",
+                download={"status": "started", "started_at": utc_now_text()},
+            )
+
             req = Request(url, headers={"User-Agent": f"QuickLauncher/{APP_VERSION}"})
             with urlopen(req, timeout=30) as resp:
-                final_url = ""
-                geturl = getattr(resp, "geturl", None)
-                if callable(geturl):
-                    final_url = str(geturl() or "")
-                if not final_url:
-                    final_url = str(getattr(resp, "url", "") or "")
-                if final_url and "://" in final_url:
-                    final_parsed = urlparse(final_url)
-                    final_scheme = (final_parsed.scheme or "").lower()
-                    final_host = (final_parsed.hostname or "").lower()
-                    if final_scheme not in ("http", "https"):
-                        raise ValueError("最终下载地址协议无效")
-                    if allowed_hosts and not _is_allowed_host(final_host, allowed_hosts):
-                        raise ValueError(f"最终下载域名不受信任: {final_host}")
+                self._validate_final_url(resp, allowed_hosts)
                 total = int(resp.headers.get("Content-Length", 0) or 0)
                 if max_bytes and total > max_bytes:
-                    raise ValueError("下载文件超过安全大小限制")
+                    raise ValueError("download exceeds maximum allowed size")
+
                 file_name = _safe_file_name(parsed.path)
-                tmp_path = os.path.join(target_dir, f".{file_name}.part")
-                final_path = os.path.join(target_dir, file_name)
+                tmp_path = os.path.join(session_dir, f".{file_name}.{os.getpid()}.part")
+                final_path = os.path.join(session_dir, file_name)
                 sha256 = hashlib.sha256()
                 downloaded = 0
                 with open(tmp_path, "wb") as handle:
                     while True:
                         if self._cancel_flag:
                             self._remove_file(tmp_path)
+                            update_session_state(
+                                session_dir,
+                                status="cancelled",
+                                download={"status": "cancelled", "bytes": downloaded},
+                            )
                             self._notify("cancelled")
                             return
                         chunk = resp.read(65536)
@@ -110,33 +123,79 @@ class UpdateDownloader:
                         sha256.update(chunk)
                         downloaded += len(chunk)
                         if max_bytes and downloaded > max_bytes:
-                            raise ValueError("下载文件超过安全大小限制")
+                            raise ValueError("download exceeds maximum allowed size")
                         self._notify("progress", (downloaded, total))
+
             if expected_size and downloaded != int(expected_size):
                 self._remove_file(tmp_path)
-                self._notify("failed", f"文件大小校验失败\n期望: {expected_size}\n实际: {downloaded}")
+                self._fail_session(session_dir, downloaded, "size mismatch")
+                self._notify("failed", f"file size mismatch; expected {expected_size}, got {downloaded}")
                 return
+
             if expected_hash:
                 match = _SHA256_RE.fullmatch(expected_hash or "")
                 if not match:
                     self._remove_file(tmp_path)
-                    self._notify("failed", "文件哈希格式无效")
+                    self._fail_session(session_dir, downloaded, "invalid hash format")
+                    self._notify("failed", "invalid file hash format")
                     return
                 actual_hash = sha256.hexdigest()
                 expected_value = match.group(1).lower()
                 if actual_hash != expected_value:
                     self._remove_file(tmp_path)
-                    self._notify("failed", f"文件哈希校验失败\n期望: {expected_value}\n实际: {actual_hash}")
+                    self._fail_session(session_dir, downloaded, "hash mismatch")
+                    self._notify(
+                        "failed", f"哈希校验失败; file hash mismatch; expected {expected_value}, got {actual_hash}"
+                    )
                     return
+
             os.replace(tmp_path, final_path)
+            update_session_state(
+                session_dir,
+                status="downloaded",
+                download={
+                    "status": "finished",
+                    "finished_at": utc_now_text(),
+                    "installer_path": final_path,
+                    "bytes": downloaded,
+                    "error": "",
+                },
+            )
             self._notify("finished", final_path)
         except URLError as exc:
-            self._notify("failed", f"下载失败: {exc.reason}")
+            if session_dir:
+                self._fail_session(session_dir, 0, str(exc.reason))
+            self._notify("failed", f"download failed: {exc.reason}")
         except Exception as exc:
-            self._notify("failed", f"下载出错: {exc}")
+            if session_dir:
+                self._fail_session(session_dir, 0, str(exc))
+            self._notify("failed", f"download error: {exc}")
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 self._remove_file(tmp_path)
+
+    def _validate_final_url(self, resp, allowed_hosts: tuple[str, ...] | None) -> None:
+        final_url = ""
+        geturl = getattr(resp, "geturl", None)
+        if callable(geturl):
+            final_url = str(geturl() or "")
+        if not final_url:
+            final_url = str(getattr(resp, "url", "") or "")
+        if final_url and "://" in final_url:
+            final_parsed = urlparse(final_url)
+            final_scheme = (final_parsed.scheme or "").lower()
+            final_host = (final_parsed.hostname or "").lower()
+            if final_scheme not in ("http", "https"):
+                raise ValueError("invalid final download URL scheme")
+            if allowed_hosts and not _is_allowed_host(final_host, allowed_hosts):
+                raise ValueError(f"最终下载域名不受信任: {final_host}; untrusted final download host")
+
+    def _fail_session(self, session_dir: str, downloaded: int, error: str) -> None:
+        update_session_state(
+            session_dir,
+            status="failed",
+            download={"status": "failed", "bytes": downloaded, "error": error},
+        )
 
     def _remove_file(self, path: str):
         try:

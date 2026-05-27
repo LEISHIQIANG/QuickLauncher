@@ -10,7 +10,9 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
@@ -59,6 +61,12 @@ HIGH_RISK_PERMISSIONS = frozenset(
 
 PLUGIN_TRUST_LEVELS = ("builtin", "local-trusted", "community-unverified")
 PLUGIN_PACKAGE_EXTENSION = ".qlzip"
+PLUGIN_STATE_SCHEMA = 1
+PLUGIN_FAILURE_WINDOW_SECONDS = 10 * 60
+PLUGIN_FAILURE_THRESHOLD = 3
+PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS = 10
+PLUGIN_ERROR_LOG_MAX_BYTES = 1024 * 1024
+PLUGIN_ERROR_LOG_BACKUPS = 3
 
 
 def is_plugin_package_path(path: str | os.PathLike[str]) -> bool:
@@ -115,13 +123,18 @@ class PluginManifest:
 class PluginInfo:
     manifest: PluginManifest
     directory: str
-    status: str = "loaded"  # loaded | enabled | disabled | error
+    status: str = "loaded"  # loaded | enabled | disabled | error | quarantined
     error: str = ""
     registered_commands: list[str] = field(default_factory=list)
     registered_search_sources: list[str] = field(default_factory=list)
     enabled_at: float = 0.0
     last_error_at: float = 0.0
     last_run_at: float = 0.0
+    failure_count: int = 0
+    last_error_stage: str = ""
+    last_error_trace: str = ""
+    disabled_reason: str = ""
+    quarantined: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -137,12 +150,14 @@ class PluginAPI:
         permissions: list[str],
         registry: CommandRegistry,
         manifest: PluginManifest | None = None,
+        failure_callback: Callable[[str, str, str, BaseException, str], str] | None = None,
     ):
         self._plugin_id = plugin_id
         self._plugin_dir = Path(plugin_dir)
         self._permissions = set(permissions)
         self._registry = registry
         self._manifest = manifest
+        self._failure_callback = failure_callback
         self._registered_ids: list[str] = []
         self._staged_commands: list[CommandDefinition] = []
         self._staged_search_sources: list[str] = []
@@ -231,7 +246,7 @@ class PluginAPI:
             aliases=aliases or [],
             description=description,
             category=category,
-            handler=self._wrap_handler(handler),
+            handler=self._wrap_handler(handler, id),
             icon_path=resolved_icon,
             source=f"plugin:{self._plugin_id}",
             interaction_mode=interaction_mode,
@@ -264,6 +279,7 @@ class PluginAPI:
                 {
                     "handler": self._staged_search_handlers.get(sid),
                     "plugin_id": self._plugin_id,
+                    "error_callback": self._failure_callback,
                 },
             )
             if not ok:
@@ -346,6 +362,7 @@ class PluginAPI:
     def _wrap_handler(
         self,
         handler: Callable[[CommandContext], CommandResult],
+        command_id: str = "",
     ) -> Callable[[CommandContext], CommandResult]:
         def _validate(result: Any) -> CommandResult:
             def _normalize_actions(actions: Any) -> list[CommandAction]:
@@ -393,16 +410,36 @@ class PluginAPI:
             return limit_command_result_actions(result)
 
         def _safe(context: CommandContext) -> CommandResult:
+            pool = None
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(handler, context)
-                    result = future.result()
+                pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = pool.submit(handler, context)
+                result = future.result(timeout=PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS)
                 return _validate(result)
+            except concurrent.futures.TimeoutError as e:
+                action = ""
+                trace = traceback.format_exc()
+                if self._failure_callback is not None:
+                    action = self._failure_callback(self._plugin_id, "command_timeout", command_id, e, trace)
+                message = f"插件命令执行超时: {command_id}"
+                if action == "quarantined":
+                    message = f"插件已因重复超时被隔离: {command_id}"
+                return CommandResult(success=False, message=message, error="timeout")
             except Exception as e:
+                action = ""
+                trace = traceback.format_exc()
+                if self._failure_callback is not None:
+                    action = self._failure_callback(self._plugin_id, "command", command_id, e, trace)
+                if action == "quarantined":
+                    return CommandResult(success=False, message=f"插件已因重复失败被隔离: {e}", error=str(e))
                 self.logger.error(
                     "插件命令 %s 执行异常: %s", handler.__name__ if hasattr(handler, "__name__") else "?", e
                 )
                 return CommandResult(success=False, message=f"插件执行失败: {e}", error=str(e))
+
+            finally:
+                if pool is not None:
+                    pool.shutdown(wait=False, cancel_futures=True)
 
         return _safe
 
@@ -551,12 +588,164 @@ class PluginManager:
         self._active_apis: dict[str, PluginAPI] = {}
         self._save_callback = save_callback
         self._confirm_high_risk_callback: Callable[[PluginInfo], bool] | None = None
+        plugins_root = Path(self._plugins_dir).resolve(strict=False)
+        self._config_dir = (
+            plugins_root.parent / "config" if plugins_root.name == "plugins" else plugins_root / ".config"
+        )
+        self._state_file = self._config_dir / "plugin_state.json"
+        self._error_log_file = self._config_dir / "plugin_errors.jsonl"
+        self._plugin_state = self._load_plugin_state()
 
     def set_save_callback(self, callback: Callable[[list[str]], None] | None) -> None:
         self._save_callback = callback
 
     def set_confirm_high_risk_callback(self, callback: Callable[[PluginInfo], bool] | None) -> None:
         self._confirm_high_risk_callback = callback
+
+    def _load_plugin_state(self) -> dict:
+        try:
+            if not self._state_file.exists():
+                return {"schema": PLUGIN_STATE_SCHEMA, "plugins": {}}
+            data = json.loads(self._state_file.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {"schema": PLUGIN_STATE_SCHEMA, "plugins": {}}
+            plugins = data.get("plugins", {})
+            if not isinstance(plugins, dict):
+                plugins = {}
+            return {"schema": PLUGIN_STATE_SCHEMA, "plugins": plugins}
+        except Exception as exc:
+            logger.debug("load plugin state failed: %s", exc)
+            return {"schema": PLUGIN_STATE_SCHEMA, "plugins": {}}
+
+    def _save_plugin_state(self) -> None:
+        try:
+            self._config_dir.mkdir(parents=True, exist_ok=True)
+            self._state_file.write_text(json.dumps(self._plugin_state, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.debug("save plugin state failed: %s", exc)
+
+    def _apply_persisted_state(self, info: PluginInfo) -> PluginInfo:
+        state = self._plugin_state.get("plugins", {}).get(info.manifest.id, {})
+        if not isinstance(state, dict):
+            return info
+        info.failure_count = int(state.get("failure_count") or 0)
+        info.last_error_stage = str(state.get("last_error_stage") or "")
+        info.disabled_reason = str(state.get("disabled_reason") or "")
+        info.last_error_at = float(state.get("last_error_at") or 0)
+        if state.get("status") == "quarantined":
+            info.status = "quarantined"
+            info.quarantined = True
+            info.error = info.disabled_reason or "plugin quarantined"
+        return info
+
+    def _persist_info_state(self, info: PluginInfo) -> None:
+        plugins = self._plugin_state.setdefault("plugins", {})
+        plugins[info.manifest.id] = {
+            "status": "quarantined" if info.quarantined else info.status,
+            "failure_count": info.failure_count,
+            "last_error_stage": info.last_error_stage,
+            "last_error_at": info.last_error_at,
+            "disabled_reason": info.disabled_reason,
+        }
+        self._save_plugin_state()
+
+    def _record_plugin_failure(
+        self, plugin_id: str, stage: str, operation_id: str, error: BaseException, trace: str = ""
+    ) -> str:
+        info = self._plugins.get(plugin_id)
+        now = time.time()
+        action = "recorded"
+        if info is not None:
+            if info.last_error_at and now - info.last_error_at > PLUGIN_FAILURE_WINDOW_SECONDS:
+                info.failure_count = 0
+            info.failure_count += 1
+            info.last_error_at = now
+            info.last_error_stage = stage
+            info.last_error_trace = trace
+            info.error = str(error)
+            if info.failure_count >= PLUGIN_FAILURE_THRESHOLD:
+                self._quarantine_plugin(plugin_id, f"{stage} failed repeatedly")
+                action = "quarantined"
+            else:
+                self._persist_info_state(info)
+        self._append_plugin_error(plugin_id, stage, operation_id, error, trace, action)
+        return action
+
+    def _quarantine_plugin(self, plugin_id: str, reason: str) -> None:
+        info = self._plugins.get(plugin_id)
+        if info is None:
+            return
+        if info.status == "enabled":
+            self.disable_plugin(plugin_id, persist=True)
+        info = self._plugins.get(plugin_id)
+        if info is None:
+            return
+        info.status = "quarantined"
+        info.quarantined = True
+        info.disabled_reason = reason
+        info.error = reason
+        self._persist_info_state(info)
+        self._save_enabled()
+        try:
+            from .event_log import log_event
+
+            log_event("plugin.quarantined", f"Plugin {plugin_id} quarantined", {"reason": reason})
+        except Exception:
+            pass
+
+    def clear_quarantine(self, plugin_id: str) -> bool:
+        """Clear quarantine state and reset failure counters for a plugin."""
+        info = self._plugins.get(plugin_id)
+        if info is None:
+            return False
+        info.quarantined = False
+        info.status = "disabled"
+        info.failure_count = 0
+        info.last_error_stage = ""
+        info.last_error_trace = ""
+        info.disabled_reason = ""
+        info.error = ""
+        self._persist_info_state(info)
+        self._save_enabled()
+        return True
+
+    def _append_plugin_error(
+        self, plugin_id: str, stage: str, operation_id: str, error: BaseException, trace: str, action: str
+    ) -> None:
+        try:
+            self._config_dir.mkdir(parents=True, exist_ok=True)
+            self._rotate_plugin_error_log()
+            payload = {
+                "time": datetime.now().isoformat(timespec="seconds"),
+                "plugin_id": plugin_id,
+                "stage": stage,
+                "operation_id": operation_id,
+                "error": str(error),
+                "trace": trace,
+                "action": action,
+            }
+            with self._error_log_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+        except Exception as exc:
+            logger.debug("append plugin error failed: %s", exc)
+
+    def _rotate_plugin_error_log(self) -> None:
+        try:
+            if not self._error_log_file.exists() or self._error_log_file.stat().st_size < PLUGIN_ERROR_LOG_MAX_BYTES:
+                return
+            for index in range(PLUGIN_ERROR_LOG_BACKUPS - 1, 0, -1):
+                src = self._error_log_file.with_name(f"{self._error_log_file.name}.{index}")
+                dst = self._error_log_file.with_name(f"{self._error_log_file.name}.{index + 1}")
+                if src.exists():
+                    if dst.exists():
+                        dst.unlink()
+                    src.replace(dst)
+            first = self._error_log_file.with_name(f"{self._error_log_file.name}.1")
+            if first.exists():
+                first.unlink()
+            self._error_log_file.replace(first)
+        except Exception as exc:
+            logger.debug("rotate plugin error log failed: %s", exc)
 
     def _save_enabled(self) -> None:
         if self._save_callback is not None:
@@ -646,7 +835,7 @@ class PluginManager:
                     status="error",
                     error=f"插件入口文件不存在: {entry_path}",
                 )
-            return PluginInfo(manifest=m, directory=directory, status="loaded")
+            return self._apply_persisted_state(PluginInfo(manifest=m, directory=directory, status="loaded"))
         except (json.JSONDecodeError, OSError) as e:
             return PluginInfo(
                 manifest=PluginManifest(id="?", name="?", version="0"),
@@ -661,6 +850,9 @@ class PluginManager:
         info = self._plugins.get(plugin_id)
         if info is None:
             logger.warning("插件未找到: %s", plugin_id)
+            return False
+        if info.status == "quarantined" or info.quarantined:
+            logger.warning("插件已隔离，跳过加载: %s", plugin_id)
             return False
         if info.status == "error":
             logger.warning("插件状态异常，无法加载: %s — %s", plugin_id, info.error)
@@ -678,6 +870,10 @@ class PluginManager:
             info.status = "error"
             info.error = str(e)
             info.last_error_at = time.time()
+            info.last_error_stage = "load"
+            info.last_error_trace = traceback.format_exc()
+            self._append_plugin_error(plugin_id, "load", plugin_id, e, info.last_error_trace, "error")
+            self._persist_info_state(info)
             logger.error("插件加载失败 %s: %s", plugin_id, e)
             return False
 
@@ -715,6 +911,7 @@ class PluginManager:
             permissions=m.permissions,
             registry=self._registry,
             manifest=m,
+            failure_callback=self._record_plugin_failure,
         )
         loader.register(api)
         # Transactional commit — rollback on any registration failure.
@@ -756,6 +953,7 @@ class PluginManager:
         # Clean up modules and invoke optional unregister/dispose lifecycle hooks
         loader = self._loaded_modules.pop(plugin_id, None)
         api = self._active_apis.pop(plugin_id, None)
+        sys.modules.pop(f"_plugin_{plugin_id}", None)
         if loader is not None:
             for hook_name in ("unregister", "dispose"):
                 if hasattr(loader, hook_name):
@@ -830,6 +1028,9 @@ class PluginManager:
         failed: list[str] = []
         for pid in enabled_ids:
             info = self._plugins.get(pid)
+            if info and (info.status == "quarantined" or info.quarantined):
+                failed.append(f"{pid}({info.disabled_reason or 'quarantined'})")
+                continue
             if info and info.status == "error":
                 failed.append(f"{pid}({info.error})")
                 continue

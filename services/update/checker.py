@@ -220,6 +220,12 @@ class UpdateChecker:
         from core.data_manager import DataManager
 
         dm = DataManager()
+        return os.path.join(dm.app_dir, ".update_state.json")
+
+    def _get_legacy_state_file(self) -> str:
+        from core.data_manager import DataManager
+
+        dm = DataManager()
         return os.path.join(dm.app_dir, "config", ".update_state.json")
 
     def _load_state(self) -> dict:
@@ -229,6 +235,13 @@ class UpdateChecker:
                 with open(state_file, "r", encoding="utf-8") as handle:
                     data = json.load(handle)
                     return data if isinstance(data, dict) else {}
+            legacy_state_file = self._get_legacy_state_file()
+            if os.path.isfile(legacy_state_file):
+                with open(legacy_state_file, "r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+                if isinstance(data, dict):
+                    self._save_state(data)
+                    return data
         except Exception as exc:
             logger.debug("Failed to load update state: %s", exc)
         return {}

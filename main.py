@@ -139,6 +139,8 @@ def main():
     global _tray_app, _server, _pending_show_config
 
     logger.info(f"QuickLauncher 启动 - {datetime.now()}")
+    if os.environ.get("QL_SAFE_MODE"):
+        logger.warning("安全模式已启用：插件/钩子/更新/自定义背景已禁用")
 
     try:
         root_dir = (
@@ -362,6 +364,12 @@ def _parse_autostart_cli_args(start_index: int = 3):
 
 
 if __name__ == "__main__":
+    # --safe-mode: disable plugins, hooks, update checks, custom background
+    if "--safe-mode" in sys.argv:
+        os.environ["QL_SAFE_MODE"] = "1"
+        sys.argv = [a for a in sys.argv if a != "--safe-mode"]
+        print("[safe-mode] 已启用安全模式：插件/钩子/更新/自定义背景已禁用")
+
     if len(sys.argv) > 1:
         if sys.argv[1] == "--install-service":
             from core.service_manager import enable_service_autostart

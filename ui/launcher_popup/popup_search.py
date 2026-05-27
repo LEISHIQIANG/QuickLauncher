@@ -532,14 +532,14 @@ class PopupSearchMixin:
 
             # Plugin search sources
             try:
-                from core.command_registry import snapshot_search_sources
+                from core.command_registry import execute_search_source, snapshot_search_sources
 
                 for src_id, src_info in snapshot_search_sources():
                     handler = src_info.get("handler")
                     if handler is None:
                         continue
                     try:
-                        src_results = handler(cmd_query)
+                        src_results = execute_search_source(src_id, cmd_query)
                         if src_results:
                             for sr in src_results:
                                 shortcut = ShortcutItem(

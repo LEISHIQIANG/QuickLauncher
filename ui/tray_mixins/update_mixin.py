@@ -1,6 +1,4 @@
-"""
-自动更新系统相关方法。
-"""
+"""Update system methods for the tray application."""
 
 import logging
 import os
@@ -9,14 +7,14 @@ logger = logging.getLogger(__name__)
 
 
 class UpdateMixin:
-    """自动更新系统相关方法。"""
+    """Update system methods for the tray application."""
 
     def _init_update_system(self, start_auto_check: bool = True):
-        """初始化自动更新系统。"""
         try:
             from services.update.checker import UpdateChecker
             from services.update.downloader import UpdateDownloader
             from services.update.installer import UpdateInstaller
+            from services.update.session import mark_latest_session_first_start_confirmed
 
             self._update_checker = UpdateChecker()
             self._update_downloader = UpdateDownloader()
@@ -28,26 +26,33 @@ class UpdateMixin:
 
             if start_auto_check:
                 self._update_checker.start_auto_check()
-            logger.info("自动更新系统初始化完成")
+            try:
+                update_root = os.path.join(
+                    str(self.data_manager.app_dir),
+                    "downloads",
+                    self._update_checker._config.download_dir_name,
+                )
+                mark_latest_session_first_start_confirmed(update_root)
+            except Exception:
+                pass
+            logger.info("Update system initialized")
         except Exception as e:
-            logger.debug(f"自动更新系统初始化失败（可忽略）: {e}")
+            logger.debug("Update system initialization failed: %s", e)
 
     def _check_update_now(self, parent=None):
-        """手动检查更新。"""
         from services.update.ui import UpdateNotification
 
         self._update_dialog_parent = parent
         if self._update_checker is None:
             self._init_update_system(start_auto_check=False)
         if self._update_checker is None:
-            UpdateNotification.show_check_failed("更新系统未初始化", parent=parent)
+            UpdateNotification.show_check_failed("Update system is not initialized", parent=parent)
             return
         info = self._update_checker.check_now()
         if info and not info.has_update:
             UpdateNotification.show_up_to_date(parent=parent)
 
     def _on_update_event(self, event: str, data=None):
-        """处理更新检查事件。"""
         from services.update.ui import UpdateNotification
 
         parent = getattr(self, "_update_dialog_parent", None)
@@ -62,12 +67,12 @@ class UpdateMixin:
             )
         elif event == "auto_download_requested":
             self._pending_update_info = data
-            logger.info("发现新版本 %s，开始自动下载", getattr(data, "version", ""))
+            logger.info("Found update %s, starting automatic download", getattr(data, "version", ""))
             self._download_update(data)
         elif event == "update_skipped":
-            logger.info("已忽略版本 %s，本次自动检查不再提醒", getattr(data, "version", ""))
+            logger.info("Skipped update %s", getattr(data, "version", ""))
         elif event == "check_failed":
-            logger.debug(f"更新检查失败: {data}")
+            logger.debug("Update check failed: %s", data)
         elif event == "up_to_date":
             pass
 
@@ -92,6 +97,7 @@ class UpdateMixin:
             allowed_hosts=getattr(self._update_checker._config, "allowed_download_hosts", None)
             if self._update_checker
             else None,
+            version=getattr(update_info, "version", ""),
         )
 
     def _on_download_event(self, event: str, data=None):
@@ -114,7 +120,7 @@ class UpdateMixin:
         elif event == "failed":
             UpdateNotification.show_download_failed(data, parent=parent)
         elif event == "cancelled":
-            logger.info("更新下载已取消")
+            logger.info("Update download was cancelled")
 
     def _install_update(self, installer_path: str):
         if self._update_installer:
@@ -132,6 +138,7 @@ class UpdateMixin:
                 installer_path,
                 expected_hash=getattr(update_info, "file_hash", "") if update_info else "",
                 trusted_dir=trusted_dir,
+                data_manager=getattr(self, "data_manager", None),
             )
 
     def _on_install_event(self, event: str, data=None):

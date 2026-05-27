@@ -117,7 +117,8 @@ class StartupMixin:
 
             self.popup_window = LauncherPopup(self.data_manager, -10000, -10000, self, capture_selection=False)
             self.popup_window.refresh_data(refresh_selection=False, reposition=False)
-            self.popup_window.preload_background()
+            if not os.environ.get("QL_SAFE_MODE"):
+                self.popup_window.preload_background()
             self.popup_window.preload_visible_icons()
             packaged_runtime = (
                 bool(getattr(sys, "frozen", False))
