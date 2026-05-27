@@ -3,19 +3,23 @@ setlocal
 
 echo Checking MSVC environment...
 
-set "VCPATH_E=E:\Visual Studio 2026\VC\Tools\MSVC\14.50.35717"
-set "VCPATH_D=D:\Visual Studio3\VC\Tools\MSVC\14.50.35717"
+set "VCPATH="
+for %%r in ("E:\Visual Studio 2026" "D:\Visual Studio3" "C:\Program Files\Microsoft Visual Studio\2026\Community" "C:\Program Files\Microsoft Visual Studio\2022\Community" "C:\Program Files\Microsoft Visual Studio\2022\BuildTools") do (
+    if not defined VCPATH (
+        for /f "delims=" %%i in ('dir /b /ad /o-n "%%~r\VC\Tools\MSVC" 2^>nul') do (
+            if not defined VCPATH if exist "%%~r\VC\Tools\MSVC\%%i\bin\Hostx64\x64\cl.exe" (
+                set "VCPATH=%%~r\VC\Tools\MSVC\%%i"
+            )
+        )
+    )
+)
 
-if exist "%VCPATH_E%\bin\Hostx64\x64\cl.exe" (
-    set "VCPATH=%VCPATH_E%"
-    echo Using MSVC from E drive
-) else if exist "%VCPATH_D%\bin\Hostx64\x64\cl.exe" (
-    set "VCPATH=%VCPATH_D%"
-    echo Using MSVC from D drive
-) else (
+if not defined VCPATH (
     echo ERROR: Visual Studio MSVC was not found.
     exit /b 1
 )
+
+echo Using MSVC: %VCPATH%
 
 set "WKPATH=C:\Program Files (x86)\Windows Kits\10"
 if not exist "%WKPATH%\Include" (

@@ -149,7 +149,10 @@ class SettingsDataActionsMixin:
 
             if self.data_manager.export_shareable_config(path):
                 ThemedMessageBox.information(
-                    self, "导出成功", f"分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用"
+                    self,
+                    "导出成功",
+                    f"分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用",
+                    max_width=320,
                 )
             else:
                 ThemedMessageBox.warning(self, "导出失败", "无法导出分享配置，请检查日志。")

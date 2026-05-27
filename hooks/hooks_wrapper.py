@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class HooksDLL:
-    EXPECTED_VERSION = 3
+    EXPECTED_VERSION = 4
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",

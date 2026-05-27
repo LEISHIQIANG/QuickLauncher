@@ -320,9 +320,11 @@ class ThemedMessageBox(QDialog):
         super().done(result)
 
     @staticmethod
-    def information(parent, title, text):
+    def information(parent, title, text, max_width=None):
         """显示信息消息框"""
         dialog = ThemedMessageBox(parent, ThemedMessageBox.Information, title, text, ThemedMessageBox.Ok)
+        if max_width is not None:
+            dialog.setMaximumWidth(max_width)
         dialog.exec_()
         return dialog.result()
 

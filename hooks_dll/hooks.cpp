@@ -8,7 +8,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <fstream>
 #include <mutex>
+#include <sstream>
+#include <vector>
 
 // 全局变量
 static HHOOK g_mouseHook = NULL;
@@ -56,6 +59,28 @@ static double g_lastHotkeyTime = 0.0;
 // 特殊应用列表
 static std::vector<std::string> g_specialApps;
 static std::mutex g_specialAppsMutex;
+static std::mutex g_debugLogMutex;
+static HANDLE g_debugLogThread = NULL;
+static HANDLE g_debugLogEvent = NULL;
+static std::atomic<bool> g_debugLogThreadRunning(false);
+
+struct MouseDebugEvent {
+    SYSTEMTIME time;
+    WPARAM wParam;
+    POINT hookPoint;
+    POINT cursorPoint;
+    DWORD flags;
+    DWORD mouseData;
+    ULONG_PTR extraInfo;
+    SHORT mbState;
+    bool blocked;
+    bool paused;
+    HWND foreground;
+    HWND cursorWindow;
+    char decision[64];
+};
+
+static std::vector<MouseDebugEvent> g_pendingDebugEvents;
 
 // 回调线程 (单线程 + Event 模式，替代每次 CreateThread)
 static HANDLE g_callbackThread = NULL;
@@ -72,7 +97,7 @@ constexpr double ALT_DOUBLE_TAP_COOLDOWN = 0.50;
 constexpr double ALT_LCLICK_DOUBLE_INTERVAL = 0.40;
 constexpr double ALT_LCLICK_COOLDOWN = 0.50;
 constexpr double BLOCKED_STATE_TIMEOUT = 2.0;  // 2秒超时自动释放
-constexpr int HOOKS_VERSION = 3;
+constexpr int HOOKS_VERSION = 4;
 constexpr unsigned int HOOKS_CAP_MOUSE = 0x0001;
 constexpr unsigned int HOOKS_CAP_KEYBOARD = 0x0002;
 constexpr unsigned int HOOKS_CAP_GLOBAL_HOTKEY = 0x0004;
@@ -218,6 +243,153 @@ static std::string GetProcessNameForWindow(HWND hwnd) {
     return ToLowerCopy(processName);
 }
 
+static std::string GetHookDebugLogPath() {
+    static std::string path;
+    if (!path.empty()) return path;
+
+    HMODULE module = NULL;
+    char modulePath[MAX_PATH] = {0};
+    if (GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCSTR>(&GetHookDebugLogPath),
+            &module) &&
+        GetModuleFileNameA(module, modulePath, MAX_PATH) > 0) {
+        path = modulePath;
+        size_t slashPos = path.find_last_of("\\/");
+        if (slashPos != std::string::npos) {
+            path = path.substr(0, slashPos + 1);
+        } else {
+            path.clear();
+        }
+    }
+    path += "hook_debug.log";
+    return path;
+}
+
+static std::string WindowSummary(HWND hwnd) {
+    if (!hwnd) return "hwnd=0";
+
+    HWND root = GetAncestor(hwnd, GA_ROOT);
+    if (root) hwnd = root;
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+
+    char className[128] = {0};
+    GetClassNameA(hwnd, className, sizeof(className));
+
+    char title[192] = {0};
+    GetWindowTextA(hwnd, title, sizeof(title));
+
+    std::ostringstream oss;
+    oss << "hwnd=0x" << std::hex << reinterpret_cast<uintptr_t>(hwnd) << std::dec
+        << " pid=" << pid
+        << " process=" << GetProcessNameForWindow(hwnd)
+        << " class=" << className
+        << " title=\"" << title << "\"";
+    return oss.str();
+}
+
+static void WriteMiddleMouseEvent(const MouseDebugEvent& ev) {
+    std::ostringstream oss;
+    oss << ev.time.wYear << "-"
+        << (ev.time.wMonth < 10 ? "0" : "") << ev.time.wMonth << "-"
+        << (ev.time.wDay < 10 ? "0" : "") << ev.time.wDay << " "
+        << (ev.time.wHour < 10 ? "0" : "") << ev.time.wHour << ":"
+        << (ev.time.wMinute < 10 ? "0" : "") << ev.time.wMinute << ":"
+        << (ev.time.wSecond < 10 ? "0" : "") << ev.time.wSecond << "."
+        << ev.time.wMilliseconds
+        << " msg=" << (ev.wParam == WM_MBUTTONDOWN ? "WM_MBUTTONDOWN" : "WM_MBUTTONUP")
+        << " decision=" << ev.decision
+        << " hook_pt=(" << ev.hookPoint.x << "," << ev.hookPoint.y << ")"
+        << " cursor=(" << ev.cursorPoint.x << "," << ev.cursorPoint.y << ")"
+        << " flags=0x" << std::hex << ev.flags
+        << " mouseData=0x" << ev.mouseData
+        << " extra=0x" << ev.extraInfo
+        << " mb_async=0x" << static_cast<unsigned short>(ev.mbState)
+        << std::dec
+        << " blocked=" << (ev.blocked ? 1 : 0)
+        << " paused=" << (ev.paused ? 1 : 0)
+        << " fg={" << WindowSummary(ev.foreground) << "}"
+        << " cursor_hwnd={" << WindowSummary(ev.cursorWindow) << "}"
+        << "\n";
+
+    std::ofstream out(GetHookDebugLogPath(), std::ios::app);
+    if (out) out << oss.str();
+}
+
+static DWORD WINAPI DebugLogThreadProc(LPVOID) {
+    while (g_debugLogThreadRunning.load()) {
+        DWORD result = WaitForSingleObject(g_debugLogEvent, 500);
+        if (!g_debugLogThreadRunning.load()) break;
+        if (result != WAIT_OBJECT_0) continue;
+
+        std::vector<MouseDebugEvent> events;
+        {
+            std::lock_guard<std::mutex> lock(g_debugLogMutex);
+            events.swap(g_pendingDebugEvents);
+        }
+        for (const auto& ev : events) {
+            WriteMiddleMouseEvent(ev);
+        }
+    }
+    return 0;
+}
+
+static void EnsureDebugLogThread() {
+    if (g_debugLogThreadRunning.load() && g_debugLogThread) return;
+    if (g_debugLogEvent == NULL) {
+        g_debugLogEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+    }
+    g_debugLogThreadRunning = true;
+    g_debugLogThread = CreateThread(NULL, 0, DebugLogThreadProc, NULL, 0, NULL);
+}
+
+static void StopDebugLogThread() {
+    g_debugLogThreadRunning = false;
+    if (g_debugLogEvent) SetEvent(g_debugLogEvent);
+    if (g_debugLogThread) {
+        WaitForSingleObject(g_debugLogThread, 1000);
+        CloseHandle(g_debugLogThread);
+        g_debugLogThread = NULL;
+    }
+    if (g_debugLogEvent) {
+        CloseHandle(g_debugLogEvent);
+        g_debugLogEvent = NULL;
+    }
+}
+
+static void LogMiddleMouseEvent(const char* phase, WPARAM wParam, const MSLLHOOKSTRUCT* mouse, const char* decision) {
+    (void)phase;
+    if (!mouse) return;
+
+    MouseDebugEvent ev = {};
+    GetLocalTime(&ev.time);
+    ev.wParam = wParam;
+    ev.hookPoint = mouse->pt;
+    ev.cursorPoint = mouse->pt;
+    GetCursorPos(&ev.cursorPoint);
+    ev.flags = mouse->flags;
+    ev.mouseData = mouse->mouseData;
+    ev.extraInfo = mouse->dwExtraInfo;
+    ev.mbState = GetAsyncKeyState(VK_MBUTTON);
+    ev.blocked = g_blockedDown.load();
+    ev.paused = g_mousePaused.load();
+    ev.foreground = GetForegroundWindow();
+    ev.cursorWindow = WindowFromPoint(ev.cursorPoint);
+    lstrcpynA(ev.decision, decision ? decision : "", sizeof(ev.decision));
+
+    EnsureDebugLogThread();
+    {
+        std::lock_guard<std::mutex> lock(g_debugLogMutex);
+        if (g_pendingDebugEvents.size() > 512) {
+            g_pendingDebugEvents.erase(g_pendingDebugEvents.begin(), g_pendingDebugEvents.begin() + 256);
+        }
+        g_pendingDebugEvents.push_back(ev);
+    }
+    if (g_debugLogEvent) SetEvent(g_debugLogEvent);
+}
+
 static HWND GetTargetWindowForSpecialAppCheck() {
     POINT point;
     if (GetCursorPos(&point)) {
@@ -282,13 +454,6 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     MSLLHOOKSTRUCT* pMouse = (MSLLHOOKSTRUCT*)lParam;
     double now = GetTime();
 
-    // Physical state priority - sync logical state with hardware
-    SHORT mbState = GetAsyncKeyState(VK_MBUTTON);
-    bool mbPhysicallyPressed = (mbState & 0x8000) != 0;
-    if (!mbPhysicallyPressed && g_blockedDown) {
-        g_blockedDown = false;
-    }
-
     // Timeout protection - auto-reset if blocked for too long
     if (g_blockedDown && (now - g_lastBlockTime) > BLOCKED_STATE_TIMEOUT) {
         g_blockedDown = false;
@@ -317,11 +482,13 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     }
 
     if (g_mousePaused) {
+        LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_paused");
         return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
     }
 
     if (wParam == WM_MBUTTONDOWN) {
         if (now - g_lastBlockTime < MIN_BLOCK_INTERVAL) {
+            LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_debounce");
             return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
         }
 
@@ -329,20 +496,25 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         bool isSpecial = IsSpecialApp();
         bool ctrlHeldNow = g_ctrlHeld || IsCtrlPressedNow();
         if (isSpecial && !ctrlHeldNow) {
+            LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_special_requires_ctrl");
             return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
         }
 
         if (g_mouseCallback) {
+            LogMiddleMouseEvent("mouse", wParam, pMouse, "trigger_callback_block_down");
             g_mouseCallback(pMouse->pt.x, pMouse->pt.y);
             g_blockedDown = true;
             g_lastBlockTime = now;
             return 1;
         }
+        LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_no_callback");
     } else if (wParam == WM_MBUTTONUP) {
         if (g_blockedDown) {
+            LogMiddleMouseEvent("mouse", wParam, pMouse, "block_matching_up");
             g_blockedDown = false;
             return 1;
         }
+        LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_unmatched_up");
     }
 
     return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
@@ -572,6 +744,7 @@ void UninstallMouseHook() {
         CloseHandle(g_mouseReadyEvent);
         g_mouseReadyEvent = NULL;
     }
+    StopDebugLogThread();
 }
 
 void SetMousePaused(bool paused) {

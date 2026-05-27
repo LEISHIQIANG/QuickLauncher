@@ -9,6 +9,63 @@ import time
 logger = logging.getLogger(__name__)
 
 
+def _describe_window_at_point(x: int, y: int) -> str:
+    try:
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+        def describe(hwnd) -> str:
+            if not hwnd:
+                return "hwnd=0"
+            root = user32.GetAncestor(hwnd, 2) or hwnd  # GA_ROOT
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(root, ctypes.byref(pid))
+            class_buf = ctypes.create_unicode_buffer(128)
+            title_buf = ctypes.create_unicode_buffer(192)
+            user32.GetClassNameW(root, class_buf, len(class_buf))
+            user32.GetWindowTextW(root, title_buf, len(title_buf))
+            return (
+                f"hwnd=0x{int(root):x} pid={pid.value} "
+                f"class={class_buf.value!r} title={title_buf.value!r}"
+            )
+
+        pt = POINT(int(x), int(y))
+        foreground = user32.GetForegroundWindow()
+        cursor_hwnd = user32.WindowFromPoint(pt)
+        mb_state = user32.GetAsyncKeyState(0x04) & 0xFFFF
+        return f"mb_async=0x{mb_state:04x} fg={{{describe(foreground)}}} cursor={{{describe(cursor_hwnd)}}}"
+    except Exception as exc:
+        return f"window_context_error={exc!r}"
+
+
+def _is_own_native_dialog_foreground() -> bool:
+    """Return True while a Windows native dialog created by this process is active."""
+    try:
+        from ctypes import wintypes
+        import os
+
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+
+        root = user32.GetAncestor(hwnd, 2) or hwnd  # GA_ROOT
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(root, ctypes.byref(pid))
+        if int(pid.value) != os.getpid():
+            return False
+
+        class_buf = ctypes.create_unicode_buffer(128)
+        user32.GetClassNameW(root, class_buf, len(class_buf))
+        return class_buf.value == "#32770"
+    except Exception:
+        return False
+
+
 class PopupMixin:
     """弹窗管理、坐标转换、多开相关方法。"""
 
@@ -26,7 +83,10 @@ class PopupMixin:
         except Exception:
             pass
 
-        logger.debug(f"钩子回调: ({x}, {y})")
+        logger.info("HOOK_CALLBACK_DETAIL pos=(%s,%s)", x, y)
+        if _is_own_native_dialog_foreground():
+            logger.info("HOOK_CALLBACK_IGNORED own_native_dialog pos=(%s,%s)", x, y)
+            return
 
         # 简单的防抖动 (Debounce)
         current_time = time.monotonic()
@@ -48,6 +108,12 @@ class PopupMixin:
         self._last_show_popup_time = current_time
         selection_trigger_pos = (int(x), int(y))
         x, y = self._normalize_popup_pos(x, y)
+        logger.info(
+            "HOOK_SHOW_CONTEXT pos=(%s,%s) %s",
+            selection_trigger_pos[0],
+            selection_trigger_pos[1],
+            _describe_window_at_point(selection_trigger_pos[0], selection_trigger_pos[1]),
+        )
         logger.info(f"显示弹出窗口: qt=({x}, {y}) win={selection_trigger_pos}")
         popup_start = time.perf_counter()
 
