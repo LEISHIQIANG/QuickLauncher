@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from core import APP_VERSION
-from qt_compat import QFont, QLabel
+from qt_compat import QLabel
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.font_manager import get_qfont
 
 _ABOUT_SECTIONS = [
     (
@@ -28,7 +29,7 @@ _ABOUT_SECTIONS = [
         (
             "四类快捷方式：启动程序或文件（支持参数、工作目录、管理员运行），"
             "打开文件夹，访问网址（支持指定浏览器和延迟测试），"
-            "运行命令（CMD / Python / 内置命令，支持变量解析），"
+            "运行命令（CMD / PowerShell / Python / 内置命令，支持变量解析），"
             "录制快捷键（区分左右修饰键、测试发送）。"
         ),
     ),
@@ -42,7 +43,7 @@ _ABOUT_SECTIONS = [
     (
         "高级功能",
         (
-            "命令变量：{clipboard}、{input}、{date}、{time} 等动态替换；"
+            "命令变量：{{clipboard}}、{{input}}、{{date}}、{{time}} 等动态替换；"
             "拖放文件到图标即用该程序打开；Ctrl + 滚轮调节背景透明度；"
             "Alt + 双击暂停/恢复中键弹窗；轻睡眠、图标缓存清理等稳定性辅助。"
         ),
@@ -78,24 +79,24 @@ class AboutWindow(ThemedToolWindow):
     def _setup_about_ui(self):
         title = QLabel("QuickLauncher")
         title.setObjectName("about_title")
-        title.setFont(QFont("Microsoft YaHei UI", 14))
+        title.setFont(get_qfont(14, 400))
         self.content_layout.addWidget(title)
 
         version = QLabel(f"版本 {APP_VERSION}")
         version.setObjectName("about_version")
-        version.setFont(QFont("Microsoft YaHei UI", 9))
+        version.setFont(get_qfont(12, 400))
         self.content_layout.addWidget(version)
 
         for section_title, body in _ABOUT_SECTIONS:
             hdr = QLabel(section_title)
             hdr.setObjectName("about_section")
-            hdr.setFont(QFont("Microsoft YaHei UI", 9))
+            hdr.setFont(get_qfont(12, 400))
             self.content_layout.addWidget(hdr)
 
             body_label = QLabel(body)
             body_label.setObjectName("about_body")
             body_label.setWordWrap(True)
-            body_label.setFont(QFont("Microsoft YaHei UI", 9))
+            body_label.setFont(get_qfont(12, 400))
             self.content_layout.addWidget(body_label)
 
     def _apply_content_theme(self):
@@ -114,12 +115,12 @@ class AboutWindow(ThemedToolWindow):
         for widget in self.findChildren(QLabel):
             name = widget.objectName()
             if name == "about_title":
-                widget.setStyleSheet(f"color: {title_color}; background: transparent; font-weight: 600;")
+                widget.setStyleSheet(f"color: {title_color}; background: transparent; font-weight: 400;")
             elif name == "about_version":
                 widget.setStyleSheet(f"color: {version_color}; background: transparent; padding-left: 2px;")
             elif name == "about_section":
                 widget.setStyleSheet(
-                    f"color: {section_color}; background: transparent; font-weight: 600; margin-top: 6px;"
+                    f"color: {section_color}; background: transparent; font-weight: 400; margin-top: 6px;"
                 )
             elif name == "about_body":
                 widget.setStyleSheet(

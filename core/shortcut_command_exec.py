@@ -63,8 +63,114 @@ def init_main_thread_invoker():
 
 
 class CommandExecutionMixin:
-    _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{param:([^{}\r\n:]+)(?::q)?\}(?!\})")
-    _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{chain:([^{}\r\n:]+)(?::q)?\}(?!\})")
+    _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{\{param:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
+    _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{\{chain:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
+    _SUPPORTED_COMMAND_TYPES = {"cmd", "powershell", "python", "bash", "builtin"}
+
+    @staticmethod
+    def _normalize_command_type(command_type: str) -> str:
+        command_type = str(command_type or "cmd").strip().lower()
+        aliases = {
+            "command": "cmd",
+            "shell": "cmd",
+            "bat": "cmd",
+            "batch": "cmd",
+            "ps": "powershell",
+            "pwsh": "powershell",
+            "python3": "python",
+            "py": "python",
+            "git-bash": "bash",
+            "gitbash": "bash",
+            "sh": "bash",
+        }
+        return aliases.get(command_type, command_type or "cmd")
+
+    @staticmethod
+    def _cmd_launcher() -> Optional[str]:
+        candidates = []
+        if os.name == "nt":
+            candidates.extend(
+                [
+                    os.environ.get("ComSpec"),
+                    os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Sysnative", "cmd.exe"),
+                    os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"),
+                    shutil.which("cmd.exe"),
+                    shutil.which("cmd"),
+                ]
+            )
+        else:
+            candidates.extend([os.environ.get("SHELL"), shutil.which("sh")])
+        for candidate in candidates:
+            if candidate and os.path.isfile(candidate):
+                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+        return None
+
+    @staticmethod
+    def _cmd_launcher_error() -> str:
+        return "CMD shell is not available. Check ComSpec or the Windows system directory."
+
+    @staticmethod
+    def _command_preprocessing_result(shortcut: ShortcutItem, command: str, command_type: str):
+        try:
+            from core import data_manager
+            from core.preprocessing.pipeline import (
+                PreprocessingContext,
+                PreprocessingPipeline,
+                create_pipeline_from_settings,
+            )
+
+            settings = None
+            if data_manager is not None and hasattr(data_manager, "get_settings"):
+                try:
+                    settings = data_manager.get_settings()
+                except Exception:
+                    settings = None
+            pipeline = (
+                create_pipeline_from_settings(settings)
+                if settings is not None
+                else PreprocessingPipeline(rate_limiting=False)
+            )
+            return pipeline.process(
+                PreprocessingContext(
+                    shortcut_id=str(getattr(shortcut, "id", "") or ""),
+                    shortcut_name=str(getattr(shortcut, "name", "") or ""),
+                    command=command,
+                    command_type=command_type,
+                    working_dir=(getattr(shortcut, "working_dir", "") or "").strip(),
+                    raw_mode=bool(getattr(shortcut, "raw_mode", False)),
+                    run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
+                    param_values=ShortcutExecutor._command_param_values(shortcut),
+                )
+            )
+        except Exception as e:
+            logger.debug("Command preprocessing failed open: %s", e, exc_info=True)
+            return None
+
+    @staticmethod
+    def _preprocessing_result_to_command_result(preprocess_result, panel_size: str = "medium") -> CommandResult:
+        items = []
+        for error in getattr(preprocess_result, "errors", []) or []:
+            detail = getattr(error, "message", "") or getattr(error, "error_code", "")
+            suggestion = getattr(error, "suggestion", "")
+            if suggestion:
+                detail = f"{detail}\n{suggestion}"
+            items.append({"title": getattr(error, "field", "validation"), "status": "failed", "detail": detail})
+        for warning in getattr(preprocess_result, "warnings", []) or []:
+            if not getattr(preprocess_result, "should_block", False) and getattr(warning, "allow_override", False):
+                continue
+            detail = getattr(warning, "description", "") or getattr(warning, "issue_type", "")
+            mitigation = getattr(warning, "mitigation", "")
+            if mitigation:
+                detail = f"{detail}\n{mitigation}"
+            items.append({"title": getattr(warning, "severity", "warning"), "status": "failed", "detail": detail})
+        message = "\n".join(f"[{item['status'].upper()}] {item['title']}: {item['detail']}" for item in items)
+        return CommandResult(
+            success=False,
+            message=message or "Command preprocessing failed.",
+            display_type="list",
+            payload={"items": items, "window_size": panel_size},
+            error="Command preprocessing failed",
+        )
 
     @staticmethod
     def _command_param_defs(shortcut: ShortcutItem) -> list[dict]:
@@ -147,41 +253,77 @@ class CommandExecutionMixin:
         return data.decode("utf-8", errors="replace"), "utf-8", True
 
     @staticmethod
-    def _preflight_command(shortcut: ShortcutItem, command: str, command_type: str, *, capture: bool = False):
+    def _preflight_command(
+        shortcut: ShortcutItem,
+        command: str,
+        command_type: str,
+        *,
+        capture: bool = False,
+        preprocess: bool = True,
+    ):
         items = []
+        command_type = ShortcutExecutor._normalize_command_type(command_type)
         cwd = (getattr(shortcut, "working_dir", "") or "").strip()
+        if command_type not in ShortcutExecutor._SUPPORTED_COMMAND_TYPES:
+            items.append(
+                {
+                    "title": "Command type",
+                    "status": "failed",
+                    "detail": (
+                        f"Unsupported command type: {command_type}. "
+                        "Supported: cmd, powershell, python, bash, builtin."
+                    ),
+                }
+            )
         if not command:
             items.append({"title": "命令内容", "status": "failed", "detail": "命令内容为空。"})
         if cwd and not os.path.isdir(cwd):
             items.append({"title": "工作目录", "status": "failed", "detail": f"目录不存在: {cwd}"})
+        if command_type == "cmd" and not ShortcutExecutor._cmd_launcher():
+            items.append({"title": "CMD", "status": "failed", "detail": ShortcutExecutor._cmd_launcher_error()})
         if command_type == "python" and not ShortcutExecutor._python_launcher():
             items.append({"title": "Python", "status": "failed", "detail": ShortcutExecutor._python_launcher_error()})
+        if command_type == "powershell" and not ShortcutExecutor._powershell_launcher():
+            items.append(
+                {"title": "PowerShell", "status": "failed", "detail": ShortcutExecutor._powershell_launcher_error()}
+            )
+        if command_type == "bash" and not ShortcutExecutor._bash_launcher():
+            items.append({"title": "Git Bash", "status": "failed", "detail": ShortcutExecutor._bash_launcher_error()})
         if capture and bool(getattr(shortcut, "show_window", False)):
             items.append({"title": "捕获输出", "status": "failed", "detail": "显示执行窗口时不能捕获输出。"})
         if capture and bool(getattr(shortcut, "run_as_admin", False)):
             items.append({"title": "捕获输出", "status": "failed", "detail": "管理员命令暂不支持捕获输出。"})
-        if command_type == "cmd":
+        if command_type in ("cmd", "powershell", "bash"):
             unsafe = find_unquoted_external_command_variables(command)
             if unsafe:
-                examples = ", ".join(f"{{{name}:q}}" for name in unsafe[:3])
+                examples = ", ".join("{{" + name + ":q}}" for name in unsafe[:3])
                 items.append(
                     {
                         "title": "命令参数引用",
                         "status": "failed",
-                        "detail": f"外部输入变量用于 CMD 时必须使用 :q 引用，例如: {examples}",
+                        "detail": f"外部输入变量用于 CMD/PowerShell/Bash 时必须使用 :q 引用，例如: {examples}",
                     }
                 )
         param_values = ShortcutExecutor._command_param_values(shortcut)
         for param in ShortcutExecutor._command_param_defs(shortcut):
             if param.get("required") and not str(param_values.get(param["name"], "")).strip():
                 items.append({"title": "命令参数", "status": "failed", "detail": f"缺少必填参数: {param['name']}"})
-        if command_type == "cmd" and is_value_only_variable_command(command):
+        if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
             items.append({"title": "命令内容", "status": "failed", "detail": "命令不能只包含一个变量占位符。"})
         if items:
             message = "\n".join(f"[{item['status'].upper()}] {item['title']}: {item['detail']}" for item in items)
             return CommandResult(
                 success=False, message=message, display_type="list", payload={"items": items}, error="预检失败"
             )
+        if preprocess:
+            preprocess_result = ShortcutExecutor._command_preprocessing_result(shortcut, command, command_type)
+            if preprocess_result is not None and (
+                getattr(preprocess_result, "should_block", False) or not getattr(preprocess_result, "success", True)
+            ):
+                return ShortcutExecutor._preprocessing_result_to_command_result(
+                    preprocess_result,
+                    panel_size=ShortcutExecutor._command_panel_size(shortcut),
+                )
         return None
 
     @staticmethod
@@ -260,6 +402,105 @@ class CommandExecutionMixin:
         return (
             "找不到可用的系统 Python。打包版不能直接复用程序目录内的 python312.dll；请安装系统 Python 或 py launcher。"
         )
+
+    @staticmethod
+    def _powershell_launcher() -> Optional[str]:
+        candidates = [
+            shutil.which("powershell.exe"),
+            shutil.which("powershell"),
+            shutil.which("pwsh.exe"),
+            shutil.which("pwsh"),
+        ]
+        if os.name == "nt":
+            system_root = os.environ.get("SystemRoot", r"C:\Windows")
+            candidates.extend(
+                [
+                    os.path.join(system_root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe"),
+                    os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+                ]
+            )
+        for candidate in candidates:
+            if candidate and os.path.isfile(candidate):
+                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+        return None
+
+    @staticmethod
+    def _powershell_launcher_error() -> str:
+        return "PowerShell is not available. Install Windows PowerShell or add powershell.exe to PATH."
+
+    @staticmethod
+    def _powershell_argv(command: str, *, no_exit: bool = False) -> list[str]:
+        powershell_exe = ShortcutExecutor._powershell_launcher()
+        if not powershell_exe:
+            raise FileNotFoundError(ShortcutExecutor._powershell_launcher_error())
+        argv = [powershell_exe, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+        if no_exit:
+            argv.append("-NoExit")
+        argv.extend(["-Command", command])
+        return argv
+
+    @staticmethod
+    def _bash_launcher() -> Optional[str]:
+        """Find Git Bash executable."""
+        candidates = []
+        # 1. shutil.which
+        candidates.append(shutil.which("bash"))
+        # 2. Registry: GitForWindows InstallPath
+        if os.name == "nt":
+            try:
+                import winreg
+
+                for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                    try:
+                        key = winreg.OpenKey(hive, r"SOFTWARE\GitForWindows")
+                        install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                        winreg.CloseKey(key)
+                        if install_path:
+                            candidates.append(os.path.join(install_path, "bin", "bash.exe"))
+                    except (OSError, FileNotFoundError):
+                        pass
+            except ImportError:
+                pass
+            # 3. Common install paths
+            program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+            program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+            local_appdata = os.environ.get("LOCALAPPDATA", "")
+            candidates.extend(
+                [
+                    os.path.join(program_files, "Git", "bin", "bash.exe"),
+                    os.path.join(program_files_x86, "Git", "bin", "bash.exe"),
+                ]
+            )
+            if local_appdata:
+                candidates.append(os.path.join(local_appdata, "Programs", "Git", "bin", "bash.exe"))
+        for candidate in candidates:
+            if candidate and os.path.isfile(candidate):
+                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+        return None
+
+    @staticmethod
+    def _bash_launcher_error() -> str:
+        return "Git Bash is not available. Install Git for Windows or add bash.exe to PATH."
+
+    @staticmethod
+    def _bash_argv(command: str, *, login: bool = False) -> list[str]:
+        bash_exe = ShortcutExecutor._bash_launcher()
+        if not bash_exe:
+            raise FileNotFoundError(ShortcutExecutor._bash_launcher_error())
+        argv = [bash_exe]
+        if login:
+            argv.append("--login")
+        argv.extend(["-c", command])
+        return argv
+
+    @staticmethod
+    def _write_temp_bash_script(command: str) -> str:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False, encoding="utf-8") as f:
+            f.write("#!/bin/bash\n")
+            f.write(command)
+            if not command.endswith("\n"):
+                f.write("\n")
+            return f.name
 
     @staticmethod
     def _write_temp_python_script(command: str) -> str:
@@ -404,26 +645,27 @@ class CommandExecutionMixin:
             logger.warning("命令为空")
             return False, "命令内容为空"
 
-        command_type = getattr(shortcut, "command_type", "cmd")
-        if command_type == "cmd" and is_value_only_variable_command(command):
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
+        if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
             if ShortcutExecutor._should_expand_command_variables(shortcut):
                 return False, f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}"
             return (
                 False,
                 f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}",
             )
-        if command_type == "cmd" and ShortcutExecutor._should_expand_command_variables(shortcut):
+        _shell_types = ("cmd", "powershell", "bash")
+        if command_type in _shell_types and ShortcutExecutor._should_expand_command_variables(shortcut):
             unsafe_variables = find_unquoted_external_command_variables(command)
             if unsafe_variables:
-                examples = ", ".join(f"{{{name}:q}}" for name in unsafe_variables[:3])
-                return False, f"外部输入变量用于 CMD 命令时必须使用 :q 引用，例如: {examples}"
+                examples = ", ".join("{{" + name + ":q}}" for name in unsafe_variables[:3])
+                return False, f"外部输入变量用于 CMD/PowerShell/Bash 命令时必须使用 :q 引用，例如: {examples}"
         try:
             if ShortcutExecutor._should_expand_command_variables(shortcut):
                 command = ShortcutExecutor._resolve_command_variables(shortcut, command)
         except CommandVariableError as e:
             return False, str(e)
 
-        if command_type != "python":
+        if command_type not in ("python", "powershell", "bash"):
             try:
                 from core.builtin_commands import canonical_builtin_command
 
@@ -441,19 +683,143 @@ class CommandExecutionMixin:
                 logger.debug("内置命令规范化失败（可忽略）: %s", e)
 
         capture_output = bool(getattr(shortcut, "capture_output", False))
-        preflight = ShortcutExecutor._preflight_command(shortcut, command, command_type, capture=False)
+        preflight = ShortcutExecutor._preflight_command(
+            shortcut,
+            command,
+            command_type,
+            capture=False,
+            preprocess=not capture_output,
+        )
         if preflight is not None:
             set_pending_command_result(preflight)
             return False, preflight.message or preflight.error
         if (
             capture_output
-            and command_type in ("cmd", "python")
+            and command_type in ("cmd", "python", "powershell", "bash")
             and not bool(getattr(shortcut, "show_window", False))
             and not bool(getattr(shortcut, "run_as_admin", False))
         ):
             result = ShortcutExecutor.run_command_capture(shortcut)
             set_pending_command_result(result)
             return result.success, result.error
+
+        # PowerShell command execution
+        if command_type == "powershell":
+            try:
+                show_window = getattr(shortcut, "show_window", False)
+                run_as_admin = getattr(shortcut, "run_as_admin", False)
+                cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
+                argv = ShortcutExecutor._powershell_argv(command, no_exit=show_window)
+                show_cmd = 1 if show_window else 0
+                if os.name == "nt":
+                    launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                        argv[0],
+                        subprocess.list2cmdline(argv[1:]),
+                        cwd,
+                        show_cmd=show_cmd,
+                        run_as_admin=run_as_admin,
+                        admin_failure_message="Administrator launch failed.",
+                    )
+                    if launched:
+                        return True, ""
+                    if launch_error:
+                        return False, launch_error
+                if show_window:
+                    subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)
+                else:
+                    ShortcutExecutor._popen_silent(
+                        argv,
+                        cwd=cwd,
+                        env=ShortcutExecutor._runtime_env(shortcut),
+                        shell=False,
+                    )
+                return True, ""
+            except FileNotFoundError:
+                return False, ShortcutExecutor._powershell_launcher_error()
+            except Exception as e:
+                return False, f"PowerShell command launch failed: {e}"
+
+        # Git Bash 命令执行
+        if command_type == "bash":
+            show_window = getattr(shortcut, "show_window", False)
+            run_as_admin = getattr(shortcut, "run_as_admin", False)
+            cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
+            bash_env = ShortcutExecutor._runtime_env(shortcut)
+            bash_env["LANG"] = "en_US.UTF-8"
+            if show_window:
+                tmp_path = None
+                try:
+                    bash_exe = ShortcutExecutor._bash_launcher()
+                    if not bash_exe:
+                        return False, ShortcutExecutor._bash_launcher_error()
+                    has_newline = "\n" in command or "\r" in command
+                    if has_newline:
+                        tmp_path = ShortcutExecutor._write_temp_bash_script(command)
+                        bash_cmd = tmp_path
+                    else:
+                        bash_cmd = command
+                    if os.name == "nt":
+                        launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                            bash_exe,
+                            subprocess.list2cmdline(["--login", "-c", bash_cmd]),
+                            cwd,
+                            show_cmd=1,
+                            run_as_admin=run_as_admin,
+                            admin_failure_message="Administrator launch failed.",
+                        )
+                        if launched:
+                            if tmp_path:
+                                ShortcutExecutor._cleanup_file_later(None, tmp_path)
+                            return True, ""
+                        if launch_error:
+                            if tmp_path:
+                                try:
+                                    os.remove(tmp_path)
+                                except Exception:
+                                    pass
+                            return False, launch_error
+                    argv = ShortcutExecutor._bash_argv(bash_cmd, login=True)
+                    process = subprocess.Popen(argv, cwd=cwd, env=bash_env, shell=False)
+                    if tmp_path:
+                        ShortcutExecutor._cleanup_file_later(process, tmp_path)
+                    return True, ""
+                except FileNotFoundError:
+                    if tmp_path:
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+                    return False, ShortcutExecutor._bash_launcher_error()
+                except Exception as e:
+                    if tmp_path:
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+                    return False, f"Bash command launch failed: {e}"
+            # silent mode
+            try:
+                bash_exe = ShortcutExecutor._bash_launcher()
+                if not bash_exe:
+                    return False, ShortcutExecutor._bash_launcher_error()
+                has_newline = "\n" in command or "\r" in command
+                if has_newline:
+                    tmp_path = ShortcutExecutor._write_temp_bash_script(command)
+                    process = ShortcutExecutor._popen_silent(
+                        [bash_exe, tmp_path],
+                        cwd=cwd,
+                        env=bash_env,
+                        shell=False,
+                    )
+                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
+                else:
+                    argv = ShortcutExecutor._bash_argv(command, login=False)
+                    ShortcutExecutor._popen_silent(argv, cwd=cwd, env=bash_env, shell=False)
+                return True, ""
+            except FileNotFoundError:
+                return False, ShortcutExecutor._bash_launcher_error()
+            except Exception as e:
+                return False, f"Bash command launch failed: {e}"
 
         # Python 代码执行
         if command_type == "python":
@@ -535,9 +901,9 @@ class CommandExecutionMixin:
                 try:
                     user_cmd_path, wrapper_path = ShortcutExecutor._write_cmd_wrapper(raw_command)
                     cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-                    comspec = os.environ.get("ComSpec") or os.path.join(
-                        os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"
-                    )
+                    comspec = ShortcutExecutor._cmd_launcher()
+                    if not comspec:
+                        return False, ShortcutExecutor._cmd_launcher_error()
                     if os.name == "nt":
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
                             comspec,
@@ -606,8 +972,7 @@ class CommandExecutionMixin:
                         # show_window 时用 /k 保持窗口，否则用 /c 执行后关闭
                         cmd_flag = "/k" if show_window else "/c"
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
-                            os.environ.get("ComSpec")
-                            or os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"),
+                            ShortcutExecutor._cmd_launcher() or "cmd.exe",
                             subprocess.list2cmdline(["/d", "/s", cmd_flag, command]),
                             cwd,
                             show_cmd=show_cmd,
@@ -661,19 +1026,24 @@ class CommandExecutionMixin:
         selected_provider = None
         if getattr(shortcut, "trigger_mode", "immediate") == "after_close":
             selected_provider = ShortcutExecutor._capture_selected_text
+        command_type = ShortcutExecutor._normalize_command_type(
+            getattr(shortcut, "command_type", "cmd")
+        )
         return resolve_command_variables(
             command,
             input_values=input_values,
             param_values=ShortcutExecutor._command_param_values(shortcut),
             chain_values=ShortcutExecutor._chain_values(shortcut),
+            selected_files=getattr(shortcut, "_runtime_selected_files", None),
             clipboard_provider=read_clipboard_text,
             selected_text_provider=selected_provider,
             strict_unknown=True,
+            bash_mode=(command_type == "bash"),
         )
 
     @staticmethod
     def _should_expand_command_variables(shortcut: ShortcutItem) -> bool:
-        command_type = getattr(shortcut, "command_type", "cmd")
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
         enabled = getattr(shortcut, "command_variables_enabled", None)
         if ShortcutExecutor._command_param_defs(shortcut) or ShortcutExecutor._chain_values(shortcut):
             return command_type != "builtin"
@@ -930,17 +1300,17 @@ class CommandExecutionMixin:
         cancel_event: threading.Event | None = None,
         on_update=None,
     ) -> CommandResult:
-        """Run a CMD/Python/builtin command and return a CommandResult with captured output."""
+        """Run a CMD/PowerShell/Python/builtin command and return a CommandResult with captured output."""
         start = time.monotonic()
         command = shortcut.command or ""
-        command_type = getattr(shortcut, "command_type", "cmd")
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
         max_chars = getattr(shortcut, "command_output_max_chars", 20000)
         panel_size = ShortcutExecutor._command_panel_size(shortcut)
         timeout_value = float(
             timeout if timeout is not None else getattr(shortcut, "command_timeout_seconds", 10.0) or 10.0
         )
 
-        if command_type == "cmd" and is_value_only_variable_command(command):
+        if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
             if ShortcutExecutor._should_expand_command_variables(shortcut):
                 return CommandResult(
                     success=False,
@@ -951,16 +1321,20 @@ class CommandExecutionMixin:
                 )
             return CommandResult(
                 success=False,
-                message=f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}",
+                message=(
+                    "命令只包含变量占位符，但未启用解析变量。"
+                    f"请启用解析变量，或改为可执行命令，例如: echo {command}"
+                ),
                 display_type="log",
                 error="命令无效",
                 payload={"window_size": panel_size},
             )
-        if command_type == "cmd" and ShortcutExecutor._should_expand_command_variables(shortcut):
+        _shell_types = ("cmd", "powershell", "bash")
+        if command_type in _shell_types and ShortcutExecutor._should_expand_command_variables(shortcut):
             unsafe_variables = find_unquoted_external_command_variables(command)
             if unsafe_variables:
-                examples = ", ".join(f"{{{name}:q}}" for name in unsafe_variables[:3])
-                message = f"外部输入变量用于 CMD 命令时必须使用 :q 引用，例如: {examples}"
+                examples = ", ".join("{{" + name + ":q}}" for name in unsafe_variables[:3])
+                message = f"外部输入变量用于 CMD/PowerShell/Bash 命令时必须使用 :q 引用，例如: {examples}"
                 return CommandResult(
                     success=False,
                     message=message,
@@ -982,7 +1356,7 @@ class CommandExecutionMixin:
             )
 
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-        if command_type != "python":
+        if command_type not in ("python", "powershell", "bash"):
             try:
                 from core.builtin_commands import canonical_builtin_command
 
@@ -1034,6 +1408,26 @@ class CommandExecutionMixin:
                     )
                 tmp_path = ShortcutExecutor._write_temp_python_script(command)
                 popen_args = [python_exe, "-u", tmp_path]
+                shell = False
+            elif command_type == "powershell":
+                popen_args = ShortcutExecutor._powershell_argv(command)
+                shell = False
+            elif command_type == "bash":
+                bash_exe = ShortcutExecutor._bash_launcher()
+                if not bash_exe:
+                    return CommandResult(
+                        success=False,
+                        message=ShortcutExecutor._bash_launcher_error(),
+                        display_type="log",
+                        error="Git Bash 不可用",
+                        payload={"window_size": panel_size},
+                    )
+                has_newline = "\n" in command or "\r" in command
+                if has_newline:
+                    tmp_path = ShortcutExecutor._write_temp_bash_script(command)
+                    popen_args = [bash_exe, tmp_path]
+                else:
+                    popen_args = ShortcutExecutor._bash_argv(command)
                 shell = False
             else:
                 popen_args = command

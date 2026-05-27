@@ -17,7 +17,6 @@ def __getattr__(name):
         "HotkeyDialog": (".hotkey_dialog", "HotkeyDialog"),
         "UrlDialog": (".url_dialog", "UrlDialog"),
         "CommandDialog": (".command_dialog", "CommandDialog"),
-        "BuiltinIconsDialog": (".builtin_icons_dialog", "BuiltinIconsDialog"),
         "apply_theme_to_dialog": (".theme_helper", "apply_theme_to_dialog"),
         "get_dialog_stylesheet": (".theme_helper", "get_dialog_stylesheet"),
     }
@@ -44,7 +43,6 @@ __all__ = [
     "HotkeyDialog",
     "UrlDialog",
     "CommandDialog",
-    "BuiltinIconsDialog",
     "apply_theme_to_dialog",
     "get_dialog_stylesheet",
 ]

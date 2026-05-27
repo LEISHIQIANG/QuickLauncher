@@ -27,6 +27,16 @@ def test_admin_execution_is_info_level():
     assert risks["run_as_admin"] == "info"
 
 
+def test_powershell_execution_is_marked():
+    item = ShortcutItem(type=ShortcutType.COMMAND, name="PowerShell")
+    item.command_type = "powershell"
+    item.command = "Get-Process"
+
+    codes = {risk.code for risk in assess_command_risk(item)}
+
+    assert "powershell_command" in codes
+
+
 def test_command_risk_module_does_not_expose_execution_audit():
     assert not hasattr(command_risk, "audit_command_execution")
 
@@ -34,7 +44,7 @@ def test_command_risk_module_does_not_expose_execution_audit():
 def test_command_risk_detects_runtime_variables():
     item = ShortcutItem(type=ShortcutType.COMMAND, name="Variables")
     item.command_type = "cmd"
-    item.command = "echo {clipboard:q} {selected_text:q}"
+    item.command = "echo {{clipboard:q}} {{selected_text:q}}"
 
     codes = {risk.code for risk in assess_command_risk(item)}
 

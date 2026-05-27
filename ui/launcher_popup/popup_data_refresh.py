@@ -317,25 +317,29 @@ class PopupDataRefreshMixin:
         self._refresh_selected_files_indicator()
 
     def _take_valid_selected_files_for_click(self) -> list:
-        status = getattr(self, "_selected_files_status", "idle")
+        state = self.__dict__
+        status = state.get("_selected_files_status", "idle")
+        request_seq = int(state.get("_file_check_seq", 0) or 0)
         if status == "pending":
-            logger.info("selection_request ignore id=%s reason=stale_request", self._file_check_seq)
-            self._file_check_seq += 1
+            logger.info("selection_request ignore id=%s reason=stale_request", request_seq)
+            state["_file_check_seq"] = request_seq + 1
             self._clear_selected_files_context()
             return []
 
-        if not self._selected_files:
+        selected_files = list(state.get("_selected_files") or [])
+        if not selected_files:
             return []
 
-        request_hwnd = int(self._selected_files_request_hwnd or 0)
-        source_hwnd = int(self._selected_files_source_hwnd or 0)
-        context = getattr(self, "_selected_files_context", None)
-        if not context or int(getattr(context, "request_id", 0) or 0) != self._file_check_seq:
-            logger.info("selection_request ignore id=%s reason=stale_request", self._file_check_seq)
+        request_hwnd = int(state.get("_selected_files_request_hwnd", 0) or 0)
+        source_hwnd = int(state.get("_selected_files_source_hwnd", 0) or 0)
+        context = state.get("_selected_files_context")
+        if not context or int(getattr(context, "request_id", 0) or 0) != request_seq:
+            logger.info("selection_request ignore id=%s reason=stale_request", request_seq)
             self._clear_selected_files_context()
             return []
 
-        if (time.monotonic() - float(self._selected_files_captured_at or 0.0)) > self.SELECTED_FILES_CACHE_TTL_SECONDS:
+        captured_at = float(state.get("_selected_files_captured_at", 0.0) or 0.0)
+        if (time.monotonic() - captured_at) > self.SELECTED_FILES_CACHE_TTL_SECONDS:
             logger.info("selection_request ignore id=%s reason=expired_cache", context.request_id)
             self._clear_selected_files_context()
             return []
@@ -370,7 +374,7 @@ class PopupDataRefreshMixin:
             self._clear_selected_files_context()
             return []
 
-        return list(self._selected_files)
+        return selected_files
 
     def _on_files_found(self, files):
         """文件检测回调"""

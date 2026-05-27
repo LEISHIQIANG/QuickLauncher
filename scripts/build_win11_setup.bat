@@ -216,6 +216,7 @@ REM no-UPX default and explicit manifest embedding below.
     --include-package=core ^
     --include-package=hooks ^
     --include-package=bootstrap ^
+    --include-package=services ^
     --include-package=PIL ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^

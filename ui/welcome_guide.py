@@ -25,6 +25,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.utils.dialog_helper import center_dialog_on_main_window
+from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,8 @@ class WelcomeGuide(QDialog):
         header_layout.addWidget(self.icon_label)
 
         self.title_label = QLabel()
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: 500;")
+        self.title_label.setFont(get_qfont(16, 400))
+        self.title_label.setStyleSheet("font-size: 16px; font-weight: 400;")
         self.title_label.setWordWrap(True)
         header_layout.addWidget(self.title_label, 1)
         layout.addLayout(header_layout)
@@ -100,6 +102,7 @@ class WelcomeGuide(QDialog):
         # 内容
         self.content_label = QLabel()
         self.content_label.setWordWrap(True)
+        self.content_label.setFont(get_qfont(13, 400))
         self.content_label.setStyleSheet("font-size: 13px; line-height: 1.5;")
         self.content_label.setMinimumHeight(150)
         layout.addWidget(self.content_label, 1)
@@ -162,6 +165,8 @@ class WelcomeGuide(QDialog):
 
         for btn in [self.skip_btn, self.prev_btn, self.next_btn]:
             btn.setStyleSheet(btn_style)
+        tune_font_rendering(self, recursive=True)
+        self.title_label.setFont(get_qfont(16, 400))
 
     def _update_content(self):
         step = self.steps[self.current_step]

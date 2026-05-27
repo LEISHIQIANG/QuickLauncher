@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import zipfile
 from pathlib import PurePosixPath
-from typing import Iterable
 
 MAX_ZIP_ENTRIES = 2048
 MAX_ZIP_TOTAL_BYTES = 256 * 1024 * 1024
@@ -61,6 +60,8 @@ def normalize_zip_name(name: str) -> str | None:
     raw = str(name or "").replace("\\", "/").strip()
     if not raw:
         return None
+    if "\x00" in raw:
+        return None
     if raw.startswith("/") or raw.startswith("//"):
         return None
     if len(raw) >= 2 and raw[1] == ":":
@@ -108,13 +109,6 @@ def has_zip_entry(index: dict[str, zipfile.ZipInfo], name: str) -> bool:
     normalized = normalize_zip_name(name)
     return bool(normalized and normalized.lower() in index)
 
-
-def iter_safe_names(index: dict[str, zipfile.ZipInfo], prefix: str = "") -> Iterable[str]:
-    prefix_key = prefix.lower()
-    for key, info in index.items():
-        name = normalize_zip_name(info.filename)
-        if name and (not prefix_key or name.lower().startswith(prefix_key)):
-            yield name
 
 
 def read_zip_bytes(

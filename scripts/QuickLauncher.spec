@@ -54,8 +54,7 @@ a = Analysis(
     binaries=[],
     datas=datas + [
         ('../assets', 'assets'),
-        ('../builtin_icons', 'builtin_icons'),
-        ('../ContextMenus', 'ContextMenus'),
+        ('../plugins', 'plugins'),
         ('../qt_compat.py', '.')
     ],
     hiddenimports=hiddenimports,

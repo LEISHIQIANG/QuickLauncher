@@ -12,6 +12,7 @@ from typing import List, Optional
 
 import win32process
 
+from .command_variables import CommandVariableError, resolve_command_variables
 from .data_models import ShortcutItem
 from .shortcut_types import (
     shell32,
@@ -543,6 +544,10 @@ class FileExecutionMixin:
         # 1. 属性提取与路径解析
         run_as_admin = getattr(shortcut, "run_as_admin", False)
         params = (getattr(shortcut, "target_args", "") or "").strip()
+        try:
+            params = resolve_command_variables(params, strict_unknown=True)
+        except CommandVariableError as exc:
+            return False, f"启动参数变量解析失败: {exc}"
         working_dir = (getattr(shortcut, "working_dir", "") or "").strip()
         real_target = ShortcutExecutor._resolve_shortcut(target) or target
         t1 = time.perf_counter()

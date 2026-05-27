@@ -1470,6 +1470,10 @@ class CommandPanelWindow(ThemedToolWindow):
         raw = self.command_input.text().strip()
         if not raw:
             return
+        if self._current_shortcut is not None:
+            self._current_raw_input = raw
+            self._execute_current_shortcut_request()
+            return
         if raw.startswith("/"):
             text = raw[1:].strip()
             command_id, _, args_text = text.partition(" ")

@@ -71,7 +71,7 @@ class FloatingEmoji(QLabel):
             min_dy = -80
             max_dx = 20
         else:
-            self.setStyleSheet("font-size: 26px; background: transparent; border: none; font-weight: bold;")
+            self.setStyleSheet("font-size: 26px; background: transparent; border: none; font-weight: 400;")
             initial_opacity = 1.0
             duration = 1200  # 点击时爆发力强
             max_dy = -200
@@ -544,7 +544,7 @@ class DrinkCard(QFrame):
         # 6. 绘制标题
         name_font = painter.font()
         name_font.setPointSize(10)
-        name_font.setBold(True)
+        name_font.setBold(False)
         painter.setFont(name_font)
         painter.setPen(QPen(text_color))
         painter.drawText(QRect(0, 56, rect.width(), 20), QtCompat.AlignCenter, self.name)
@@ -757,7 +757,7 @@ class SettingsSupportPageMixin:
 
         if hasattr(self, "_support_title_lbl"):
             self._support_title_lbl.setStyleSheet(
-                f"font-size: 16px; font-weight: bold; color: {title_color}; background: transparent; border: none;"
+                f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none;"
             )
         if hasattr(self, "_support_desc_lbl"):
             self._support_desc_lbl.setStyleSheet(
@@ -789,7 +789,7 @@ class SettingsSupportPageMixin:
                         border: 1px solid rgba(255, 255, 255, 0.12);
                         border-radius: 8px;
                         color: rgba(255, 255, 255, 0.85);
-                        font-weight: bold;
+                        font-weight: 400;
                     }
                     QPushButton:hover {
                         background: rgba(255, 255, 255, 0.15);
@@ -808,7 +808,7 @@ class SettingsSupportPageMixin:
                         border: 1px solid rgba(255, 82, 82, 0.18);
                         border-radius: 8px;
                         color: #ff5252;
-                        font-weight: bold;
+                        font-weight: 400;
                     }
                     QPushButton:hover {
                         background: rgba(255, 82, 82, 0.18);
@@ -828,7 +828,7 @@ class SettingsSupportPageMixin:
                         border: 1px solid rgba(0, 0, 0, 0.08);
                         border-radius: 8px;
                         color: rgba(28, 28, 30, 0.8);
-                        font-weight: bold;
+                        font-weight: 400;
                     }
                     QPushButton:hover {
                         background: rgba(0, 0, 0, 0.08);
@@ -847,7 +847,7 @@ class SettingsSupportPageMixin:
                         border: 1px solid rgba(211, 47, 47, 0.15);
                         border-radius: 8px;
                         color: #d32f2f;
-                        font-weight: bold;
+                        font-weight: 400;
                     }
                     QPushButton:hover {
                         background: rgba(211, 47, 47, 0.12);

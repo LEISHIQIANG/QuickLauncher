@@ -21,6 +21,7 @@ from qt_compat import (
     QWidget,
 )
 from ui.utils.dialog_helper import center_dialog_on_main_window
+from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11
 
 from .style import get_dialog_stylesheet
@@ -50,6 +51,7 @@ class ThemedMessageBox(QDialog):
         self.setMaximumWidth(480)
         self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        self.setFont(get_qfont(12))
         self.setWindowOpacity(0)  # 初始透明度为 0
 
         self.corner_radius = 8 if is_win11() else 12
@@ -60,6 +62,7 @@ class ThemedMessageBox(QDialog):
         self._theme = "dark"
         self._acrylic_applied = False
         self._dialog_finished = False
+        self._title_label = None
 
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
@@ -85,8 +88,10 @@ class ThemedMessageBox(QDialog):
             # 标题
             title_label = QLabel(title)
             title_label.setObjectName("TitleLabel")
-            title_label.setStyleSheet("font-size: 13px; font-weight: 500;")
+            title_label.setFont(get_qfont(13, 400))
+            title_label.setStyleSheet("font-size: 13px; font-weight: 400; margin-bottom: 4px;")
             title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            self._title_label = title_label
             title_layout.addWidget(title_label, 1)
 
             layout.addLayout(title_layout)
@@ -94,9 +99,8 @@ class ThemedMessageBox(QDialog):
         # 文本内容
         text_label = QLabel(text)
         text_label.setWordWrap(True)
-        text_label.setStyleSheet(
-            "font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; font-size: 11px; line-height: 1.4; padding-left: 32px;"
-        )
+        text_label.setFont(get_qfont(12))
+        text_label.setStyleSheet("font-size: 12px; line-height: 1.4; padding-left: 32px;")
         text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         layout.addWidget(text_label)
 
@@ -145,6 +149,8 @@ class ThemedMessageBox(QDialog):
 
         # 应用主题
         self._apply_theme()
+        tune_font_rendering(self, recursive=True)
+        self._apply_explicit_fonts()
 
     @staticmethod
     def _coerce_parent(parent):
@@ -203,6 +209,10 @@ class ThemedMessageBox(QDialog):
         else:
             self.bg_color = QColor(242, 242, 247, 160)
             self.border_color = QColor(229, 229, 234, 150)
+
+    def _apply_explicit_fonts(self):
+        if self._title_label is not None:
+            self._title_label.setFont(get_qfont(13, 400))
 
     def paintEvent(self, event):
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
@@ -362,6 +372,7 @@ class ThemedInputDialog(QDialog):
         self.setMaximumWidth(480)
         self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        self.setFont(get_qfont(12))
         self.setWindowOpacity(0)
 
         self.corner_radius = 8 if is_win11() else 12
@@ -382,30 +393,29 @@ class ThemedInputDialog(QDialog):
         if title:
             title_label = QLabel(title)
             title_label.setObjectName("TitleLabel")
+            title_label.setFont(get_qfont(13, 400))
             title_label.setStyleSheet("font-size: 13px; font-weight: 400; margin-bottom: 4px;")
             title_label.setAlignment(Qt.AlignLeft)
+            self._title_label = title_label
             layout.addWidget(title_label)
 
         # 标签
         if label:
             label_widget = QLabel(label)
-            label_widget.setStyleSheet("font-size: 11px; margin-bottom: 2px;")
+            label_widget.setFont(get_qfont(12))
+            label_widget.setStyleSheet("font-size: 12px; margin-bottom: 2px;")
             label_widget.setAlignment(Qt.AlignLeft)
             layout.addWidget(label_widget)
 
         # 输入框
-        from qt_compat import QFont, QLineEdit
+        from qt_compat import QLineEdit
 
         self.line_edit = QLineEdit()
         self.line_edit.setText(text)
         self.line_edit.setFixedHeight(28)
 
         # 设置字体 - 垂直hinting平衡清晰度和重影
-        font = QFont("Microsoft YaHei", 9)
-        font.setWeight(QFont.Weight.Normal)
-        font.setHintingPreference(QFont.HintingPreference.PreferVerticalHinting)
-        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-        self.line_edit.setFont(font)
+        self.line_edit.setFont(get_qfont(12))
 
         self.line_edit.selectAll()
         layout.addWidget(self.line_edit)
@@ -433,6 +443,8 @@ class ThemedInputDialog(QDialog):
 
         # 应用主题
         self._apply_theme()
+        tune_font_rendering(self, recursive=True)
+        self._apply_explicit_fonts()
 
     def _apply_theme(self):
         """应用主题 - 与主配置窗口一致的 alpha 处理"""
@@ -449,6 +461,10 @@ class ThemedInputDialog(QDialog):
         else:
             self.bg_color = QColor(242, 242, 247, 160)
             self.border_color = QColor(229, 229, 234, 150)
+
+    def _apply_explicit_fonts(self):
+        if self._title_label is not None:
+            self._title_label.setFont(get_qfont(13, 400))
 
     def paintEvent(self, event):
         """背景绘制 - 完全按照RoundedWindow的逻辑"""

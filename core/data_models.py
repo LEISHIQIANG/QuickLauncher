@@ -56,7 +56,7 @@ class ShortcutItem:
 
     # 命令类型
     command: str = ""
-    command_type: str = "cmd"  # cmd, python, builtin
+    command_type: str = "cmd"  # cmd, powershell, python, bash, builtin
     show_window: bool = False
     command_variables_enabled: bool = False
     capture_output: bool = False
@@ -68,6 +68,7 @@ class ShortcutItem:
     command_encoding: str = "auto"
     chain_steps: List[dict] = field(default_factory=list)
     chain_result_window: str = "medium"  # none, small, medium, large
+    raw_mode: bool = False  # 原始模式，跳过变量预处理
 
     # 触发模式
     trigger_mode: str = "immediate"  # immediate (立即触发), after_close (窗口关闭后触发)
@@ -126,6 +127,7 @@ class ShortcutItem:
             "command_encoding": self.command_encoding,
             "chain_steps": list(self.chain_steps or []),
             "chain_result_window": self.chain_result_window,
+            "raw_mode": self.raw_mode,
         }
 
     @classmethod
@@ -154,7 +156,11 @@ class ShortcutItem:
         item.preferred_browser_args = data.get("preferred_browser_args", "")
         item.command = data.get("command", "")
         item.command_type = data.get("command_type", "cmd")
-        if item.type == ShortcutType.COMMAND and item.command_type != "python" and canonical_builtin_command:
+        if (
+            item.type == ShortcutType.COMMAND
+            and item.command_type not in ("python", "powershell")
+            and canonical_builtin_command
+        ):
             canonical_command = canonical_builtin_command(item.command)
             if canonical_command:
                 item.command = canonical_command
@@ -187,6 +193,7 @@ class ShortcutItem:
         item.chain_steps = cls._normalize_chain_steps(data.get("chain_steps", []))
         crw = str(data.get("chain_result_window", "medium") or "medium").lower()
         item.chain_result_window = crw if crw in ("none", "small", "medium", "large") else "medium"
+        item.raw_mode = bool(data.get("raw_mode", False))
         return item
 
     @staticmethod
@@ -425,6 +432,14 @@ class AppSettings:
     disabled_builtin_commands: List[str] = field(default_factory=list)
     plugin_dev_mode: bool = False
 
+    # 预处理设置
+    preprocessing_enabled: bool = True  # 启用命令预处理
+    preprocessing_strict_mode: bool = False  # 严格模式（警告也阻止）
+    preprocessing_audit_enabled: bool = True  # 启用审计日志
+    preprocessing_rate_limiting_enabled: bool = True  # 启用速率限制
+    security_block_dangerous_patterns: bool = False  # 阻止危险模式（当前仅警告）
+    security_require_variable_quoting: bool = True  # 强制外部变量引用
+
     # 功能降级开关
     enable_context_detection: bool = True
     enable_plugins: bool = True
@@ -568,8 +583,7 @@ class AppData:
     def _create_default_folders(self):
         dock = Folder(id="dock", name="Dock", order=0, is_system=True, is_dock=True)
         default = Folder(id="default", name="常用", order=1, is_system=True, is_dock=False)
-        icon_repo = Folder(id="icon_repo", name="图标仓库", order=2, is_system=True, is_icon_repo=True)
-        self.folders = [dock, default, icon_repo]
+        self.folders = [dock, default]
 
     def get_dock(self) -> Optional[Folder]:
         for folder in self.folders:

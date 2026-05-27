@@ -1688,6 +1688,51 @@ def cmd_clean_cache(context: CommandContext) -> CommandResult:
     )
 
 
+def cmd_config_repair(context: CommandContext) -> CommandResult:
+    from core import data_manager
+    from core.config_repairs import apply_config_repairs, scan_config_repairs
+
+    if data_manager is None:
+        return CommandResult(success=False, message="数据管理器不可用", error="不可用")
+
+    mode = (context.args_text or "").strip().lower()
+    should_fix = mode in {"fix", "apply", "repair", "save", "修复", "应用"}
+    report = apply_config_repairs(data_manager.data) if should_fix else scan_config_repairs(data_manager.data)
+
+    if should_fix and report.changed:
+        try:
+            data_manager._mark_history("配置修复", f"应用 {report.repaired} 项配置修复")
+        except Exception:
+            pass
+        if not data_manager.save(immediate=True):
+            return CommandResult(
+                success=False, message="配置修复已计算，但保存失败", payload=report.to_dict(), error="保存失败"
+            )
+
+    action = "已修复" if should_fix else "扫描完成"
+    lines = [f"配置修复{action}: {report.repaired} 项可自动修复项"]
+    if report.problem_count:
+        lines.append(f"需要人工确认: {report.problem_count} 项")
+    if not report.issues:
+        lines.append("未发现需要修复的配置。")
+    else:
+        for issue in report.issues[:20]:
+            status = "fixed" if issue.fixed else "warn"
+            lines.append(f"- [{status}] {issue.path}: {issue.message}")
+        if len(report.issues) > 20:
+            lines.append(f"- ... 另有 {len(report.issues) - 20} 项")
+
+    message = "\n".join(lines)
+    return CommandResult(
+        success=report.problem_count == 0 or not should_fix,
+        message=message,
+        display_type="list",
+        payload=report.to_dict(),
+        actions=[CommandAction(type="copy", label="复制报告", value=message)],
+        error="" if report.problem_count == 0 else "存在未自动修复的问题",
+    )
+
+
 def cmd_god(context: CommandContext) -> CommandResult:
     import subprocess
 

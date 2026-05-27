@@ -423,7 +423,7 @@ echo {clipboard}           ❌ 危险：会被拒绝执行
 - **右键菜单**：编辑、删除、移动、复制
 - **Ctrl/Shift 多选**：批量删除、移动、启用、禁用、撤销
 - **开始菜单/桌面扫描**：自动发现已安装应用
-- **内置图标库**：内置图标选择对话框
+- **图标仓库**：合并展示随软件安装的系统图标与用户自己的图标仓库，支持复制到普通分类后编辑
 - **拖拽排序**：拖拽调整图标和分类顺序
 
 ### 7.4 设置面板（Settings）
@@ -692,14 +692,17 @@ DLL 不可用时，自动回退到 Python/系统 API 实现钩子功能。
       "id": "default",
       "name": "常用",
       "items": [ ... ]
-    },
-    {
-      "id": "icon_repo",
-      "name": "图标仓库",
-      "is_icon_repo": true,
-      "items": [ ... ]
     }
   ]
+}
+```
+
+用户自己的图标仓库单独保存在同目录的 `icon_repo.json`；随软件安装的系统图标来自 `assets/system_icons/config.json`：
+
+```json
+{
+  "version": "1.0",
+  "items": [ ... ]
 }
 ```
 
@@ -956,9 +959,11 @@ QuickLauncher/
 │   ├── test_shortcut_chain_exec.py
 │   └── ...
 │
-├── assets/                          # 应用图标、内置图标
+├── assets/                          # 应用图标、系统图标资源
+│   └── system_icons/                #   随安装提供的系统图标
 ├── config/                          # 用户数据（gitignored）
 │   ├── data.json                    #   配置数据
+│   ├── icon_repo.json               #   用户图标仓库配置
 │   └── icons/                       #   图标缓存
 │
 └── .github/                         # GitHub 配置

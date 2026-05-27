@@ -567,7 +567,9 @@ class CommandDialog(BaseDialog):
 
         # 类型
         self.type_combo = QComboBox()
-        self.type_combo.addItems([tr("CMD 命令"), tr("Python 代码"), tr("内置命令")])
+        self.type_combo.addItems(
+            [tr("CMD 命令"), tr("PowerShell 命令"), tr("Python 代码"), tr("Git Bash"), tr("内置命令")]
+        )
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         self.type_combo.showPopup = lambda: self._show_type_popup()
 
@@ -752,7 +754,7 @@ class CommandDialog(BaseDialog):
         self.run_as_admin_cb.stateChanged.connect(self._update_capture_controls)
         self.variable_expansion_cb = QCheckBox("解析变量")
         self.variable_expansion_cb.setFixedHeight(26)
-        install_tooltip(self.variable_expansion_cb, "替换 {clipboard}、{input}、{date} 等占位符；Python 默认关闭")
+        install_tooltip(self.variable_expansion_cb, "替换 {{clipboard}}、{{input}}、{{date}} 等占位符；Python 默认关闭")
         option_row.addWidget(self.show_window_cb)
         option_row.addWidget(self.run_as_admin_cb)
         option_row.addWidget(self.variable_expansion_cb)
@@ -908,7 +910,18 @@ class CommandDialog(BaseDialog):
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
-        elif index == 1:  # Python
+        elif index == 1:  # PowerShell
+            self.hint_label.setText("输入要执行的 PowerShell 命令（静默运行，不显示窗口）:")
+            self.command_edit.setPlaceholderText("例如: Get-ChildItem {{selected_file_dir:q}}")
+            self.input_stack.setCurrentIndex(0)
+            self.input_stack.setFixedHeight(100)
+            self.show_window_cb.setEnabled(True)
+            self._update_capture_controls()
+            self.insert_var_btn.setEnabled(True)
+            self.variable_expansion_cb.setEnabled(True)
+            if not getattr(self, "_loading_data", False):
+                self.variable_expansion_cb.setChecked(False)
+        elif index == 2:  # Python
             self.hint_label.setText("输入要执行的 Python 代码（通过系统 Python 运行）:")
             self.command_edit.setPlaceholderText("例如: os.system('notepad')")
             self.input_stack.setCurrentIndex(0)
@@ -919,7 +932,18 @@ class CommandDialog(BaseDialog):
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
-        elif index == 2:  # Built-in
+        elif index == 3:  # Git Bash
+            self.hint_label.setText("输入要执行的 Bash 命令（通过 Git Bash 运行）:")
+            self.command_edit.setPlaceholderText("例如: ls -la /c/Users")
+            self.input_stack.setCurrentIndex(0)
+            self.input_stack.setFixedHeight(100)
+            self.show_window_cb.setEnabled(True)
+            self._update_capture_controls()
+            self.insert_var_btn.setEnabled(True)
+            self.variable_expansion_cb.setEnabled(True)
+            if not getattr(self, "_loading_data", False):
+                self.variable_expansion_cb.setChecked(False)
+        elif index == 4:  # Built-in
             self.hint_label.setText("选择内置命令:")
             self.input_stack.setCurrentIndex(1)
             self.input_stack.setFixedHeight(48)
@@ -939,7 +963,7 @@ class CommandDialog(BaseDialog):
     def _update_capture_controls(self):
         if not hasattr(self, "capture_output_cb"):
             return
-        is_builtin = getattr(self, "type_combo", None) is not None and self.type_combo.currentIndex() == 2
+        is_builtin = getattr(self, "type_combo", None) is not None and self.type_combo.currentIndex() == 4
         blocked = is_builtin or self.show_window_cb.isChecked() or self.run_as_admin_cb.isChecked()
         if blocked:
             self.capture_output_cb.setChecked(False)
@@ -1021,7 +1045,7 @@ class CommandDialog(BaseDialog):
         """显示类型选择弹出菜单"""
         menu = PopupMenu(theme=self.theme, radius=12, parent=self)
         self._type_menu = menu
-        items = [tr("CMD 命令"), tr("Python 代码"), tr("内置命令")]
+        items = [self.type_combo.itemText(i) for i in range(self.type_combo.count())]
         current = self.type_combo.currentText()
         for i, item_text in enumerate(items):
 
@@ -1085,16 +1109,22 @@ class CommandDialog(BaseDialog):
         menu = PopupMenu(theme=self.theme, radius=12, parent=self)
         self._insert_menu = menu
         items = [
-            ("剪贴板", "{clipboard}"),
-            ("剪贴板(引用)", "{clipboard:q}"),
-            ("运行时输入", "{input}"),
-            ("选中文本", "{selected_text}"),
-            ("选中文本(引用)", "{selected_text:q}"),
-            ("日期", "{date}"),
-            ("时间", "{time}"),
-            ("程序目录", "{app_dir}"),
-            ("配置目录", "{config_dir}"),
-            ("PowerShell 片段", "powershell -NoProfile -ExecutionPolicy Bypass -Command {clipboard:q}"),
+            ("剪贴板", "{{clipboard}}"),
+            ("剪贴板(引用)", "{{clipboard:q}}"),
+            ("运行时输入", "{{input}}"),
+            ("选中文本", "{{selected_text}}"),
+            ("选中文本(引用)", "{{selected_text:q}}"),
+            ("选中文件(引用)", "{{selected_file:q}}"),
+            ("选中文件列表(引用)", "{{selected_files:q}}"),
+            ("选中文件名(引用)", "{{selected_file_name:q}}"),
+            ("选中文件目录(引用)", "{{selected_file_dir:q}}"),
+            ("日期", "{{date}}"),
+            ("时间", "{{time}}"),
+            ("内网 IP", "{{LAN_IP}}"),
+            ("公网 IP", "{{WAN_IP}}"),
+            ("程序目录", "{{app_dir}}"),
+            ("配置目录", "{{config_dir}}"),
+            ("PowerShell 片段", "Write-Output {{clipboard:q}}"),
             ("Python 模板", "import os\nprint(os.getcwd())"),
         ]
         for label, text in items:
@@ -1113,10 +1143,10 @@ class CommandDialog(BaseDialog):
             cursor.insertText(text)
         self.command_edit.setTextCursor(cursor)
         self.command_edit.setFocus()
-        if "{selected_text" in text:
+        if "{{selected_text" in text:
             self.variable_expansion_cb.setChecked(True)
             self.trigger_after_close_rb.setChecked(True)
-        elif text.startswith("{") or "{input" in text or "{clipboard" in text:
+        elif text.startswith("{{") or "{{input" in text or "{{clipboard" in text:
             self.variable_expansion_cb.setChecked(True)
 
     def _add_param_template_line(self):
@@ -1132,7 +1162,7 @@ class CommandDialog(BaseDialog):
         if not params:
             return
         name = params[0]["name"]
-        self._insert_command_text(f"{{param:{name}:q}}")
+        self._insert_command_text(f"{{{{param:{name}:q}}}}")
 
     def _parse_command_params_text(self):
         params = []
@@ -1270,9 +1300,18 @@ class CommandDialog(BaseDialog):
         type_index = self.type_combo.currentIndex()
         shortcut.type = ShortcutType.COMMAND
         shortcut.name = self.name_edit.text().strip()[:6] or "测试"
-        shortcut.command_type = "cmd" if type_index == 0 else "python" if type_index == 1 else "builtin"
+        if type_index == 0:
+            shortcut.command_type = "cmd"
+        elif type_index == 1:
+            shortcut.command_type = "powershell"
+        elif type_index == 2:
+            shortcut.command_type = "python"
+        elif type_index == 3:
+            shortcut.command_type = "bash"
+        else:
+            shortcut.command_type = "builtin"
         shortcut.command = (
-            self.builtin_combo.currentData() if type_index == 2 else self.command_edit.toPlainText().strip()
+            self.builtin_combo.currentData() if type_index == 4 else self.command_edit.toPlainText().strip()
         )
         shortcut.trigger_mode = "after_close" if self.trigger_after_close_rb.isChecked() else "immediate"
         shortcut.show_window = self.show_window_cb.isChecked()
@@ -1443,14 +1482,18 @@ class CommandDialog(BaseDialog):
             cmd_type = getattr(self.shortcut, "command_type", "cmd")
             command = self.shortcut.command or ""
             canonical_builtin = self._canonical_builtin_command(command)
-            if cmd_type != "python" and canonical_builtin:
+            if cmd_type not in ("python", "powershell", "bash") and canonical_builtin:
                 cmd_type = "builtin"
                 command = canonical_builtin
 
-            if cmd_type == "python":
+            if cmd_type == "powershell":
                 self.type_combo.setCurrentIndex(1)
-            elif cmd_type == "builtin":
+            elif cmd_type == "python":
                 self.type_combo.setCurrentIndex(2)
+            elif cmd_type == "bash":
+                self.type_combo.setCurrentIndex(3)
+            elif cmd_type == "builtin":
+                self.type_combo.setCurrentIndex(4)
             else:
                 self.type_combo.setCurrentIndex(0)
 
@@ -1580,10 +1623,16 @@ class CommandDialog(BaseDialog):
 
                 # 根据类型显示不同图标文本
                 text = ">_"
-                if self.type_combo.currentIndex() == 1:  # Python
+                if self.type_combo.currentIndex() == 1:  # PowerShell
+                    text = "PS"
+                    painter.setPen(QColor(90, 180, 255))
+                elif self.type_combo.currentIndex() == 2:  # Python
                     text = "Py"
                     painter.setPen(QColor(255, 215, 0))  # 金色
-                elif self.type_combo.currentIndex() == 2:  # Built-in
+                elif self.type_combo.currentIndex() == 3:  # Git Bash
+                    text = "Sh"
+                    painter.setPen(QColor(232, 79, 52))  # 橙红色
+                elif self.type_combo.currentIndex() == 4:  # Built-in
                     text = "In"
                     painter.setPen(QColor(100, 200, 255))  # 蓝色
 
@@ -1628,7 +1677,7 @@ class CommandDialog(BaseDialog):
         name = self.name_edit.text().strip()
 
         type_index = self.type_combo.currentIndex()
-        if type_index == 2:  # Built-in
+        if type_index == 4:  # Built-in
             command = self.builtin_combo.currentData()
         else:
             command = self.command_edit.toPlainText().strip()
@@ -1644,7 +1693,7 @@ class CommandDialog(BaseDialog):
             return
 
         if not command:
-            if type_index == 2:
+            if type_index == 4:
                 pass  # 内置命令一定有值
             else:
                 self.command_edit.setFocus()
@@ -1658,7 +1707,7 @@ class CommandDialog(BaseDialog):
 
         if (
             self.variable_expansion_cb.isChecked()
-            and "{selected_text" in command
+            and "{{selected_text" in command
             and self.trigger_immediate_rb.isChecked()
         ):
             self.trigger_after_close_rb.setChecked(True)
@@ -1674,7 +1723,13 @@ class CommandDialog(BaseDialog):
             self.shortcut.command_type = "cmd"
             self.shortcut.command = self.command_edit.toPlainText().strip()
         elif type_index == 1:
+            self.shortcut.command_type = "powershell"
+            self.shortcut.command = self.command_edit.toPlainText().strip()
+        elif type_index == 2:
             self.shortcut.command_type = "python"
+            self.shortcut.command = self.command_edit.toPlainText().strip()
+        elif type_index == 3:
+            self.shortcut.command_type = "bash"
             self.shortcut.command = self.command_edit.toPlainText().strip()
         else:
             self.shortcut.command_type = "builtin"

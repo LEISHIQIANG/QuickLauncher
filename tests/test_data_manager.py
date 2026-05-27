@@ -45,6 +45,8 @@ def _file_backed_manager(tmp_path, data=None):
     manager.history_dir = manager.app_dir / "history"
     manager.recovery_dir = manager.app_dir / "recovery"
     manager.data_file = manager.app_dir / "data.json"
+    manager.icon_repo_file = manager.app_dir / "icon_repo.json"
+    manager.system_icons_file = tmp_path / "assets" / "system_icons" / "config.json"
     manager._max_auto_backups = 5
     manager._max_history_snapshots = 20
     manager._save_delay = 0.01
@@ -387,6 +389,33 @@ def test_restore_config_history_round_trip(tmp_path):
     assert manager.data.get_folder_by_id("new") is None
 
 
+def test_restore_config_history_applies_config_repairs(tmp_path):
+    old = AppData(
+        folders=[
+            Folder(
+                id="old",
+                name="Old",
+                items=[
+                    ShortcutItem(
+                        type=ShortcutType.COMMAND,
+                        command_type="cmd",
+                        command="echo {clipboard:q}",
+                        command_variables_enabled=False,
+                    )
+                ],
+            )
+        ]
+    )
+    manager = _file_backed_manager(tmp_path)
+    snapshot = manager.history_manager.record_snapshot(old.to_dict(), action="test", summary="old config")
+    assert snapshot is not None
+
+    assert manager.restore_config_history(snapshot.id)
+
+    restored = manager.data.get_folder_by_id("old").items[0]
+    assert restored.command == "echo {{clipboard:q}}"
+
+
 def test_restore_full_config_sanitizes_settings_and_skips_bad_icons(tmp_path):
     data = AppData(folders=[Folder(id="f", name="Folder", items=[ShortcutItem(id="s", name="Shortcut")])]).to_dict()
     data["settings"]["icon_size"] = 9999
@@ -565,6 +594,203 @@ def test_backup_full_config_includes_icons(tmp_path):
         assert any(n.startswith("icons/") and n.endswith(".png") for n in names)
 
 
+def test_icon_repo_migrates_from_legacy_data_and_is_filtered_from_main_config(tmp_path):
+    legacy_icon = ShortcutItem(id="repo-item", name="RepoIcon", type=ShortcutType.URL, url="https://example.com")
+    data = AppData(
+        folders=[
+            Folder(id="default", name="Default"),
+            Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[legacy_icon]),
+        ]
+    )
+    manager = _file_backed_manager(tmp_path, data)
+
+    manager._icon_repo_folder = manager._load_icon_repo_folder()
+    manager._attach_icon_repo_folder()
+    assert manager.save(immediate=True)
+
+    icon_repo_payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
+    main_payload = json.loads(manager.data_file.read_text(encoding="utf-8"))
+
+    assert [item["id"] for item in icon_repo_payload["items"]] == ["repo-item"]
+    assert all(folder.get("id") != "icon_repo" for folder in main_payload["folders"])
+
+
+def test_icon_repo_combines_system_and_user_sources_in_group_order(tmp_path):
+    system_dir = tmp_path / "assets" / "system_icons"
+    (system_dir / "icons").mkdir(parents=True)
+    (system_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "items": [
+                    {
+                        "id": "sys-late",
+                        "name": "SysLate",
+                        "type": "url",
+                        "order": 2,
+                        "url": "https://example.com",
+                        "icon_path": "icons/late.png",
+                    },
+                    {
+                        "id": "sys-early",
+                        "name": "SysEarly",
+                        "type": "url",
+                        "order": 1,
+                        "url": "https://example.com",
+                        "icon_path": "icons/early.png",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    manager = _file_backed_manager(tmp_path, AppData(folders=[Folder(id="default", name="Default")]))
+    manager.icon_repo_file.write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "items": [
+                    {"id": "user-late", "name": "UserLate", "type": "url", "order": 2},
+                    {"id": "user-early", "name": "UserEarly", "type": "url", "order": 1},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    folder = manager._load_icon_repo_folder()
+
+    assert [item.id for item in folder.items] == ["sys-early", "sys-late", "user-early", "user-late"]
+    assert getattr(folder.items[0], "_icon_repo_source") == "system"
+    assert getattr(folder.items[-1], "_icon_repo_source") == "user"
+    assert folder.items[0].icon_path.endswith(os.path.join("assets", "system_icons", "icons", "early.png"))
+
+
+def test_icon_repo_filters_existing_system_icons_out_of_user_file(tmp_path):
+    system_dir = tmp_path / "assets" / "system_icons"
+    (system_dir / "icons").mkdir(parents=True)
+    (system_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "items": [{"id": "sys", "name": "System", "type": "url", "order": 1}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    manager = _file_backed_manager(tmp_path, AppData(folders=[Folder(id="default", name="Default")]))
+    manager.icon_repo_file.write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "items": [
+                    {"id": "sys", "name": "System", "type": "url", "order": 1},
+                    {"id": "user", "name": "User", "type": "url", "order": 2},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    folder = manager._load_icon_repo_folder()
+    payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
+
+    assert [item.id for item in folder.items] == ["sys", "user"]
+    assert [item["id"] for item in payload["items"]] == ["user"]
+
+
+def test_copy_to_and_from_icon_repo_preserves_source_and_assigns_new_ids(tmp_path):
+    normal_item = ShortcutItem(id="normal", name="Normal")
+    repo_item = ShortcutItem(id="repo", name="Repo")
+    normal = Folder(id="normal-folder", name="Normal", items=[normal_item])
+    repo = Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[repo_item])
+    manager = _file_backed_manager(tmp_path, AppData(folders=[normal, repo]))
+
+    result = manager.copy_shortcuts_batch(["repo"], "normal-folder")
+    assert result["success"] == 1
+    assert [item.id for item in repo.items] == ["repo"]
+    assert len(normal.items) == 2
+    assert normal.items[-1].id != "repo"
+
+    result = manager.copy_shortcuts_batch(["normal"], "icon_repo")
+    assert result["success"] == 1
+    assert [item.id for item in normal.items[:1]] == ["normal"]
+    assert len(repo.items) == 2
+    assert repo.items[-1].id != "normal"
+
+    icon_repo_payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
+    assert len(icon_repo_payload["items"]) == 2
+
+
+def test_system_icon_repo_items_are_read_only_and_not_saved(tmp_path):
+    system_item = ShortcutItem(id="system", name="System")
+    user_item = ShortcutItem(id="user", name="User")
+    setattr(system_item, "_icon_repo_source", "system")
+    setattr(user_item, "_icon_repo_source", "user")
+    target = Folder(id="target", name="Target")
+    repo = Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[system_item, user_item])
+    manager = _file_backed_manager(tmp_path, AppData(folders=[target, repo]))
+
+    assert not manager.update_shortcut("icon_repo", ShortcutItem(id="system", name="Changed"))
+    assert not manager.delete_shortcut("icon_repo", "system")
+    assert not manager.move_shortcut_to_folder("system", "target")
+    disabled = manager.set_shortcuts_enabled_batch(["system", "user"], False)
+    deleted = manager.delete_shortcuts_batch(["system", "user"])
+
+    assert disabled["affected_ids"] == ["user"]
+    assert deleted["affected_ids"] == ["user"]
+    assert [item.id for item in repo.items] == ["system"]
+    payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
+    assert payload["items"] == []
+
+
+def test_backup_full_config_includes_icon_repo_json(tmp_path):
+    repo_item = ShortcutItem(id="repo", name="Repo")
+    data = AppData(
+        folders=[
+            Folder(id="default", name="Default"),
+            Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[repo_item]),
+        ]
+    )
+    manager = _file_backed_manager(tmp_path, data)
+
+    backup_path = tmp_path / "backup.zip"
+    assert manager.backup_full_config(str(backup_path))
+
+    with zipfile.ZipFile(backup_path, "r") as zf:
+        names = zf.namelist()
+        data_payload = json.loads(zf.read("data.json").decode("utf-8"))
+        repo_payload = json.loads(zf.read("icon_repo.json").decode("utf-8"))
+    assert "icon_repo.json" in names
+    assert all(folder.get("id") != "icon_repo" for folder in data_payload["folders"])
+    assert [item["id"] for item in repo_payload["items"]] == ["repo"]
+
+
+def test_backup_full_config_excludes_system_icons_from_icon_repo_json(tmp_path):
+    system_item = ShortcutItem(id="system", name="System")
+    user_item = ShortcutItem(id="user", name="User")
+    setattr(system_item, "_icon_repo_source", "system")
+    setattr(user_item, "_icon_repo_source", "user")
+    data = AppData(
+        folders=[
+            Folder(id="default", name="Default"),
+            Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[system_item, user_item]),
+        ]
+    )
+    manager = _file_backed_manager(tmp_path, data)
+
+    backup_path = tmp_path / "backup.zip"
+    assert manager.backup_full_config(str(backup_path))
+
+    with zipfile.ZipFile(backup_path, "r") as zf:
+        repo_payload = json.loads(zf.read("icon_repo.json").decode("utf-8"))
+    assert [item["id"] for item in repo_payload["items"]] == ["user"]
+
+
 def test_backup_full_config_includes_background(tmp_path):
     """Backup includes custom background when bg_mode is image."""
     data = AppData()
@@ -598,6 +824,52 @@ def test_restore_full_config_recovers_background(tmp_path):
     assert manager.restore_full_config(str(backup))
     assert manager.data.settings.custom_bg_path
     assert os.path.exists(manager.data.settings.custom_bg_path)
+
+
+def test_restore_full_config_restores_standalone_icon_repo(tmp_path):
+    data = AppData(folders=[Folder(id="f", name="Folder")])
+    backup = tmp_path / "backup.zip"
+    with zipfile.ZipFile(backup, "w") as zf:
+        zf.writestr("data.json", json.dumps(data.to_dict(), ensure_ascii=False))
+        zf.writestr(
+            "icon_repo.json",
+            json.dumps(
+                {"version": "1.0", "items": [{"id": "repo", "name": "Repo", "type": "url"}]}, ensure_ascii=False
+            ),
+        )
+
+    manager = _file_backed_manager(tmp_path)
+
+    assert manager.restore_full_config(str(backup))
+    repo_folder = manager.data.get_folder_by_id("icon_repo")
+    assert repo_folder is not None
+    assert [item.id for item in repo_folder.items] == ["repo"]
+    repo_payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
+    assert [item["id"] for item in repo_payload["items"]] == ["repo"]
+    data_payload = json.loads(manager.data_file.read_text(encoding="utf-8"))
+    assert all(folder.get("id") != "icon_repo" for folder in data_payload["folders"])
+
+
+def test_restore_full_config_migrates_legacy_icon_repo_from_data_json(tmp_path):
+    legacy_repo = Folder(
+        id="icon_repo",
+        name="图标仓库",
+        is_system=True,
+        is_icon_repo=True,
+        items=[ShortcutItem(id="legacy", name="Legacy", type=ShortcutType.URL)],
+    )
+    data = AppData(folders=[Folder(id="f", name="Folder"), legacy_repo])
+    backup = tmp_path / "backup.zip"
+    with zipfile.ZipFile(backup, "w") as zf:
+        zf.writestr("data.json", json.dumps(data.to_dict(), ensure_ascii=False))
+
+    manager = _file_backed_manager(tmp_path)
+
+    assert manager.restore_full_config(str(backup))
+    repo_payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
+    data_payload = json.loads(manager.data_file.read_text(encoding="utf-8"))
+    assert [item["id"] for item in repo_payload["items"]] == ["legacy"]
+    assert all(folder.get("id") != "icon_repo" for folder in data_payload["folders"])
 
 
 def test_restore_full_config_cleans_background_when_icon_restore_fails(monkeypatch, tmp_path):
@@ -670,3 +942,73 @@ def test_load_corrupted_falls_back_to_default(tmp_path):
     assert len(result.folders) >= 1
     status = manager.get_config_status()
     assert status["status"] in ("warn", "error")
+
+
+def test_backup_full_config_includes_extra_config_files(tmp_path):
+    """Backup includes custom_themes.json and command_history.json when present."""
+    manager = _file_backed_manager(tmp_path)
+
+    themes_data = [{"name": "MyTheme", "colors": {"primary_color": "#ff0000"}}]
+    history_data = [{"command_id": "test", "success": True}]
+    (manager.app_dir / "custom_themes.json").write_text(
+        json.dumps(themes_data, ensure_ascii=False), encoding="utf-8"
+    )
+    (manager.app_dir / "command_history.json").write_text(
+        json.dumps(history_data, ensure_ascii=False), encoding="utf-8"
+    )
+
+    backup_path = tmp_path / "backup_with_extras.zip"
+    assert manager.backup_full_config(str(backup_path))
+
+    with zipfile.ZipFile(backup_path, "r") as zf:
+        names = zf.namelist()
+        assert "custom_themes.json" in names
+        assert "command_history.json" in names
+        restored_themes = json.loads(zf.read("custom_themes.json").decode("utf-8"))
+        assert restored_themes == themes_data
+        restored_history = json.loads(zf.read("command_history.json").decode("utf-8"))
+        assert restored_history == history_data
+
+
+def test_backup_full_config_skips_missing_extra_config_files(tmp_path):
+    """Backup succeeds when optional extra config files are absent."""
+    manager = _file_backed_manager(tmp_path)
+    # Ensure extra files do not exist
+    for name in ("custom_themes.json", "command_history.json"):
+        p = manager.app_dir / name
+        if p.exists():
+            p.unlink()
+
+    backup_path = tmp_path / "backup_no_extras.zip"
+    assert manager.backup_full_config(str(backup_path))
+
+    with zipfile.ZipFile(backup_path, "r") as zf:
+        names = zf.namelist()
+        assert "data.json" in names
+        assert "custom_themes.json" not in names
+        assert "command_history.json" not in names
+
+
+def test_restore_full_config_recovers_extra_config_files(tmp_path):
+    """Restore recovers custom_themes.json and command_history.json from backup."""
+    data = AppData(folders=[Folder(id="f", name="Folder")])
+    themes_data = [{"name": "Restored", "colors": {}}]
+    history_data = [{"command_id": "calc", "success": True}]
+
+    backup = tmp_path / "restore_extras.zip"
+    with zipfile.ZipFile(backup, "w") as zf:
+        zf.writestr("data.json", json.dumps(data.to_dict(), ensure_ascii=False))
+        zf.writestr("custom_themes.json", json.dumps(themes_data, ensure_ascii=False))
+        zf.writestr("command_history.json", json.dumps(history_data, ensure_ascii=False))
+
+    manager = _file_backed_manager(tmp_path)
+    assert manager.restore_full_config(str(backup))
+
+    themes_path = manager.app_dir / "custom_themes.json"
+    history_path = manager.app_dir / "command_history.json"
+    assert themes_path.exists()
+    assert history_path.exists()
+    restored_themes = json.loads(themes_path.read_text(encoding="utf-8"))
+    assert restored_themes == themes_data
+    restored_history = json.loads(history_path.read_text(encoding="utf-8"))
+    assert restored_history == history_data

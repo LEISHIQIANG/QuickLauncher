@@ -39,7 +39,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import StyleSheet
-from ui.utils.font_manager import get_font_css_with_size
+from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
 from ui.utils.window_effect import get_window_effect
 
 from .settings_about_page import SettingsAboutPageMixin
@@ -109,7 +109,8 @@ class CompactProgressDialog(QDialog):
 
         # 标题
         self.title_label = QLabel()
-        self.title_label.setStyleSheet("font-size: 13px; font-weight: 500;")
+        self.title_label.setFont(get_qfont(13, 400))
+        self.title_label.setStyleSheet("font-size: 13px; font-weight: 400;")
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.title_layout.addWidget(self.title_label, 1)
 
@@ -143,6 +144,8 @@ class CompactProgressDialog(QDialog):
         from ui.styles.style import get_dialog_stylesheet
 
         self.setStyleSheet(get_dialog_stylesheet(self.theme))
+        tune_font_rendering(self, recursive=True)
+        self.title_label.setFont(get_qfont(13, 400))
 
     def paintEvent(self, event):
         """背景绘制 - 完全按照ThemedMessageBox的逻辑"""
@@ -875,7 +878,7 @@ class BaseSettingPage(SmoothScrollArea):
                 top: -4px;
                 padding-left: 18px;
                 color: {title_color};
-                font-weight: 500;
+                font-weight: 400;
             }}
         """
 

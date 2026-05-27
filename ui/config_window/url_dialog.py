@@ -249,7 +249,7 @@ class UrlDialog(BaseDialog):
         basic_layout.addRow(tr("名称:"), self.name_edit)
 
         self.url_edit = QLineEdit()
-        self.url_edit.setPlaceholderText("例如: https://www.google.com/search?q={input}")
+        self.url_edit.setPlaceholderText("例如: https://www.google.com/search?q={{input}}")
         self.url_edit.textChanged.connect(self._update_icon_preview)
         self.url_edit.textChanged.connect(self._reset_latency_result)
         basic_layout.addRow(tr("网址:"), self.url_edit)
@@ -271,10 +271,12 @@ class UrlDialog(BaseDialog):
         var_layout.setSpacing(6)
         self._url_var_buttons = []
         for text, token in (
-            ("输入", "{input}"),
-            ("剪贴板", "{clipboard}"),
-            ("日期", "{date}"),
-            ("时间", "{time}"),
+            ("输入", "{{input}}"),
+            ("剪贴板", "{{clipboard}}"),
+            ("日期", "{{date}}"),
+            ("时间", "{{time}}"),
+            ("内网 IP", "{{LAN_IP}}"),
+            ("公网 IP", "{{WAN_IP}}"),
         ):
             var_btn = QPushButton(text)
             var_btn.setFixedHeight(26)
@@ -307,7 +309,7 @@ class UrlDialog(BaseDialog):
         browser_layout.addRow(tr("路径:"), browser_path_layout)
 
         self.browser_args_edit = QLineEdit()
-        self.browser_args_edit.setPlaceholderText("可选，例如 --profile-directory=Default {url}")
+        self.browser_args_edit.setPlaceholderText("可选，例如 --profile-directory=Default {{url}}")
         browser_layout.addRow(tr("参数:"), self.browser_args_edit)
         layout.addWidget(browser_group)
 

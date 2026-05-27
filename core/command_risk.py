@@ -60,10 +60,13 @@ def assess_command_risk(
     if effective_type == "cmd":
         risks.append(CommandRisk("info", "shell_command", "通过系统 Shell 执行命令"))
 
-    if "{clipboard" in command_text:
+    if effective_type == "powershell":
+        risks.append(CommandRisk("info", "powershell_command", "PowerShell command execution"))
+
+    if "{{clipboard" in command_text:
         risks.append(CommandRisk("info", "clipboard_variable", "使用剪贴板变量"))
 
-    if "{selected_text" in command_text:
+    if "{{selected_text" in command_text:
         risks.append(CommandRisk("info", "selected_text_variable", "使用选中文本变量"))
 
     if effective_type != "builtin":

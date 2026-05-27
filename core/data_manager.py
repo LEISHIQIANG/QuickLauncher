@@ -1,7 +1,8 @@
 """
-数据管理器
+Data manager
 """
 
+import copy
 import json
 import logging
 import os
@@ -22,6 +23,7 @@ from .config_recovery import (
     read_recovery_report,
     write_recovery_report,
 )
+from .config_repairs import apply_config_repairs
 from .config_validation import (
     latest_valid_backup,
     load_valid_data_file,
@@ -29,7 +31,12 @@ from .config_validation import (
     validate_app_data,
     validate_app_data_dict,
 )
-from .data_models import AppData, AppSettings, Folder, ShortcutItem
+from .data_models import (
+    AppData,
+    AppSettings,
+    Folder,
+    ShortcutItem,
+)
 from .i18n import normalize_language, set_language
 from .import_security import (
     MAX_BACKGROUND_BYTES,
@@ -54,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 
 class DataManager:
-    """数据管理器 - 单例模式"""
+    """Data manager."""
 
     _instance = None
     _instance_lock = threading.Lock()
@@ -82,6 +89,8 @@ class DataManager:
         self.install_dir = install_dir
         self.app_dir = install_dir / "config"
         self.data_file = self.app_dir / "data.json"
+        self.icon_repo_file = self.app_dir / "icon_repo.json"
+        self.system_icons_file = install_dir / "assets" / "system_icons" / "config.json"
         self.icons_dir = install_dir / "icons"
         self.auto_backup_dir = self.app_dir / "auto_backups"
         self.history_dir = self.app_dir / "history"
@@ -98,23 +107,21 @@ class DataManager:
             pass
         self._max_history_snapshots = 20
 
-        # 执行配置迁移
         from .config_migrator import ConfigMigrator
 
         if ConfigMigrator.needs_migration():
             ConfigMigrator.migrate()
 
-        # 保存节流控制
         self._save_timer = None
         self._save_pending = False
         self._save_lock = threading.RLock()
         self._write_lock = threading.Lock()
-        self._save_delay = 0.5  # 500ms 内的连续保存会被合并
+        self._save_delay = 0.5  # Merge rapid consecutive saves within 500 ms.
         self._batch_depth = 0
         self._batch_dirty = False
         self._batch_force_immediate = False
         self._runtime_revision = 0
-        self._pending_history_action = "配置变更"
+        self._pending_history_action = "\u914d\u7f6e\u53d8\u66f4"
         self._pending_history_summary = ""
         self._suppress_next_history = False
         self._last_saved_data_dict = None
@@ -124,33 +131,181 @@ class DataManager:
         self._ensure_dirs()
         self.history_manager = ConfigHistoryManager(self.history_dir, self._max_history_snapshots)
         self.data = self._load()
-        self._ensure_icon_repo_folder()
+        repair_report = self._apply_config_repairs_to_current()
+        self._icon_repo_folder = self._load_icon_repo_folder()
+        self._attach_icon_repo_folder()
         set_language(getattr(self.data.settings, "language", "zh_CN"))
-        self._last_saved_data_dict = self.data.to_dict()
+        self._last_saved_data_dict = self._main_data_dict()
+        if repair_report.changed and self.data_file.exists():
+            logger.info("Repaired config/data.json: %s", repair_report.to_dict())
+            self._suppress_next_history = True
+            self.save(immediate=True)
 
     def get_runtime_revision(self) -> int:
-        """返回内存数据的运行时修订号。"""
+        """Data manager."""
         return int(self._runtime_revision)
 
     def _ensure_dirs(self):
-        """确保目录存在"""
+        """Data manager."""
         self.app_dir.mkdir(parents=True, exist_ok=True)
         self.icons_dir.mkdir(parents=True, exist_ok=True)
         self.history_dir.mkdir(parents=True, exist_ok=True)
         self.recovery_dir.mkdir(parents=True, exist_ok=True)
 
-    def _ensure_icon_repo_folder(self):
-        """确保图标仓库文件夹存在（为已有配置迁移）"""
-        for folder in self.data.folders:
-            if folder.id == "icon_repo":
-                return
+    def _detach_icon_repo_folder(self) -> Folder | None:
+        """Remove and return the runtime icon repository folder from AppData."""
+        for folder in list(self.data.folders):
+            if getattr(folder, "is_icon_repo", False) or folder.id == "icon_repo":
+                self.data.folders.remove(folder)
+                folder.id = "icon_repo"
+                folder.name = "\u56fe\u6807\u4ed3\u5e93"
+                folder.is_system = True
+                folder.is_dock = False
+                folder.is_icon_repo = True
+                return folder
+        return None
+
+    def _attach_icon_repo_folder(self) -> None:
+        """Attach the icon repository as a runtime-only folder for existing UI code."""
+        self.data.folders = [
+            f for f in self.data.folders if not getattr(f, "is_icon_repo", False) and f.id != "icon_repo"
+        ]
         max_order = max((f.order for f in self.data.folders), default=0)
-        icon_repo = Folder(id="icon_repo", name="图标仓库", order=max_order + 1, is_system=True, is_icon_repo=True)
-        self.data.folders.append(icon_repo)
-        self.save()
+        self._icon_repo_folder.id = "icon_repo"
+        self._icon_repo_folder.name = "\u56fe\u6807\u4ed3\u5e93"
+        self._icon_repo_folder.order = max_order + 1
+        self._icon_repo_folder.is_system = True
+        self._icon_repo_folder.is_dock = False
+        self._icon_repo_folder.is_icon_repo = True
+        self.data.folders.append(self._icon_repo_folder)
+
+    def _load_icon_repo_folder(self) -> Folder:
+        """Load the combined runtime icon repository from system and user sources."""
+        legacy_folder = self._detach_icon_repo_folder()
+        system_items = self._load_system_icon_items()
+        user_folder = self._read_icon_repo_file() if self.icon_repo_file.exists() else None
+        user_items = list(getattr(user_folder, "items", []) or [])
+
+        if not user_items and legacy_folder is not None:
+            user_items = list(getattr(legacy_folder, "items", []) or [])
+
+        user_items = self._filter_user_icon_items(user_items, system_items)
+        self._write_icon_repo_items(user_items)
+
+        for item in system_items:
+            setattr(item, "_icon_repo_source", "system")
+        for item in user_items:
+            setattr(item, "_icon_repo_source", "user")
+
+        items = sorted(system_items, key=lambda item: int(getattr(item, "order", 0) or 0)) + sorted(
+            user_items, key=lambda item: int(getattr(item, "order", 0) or 0)
+        )
+        return Folder(id="icon_repo", name="\u56fe\u6807\u4ed3\u5e93", is_system=True, is_icon_repo=True, items=items)
+
+    def _read_icon_repo_file(self) -> Folder | None:
+        try:
+            raw = json.loads(self.icon_repo_file.read_text(encoding="utf-8"))
+            items = raw.get("items", []) if isinstance(raw, dict) else []
+            if not isinstance(items, list):
+                items = []
+            return Folder(
+                id="icon_repo",
+                name="\u56fe\u6807\u4ed3\u5e93",
+                is_system=True,
+                is_icon_repo=True,
+                items=[ShortcutItem.from_dict(item) for item in items if isinstance(item, dict)],
+            )
+        except Exception as exc:
+            logger.warning("load icon repository failed: %s", exc)
+            return None
+
+    def _load_system_icon_items(self) -> list[ShortcutItem]:
+        seed_file = Path(
+            getattr(self, "system_icons_file", self.install_dir / "assets" / "system_icons" / "config.json")
+        )
+        seed_dir = seed_file.parent
+        if not seed_file.exists():
+            return []
+        try:
+            raw = json.loads(seed_file.read_text(encoding="utf-8"))
+            items = raw.get("items", []) if isinstance(raw, dict) else []
+            result = []
+            for item_data in items:
+                if not isinstance(item_data, dict):
+                    continue
+                item_copy = dict(item_data)
+                icon_path = str(item_copy.get("icon_path", "") or "")
+                if icon_path and not os.path.isabs(icon_path):
+                    icon_path = icon_path.replace("/", os.sep).replace("\\", os.sep)
+                    item_copy["icon_path"] = str(seed_dir / icon_path)
+                result.append(ShortcutItem.from_dict(item_copy))
+            return result
+        except Exception as exc:
+            logger.warning("load system icons failed: %s", exc)
+            return []
+
+    def _filter_user_icon_items(
+        self, user_items: list[ShortcutItem], system_items: list[ShortcutItem]
+    ) -> list[ShortcutItem]:
+        system_ids = {item.id for item in system_items}
+        system_names = {item.name for item in system_items}
+        filtered = []
+        for item in user_items:
+            if item.id in system_ids and item.name in system_names:
+                continue
+            setattr(item, "_icon_repo_source", "user")
+            filtered.append(item)
+        return filtered
+
+    @staticmethod
+    def _is_system_icon_repo_item(item: ShortcutItem | None) -> bool:
+        return getattr(item, "_icon_repo_source", "") == "system"
+
+    @staticmethod
+    def _is_user_icon_repo_item(item: ShortcutItem | None) -> bool:
+        return getattr(item, "_icon_repo_source", "") == "user"
+
+    @staticmethod
+    def _strip_icon_repo_runtime_source(item: ShortcutItem) -> ShortcutItem:
+        try:
+            delattr(item, "_icon_repo_source")
+        except Exception:
+            pass
+        return item
+
+    def _write_icon_repo_items(self, items: list[ShortcutItem]) -> bool:
+        self.app_dir.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(
+            {"version": "1.0", "items": [item.to_dict() for item in items]},
+            ensure_ascii=False,
+            indent=2,
+        )
+        temp_file = self.icon_repo_file.with_name(f"{self.icon_repo_file.stem}.{uuid.uuid4().hex}.tmp")
+        try:
+            temp_file.write_text(payload, encoding="utf-8")
+            os.replace(temp_file, self.icon_repo_file)
+            return True
+        except Exception as exc:
+            logger.error("save icon repository failed: %s", exc)
+            try:
+                if temp_file.exists():
+                    temp_file.unlink()
+            except Exception:
+                pass
+            return False
+
+    def save_icon_repo(self) -> bool:
+        with self._save_lock:
+            self._runtime_revision += 1
+            folder = self.data.get_folder_by_id("icon_repo") or getattr(self, "_icon_repo_folder", None)
+            if folder is None:
+                return False
+            self._icon_repo_folder = folder
+            items = [item for item in list(folder.items) if not self._is_system_icon_repo_item(item)]
+        return self._write_icon_repo_items(items)
 
     def _load(self) -> AppData:
-        """加载数据"""
+        """Data manager."""
         if self.data_file.exists():
             try:
                 loaded, issues = load_valid_data_file(self.data_file)
@@ -160,7 +315,7 @@ class DataManager:
                     "issues": issues,
                 }
                 if issues:
-                    logger.warning("配置结构存在可恢复问题: %s", issues)
+                    logger.warning("data manager message: %s", issues)
                 self._write_recovery_report(
                     ConfigRecoveryReport(
                         status="ok",
@@ -171,7 +326,7 @@ class DataManager:
                 )
                 return loaded
             except Exception as e:
-                logger.warning("加载数据失败: %s", e)
+                logger.warning("data manager message: %s", e)
                 quarantined = quarantine_bad_config(self.data_file, self.recovery_dir)
                 recovered = self._recover_from_latest_backup(str(e), quarantined)
                 if recovered is not None:
@@ -197,6 +352,28 @@ class DataManager:
             )
         return AppData()
 
+    def _apply_config_repairs_to_current(self):
+        """Apply config repairs to the current in-memory data."""
+        try:
+            report = apply_config_repairs(self.data)
+            if report.issues:
+                self._config_status.setdefault("issues", [])
+                self._config_status["issues"].extend(
+                    f"config_repair:{issue.code}:{issue.path}" for issue in report.issues
+                )
+            return report
+        except Exception as exc:
+            logger.warning("config repair failed: %s", exc)
+
+            class _EmptyReport:
+                changed = False
+                issues = []
+
+                def to_dict(self):
+                    return {"changed": False, "repaired": 0, "problem_count": 0, "issues": []}
+
+            return _EmptyReport()
+
     def _recover_from_latest_backup(
         self, reason: str = "", quarantined_path: Path | str | None = None
     ) -> Optional[AppData]:
@@ -213,7 +390,7 @@ class DataManager:
             except Exception as copy_error:
                 status = "recovered_memory_only"
                 recovery_issues.append(f"persist_failed:{copy_error}")
-                logger.warning("恢复配置备份时复制失败: %s", copy_error)
+                logger.warning("data manager message: %s", copy_error)
             self._config_status = {
                 "status": "warn",
                 "source": str(backup_path),
@@ -229,18 +406,14 @@ class DataManager:
                     issues=recovery_issues,
                 )
             )
-            logger.warning("已从自动备份恢复配置: %s", backup_path)
+            logger.warning("data manager message: %s", backup_path)
             return loaded
         except Exception as exc:
-            logger.error("从自动备份恢复配置失败: %s", exc)
+            logger.error("data manager message: %s", exc)
             return None
 
     def save(self, immediate: bool = False) -> bool:
-        """保存数据（带节流）
-
-        Args:
-            immediate: 是否立即保存，忽略节流
-        """
+        """Data manager."""
         with self._save_lock:
             self._runtime_revision += 1
             if self._batch_depth > 0:
@@ -262,7 +435,7 @@ class DataManager:
         return True
 
     def _delayed_save(self):
-        """延迟保存执行"""
+        """Data manager."""
         should_save = False
         with self._save_lock:
             self._save_timer = None
@@ -275,7 +448,7 @@ class DataManager:
 
     @contextmanager
     def batch_update(self, immediate: bool = False):
-        """在一个批次中合并多次数据修改，避免重复落盘。"""
+        """Data manager."""
         with self._save_lock:
             self._batch_depth += 1
             if immediate:
@@ -310,20 +483,18 @@ class DataManager:
 
     def _do_save(self) -> bool:
         """Save data to disk atomically with lock splitting."""
-        # 1. 极速内存操作：在内存锁保护下快速序列化并处理历史快照
         with self._save_lock:
             try:
                 payload = self._serialize_data()
                 next_data_dict = json.loads(payload)
                 previous_data_dict = getattr(self, "_last_saved_data_dict", None)
                 suppress_history = bool(getattr(self, "_suppress_next_history", False))
-                history_action = getattr(self, "_pending_history_action", "配置变更")
+                history_action = getattr(self, "_pending_history_action", "\u914d\u7f6e\u53d8\u66f4")
                 history_summary = getattr(self, "_pending_history_summary", "")
             except Exception as e:
                 logger.error("serialize data failed: %s", e)
                 return False
 
-        # 2. 耗时 I/O 操作：在专用物理写入锁下进行，内存锁已释放，GUI 线程可并发读写内存
         write_success = False
         with self._write_lock:
             temp_file = self.data_file.with_name(f"{self.data_file.stem}.{uuid.uuid4().hex}.tmp")
@@ -344,7 +515,6 @@ class DataManager:
                     except Exception as cleanup_error:
                         logger.debug("cleanup temp file failed: %s", cleanup_error)
 
-        # 3. 释放 I/O 锁后，再重新获取内存锁更新状态，彻底避免双锁嵌套，防止任何死锁
         if write_success:
             with self._save_lock:
                 if suppress_history:
@@ -353,7 +523,7 @@ class DataManager:
                     history = getattr(self, "history_manager", None)
                     if history is not None:
                         history.record_snapshot(previous_data_dict, action=history_action, summary=history_summary)
-                    self._pending_history_action = "配置变更"
+                    self._pending_history_action = "\u914d\u7f6e\u53d8\u66f4"
                     self._pending_history_summary = ""
                 self._last_saved_data_dict = next_data_dict
                 self._config_status = {"status": "ok", "source": str(self.data_file), "issues": []}
@@ -361,20 +531,32 @@ class DataManager:
 
     def _serialize_data(self) -> str:
         """Serialize data and validate the JSON before writing it to disk."""
-        data_dict = self.data.to_dict()
+        data_dict = self._main_data_dict()
         issues = validate_app_data_dict(data_dict)
         fatal = {"root_not_object", "folders_not_list"}
         if any(issue in fatal for issue in issues):
             raise ValueError(f"fatal config schema issues: {issues}")
         if issues:
-            logger.warning("保存前配置结构校验告警: %s", issues)
+            logger.warning("data manager message: %s", issues)
         payload = json.dumps(data_dict, ensure_ascii=False, separators=(",", ":"))
         json.loads(payload)
         return payload
 
+    def _main_data_dict(self) -> dict:
+        """Return AppData without the runtime-only icon repository folder."""
+        data_dict = self.data.to_dict()
+        folders = data_dict.get("folders", [])
+        if isinstance(folders, list):
+            data_dict["folders"] = [
+                folder
+                for folder in folders
+                if not bool(folder.get("is_icon_repo", False)) and folder.get("id") != "icon_repo"
+            ]
+        return data_dict
+
     def _mark_history(self, action: str, summary: str = ""):
-        self._pending_history_action = action or "配置变更"
-        self._pending_history_summary = summary or action or "配置变更"
+        self._pending_history_action = action or "\u914d\u7f6e\u53d8\u66f4"
+        self._pending_history_summary = summary or ""
 
     def _write_recovery_report(self, report: ConfigRecoveryReport) -> None:
         write_recovery_report(self.recovery_dir, report)
@@ -436,13 +618,14 @@ class DataManager:
                 data_dict = history.load_snapshot_data(snapshot_id)
                 issues = validate_app_data_dict(data_dict)
                 if "root_not_object" in issues or "folders_not_list" in issues:
-                    logger.warning("拒绝恢复无效历史快照: %s", issues)
+                    logger.warning("data manager message: %s", issues)
                     return False
-                self._mark_history("恢复历史快照", f"恢复快照 {snapshot_id}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 old_data = self.data
                 old_saved = getattr(self, "_last_saved_data_dict", None)
                 old_config_status = dict(getattr(self, "_config_status", {}) or {})
                 self.data = AppData.from_dict(data_dict)
+                self._apply_config_repairs_to_current()
                 if not self.save(immediate=True):
                     self.data = old_data
                     self._last_saved_data_dict = old_saved
@@ -519,7 +702,7 @@ class DataManager:
             logger.debug("prune auto backups failed: %s", e)
 
     def flush_pending_save(self):
-        """强制执行待保存的操作（用于在 reload 前确保数据已保存）"""
+        """Data manager."""
         should_save = False
         with self._save_lock:
             if self._save_timer:
@@ -533,16 +716,21 @@ class DataManager:
             self._do_save()
 
     def reload(self):
-        """重新加载数据"""
+        """Data manager."""
         with self._save_lock:
-            # 先刷新待保存的数据，避免丢失
             self.flush_pending_save()
             self.data = self._load()
+            repair_report = self._apply_config_repairs_to_current()
+            self._icon_repo_folder = self._load_icon_repo_folder()
+            self._attach_icon_repo_folder()
+            if repair_report.changed and self.data_file.exists():
+                self._suppress_next_history = True
+                self.save(immediate=True)
             set_language(getattr(self.data.settings, "language", "zh_CN"))
             self._runtime_revision += 1
 
     def record_shortcut_used(self, shortcut_id: str) -> bool:
-        """记录快捷方式成功使用统计。"""
+        """Data manager."""
         if not shortcut_id:
             return False
 
@@ -557,9 +745,9 @@ class DataManager:
                             smart_sort_enabled = getattr(settings, "sort_mode", "custom") == "smart"
                             if smart_sort_enabled and not getattr(folder, "is_dock", False):
                                 self._apply_smart_order(folder)
-                                self.save(immediate=True)
+                                self._persist_folder_changes(folder, immediate=True)
                             else:
-                                self.save()
+                                self._persist_folder_changes(folder, immediate=False)
                             logger.debug(
                                 "recorded shortcut usage: id=%s count=%s",
                                 shortcut_id,
@@ -594,9 +782,9 @@ class DataManager:
         return updated
 
     def add_folder(self, name: str) -> Folder:
-        """添加文件夹"""
+        """Data manager."""
         with self._save_lock:
-            self._mark_history("添加分类", f"添加分类: {name}")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             max_order = max((f.order for f in self.data.folders), default=0)
             folder = Folder(name=name, order=max_order + 1)
             self.data.folders.append(folder)
@@ -604,33 +792,33 @@ class DataManager:
             return folder
 
     def rename_folder(self, folder_id: str, new_name: str) -> bool:
-        """重命名文件夹"""
+        """Data manager."""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder and folder.is_icon_repo:
                 return False
             if folder:
-                self._mark_history("重命名分类", f"{folder.name} -> {new_name}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 folder.name = new_name
                 self.save()
                 return True
             return False
 
     def delete_folder(self, folder_id: str) -> bool:
-        """删除文件夹"""
+        """Data manager."""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder and not folder.is_system:
-                self._mark_history("删除分类", f"删除分类: {folder.name}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 self.data.folders.remove(folder)
                 self.save()
                 return True
             return False
 
     def reorder_folders(self, folder_ids: List[str]):
-        """重排序文件夹"""
+        """Data manager."""
         with self._save_lock:
-            self._mark_history("分类排序", "调整分类顺序")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             order_map = {fid: i for i, fid in enumerate(folder_ids)}
             for folder in self.data.folders:
                 if folder.id in order_map:
@@ -639,31 +827,35 @@ class DataManager:
             self.save()
 
     def add_shortcut(self, folder_id: str, shortcut: ShortcutItem) -> bool:
-        """添加快捷方式"""
+        """Data manager."""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder:
-                self._mark_history("添加快捷方式", f"添加快捷方式: {shortcut.name}")
+                if getattr(folder, "is_icon_repo", False):
+                    setattr(shortcut, "_icon_repo_source", "user")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 max_order = max((s.order for s in folder.items), default=-1)
                 shortcut.order = max_order + 1
                 folder.items.append(shortcut)
-                self.save(immediate=True)  # 立即保存，避免数据丢失
+                self._persist_folder_changes(folder, immediate=True)
                 return True
             return False
 
     def add_shortcuts(self, folder_id: str, shortcuts: List[ShortcutItem]) -> int:
-        """批量添加快捷方式"""
+        """Data manager."""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder and shortcuts:
-                self._mark_history("批量添加快捷方式", f"添加 {len(shortcuts)} 个快捷方式到 {folder.name}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 max_order = max((s.order for s in folder.items), default=-1)
                 count = 0
                 for shortcut in shortcuts:
+                    if getattr(folder, "is_icon_repo", False):
+                        setattr(shortcut, "_icon_repo_source", "user")
                     shortcut.order = max_order + 1 + count
                     folder.items.append(shortcut)
                     count += 1
-                self.save(immediate=True)  # 批量操作后只进行一次保存
+                self._persist_folder_changes(folder, immediate=True)
                 return count
             return 0
 
@@ -675,14 +867,24 @@ class DataManager:
         return None, None
 
     def get_shortcut_by_id(self, shortcut_id: str):
-        """根据 ID 返回快捷方式，找不到返回 None。"""
+        """Data manager."""
         _, item = self._find_shortcut_with_folder(shortcut_id)
         return item
 
+    def _persist_folder_changes(self, *folders, immediate: bool = True) -> bool:
+        icon_changed = any(getattr(folder, "is_icon_repo", False) for folder in folders if folder is not None)
+        main_changed = any(not getattr(folder, "is_icon_repo", False) for folder in folders if folder is not None)
+        ok = True
+        if icon_changed:
+            ok = self.save_icon_repo() and ok
+        if main_changed:
+            ok = self.save(immediate=immediate) and ok
+        return ok
+
     def recalculate_smart_order(self, folder_id: str | None = None) -> dict:
-        """重新计算并保存智能排序快照，不修改用户自定义 order。"""
+        """Data manager."""
         with self._save_lock:
-            self._mark_history("智能排序更新", "重新计算智能排序")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             target_folders = []
             if folder_id:
                 folder = self.data.get_folder_by_id(folder_id)
@@ -701,12 +903,11 @@ class DataManager:
             return {"folders": len(target_folders), "updated": updated}
 
     def move_shortcut_to_folder(self, shortcut_id: str, target_folder_id: str) -> bool:
-        """移动快捷方式到指定文件夹"""
+        """Data manager."""
         with self._save_lock:
             source_folder = None
             target_shortcut = None
 
-            # 查找快捷方式所在的源文件夹
             for folder in self.data.folders:
                 for item in folder.items:
                     if item.id == shortcut_id:
@@ -718,30 +919,29 @@ class DataManager:
 
             if not source_folder or not target_shortcut:
                 return False
+            if self._is_system_icon_repo_item(target_shortcut):
+                return False
 
             target_folder = self.data.get_folder_by_id(target_folder_id)
             if not target_folder:
                 return False
 
-            # 如果目标文件夹和源文件夹相同，无需移动
             if source_folder.id == target_folder.id:
                 return False
 
-            self._mark_history("移动快捷方式", f"{target_shortcut.name}: {source_folder.name} -> {target_folder.name}")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
 
-            # 从源文件夹移除
             source_folder.items.remove(target_shortcut)
 
-            # 添加到目标文件夹末尾
             max_order = max((s.order for s in target_folder.items), default=-1)
             target_shortcut.order = max_order + 1
             target_folder.items.append(target_shortcut)
 
-            self.save(immediate=True)  # 立即保存
+            self._persist_folder_changes(source_folder, target_folder, immediate=True)
             return True
 
     def delete_shortcuts_batch(self, shortcut_ids: List[str]) -> dict:
-        """批量删除快捷方式。"""
+        """Data manager."""
         with self._save_lock:
             wanted = [sid for sid in shortcut_ids or [] if sid]
             wanted_set = set(wanted)
@@ -749,19 +949,26 @@ class DataManager:
             if not wanted_set:
                 return {"requested": 0, "success": 0, "failed": 0, "affected_ids": []}
 
-            self._mark_history("批量删除快捷方式", f"请求删除 {len(wanted_set)} 个快捷方式")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
+            icon_touched = False
             with self.batch_update(immediate=True):
                 for folder in self.data.folders:
                     kept = []
                     for item in folder.items:
                         if item.id in wanted_set:
+                            if self._is_system_icon_repo_item(item):
+                                kept.append(item)
+                                continue
                             removed_ids.append(item.id)
+                            icon_touched = icon_touched or getattr(folder, "is_icon_repo", False)
                         else:
                             kept.append(item)
                     if len(kept) != len(folder.items):
                         folder.items = kept
                 if removed_ids:
                     self._batch_dirty = True
+            if icon_touched:
+                self.save_icon_repo()
 
             return {
                 "requested": len(wanted),
@@ -771,27 +978,37 @@ class DataManager:
             }
 
     def move_shortcuts_batch(self, shortcut_ids: List[str], target_folder_id: str) -> dict:
-        """批量移动快捷方式到指定文件夹。"""
+        """Data manager."""
         with self._save_lock:
             target_folder = self.data.get_folder_by_id(target_folder_id)
             wanted = [sid for sid in shortcut_ids or [] if sid]
             if not target_folder or not wanted:
                 return {"requested": len(wanted), "success": 0, "failed": len(wanted), "affected_ids": []}
 
-            self._mark_history("批量移动快捷方式", f"移动 {len(wanted)} 个快捷方式到 {target_folder.name}")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             moved = []
+            icon_touched = getattr(target_folder, "is_icon_repo", False)
             with self.batch_update(immediate=True):
                 for shortcut_id in wanted:
                     source_folder, item = self._find_shortcut_with_folder(shortcut_id)
                     if not source_folder or not item or source_folder.id == target_folder.id:
                         continue
+                    if self._is_system_icon_repo_item(item):
+                        continue
+                    icon_touched = icon_touched or getattr(source_folder, "is_icon_repo", False)
                     source_folder.items.remove(item)
+                    if getattr(target_folder, "is_icon_repo", False):
+                        setattr(item, "_icon_repo_source", "user")
+                    elif getattr(source_folder, "is_icon_repo", False):
+                        self._strip_icon_repo_runtime_source(item)
                     max_order = max((s.order for s in target_folder.items), default=-1)
                     item.order = max_order + 1
                     target_folder.items.append(item)
                     moved.append(item.id)
                 if moved:
                     self._batch_dirty = True
+            if moved and icon_touched:
+                self.save_icon_repo()
 
             return {
                 "requested": len(wanted),
@@ -800,8 +1017,44 @@ class DataManager:
                 "affected_ids": moved,
             }
 
+    def copy_shortcuts_batch(self, shortcut_ids: List[str], target_folder_id: str) -> dict:
+        """Copy shortcuts to a folder, assigning fresh ids and preserving the sources."""
+        with self._save_lock:
+            target_folder = self.data.get_folder_by_id(target_folder_id)
+            wanted = [sid for sid in shortcut_ids or [] if sid]
+            if not target_folder or not wanted:
+                return {"requested": len(wanted), "success": 0, "failed": len(wanted), "affected_ids": []}
+
+            copied = []
+            max_order = max((s.order for s in target_folder.items), default=-1)
+            for shortcut_id in wanted:
+                source_folder, item = self._find_shortcut_with_folder(shortcut_id)
+                if not source_folder or not item:
+                    continue
+                new_item = copy.deepcopy(item)
+                new_item.id = str(uuid.uuid4())
+                if getattr(target_folder, "is_icon_repo", False):
+                    setattr(new_item, "_icon_repo_source", "user")
+                else:
+                    self._strip_icon_repo_runtime_source(new_item)
+                max_order += 1
+                new_item.order = max_order
+                target_folder.items.append(new_item)
+                copied.append(new_item.id)
+
+            if copied:
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
+                self._persist_folder_changes(target_folder, immediate=True)
+
+            return {
+                "requested": len(wanted),
+                "success": len(copied),
+                "failed": max(0, len(wanted) - len(copied)),
+                "affected_ids": copied,
+            }
+
     def set_shortcuts_enabled_batch(self, shortcut_ids: List[str], enabled: bool) -> dict:
-        """批量启用或禁用快捷方式。"""
+        """set_shortcuts_enabled_batch"""
         with self._save_lock:
             wanted = [sid for sid in shortcut_ids or [] if sid]
             wanted_set = set(wanted)
@@ -809,15 +1062,21 @@ class DataManager:
             if not wanted_set:
                 return {"requested": 0, "success": 0, "failed": 0, "affected_ids": []}
 
-            self._mark_history("批量启用状态", f"{'启用' if enabled else '禁用'} {len(wanted_set)} 个快捷方式")
+            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
+            icon_touched = False
             with self.batch_update(immediate=True):
                 for folder in self.data.folders:
                     for item in folder.items:
                         if item.id in wanted_set:
+                            if self._is_system_icon_repo_item(item):
+                                continue
                             item.enabled = bool(enabled)
                             changed.append(item.id)
+                            icon_touched = icon_touched or getattr(folder, "is_icon_repo", False)
                 if changed:
                     self._batch_dirty = True
+            if icon_touched:
+                self.save_icon_repo()
 
             return {
                 "requested": len(wanted),
@@ -827,46 +1086,64 @@ class DataManager:
             }
 
     def update_shortcut(self, folder_id: str, shortcut: ShortcutItem) -> bool:
-        """更新快捷方式"""
+        """update_shortcut"""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder:
                 for i, item in enumerate(folder.items):
                     if item.id == shortcut.id:
-                        self._mark_history("更新快捷方式", f"更新快捷方式: {shortcut.name}")
+                        if self._is_system_icon_repo_item(item):
+                            return False
+                        if getattr(folder, "is_icon_repo", False):
+                            setattr(shortcut, "_icon_repo_source", "user")
+                        self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                         folder.items[i] = shortcut
-                        self.save(immediate=True)  # 立即保存
+                        self._persist_folder_changes(folder, immediate=True)
                         return True
             return False
 
     def delete_shortcut(self, folder_id: str, shortcut_id: str) -> bool:
-        """删除快捷方式"""
+        """delete_shortcut"""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder:
                 for i, item in enumerate(folder.items):
                     if item.id == shortcut_id:
-                        self._mark_history("删除快捷方式", f"删除快捷方式: {item.name}")
+                        if self._is_system_icon_repo_item(item):
+                            return False
+                        self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                         folder.items.pop(i)
-                        self.save(immediate=True)  # 立即保存
+                        self._persist_folder_changes(folder, immediate=True)
                         return True
             return False
 
     def reorder_shortcuts(self, folder_id: str, shortcut_ids: List[str]):
-        """重排序快捷方式"""
+        """reorder_shortcuts"""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
             if folder:
-                self._mark_history("快捷方式排序", f"调整分类 {folder.name} 的快捷方式顺序")
-                order_map = {sid: i for i, sid in enumerate(shortcut_ids)}
-                for item in folder.items:
-                    if item.id in order_map:
-                        item.order = order_map[item.id]
-                folder.items.sort(key=lambda x: x.order)
-                self.save()
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
+                if getattr(folder, "is_icon_repo", False):
+                    user_items = [item for item in folder.items if not self._is_system_icon_repo_item(item)]
+                    user_ids = [sid for sid in shortcut_ids if any(item.id == sid for item in user_items)]
+                    order_map = {sid: i for i, sid in enumerate(user_ids)}
+                    for item in user_items:
+                        if item.id in order_map:
+                            item.order = order_map[item.id]
+                    system_items = [item for item in folder.items if self._is_system_icon_repo_item(item)]
+                    folder.items = sorted(system_items, key=lambda x: x.order) + sorted(
+                        user_items, key=lambda x: x.order
+                    )
+                else:
+                    order_map = {sid: i for i, sid in enumerate(shortcut_ids)}
+                    for item in folder.items:
+                        if item.id in order_map:
+                            item.order = order_map[item.id]
+                    folder.items.sort(key=lambda x: x.order)
+                self._persist_folder_changes(folder, immediate=False)
 
     def update_settings(self, **kwargs):
-        """更新设置"""
+        """update_settings"""
         with self._save_lock:
             changed = False
             for key, value in kwargs.items():
@@ -874,8 +1151,6 @@ class DataManager:
                     current_value = getattr(self.data.settings, key)
 
                     if current_value is value:
-                        # 调用方可能直接原地修改了 list/dict 等可变对象，
-                        # 这时仍需落盘，否则配置改动不会持久化。
                         if isinstance(value, (list, dict, set)):
                             changed = True
                         continue
@@ -887,11 +1162,11 @@ class DataManager:
                     changed = True
 
             if changed:
-                self._mark_history("设置变更", "更新应用设置")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 self.save()
 
     def get_settings(self) -> AppSettings:
-        """获取设置"""
+        """get_settings"""
         set_language(getattr(self.data.settings, "language", "zh_CN"))
         return self.data.settings
 
@@ -901,26 +1176,13 @@ class DataManager:
         with self._save_lock:
             if getattr(self.data.settings, "language", "zh_CN") != normalized:
                 self.data.settings.language = normalized
-                self._mark_history("设置变更", f"语言切换: {normalized}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 self.save(immediate=immediate)
         set_language(normalized)
         return normalized
 
     def clean_icon_cache(self, dry_run: bool = False) -> dict:
-        """清理图标缓存
-
-        清理规则：
-        1. 删除可执行文件/动态库（.exe, .dll 等）
-        2. 删除过大的文件（>10MB）
-        3. 删除不再被任何快捷方式引用的孤儿图标文件
-        4. 删除重复的图标文件（基于内容哈希）
-
-        Args:
-            dry_run: 如果为 True，只统计不实际删除
-
-        Returns:
-            dict: 清理统计信息
-        """
+        """clean_icon_cache"""
         import hashlib
         import logging
 
@@ -943,18 +1205,14 @@ class DataManager:
         if not self.icons_dir.exists():
             return stats
 
-        # 收集所有正在使用的图标路径
         used_icons = set()
         for folder in self.data.folders:
             for item in folder.items:
                 if item.icon_path:
-                    # 标准化路径
                     used_icons.add(os.path.normcase(os.path.abspath(item.icon_path)))
 
-        # 用于检测重复的哈希表
         seen_hashes = {}  # hash -> file_path
 
-        # 无效扩展名
         invalid_exts = {".exe", ".dll", ".sys", ".com", ".bat", ".cmd", ".msi", ".scr"}
         max_size = 10 * 1024 * 1024  # 10MB
 
@@ -972,22 +1230,18 @@ class DataManager:
             except Exception:
                 continue
 
-            # 关键：检查文件是否正在被使用
             is_in_use = file_path_normalized in used_icons
 
             should_delete = False
             reason = ""
 
-            # 规则1: 删除可执行文件（但保留正在使用的）
             if ext in invalid_exts:
                 if not is_in_use:
                     should_delete = True
                     reason = "executable"
                     stats["exe_files_removed"] += 1
                     stats["exe_files_size_mb"] += file_size_mb
-                # 如果是正在使用的 exe，跳过删除，但记录到 seen_hashes 以便后续去重
 
-            # 规则2: 删除过大的文件（但保留正在使用的）
             elif file_size > max_size:
                 if not is_in_use:
                     should_delete = True
@@ -995,32 +1249,24 @@ class DataManager:
                     stats["large_files_removed"] += 1
                     stats["large_files_size_mb"] += file_size_mb
 
-            # 规则3: 删除孤儿文件（不在使用列表中的）
             elif not is_in_use:
                 should_delete = True
                 reason = "orphan"
                 stats["orphan_files_removed"] += 1
                 stats["orphan_files_size_mb"] += file_size_mb
 
-            # 规则4: 处理重复文件
-            # 注意：只有不删除的文件才需要检查重复（正在使用的文件不会被删除，需要记录哈希）
             if not should_delete:
                 try:
                     with open(file_path, "rb") as f:
-                        # 只读取文件的前 64KB 用于快速哈希
                         content = f.read(65536)
                         file_hash = hashlib.md5(content).hexdigest()
 
                     if file_hash in seen_hashes:
-                        # 发现重复内容
-                        # 如果当前文件正在使用，则不删除当前文件，而是标记之前的可以被删除（但已经处理过了，所以这里只跳过）
-                        # 如果当前文件不在使用，可以安全删除
                         if not is_in_use:
                             should_delete = True
                             reason = "duplicate"
                             stats["duplicate_files_removed"] += 1
                             stats["duplicate_files_size_mb"] += file_size_mb
-                        # 如果正在使用，更新 seen_hashes 指向正在使用的文件（优先保留使用中的）
                         else:
                             seen_hashes[file_hash] = file_path_str
                     else:
@@ -1035,14 +1281,12 @@ class DataManager:
                 if not dry_run:
                     try:
                         os.remove(file_path)
-                        logger.info(f"已清理图标: {file_path.name} ({reason}, {file_size_mb:.2f} MB)")
+                        logger.info("removed icon cache file: %s (%s, %.2f MB)", file_path.name, reason, file_size_mb)
                     except Exception as e:
-                        logger.warning(f"无法删除文件 {file_path}: {e}")
-                        # 回滚统计
+                        logger.warning("failed to remove icon cache file %s: %s", file_path, e)
                         stats["total_removed"] -= 1
                         stats["total_size_freed_mb"] -= file_size_mb
 
-        # 四舍五入统计值
         for key in stats:
             if isinstance(stats[key], float):
                 stats[key] = round(stats[key], 2)
@@ -1050,11 +1294,7 @@ class DataManager:
         return stats
 
     def get_icon_cache_stats(self) -> dict:
-        """获取图标缓存统计信息
-
-        Returns:
-            dict: 缓存统计信息
-        """
+        """get_icon_cache_stats"""
         stats = {"total_files": 0, "total_size_mb": 0, "by_extension": {}, "invalid_files": 0, "invalid_size_mb": 0}
 
         if not self.icons_dir.exists():
@@ -1086,7 +1326,6 @@ class DataManager:
                 stats["invalid_files"] += 1
                 stats["invalid_size_mb"] += file_size_mb
 
-        # 四舍五入
         stats["total_size_mb"] = round(stats["total_size_mb"], 2)
         stats["invalid_size_mb"] = round(stats["invalid_size_mb"], 2)
         for ext_stats in stats["by_extension"].values():
@@ -1095,11 +1334,7 @@ class DataManager:
         return stats
 
     def get_all_cache_paths(self) -> dict:
-        """获取所有缓存路径和注册表键
-
-        Returns:
-            dict: 包含所有需要清理的路径和信息
-        """
+        """get_all_cache_paths"""
         import winreg
 
         cache_info = {
@@ -1110,17 +1345,14 @@ class DataManager:
             "registry_keys": [],
         }
 
-        # 应用数据文件
         if self.app_dir.exists():
             cache_info["directories"].append(str(self.app_dir))
             for item in self.app_dir.iterdir():
                 cache_info["files"].append(str(item))
 
-        # 图标缓存
         if self.icons_dir.exists():
             cache_info["directories"].append(str(self.icons_dir))
 
-        # 开机自启注册表键
         registry_keys = [
             r"Software\Microsoft\Windows\CurrentVersion\Run",
         ]
@@ -1135,14 +1367,7 @@ class DataManager:
         return cache_info
 
     def factory_reset(self, callback=None) -> dict:
-        """恢复出厂设置 - 清除所有缓存和配置
-
-        Args:
-            callback: 可选的进度回调函数 (message: str, progress: float)
-
-        Returns:
-            dict: 清理统计信息
-        """
+        """factory_reset"""
         import logging
         import winreg
 
@@ -1165,7 +1390,7 @@ class DataManager:
                             safe_rmtree_child(root_path, target)
                             stats["dirs_removed"] += 1
                     except Exception as e:
-                        stats["errors"].append(f"删除 {label} 子项 {item} 失败: {e}")
+                        stats["errors"].append(f"Failed to remove {label} item {item}: {e}")
 
             def report(msg, progress):
                 if callback:
@@ -1175,8 +1400,7 @@ class DataManager:
                         pass
                 logger.info(msg)
 
-            # 1. 删除开机自启注册表项
-            report("正在清理注册表...", 0.1)
+            report("Resetting startup registry entry...", 0.1)
             try:
                 reg_key = winreg.OpenKey(
                     winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_ALL_ACCESS
@@ -1188,66 +1412,70 @@ class DataManager:
                     pass
                 winreg.CloseKey(reg_key)
             except Exception as e:
-                stats["errors"].append(f"清理自启注册表失败: {e}")
+                stats["errors"].append(f"Factory reset step failed: {e}")
 
-            # 2. 删除图标缓存目录
-            report("正在清理图标缓存...", 0.3)
+            report("Removing icon cache...", 0.3)
             try:
                 remove_children_safely(self.icons_dir, "icons")
             except Exception as e:
-                stats["errors"].append(f"遍历图标目录失败: {e}")
+                stats["errors"].append(f"Factory reset step failed: {e}")
 
-            # 3. 删除应用数据目录下的所有文件
-            report("正在清理应用数据...", 0.6)
+            report("Removing app data...", 0.6)
             try:
                 remove_children_safely(self.app_dir, "app data")
             except Exception as e:
-                stats["errors"].append(f"遍历应用目录失败: {e}")
+                stats["errors"].append(f"Factory reset step failed: {e}")
 
-            # 4. 重置内存中的数据
-            report("正在重置配置...", 0.9)
+            report("Resetting in-memory configuration...", 0.9)
             try:
                 from .data_models import AppData
 
-                self._mark_history("恢复出厂设置", "清除所有配置和缓存")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 self.data = AppData()
             except Exception as e:
-                stats["errors"].append(f"重置数据失败: {e}")
+                stats["errors"].append(f"Factory reset step failed: {e}")
 
             return stats
 
     def backup_full_config(self, save_path: str) -> bool:
-        """备份本机所有配置（包括图标、背景图、设置等）
-
-        Args:
-            save_path: 备份文件保存路径 (.zip)
-
-        Returns:
-            bool: 是否成功
-        """
+        """backup_full_config"""
         try:
-            # 确保当前数据已保存
             if not self.save(immediate=True):
                 return False
 
             with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                # 1. 准备数据字典
-                data_dict = self.data.to_dict()
+                data_dict = self._main_data_dict()
 
-                # 2. 处理背景图片
                 bg_path = getattr(self.data.settings, "custom_bg_path", "")
                 if bg_path and os.path.exists(bg_path):
                     ext = os.path.splitext(bg_path)[1]
                     arc_bg_name = f"background{ext}"
-                    # 添加到 zip
                     zf.write(bg_path, arc_bg_name)
-                    # 修改配置中的路径为相对路径
                     data_dict["settings"]["custom_bg_path"] = arc_bg_name
 
-                # 3. 写入 data.json
                 zf.writestr("data.json", json.dumps(data_dict, ensure_ascii=False, indent=2))
+                icon_repo_folder = self.data.get_folder_by_id("icon_repo")
+                icon_repo_items = [
+                    item for item in getattr(icon_repo_folder, "items", []) if not self._is_system_icon_repo_item(item)
+                ]
+                icon_repo_dict = {
+                    "version": "1.0",
+                    "items": [item.to_dict() for item in icon_repo_items],
+                }
+                zf.writestr("icon_repo.json", json.dumps(icon_repo_dict, ensure_ascii=False, indent=2))
 
-                # 4. 备份图标文件夹
+                # 备份额外用户配置文件
+                extra_config_files = {
+                    "custom_themes.json": self.app_dir / "custom_themes.json",
+                    "command_history.json": self.app_dir / "command_history.json",
+                }
+                for arc_name, file_path in extra_config_files.items():
+                    if file_path.exists():
+                        try:
+                            zf.write(file_path, arc_name)
+                        except Exception as extra_err:
+                            logger.debug("backup extra config %s failed: %s", arc_name, extra_err)
+
                 if self.icons_dir.exists():
                     for file_path in self.icons_dir.iterdir():
                         if file_path.is_file():
@@ -1259,14 +1487,7 @@ class DataManager:
             return False
 
     def restore_full_config(self, backup_path: str) -> bool:
-        """从全量备份恢复配置
-
-        Args:
-            backup_path: 备份文件路径 (.zip)
-
-        Returns:
-            bool: 是否成功
-        """
+        """Data manager."""
         return self._restore_full_config_safe(backup_path)
 
     def _restore_full_config_safe(self, backup_path: str) -> bool:
@@ -1277,7 +1498,7 @@ class DataManager:
                 if not os.path.exists(backup_path):
                     return False
 
-                self._mark_history("恢复全量备份", f"恢复备份: {backup_path}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 with zipfile.ZipFile(backup_path, "r") as zf:
                     safe_index = build_safe_zip_index(zf, report)
                     if not has_zip_entry(safe_index, "data.json"):
@@ -1295,6 +1516,23 @@ class DataManager:
                     if data_json is None:
                         return False
                     data_dict = sanitize_app_data_dict(json.loads(data_json), report)
+                    restored_icon_repo_items = None
+                    if has_zip_entry(safe_index, "icon_repo.json"):
+                        icon_repo_json = read_zip_text(
+                            zf,
+                            safe_index,
+                            "icon_repo.json",
+                            max_bytes=MAX_CONFIG_BYTES,
+                            report=report,
+                            required=False,
+                        )
+                        if icon_repo_json is not None:
+                            icon_repo_dict = json.loads(icon_repo_json)
+                            icon_items = icon_repo_dict.get("items", []) if isinstance(icon_repo_dict, dict) else []
+                            if isinstance(icon_items, list):
+                                restored_icon_repo_items = [
+                                    ShortcutItem.from_dict(item) for item in icon_items if isinstance(item, dict)
+                                ]
 
                     install_root = Path(self.install_dir).resolve(strict=False)
                     app_root = Path(self.app_dir).resolve(strict=False)
@@ -1355,6 +1593,15 @@ class DataManager:
                                     f.write(icon_bytes)
 
                     restored_data = AppData.from_dict(data_dict)
+                    legacy_icon_repo = None
+                    for folder in list(restored_data.folders):
+                        if getattr(folder, "is_icon_repo", False) or folder.id == "icon_repo":
+                            restored_data.folders.remove(folder)
+                            legacy_icon_repo = folder
+                            break
+                    if restored_icon_repo_items is None:
+                        restored_icon_repo_items = list(getattr(legacy_icon_repo, "items", []) or [])
+                    apply_config_repairs(restored_data)
 
                     old_data = self.data
                     old_saved = getattr(self, "_last_saved_data_dict", None)
@@ -1376,9 +1623,29 @@ class DataManager:
                             shutil.move(str(resolve_under(temp_icons_dir, item)), str(target_icon))
 
                         self.data = restored_data
+                        self._write_icon_repo_items(restored_icon_repo_items or [])
+                        self._icon_repo_folder = self._load_icon_repo_folder()
+                        self._attach_icon_repo_folder()
                         if not self.save(immediate=True):
                             raise RuntimeError("save restored config failed")
                         set_imported_items(report, sum(len(f.items) for f in self.data.folders))
+
+                        # 恢复额外用户配置文件
+                        extra_restore_map = {
+                            "custom_themes.json": self.app_dir / "custom_themes.json",
+                            "command_history.json": self.app_dir / "command_history.json",
+                        }
+                        for arc_name, target_path in extra_restore_map.items():
+                            if has_zip_entry(safe_index, arc_name):
+                                try:
+                                    extra_text = read_zip_text(
+                                        zf, safe_index, arc_name,
+                                        max_bytes=MAX_CONFIG_BYTES, report=report,
+                                    )
+                                    if extra_text is not None:
+                                        target_path.write_text(extra_text, encoding="utf-8")
+                                except Exception as extra_err:
+                                    logger.debug("restore extra config %s failed: %s", arc_name, extra_err)
                     except Exception:
                         self.data = old_data
                         self._last_saved_data_dict = old_saved
@@ -1423,36 +1690,22 @@ class DataManager:
                 return False
 
     def export_shareable_config(self, save_path: str) -> bool:
-        """导出可分享的配置（仅包含快捷键、网址、命令类型及其图标）
-
-        Args:
-            save_path: 保存路径 (.zip)
-
-        Returns:
-            bool: 是否成功
-        """
+        """Data manager."""
         try:
-            # 确保当前数据已保存
             self.save(immediate=True)
 
-            # 获取完整配置
             data_dict = self.data.to_dict()
 
-            # 创建可分享的配置副本
             shareable_dict = {"version": data_dict.get("version", "1.0"), "items": []}
 
-            # 收集需要导出的图标文件
             icon_entries = []  # [(source_path, mode, archive_name)]
 
-            # 遍历所有文件夹，只导出快捷键、命令、网址类型
             folders = data_dict.get("folders", [])
             for folder in folders:
                 items = folder.get("items", folder.get("shortcuts", []))
                 for shortcut in items:
                     shortcut_type = shortcut.get("type", "file")
-                    # 只导出这三种类型，排除 file（快捷方式）类型
                     if shortcut_type in ["hotkey", "command", "url"]:
-                        # 完整复制所有字段
                         original_id = shortcut.get("id") or str(uuid.uuid4())
                         item_copy = {
                             "id": original_id,
@@ -1485,21 +1738,16 @@ class DataManager:
                             "icon_invert_theme_when_set": shortcut.get("icon_invert_theme_when_set", ""),
                         }
 
-                        # 处理图标
                         icon_path = shortcut.get("icon_path", "")
                         if icon_path:
-                            # 处理带图标索引的路径（如 "path.exe,0"）
                             actual_path = icon_path.split(",")[0] if "," in icon_path else icon_path
 
                             if os.path.exists(actual_path):
-                                # 如果是 exe/dll 文件，需要提取图标，使用 ICO 格式
                                 ext = os.path.splitext(actual_path)[1].lower()
                                 if ext in [".exe", ".dll"]:
                                     new_icon_name = f"{original_id}.png"
-                                    # 标记需要提取图标，保留完整路径（包含索引）
                                     icon_entries.append((icon_path, "extract", new_icon_name))
                                 else:
-                                    # 直接复制图标文件，保持原扩展名
                                     original_ext = os.path.splitext(actual_path)[1] or ".png"
                                     new_icon_name = f"{original_id}{original_ext}"
                                     icon_entries.append((actual_path, "copy", new_icon_name))
@@ -1512,30 +1760,31 @@ class DataManager:
 
                         shareable_dict["items"].append(item_copy)
 
-            # 创建 ZIP 压缩包
             with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                # 写入配置文件
                 zf.writestr("config.json", json.dumps(shareable_dict, ensure_ascii=False, indent=2))
 
-                # 写入图标文件
                 for orig_path, mode, new_name in icon_entries:
                     try:
                         if mode == "extract":
-                            # 从 exe/dll 提取图标
                             from core.icon_extractor import IconExtractor
 
-                            # 使用 from_file 方法，它支持带索引的路径
                             pixmap = IconExtractor.from_file(orig_path, size=256, return_image=False)
                             if pixmap and not pixmap.isNull():
-                                # 保存为临时文件
-                                temp_path = os.path.join(tempfile.gettempdir(), new_name)
-                                # 使用 PNG 格式保存更可靠
-                                success = pixmap.save(temp_path, "PNG")
-                                if success:
-                                    zf.write(temp_path, f"icons/{new_name}")
-                                    os.remove(temp_path)
+                                ext = os.path.splitext(new_name)[1].lower() or ".png"
+                                with tempfile.NamedTemporaryFile(
+                                    suffix=ext, prefix="ql_icon_", delete=False
+                                ) as tmp:
+                                    tmp_path = tmp.name
+                                try:
+                                    success = pixmap.save(tmp_path, "PNG")
+                                    if success:
+                                        zf.write(tmp_path, f"icons/{new_name}")
+                                finally:
+                                    try:
+                                        os.remove(tmp_path)
+                                    except OSError:
+                                        pass
                         else:
-                            # 直接复制图标文件
                             zf.write(orig_path, f"icons/{new_name}")
                     except Exception as e:
                         logger.warning("failed to add icon %s: %s", orig_path, e)
@@ -1547,23 +1796,13 @@ class DataManager:
             return False
 
     def import_shareable_config(self, import_path: str, merge: bool = True) -> bool:
-        """导入分享配置（仅导入快捷键、网址、命令类型及其图标）
-
-        Args:
-            import_path: 导入路径 (.zip)
-            merge: 是否合并（保留参数兼容性）
-
-        Returns:
-            bool: 是否成功
-        """
+        """Data manager."""
         return self._import_shareable_config_safe(import_path, merge=merge)
 
     def _import_shareable_config_transactional(self, import_path: str, merge: bool, report: dict) -> bool:
         temp_icons_dir = None
         moved_icons: list[Path] = []
         original_data_dict: dict | None = None
-        original_history_action = getattr(self, "_pending_history_action", "配置变更")
-        original_history_summary = getattr(self, "_pending_history_summary", "")
         install_root = Path(self.install_dir).resolve(strict=False)
         try:
             if not os.path.exists(import_path):
@@ -1572,7 +1811,7 @@ class DataManager:
                 return False
 
             with self._save_lock:
-                self._mark_history("导入分享配置", f"导入配置: {import_path}")
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 original_data_dict = self.data.to_dict()
                 icons_root = Path(self.icons_dir).resolve(strict=False)
                 temp_icons_dir = resolve_under(
@@ -1641,12 +1880,12 @@ class DataManager:
                         return False
 
                     import_folder_name = "\u5bfc\u5165\u56fe\u6807"
-                    legacy_import_folder_names = {import_folder_name, "导入图标"}
+                    legacy_import_folder_names = {import_folder_name, "Imported Icons"}
                     target_folder = None
                     for folder in self.data.folders:
                         if folder.name in legacy_import_folder_names:
                             target_folder = folder
-                            target_folder.name = import_folder_name
+                            folder.name = import_folder_name
                             break
 
                     if not target_folder:
@@ -1671,6 +1910,7 @@ class DataManager:
                         shortcut.order = max_order
                         target_folder.items.append(shortcut)
 
+                self._apply_config_repairs_to_current()
                 if not self.save(immediate=True):
                     raise RuntimeError("failed to save imported shareable config")
                 set_imported_items(report, imported_count)
@@ -1679,8 +1919,8 @@ class DataManager:
         except Exception as e:
             if original_data_dict is not None:
                 self.data = AppData.from_dict(original_data_dict)
-                self._pending_history_action = original_history_action
-                self._pending_history_summary = original_history_summary
+                self._pending_history_action = "\u914d\u7f6e\u53d8\u66f4"
+                self._pending_history_summary = ""
             for icon_path in moved_icons:
                 try:
                     if icon_path.exists():
@@ -1704,14 +1944,7 @@ class DataManager:
         return self._import_shareable_config_transactional(import_path, merge, report)
 
     def redirect_missing_icon_paths(self, new_icon_path: str) -> int:
-        """当用户修改某个图标路径后，自动将同目录下能匹配的缺失图标批量重定向。
-
-        匹配规则：其他快捷方式的 icon_path 文件不存在，但文件名在 new_icon_path 所在目录中存在。
-        保留原有的 icon_invert_with_theme / icon_invert_current 等属性不变。
-
-        Returns:
-            int: 重定向的数量
-        """
+        """Data manager."""
         if not new_icon_path:
             return 0
 
@@ -1745,7 +1978,6 @@ class DataManager:
                     item_icon_file, item_icon_suffix = _split_icon_location(raw_icon_path)
                     if not item_icon_file or os.path.isfile(item_icon_file):
                         continue
-                    # 文件名在新目录中存在则重定向
                     filename = os.path.basename(item_icon_file)
                     candidate_file = os.path.join(new_dir, filename)
                     if os.path.isfile(candidate_file):

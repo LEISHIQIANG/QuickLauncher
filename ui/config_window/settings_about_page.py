@@ -102,7 +102,7 @@ SECTION_DATA = {
             "title": "批量管理与重定向",
             "points": [
                 "支持 Ctrl/Shift 多选图标进行批量删除、移动、启用与禁用（支持撤销）",
-                "提供内置常用快捷图标库，在图标路径失效时支持在目录中自动重定向",
+                "提供独立图标仓库，在图标路径失效时支持在目录中自动重定向",
             ],
         },
     ],
@@ -126,8 +126,8 @@ SECTION_DATA = {
         {
             "title": "命令与网址变量",
             "points": [
-                "支持 {clipboard}、{input}、{date}、{time} 等丰富环境变量",
-                "支持 {selected_text}，配合 :q 安全引用规则，实现选中即处理",
+                "支持 {{clipboard}}、{{input}}、{{date}}、{{time}} 等丰富环境变量",
+                "支持 {{selected_text}}，配合 :q 安全引用规则，实现选中即处理",
             ],
         },
         {
@@ -189,7 +189,7 @@ def _generate_html_content(items, theme):
 
         html += f'<div style="margin-top: {margin_top};">'
         # 子项标题 (✦ 点缀)
-        html += f'<div style="font-size: 13px; font-weight: bold; color: {title_color}; margin-bottom: 4px;">'
+        html += f'<div style="font-size: 13px; font-weight: 400; color: {title_color}; margin-bottom: 4px;">'
         html += f'<span style="color: {bullet_color}; margin-right: 6px;">✦</span>{title}</div>'
 
         # 点描述
@@ -405,7 +405,7 @@ class SettingsAboutPageMixin:
                     padding: 2px 10px;
                     background: transparent;
                     color: {text_color};
-                    font-weight: 500;
+                    font-weight: 400;
                 }}
             """)
 
@@ -419,8 +419,8 @@ class SettingsAboutPageMixin:
         if hasattr(page, "_title_lbl") and page._title_lbl:
             title_html = f"""
             <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; margin-bottom: 4px;">
-                <span style="font-size: 22px; font-weight: 800; color: {title_color};">QuickLauncher</span>
-                <span style="font-size: 13px; font-weight: 500; color: {version_color}; margin-left: 8px; vertical-align: middle;">v{APP_VERSION}</span>
+                <span style="font-size: 22px; font-weight: 400; color: {title_color};">QuickLauncher</span>
+                <span style="font-size: 13px; font-weight: 400; color: {version_color}; margin-left: 8px; vertical-align: middle;">v{APP_VERSION}</span>
             </div>
             """
             page._title_lbl.setText(title_html)
@@ -436,7 +436,7 @@ class SettingsAboutPageMixin:
         if hasattr(page, "_developer_lbl") and page._developer_lbl:
             dev_html = f"""
             <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 11px; line-height: 1.3;">
-                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ {tr("开发者: NAYTON")}</span><br/>
+                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: 2px 6px; border-radius: 4px; font-weight: 400; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ {tr("开发者: NAYTON")}</span><br/>
                 <a href="https://github.com/LEISHIQIANG/QuickLauncher"
                    style="color: {dev_badge_color}; font-size: 11px; text-decoration: none;"
                 >GitHub.com/LEISHIQIANG/QuickLauncher</a>

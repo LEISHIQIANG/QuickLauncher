@@ -20,7 +20,9 @@
       "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "",
-      "icon_path": "icons/B站.png"
+      "icon_path": "icons/B站.png",
+      "command_variables_enabled": false,
+      "raw_mode": false
     },
     {
       "id": "e1a2b3c4-d5e6-4f78-9012-a3b4c5d6e7f8",
@@ -143,7 +145,7 @@
       "command_type": "builtin",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/设置.ico"
@@ -206,7 +208,7 @@
       "command_type": "cmd",
       "trigger_mode": "after_close",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/置顶.ico"
@@ -244,11 +246,11 @@
       "hotkey_modifiers": [],
       "hotkey_key": "",
       "url": "",
-      "command": "curl ifconfig.me | clip",
+      "command": "curl -s ifconfig.me | clip",
       "command_type": "cmd",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/公网IP.ico"
@@ -269,7 +271,7 @@
       "command_type": "cmd",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/DNS.ico"
@@ -290,7 +292,7 @@
       "command_type": "cmd",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/策略组.ico"
@@ -311,7 +313,7 @@
       "command_type": "cmd",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/task.ico"
@@ -332,7 +334,7 @@
       "command_type": "cmd",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/清理.ico"
@@ -353,7 +355,7 @@
       "command_type": "cmd",
       "trigger_mode": "immediate",
       "icon_data": "",
-      "icon_invert_with_theme": true,
+      "icon_invert_with_theme": false,
       "icon_invert_current": false,
       "icon_invert_theme_when_set": "dark",
       "icon_path": "icons/网络.ico"

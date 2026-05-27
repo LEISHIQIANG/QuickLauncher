@@ -239,3 +239,33 @@ def test_admin_item_launch_skips_post_launch_activation(monkeypatch):
     assert success is True
     assert error == ""
     assert calls == [("launch", r"C:\Tools\AdminApp.exe", True)]
+
+
+def test_file_target_args_resolve_ip_variables(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(file_exec, "HAS_WINDOW_MANAGER", False)
+    monkeypatch.setattr("core.command_variables.get_default_lan_ipv4", lambda: "192.168.1.20")
+
+    class FakeExecutor(FileExecutionMixin):
+        @staticmethod
+        def _resolve_shortcut(path):
+            return path
+
+        @staticmethod
+        def _launch_with_privilege(target, parameters=None, directory=None, show_cmd=1, run_as_admin=False):
+            captured["parameters"] = parameters
+            return True, ""
+
+    monkeypatch.setattr(file_exec, "ShortcutExecutor", FakeExecutor)
+
+    shortcut = ShortcutItem(
+        name="App",
+        target_path=r"C:\Tools\App.exe",
+        target_args="--bind {{LAN_IP}}",
+    )
+
+    success, error = FileExecutionMixin._execute_file(shortcut, force_new=True)
+
+    assert success is True
+    assert error == ""
+    assert captured["parameters"] == "--bind 192.168.1.20"

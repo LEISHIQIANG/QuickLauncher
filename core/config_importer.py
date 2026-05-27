@@ -286,7 +286,7 @@ class ConfigImporter:
 
             target_folder = data_manager.data.get_folder_by_id(target_folder_id) if target_folder_id else None
             if not target_folder:
-                folder_name = f"瀵煎叆鐨勯」鐩?{datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                folder_name = f"导入的项目 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                 target_folder = Folder(name=folder_name, is_system=False, is_dock=False)
                 data_manager.data.folders.append(target_folder)
 
@@ -342,6 +342,9 @@ class ConfigImporter:
                         data_manager.update_settings(**sanitize_settings_dict(settings_data, report))
 
                 if imported_count > 0:
+                    repair = getattr(data_manager, "_apply_config_repairs_to_current", None)
+                    if callable(repair):
+                        repair()
                     data_manager.save()
 
             set_imported_items(report, imported_count)
@@ -364,125 +367,3 @@ class ConfigImporter:
     ) -> int:
         """导入旧版格式（仅快捷键、URL、命令）"""
         return ConfigImporter._import_legacy_safe(data_manager, zf, target_folder_id, safe_index, report)
-        try:
-            # 读取 items.json
-            if "items.json" not in zf.namelist():
-                logger.error("文件格式错误: 缺少 items.json")
-                return -1
-
-            items_data = json.loads(zf.read("items.json").decode("utf-8"))
-            if not isinstance(items_data, list):
-                logger.error("文件格式错误: items.json 不是列表")
-                return -1
-
-            # 准备目标文件夹
-            target_folder = None
-            if target_folder_id:
-                target_folder = data_manager.data.get_folder_by_id(target_folder_id)
-
-            if not target_folder:
-                # 创建新的导入文件夹
-                folder_name = f"导入的项目 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                target_folder = Folder(name=folder_name, is_system=False, is_dock=False)
-                data_manager.data.folders.append(target_folder)
-
-            imported_count = 0
-            local_icon_dir = get_icon_dir()
-            if not os.path.exists(local_icon_dir):
-                os.makedirs(local_icon_dir)
-
-            settings_imported = False
-            with data_manager.batch_update(immediate=True):
-                for item_dict in items_data:
-                    # 生成新 ID
-                    item_dict["id"] = str(uuid.uuid4())
-
-                    # 处理图标
-                    zip_icon_path = item_dict.get("icon_path")
-                    if zip_icon_path and zip_icon_path in zf.namelist():
-                        # 解压图标
-                        ext = os.path.splitext(zip_icon_path)[1].lower()
-
-                        # 过滤掉可执行文件和动态库，这些不应该被当作图标文件
-                        # 正常的图标文件应该是 .ico, .png, .jpg 等
-                        invalid_exts = {".exe", ".dll", ".sys", ".com", ".bat", ".cmd", ".msi", ".scr"}
-                        if ext in invalid_exts:
-                            logger.warning(f"跳过无效图标文件: {zip_icon_path} (不支持的扩展名 {ext})")
-                            item_dict["icon_path"] = ""
-                        else:
-                            try:
-                                # 先读取图标内容
-                                icon_content = zf.read(zip_icon_path)
-
-                                # 验证文件大小
-                                if len(icon_content) > 10 * 1024 * 1024:  # 10MB
-                                    logger.warning(
-                                        f"跳过过大的图标文件: {zip_icon_path} ({len(icon_content) / 1024 / 1024:.2f} MB)"
-                                    )
-                                    item_dict["icon_path"] = ""
-                                else:
-                                    # 计算内容哈希，用于去重
-                                    import hashlib
-
-                                    content_hash = hashlib.md5(icon_content[:65536]).hexdigest()  # 使用前 64KB 计算哈希
-
-                                    # 检查是否有相同内容的图标已存在
-                                    existing_icon_path = None
-                                    for existing_file in os.listdir(local_icon_dir):
-                                        existing_full_path = os.path.join(local_icon_dir, existing_file)
-                                        if not os.path.isfile(existing_full_path):
-                                            continue
-                                        try:
-                                            with open(existing_full_path, "rb") as ef:
-                                                existing_content = ef.read(65536)
-                                                existing_hash = hashlib.md5(existing_content).hexdigest()
-                                                if existing_hash == content_hash:
-                                                    # 找到相同内容的图标，复用它
-                                                    existing_icon_path = existing_full_path
-                                                    break
-                                        except Exception as e:
-                                            logger.debug("读取现有图标失败: %s, %s", existing_full_path, e)
-
-                                    if existing_icon_path:
-                                        # 复用现有图标，不创建新文件
-                                        item_dict["icon_path"] = existing_icon_path
-                                        logger.debug(f"复用已存在的图标: {existing_icon_path}")
-                                    else:
-                                        # 创建新图标文件
-                                        new_icon_name = f"{item_dict['id']}{ext}"
-                                        local_icon_path = os.path.join(local_icon_dir, new_icon_name)
-                                        with open(local_icon_path, "wb") as target:
-                                            target.write(icon_content)
-                                        item_dict["icon_path"] = local_icon_path
-
-                            except Exception as e:
-                                logger.warning(f"解压图标失败: {zip_icon_path}, {e}")
-                                item_dict["icon_path"] = ""
-                    else:
-                        item_dict["icon_path"] = ""
-
-                    # 创建对象并添加
-                    item = ShortcutItem.from_dict(item_dict)
-                    target_folder.items.append(item)
-                    imported_count += 1
-
-                if imported_count > 0:
-                    data_manager.save()
-
-                # 导入 settings.json (新增)
-                if "settings.json" in zf.namelist():
-                    try:
-                        settings_data = json.loads(zf.read("settings.json").decode("utf-8"))
-                        # 更新设置
-                        data_manager.update_settings(**settings_data)
-                        settings_imported = True
-                        logger.info("设置已更新")
-                    except Exception as e:
-                        logger.exception("导入设置失败: %s", e)
-
-            logger.info("导入完成，共导入 %s 项，设置更新: %s", imported_count, settings_imported)
-            return imported_count
-
-        except Exception as e:
-            logger.exception("导入旧版配置失败: %s", e)
-            return -1

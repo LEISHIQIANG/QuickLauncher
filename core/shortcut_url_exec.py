@@ -14,13 +14,16 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
+from .command_variables import fetch_public_wan_ipv4, get_default_lan_ipv4, read_clipboard_text
 from .data_models import ShortcutItem
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
 
 _SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-_TOKEN_RE = re.compile(r"(?<!\{)\{([^{}\r\n]+)\}(?!\})")
+_TOKEN_RE = re.compile(r"(?<!\{)\{\{([^{}\r\n]+)\}\}(?!\})")
+_ESCAPED_LEFT = "\0QL_URL_ESCAPED_LEFT\0"
+_ESCAPED_RIGHT = "\0QL_URL_ESCAPED_RIGHT\0"
 _ALLOWED_SCHEMES = {
     "http",
     "https",
@@ -255,36 +258,44 @@ class UrlExecutionMixin:
         return ""
 
     @staticmethod
-    def _resolve_url_variables(text: str, input_values: dict[str, str]) -> str:
+    def _resolve_url_variables(
+        text: str,
+        input_values: dict[str, str],
+        *,
+        allow_url_placeholder: bool = False,
+    ) -> str:
         if not text:
             return text
 
-        left_guard = "\0QL_LEFT_BRACE\0"
-        right_guard = "\0QL_RIGHT_BRACE\0"
-        guarded = text.replace("{{", left_guard).replace("}}", right_guard)
+        guarded = text.replace("{{{{", _ESCAPED_LEFT).replace("}}}}", _ESCAPED_RIGHT)
         now = datetime.now()
 
         def repl(match: re.Match) -> str:
             spec = match.group(1).strip()
             base = spec[:-2].strip() if spec.endswith(":q") else spec
-            if base == "clipboard":
-                from .command_variables import read_clipboard_text
-
+            base_key = base.lower()
+            if allow_url_placeholder and base_key == "url":
+                return match.group(0)
+            if base_key == "clipboard":
                 value = read_clipboard_text()
-            elif base == "date":
+            elif base_key == "date":
                 value = now.strftime("%Y-%m-%d")
-            elif base == "time":
+            elif base_key == "time":
                 value = now.strftime("%H:%M:%S")
-            elif base == "input":
+            elif base_key == "lan_ip":
+                value = get_default_lan_ipv4()
+            elif base_key == "wan_ip":
+                value = fetch_public_wan_ipv4()
+            elif base_key == "input":
                 value = input_values.get("input", input_values.get("", ""))
-            elif base.startswith("input:"):
+            elif base_key.startswith("input:"):
                 prompt = base[6:].strip()
                 value = input_values.get(prompt, "")
             else:
-                return match.group(0)
+                raise ValueError("未知变量: {{" + spec + "}}")
             return quote(value or "", safe="")
 
-        return _TOKEN_RE.sub(repl, guarded).replace(left_guard, "{").replace(right_guard, "}")
+        return _TOKEN_RE.sub(repl, guarded).replace(_ESCAPED_LEFT, "{{").replace(_ESCAPED_RIGHT, "}}")
 
     @staticmethod
     def _open_url_with_browser(
@@ -297,10 +308,16 @@ class UrlExecutionMixin:
             return False, f"指定浏览器不存在: {browser_path}"
 
         try:
+            if browser_args:
+                browser_args = UrlExecutionMixin._resolve_url_variables(
+                    browser_args,
+                    {},
+                    allow_url_placeholder=True,
+                )
             args = ShortcutExecutor._safe_split_args(browser_args) if browser_args else []
             if args:
-                had_placeholder = any("{url}" in arg for arg in args)
-                args = [arg.replace("{url}", url) for arg in args]
+                had_placeholder = any("{{url}}" in arg for arg in args)
+                args = [arg.replace("{{url}}", url) for arg in args]
                 if not had_placeholder and not any(arg == url for arg in args):
                     args.append(url)
             else:

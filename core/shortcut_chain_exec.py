@@ -175,7 +175,7 @@ def _execute_step(target: ShortcutItem, cancel_event=None) -> tuple[bool, str, s
 
     if (
         target.type == ShortcutType.COMMAND
-        and getattr(target, "command_type", "cmd") in ("cmd", "python")
+        and getattr(target, "command_type", "cmd") in ("cmd", "python", "powershell")
         and bool(getattr(target, "capture_output", False))
         and not bool(getattr(target, "show_window", False))
         and not bool(getattr(target, "run_as_admin", False))

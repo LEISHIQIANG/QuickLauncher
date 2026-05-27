@@ -1354,7 +1354,7 @@ def test_panel_command_with_params_does_not_use_popup_input_dialog(monkeypatch):
         id="tools.param",
         name="Params",
         type=ShortcutType.COMMAND,
-        command="/tools.param {input}",
+        command="/tools.param {{input}}",
         command_type="builtin",
     )
 

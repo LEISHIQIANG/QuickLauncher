@@ -20,6 +20,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.utils.font_manager import get_qfont
 
 logger = logging.getLogger(__name__)
 
@@ -146,12 +147,12 @@ class ToastNotification(QWidget):
             QLabel {{
                 color: {color};
                 font-size: 13px;
-                font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
-                font-weight: 500;
+                font-weight: 400;
                 padding: 0 24px;
                 background: transparent;
             }}
         """)
+        self.label.setFont(get_qfont(13, 400))
         self.label.setText(text)
 
         # 根据文字长度调整宽度

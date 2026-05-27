@@ -42,3 +42,20 @@ def test_url_dialog_ok_does_not_fetch_icon_without_click(monkeypatch, qapp):
         assert dialog._custom_icon_path == ""
     finally:
         dialog.deleteLater()
+
+
+def test_url_dialog_exposes_ip_variable_buttons(qapp):
+    from ui.config_window.url_dialog import UrlDialog
+
+    dialog = UrlDialog(shortcut=ShortcutItem(type=ShortcutType.URL))
+    try:
+        buttons = {button.text(): button for button in dialog._url_var_buttons}
+        assert "内网 IP" in buttons
+        assert "公网 IP" in buttons
+
+        buttons["内网 IP"].click()
+        assert dialog.url_edit.text() == "{{LAN_IP}}"
+        buttons["公网 IP"].click()
+        assert dialog.url_edit.text() == "{{LAN_IP}}{{WAN_IP}}"
+    finally:
+        dialog.deleteLater()

@@ -40,6 +40,13 @@ core.data_manager = MagicMock()
 # Setup mock data manager fields
 mock_settings = MagicMock()
 mock_settings.favorite_commands = ["uuid", "timestamp"]
+# Ensure preprocessing settings return explicit False (not truthy MagicMock)
+mock_settings.preprocessing_enabled = True
+mock_settings.preprocessing_strict_mode = False
+mock_settings.preprocessing_rate_limiting_enabled = False
+mock_settings.preprocessing_audit_enabled = False
+mock_settings.security_block_dangerous_patterns = False
+mock_settings.security_require_variable_quoting = False
 core.data_manager.get_settings.return_value = mock_settings
 core.data_manager.data.folders = []
 core.data_manager.app_dir = pathlib.Path(tempfile.gettempdir())
@@ -54,6 +61,7 @@ from core.commands import (
     cmd_base64,
     cmd_cidr,
     cmd_color,
+    cmd_config_repair,
     cmd_conflict,
     cmd_copy_path,
     cmd_dns,
@@ -81,6 +89,7 @@ from core.commands import (
     cmd_uuid,
     cmd_wifi,
 )
+from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
 from plugins.network_tools.main import handle_dns, handle_ping
 from plugins.text_tools.main import case_text, count_text, reverse_text
 
@@ -207,6 +216,46 @@ def test_cmd_ip_public_failure_still_shows_local(mock_primary, mock_local, mock_
     assert res.success is True
     assert "192.168.1.23" in res.message
     assert "公网 IP: 获取失败" in res.message
+
+
+def test_cmd_config_repair_scan_and_fix(monkeypatch):
+    class FakeDataManager:
+        def __init__(self):
+            self.data = AppData(
+                folders=[
+                    Folder(
+                        items=[
+                            ShortcutItem(
+                                type=ShortcutType.COMMAND,
+                                command_type="cmd",
+                                command="echo {clipboard:q}",
+                                command_variables_enabled=False,
+                            )
+                        ]
+                    )
+                ]
+            )
+            self.saved = 0
+
+        def _mark_history(self, action, summary=""):
+            self.history = (action, summary)
+
+        def save(self, immediate=False):
+            self.saved += 1
+            return True
+
+    fake = FakeDataManager()
+    monkeypatch.setattr(core, "data_manager", fake)
+
+    scan = cmd_config_repair(CommandContext(args_text=""))
+    assert scan.success is True
+    assert fake.saved == 0
+    assert fake.data.folders[0].items[0].command == "echo {clipboard:q}"
+
+    fixed = cmd_config_repair(CommandContext(args_text="fix"))
+    assert fixed.success is True
+    assert fake.saved == 1
+    assert fake.data.folders[0].items[0].command == "echo {{clipboard:q}}"
 
 
 def test_cmd_copy_path():

@@ -11,7 +11,6 @@ from core.i18n import tr
 from core.windows_uipi import allow_drag_drop_for_widget
 from qt_compat import (
     QColor,
-    QFont,
     QFrame,
     QHBoxLayout,
     QIcon,
@@ -614,7 +613,6 @@ class ConfigWindow(QMainWindow):
         self.icon_grid.add_url_requested.connect(self._on_add_url)
         self.icon_grid.add_command_requested.connect(self._on_add_command)
         self.icon_grid.add_chain_requested.connect(self._on_add_chain)
-        self.icon_grid.builtin_icon_requested.connect(self._on_builtin_icon)
         launcher_layout.addWidget(self.icon_grid, 1)
 
         self.stack.addWidget(launcher_widget)
@@ -898,11 +896,9 @@ class ConfigWindow(QMainWindow):
 
         # QSS设置font-family/font-size会重建QFont对象，丢失渲染优化属性
         # 递归给所有子控件重新设置 hinting 和抗锯齿
-        for child in self.findChildren(QWidget):
-            f = child.font()
-            f.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
-            f.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-            child.setFont(f)
+        from ui.utils.font_manager import tune_font_rendering
+
+        tune_font_rendering(self, recursive=True)
 
         # 切换主题时立即刷新 acrylic/DWM 磨砂玻璃底色，避免新旧主题颜色混合
         self._apply_window_shadow()
@@ -974,6 +970,8 @@ class ConfigWindow(QMainWindow):
 
     def _on_shortcut_edit(self, shortcut: ShortcutItem):
         """编辑快捷方式"""
+        if getattr(shortcut, "_icon_repo_source", "") == "system":
+            return
         if not self._begin_shortcut_dialog_action():
             return
         folder_id = self.icon_grid.current_folder_id
@@ -1024,6 +1022,8 @@ class ConfigWindow(QMainWindow):
 
     def _on_shortcut_delete(self, shortcut: ShortcutItem):
         """删除快捷方式 - 使用自定义主题对话框"""
+        if getattr(shortcut, "_icon_repo_source", "") == "system":
+            return
         theme = self.data_manager.get_settings().theme
 
         confirmed = ThemedMessageBox.question(
@@ -1219,38 +1219,6 @@ class ConfigWindow(QMainWindow):
 
             logging.getLogger(__name__).error(f"Create chain dialog failed: {e}", exc_info=True)
             self._end_shortcut_dialog_action()
-
-    def _on_builtin_icon(self):
-        """打开内置图标选择器"""
-        folder_id = self.icon_grid.current_folder_id
-        if not folder_id:
-            return
-
-        # 检查是否已有实例
-        if hasattr(self, "_builtin_icons_dialog") and self._builtin_icons_dialog:
-            try:
-                self._builtin_icons_dialog.activateWindow()
-                self._builtin_icons_dialog.raise_()
-                return
-            except Exception:
-                self._builtin_icons_dialog = None
-
-        from .builtin_icons_dialog import BuiltinIconsDialog
-
-        self._builtin_icons_dialog = BuiltinIconsDialog(self)
-        self._builtin_icons_dialog.icon_selected.connect(lambda item: self._add_builtin_icon(folder_id, item))
-        # 窗口关闭后清除引用
-        self._builtin_icons_dialog.finished.connect(lambda: setattr(self, "_builtin_icons_dialog", None))
-        self._builtin_icons_dialog.show()
-        # 显式激活，确保它在最前并获得焦点
-        self._builtin_icons_dialog.activateWindow()
-        self._builtin_icons_dialog.raise_()
-
-    def _add_builtin_icon(self, folder_id: str, item: ShortcutItem):
-        """添加内置图标到当前文件夹"""
-        self.data_manager.add_shortcut(folder_id, item)
-        self.icon_grid.load_folder(folder_id)
-        self.settings_changed.emit()
 
     def _on_settings_panel_changed(self):
         """设置面板变更"""

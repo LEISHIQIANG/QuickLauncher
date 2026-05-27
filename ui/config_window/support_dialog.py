@@ -46,8 +46,6 @@ def _support_image_path() -> str:
     candidates = [
         os.path.join(module_root, "assets", "support.jpg"),
         os.path.join(exe_root, "assets", "support.jpg"),
-        os.path.join(module_root, "支持一下.jpg"),
-        os.path.join(exe_root, "支持一下.jpg"),
     ]
     for path in candidates:
         if os.path.exists(path):

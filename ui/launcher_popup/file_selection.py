@@ -150,6 +150,16 @@ def _selected_item_paths(selected_items) -> list[str]:
     return paths
 
 
+def _desktop_dispatch_from_shell_windows(shell_windows):
+    """Return the Desktop shell dispatch when it is not present in Windows()."""
+    try:
+        # ShellWindowTypeConstants.SWC_DESKTOP = 8
+        # ShellWindowFindWindowOptions.SWFO_NEEDDISPATCH = 1
+        return shell_windows.FindWindowSW(0, 0, 8, 0, 1)
+    except Exception:
+        return None
+
+
 class FileSelectionThread(QThread):
     """文件选择检测线程"""
 
@@ -252,6 +262,25 @@ class FileSelectionThread(QThread):
                     return list(items), int(w_hwnd)
                 except Exception:
                     continue
+
+            if target_kind == "desktop":
+                desktop = _desktop_dispatch_from_shell_windows(windows)
+                if desktop is not None:
+                    try:
+                        selected_items = desktop.Document.SelectedItems()
+                        selected_count = int(getattr(selected_items, "Count", 0) or 0)
+                        if selected_count <= 0:
+                            self.ignore_reason = "no_selected_items"
+                            return [], target_root
+                        items = _selected_item_paths(selected_items)
+                        if not items:
+                            self.ignore_reason = "empty_path_items"
+                            return [], target_root
+                        self.ignore_reason = ""
+                        self.requested_root_hwnd = target_root
+                        return list(items), target_root
+                    except Exception as e:
+                        logger.debug("desktop selection fallback failed: %s", e)
 
             self.ignore_reason = "no_selected_items"
         except Exception as e:

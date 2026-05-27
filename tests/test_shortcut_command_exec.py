@@ -295,7 +295,7 @@ def test_python_variables_are_disabled_by_default(monkeypatch):
     monkeypatch.setattr(command_exec, "ShortcutExecutor", command_exec.CommandExecutionMixin)
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "python"
-    item.command = 'print("{date}")'
+    item.command = 'print("{{date}}")'
     item.command_variables_enabled = False
 
     resolved = command_exec.CommandExecutionMixin._resolve_command_variables(item, item.command)
@@ -307,12 +307,12 @@ def test_python_variables_can_be_enabled_explicitly(monkeypatch):
     monkeypatch.setattr(command_exec, "ShortcutExecutor", command_exec.CommandExecutionMixin)
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "python"
-    item.command = 'print("{date}")'
+    item.command = 'print("{{date}}")'
     item.command_variables_enabled = True
 
     resolved = command_exec.CommandExecutionMixin._resolve_command_variables(item, item.command)
 
-    assert "{date}" not in resolved
+    assert "{{date}}" not in resolved
 
 
 def test_multiline_cmd_uses_wrapper_without_single_line_fallthrough(monkeypatch):
@@ -381,14 +381,14 @@ def test_value_only_variable_is_not_executed_as_cmd(monkeypatch):
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "{date}"
+    item.command = "{{date}}"
     item.command_variables_enabled = True
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
 
     assert not success
     assert "值占位符" in error
-    assert "echo {date}" in error
+    assert "echo {{date}}" in error
 
 
 def test_value_only_variable_is_rejected_even_when_variables_disabled(monkeypatch):
@@ -401,7 +401,7 @@ def test_value_only_variable_is_rejected_even_when_variables_disabled(monkeypatc
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "{date}"
+    item.command = "{{date}}"
     item.command_variables_enabled = False
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
@@ -447,7 +447,7 @@ def test_command_variable_inside_real_command_still_executes(monkeypatch):
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "echo {date}"
+    item.command = "echo {{date}}"
     item.command_variables_enabled = True
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
@@ -468,7 +468,7 @@ def test_unquoted_external_variable_in_cmd_is_rejected(monkeypatch):
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "echo {clipboard}"
+    item.command = "echo {{clipboard}}"
     item.command_variables_enabled = True
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
@@ -487,7 +487,7 @@ def test_test_command_rejects_unquoted_external_variable(monkeypatch):
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "echo {clipboard}"
+    item.command = "echo {{clipboard}}"
     item.command_variables_enabled = True
 
     result = command_exec.CommandExecutionMixin.test_command(item)
@@ -506,7 +506,7 @@ def test_test_command_rejects_value_only_variable(monkeypatch):
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "{date}"
+    item.command = "{{date}}"
     item.command_variables_enabled = False
 
     result = command_exec.CommandExecutionMixin.test_command(item)
@@ -552,7 +552,7 @@ def test_quoted_external_variable_in_cmd_still_executes(monkeypatch):
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"
-    item.command = "echo {clipboard:q}"
+    item.command = "echo {{clipboard:q}}"
     item.command_variables_enabled = True
 
     success, error = command_exec.CommandExecutionMixin._execute_command(item)
@@ -870,7 +870,7 @@ def test_run_command_capture_resolves_param_and_env_and_decodes_gbk(monkeypatch)
     item = ShortcutItem(
         type=ShortcutType.COMMAND,
         command_type="cmd",
-        command="echo {param:host:q}",
+        command="echo {{param:host:q}}",
         command_params=[{"name": "host", "required": True}],
         command_env={"QL_TEST": "yes"},
         command_encoding="gbk",
@@ -934,6 +934,78 @@ def test_run_command_capture_cmd_stdout_stderr_and_exit(monkeypatch):
     assert captured["kwargs"]["stdout"] == command_exec.subprocess.PIPE
     assert captured["kwargs"]["stdin"] == command_exec.subprocess.DEVNULL
     assert captured["kwargs"]["shell"] is True
+
+
+def test_run_command_capture_rejects_unsupported_command_type(monkeypatch):
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_cmd_launcher", staticmethod(lambda: "cmd.exe"))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "wscript"
+    item.command = "echo test"
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert "Unsupported command type" in result.message
+
+
+def test_preprocessing_default_allows_shell_pipe_for_cmd(monkeypatch):
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "ok", ""
+
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_cmd_launcher", staticmethod(lambda: "cmd.exe"))
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo ok | findstr ok"
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is True
+    assert captured["kwargs"]["shell"] is True
+
+
+def test_preprocessing_strict_mode_blocks_shell_chaining(monkeypatch):
+    from core.preprocessing.pipeline import PreprocessingContext, PreprocessingPipeline
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo ok & echo bad"
+
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_cmd_launcher", staticmethod(lambda: "cmd.exe"))
+    monkeypatch.setattr(
+        command_exec.ShortcutExecutor,
+        "_command_preprocessing_result",
+        staticmethod(
+            lambda shortcut, command, command_type: PreprocessingPipeline(
+                strict_mode=True,
+                rate_limiting=False,
+            ).process(
+                PreprocessingContext(
+                    command=command,
+                    command_type=command_type,
+                    raw_mode=False,
+                )
+            )
+        ),
+    )
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert "Command preprocessing failed" in result.error
 
 
 def test_run_command_capture_timeout_kills_process(monkeypatch):
@@ -1064,6 +1136,45 @@ def test_run_command_capture_python_subprocess(monkeypatch):
     assert captured["kwargs"]["stdin"] == command_exec.subprocess.DEVNULL
 
 
+def test_run_command_capture_powershell_subprocess(monkeypatch):
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "ps out", ""
+
+    captured = {}
+    powershell_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+    def fake_popen(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_powershell_launcher", staticmethod(lambda: powershell_exe))
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "powershell"
+    item.command = 'Write-Output "ok"'
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is True
+    assert result.payload["stdout"] == "ps out"
+    assert captured["args"][0] == [
+        powershell_exe,
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        'Write-Output "ok"',
+    ]
+    assert captured["kwargs"]["shell"] is False
+
+
 def test_execute_command_capture_false_keeps_silent_launch(monkeypatch):
     captured = {}
 
@@ -1144,3 +1255,273 @@ def test_execute_command_capture_disabled_for_admin(monkeypatch):
     assert success is True
     assert error == ""
     assert captured["run_as_admin"] is True
+
+
+def test_command_dialog_insert_menu_exposes_ip_variables(qapp):
+    from qt_compat import QPushButton
+    from ui.config_window.command_dialog import CommandDialog
+
+    dialog = CommandDialog(shortcut=ShortcutItem(type=ShortcutType.COMMAND))
+    try:
+        dialog._show_insert_popup()
+        buttons = {button.text(): button for button in dialog._insert_menu.findChildren(QPushButton)}
+        assert "内网 IP" in buttons
+        assert "公网 IP" in buttons
+
+        buttons["内网 IP"].click()
+        assert "{{LAN_IP}}" in dialog.command_edit.toPlainText()
+        buttons["公网 IP"].click()
+        assert "{{WAN_IP}}" in dialog.command_edit.toPlainText()
+    finally:
+        if getattr(dialog, "_insert_menu", None):
+            dialog._insert_menu.close()
+            dialog._insert_menu.deleteLater()
+        dialog.deleteLater()
+
+
+# ── Bash (Git Bash) 支持测试 ──────────────────────────────────────────────
+
+
+def test_normalize_command_type_bash_aliases():
+    from core.shortcut_command_exec import CommandExecutionMixin
+
+    assert CommandExecutionMixin._normalize_command_type("bash") == "bash"
+    assert CommandExecutionMixin._normalize_command_type("git-bash") == "bash"
+    assert CommandExecutionMixin._normalize_command_type("gitbash") == "bash"
+    assert CommandExecutionMixin._normalize_command_type("sh") == "bash"
+    assert CommandExecutionMixin._normalize_command_type("Bash") == "bash"
+    assert CommandExecutionMixin._normalize_command_type("BASH") == "bash"
+
+
+def test_bash_in_supported_command_types():
+    from core.shortcut_command_exec import CommandExecutionMixin
+
+    assert "bash" in CommandExecutionMixin._SUPPORTED_COMMAND_TYPES
+
+
+def test_bash_launcher_finds_via_shutil(monkeypatch):
+    monkeypatch.setattr(
+        "core.shortcut_command_exec.shutil.which",
+        lambda x: r"C:\Program Files\Git\bin\bash.exe" if x == "bash" else None,
+    )
+    monkeypatch.setattr("os.path.isfile", lambda p: p.endswith("bash.exe"))
+
+    from core.shortcut_command_exec import CommandExecutionMixin
+
+    result = CommandExecutionMixin._bash_launcher()
+    assert result is not None
+    assert result.endswith("bash.exe")
+
+
+def test_bash_launcher_returns_none_when_not_found(monkeypatch):
+    monkeypatch.setattr("core.shortcut_command_exec.shutil.which", lambda x: None)
+    monkeypatch.setattr("os.path.isfile", lambda p: False)
+
+    from core.shortcut_command_exec import CommandExecutionMixin
+
+    assert CommandExecutionMixin._bash_launcher() is None
+
+
+def test_bash_argv_constructs_correct_args():
+    from core.shortcut_command_exec import CommandExecutionMixin
+
+    class FakeExecutor(CommandExecutionMixin):
+        pass
+
+    import core.shortcut_command_exec as ce
+
+    orig = ce.ShortcutExecutor
+    ce.ShortcutExecutor = FakeExecutor
+    try:
+        FakeExecutor._bash_launcher = staticmethod(lambda: r"C:\Git\bin\bash.exe")
+        argv = FakeExecutor._bash_argv("echo hello")
+        assert argv == [r"C:\Git\bin\bash.exe", "-c", "echo hello"]
+
+        argv_login = FakeExecutor._bash_argv("echo hello", login=True)
+        assert argv_login == [r"C:\Git\bin\bash.exe", "--login", "-c", "echo hello"]
+    finally:
+        ce.ShortcutExecutor = orig
+
+
+def test_bash_execute_command_silent(monkeypatch):
+    captured = {}
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _bash_argv(command, login=False):
+            return [r"C:\Program Files\Git\bin\bash.exe", "-c", command]
+
+        @staticmethod
+        def _popen_silent(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32", "LANG": "en_US.UTF-8"}
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _cleanup_file_later(*args):
+            pass
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "ls -la"
+    item.show_window = False
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success
+    assert error == ""
+    assert captured["args"][0] == [r"C:\Program Files\Git\bin\bash.exe", "-c", "ls -la"]
+
+
+def test_bash_execute_command_show_window(monkeypatch):
+    captured = {}
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _bash_argv(command, login=False):
+            argv = [r"C:\Program Files\Git\bin\bash.exe"]
+            if login:
+                argv.append("--login")
+            argv.extend(["-c", command])
+            return argv
+
+        @staticmethod
+        def _launch_with_privilege(target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""):
+            captured["target"] = target
+            captured["parameters"] = parameters
+            captured["show_cmd"] = show_cmd
+            return True, ""
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _cleanup_file_later(*args):
+            pass
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32", "LANG": "en_US.UTF-8"}
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "echo hello"
+    item.show_window = True
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success
+    assert error == ""
+    assert captured["target"].endswith("bash.exe")
+    assert "--login" in captured["parameters"]
+
+
+def test_bash_multiline_command_creates_temp_script(monkeypatch):
+    captured = {}
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _write_temp_bash_script(command):
+            path = r"C:\Temp\tmp_bash.sh"
+            captured["script_command"] = command
+            return path
+
+        @staticmethod
+        def _popen_silent(*args, **kwargs):
+            captured["popen_args"] = args
+
+        @staticmethod
+        def _cleanup_file_later(*args):
+            pass
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32", "LANG": "en_US.UTF-8"}
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "echo line1\necho line2"
+    item.show_window = False
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success
+    assert captured["script_command"] == "echo line1\necho line2"
+    assert "tmp_bash.sh" in captured["popen_args"][0][1]
+
+
+def test_bash_capture_output(monkeypatch):
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            self.returncode = 0
+
+        def communicate(self, timeout=None):
+            return b"hello output\n", b""
+
+        def poll(self):
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", FakePopen)
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _bash_argv(command, login=False):
+            return [r"C:\Program Files\Git\bin\bash.exe", "-c", command]
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32"}
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "echo hello"
+    item.capture_output = True
+    item.show_window = False
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item, timeout=5.0)
+
+    assert result.success
+    assert "hello output" in result.payload.get("stdout", "")

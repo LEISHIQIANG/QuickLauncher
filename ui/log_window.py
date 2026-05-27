@@ -27,6 +27,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
 
 
@@ -111,7 +112,8 @@ class LogWindow(QDialog):
         title_bar.addWidget(self.icon_label)
 
         self.title_label = QLabel("运行日志")
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: 500;")
+        self.title_label.setFont(get_qfont(14, 400))
+        self.title_label.setStyleSheet("font-size: 14px; font-weight: 400;")
         title_bar.addWidget(self.title_label)
 
         title_bar.addStretch()
@@ -257,10 +259,11 @@ class LogWindow(QDialog):
         self.close_btn_top.setStyleSheet(close_top_style)
 
         self.title_label.setStyleSheet(f"""
-            font-size: 14px; font-weight: 500;
+            font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
         """)
+        self.title_label.setFont(get_qfont(14, 400))
         self.path_label.setStyleSheet(f"""
             font-size: 11px;
             color: {text_secondary};
@@ -280,6 +283,8 @@ class LogWindow(QDialog):
 
         # 窗口样式
         self.setStyleSheet("QDialog { background: transparent; }")
+        tune_font_rendering(self, recursive=True)
+        self.title_label.setFont(get_qfont(14, 400))
 
         # 底部按钮样式 - 与主配置窗口底部四按钮一致
         if theme == "dark":
@@ -467,7 +472,7 @@ class LogWindow(QDialog):
                 border-radius: 5px; color: {info_text};
             }}
             QPushButton:hover {{ background: {info_active_bg}; border: 1px solid {info_active_border}; }}
-            QPushButton:checked {{ background: {info_active_bg}; border: 1px solid {info_active_border}; font-weight: bold; }}
+            QPushButton:checked {{ background: {info_active_bg}; border: 1px solid {info_active_border}; font-weight: 400; }}
         """)
 
         # DEBUG 按钮 - 淡黄色（柔和）
@@ -491,7 +496,7 @@ class LogWindow(QDialog):
                 border-radius: 5px; color: {debug_text};
             }}
             QPushButton:hover {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; }}
-            QPushButton:checked {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; font-weight: bold; }}
+            QPushButton:checked {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; font-weight: 400; }}
         """)
 
         # ERROR 按钮 - 淡红色（柔和）
@@ -515,7 +520,7 @@ class LogWindow(QDialog):
                 border-radius: 5px; color: {error_text};
             }}
             QPushButton:hover {{ background: {error_active_bg}; border: 1px solid {error_active_border}; }}
-            QPushButton:checked {{ background: {error_active_bg}; border: 1px solid {error_active_border}; font-weight: bold; }}
+            QPushButton:checked {{ background: {error_active_bg}; border: 1px solid {error_active_border}; font-weight: 400; }}
         """)
 
     def _count_log_levels(self, content: str):

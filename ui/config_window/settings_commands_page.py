@@ -486,7 +486,7 @@ class SettingsCommandsPageMixin:
                     name_display = name.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
 
                     name_lbl = QLabel(name_display)
-                    name_lbl.setStyleSheet(f"font-weight: bold; color: {text_color}; font-size: 12px;")
+                    name_lbl.setStyleSheet(f"font-weight: 400; color: {text_color}; font-size: 12px;")
                     name_lbl.setWordWrap(True)
                     name_lbl.setMinimumWidth(0)
                     item_layout.addWidget(name_lbl, 0, 1, 1, 1)
@@ -702,7 +702,7 @@ class SettingsCommandsPageMixin:
                 entry["widget"].setStyleSheet(
                     f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
                 )
-                entry["title_lbl"].setStyleSheet(f"font-weight: bold; color: {text_color}; font-size: 12px;")
+                entry["title_lbl"].setStyleSheet(f"font-weight: 400; color: {text_color}; font-size: 12px;")
                 entry["key_lbl"].setStyleSheet("color: rgba(10,132,255,0.85); font-size: 11px;")
                 if entry["desc_lbl"]:
                     entry["desc_lbl"].setStyleSheet(f"color: {sub_text_color}; font-size: 11px; margin-left: 14px;")

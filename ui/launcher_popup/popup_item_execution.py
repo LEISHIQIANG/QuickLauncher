@@ -3,8 +3,10 @@
 import logging
 import os
 import threading
+import time
 
 from core.data_models import ShortcutItem, ShortcutType
+from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,18 @@ class PopupItemExecutionMixin:
         if self._executing:
             return
 
+        if self._should_wait_for_selection(item, force_new):
+            return
+
+        selected_files_for_item = []
+        if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN):
+            selected_files_for_item = self._take_valid_selected_files_for_click()
+            if selected_files_for_item:
+                try:
+                    item._runtime_selected_files = list(selected_files_for_item)
+                except Exception:
+                    pass
+
         # 检查是否有选中文件需要打开
         files_to_use = []
         if item.type in (ShortcutType.FILE, ShortcutType.FOLDER):
@@ -37,7 +51,7 @@ class PopupItemExecutionMixin:
             self._execute_drop(item, files_to_use)
             return
 
-        # ===== 优化修复：运行时输入 `{input}` 参数收集 =====
+        # ===== 优化修复：运行时输入 `{{input}}` 参数收集 =====
         input_prompts = []
         if item.type == ShortcutType.COMMAND and item.command:
             try:
@@ -109,6 +123,16 @@ class PopupItemExecutionMixin:
         cmd_str = cmd_text.lower()
         if item.type == ShortcutType.COMMAND and item.command_type == "builtin" and cmd_str:
             force_close_builtin_direct = True
+            if (
+                cmd_text.startswith("/")
+                and not (getattr(self, "search_query", "") or "").strip()
+                and not bool(self.__dict__.get("_search_execute_from_keyboard", False))
+                and hasattr(self, "_set_search_query")
+            ):
+                try:
+                    self._set_search_query(cmd_text)
+                except Exception:
+                    self.search_query = cmd_text
             try:
                 from core import registry
                 from core.command_registry import (
@@ -171,7 +195,9 @@ class PopupItemExecutionMixin:
 
                             selected_files = []
                             try:
-                                if self.__dict__.get("_selected_files_status", "") == "ready":
+                                if selected_files_for_item:
+                                    selected_files = list(selected_files_for_item)
+                                elif self.__dict__.get("_selected_files_status", "") == "ready":
                                     selected_files = list(self.__dict__.get("_selected_files", []) or [])
                             except Exception:
                                 pass
@@ -216,14 +242,14 @@ class PopupItemExecutionMixin:
 
         force_close_capture_command = (
             item.type == ShortcutType.COMMAND
-            and getattr(item, "command_type", "cmd") in ("cmd", "python")
+            and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell")
             and bool(getattr(item, "capture_output", False))
             and not bool(getattr(item, "show_window", False))
             and not bool(getattr(item, "run_as_admin", False))
         )
         force_close_param_command = (
             item.type == ShortcutType.COMMAND
-            and getattr(item, "command_type", "cmd") in ("cmd", "python")
+            and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell")
             and bool(getattr(item, "command_params", []))
         )
         force_close_chain = item.type == ShortcutType.CHAIN
@@ -335,6 +361,39 @@ class PopupItemExecutionMixin:
                 self._executing = False
 
         threading.Thread(target=do_execute_thread, daemon=True, name="ItemExecutor").start()
+
+    def _should_wait_for_selection(self, item: ShortcutItem, force_new: bool = False) -> bool:
+        """Briefly defer execution while the Explorer/Desktop selection probe is still running."""
+        if self.__dict__.get("_selected_files_status", "idle") != "pending":
+            self.__dict__.pop("_selection_defer_started_at", None)
+            return False
+
+        selection_sensitive = item.type in (ShortcutType.FILE, ShortcutType.FOLDER)
+        if item.type == ShortcutType.COMMAND:
+            command = getattr(item, "command", "") or ""
+            selection_sensitive = (
+                getattr(item, "command_type", "") == "builtin"
+                or "{{selected_file" in command
+                or "{{selected_files" in command
+            )
+        elif item.type == ShortcutType.CHAIN:
+            selection_sensitive = True
+
+        if not selection_sensitive:
+            return False
+
+        now = time.monotonic()
+        started = float(self.__dict__.get("_selection_defer_started_at", 0.0) or 0.0)
+        if started <= 0.0:
+            started = now
+            self.__dict__["_selection_defer_started_at"] = started
+
+        if now - started >= 0.25:
+            self.__dict__.pop("_selection_defer_started_at", None)
+            return False
+
+        QTimer.singleShot(35, lambda: self._execute_item(item, force_new))
+        return True
 
     def _on_execution_error(self, name: str, error: str):
         """启动失败的处理"""

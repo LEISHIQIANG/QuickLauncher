@@ -296,14 +296,14 @@ class SettingsPluginsPageMixin:
         )
 
         status_label = QLabel(f"● {text}")
-        status_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 11px;")
+        status_label.setStyleSheet(f"color: {color}; font-weight: 400; font-size: 11px;")
         status_label.setWordWrap(True)
         status_label.setMinimumWidth(0)
         top_layout.addWidget(status_label, 0, 0, QtCompat.AlignLeft | QtCompat.AlignVCenter)
 
         # Title: Name & Version
         name_label = QLabel(name_display)
-        name_label.setStyleSheet(f"font-weight: bold; color: {text_color}; font-size: 12px;")
+        name_label.setStyleSheet(f"font-weight: 400; color: {text_color}; font-size: 12px;")
         name_label.setWordWrap(True)
         name_label.setMinimumWidth(0)
         top_layout.addWidget(name_label, 0, 1, QtCompat.AlignLeft | QtCompat.AlignVCenter)
@@ -397,7 +397,7 @@ class SettingsPluginsPageMixin:
 
             if has_high_risk:
                 perm_lbl = QLabel(f"⚠️ 声明权限 (高风险提醒): {perm_text}")
-                perm_lbl.setStyleSheet("color: #ff9800; font-weight: 500; font-size: 11px;")
+                perm_lbl.setStyleSheet("color: #ff9800; font-weight: 400; font-size: 11px;")
             else:
                 perm_lbl = QLabel(f"🔑 声明权限: {perm_text}")
                 perm_lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 11px;")
@@ -491,7 +491,7 @@ class SettingsPluginsPageMixin:
         if is_quarantined and failure_count:
             text = f"已隔离 ({failure_count}次失败)"
         refs["status_label"].setText(f"● {text}")
-        refs["status_label"].setStyleSheet(f"color: {color}; font-weight: bold; font-size: 11px;")
+        refs["status_label"].setStyleSheet(f"color: {color}; font-weight: 400; font-size: 11px;")
 
         action_btn = refs["action_btn"]
         try:
@@ -855,7 +855,7 @@ class PluginCreateDialog(QDialog):
         layout.setSpacing(8)
 
         title_lbl = QLabel("创建新的插件开发模板")
-        title_lbl.setStyleSheet("font-size: 13px; font-weight: bold;")
+        title_lbl.setStyleSheet("font-size: 13px; font-weight: 400;")
         layout.addWidget(title_lbl)
 
         # ID

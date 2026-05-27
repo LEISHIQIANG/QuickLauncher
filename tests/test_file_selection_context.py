@@ -5,8 +5,10 @@ from types import SimpleNamespace
 
 import ui.launcher_popup.file_selection as file_selection
 import ui.launcher_popup.popup_data_refresh as popup_data_refresh
+import ui.launcher_popup.popup_item_execution as popup_item_execution
 import ui.launcher_popup.popup_window as popup_window
 import ui.launcher_popup.window_detection as window_detection
+from core.data_models import ShortcutItem, ShortcutType
 from qt_compat import QColor
 from ui.launcher_popup.popup_renderer import PopupRendererMixin
 
@@ -40,23 +42,29 @@ class _FakeWindow:
 
 
 class _FakeWindows:
-    def __init__(self, windows):
+    def __init__(self, windows, desktop_window=None):
         self._windows = windows
+        self._desktop_window = desktop_window
         self.Count = len(windows)
 
     def Item(self, index):
         return self._windows[index]
 
+    def FindWindowSW(self, *_args):
+        return self._desktop_window
+
 
 class _FakeShell:
-    def __init__(self, windows):
-        self._windows = _FakeWindows(windows)
+    def __init__(self, windows, desktop_window=None):
+        self._windows = _FakeWindows(windows, desktop_window=desktop_window)
 
     def Windows(self):
         return self._windows
 
 
-def _install_file_selection_fakes(monkeypatch, *, foreground, cursor, roots, desktop_roots, shell_windows):
+def _install_file_selection_fakes(
+    monkeypatch, *, foreground, cursor, roots, desktop_roots, shell_windows, desktop_window=None
+):
     monkeypatch.setattr(file_selection, "HAS_WIN32_SHELL", True)
     monkeypatch.setattr(
         file_selection, "win32gui", SimpleNamespace(GetForegroundWindow=lambda: foreground), raising=False
@@ -77,12 +85,21 @@ def _install_file_selection_fakes(monkeypatch, *, foreground, cursor, roots, des
     monkeypatch.setattr(
         file_selection,
         "win32com",
-        SimpleNamespace(client=SimpleNamespace(Dispatch=lambda _name: _FakeShell(shell_windows))),
+        SimpleNamespace(client=SimpleNamespace(Dispatch=lambda _name: _FakeShell(shell_windows, desktop_window))),
         raising=False,
     )
 
 
-def _thread_for_context(monkeypatch, *, foreground=11, cursor=12, roots=None, desktop_roots=None, shell_windows=None):
+def _thread_for_context(
+    monkeypatch,
+    *,
+    foreground=11,
+    cursor=12,
+    roots=None,
+    desktop_roots=None,
+    shell_windows=None,
+    desktop_window=None,
+):
     roots = roots or {11: 100, 12: 100}
     desktop_roots = desktop_roots or set()
     shell_windows = shell_windows or [_FakeWindow(11, ["C:/one.txt"])]
@@ -93,6 +110,7 @@ def _thread_for_context(monkeypatch, *, foreground=11, cursor=12, roots=None, de
         roots=roots,
         desktop_roots=desktop_roots,
         shell_windows=shell_windows,
+        desktop_window=desktop_window,
     )
     context = file_selection.SelectionTriggerContext.capture(
         request_id=1,
@@ -185,6 +203,25 @@ def test_desktop_selection_is_used_only_when_foreground_and_cursor_are_desktop(m
     assert matched_hwnd == 31
 
 
+def test_desktop_selection_uses_shell_windows_desktop_fallback(monkeypatch):
+    thread = _thread_for_context(
+        monkeypatch,
+        foreground=31,
+        cursor=32,
+        shell_windows=[
+            _FakeWindow(11, ["C:/front.txt"]),
+        ],
+        desktop_window=_FakeWindow(31, ["C:/desktop.txt"]),
+        roots={11: 100, 31: 300, 32: 301},
+        desktop_roots={300, 301},
+    )
+
+    files, matched_hwnd = thread._get_files()
+
+    assert files == ["C:/desktop.txt"]
+    assert matched_hwnd == 300
+
+
 def test_empty_selected_item_paths_are_filtered(monkeypatch):
     thread = _thread_for_context(
         monkeypatch,
@@ -255,6 +292,18 @@ def test_popup_pending_selection_does_not_wait_and_invalidates_request():
     assert popup_window.LauncherPopup._take_valid_selected_files_for_click(popup) == []
     assert popup._file_check_seq == 2
     assert popup._selected_files_status == "idle"
+
+
+def test_selection_sensitive_command_defers_while_probe_is_pending(monkeypatch):
+    popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
+    popup._selected_files_status = "pending"
+    scheduled = []
+    monkeypatch.setattr(popup_item_execution.QTimer, "singleShot", lambda ms, cb: scheduled.append((ms, cb)))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND, command_type="cmd", command="echo {{selected_file:q}}")
+
+    assert popup_window.LauncherPopup._should_wait_for_selection(popup, item) is True
+    assert scheduled and scheduled[0][0] == 35
 
 
 def test_invalid_selection_context_does_not_start_worker(monkeypatch):

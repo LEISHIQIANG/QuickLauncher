@@ -171,6 +171,7 @@ def _register_builtin_commands():
         cmd_cidr,
         cmd_clean_cache,
         cmd_color,
+        cmd_config_repair,
         cmd_conflict,
         cmd_copy_path,
         cmd_dns,
@@ -408,6 +409,14 @@ def _register_builtin_commands():
             handler=cmd_clean_cache,
         ),
         CommandDefinition(
+            id="config-repair",
+            title="配置修复",
+            aliases=["config-repair", "repair-config", "config-fix", "配置修复", "旧配置修复"],
+            description="扫描或修复旧版本配置变量语法",
+            category="system",
+            handler=cmd_config_repair,
+        ),
+        CommandDefinition(
             id="explorer",
             title="重启资源管理器",
             aliases=["explorer", "重启资源管理器", "restart-explorer"],
@@ -458,6 +467,7 @@ def _register_builtin_commands():
         "port",
         "conflict",
         "clean-cache",
+        "config-repair",
         "git",
     }
 

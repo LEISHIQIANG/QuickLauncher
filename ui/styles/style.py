@@ -1515,7 +1515,9 @@ def get_dialog_stylesheet(theme: str) -> str:
     """获取对话框完整样式表"""
     style = StyleSheet
 
-    font_family = '"Source Han Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif'
+    from ui.utils.font_manager import get_font_css
+
+    font_family = get_font_css().removeprefix("font-family: ").removesuffix(";")
 
     if theme == "dark":
         text_primary = Colors.DARK_TEXT_PRIMARY
@@ -1539,8 +1541,6 @@ def get_dialog_stylesheet(theme: str) -> str:
             border: none;
         }}
         QLabel#TitleLabel {{
-            font-size: 13px;
-            font-weight: 400;
             color: {text_primary};
             margin-bottom: 4px;
         }}

@@ -25,6 +25,7 @@ from qt_compat import (
     QVBoxLayout,
 )
 from ui.styles.style import Colors, StyleSheet
+from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
 
 
@@ -60,6 +61,7 @@ class ThemedToolWindow(QDialog):
         title_bar.addWidget(self.icon_label)
 
         self.title_label = QLabel(title)
+        self.title_label.setFont(get_qfont(14, 400))
         title_bar.addWidget(self.title_label)
         title_bar.addStretch()
 
@@ -106,10 +108,11 @@ class ThemedToolWindow(QDialog):
 
         self.setStyleSheet("QDialog { background: transparent; }")
         self.title_label.setStyleSheet(f"""
-            font-size: 14px; font-weight: 500;
+            font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
         """)
+        self.title_label.setFont(get_qfont(14, 400))
         self.subtitle_label.setStyleSheet(f"""
             font-size: 11px;
             color: {text_secondary};
@@ -135,6 +138,8 @@ class ThemedToolWindow(QDialog):
                 color: #ffffff;
             }}
         """)
+        tune_font_rendering(self, recursive=True)
+        self.title_label.setFont(get_qfont(14, 400))
 
     def _apply_content_theme(self):
         """Subclass hook for styling child widgets."""

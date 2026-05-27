@@ -439,7 +439,7 @@ def test_shortcut_params_execute_through_panel(qapp):
         id="cmd1",
         name="Cmd",
         type=ShortcutType.COMMAND,
-        command="echo {param:host:q}",
+        command="echo {{param:host:q}}",
         command_type="cmd",
         command_params=[{"name": "host", "type": "text", "required": True}],
     )

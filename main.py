@@ -202,18 +202,16 @@ def main():
         # QToolTip 样式由各窗口的玻璃拟态主题样式表动态控制，不再全局硬编码
 
         try:
-            from qt_compat import QFont
+            from ui.utils.font_manager import get_qfont
 
-            default_font = QFont("Microsoft YaHei", 9)
-            default_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
-            default_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-            default_font.setWeight(QFont.Weight.Normal)
-            default_font.setKerning(True)
+            default_font = get_qfont(13)
             app.setFont(default_font)
             logger.info(f"应用字体设置为: {default_font.family()}, {default_font.pointSize()}pt")
         except Exception as e:
             logger.warning(f"设置默认字体失败: {e}")
             try:
+                from qt_compat import QFont
+
                 app.setFont(QFont("Microsoft YaHei", 9))
             except Exception as e:
                 logger.debug("ignored startup exception %s: %s", 4, e)

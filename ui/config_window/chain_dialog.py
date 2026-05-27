@@ -110,7 +110,7 @@ class StepCardWidget(QFrame):
         num_label.setFixedWidth(18)
         num_label.setAlignment(Qt.AlignCenter)
         num_label.setStyleSheet(
-            "color: rgba(128,128,128,180); font-size: 11px; font-weight: 500; "
+            "color: rgba(128,128,128,180); font-size: 11px; font-weight: 400; "
             "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
         )
         layout.addWidget(num_label)

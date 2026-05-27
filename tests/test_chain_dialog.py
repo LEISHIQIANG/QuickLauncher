@@ -10,17 +10,17 @@ class _Settings:
 
 
 class _DataManager:
-    def __init__(self, items):
-        self.data = type("Data", (), {"folders": [Folder(id="f", name="F", items=items)]})()
+    def __init__(self, items, folders=None):
+        self.data = type("Data", (), {"folders": folders or [Folder(id="f", name="F", items=items)]})()
 
     def get_settings(self):
         return _Settings()
 
 
 class _Parent(QWidget):
-    def __init__(self, items):
+    def __init__(self, items, folders=None):
         super().__init__()
-        self.data_manager = _DataManager(items)
+        self.data_manager = _DataManager(items, folders=folders)
 
 
 def test_chain_dialog_is_base_dialog(qapp):
@@ -29,6 +29,22 @@ def test_chain_dialog_is_base_dialog(qapp):
     parent = _Parent([first])
     dialog = ChainDialog(parent)
     assert isinstance(dialog, BaseDialog)
+    dialog.close()
+
+
+def test_chain_dialog_includes_icon_repo_items(qapp):
+    normal = ShortcutItem(id="normal", name="Normal", type=ShortcutType.FILE)
+    repo_item = ShortcutItem(id="repo", name="Repo", type=ShortcutType.URL)
+    parent = _Parent(
+        [],
+        folders=[
+            Folder(id="f", name="F", items=[normal]),
+            Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[repo_item]),
+        ],
+    )
+    dialog = ChainDialog(parent)
+
+    assert {item.id for item in dialog._available} == {"normal", "repo"}
     dialog.close()
 
 

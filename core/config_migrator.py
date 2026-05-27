@@ -104,9 +104,13 @@ class ConfigMigrator:
 
             # 删除旧目录
             try:
-                if old_dir.exists() and not any(old_dir.iterdir()):
-                    old_dir.rmdir()
-                    logger.info(f"已删除旧配置目录: {old_dir}")
+                if old_dir.exists():
+                    remaining = list(old_dir.iterdir())
+                    if not remaining:
+                        old_dir.rmdir()
+                        logger.info(f"已删除旧配置目录: {old_dir}")
+                    else:
+                        logger.warning(f"旧配置目录仍有残留文件: {[f.name for f in remaining]}")
             except Exception as e:
                 logger.warning(f"删除旧目录失败: {e}")
 

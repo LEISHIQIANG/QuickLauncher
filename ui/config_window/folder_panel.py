@@ -1102,7 +1102,16 @@ class FolderPanel(QWidget):
                 event.ignore()
                 return
 
-            result = self.data_manager.move_shortcuts_batch(shortcut_ids, target_folder_id)
+            copy_drag = bool(getattr(folder, "is_icon_repo", False))
+            if event.mimeData().hasFormat("application/x-source-folder-id"):
+                source_folder_id = self._decode_mime_text(event.mimeData(), "application/x-source-folder-id").strip()
+                source_folder = self.data_manager.data.get_folder_by_id(source_folder_id)
+                copy_drag = copy_drag or bool(getattr(source_folder, "is_icon_repo", False))
+
+            if copy_drag:
+                result = self.data_manager.copy_shortcuts_batch(shortcut_ids, target_folder_id)
+            else:
+                result = self.data_manager.move_shortcuts_batch(shortcut_ids, target_folder_id)
             if result.get("success", 0) > 0:
                 current_item = self.folder_list.currentItem()
                 if current_item:
