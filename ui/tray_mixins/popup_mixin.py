@@ -45,8 +45,8 @@ def _describe_window_at_point(x: int, y: int) -> str:
 def _is_own_native_dialog_foreground() -> bool:
     """Return True while a Windows native dialog created by this process is active."""
     try:
-        from ctypes import wintypes
         import os
+        from ctypes import wintypes
 
         user32 = ctypes.windll.user32
         hwnd = user32.GetForegroundWindow()
