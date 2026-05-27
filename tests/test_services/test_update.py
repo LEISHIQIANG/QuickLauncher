@@ -255,6 +255,7 @@ class TestUpdateDownloader:
             patch("builtins.open", mock_open()),
             patch("services.update.downloader.os.makedirs"),
             patch("services.update.downloader.os.path.exists", return_value=False),
+            patch("services.update.downloader.write_session_state"),
         ):
             downloader._do_download(
                 "http://localhost/test.exe",
@@ -292,6 +293,7 @@ class TestUpdateDownloader:
             patch.object(downloader, "_notify") as mock_notify,
             patch("services.update.downloader.os.makedirs"),
             patch("builtins.open", mock_open()),
+            patch("services.update.downloader.write_session_state"),
         ):
             downloader._do_download(
                 "https://github.com/test.exe",
