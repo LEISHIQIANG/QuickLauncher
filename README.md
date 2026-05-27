@@ -4,6 +4,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20|%2011-lightgrey.svg)](https://www.microsoft.com/windows)
 
+[简体中文](README.md) | [English](README_EN.md) | [完整文档](README_FULL.md) | [Full Docs](README_FULL_EN.md)
+
 **按一下鼠标中键，随时随地启动你想要的一切。**
 
 QuickLauncher 是一款 Windows 桌面快速启动器 —— 在屏幕任意位置按下鼠标中键，即可呼出启动面板，搜索并打开应用、文件夹、网址、执行命令。轻量、快速、开箱即用。
