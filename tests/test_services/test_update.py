@@ -132,6 +132,12 @@ class TestUpdateChecker:
         assert result is not None
         assert result.file_hash == "sha256:" + "c" * 64
 
+    def test_default_config_allows_github_release_redirect_hosts(self):
+        checker = UpdateChecker(UpdateConfig())
+
+        assert checker._is_allowed_download_host("github.com")
+        assert checker._is_allowed_download_host("objects.githubusercontent.com")
+
     @patch("services.update.checker.ApiClient.get")
     def test_check_now_rejects_missing_hash(self, mock_get):
         mock_get.return_value = {

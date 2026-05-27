@@ -3,6 +3,8 @@
 import logging
 import os
 
+from core.i18n import tr
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,9 +50,25 @@ class UpdateMixin:
         if self._update_checker is None:
             UpdateNotification.show_check_failed("Update system is not initialized", parent=parent)
             return
-        info = self._update_checker.check_now()
-        if info and not info.has_update:
-            UpdateNotification.show_up_to_date(parent=parent)
+
+        import threading
+
+        def _bg_check():
+            try:
+                info = self._update_checker._do_check()
+                self._update_checker._save_check_time()
+                if info is None:
+                    return
+                if info.has_update:
+                    if self._update_checker.is_version_skipped(info.version) and not info.mandatory:
+                        return
+                    self._update_event_signal.emit("update_available", info)
+                else:
+                    self._update_event_signal.emit("up_to_date", None)
+            except Exception as e:
+                self._update_event_signal.emit("check_failed", str(e))
+
+        threading.Thread(target=_bg_check, daemon=True).start()
 
     def _on_update_event(self, event: str, data=None):
         from services.update.ui import UpdateNotification
@@ -59,11 +77,18 @@ class UpdateMixin:
 
         if event == "update_available":
             self._pending_update_info = data
-            UpdateNotification.show_update_available(
-                data,
-                on_download=lambda: self._download_update(data),
-                on_skip=lambda: self._skip_version(data.version),
-                parent=parent,
+            try:
+                UpdateNotification.show_update_available(
+                    data,
+                    on_download=lambda: self._download_update(data),
+                    on_skip=lambda: self._skip_version(data.version),
+                    parent=parent,
+                )
+            except Exception:
+                logger.exception("Failed to show update dialog")
+        elif event == "check_now_failed":
+            UpdateNotification.show_check_failed(
+                tr("无法连接到更新服务器，请检查网络。"), parent=parent,
             )
         elif event == "auto_download_requested":
             self._pending_update_info = data
@@ -73,8 +98,9 @@ class UpdateMixin:
             logger.info("Skipped update %s", getattr(data, "version", ""))
         elif event == "check_failed":
             logger.debug("Update check failed: %s", data)
+            UpdateNotification.show_check_failed(data, parent=parent)
         elif event == "up_to_date":
-            pass
+            UpdateNotification.show_up_to_date(parent=parent)
 
     def _download_update(self, update_info):
         if not self._update_downloader:

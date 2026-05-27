@@ -18,7 +18,7 @@ class UpdateConfig:
     verify_ssl: bool = True
     require_file_hash: bool = True
     allow_insecure_update_urls: bool = False
-    allowed_download_hosts: tuple[str, ...] = ("github.com",)
+    allowed_download_hosts: tuple[str, ...] = ("github.com", "githubusercontent.com")
     max_download_bytes: int = 200 * 1024 * 1024
     download_dir_name: str = "updates"
 
