@@ -88,7 +88,8 @@ class UpdateMixin:
                 logger.exception("Failed to show update dialog")
         elif event == "check_now_failed":
             UpdateNotification.show_check_failed(
-                tr("无法连接到更新服务器，请检查网络。"), parent=parent,
+                tr("无法连接到更新服务器，请检查网络。"),
+                parent=parent,
             )
         elif event == "auto_download_requested":
             self._pending_update_info = data

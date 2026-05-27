@@ -65,7 +65,7 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             return stash(f'<a href="{url}" style="color:{link_color};text-decoration:none;">{label}</a>')
 
         text = re.sub(r"`([^`]+)`", code_repl, text)
-        text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', link_repl, text)
+        text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", link_repl, text)
         text = html.escape(text, quote=False)
         text = re.sub(
             r"\*\*\*(.+?)\*\*\*",
@@ -263,11 +263,11 @@ class UpdateDialog:
         size_mb = update_info.file_size / 1024 / 1024
 
         version_html = (
-            f'<div style="font-family: \'Segoe UI\', \'Microsoft YaHei UI\'; font-size: 12px; '
+            f"<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; "
             f'color: {secondary_color}; padding-left: 32px; margin-bottom: 4px;">'
             f'<span style="display:inline-block;background:{badge_bg};color:{badge_color};'
             f'padding:2px 8px;border-radius:4px;font-weight:400;border:1px solid {badge_border};">'
-            f'v{update_info.version}</span>'
+            f"v{update_info.version}</span>"
             f'<span style="margin-left:8px;color:{secondary_color};"> {size_mb:.1f} MB</span>'
         )
         if update_info.mandatory:
@@ -293,15 +293,13 @@ class UpdateDialog:
 
         html_content = _markdown_to_html(changelog, theme)
         full_html = (
-            '<div style="font-family: \'Segoe UI\', \'Microsoft YaHei UI\', sans-serif; '
+            "<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; "
             f'font-size: 12px; color: {text_color}; line-height: 1.65; padding: 6px 8px;">'
             f"{html_content}</div>"
         )
         text_browser.setHtml(full_html)
 
-        text_browser.setStyleSheet(
-            "QTextBrowser { background: transparent; border: none; padding: 0px; }"
-        )
+        text_browser.setStyleSheet("QTextBrowser { background: transparent; border: none; padding: 0px; }")
         layout.addWidget(text_browser, 1)
 
         # Buttons
@@ -339,8 +337,12 @@ class UpdateDialog:
             inset = 1.0 if is_win10() else 0.5
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset, dialog.width() - inset * 2, dialog.height() - inset * 2,
-                corner_radius, corner_radius,
+                inset,
+                inset,
+                dialog.width() - inset * 2,
+                dialog.height() - inset * 2,
+                corner_radius,
+                corner_radius,
             )
             tint = QColor(bg_color)
             if is_win10():
