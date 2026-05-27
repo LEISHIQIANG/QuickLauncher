@@ -1,7 +1,5 @@
 """核心模块"""
 
-from .version import APP_VERSION as APP_VERSION
-
 from .data_manager import DataManager as DataManager
 from .data_models import DEFAULT_SPECIAL_APPS as DEFAULT_SPECIAL_APPS  # 添加这个
 from .data_models import AppData as AppData
@@ -9,6 +7,7 @@ from .data_models import AppSettings as AppSettings
 from .data_models import Folder as Folder
 from .data_models import ShortcutItem as ShortcutItem
 from .data_models import ShortcutType as ShortcutType
+from .version import APP_VERSION as APP_VERSION
 
 # 可选模块
 try:
