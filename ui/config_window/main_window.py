@@ -110,7 +110,6 @@ class TitleBar(QWidget):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(icon_size, icon_size)
         self.icon_label.setCursor(QtCompat.PointingHandCursor)
-        self.icon_label.setToolTip(tr("检查更新"))
         self.icon_label.mousePressEvent = self._on_update_click
         self.icon_label.setStyleSheet("background: transparent;")
 
@@ -137,7 +136,6 @@ class TitleBar(QWidget):
         # 标题
         self.title_label = QLabel(f"QuickLauncher {APP_VERSION}")
         self.title_label.setCursor(QtCompat.PointingHandCursor)
-        self.title_label.setToolTip(tr("检查更新"))
         self.title_label.mousePressEvent = self._on_update_click
         self.title_label.setStyleSheet("font-size: 13px; font-weight: 400; background: transparent;")
         self.title_label.setContentsMargins(0, 0, 0, 0)
@@ -300,8 +298,6 @@ class TitleBar(QWidget):
         self.retranslate_ui()
 
     def retranslate_ui(self):
-        self.icon_label.setToolTip(tr("检查更新"))
-        self.title_label.setToolTip(tr("检查更新"))
         if not self._in_settings_mode:
             self.title_label.setText(f"QuickLauncher {APP_VERSION}")
             self.title_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)

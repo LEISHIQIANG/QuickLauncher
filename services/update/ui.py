@@ -189,17 +189,16 @@ class UpdateDialog:
             QPen,
             QPoint,
             QPushButton,
+            Qt,
+            QtCompat,
             QTextBrowser,
             QTimer,
             QVBoxLayout,
-            Qt,
-            QtCompat,
         )
+        from ui.styles.style import get_dialog_stylesheet
         from ui.utils.dialog_helper import center_dialog_on_main_window
         from ui.utils.font_manager import get_qfont, tune_font_rendering
         from ui.utils.window_effect import get_window_effect, is_win10, is_win11
-
-        from ui.styles.style import get_dialog_stylesheet
 
         theme = "dark"
         if parent and hasattr(parent, "_theme"):
@@ -294,14 +293,14 @@ class UpdateDialog:
 
         html_content = _markdown_to_html(changelog, theme)
         full_html = (
-            f'<div style="font-family: \'Segoe UI\', \'Microsoft YaHei UI\', sans-serif; '
+            '<div style="font-family: \'Segoe UI\', \'Microsoft YaHei UI\', sans-serif; '
             f'font-size: 12px; color: {text_color}; line-height: 1.65; padding: 6px 8px;">'
             f"{html_content}</div>"
         )
         text_browser.setHtml(full_html)
 
         text_browser.setStyleSheet(
-            f"QTextBrowser {{ background: transparent; border: none; padding: 0px; }}"
+            "QTextBrowser { background: transparent; border: none; padding: 0px; }"
         )
         layout.addWidget(text_browser, 1)
 
