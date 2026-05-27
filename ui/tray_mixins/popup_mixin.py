@@ -28,10 +28,7 @@ def _describe_window_at_point(x: int, y: int) -> str:
             title_buf = ctypes.create_unicode_buffer(192)
             user32.GetClassNameW(root, class_buf, len(class_buf))
             user32.GetWindowTextW(root, title_buf, len(title_buf))
-            return (
-                f"hwnd=0x{int(root):x} pid={pid.value} "
-                f"class={class_buf.value!r} title={title_buf.value!r}"
-            )
+            return f"hwnd=0x{int(root):x} pid={pid.value} " f"class={class_buf.value!r} title={title_buf.value!r}"
 
         pt = POINT(int(x), int(y))
         foreground = user32.GetForegroundWindow()
