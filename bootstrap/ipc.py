@@ -8,7 +8,7 @@ def create_ipc_server(app, server_name: str, on_show_config):
     """创建 IPC 本地服务器，返回 server 对象"""
     from qt_compat import QLocalServer, QTimer
 
-    _pending = {'show_config': False}
+    _pending = {"show_config": False}
 
     def _on_new_connection():
         try:
@@ -34,7 +34,7 @@ def create_ipc_server(app, server_name: str, on_show_config):
                     if cb:
                         QTimer.singleShot(0, cb)
                     else:
-                        _pending['show_config'] = True
+                        _pending["show_config"] = True
         except Exception as e:
             logger.error(f"IPC处理失败: {e}\n{traceback.format_exc()}")
 
@@ -49,6 +49,7 @@ def create_ipc_server(app, server_name: str, on_show_config):
 def try_connect_existing(server_name: str) -> bool:
     """尝试连接已有实例，成功则发送 show_config 并返回 True"""
     from qt_compat import QLocalSocket
+
     socket = QLocalSocket()
     socket.connectToServer(server_name)
     connected = socket.waitForConnected(100)

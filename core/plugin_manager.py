@@ -22,8 +22,9 @@ from .command_registry import (
     CommandParam,
     CommandRegistry,
     CommandResult,
-    _search_sources,
     limit_command_result_actions,
+    register_search_source,
+    remove_search_source,
 )
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
@@ -145,6 +146,7 @@ class PluginAPI:
         self._registered_ids: list[str] = []
         self._staged_commands: list[CommandDefinition] = []
         self._staged_search_sources: list[str] = []
+        self._staged_search_handlers: dict[str, Callable[[str], list[dict]] | None] = {}
         self._committed = False
 
     def _check_permission(self, perm: str) -> None:
@@ -182,6 +184,7 @@ class PluginAPI:
         # Defer write to _search_sources until commit_staged is called.
         # This ensures rollback can clean up completely if registration fails.
         self._staged_search_sources.append(id)
+        self._staged_search_handlers[id] = handler
 
     def register_command(
         self,
@@ -243,13 +246,35 @@ class PluginAPI:
         """Atomically register all staged commands and search sources. Rollback on any failure."""
         if self._committed:
             return True
+        staged_source_ids: set[str] = set()
+        for sid in self._staged_search_sources:
+            if sid in staged_source_ids:
+                logger.error("插件 %s 重复注册搜索源: %s", self._plugin_id, sid)
+                self._staged_commands.clear()
+                self._staged_search_sources.clear()
+                self._staged_search_handlers.clear()
+                self._registered_ids.clear()
+                return False
+            staged_source_ids.add(sid)
         # Write staged search sources to global dict
         written_sources: list[str] = []
         for sid in self._staged_search_sources:
-            _search_sources[sid] = {
-                "handler": None,
-                "plugin_id": self._plugin_id,
-            }
+            ok = register_search_source(
+                sid,
+                {
+                    "handler": self._staged_search_handlers.get(sid),
+                    "plugin_id": self._plugin_id,
+                },
+            )
+            if not ok:
+                for written_sid in written_sources:
+                    remove_search_source(written_sid, plugin_id=self._plugin_id)
+                self._staged_commands.clear()
+                self._staged_search_sources.clear()
+                self._staged_search_handlers.clear()
+                self._registered_ids.clear()
+                logger.error("插件 %s 搜索源 ID 冲突，注册已回滚: %s", self._plugin_id, sid)
+                return False
             written_sources.append(sid)
         # Register staged commands
         committed_ids: list[str] = []
@@ -262,7 +287,7 @@ class PluginAPI:
                 for cid in committed_ids:
                     self._registry.remove(cid)
                 for sid in written_sources:
-                    _search_sources.pop(sid, None)
+                    remove_search_source(sid, plugin_id=self._plugin_id)
                 available_ids = [c.id for c in self._staged_commands]
                 logger.error(
                     "插件 %s 命令注册失败，已回滚 %d 个已注册命令和 %d 个搜索源。失败命令: %s, 所有尝试: %s",
@@ -274,11 +299,13 @@ class PluginAPI:
                 )
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
+                self._staged_search_handlers.clear()
                 self._registered_ids.clear()
                 return False
         self._registered_ids = committed_ids[:]
         self._staged_commands.clear()
         self._staged_search_sources.clear()
+        self._staged_search_handlers.clear()
         self._committed = True
         return True
 
@@ -550,6 +577,11 @@ class PluginManager:
     # ---- scanning ----
 
     def scan_plugins(self) -> list[PluginInfo]:
+        """Rescan plugin directories.
+
+        Enabled plugins are unloaded during the scan. Callers that want to
+        preserve runtime state must snapshot enabled ids and call auto_enable().
+        """
         for plugin_id in [p.manifest.id for p in self._plugins.values() if p.status == "enabled"]:
             self.disable_plugin(plugin_id, persist=False)
         self._plugins.clear()
@@ -668,7 +700,11 @@ class PluginManager:
                 raise ImportError(f"无法加载插件模块: {entry_path}")
             loader = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = loader
-            spec.loader.exec_module(loader)
+            try:
+                spec.loader.exec_module(loader)
+            except Exception:
+                sys.modules.pop(module_name, None)
+                raise
 
         if not hasattr(loader, "register"):
             raise AttributeError(f"插件 {m.id} 缺少 register(api) 函数")
@@ -739,7 +775,7 @@ class PluginManager:
         info.registered_commands.clear()
         # Clean up search sources
         for sid in info.registered_search_sources:
-            _search_sources.pop(sid, None)
+            remove_search_source(sid, plugin_id=plugin_id)
         info.registered_search_sources.clear()
         info.status = "disabled"
         if persist:
@@ -750,18 +786,6 @@ class PluginManager:
         info = self._plugins.get(plugin_id)
         if info is None:
             return False
-        # Snapshot old state for rollback on failure
-        old_info = PluginInfo(
-            manifest=info.manifest,
-            directory=info.directory,
-            status=info.status,
-            error=info.error,
-            registered_commands=list(info.registered_commands),
-            registered_search_sources=list(info.registered_search_sources),
-            enabled_at=info.enabled_at,
-            last_error_at=info.last_error_at,
-            last_run_at=info.last_run_at,
-        )
         was_enabled = info.status == "enabled"
         was_error = info.status == "error"
 
@@ -786,10 +810,16 @@ class PluginManager:
         if ok:
             self._save_enabled()
         else:
-            # Rollback: restore old state so the plugin remains available
-            self._plugins[plugin_id] = old_info
+            failed_info = self._plugins.get(plugin_id)
+            if failed_info is not None and was_enabled:
+                failed_info.status = "error"
+                failed_info.error = (
+                    f"reload failed after unloading previous commands: {failed_info.error or 'unknown error'}"
+                )
+                failed_info.registered_commands.clear()
+                failed_info.registered_search_sources.clear()
             self._save_enabled()
-            logger.info("重载插件 %s 失败，已回滚到先前状态", plugin_id)
+            logger.info("Plugin reload failed and plugin was left in error state: %s", plugin_id)
         return ok
 
     # ---- persistence ----

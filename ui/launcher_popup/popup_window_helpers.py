@@ -47,7 +47,8 @@ class IconFlashOverlay(QWidget):
         self.launcher = launcher
         self._opacity = 0.0
         self._started_at = 0.0
-        self._duration_ms = 300
+        self._last_started_at = 0.0
+        self._duration_ms = 140
         self._items = []
         self._timer = QTimer(self)
         self._timer.setInterval(16)
@@ -58,17 +59,21 @@ class IconFlashOverlay(QWidget):
         self.hide()
 
     def start(self):
+        now = time.perf_counter()
+        if now - self._last_started_at < 0.45:
+            return
         self.setGeometry(self.launcher.rect())
         self._items = list(self._snapshot_icons())
         if not self._items:
             return
+        self._last_started_at = now
         self.raise_()
         self._started_at = time.perf_counter()
-        self._opacity = 0.35
+        self._opacity = 0.32
         self.show()
         if not self._timer.isActive():
             self._timer.start()
-        self.repaint()
+        self.update()
 
     def stop(self):
         if self._timer.isActive():
@@ -84,12 +89,8 @@ class IconFlashOverlay(QWidget):
             self.stop()
             return
 
-        if t < 0.42:
-            pulse_t = t / 0.42
-            self._opacity = 0.85 * (1.0 - abs(2.0 * pulse_t - 1.0))
-        else:
-            pulse_t = (t - 0.42) / 0.58
-            self._opacity = 0.65 * (1.0 - abs(2.0 * pulse_t - 1.0))
+        eased = 1.0 - (1.0 - t) * (1.0 - t)
+        self._opacity = 0.32 * (1.0 - eased)
         self.update()
 
     def _snapshot_icons(self):
@@ -111,11 +112,18 @@ class IconFlashOverlay(QWidget):
 
         if 0 <= current_page < len(pages):
             items = getattr(pages[current_page], "items", []) or []
+            bottom_margin = 6
+            indicator_height = 16 if len(pages) > 1 else 0
+            indicator_spacing = 4 if len(pages) > 1 else 0
+            dock_height = int(getattr(launcher, "dock_height", 0) or 0)
+            if not (getattr(launcher, "dock_items", None) and dock_height > 0):
+                dock_height = 0
+            icons_bottom = launcher.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
             for i, item in enumerate(items[: cols * fixed_rows]):
                 row = i // cols
                 col = i % cols
                 x = padding + col * cell_size
-                y = padding + row * cell_h
+                y = icons_bottom - (fixed_rows - row) * cell_h
                 if use_card:
                     card_pad = 2
                     card_size = icon_size + card_pad * 2

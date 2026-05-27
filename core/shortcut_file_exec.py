@@ -2,55 +2,22 @@
 
 from __future__ import annotations
 
-import ctypes
 import logging
 import os
 import shlex
 import subprocess
 import threading
 import time
-from ctypes import wintypes
 from typing import List, Optional
 
 import win32process
 
 from .data_models import ShortcutItem
+from .shortcut_types import (
+    shell32,
+    user32,
+)
 from .windows_uipi import is_process_elevated
-
-user32 = ctypes.windll.user32
-shell32 = ctypes.windll.shell32
-try:
-    ULONG_PTR = wintypes.ULONG_PTR
-except AttributeError:
-    ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
-
-
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", wintypes.WORD),
-        ("wScan", wintypes.WORD),
-        ("dwFlags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ULONG_PTR),
-    ]
-
-
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT)]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", wintypes.DWORD), ("union", _INPUT_UNION)]
-
-
-INPUT_KEYBOARD = 1
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_EXTENDEDKEY = 0x0001
-KEYEVENTF_SCANCODE = 0x0008
-
-SendInput = user32.SendInput
-SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
-SendInput.restype = wintypes.UINT
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
@@ -116,15 +83,17 @@ class FileExecutionMixin:
         except Exception as e:
             logger.debug(f"解析快捷方式失败: {e}")
 
-        # 备用方案：使用 PowerShell 解析
+        # 备用方案：使用 PowerShell 解析（-EncodedCommand 防止路径注入）
         try:
-            ps_script = f"""
-            $shell = New-Object -ComObject WScript.Shell
-            $shortcut = $shell.CreateShortcut("{path}")
-            $shortcut.TargetPath
-            """
+            import base64
 
-            # 使用更隐蔽的参数
+            ps_script = (
+                "$shell = New-Object -ComObject WScript.Shell\n"
+                f"$shortcut = $shell.CreateShortcut([System.Text.Encoding]::Unicode"
+                f".GetString([Convert]::FromBase64String('{base64.b64encode(path.encode('utf-16-le')).decode('ascii')}')))\n"
+                "$shortcut.TargetPath"
+            )
+
             ps_cmd = [
                 "powershell",
                 "-NoLogo",
@@ -132,8 +101,8 @@ class FileExecutionMixin:
                 "-NonInteractive",
                 "-WindowStyle",
                 "Hidden",
-                "-Command",
-                ps_script,
+                "-EncodedCommand",
+                base64.b64encode(ps_script.encode("utf-16-le")).decode("ascii"),
             ]
 
             output = ShortcutExecutor._run_silent_output(ps_cmd)

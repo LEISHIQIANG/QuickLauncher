@@ -1,4 +1,4 @@
-# QuickLauncher
+﻿# QuickLauncher
 
 [![CI](https://github.com/LEISHIQIANG/QuickLauncher/actions/workflows/ci.yml/badge.svg)](https://github.com/LEISHIQIANG/QuickLauncher/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

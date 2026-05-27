@@ -181,24 +181,23 @@ class DataManager:
             logger.error("从自动备份恢复配置失败: %s", exc)
             return None
 
-    def save(self, immediate: bool = False):
+    def save(self, immediate: bool = False) -> bool:
         """保存数据（带节流）
 
         Args:
             immediate: 是否立即保存，忽略节流
         """
-        self._runtime_revision += 1
         with self._save_lock:
+            self._runtime_revision += 1
             if self._batch_depth > 0:
                 self._save_pending = True
                 self._batch_dirty = True
                 if immediate:
                     self._batch_force_immediate = True
-                return
+                return True
 
         if immediate:
-            self._do_save()
-            return
+            return self._do_save()
 
         with self._save_lock:
             self._save_pending = True
@@ -206,6 +205,7 @@ class DataManager:
                 self._save_timer = threading.Timer(self._save_delay, self._delayed_save)
                 self._save_timer.daemon = True
                 self._save_timer.start()
+        return True
 
     def _delayed_save(self):
         """延迟保存执行"""
@@ -254,18 +254,20 @@ class DataManager:
                 else:
                     self.save()
 
-    def _do_save(self):
+    def _do_save(self) -> bool:
         """Save data to disk atomically with lock splitting."""
         # 1. 极速内存操作：在内存锁保护下快速序列化并处理历史快照
         with self._save_lock:
             try:
                 payload = self._serialize_data()
                 next_data_dict = json.loads(payload)
-                self._record_history_before_write(next_data_dict)
-                self._last_saved_data_dict = next_data_dict
+                previous_data_dict = getattr(self, "_last_saved_data_dict", None)
+                suppress_history = bool(getattr(self, "_suppress_next_history", False))
+                history_action = getattr(self, "_pending_history_action", "配置变更")
+                history_summary = getattr(self, "_pending_history_summary", "")
             except Exception as e:
                 logger.error("serialize data failed: %s", e)
-                return
+                return False
 
         # 2. 耗时 I/O 操作：在专用物理写入锁下进行，内存锁已释放，GUI 线程可并发读写内存
         write_success = False
@@ -291,7 +293,17 @@ class DataManager:
         # 3. 释放 I/O 锁后，再重新获取内存锁更新状态，彻底避免双锁嵌套，防止任何死锁
         if write_success:
             with self._save_lock:
+                if suppress_history:
+                    self._suppress_next_history = False
+                elif previous_data_dict and previous_data_dict != next_data_dict:
+                    history = getattr(self, "history_manager", None)
+                    if history is not None:
+                        history.record_snapshot(previous_data_dict, action=history_action, summary=history_summary)
+                    self._pending_history_action = "配置变更"
+                    self._pending_history_summary = ""
+                self._last_saved_data_dict = next_data_dict
                 self._config_status = {"status": "ok", "source": str(self.data_file), "issues": []}
+        return write_success
 
     def _serialize_data(self) -> str:
         """Serialize data and validate the JSON before writing it to disk."""
@@ -309,25 +321,6 @@ class DataManager:
     def _mark_history(self, action: str, summary: str = ""):
         self._pending_history_action = action or "配置变更"
         self._pending_history_summary = summary or action or "配置变更"
-
-    def _record_history_before_write(self, next_data_dict: dict):
-        if getattr(self, "_suppress_next_history", False):
-            self._suppress_next_history = False
-            return
-
-        previous = getattr(self, "_last_saved_data_dict", None)
-        if not previous or previous == next_data_dict:
-            return
-
-        history = getattr(self, "history_manager", None)
-        if history is None:
-            return
-
-        action = getattr(self, "_pending_history_action", "配置变更")
-        summary = getattr(self, "_pending_history_summary", "")
-        history.record_snapshot(previous, action=action, summary=summary)
-        self._pending_history_action = "配置变更"
-        self._pending_history_summary = ""
 
     def get_config_status(self) -> dict:
         """Return latest configuration load/save validation status."""
@@ -373,7 +366,6 @@ class DataManager:
                 self._mark_history("恢复历史快照", f"恢复快照 {snapshot_id}")
                 self.data = AppData.from_dict(data_dict)
                 self.save(immediate=True)
-                self._runtime_revision += 1
                 return True
             except Exception as exc:
                 logger.exception("restore config history failed: %s", exc)
@@ -622,7 +614,7 @@ class DataManager:
                 for folder in target_folders:
                     updated += self._apply_smart_order(folder)
                 if updated:
-                    self.save(immediate=True)
+                    self._batch_dirty = True
 
             return {"folders": len(target_folders), "updated": updated}
 
@@ -687,7 +679,7 @@ class DataManager:
                     if len(kept) != len(folder.items):
                         folder.items = kept
                 if removed_ids:
-                    self.save(immediate=True)
+                    self._batch_dirty = True
 
             return {
                 "requested": len(wanted),
@@ -717,7 +709,7 @@ class DataManager:
                     target_folder.items.append(item)
                     moved.append(item.id)
                 if moved:
-                    self.save(immediate=True)
+                    self._batch_dirty = True
 
             return {
                 "requested": len(wanted),
@@ -743,7 +735,7 @@ class DataManager:
                             item.enabled = bool(enabled)
                             changed.append(item.id)
                 if changed:
-                    self.save(immediate=True)
+                    self._batch_dirty = True
 
             return {
                 "requested": len(wanted),
@@ -1197,6 +1189,7 @@ class DataManager:
     def _restore_full_config_safe(self, backup_path: str) -> bool:
         with self._save_lock:
             report = self._reset_import_report()
+            restored_bg_path = None
             try:
                 if not os.path.exists(backup_path):
                     return False
@@ -1251,6 +1244,7 @@ class DataManager:
                                 )
                                 with open(target_bg_path, "wb") as f:
                                     f.write(bg_bytes)
+                                restored_bg_path = target_bg_path
                                 data_dict["settings"]["custom_bg_path"] = str(target_bg_path)
                         else:
                             if normalized_bg:
@@ -1303,6 +1297,14 @@ class DataManager:
                             safe_rmtree_child(icons_root.parent, icons_root)
                         if backup_icons_dir and backup_icons_dir.exists():
                             backup_icons_dir.replace(icons_root)
+                        if restored_bg_path and restored_bg_path.exists():
+                            try:
+                                restored_bg_path.unlink()
+                            except Exception as cleanup_error:
+                                logger.debug(
+                                    "cleanup restored background failed %s: %s", restored_bg_path, cleanup_error
+                                )
+                            restored_bg_path = None
                         raise
                     finally:
                         if temp_icons_dir.exists():
@@ -1314,9 +1316,19 @@ class DataManager:
                     return True
 
             except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
+                if restored_bg_path and restored_bg_path.exists():
+                    try:
+                        restored_bg_path.unlink()
+                    except Exception as cleanup_error:
+                        logger.debug("cleanup restored background failed %s: %s", restored_bg_path, cleanup_error)
                 logger.warning("restore_full_config rejected unsafe backup: %s", e)
                 return False
             except Exception as e:
+                if restored_bg_path and restored_bg_path.exists():
+                    try:
+                        restored_bg_path.unlink()
+                    except Exception as cleanup_error:
+                        logger.debug("cleanup restored background failed %s: %s", restored_bg_path, cleanup_error)
                 logger.exception("restore_full_config failed: %s", e)
                 return False
 
@@ -1456,8 +1468,13 @@ class DataManager:
         """
         return self._import_shareable_config_safe(import_path, merge=merge)
 
-    def _import_shareable_config_safe(self, import_path: str, merge: bool = True) -> bool:
-        report = self._reset_import_report()
+    def _import_shareable_config_transactional(self, import_path: str, merge: bool, report: dict) -> bool:
+        temp_icons_dir = None
+        moved_icons: list[Path] = []
+        original_data_dict: dict | None = None
+        original_history_action = getattr(self, "_pending_history_action", "配置变更")
+        original_history_summary = getattr(self, "_pending_history_summary", "")
+        install_root = Path(self.install_dir).resolve(strict=False)
         try:
             if not os.path.exists(import_path):
                 return False
@@ -1466,6 +1483,12 @@ class DataManager:
 
             with self._save_lock:
                 self._mark_history("导入分享配置", f"导入配置: {import_path}")
+                original_data_dict = self.data.to_dict()
+                icons_root = Path(self.icons_dir).resolve(strict=False)
+                temp_icons_dir = resolve_under(
+                    install_root,
+                    tempfile.mkdtemp(prefix="ql_import_icons_", dir=str(install_root)),
+                )
                 with zipfile.ZipFile(import_path, "r") as zf:
                     safe_index = build_safe_zip_index(zf, report)
                     config_text = read_zip_text(
@@ -1483,31 +1506,8 @@ class DataManager:
                     if not isinstance(import_items, list) or not import_items:
                         return False
 
-                    # 查找或创建"导入图标"分类
-                    from .data_models import Folder, ShortcutItem
-
-                    target_folder = None
-                    for folder in self.data.folders:
-                        if folder.name == "导入图标":
-                            target_folder = folder
-                            break
-
-                    # 向后兼容: 修复曾被写入的编码损坏文件夹名
-                    if not target_folder:
-                        for folder in self.data.folders:
-                            if folder.name == "导入图标":
-                                folder.name = "导入图标"
-                                target_folder = folder
-                                break
-
-                    if not target_folder:
-                        max_order = max((f.order for f in self.data.folders), default=0)
-                        target_folder = Folder(name="导入图标", order=max_order + 1)
-                        self.data.folders.append(target_folder)
-
-                    self.icons_dir.mkdir(parents=True, exist_ok=True)
-                    max_order = max((s.order for s in target_folder.items), default=-1)
-                    imported_count = 0
+                    staged_shortcuts = []
+                    staged_icons: list[tuple[Path, Path]] = []
                     for item_dict in import_items[:2048]:
                         if not isinstance(item_dict, dict):
                             continue
@@ -1522,7 +1522,8 @@ class DataManager:
                             if has_zip_entry(safe_index, icon_path) and is_allowed_icon_path(icon_path):
                                 icon_ext = os.path.splitext(icon_path)[1] or ".png"
                                 icon_filename = f"{item_dict['id']}{icon_ext}"
-                                local_icon_path = self.icons_dir / icon_filename
+                                temp_icon_path = resolve_under(temp_icons_dir, temp_icons_dir / icon_filename)
+                                local_icon_path = resolve_under(icons_root, icons_root / icon_filename)
                                 icon_bytes = read_zip_bytes(
                                     zf,
                                     safe_index,
@@ -1531,9 +1532,10 @@ class DataManager:
                                     report=report,
                                 )
                                 if icon_bytes is not None:
-                                    with open(local_icon_path, "wb") as f:
+                                    with open(temp_icon_path, "wb") as f:
                                         f.write(icon_bytes)
                                     item_dict["icon_path"] = str(local_icon_path)
+                                    staged_icons.append((temp_icon_path, local_icon_path))
                                 else:
                                     item_dict["icon_path"] = ""
                             else:
@@ -1542,22 +1544,74 @@ class DataManager:
                         else:
                             item_dict["icon_path"] = ""
 
-                        shortcut = ShortcutItem.from_dict(item_dict)
+                        staged_shortcuts.append(ShortcutItem.from_dict(item_dict))
+
+                    imported_count = len(staged_shortcuts)
+                    if imported_count <= 0:
+                        return False
+
+                    import_folder_name = "\u5bfc\u5165\u56fe\u6807"
+                    legacy_import_folder_names = {import_folder_name, "导入图标"}
+                    target_folder = None
+                    for folder in self.data.folders:
+                        if folder.name in legacy_import_folder_names:
+                            target_folder = folder
+                            target_folder.name = import_folder_name
+                            break
+
+                    if not target_folder:
+                        max_folder_order = max((f.order for f in self.data.folders), default=0)
+                        target_folder = Folder(name=import_folder_name, order=max_folder_order + 1)
+                        append_target_folder = True
+                    else:
+                        append_target_folder = False
+
+                    self.icons_dir.mkdir(parents=True, exist_ok=True)
+                    for temp_icon_path, local_icon_path in staged_icons:
+                        shutil.move(str(temp_icon_path), str(local_icon_path))
+                        moved_icons.append(local_icon_path)
+
+                    if append_target_folder:
+                        self.data.folders.append(target_folder)
+                    if not merge:
+                        target_folder.items.clear()
+                    max_order = max((s.order for s in target_folder.items), default=-1)
+                    for shortcut in staged_shortcuts:
                         max_order += 1
                         shortcut.order = max_order
                         target_folder.items.append(shortcut)
-                        imported_count += 1
 
-                self.save(immediate=True)
+                if not self.save(immediate=True):
+                    raise RuntimeError("failed to save imported shareable config")
                 set_imported_items(report, imported_count)
                 return imported_count > 0
 
-        except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
-            logger.warning("import_shareable_config rejected unsafe package: %s", e)
-            return False
         except Exception as e:
-            logger.exception("import_shareable_config failed: %s", e)
+            if original_data_dict is not None:
+                self.data = AppData.from_dict(original_data_dict)
+                self._pending_history_action = original_history_action
+                self._pending_history_summary = original_history_summary
+            for icon_path in moved_icons:
+                try:
+                    if icon_path.exists():
+                        icon_path.unlink()
+                except Exception as cleanup_error:
+                    logger.debug("cleanup imported icon failed %s: %s", icon_path, cleanup_error)
+            if isinstance(e, (UnsafeZipError, ValueError, json.JSONDecodeError)):
+                logger.warning("import_shareable_config rejected unsafe package: %s", e)
+            else:
+                logger.exception("import_shareable_config failed: %s", e)
             return False
+        finally:
+            if temp_icons_dir and temp_icons_dir.exists():
+                try:
+                    safe_rmtree_child(install_root, temp_icons_dir)
+                except Exception as cleanup_error:
+                    logger.debug("cleanup import temp icons failed %s: %s", temp_icons_dir, cleanup_error)
+
+    def _import_shareable_config_safe(self, import_path: str, merge: bool = True) -> bool:
+        report = self._reset_import_report()
+        return self._import_shareable_config_transactional(import_path, merge, report)
 
     def redirect_missing_icon_paths(self, new_icon_path: str) -> int:
         """当用户修改某个图标路径后，自动将同目录下能匹配的缺失图标批量重定向。

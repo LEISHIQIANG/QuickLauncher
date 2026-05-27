@@ -131,7 +131,13 @@ class ConfigHistoryManager:
             return None
         direct = Path(raw)
         if direct.exists():
-            return direct
+            history_root = self.history_dir.resolve(strict=False)
+            resolved_direct = direct.resolve(strict=False)
+            if resolved_direct.name.endswith(".json.gz") and (
+                resolved_direct == history_root or history_root in resolved_direct.parents
+            ):
+                return resolved_direct
+            return None
         for path in self._snapshot_paths():
             try:
                 payload = self._read_payload(path)

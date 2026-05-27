@@ -6,9 +6,10 @@ from logging.handlers import RotatingFileHandler
 def get_log_dir() -> str:
     import sys
     from pathlib import Path
-    if getattr(sys, 'frozen', False):
-        return str(Path(sys.executable).parent / 'config')
-    return str(Path(__file__).parent.parent / 'config')
+
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable).parent / "config")
+    return str(Path(__file__).parent.parent / "config")
 
 
 def setup_logging(log_dir: str) -> tuple:
@@ -19,36 +20,32 @@ def setup_logging(log_dir: str) -> tuple:
         log_dir = os.path.join(os.path.expanduser("~"), "QuickLauncher")
         os.makedirs(log_dir, exist_ok=True)
 
-    log_file = os.path.join(log_dir, 'error.log')
+    log_file = os.path.join(log_dir, "error.log")
 
     log_level = logging.INFO
     disable_logging = False
     try:
         from core import DataManager
+
         dm = DataManager()
         settings = dm.get_settings()
-        if getattr(settings, 'enable_debug_log', False):
+        if getattr(settings, "enable_debug_log", False):
             log_level = logging.DEBUG
-        disable_logging = getattr(settings, 'disable_logging', False)
+        disable_logging = getattr(settings, "disable_logging", False)
     except Exception:
         pass
 
     import sys
+
     stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setStream(open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1))
+    stream_handler.setStream(open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1))
     handlers = [stream_handler]
     if not disable_logging:
-        handlers.append(RotatingFileHandler(
-            log_file, maxBytes=2*1024*1024, backupCount=3, encoding='utf-8'
-        ))
+        handlers.append(RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"))
 
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=handlers
-    )
+    logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s", handlers=handlers)
 
-    return log_file, logging.getLogger('main')
+    return log_file, logging.getLogger("main")
 
 
 def _install_native_crash_handler(crash_log_path: str):
@@ -93,14 +90,18 @@ def _install_native_crash_handler(crash_log_path: str):
             addr = record.contents[1]
             code_name = _EXCEPTION_CODES.get(code, "")
 
-            msg = (
-                f"[NATIVE_CRASH] code=0x{code:08X} name={code_name} addr=0x{addr:016X}\r\n"
-            ).encode("utf-8", errors="replace")
+            msg = (f"[NATIVE_CRASH] code=0x{code:08X} name={code_name} addr=0x{addr:016X}\r\n").encode(
+                "utf-8", errors="replace"
+            )
 
             h = kernel32.CreateFileA(
                 ctypes.c_char_p(_crash_log_bytes),
-                GENERIC_WRITE, FILE_SHARE_RW,
-                None, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, None,
+                GENERIC_WRITE,
+                FILE_SHARE_RW,
+                None,
+                OPEN_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
             )
             if h != wintypes.HANDLE(-1).value:
                 kernel32.SetFilePointer(h, 0, None, FILE_END)
@@ -123,6 +124,7 @@ def setup_faulthandler(log_dir: str):
     import platform
     import sys
     from datetime import datetime
+
     try:
         fh_path = os.path.join(log_dir, "faulthandler.log")
         crash_path = os.path.join(log_dir, "crash.log")

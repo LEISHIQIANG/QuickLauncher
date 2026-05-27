@@ -466,6 +466,26 @@ class TestPhase2ResultPipe:
     def test_take_empty_returns_none(self):
         assert take_pending_command_result() is None
 
+    def test_single_slot_thread_safe_smoke(self):
+        import threading
+
+        results = []
+
+        def worker(index):
+            result = CommandResult(success=True, message=str(index))
+            set_pending_command_result(result)
+            taken = take_pending_command_result()
+            if taken is not None:
+                results.append(taken.message)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert all(value.isdigit() for value in results)
+
 
 # ============================================================
 # Phase 2: command handler tests

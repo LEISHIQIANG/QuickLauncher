@@ -75,6 +75,7 @@ def _format_body(body: bytes, content_type: str) -> str:
     elif "xml" in content_type or "html" in content_type:
         try:
             import xml.dom.minidom
+
             dom = xml.dom.minidom.parseString(text)
             return dom.toprettyxml(indent="  ")
         except Exception:
@@ -162,20 +163,27 @@ def _handle_request(context, method: str, data_dir: str) -> CommandResult:
             error=str(e),
         )
 
-    curl_cmd = _to_curl(url_str, method, body_text, {
-        "User-Agent": "QuickLauncher-API-Tester/1.0",
-        "Accept": "application/json, */*",
-    })
+    curl_cmd = _to_curl(
+        url_str,
+        method,
+        body_text,
+        {
+            "User-Agent": "QuickLauncher-API-Tester/1.0",
+            "Accept": "application/json, */*",
+        },
+    )
 
     try:
         hist = _load_history(data_dir)
-        hist.append({
-            "method": method.upper(),
-            "url": url_str,
-            "status": status,
-            "elapsed_ms": elapsed_ms,
-            "time": datetime.now().isoformat(),
-        })
+        hist.append(
+            {
+                "method": method.upper(),
+                "url": url_str,
+                "status": status,
+                "elapsed_ms": elapsed_ms,
+                "time": datetime.now().isoformat(),
+            }
+        )
         _save_history(data_dir, hist)
     except Exception:
         pass
@@ -213,10 +221,7 @@ def _handle_history(context, data_dir: str) -> CommandResult:
     lines = [f"最近 {len(hist)} 条请求:"]
     for h in reversed(hist[-15:]):
         ts = h.get("time", "")[:19]
-        lines.append(
-            f"[{h['method']:6}] {h['status']}  {h['url']}  "
-            f"({h.get('elapsed_ms', '-')}ms)  {ts}"
-        )
+        lines.append(f"[{h['method']:6}] {h['status']}  {h['url']}  " f"({h.get('elapsed_ms', '-')}ms)  {ts}")
 
     result = "\n".join(lines)
     items = [

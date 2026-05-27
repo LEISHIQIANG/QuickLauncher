@@ -322,8 +322,8 @@ class CommandExecutionMixin:
                 if process is not None:
                     process.wait(timeout=5.0)
             except subprocess.TimeoutExpired:
+                ShortcutExecutor._terminate_process_tree(process)
                 try:
-                    process.kill()
                     process.wait(timeout=2.0)
                 except Exception:
                     pass
@@ -337,6 +337,31 @@ class CommandExecutionMixin:
                     logger.debug("临时文件清理失败 %s: %s", path, e)
 
         threading.Thread(target=cleanup, daemon=True, name="CommandTempCleanup").start()
+
+    @staticmethod
+    def _terminate_process_tree(process) -> None:
+        """Terminate a process and, on Windows, best-effort terminate children."""
+        if process is None:
+            return
+        pid = getattr(process, "pid", None)
+        try:
+            process.kill()
+        except Exception:
+            pass
+        if os.name != "nt" or not pid:
+            return
+        try:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(pid)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=3,
+                check=False,
+            )
+        except Exception as e:
+            logger.debug("Failed to terminate command process tree pid=%s: %s", pid, e)
 
     @staticmethod
     def _run_silent_output(argv: List[str]) -> str:
@@ -1101,17 +1126,11 @@ class CommandExecutionMixin:
 
                     if cancel_event is not None and cancel_event.is_set():
                         cancelled = True
-                        try:
-                            process.kill()
-                        except Exception:
-                            pass
+                        ShortcutExecutor._terminate_process_tree(process)
                         break
                     if time.monotonic() >= deadline:
                         timed_out = True
-                        try:
-                            process.kill()
-                        except Exception:
-                            pass
+                        ShortcutExecutor._terminate_process_tree(process)
                         break
                     time.sleep(0.03)
 
@@ -1215,10 +1234,7 @@ class CommandExecutionMixin:
                     deadline = time.monotonic() + timeout_value
                     while process.poll() is None:
                         if cancel_event.is_set():
-                            try:
-                                process.kill()
-                            except Exception:
-                                pass
+                            ShortcutExecutor._terminate_process_tree(process)
                             stdout_bytes, stderr_bytes = process.communicate()
                             stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
                                 stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
@@ -1258,10 +1274,7 @@ class CommandExecutionMixin:
                 returncode = process.returncode
                 timed_out = False
             except subprocess.TimeoutExpired:
-                try:
-                    process.kill()
-                except Exception:
-                    pass
+                ShortcutExecutor._terminate_process_tree(process)
                 stdout_bytes, stderr_bytes = process.communicate()
                 returncode = process.returncode
                 timed_out = True
@@ -1458,40 +1471,6 @@ class CommandExecutionMixin:
 
         if command_name in WINDOWS_SYSTEM_BUILTIN_COMMANDS:
             return ShortcutExecutor._open_windows_system_builtin(command_name)
-
-        if cmd_name == "open_control_panel":
-            if ShortcutExecutor._shell_execute_open("control.exe"):
-                return True
-            try:
-                ShortcutExecutor._popen_silent(["control.exe"], env=ShortcutExecutor._sanitized_child_env())
-                return True
-            except Exception as e:
-                logger.error(f"打开控制面板失败: {e}")
-                return False
-
-        if cmd_name == "open_this_pc":
-            if ShortcutExecutor._shell_execute_open("explorer.exe", "shell:MyComputerFolder"):
-                return True
-            try:
-                ShortcutExecutor._popen_silent(
-                    ["explorer.exe", "shell:MyComputerFolder"], env=ShortcutExecutor._sanitized_child_env()
-                )
-                return True
-            except Exception as e:
-                logger.error(f"打开此电脑失败: {e}")
-                return False
-
-        if cmd_name == "open_recycle_bin":
-            if ShortcutExecutor._shell_execute_open("explorer.exe", "shell:RecycleBinFolder"):
-                return True
-            try:
-                ShortcutExecutor._popen_silent(
-                    ["explorer.exe", "shell:RecycleBinFolder"], env=ShortcutExecutor._sanitized_child_env()
-                )
-                return True
-            except Exception as e:
-                logger.error(f"打开回收站失败: {e}")
-                return False
 
         return False
 

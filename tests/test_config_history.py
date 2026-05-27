@@ -1,3 +1,4 @@
+import gzip
 import json
 import threading
 
@@ -57,3 +58,18 @@ def test_restore_config_history_restores_snapshot(tmp_path):
 
     restored_ids = [item.id for item in manager.data.folders[0].items]
     assert restored_ids == ["one"]
+
+
+def test_restore_config_history_rejects_direct_path_outside_history(tmp_path):
+    manager = _manager(tmp_path)
+    external = tmp_path / "external.json.gz"
+    payload = {
+        "metadata": {"id": "external", "timestamp": 1, "action": "test", "summary": "", "version": ""},
+        "data": AppData(folders=[Folder(id="external", name="External")]).to_dict(),
+    }
+    with gzip.open(external, "wb") as f:
+        f.write(json.dumps(payload).encode("utf-8"))
+
+    assert not manager.restore_config_history(str(external))
+    assert manager.data.get_folder_by_id("external") is None
+    assert manager.data.get_folder_by_id("default") is not None

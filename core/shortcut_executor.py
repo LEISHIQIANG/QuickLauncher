@@ -15,6 +15,10 @@ from .data_models import ShortcutItem, ShortcutType
 from .shortcut_command_exec import CommandExecutionMixin
 from .shortcut_file_exec import FileExecutionMixin
 from .shortcut_hotkey import HotkeyExecutionMixin
+from .shortcut_types import (
+    shell32,
+    user32,
+)
 from .shortcut_url_exec import UrlExecutionMixin
 from .shortcut_window_control import WindowControlMixin
 
@@ -33,13 +37,7 @@ except ImportError:
     HAS_PYNPUT = False
     logger.warning("pynput 未安装，快捷键功能受限")
 
-# ===== 配置 user32 函数签名 =====
-user32 = ctypes.windll.user32
-SendInput = user32.SendInput
-SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
-SendInput.restype = wintypes.UINT
-
-# SetWindowPos 参数类型
+# ===== 配置 user32 函数签名（仅限本模块特有的函数） =====
 user32.SetWindowPos.argtypes = [
     wintypes.HWND,  # hWnd
     wintypes.HWND,  # hWndInsertAfter
@@ -51,19 +49,15 @@ user32.SetWindowPos.argtypes = [
 ]
 user32.SetWindowPos.restype = wintypes.BOOL
 
-# IsWindow - 检查窗口句柄是否有效
 user32.IsWindow.argtypes = [wintypes.HWND]
 user32.IsWindow.restype = wintypes.BOOL
 
-# GetDesktopWindow - 获取桌面窗口句柄
 user32.GetDesktopWindow.argtypes = []
 user32.GetDesktopWindow.restype = wintypes.HWND
 
-# FindWindowW - 查找窗口
 user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
 user32.FindWindowW.restype = wintypes.HWND
 
-shell32 = ctypes.windll.shell32
 shell32.ShellExecuteW.argtypes = [
     wintypes.HWND,
     wintypes.LPCWSTR,
@@ -73,36 +67,6 @@ shell32.ShellExecuteW.argtypes = [
     ctypes.c_int,
 ]
 shell32.ShellExecuteW.restype = wintypes.HINSTANCE
-
-# ===== Module-level ctypes structs for SendInput (performance optimization) =====
-try:
-    ULONG_PTR = wintypes.ULONG_PTR
-except AttributeError:
-    ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
-
-
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", wintypes.WORD),
-        ("wScan", wintypes.WORD),
-        ("dwFlags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ULONG_PTR),
-    ]
-
-
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT)]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", wintypes.DWORD), ("union", _INPUT_UNION)]
-
-
-INPUT_KEYBOARD = 1
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_EXTENDEDKEY = 0x0001
-KEYEVENTF_SCANCODE = 0x0008
 
 
 class ShortcutExecutor(

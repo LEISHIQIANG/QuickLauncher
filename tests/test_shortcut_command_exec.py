@@ -970,6 +970,42 @@ def test_run_command_capture_timeout_kills_process(monkeypatch):
     assert "partial" in result.message
 
 
+def test_run_command_capture_timeout_uses_process_tree_termination(monkeypatch):
+    class FakeProcess:
+        pid = 12345
+        returncode = -9
+
+        def __init__(self):
+            self.calls = 0
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise command_exec.subprocess.TimeoutExpired("cmd", timeout)
+            return b"partial", b""
+
+    proc = FakeProcess()
+    terminated = []
+    monkeypatch.setattr(command_exec.subprocess, "Popen", lambda *args, **kwargs: proc)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+    monkeypatch.setattr(
+        command_exec.ShortcutExecutor,
+        "_terminate_process_tree",
+        staticmethod(lambda process: terminated.append(process)),
+    )
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "slow"
+    item.command_timeout_seconds = 0.1
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert result.payload["timed_out"] is True
+    assert terminated == [proc]
+
+
 def test_run_command_capture_truncates_output(monkeypatch):
     class FakeProcess:
         returncode = 0

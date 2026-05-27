@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 
 import pytest
@@ -650,6 +651,47 @@ class TestPluginAPI:
             ok = pm.reload_plugin("broken")
             assert ok is False
 
+    def test_reload_enabled_plugin_failure_does_not_leave_fake_enabled(self):
+        """Reload failure after unloading commands should not leave a fake enabled state."""
+        import tempfile as tf
+
+        with tf.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "sample", main_py=_SAMPLE_MAIN_PY)
+            saved = []
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp, save_callback=lambda ids: saved.append(list(ids)))
+            pm.scan_plugins()
+            assert pm.enable_plugin("sample")
+            saved.clear()
+            assert reg.get("sample.hello") is not None
+
+            with open(os.path.join(tmp, "sample", "main.py"), "w", encoding="utf-8") as f:
+                f.write('def register(api):\n    raise RuntimeError("reload boom")\n')
+
+            assert pm.reload_plugin("sample") is False
+            info = pm.get_plugin("sample")
+            assert info is not None
+            assert info.status == "error"
+            assert "reload failed after unloading previous commands" in info.error
+            assert reg.get("sample.hello") is None
+            assert saved[-1] == []
+
+    def test_failed_plugin_import_cleans_sys_modules(self):
+        """A module that fails during import should not be reused from sys.modules."""
+        import tempfile as tf
+
+        with tf.TemporaryDirectory() as tmp:
+            _create_plugin_dir(
+                tmp,
+                "broken_import",
+                main_py='raise RuntimeError("import boom")\n\ndef register(api):\n    pass\n',
+            )
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.load_plugin("broken_import") is False
+            assert "_plugin_broken_import" not in sys.modules
+
     def test_remove_by_owner_cleans_all_commands(self):
         """remove_by_owner should clean all commands for a given plugin owner."""
         reg = CommandRegistry()
@@ -809,6 +851,24 @@ class TestPluginAPI:
         # Cleanup for test isolation
         _search_sources.pop("my_source", None)
 
+    def test_register_search_source_keeps_handler(self):
+        """Search source handlers should survive staging and commit."""
+        from core.command_registry import _search_sources
+
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+
+        def handler(query):
+            return [{"title": query}]
+
+        api.register_search_source("my_handler_source", handler)
+        assert api.commit_staged() is True
+        try:
+            assert _search_sources["my_handler_source"]["handler"] is handler
+            assert _search_sources["my_handler_source"]["plugin_id"] == "my_plugin"
+        finally:
+            _search_sources.pop("my_handler_source", None)
+
     def test_register_search_source_without_commit(self):
         """Staged search sources are not visible until commit."""
         from core.command_registry import _search_sources
@@ -852,6 +912,44 @@ class TestPluginAPI:
         # Command should be rolled back
         assert reg.get("my_plugin.ok") is None
         assert len(api._registered_ids) == 0
+
+    def test_search_source_conflict_does_not_overwrite_existing_source(self):
+        """A conflicting search source id should fail without replacing the current owner."""
+        from core.command_registry import _search_sources
+
+        reg = CommandRegistry()
+        first = PluginAPI("first_plugin", os.getcwd(), [], reg)
+        second = PluginAPI("second_plugin", os.getcwd(), [], reg)
+        first.register_search_source("shared_source", lambda query: [{"title": "first"}])
+        second.register_search_source("shared_source", lambda query: [{"title": "second"}])
+
+        try:
+            assert first.commit_staged() is True
+            assert second.commit_staged() is False
+            assert _search_sources["shared_source"]["plugin_id"] == "first_plugin"
+            assert _search_sources["shared_source"]["handler"]("x") == [{"title": "first"}]
+        finally:
+            _search_sources.pop("shared_source", None)
+
+    def test_search_source_rollback_preserves_existing_owner(self):
+        """Rollback should only remove search sources written by the failing plugin."""
+        from core.command_registry import _search_sources
+
+        reg = CommandRegistry()
+        first = PluginAPI("first_plugin", os.getcwd(), [], reg)
+        first.register_search_source("rollback_shared", lambda query: [{"title": "first"}])
+        assert first.commit_staged() is True
+
+        second = PluginAPI("second_plugin", os.getcwd(), [], reg)
+        second.register_search_source("second_unique")
+        second.register_search_source("rollback_shared")
+
+        try:
+            assert second.commit_staged() is False
+            assert "second_unique" not in _search_sources
+            assert _search_sources["rollback_shared"]["plugin_id"] == "first_plugin"
+        finally:
+            _search_sources.pop("rollback_shared", None)
 
     def test_commit_staged_only_search_sources(self):
         """A plugin with only search sources (no commands) commits successfully."""
@@ -907,3 +1005,48 @@ def register(api):
             pm.disable_plugin("search_test")
             assert "search_test_src" not in _search_sources
             assert reg.get("search_test.cmd") is None
+
+    def test_disable_plugin_does_not_remove_foreign_search_source(self):
+        """Disable cleanup is scoped by plugin owner to avoid cross-plugin source loss."""
+        import tempfile as tf
+
+        from core.command_registry import _search_sources
+
+        first_main = """\
+def register(api):
+    api.register_command(
+        id="first.cmd",
+        title="First",
+        aliases=[],
+        handler=lambda ctx: __import__("core.command_registry",
+            fromlist=["CommandResult"]).CommandResult(success=True, message="ok"),
+    )
+    api.register_search_source("shared_runtime_source")
+"""
+        second_main = """\
+def register(api):
+    api.register_command(
+        id="second.cmd",
+        title="Second",
+        aliases=[],
+        handler=lambda ctx: __import__("core.command_registry",
+            fromlist=["CommandResult"]).CommandResult(success=True, message="ok"),
+    )
+"""
+        with tf.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "first", main_py=first_main)
+            _create_plugin_dir(tmp, "second", main_py=second_main)
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp)
+            pm.scan_plugins()
+            assert pm.load_plugin("first")
+            assert pm.load_plugin("second")
+            second_info = pm.get_plugin("second")
+            assert second_info is not None
+            second_info.registered_search_sources.append("shared_runtime_source")
+
+            try:
+                pm.disable_plugin("second")
+                assert _search_sources["shared_runtime_source"]["plugin_id"] == "first"
+            finally:
+                _search_sources.pop("shared_runtime_source", None)

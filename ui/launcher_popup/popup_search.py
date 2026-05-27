@@ -532,9 +532,9 @@ class PopupSearchMixin:
 
             # Plugin search sources
             try:
-                from core.command_registry import _search_sources
+                from core.command_registry import snapshot_search_sources
 
-                for src_id, src_info in _search_sources.items():
+                for src_id, src_info in snapshot_search_sources():
                     handler = src_info.get("handler")
                     if handler is None:
                         continue

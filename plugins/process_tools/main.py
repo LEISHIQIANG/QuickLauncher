@@ -131,13 +131,15 @@ def handle_find(context):
 
     rows = []
     for item in _iter_processes():
-        haystack = " ".join([
-            str(item["pid"]),
-            item["name"],
-            item["exe"],
-            item["username"],
-            item["status"],
-        ]).lower()
+        haystack = " ".join(
+            [
+                str(item["pid"]),
+                item["name"],
+                item["exe"],
+                item["username"],
+                item["status"],
+            ]
+        ).lower()
         if query in haystack:
             rows.append(item)
         if len(rows) >= 30:

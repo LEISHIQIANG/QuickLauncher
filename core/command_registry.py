@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -95,21 +96,52 @@ class CommandDefinition:
 # ============================================================
 
 _pending_command_result: CommandResult | None = None
+_pending_command_result_lock = threading.Lock()
 
 # Search sources registered by plugins via PluginAPI.register_search_source
 _search_sources: dict[str, dict] = {}
+_search_sources_lock = threading.RLock()
+
+
+def register_search_source(source_id: str, source_info: dict) -> bool:
+    """Register a plugin search source without overwriting another owner."""
+    with _search_sources_lock:
+        if source_id in _search_sources:
+            return False
+        _search_sources[source_id] = dict(source_info)
+        return True
+
+
+def remove_search_source(source_id: str, plugin_id: str | None = None) -> bool:
+    """Remove a search source, optionally only when it still belongs to plugin_id."""
+    with _search_sources_lock:
+        current = _search_sources.get(source_id)
+        if current is None:
+            return False
+        if plugin_id is not None and current.get("plugin_id") != plugin_id:
+            return False
+        _search_sources.pop(source_id, None)
+        return True
+
+
+def snapshot_search_sources() -> list[tuple[str, dict]]:
+    """Return a stable copy for callers that iterate while plugins may change."""
+    with _search_sources_lock:
+        return [(source_id, dict(source_info)) for source_id, source_info in _search_sources.items()]
 
 
 def take_pending_command_result() -> CommandResult | None:
     global _pending_command_result
-    val = _pending_command_result
-    _pending_command_result = None
-    return val
+    with _pending_command_result_lock:
+        val = _pending_command_result
+        _pending_command_result = None
+        return val
 
 
 def set_pending_command_result(result: CommandResult) -> None:
     global _pending_command_result
-    _pending_command_result = result
+    with _pending_command_result_lock:
+        _pending_command_result = result
 
 
 # ============================================================

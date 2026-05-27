@@ -135,13 +135,15 @@ def _try_win32evtlog(log_name: str, hours_back: int, max_events: int) -> list[di
                     except Exception:
                         desc = ""
 
-                events.append({
-                    "level": level,
-                    "source": source,
-                    "event_id": event_id,
-                    "time": ts,
-                    "message": desc[:300],
-                })
+                events.append(
+                    {
+                        "level": level,
+                        "source": source,
+                        "event_id": event_id,
+                        "time": ts,
+                        "message": desc[:300],
+                    }
+                )
 
                 if len(events) >= max_events:
                     break
@@ -267,10 +269,10 @@ def _handle_search(context) -> CommandResult:
     if not all_events:
         return CommandResult(
             success=True,
-            message=f"在日志中未找到匹配 \"{query}\" 的事件。",
+            message=f'在日志中未找到匹配 "{query}" 的事件。',
         )
 
-    lines = [f"找到 {len(all_events)} 个匹配 \"{query}\" 的事件:"]
+    lines = [f'找到 {len(all_events)} 个匹配 "{query}" 的事件:']
     for e in all_events[:MAX_RESULTS]:
         ts = e.get("time", "")
         level = e.get("level", "")
@@ -344,10 +346,10 @@ def _handle_source(context) -> CommandResult:
     if not filtered:
         return CommandResult(
             success=True,
-            message=f"未找到来源包含 \"{source_name}\" 的事件。",
+            message=f'未找到来源包含 "{source_name}" 的事件。',
         )
 
-    lines = [f"来源 \"{source_name}\" 共 {len(filtered)} 条事件:"]
+    lines = [f'来源 "{source_name}" 共 {len(filtered)} 条事件:']
     for e in filtered[:MAX_RESULTS]:
         ts = e.get("time", "")
         level = e.get("level", "")

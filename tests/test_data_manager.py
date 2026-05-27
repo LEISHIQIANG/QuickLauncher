@@ -222,6 +222,30 @@ def test_replace_data_file_restores_original_when_fallback_copy_fails(monkeypatc
     assert manager.data_file.read_text(encoding="utf-8") == "original"
 
 
+def test_failed_save_does_not_advance_saved_snapshot(monkeypatch, tmp_path):
+    old_data = AppData(folders=[Folder(id="old", name="Old")])
+    manager = _file_backed_manager(tmp_path, old_data)
+    old_dict = old_data.to_dict()
+    manager.data_file.write_text(json.dumps(old_dict, ensure_ascii=False), encoding="utf-8")
+    manager._last_saved_data_dict = old_dict
+
+    manager.data = AppData(folders=[Folder(id="new", name="New")])
+    monkeypatch.setattr(manager, "_replace_data_file", lambda temp_file: (_ for _ in ()).throw(OSError("disk full")))
+
+    manager.save(immediate=True)
+
+    assert manager._last_saved_data_dict == old_dict
+    assert manager.list_config_history() == []
+
+    monkeypatch.setattr(manager, "_replace_data_file", lambda temp_file: os.replace(temp_file, manager.data_file))
+    manager.save(immediate=True)
+
+    snapshots = manager.list_config_history()
+    assert len(snapshots) == 1
+    previous = manager.history_manager.load_snapshot_data(snapshots[0].id)
+    assert previous["folders"][0]["id"] == "old"
+
+
 def test_import_shareable_config_strips_elevated_commands(tmp_path):
     manager = _file_backed_manager(tmp_path)
     import_path = tmp_path / "share.zip"
@@ -385,6 +409,69 @@ def test_import_shareable_config_rejects_path_traversal(tmp_path):
     assert report["imported_items"] == 1
 
 
+def test_import_shareable_config_icon_write_failure_is_transactional(monkeypatch, tmp_path):
+    import builtins
+
+    package = tmp_path / "share.zip"
+    item = {"name": "Test", "type": "url", "url": "https://example.com", "icon_path": "icons/icon.png"}
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr("config.json", json.dumps({"items": [item]}, ensure_ascii=False))
+        zf.writestr("icons/icon.png", b"png")
+
+    manager = _file_backed_manager(tmp_path)
+    original_open = builtins.open
+
+    def flaky_open(path, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if "ql_import_icons_" in str(path) and "w" in mode:
+            raise OSError("icon write failed")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", flaky_open)
+
+    assert not manager.import_shareable_config(str(package))
+    assert all(folder.name != "\u5bfc\u5165\u56fe\u6807" for folder in manager.data.folders)
+    assert list(manager.icons_dir.iterdir()) == []
+
+
+def test_import_shareable_config_save_failure_rolls_back_memory_and_icons(monkeypatch, tmp_path):
+    package = tmp_path / "share.zip"
+    item = {"name": "Test", "type": "url", "url": "https://example.com", "icon_path": "icons/icon.png"}
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr("config.json", json.dumps({"items": [item]}, ensure_ascii=False))
+        zf.writestr("icons/icon.png", b"png")
+
+    original_data = AppData(folders=[Folder(id="old", name="Old")])
+    manager = _file_backed_manager(tmp_path, original_data)
+    monkeypatch.setattr(
+        manager,
+        "_replace_data_file",
+        lambda temp_file: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+
+    assert not manager.import_shareable_config(str(package))
+    assert [folder.id for folder in manager.data.folders] == ["old"]
+    assert list(manager.icons_dir.iterdir()) == []
+    assert manager.get_last_import_report()["imported_items"] == 0
+
+
+def test_import_shareable_config_merge_false_replaces_import_folder(tmp_path):
+    manager = _file_backed_manager(tmp_path)
+
+    first = tmp_path / "first.zip"
+    with zipfile.ZipFile(first, "w") as zf:
+        zf.writestr("config.json", json.dumps({"items": [{"name": "One", "type": "url"}]}, ensure_ascii=False))
+    second = tmp_path / "second.zip"
+    with zipfile.ZipFile(second, "w") as zf:
+        zf.writestr("config.json", json.dumps({"items": [{"name": "Two", "type": "url"}]}, ensure_ascii=False))
+
+    assert manager.import_shareable_config(str(first))
+    assert manager.import_shareable_config(str(second), merge=False)
+
+    imported_folder = next(folder for folder in manager.data.folders if folder.name == "\u5bfc\u5165\u56fe\u6807")
+    assert [item.name for item in imported_folder.items] == ["Two"]
+
+
 def test_backup_full_config_includes_icons(tmp_path):
     """Backup includes icon files stored in icons_dir."""
     shortcut = ShortcutItem(id="s", name="App")
@@ -439,6 +526,31 @@ def test_restore_full_config_recovers_background(tmp_path):
     assert manager.restore_full_config(str(backup))
     assert manager.data.settings.custom_bg_path
     assert os.path.exists(manager.data.settings.custom_bg_path)
+
+
+def test_restore_full_config_cleans_background_when_icon_restore_fails(monkeypatch, tmp_path):
+    old_data = AppData(folders=[Folder(id="old", name="Old")])
+    manager = _file_backed_manager(tmp_path, old_data)
+    old_icon = manager.icons_dir / "old.png"
+    old_icon.write_bytes(b"old-icon")
+
+    new_data = AppData(folders=[Folder(id="new", name="New")])
+    new_data.settings.bg_mode = "image"
+    new_data.settings.custom_bg_path = "background.png"
+    backup = tmp_path / "backup.zip"
+    with zipfile.ZipFile(backup, "w") as zf:
+        zf.writestr("data.json", json.dumps(new_data.to_dict(), ensure_ascii=False))
+        zf.writestr("background.png", b"bg-content")
+        zf.writestr("icons/new.png", b"new-icon")
+
+    monkeypatch.setattr(
+        data_manager_module.shutil, "move", lambda src, dst: (_ for _ in ()).throw(OSError("move failed"))
+    )
+
+    assert not manager.restore_full_config(str(backup))
+    assert manager.data.get_folder_by_id("old") is not None
+    assert old_icon.exists()
+    assert not list(manager.app_dir.glob("restored_bg_*"))
 
 
 def test_restore_full_config_skips_unsupported_background_extension(tmp_path):

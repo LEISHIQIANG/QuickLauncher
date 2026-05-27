@@ -7,8 +7,13 @@ def _is_working_python(exe_path: str) -> bool:
     try:
         p = subprocess.run(
             [exe_path, "-c", "import sys; print(sys.version_info[:2])"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            timeout=2, check=False, text=True, encoding="utf-8", errors="replace"
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=2,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         return p.returncode == 0
     except Exception:

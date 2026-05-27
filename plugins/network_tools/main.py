@@ -31,7 +31,7 @@ def register(api):
 def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
     """Execute a system command silently and robustly decode the output."""
     try:
-        creationflags = 0x08000000 if os.name == 'nt' else 0
+        creationflags = 0x08000000 if os.name == "nt" else 0
         proc = subprocess.run(
             args,
             stdout=subprocess.PIPE,
@@ -46,7 +46,7 @@ def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
             output += b"\n" + proc.stderr
 
         encodings = []
-        if os.name == 'nt':
+        if os.name == "nt":
             try:
                 oem_cp = ctypes.windll.kernel32.GetOEMCP()
                 if oem_cp:
@@ -77,20 +77,12 @@ def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
 def handle_ping(context):
     host = (context.args_text or "").strip()
     if not host:
-        return CommandResult(
-            success=False,
-            message="用法: /ping <主机名>\n例如: /ping example.com",
-            error="缺少输入"
-        )
+        return CommandResult(success=False, message="用法: /ping <主机名>\n例如: /ping example.com", error="缺少输入")
 
     # Sanitize hostname to prevent malicious CLI injection
     host_clean = "".join(c for c in host if c.isalnum() or c in ".-_")
     if not host_clean or host_clean != host:
-        return CommandResult(
-            success=False,
-            message="无效的主机名或 IP 地址",
-            error="格式错误"
-        )
+        return CommandResult(success=False, message="无效的主机名或 IP 地址", error="格式错误")
 
     try:
         success, output = _run_cmd(["ping", "-n", "4", host_clean], timeout=12)
@@ -108,30 +100,18 @@ def handle_ping(context):
             actions=[CommandAction(type="copy", label="复制结果", value=output)],
         )
     except Exception as e:
-        return CommandResult(
-            success=False,
-            message=f"Ping 失败: {e}",
-            error="执行失败"
-        )
+        return CommandResult(success=False, message=f"Ping 失败: {e}", error="执行失败")
 
 
 def handle_dns(context):
     host = (context.args_text or "").strip()
     if not host:
-        return CommandResult(
-            success=False,
-            message="用法: /dns <域名>\n例如: /dns example.com",
-            error="缺少输入"
-        )
+        return CommandResult(success=False, message="用法: /dns <域名>\n例如: /dns example.com", error="缺少输入")
 
     # Sanitize domain to prevent malicious CLI injection
     host_clean = "".join(c for c in host if c.isalnum() or c in ".-_")
     if not host_clean or host_clean != host:
-        return CommandResult(
-            success=False,
-            message="无效的域名或 IP 地址",
-            error="格式错误"
-        )
+        return CommandResult(success=False, message="无效的域名或 IP 地址", error="格式错误")
 
     try:
         success, output = _run_cmd(["nslookup", host_clean], timeout=12)
@@ -161,8 +141,4 @@ def handle_dns(context):
             actions=[CommandAction(type="copy", label="复制结果", value=output)],
         )
     except Exception as e:
-        return CommandResult(
-            success=False,
-            message=f"DNS 查询失败: {e}",
-            error="执行失败"
-        )
+        return CommandResult(success=False, message=f"DNS 查询失败: {e}", error="执行失败")

@@ -101,12 +101,14 @@ def _registry_startup_entries() -> list[dict[str, str]]:
                     except OSError:
                         break
                     command = str(value)
-                    entries.append({
-                        "name": name,
-                        "command": command,
-                        "target": _extract_target(command),
-                        "source": f"{root_name}\\{key_path}",
-                    })
+                    entries.append(
+                        {
+                            "name": name,
+                            "command": command,
+                            "target": _extract_target(command),
+                            "source": f"{root_name}\\{key_path}",
+                        }
+                    )
                     index += 1
         except OSError:
             continue
@@ -130,12 +132,14 @@ def _startup_folder_entries() -> list[dict[str, str]]:
             if item.name.startswith("."):
                 continue
             target = _resolve_shortcut_target(item)
-            entries.append({
-                "name": item.name,
-                "command": target or str(item),
-                "target": target or str(item),
-                "source": str(folder),
-            })
+            entries.append(
+                {
+                    "name": item.name,
+                    "command": target or str(item),
+                    "target": target or str(item),
+                    "source": str(folder),
+                }
+            )
     return entries
 
 
@@ -144,6 +148,7 @@ def _resolve_shortcut_target(path: Path) -> str:
         return str(path)
     try:
         import win32com.client
+
         shell = win32com.client.Dispatch("WScript.Shell")
         shortcut = shell.CreateShortcut(str(path))
         return shortcut.TargetPath or str(path)
@@ -212,9 +217,17 @@ def handle_path_audit(context):
     result = "\n".join(lines)
     items = [
         {"title": "PATH 条目数", "status": "info", "detail": str(len(entries))},
-        {"title": "重复目录", "status": "warning" if duplicates else "success", "detail": "\n".join(duplicates[:12]) or "0"},
+        {
+            "title": "重复目录",
+            "status": "warning" if duplicates else "success",
+            "detail": "\n".join(duplicates[:12]) or "0",
+        },
         {"title": "缺失目录", "status": "warning" if missing else "success", "detail": "\n".join(missing[:20]) or "0"},
-        {"title": "过长条目", "status": "warning" if very_long else "success", "detail": "\n".join(very_long[:8]) or "0"},
+        {
+            "title": "过长条目",
+            "status": "warning" if very_long else "success",
+            "detail": "\n".join(very_long[:8]) or "0",
+        },
     ]
     return CommandResult(
         success=True,

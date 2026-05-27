@@ -149,15 +149,18 @@ def _dir_size(path: Path, max_depth: int = 2, timeout_at: float = 0) -> int:
 
 # ── Category scanners ─────────────────────────────────────────────────────
 
+
 def _scan_recycle_bin() -> tuple[int, str]:
     try:
         from ctypes import wintypes
+
         class SHQUERYRBINFO(ctypes.Structure):
             _fields_ = [
                 ("cbSize", wintypes.DWORD),
                 ("i64Size", ctypes.c_int64),
                 ("i64NumItems", ctypes.c_int64),
             ]
+
         info = SHQUERYRBINFO()
         info.cbSize = ctypes.sizeof(SHQUERYRBINFO)
         ctypes.windll.shell32.SHQueryRecycleBinW(None, ctypes.byref(info))
@@ -230,12 +233,16 @@ SCANNERS_DICT = {
     "recycle": _scan_recycle_bin,
     "temp": _scan_temp,
     "prefetch": _scan_prefetch,
-    "cache_chrome": lambda: _scan_browser_cache("Chrome",
+    "cache_chrome": lambda: _scan_browser_cache(
+        "Chrome",
         "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache",
-        "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Code Cache"),
-    "cache_edge": lambda: _scan_browser_cache("Edge",
+        "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Code Cache",
+    ),
+    "cache_edge": lambda: _scan_browser_cache(
+        "Edge",
         "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache",
-        "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Code Cache"),
+        "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Code Cache",
+    ),
     "recent": _scan_recent,
     "delivery_opt": _scan_delivery_opt,
     "thumbcache": _scan_thumbcache,
@@ -243,6 +250,7 @@ SCANNERS_DICT = {
 
 
 # ── Cleaners ──────────────────────────────────────────────────────────────
+
 
 def _clean_recycle_bin() -> tuple[bool, str]:
     try:
@@ -282,7 +290,7 @@ def _clean_prefetch() -> tuple[bool, str]:
     if not os.path.isdir(path):
         return (False, "Prefetch 目录不存在")
     if not _is_admin():
-        return _run_elevated("cmd.exe", "/c del /f /q \"C:\\Windows\\Prefetch\\*.*\" >nul 2>&1")
+        return _run_elevated("cmd.exe", '/c del /f /q "C:\\Windows\\Prefetch\\*.*" >nul 2>&1')
     count = 0
     errors = 0
     for entry in os.scandir(path):
@@ -363,23 +371,29 @@ def _clean_delivery_opt() -> tuple[bool, str]:
     if not os.path.isdir(path):
         return (False, "Delivery Optimization 目录不存在")
     if not _is_admin():
-        cmd = ("/c net stop wuauserv /y >nul 2>&1 & net stop bits /y >nul 2>&1 & "
-               "del /f /q \"C:\\Windows\\SoftwareDistribution\\Download\\*.*\" >nul 2>&1 & "
-               "for /d %i in (\"C:\\Windows\\SoftwareDistribution\\Download\\*\") do "
-               "rd /s /q \"%i\" 2>nul & net start wuauserv >nul 2>&1 & net start bits >nul 2>&1")
+        cmd = (
+            "/c net stop wuauserv /y >nul 2>&1 & net stop bits /y >nul 2>&1 & "
+            'del /f /q "C:\\Windows\\SoftwareDistribution\\Download\\*.*" >nul 2>&1 & '
+            'for /d %i in ("C:\\Windows\\SoftwareDistribution\\Download\\*") do '
+            'rd /s /q "%i" 2>nul & net start wuauserv >nul 2>&1 & net start bits >nul 2>&1'
+        )
         return _run_elevated("cmd.exe", cmd)
     try:
         service_stopped = False
         try:
             subprocess.run(
                 ["net", "stop", "wuauserv", "/y"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=5, creationflags=0x08000000,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                creationflags=0x08000000,
             )
             subprocess.run(
                 ["net", "stop", "bits", "/y"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=5, creationflags=0x08000000,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                creationflags=0x08000000,
             )
             service_stopped = True
         except Exception:
@@ -401,13 +415,17 @@ def _clean_delivery_opt() -> tuple[bool, str]:
             try:
                 subprocess.run(
                     ["net", "start", "wuauserv"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=5, creationflags=0x08000000,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    creationflags=0x08000000,
                 )
                 subprocess.run(
                     ["net", "start", "bits"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=5, creationflags=0x08000000,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    creationflags=0x08000000,
                 )
             except Exception:
                 pass
@@ -436,12 +454,16 @@ CLEANERS = {
     "recycle": _clean_recycle_bin,
     "temp": _clean_temp,
     "prefetch": _clean_prefetch,
-    "cache_chrome": lambda: _clean_browser_cache("Chrome",
+    "cache_chrome": lambda: _clean_browser_cache(
+        "Chrome",
         "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache",
-        "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Code Cache"),
-    "cache_edge": lambda: _clean_browser_cache("Edge",
+        "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Code Cache",
+    ),
+    "cache_edge": lambda: _clean_browser_cache(
+        "Edge",
         "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache",
-        "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Code Cache"),
+        "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Code Cache",
+    ),
     "recent": _clean_recent,
     "delivery_opt": _clean_delivery_opt,
     "thumbcache": _clean_thumbcache,
@@ -449,6 +471,7 @@ CLEANERS = {
 
 
 # ── Handlers ──────────────────────────────────────────────────────────────
+
 
 def _handle_analyze(context) -> CommandResult:
     target = (context.args_text or "").strip()
