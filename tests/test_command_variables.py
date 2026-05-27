@@ -336,4 +336,4 @@ def test_resolve_default_mode_unchanged():
         selected_files=[r"C:\Users\test\file.txt"],
     )
 
-    assert text == 'rm -rf C:\\Users\\test\\file.txt'
+    assert text == "rm -rf C:\\Users\\test\\file.txt"

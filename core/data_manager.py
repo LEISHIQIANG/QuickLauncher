@@ -1639,8 +1639,11 @@ class DataManager:
                             if has_zip_entry(safe_index, arc_name):
                                 try:
                                     extra_text = read_zip_text(
-                                        zf, safe_index, arc_name,
-                                        max_bytes=MAX_CONFIG_BYTES, report=report,
+                                        zf,
+                                        safe_index,
+                                        arc_name,
+                                        max_bytes=MAX_CONFIG_BYTES,
+                                        report=report,
                                     )
                                     if extra_text is not None:
                                         target_path.write_text(extra_text, encoding="utf-8")
@@ -1771,9 +1774,7 @@ class DataManager:
                             pixmap = IconExtractor.from_file(orig_path, size=256, return_image=False)
                             if pixmap and not pixmap.isNull():
                                 ext = os.path.splitext(new_name)[1].lower() or ".png"
-                                with tempfile.NamedTemporaryFile(
-                                    suffix=ext, prefix="ql_icon_", delete=False
-                                ) as tmp:
+                                with tempfile.NamedTemporaryFile(suffix=ext, prefix="ql_icon_", delete=False) as tmp:
                                     tmp_path = tmp.name
                                 try:
                                     success = pixmap.save(tmp_path, "PNG")

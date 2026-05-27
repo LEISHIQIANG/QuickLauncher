@@ -1026,9 +1026,7 @@ class CommandExecutionMixin:
         selected_provider = None
         if getattr(shortcut, "trigger_mode", "immediate") == "after_close":
             selected_provider = ShortcutExecutor._capture_selected_text
-        command_type = ShortcutExecutor._normalize_command_type(
-            getattr(shortcut, "command_type", "cmd")
-        )
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
         return resolve_command_variables(
             command,
             input_values=input_values,
@@ -1322,8 +1320,7 @@ class CommandExecutionMixin:
             return CommandResult(
                 success=False,
                 message=(
-                    "命令只包含变量占位符，但未启用解析变量。"
-                    f"请启用解析变量，或改为可执行命令，例如: echo {command}"
+                    "命令只包含变量占位符，但未启用解析变量。" f"请启用解析变量，或改为可执行命令，例如: echo {command}"
                 ),
                 display_type="log",
                 error="命令无效",

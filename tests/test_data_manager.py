@@ -950,9 +950,7 @@ def test_backup_full_config_includes_extra_config_files(tmp_path):
 
     themes_data = [{"name": "MyTheme", "colors": {"primary_color": "#ff0000"}}]
     history_data = [{"command_id": "test", "success": True}]
-    (manager.app_dir / "custom_themes.json").write_text(
-        json.dumps(themes_data, ensure_ascii=False), encoding="utf-8"
-    )
+    (manager.app_dir / "custom_themes.json").write_text(json.dumps(themes_data, ensure_ascii=False), encoding="utf-8")
     (manager.app_dir / "command_history.json").write_text(
         json.dumps(history_data, ensure_ascii=False), encoding="utf-8"
     )

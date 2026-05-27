@@ -1403,7 +1403,9 @@ def test_bash_execute_command_show_window(monkeypatch):
             return argv
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["parameters"] = parameters
             captured["show_cmd"] = show_cmd

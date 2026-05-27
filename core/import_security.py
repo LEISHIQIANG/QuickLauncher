@@ -110,7 +110,6 @@ def has_zip_entry(index: dict[str, zipfile.ZipInfo], name: str) -> bool:
     return bool(normalized and normalized.lower() in index)
 
 
-
 def read_zip_bytes(
     zf: zipfile.ZipFile,
     index: dict[str, zipfile.ZipInfo],
