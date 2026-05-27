@@ -15,7 +15,7 @@ echo.
 
 REM === Version Information ===
 set "APP_PUBLISHER=Layton"
-set "DEFAULT_APP_VERSION=1.6.0.0"
+set "DEFAULT_APP_VERSION=1.6.1.0"
 for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
 for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
 set "APP_VERSION=%~1"
@@ -25,6 +25,10 @@ if "%APP_VERSION%"=="" set "APP_VERSION=%DEFAULT_APP_VERSION%"
 echo.
 echo   Version: %APP_VERSION%
 echo   Publisher: %APP_PUBLISHER%
+
+REM Write version back to source so Nuitka embeds the correct value into the compiled binary
+python -c "import re,pathlib; p=pathlib.Path('core/version.py'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"%APP_VERSION%\"', t), encoding='utf-8')" 2>nul
+echo   [OK] core/version.py updated to %APP_VERSION%
 echo.
 echo ----------------------------------------
 

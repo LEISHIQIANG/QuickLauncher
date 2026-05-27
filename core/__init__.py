@@ -1,6 +1,6 @@
 """核心模块"""
 
-APP_VERSION = "1.6.0.0"
+from .version import APP_VERSION as APP_VERSION
 
 from .data_manager import DataManager as DataManager
 from .data_models import DEFAULT_SPECIAL_APPS as DEFAULT_SPECIAL_APPS  # 添加这个
