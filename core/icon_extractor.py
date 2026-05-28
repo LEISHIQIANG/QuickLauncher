@@ -298,11 +298,7 @@ class IconExtractor:
 
         ttl = 300 if level == "moderate" else cls._CACHE_TTL_SECONDS  # 5 min for moderate
         now = time.time()
-        expired = [
-            key
-            for key, timestamp in cls._cache_timestamps.items()
-            if timestamp and now - timestamp > ttl
-        ]
+        expired = [key for key, timestamp in cls._cache_timestamps.items() if timestamp and now - timestamp > ttl]
         for key in expired:
             cls._cache.pop(key, None)
             cls._cache_timestamps.pop(key, None)

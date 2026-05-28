@@ -68,10 +68,7 @@ class SearchHistory:
             if len(self._data) <= max_entries:
                 return 0
             # Sort by total score (ascending) and keep top max_entries
-            scored = [
-                (sum(v.values()) if isinstance(v, dict) else 0.0, k, v)
-                for k, v in self._data.items()
-            ]
+            scored = [(sum(v.values()) if isinstance(v, dict) else 0.0, k, v) for k, v in self._data.items()]
             scored.sort(key=lambda x: x[0], reverse=True)
             self._data = {k: v for _, k, v in scored[:max_entries]}
             self._dirty = True

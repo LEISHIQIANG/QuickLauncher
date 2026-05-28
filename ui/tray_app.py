@@ -245,8 +245,9 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
                 None
                 if level == "light"
                 else (
-                    __import__("core.shortcut_command_exec", fromlist=["CommandExecutionMixin"])
-                    .CommandExecutionMixin._cleanup_cmd_cache()
+                    __import__(
+                        "core.shortcut_command_exec", fromlist=["CommandExecutionMixin"]
+                    ).CommandExecutionMixin._cleanup_cmd_cache()
                 )
             )
         )
