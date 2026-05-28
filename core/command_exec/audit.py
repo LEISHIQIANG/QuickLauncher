@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass, field
 from core.command_risk import assess_command_risk
 from core.data_models import ShortcutItem
 
+from .runtime import normalize_command_type
+
 
 @dataclass
 class CommandExecutionAudit:
@@ -97,6 +99,26 @@ KNOWN_SHELL_EXECUTION_ENTRIES: tuple[ShellExecutionEntryAudit, ...] = (
         reason="Admin/non-admin launch routing uses ShellExecute with cmd.exe so Windows owns UAC and token boundaries.",
         mitigation="Command text is wrapped in cmd.exe /d /s /c or /k arguments; destructive risk detection runs beforehand.",
     ),
+    ShellExecutionEntryAudit(
+        identifier="shortcut_command.powershell_encoded_command",
+        module="core.shortcut_command_exec",
+        owner="PowerShell direct argv launcher",
+        python_shell_true=False,
+        uses_system_shell=True,
+        input_source="User-created PowerShell COMMAND shortcut after preflight and variable preprocessing.",
+        reason="PowerShell scripts require PowerShell parsing; -EncodedCommand carries the original script text by argv.",
+        mitigation="No script file is written; command length is checked before launch; destructive risk detection runs first.",
+    ),
+    ShellExecutionEntryAudit(
+        identifier="shortcut_command.git_bash_c",
+        module="core.shortcut_command_exec",
+        owner="Git Bash direct argv launcher",
+        python_shell_true=False,
+        uses_system_shell=True,
+        input_source="User-created Git Bash COMMAND shortcut after preflight and variable preprocessing.",
+        reason="Bash snippets, multiline commands, pipes and expansions require bash -c compatibility.",
+        mitigation="No temp script/output/marker files are written; command length is checked before launch.",
+    ),
 )
 
 
@@ -110,16 +132,20 @@ def build_command_execution_audit(
     command: str | None = None,
     command_type: str | None = None,
 ) -> CommandExecutionAudit:
-    effective_type = str(
+    effective_type = normalize_command_type(
         command_type if command_type is not None else getattr(shortcut, "command_type", "cmd") or "cmd"
     )
-    effective_type = effective_type.strip().lower() or "cmd"
-    uses_shell = effective_type == "cmd"
+    uses_shell = effective_type in ("cmd", "powershell", "bash")
+    shell_reasons = {
+        "cmd": "cmd commands use the system shell for compatibility",
+        "powershell": "PowerShell commands execute through powershell.exe",
+        "bash": "Git Bash commands execute through bash.exe -c",
+    }
     risks = assess_command_risk(shortcut, command=command, command_type=effective_type)
     return CommandExecutionAudit(
         command_type=effective_type,
         uses_shell=uses_shell,
-        uses_shell_reason="cmd commands use the system shell for compatibility" if uses_shell else "",
+        uses_shell_reason=shell_reasons.get(effective_type, "") if uses_shell else "",
         run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
         capture_output=bool(getattr(shortcut, "capture_output", False)),
         show_window=bool(getattr(shortcut, "show_window", False)),

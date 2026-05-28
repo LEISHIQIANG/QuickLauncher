@@ -12,13 +12,6 @@ from .audit import (
     build_command_execution_audit,
     known_shell_execution_entries,
 )
-from .bash_fallback import (
-    bash_path,
-    build_bash_fallback_wrapper,
-    quote_bash_path,
-    read_bash_fallback_exit_code,
-    wait_for_bash_fallback_completion,
-)
 from .output import decode_command_output, truncate_command_output
 from .profiles import (
     chain_values,
@@ -31,8 +24,6 @@ from .profiles import (
 from .runtime import SUPPORTED_COMMAND_TYPES, is_supported_command_type, normalize_command_type
 
 __all__ = [
-    "bash_path",
-    "build_bash_fallback_wrapper",
     "chain_values",
     "command_panel_size",
     "command_param_defs",
@@ -48,8 +39,5 @@ __all__ = [
     "is_supported_command_type",
     "known_shell_execution_entries",
     "normalize_command_type",
-    "quote_bash_path",
-    "read_bash_fallback_exit_code",
     "truncate_command_output",
-    "wait_for_bash_fallback_completion",
 ]

@@ -9,6 +9,7 @@ from core.command_variables import (
     is_value_only_variable_command,
     migrate_legacy_variable_syntax,
     quote_bash_arg,
+    quote_powershell_arg,
     resolve_command_variables,
 )
 from core.config_repairs import apply_config_repairs, scan_config_repairs
@@ -57,7 +58,7 @@ def test_config_repairs_migrate_legacy_text_templates():
     assert url_item.preferred_browser_args == "--profile Default {{url}}"
 
 
-def test_shortcut_item_normalizes_legacy_builtin_command_aliases():
+def test_shortcut_item_preserves_command_type_and_command_text():
     item = ShortcutItem.from_dict(
         {
             "type": "command",
@@ -66,8 +67,8 @@ def test_shortcut_item_normalizes_legacy_builtin_command_aliases():
         }
     )
 
-    assert item.command_type == "builtin"
-    assert item.command == "toggle_topmost"
+    assert item.command_type == "cmd"
+    assert item.command == "topmost"
 
     config_item = ShortcutItem.from_dict(
         {
@@ -77,8 +78,8 @@ def test_shortcut_item_normalizes_legacy_builtin_command_aliases():
         }
     )
 
-    assert config_item.command_type == "builtin"
-    assert config_item.command == "show_config_window"
+    assert config_item.command_type == "cmd"
+    assert config_item.command == "show_config"
 
     python_item = ShortcutItem.from_dict(
         {
@@ -288,6 +289,33 @@ def test_quote_bash_arg_single_quote():
 def test_quote_bash_arg_empty():
     assert quote_bash_arg("") == "''"
     assert quote_bash_arg(None) == "''"
+
+
+def test_quote_powershell_arg_uses_literal_single_quotes():
+    assert quote_powershell_arg("hello") == "'hello'"
+    assert quote_powershell_arg("it's safe") == "'it''s safe'"
+    assert quote_powershell_arg('"; Write-Output PWNED; #') == "'\"; Write-Output PWNED; #'"
+
+
+def test_resolve_powershell_mode_quotes_external_input_as_literal():
+    text = resolve_command_variables(
+        "Write-Output {{input:q}} {{clipboard:q}}",
+        input_values={"input": "$(Write-Output PWNED)"},
+        clipboard_provider=lambda: '"; Write-Output PWNED; #',
+        powershell_mode=True,
+    )
+
+    assert text == "Write-Output '$(Write-Output PWNED)' '\"; Write-Output PWNED; #'"
+
+
+def test_resolve_powershell_mode_selected_files_quotes_each_path():
+    text = resolve_command_variables(
+        "tool {{selected_files:q}}",
+        selected_files=[r"C:\A\a.txt", r"D:\B Folder\b.txt"],
+        powershell_mode=True,
+    )
+
+    assert text == r"tool 'C:\A\a.txt' 'D:\B Folder\b.txt'"
 
 
 def test_resolve_bash_mode_selected_file():

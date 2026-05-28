@@ -242,14 +242,14 @@ class PopupItemExecutionMixin:
 
         force_close_capture_command = (
             item.type == ShortcutType.COMMAND
-            and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell")
+            and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell", "bash")
             and bool(getattr(item, "capture_output", False))
             and not bool(getattr(item, "show_window", False))
             and not bool(getattr(item, "run_as_admin", False))
         )
         force_close_param_command = (
             item.type == ShortcutType.COMMAND
-            and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell")
+            and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell", "bash")
             and bool(getattr(item, "command_params", []))
         )
         force_close_chain = item.type == ShortcutType.CHAIN

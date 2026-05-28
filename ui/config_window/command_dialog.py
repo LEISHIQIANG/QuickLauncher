@@ -7,7 +7,6 @@ import os
 import sys
 
 from core import ShortcutItem, ShortcutType
-from core.builtin_commands import canonical_builtin_command
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
@@ -210,10 +209,6 @@ class CommandDialog(BaseDialog):
         "error.log": "open_error_log",
         "错误日志": "open_error_log",
     }
-
-    @classmethod
-    def _canonical_builtin_command(cls, command: str) -> str:
-        return canonical_builtin_command(command)
 
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
         # 清理已完成的孤儿线程
@@ -913,6 +908,7 @@ class CommandDialog(BaseDialog):
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
+            self._test_btn.setEnabled(True)
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
@@ -924,6 +920,7 @@ class CommandDialog(BaseDialog):
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
+            self._test_btn.setEnabled(True)
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
@@ -935,6 +932,7 @@ class CommandDialog(BaseDialog):
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
+            self._test_btn.setEnabled(True)
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
@@ -946,6 +944,7 @@ class CommandDialog(BaseDialog):
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
+            self._test_btn.setEnabled(True)
             self.variable_expansion_cb.setEnabled(True)
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
@@ -958,6 +957,7 @@ class CommandDialog(BaseDialog):
             self.capture_output_cb.setChecked(False)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(False)
+            self._test_btn.setEnabled(False)
             self.variable_expansion_cb.setChecked(False)
             self.variable_expansion_cb.setEnabled(False)
             # 触发一次内置命令变更，以更新图标
@@ -1112,6 +1112,8 @@ class CommandDialog(BaseDialog):
 
     def _show_insert_popup(self):
         """显示变量和常用片段菜单"""
+        if self.type_combo.currentIndex() == 4:
+            return
         menu = PopupMenu(theme=self.theme, radius=12, parent=self)
         self._insert_menu = menu
         items = [
@@ -1317,6 +1319,8 @@ class CommandDialog(BaseDialog):
         return values
 
     def _test_command(self):
+        if self.type_combo.currentIndex() == 4:
+            return
         if self._command_test_thread is not None and self._command_test_thread.isRunning():
             return
         shortcut = self._build_preview_shortcut()
@@ -1357,7 +1361,7 @@ class CommandDialog(BaseDialog):
         if result.get("stderr"):
             lines.extend(["", "stderr:", str(result.get("stderr"))])
         self.test_output.setPlainText("\n".join(lines))
-        self._test_btn.setEnabled(True)
+        self._test_btn.setEnabled(self.type_combo.currentIndex() != 4)
         self._command_test_thread = None
 
     def closeEvent(self, event):
@@ -1447,10 +1451,6 @@ class CommandDialog(BaseDialog):
             # 加载命令类型
             cmd_type = getattr(self.shortcut, "command_type", "cmd")
             command = self.shortcut.command or ""
-            canonical_builtin = self._canonical_builtin_command(command)
-            if cmd_type not in ("python", "powershell", "bash") and canonical_builtin:
-                cmd_type = "builtin"
-                command = canonical_builtin
 
             if cmd_type == "powershell":
                 self.type_combo.setCurrentIndex(1)
@@ -1475,6 +1475,9 @@ class CommandDialog(BaseDialog):
             if cmd_type == "builtin":
                 # 尝试在下拉框中选中对应命令
                 index = self.builtin_combo.findData(command)
+                if index < 0 and command:
+                    self.builtin_combo.addItem(f"当前内置命令 ({command})", command)
+                    index = self.builtin_combo.findData(command)
                 if index >= 0:
                     self.builtin_combo.setCurrentIndex(index)
             else:

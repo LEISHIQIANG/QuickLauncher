@@ -1443,6 +1443,57 @@ def test_captured_command_hides_pinned_popup_and_runs_in_command_panel(monkeypat
     assert take_pending_command_result() is None
 
 
+def test_captured_bash_command_hides_pinned_popup_and_runs_in_command_panel(monkeypatch):
+    from core.command_registry import take_pending_command_result
+    from core.command_results import CommandResultStore
+
+    popup = _popup_with_items([])
+    popup._executing = False
+    popup.is_pinned = True
+    popup.search_query = ""
+    hidden = []
+    popup.hide = lambda: hidden.append(True)
+    popup.execution_error = SimpleNamespace(emit=lambda *args, **kwargs: None)
+    popup.command_panel_result_ready = SimpleNamespace(
+        emit=lambda result, command_id, command_title: popup._on_command_panel_result_ready(
+            result, command_id, command_title
+        )
+    )
+
+    shown = {}
+
+    class FakeTrayApp:
+        def __init__(self):
+            self.command_result_store = CommandResultStore()
+
+        def show_command_panel(self, **kwargs):
+            shown.update(kwargs)
+            return True
+
+    import ui.launcher_popup.popup_item_execution as popup_exec_mod
+
+    monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
+    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", object())
+    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    popup.tray_app = FakeTrayApp()
+
+    item = ShortcutItem(
+        id="bash-cap",
+        name="Bash",
+        type=ShortcutType.COMMAND,
+        command="echo ok",
+        command_type="bash",
+        capture_output=True,
+    )
+
+    popup._execute_item(item)
+
+    assert hidden == [True]
+    assert shown["shortcut"] is item
+    assert shown["raw_input"] == "echo ok"
+    assert take_pending_command_result() is None
+
+
 def test_captured_command_falls_back_when_command_panel_fails(monkeypatch):
     from core.command_registry import CommandResult
     from core.command_results import CommandResultStore

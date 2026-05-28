@@ -158,3 +158,31 @@ def test_shortcut_command_forwards_stream_updates(monkeypatch):
     assert done.wait(2)
     assert updates and updates[0][1:] == ("partial", None)
     assert results[0].message == "done"
+
+
+def test_shortcut_command_routes_bash_capture_to_capture_runner(monkeypatch):
+    import core
+
+    seen = []
+
+    class FakeExecutor:
+        @staticmethod
+        def run_command_capture(shortcut, timeout=None, cancel_event=None, on_update=None):
+            seen.append((shortcut.command_type, on_update is not None))
+            return CommandResult(success=True, message="bash done", display_type="log")
+
+    monkeypatch.setattr(core, "ShortcutExecutor", FakeExecutor)
+
+    done = threading.Event()
+    results = []
+    service = CommandExecutionService(CommandResultStore())
+    item = ShortcutItem(id="bash", name="Bash", type=ShortcutType.COMMAND, command="echo ok", command_type="bash")
+    service.run_shortcut_command(
+        CommandExecutionRequest(command_id="bash", raw_input="echo ok", source="shortcut", shortcut=item),
+        on_update=lambda token, result, command_def: None,
+        on_finished=lambda token, result, command_def, duration, result_id: (results.append(result), done.set()),
+    )
+
+    assert done.wait(2)
+    assert seen == [("bash", True)]
+    assert results[0].message == "bash done"

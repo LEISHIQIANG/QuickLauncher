@@ -17,12 +17,6 @@ from .runtime_constants import (
     normalize_command_timeout_seconds,
 )
 
-try:
-    from .builtin_commands import canonical_builtin_command
-except Exception:
-    canonical_builtin_command = None
-
-
 class ShortcutType(Enum):
     """快捷方式类型"""
 
@@ -165,15 +159,6 @@ class ShortcutItem:
         item.preferred_browser_args = data.get("preferred_browser_args", "")
         item.command = data.get("command", "")
         item.command_type = data.get("command_type", "cmd")
-        if (
-            item.type == ShortcutType.COMMAND
-            and item.command_type not in ("python", "powershell")
-            and canonical_builtin_command
-        ):
-            canonical_command = canonical_builtin_command(item.command)
-            if canonical_command:
-                item.command = canonical_command
-                item.command_type = "builtin"
         item.trigger_mode = data.get("trigger_mode", "immediate")
         item.icon_path = data.get("icon_path", "")
         item.icon_data = data.get("icon_data", "")
@@ -437,7 +422,7 @@ class AppSettings:
     preprocessing_strict_mode: bool = False  # 严格模式（警告也阻止）
     preprocessing_audit_enabled: bool = True  # 启用审计日志
     preprocessing_rate_limiting_enabled: bool = True  # 启用速率限制
-    security_block_dangerous_patterns: bool = False  # 阻止危险模式（当前仅警告）
+    security_block_dangerous_patterns: bool = True  # 阻止危险模式
     security_require_variable_quoting: bool = True  # 强制外部变量引用
 
     # 功能降级开关

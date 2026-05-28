@@ -16,6 +16,7 @@ from .security import (
     validate_variable_quoting,
 )
 from .validators import validate_command_length, validate_path
+from core.command_exec.runtime import normalize_command_type
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class PreprocessingPipeline:
             return result
 
         try:
+            context.command_type = normalize_command_type(context.command_type)
             if not self._validate_syntax(context, result):
                 return result
 
@@ -254,6 +256,6 @@ def create_pipeline_from_settings(settings) -> PreprocessingPipeline:
         strict_mode=getattr(settings, "preprocessing_strict_mode", False),
         rate_limiting=getattr(settings, "preprocessing_rate_limiting_enabled", True),
         audit_enabled=getattr(settings, "preprocessing_audit_enabled", True),
-        block_dangerous_patterns=getattr(settings, "security_block_dangerous_patterns", False),
+        block_dangerous_patterns=getattr(settings, "security_block_dangerous_patterns", True),
         require_variable_quoting=getattr(settings, "security_require_variable_quoting", True),
     )

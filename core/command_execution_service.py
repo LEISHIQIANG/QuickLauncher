@@ -196,7 +196,7 @@ class CommandExecutionService:
                 setattr(shortcut, "_runtime_param_values", dict(request.args))
             if (
                 shortcut is not None
-                and getattr(shortcut, "command_type", "cmd") in ("cmd", "python", "powershell")
+                and getattr(shortcut, "command_type", "cmd") in ("cmd", "python", "powershell", "bash")
                 and not bool(getattr(shortcut, "show_window", False))
                 and not bool(getattr(shortcut, "run_as_admin", False))
             ):

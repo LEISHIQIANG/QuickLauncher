@@ -1,6 +1,6 @@
 """Tests for preprocessing pipeline."""
 
-from core.preprocessing.pipeline import PreprocessingContext, PreprocessingPipeline
+from core.preprocessing.pipeline import PreprocessingContext, PreprocessingPipeline, create_pipeline_from_settings
 
 
 def test_pipeline_empty_command():
@@ -114,10 +114,22 @@ def test_pipeline_bash_valid():
     assert result.success
 
 
-def test_pipeline_bash_unsupported_alias():
-    """bash aliases like git-bash should be normalized before reaching pipeline."""
+def test_pipeline_bash_alias_is_normalized():
     pipeline = PreprocessingPipeline(enabled=True, rate_limiting=False)
     context = PreprocessingContext(command="echo hello", command_type="git-bash")
     result = pipeline.process(context)
-    # git-bash is not in the pipeline's valid set (only "bash" is), so it should fail
-    assert not result.success
+    assert result.success
+    assert context.command_type == "bash"
+
+
+def test_create_from_settings_blocks_dangerous_by_default():
+    """create_pipeline_from_settings should default to blocking dangerous patterns."""
+    settings = type("Settings", (), {})()
+    pipeline = create_pipeline_from_settings(settings)
+    assert pipeline.block_dangerous_patterns is True
+
+
+def test_create_from_settings_can_override_block_dangerous():
+    settings = type("Settings", (), {"security_block_dangerous_patterns": False})()
+    pipeline = create_pipeline_from_settings(settings)
+    assert pipeline.block_dangerous_patterns is False

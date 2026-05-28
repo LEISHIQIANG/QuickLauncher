@@ -23,7 +23,8 @@ def test_command_execution_audit_marks_destructive_confirmation():
 
     audit = build_command_execution_audit(item)
 
-    assert audit.uses_shell is False
+    assert audit.uses_shell is True
+    assert "bash.exe -c" in audit.uses_shell_reason
     assert audit.requires_confirmation is True
     assert "rm_rf" in audit.risk_codes
     assert "critical" in audit.risk_levels

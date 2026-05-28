@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import ctypes
 import hashlib
 import logging
@@ -21,7 +22,6 @@ from qt_compat import QObject, pyqtSignal
 
 from .command_exec import (
     SUPPORTED_COMMAND_TYPES,
-    build_bash_fallback_wrapper,
     chain_values,
     command_panel_size,
     command_param_defs,
@@ -29,9 +29,7 @@ from .command_exec import (
     decode_command_output,
     merge_runtime_env,
     normalize_command_type,
-    read_bash_fallback_exit_code,
     truncate_command_output,
-    wait_for_bash_fallback_completion,
 )
 from .command_registry import (
     CommandAction,
@@ -61,6 +59,7 @@ from .runtime_constants import (
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
+WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS = 30000
 
 
 class MainThreadInvoker(QObject):
@@ -110,6 +109,80 @@ def _write_atomic(path: str, content: str) -> None:
         raise
 
 
+def _pipe_reader(pipe, output_queue, name):
+    """Read lines from a pipe and put them on a queue for the on_update path."""
+    try:
+        while True:
+            chunk = pipe.readline()
+            if not chunk:
+                break
+            output_queue.put((name, chunk))
+    finally:
+        try:
+            pipe.close()
+        except Exception:
+            pass
+
+
+def _bash_fallback_result(
+    stdout_bytes, stderr_bytes, returncode, cancelled, timed_out,
+    shortcut, command, max_chars, panel_size, command_type, start,
+) -> CommandResult:
+    """Build a CommandResult for the bash script-fallback capture path."""
+    stdout, stdout_encoding, stdout_fallback = decode_command_output(
+        stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type=command_type
+    )
+    stderr, stderr_encoding, stderr_fallback = decode_command_output(
+        stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type=command_type
+    )
+    stdout, stdout_truncated = truncate_command_output(stdout or "", max_chars)
+    stderr, stderr_truncated = truncate_command_output(stderr or "", max_chars)
+    message_parts = []
+    if cancelled:
+        message_parts.append("命令执行已取消。")
+    if stdout:
+        message_parts.append(stdout)
+    if stderr and not (returncode == 0 and not timed_out and not cancelled):
+        message_parts.append(stderr)
+    if not message_parts:
+        message_parts.append("(无输出)")
+    message = "\n".join(message_parts)
+    if timed_out:
+        message = f"命令执行超时，已终止。\n\n{message}"
+    error = ""
+    if cancelled:
+        error = "已取消"
+    elif timed_out:
+        error = "执行超时"
+    elif returncode != 0:
+        error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
+    payload = {
+        "window_size": panel_size,
+        "wrap": False,
+        "exit_code": returncode,
+        "duration": time.monotonic() - start,
+        "stdout": stdout,
+        "stderr": stderr,
+        "stdout_truncated": stdout_truncated,
+        "stderr_truncated": stderr_truncated,
+        "stdout_encoding": stdout_encoding,
+        "stderr_encoding": stderr_encoding,
+        "decode_fallback_used": stdout_fallback or stderr_fallback,
+        "command": command,
+        "cancelled": cancelled,
+        "timed_out": timed_out,
+        "fallback_script": True,
+    }
+    return CommandResult(
+        success=(returncode == 0) and not timed_out and not cancelled,
+        message=message,
+        display_type="log",
+        payload=payload,
+        actions=[CommandAction(type="copy", label="复制输出", value=message)],
+        error=error,
+    )
+
+
 class CommandExecutionMixin:
     _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{\{param:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
     _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{\{chain:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
@@ -153,6 +226,44 @@ class CommandExecutionMixin:
     @staticmethod
     def _cmd_launcher_error() -> str:
         return "CMD shell is not available. Check ComSpec or the Windows system directory."
+
+    @staticmethod
+    def _cmd_argv(command: str, *, keep_open: bool = False) -> list[str]:
+        cmd_exe = ShortcutExecutor._cmd_launcher()
+        if not cmd_exe:
+            raise FileNotFoundError(ShortcutExecutor._cmd_launcher_error())
+        if os.name == "nt":
+            return [cmd_exe, "/d", "/s", "/k" if keep_open else "/c", command]
+        return [cmd_exe, "-c", command]
+
+    @staticmethod
+    def _cmd_has_newline(command: str) -> bool:
+        return "\n" in (command or "") or "\r" in (command or "")
+
+    @staticmethod
+    def _cmd_stdin_argv() -> list[str]:
+        cmd_exe = ShortcutExecutor._cmd_launcher()
+        if not cmd_exe:
+            raise FileNotFoundError(ShortcutExecutor._cmd_launcher_error())
+        if os.name == "nt":
+            return [cmd_exe, "/d", "/q", "/k", "prompt $H"]
+        return [cmd_exe]
+
+    @staticmethod
+    def _cmd_stdin_script(command: str) -> bytes:
+        normalized = str(command or "").replace("\r\n", "\n").replace("\r", "\n")
+        script = "@echo off\r\nchcp 65001 >nul\r\n" + normalized.replace("\n", "\r\n")
+        if not script.endswith("\r\n"):
+            script += "\r\n"
+        script += "exit /b %ERRORLEVEL%\r\n"
+        return script.encode("utf-8")
+
+    @staticmethod
+    def _clean_cmd_stdin_output_bytes(data: bytes) -> bytes:
+        cleaned = data or b""
+        for token in (b"\r\n\x08 \x08", b"\n\x08 \x08", b"\x08 \x08"):
+            cleaned = cleaned.replace(token, b"")
+        return cleaned
 
     @staticmethod
     def _command_preprocessing_result(shortcut: ShortcutItem, command: str, command_type: str):
@@ -303,8 +414,8 @@ class CommandExecutionMixin:
         )
 
     @staticmethod
-    def _decode_bytes(data: bytes, preferred: str = "auto") -> tuple[str, str, bool]:
-        return decode_command_output(data, preferred)
+    def _decode_bytes(data: bytes, preferred: str = "auto", command_type: str = "") -> tuple[str, str, bool]:
+        return decode_command_output(data, preferred, command_type=command_type)
 
     @staticmethod
     def _preflight_command(
@@ -347,6 +458,33 @@ class CommandExecutionMixin:
             items.append({"title": "捕获输出", "status": "failed", "detail": "显示执行窗口时不能捕获输出。"})
         if capture and bool(getattr(shortcut, "run_as_admin", False)):
             items.append({"title": "捕获输出", "status": "failed", "detail": "管理员命令暂不支持捕获输出。"})
+        if command_type in ("cmd", "powershell", "bash") and command:
+            try:
+                if command_type == "cmd":
+                    argv = ShortcutExecutor._cmd_argv(
+                        command,
+                        keep_open=bool(getattr(shortcut, "show_window", False)) and not capture,
+                    )
+                elif command_type == "powershell":
+                    argv = ShortcutExecutor._powershell_argv(
+                        command,
+                        no_exit=bool(getattr(shortcut, "show_window", False)) and not capture,
+                    )
+                else:
+                    argv = ShortcutExecutor._bash_argv(
+                        command,
+                        login=bool(getattr(shortcut, "show_window", False)) and not capture,
+                    )
+                if ShortcutExecutor._direct_command_line_too_long(argv):
+                    items.append(
+                        {
+                            "title": "命令长度",
+                            "status": "failed",
+                            "detail": ShortcutExecutor._direct_command_line_length_error(command_type, argv),
+                        }
+                    )
+            except FileNotFoundError:
+                pass
         if command_type in ("cmd", "powershell", "bash"):
             unsafe = find_unquoted_external_command_variables(command)
             if unsafe:
@@ -483,6 +621,11 @@ class CommandExecutionMixin:
         return "PowerShell is not available. Install Windows PowerShell or add powershell.exe to PATH."
 
     @staticmethod
+    def _encode_powershell_command(command: str) -> str:
+        """Encode PowerShell text for -EncodedCommand without writing a script file."""
+        return base64.b64encode(str(command or "").encode("utf-16le")).decode("ascii")
+
+    @staticmethod
     def _powershell_argv(command: str, *, no_exit: bool = False) -> list[str]:
         powershell_exe = ShortcutExecutor._powershell_launcher()
         if not powershell_exe:
@@ -490,8 +633,28 @@ class CommandExecutionMixin:
         argv = [powershell_exe, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"]
         if no_exit:
             argv.append("-NoExit")
-        argv.extend(["-Command", command])
+        argv.extend(["-EncodedCommand", ShortcutExecutor._encode_powershell_command(command)])
         return argv
+
+    @staticmethod
+    def _direct_command_line_length(argv: list[str]) -> int:
+        try:
+            return len(subprocess.list2cmdline([str(part) for part in argv]))
+        except Exception:
+            return sum(len(str(part)) + 1 for part in argv)
+
+    @staticmethod
+    def _direct_command_line_too_long(argv: list[str]) -> bool:
+        return os.name == "nt" and ShortcutExecutor._direct_command_line_length(argv) > WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS
+
+    @staticmethod
+    def _direct_command_line_length_error(command_type: str, argv: list[str]) -> str:
+        label = {"cmd": "CMD", "powershell": "PowerShell", "bash": "Git Bash"}.get(command_type, command_type)
+        length = ShortcutExecutor._direct_command_line_length(argv)
+        return (
+            f"{label} 命令过长，绝不落盘策略下无法直接运行。"
+            f"当前命令行长度 {length}，上限 {WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS}。"
+        )
 
     @staticmethod
     def _bash_launcher() -> Optional[str]:
@@ -537,6 +700,85 @@ class CommandExecutionMixin:
         return "Git Bash is not available. Install Git for Windows or add bash.exe to PATH."
 
     @staticmethod
+    def _bash_direct_capture_denied(text: str) -> bool:
+        lowered = str(text or "").lower()
+        return "signal pipe" in lowered or "win32 error 5" in lowered
+
+    @staticmethod
+    def _bash_direct_capture_denied_message(detail: str) -> str:
+        return "Git Bash 直接捕获启动失败且在回退模式下也失败了。" + (
+            f"\n\n{detail}" if detail else ""
+        )
+
+    @staticmethod
+    def _bash_write_script(command: str) -> str:
+        """Write a bash script file to disk as fallback for pipe capture failures."""
+        hash_ = hashlib.md5(command.encode("utf-8")).hexdigest()
+        cache_dir = CommandExecutionMixin._get_cmd_cache_dir()
+        path = os.path.join(cache_dir, f"{hash_}.sh")
+        if not os.path.exists(path):
+            _write_atomic(path, "#!/usr/bin/env bash\n" + command + "\n")
+        return path
+
+    @staticmethod
+    def _bash_capture_via_script(
+        command: str,
+        cwd: str | None,
+        env: dict,
+        timeout_value: float,
+        start: float,
+        max_chars: int,
+        panel_size: str,
+        command_type: str,
+        shortcut,
+    ) -> CommandResult | None:
+        """Fallback: write temp .sh script, run bash with script path, capture output.
+
+        Simpler than the direct pipe path — uses communicate() without real-time
+        streaming so it works around bash.exe console-attachment restrictions.
+        Returns a CommandResult on success/failure, or None if the fallback also fails.
+        """
+        script_path = ShortcutExecutor._bash_write_script(command)
+        try:
+            bash_exe = ShortcutExecutor._bash_launcher()
+            if not bash_exe or not os.path.exists(script_path):
+                return None
+
+            process = subprocess.Popen(
+                [bash_exe, script_path],
+                cwd=cwd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                shell=False,
+            )
+
+            timed_out = False
+            try:
+                stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_value)
+                returncode = process.returncode
+            except subprocess.TimeoutExpired:
+                ShortcutExecutor._terminate_process_tree(process)
+                stdout_bytes, stderr_bytes = process.communicate()
+                returncode = process.returncode
+                timed_out = True
+
+            return _bash_fallback_result(
+                stdout_bytes, stderr_bytes, returncode, False, timed_out,
+                shortcut, command, max_chars, panel_size, command_type, start,
+            )
+        except Exception:
+            logger.error("Bash script fallback also failed", exc_info=True)
+            return None
+        finally:
+            try:
+                if os.path.exists(script_path):
+                    os.remove(script_path)
+            except Exception:
+                pass
+
+    @staticmethod
     def _bash_argv(command: str, *, login: bool = False) -> list[str]:
         bash_exe = ShortcutExecutor._bash_launcher()
         if not bash_exe:
@@ -573,19 +815,6 @@ class CommandExecutionMixin:
                 pass
 
     @staticmethod
-    def _write_temp_bash_script(command: str) -> str:
-        hash_ = hashlib.md5(command.encode("utf-8")).hexdigest()
-        cache_dir = CommandExecutionMixin._get_cmd_cache_dir()
-        path = os.path.join(cache_dir, f"{hash_}.sh")
-        if not os.path.exists(path):
-            # Atomic write via tempfile + rename to avoid races
-            _write_atomic(
-                path,
-                "#!/bin/bash\n" + command + ("" if command.endswith("\n") else "\n"),
-            )
-        return path
-
-    @staticmethod
     def _write_temp_python_script(command: str) -> str:
         hash_ = hashlib.md5(command.encode("utf-8")).hexdigest()
         cache_dir = CommandExecutionMixin._get_cmd_cache_dir()
@@ -593,111 +822,6 @@ class CommandExecutionMixin:
         if not os.path.exists(path):
             _write_atomic(path, command)
         return path
-
-    @staticmethod
-    def _bash_capture_with_fallback(command, tmp_path, bash_exe, cwd, env, timeout_value, cancel_event):
-        """Execute bash capture via wrapper script to avoid MSYS signal pipe error.
-
-        Creates a wrapper .sh that redirects stdout/stderr to temp files and
-        writes an exit-code marker. The main process polls the marker.
-
-        Returns (process, stdout_tmp, stderr_tmp, wrapper_path, marker_tmp).
-        Caller must clean up all returned temp file paths.
-        """
-        stdout_tmp = tempfile.NamedTemporaryFile(suffix=".out", delete=False).name
-        stderr_tmp = tempfile.NamedTemporaryFile(suffix=".err", delete=False).name
-        marker_tmp = tempfile.NamedTemporaryFile(suffix=".marker", delete=False).name
-        wrapper_path = tempfile.NamedTemporaryFile(suffix=".sh", delete=False).name
-        try:
-            os.remove(marker_tmp)
-        except FileNotFoundError:
-            pass
-        except Exception:
-            logger.debug("cleanup initial bash marker failed: %s", marker_tmp, exc_info=True)
-
-        wrapper_content = build_bash_fallback_wrapper(
-            command,
-            tmp_path=tmp_path,
-            stdout_path=stdout_tmp,
-            stderr_path=stderr_tmp,
-            marker_path=marker_tmp,
-        )
-
-        try:
-            with open(wrapper_path, "w", encoding="utf-8") as f:
-                f.write(wrapper_content)
-
-            process = subprocess.Popen(
-                [bash_exe, wrapper_path],
-                cwd=cwd,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                text=False,
-                shell=False,
-            )
-        except Exception:
-            for p in (wrapper_path, stdout_tmp, stderr_tmp, marker_tmp):
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
-            raise
-
-        wait_for_bash_fallback_completion(
-            process=process,
-            marker_path=marker_tmp,
-            timeout_value=timeout_value,
-            cancel_event=cancel_event,
-            terminate_process_tree=ShortcutExecutor._terminate_process_tree,
-        )
-        try:
-            process.wait(timeout=2.0)
-        except Exception:
-            pass
-
-        return process, stdout_tmp, stderr_tmp, wrapper_path, marker_tmp
-
-    @staticmethod
-    def _read_bash_fallback_exit_code(marker_path: str | None) -> int | None:
-        return read_bash_fallback_exit_code(marker_path)
-
-    @staticmethod
-    def _write_python_cmd_wrapper(script_path: str) -> str:
-        python_exe = ShortcutExecutor._python_launcher()
-        if not python_exe:
-            raise RuntimeError(ShortcutExecutor._python_launcher_error())
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cmd", delete=False, encoding="utf-8") as f:
-            wrapper_path = f.name
-            f.write("@echo off\n")
-            f.write("chcp 65001 >nul\n")
-            f.write(subprocess.list2cmdline([python_exe, script_path]) + "\n")
-            f.write("set QL_EXIT=%ERRORLEVEL%\n")
-            f.write(f'del /f /q "{script_path}" >nul 2>nul\n')
-            f.write("echo.\n")
-            f.write("echo [QuickLauncher] Python exited with code %QL_EXIT%.\n")
-            f.write('del /f /q "%~f0" >nul 2>nul\n')
-            return wrapper_path
-
-    @staticmethod
-    def _write_cmd_wrapper(command: str) -> tuple[str, str]:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cmd", delete=False, encoding="utf-8") as user_file:
-            user_path = user_file.name
-            user_file.write("@echo off\n")
-            user_file.write("chcp 65001 >nul\n")
-            user_file.write(command)
-            if not command.endswith(("\n", "\r")):
-                user_file.write("\n")
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cmd", delete=False, encoding="utf-8") as wrapper_file:
-            wrapper_path = wrapper_file.name
-            wrapper_file.write("@echo off\n")
-            wrapper_file.write("chcp 65001 >nul\n")
-            wrapper_file.write(f'call "{user_path}"\n')
-            wrapper_file.write("set QL_EXIT=%ERRORLEVEL%\n")
-            wrapper_file.write(f'del /f /q "{user_path}" >nul 2>nul\n')
-            wrapper_file.write('del /f /q "%~f0" >nul 2>nul\n')
-            wrapper_file.write("exit /b %QL_EXIT%\n")
-            return user_path, wrapper_path
 
     @staticmethod
     def _is_qt_main_thread() -> bool:
@@ -818,23 +942,6 @@ class CommandExecutionMixin:
         except CommandVariableError as e:
             return False, str(e)
 
-        if command_type not in ("python", "powershell", "bash"):
-            try:
-                from core.builtin_commands import canonical_builtin_command
-
-                parts = command.strip().split(None, 1)
-                cmd_word = parts[0] if parts else ""
-                canonical = canonical_builtin_command(cmd_word)
-                if canonical:
-                    args_part = parts[1] if len(parts) > 1 else ""
-                    if args_part:
-                        command = f"{canonical} {args_part}"
-                    else:
-                        command = canonical
-                    command_type = "builtin"
-            except Exception as e:
-                logger.debug("内置命令规范化失败（可忽略）: %s", e)
-
         capture_output = bool(getattr(shortcut, "capture_output", False))
         if not capture_output:
             confirmation = ShortcutExecutor._destructive_confirmation_result(shortcut, command, command_type)
@@ -868,6 +975,8 @@ class CommandExecutionMixin:
                 run_as_admin = getattr(shortcut, "run_as_admin", False)
                 cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
                 argv = ShortcutExecutor._powershell_argv(command, no_exit=show_window)
+                if ShortcutExecutor._direct_command_line_too_long(argv):
+                    return False, ShortcutExecutor._direct_command_line_length_error(command_type, argv)
                 show_cmd = 1 if show_window else 0
                 if os.name == "nt":
                     launched, launch_error = ShortcutExecutor._launch_with_privilege(
@@ -905,18 +1014,15 @@ class CommandExecutionMixin:
             bash_env = ShortcutExecutor._runtime_env(shortcut)
             bash_env["LANG"] = "en_US.UTF-8"
             if show_window:
-                tmp_path = None
                 try:
                     bash_exe = ShortcutExecutor._bash_launcher()
                     if not bash_exe:
                         return False, ShortcutExecutor._bash_launcher_error()
                     logger.debug("Bash show-window: launcher=%s, route=shell-execute", bash_exe)
-                    has_newline = "\n" in command or "\r" in command
-                    if has_newline:
-                        tmp_path = ShortcutExecutor._write_temp_bash_script(command)
-                        bash_cmd = tmp_path
-                    else:
-                        bash_cmd = command
+                    bash_cmd = command
+                    argv = ShortcutExecutor._bash_argv(bash_cmd, login=True)
+                    if ShortcutExecutor._direct_command_line_too_long(argv):
+                        return False, ShortcutExecutor._direct_command_line_length_error(command_type, argv)
                     if os.name == "nt":
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
                             bash_exe,
@@ -927,72 +1033,33 @@ class CommandExecutionMixin:
                             admin_failure_message="Administrator launch failed.",
                         )
                         if launched:
-                            if tmp_path:
-                                ShortcutExecutor._cleanup_file_later(None, tmp_path)
                             return True, ""
                         if launch_error:
-                            if tmp_path:
-                                try:
-                                    os.remove(tmp_path)
-                                except Exception:
-                                    pass
                             return False, launch_error
                     argv = ShortcutExecutor._bash_argv(bash_cmd, login=True)
                     process = subprocess.Popen(argv, cwd=cwd, env=bash_env, shell=False)
-                    if tmp_path:
-                        ShortcutExecutor._cleanup_file_later(process, tmp_path)
                     return True, ""
                 except FileNotFoundError:
-                    if tmp_path:
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            pass
                     return False, ShortcutExecutor._bash_launcher_error()
                 except Exception as e:
-                    if tmp_path:
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            pass
                     return False, f"Bash command launch failed: {e}"
-            # silent mode — route through _launch_with_privilege to avoid
-            # inheriting restricted parent process environment (Win32 error 5)
+            # silent mode — use _popen_silent with DETACHED_PROCESS so the
+            # console window never appears (ShellExecute show_cmd=0 can flash)
             try:
                 bash_exe = ShortcutExecutor._bash_launcher()
                 if not bash_exe:
                     return False, ShortcutExecutor._bash_launcher_error()
-                logger.debug("Bash silent: launcher=%s, route=shell-execute-hidden", bash_exe)
-                has_newline = "\n" in command or "\r" in command
-                if has_newline:
-                    tmp_path = ShortcutExecutor._write_temp_bash_script(command)
-                    bash_cmd = tmp_path
-                else:
-                    tmp_path = None
-                    bash_cmd = command
-                if os.name == "nt":
-                    launched, launch_error = ShortcutExecutor._launch_with_privilege(
-                        bash_exe,
-                        subprocess.list2cmdline(["-c", bash_cmd]),
-                        cwd,
-                        show_cmd=0,
-                        run_as_admin=False,
-                    )
-                    if launched:
-                        if tmp_path:
-                            ShortcutExecutor._cleanup_file_later(None, tmp_path)
-                        return True, ""
-                    if launch_error:
-                        if tmp_path:
-                            try:
-                                os.remove(tmp_path)
-                            except Exception:
-                                pass
-                        return False, launch_error
+                logger.debug("Bash silent: launcher=%s, route=popen-silent", bash_exe)
+                bash_cmd = command
                 argv = ShortcutExecutor._bash_argv(bash_cmd, login=False)
-                process = subprocess.Popen(argv, cwd=cwd, env=bash_env, shell=False)
-                if tmp_path:
-                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
+                if ShortcutExecutor._direct_command_line_too_long(argv):
+                    return False, ShortcutExecutor._direct_command_line_length_error(command_type, argv)
+                ShortcutExecutor._popen_silent(
+                    argv,
+                    cwd=cwd,
+                    env=bash_env,
+                    shell=False,
+                )
                 return True, ""
             except FileNotFoundError:
                 return False, ShortcutExecutor._bash_launcher_error()
@@ -1008,14 +1075,16 @@ class CommandExecutionMixin:
                     if not ShortcutExecutor._python_launcher():
                         return False, ShortcutExecutor._python_launcher_error()
                     tmp_path = ShortcutExecutor._write_temp_python_script(command)
+                    python_exe = ShortcutExecutor._python_launcher()
+                    if not python_exe:
+                        return False, ShortcutExecutor._python_launcher_error()
+                    run_as_admin = getattr(shortcut, "run_as_admin", False)
+                    cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
                     if os.name == "nt":
-                        wrapper_path = ShortcutExecutor._write_python_cmd_wrapper(tmp_path)
-                        run_as_admin = getattr(shortcut, "run_as_admin", False)
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
-                            os.environ.get("ComSpec")
-                            or os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"),
-                            subprocess.list2cmdline(["/d", "/s", "/k", wrapper_path]),
-                            (getattr(shortcut, "working_dir", "") or "").strip() or None,
+                            python_exe,
+                            subprocess.list2cmdline([tmp_path]),
+                            cwd,
                             show_cmd=1,
                             run_as_admin=run_as_admin,
                             admin_failure_message="Administrator launch failed.",
@@ -1024,10 +1093,12 @@ class CommandExecutionMixin:
                             return True, ""
                         if launch_error:
                             return False, launch_error
-                    python_exe = ShortcutExecutor._python_launcher()
-                    if not python_exe:
-                        return False, ShortcutExecutor._python_launcher_error()
-                    process = subprocess.Popen([python_exe, tmp_path], shell=False)
+                    process = subprocess.Popen(
+                        [python_exe, tmp_path],
+                        cwd=cwd,
+                        env=ShortcutExecutor._runtime_env(shortcut),
+                        shell=False,
+                    )
                     ShortcutExecutor._cleanup_file_later(process, tmp_path)
                     return True, ""
                 except FileNotFoundError:
@@ -1048,14 +1119,47 @@ class CommandExecutionMixin:
                 python_exe = ShortcutExecutor._python_launcher()
                 if not python_exe:
                     raise FileNotFoundError(ShortcutExecutor._python_launcher_error())
-                tmp_path = ShortcutExecutor._write_temp_python_script(command)
-                process = ShortcutExecutor._popen_silent(
-                    [python_exe, tmp_path],
-                    cwd=(getattr(shortcut, "working_dir", "") or "").strip() or None,
-                    env=ShortcutExecutor._runtime_env(shortcut),
-                    shell=False,
-                )
-                ShortcutExecutor._cleanup_file_later(process, tmp_path)
+
+                def _launch_python_stdin():
+                    try:
+                        si = ShortcutExecutor._get_silent_startupinfo()
+                        cf = ShortcutExecutor._get_silent_creationflags(shell=False)
+                        cwd_dir = (getattr(shortcut, "working_dir", "") or "").strip() or None
+                        env_dict = ShortcutExecutor._runtime_env(shortcut)
+                        try:
+                            process = subprocess.Popen(
+                                [python_exe],
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                cwd=cwd_dir,
+                                env=env_dict,
+                                startupinfo=si,
+                                creationflags=cf,
+                            )
+                            process.communicate(input=command.encode("utf-8"))
+                        except OSError:
+                            CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+                            if cf and (cf & CREATE_BREAKAWAY_FROM_JOB):
+                                cf2 = cf & ~CREATE_BREAKAWAY_FROM_JOB
+                                process = subprocess.Popen(
+                                    [python_exe],
+                                    stdin=subprocess.PIPE,
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL,
+                                    cwd=cwd_dir,
+                                    env=env_dict,
+                                    startupinfo=si,
+                                    creationflags=cf2,
+                                )
+                                process.communicate(input=command.encode("utf-8"))
+                            else:
+                                raise
+                    except Exception as e:
+                        logger.error(f"Python stdin exec failed: {e}")
+
+                threading.Thread(target=_launch_python_stdin, daemon=True, name="PythonStdinExec").start()
+                logger.info("执行命令(Silent Python stdin): %s", command)
                 return True, ""
             except FileNotFoundError:
                 return False, ShortcutExecutor._python_launcher_error()
@@ -1074,41 +1178,31 @@ class CommandExecutionMixin:
             run_as_admin = getattr(shortcut, "run_as_admin", False)
             show_window = getattr(shortcut, "show_window", False)
             show_cmd = 1 if show_window else 0
-            raw_command = command
-            if "\n" in raw_command or "\r" in raw_command:
+            if ShortcutExecutor._cmd_has_newline(command) and not show_window and not run_as_admin:
                 try:
-                    user_cmd_path, wrapper_path = ShortcutExecutor._write_cmd_wrapper(raw_command)
                     cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-                    comspec = ShortcutExecutor._cmd_launcher()
-                    if not comspec:
-                        return False, ShortcutExecutor._cmd_launcher_error()
-                    if os.name == "nt":
-                        launched, launch_error = ShortcutExecutor._launch_with_privilege(
-                            comspec,
-                            subprocess.list2cmdline(["/d", "/s", "/k" if show_window else "/c", wrapper_path]),
-                            cwd,
-                            show_cmd=show_cmd,
-                            run_as_admin=run_as_admin,
-                            admin_failure_message="Administrator launch failed.",
-                        )
-                        if launched:
-                            return True, ""
-                        if launch_error:
-                            return False, launch_error
-                    process = ShortcutExecutor._popen_silent(
-                        [comspec, "/d", "/s", "/c", wrapper_path],
+                    argv = ShortcutExecutor._cmd_stdin_argv()
+                    process = subprocess.Popen(
+                        argv,
                         cwd=cwd,
                         env=ShortcutExecutor._runtime_env(shortcut),
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                         shell=False,
+                        startupinfo=getattr(ShortcutExecutor, "_get_silent_startupinfo", lambda: None)(),
+                        creationflags=getattr(ShortcutExecutor, "_get_silent_creationflags", lambda: 0)(),
                     )
-                    ShortcutExecutor._cleanup_file_later(process, user_cmd_path, wrapper_path)
+                    stdin_pipe = getattr(process, "stdin", None)
+                    if stdin_pipe is not None:
+                        stdin_pipe.write(ShortcutExecutor._cmd_stdin_script(command))
+                        stdin_pipe.close()
+                    logger.info("执行命令(Silent CMD stdin): %s", command)
                     return True, ""
                 except Exception as e:
                     error_msg = f"命令启动失败: {e}"
                     logger.error(error_msg)
                     return False, error_msg
-            # 多行命令合并为单行
-            command = " & ".join(line.strip() for line in command.splitlines() if line.strip())
 
             try:
                 # 运行CMD命令
@@ -1117,6 +1211,8 @@ class CommandExecutionMixin:
 
                 # 尝试检测是否为直接的可执行文件
                 if exe_path and exe_path.lower().endswith(".exe") and os.path.exists(exe_path):
+                    if ShortcutExecutor._direct_command_line_too_long(parsed):
+                        return False, ShortcutExecutor._direct_command_line_length_error("cmd", parsed)
                     exe_dir = os.path.dirname(os.path.abspath(exe_path))
                     cwd = (getattr(shortcut, "working_dir", "") or "").strip()
 
@@ -1143,15 +1239,16 @@ class CommandExecutionMixin:
                         )
                     logger.info(f"执行程序({'Visible' if show_window else 'Silent'}): {exe_path}")
                 else:
-                    # 对于其他命令，使用 shell=True
+                    # 通过 cmd.exe 直接传入原始命令文本；单行/多行都不写临时 .cmd。
                     cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
+                    argv = ShortcutExecutor._cmd_argv(command, keep_open=show_window)
+                    if ShortcutExecutor._direct_command_line_too_long(argv):
+                        return False, ShortcutExecutor._direct_command_line_length_error("cmd", argv)
 
                     if os.name == "nt":
-                        # show_window 时用 /k 保持窗口，否则用 /c 执行后关闭
-                        cmd_flag = "/k" if show_window else "/c"
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
-                            ShortcutExecutor._cmd_launcher() or "cmd.exe",
-                            subprocess.list2cmdline(["/d", "/s", cmd_flag, command]),
+                            argv[0],
+                            subprocess.list2cmdline(argv[1:]),
                             cwd,
                             show_cmd=show_cmd,
                             run_as_admin=run_as_admin,
@@ -1164,12 +1261,12 @@ class CommandExecutionMixin:
                             return False, launch_error
 
                     if show_window:
-                        process = subprocess.Popen(command, cwd=cwd, shell=True)
+                        process = subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)
                     else:
                         process = ShortcutExecutor._popen_silent(
-                            command, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=True
+                            argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False
                         )
-                    logger.info(f"执行命令({'Visible' if show_window else 'Silent'} Shell): {command}")
+                    logger.info(f"执行命令({'Visible' if show_window else 'Silent'} CMD): {command}")
 
             except Exception as e:
                 error_msg = f"命令启动失败: {e}"
@@ -1215,6 +1312,7 @@ class CommandExecutionMixin:
             selected_text_provider=selected_provider,
             strict_unknown=True,
             bash_mode=(command_type == "bash"),
+            powershell_mode=(command_type == "powershell"),
         )
 
     @staticmethod
@@ -1415,7 +1513,7 @@ class CommandExecutionMixin:
         cancel_event: threading.Event | None = None,
         on_update=None,
     ) -> CommandResult:
-        """Run a CMD/PowerShell/Python/builtin command and return a CommandResult with captured output."""
+        """Run a CMD/PowerShell/Python/Git Bash/builtin command and return captured output."""
         start = time.monotonic()
         command = shortcut.command or ""
         command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
@@ -1472,20 +1570,6 @@ class CommandExecutionMixin:
             )
 
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-        if command_type not in ("python", "powershell", "bash"):
-            try:
-                from core.builtin_commands import canonical_builtin_command
-
-                parts = command.strip().split(None, 1)
-                cmd_word = parts[0] if parts else ""
-                canonical = canonical_builtin_command(cmd_word)
-                if canonical:
-                    args_part = parts[1] if len(parts) > 1 else ""
-                    command = f"{canonical} {args_part}".strip()
-                    command_type = "builtin"
-            except Exception:
-                pass
-
         if command_type == "builtin":
             success = ShortcutExecutor._execute_builtin_command(command)
             pending = take_pending_command_result()
@@ -1520,10 +1604,7 @@ class CommandExecutionMixin:
             return confirmation
 
         tmp_path = None
-        wrapper_tmp_path = None
-        bash_stdout_tmp = None
-        bash_stderr_tmp = None
-        bash_marker_tmp = None
+        stdin_data = None
         try:
             if command_type == "python":
                 python_exe = ShortcutExecutor._python_launcher()
@@ -1535,11 +1616,20 @@ class CommandExecutionMixin:
                         error="Python 不可用",
                         payload={"window_size": panel_size},
                     )
-                tmp_path = ShortcutExecutor._write_temp_python_script(command)
-                popen_args = [python_exe, "-u", tmp_path]
+                popen_args = [python_exe, "-u"]
+                stdin_data = command.encode("utf-8")
                 shell = False
             elif command_type == "powershell":
                 popen_args = ShortcutExecutor._powershell_argv(command)
+                if ShortcutExecutor._direct_command_line_too_long(popen_args):
+                    message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
+                    return CommandResult(
+                        success=False,
+                        message=message,
+                        display_type="log",
+                        error="命令过长",
+                        payload={"window_size": panel_size, "duration": time.monotonic() - start},
+                    )
                 shell = False
             elif command_type == "bash":
                 bash_exe = ShortcutExecutor._bash_launcher()
@@ -1552,118 +1642,80 @@ class CommandExecutionMixin:
                         payload={"window_size": panel_size},
                     )
                 logger.debug("Bash capture: launcher=%s, route=capture-direct", bash_exe)
-                has_newline = "\n" in command or "\r" in command
-                if has_newline:
-                    tmp_path = ShortcutExecutor._write_temp_bash_script(command)
-                    popen_args = [bash_exe, tmp_path]
+                popen_args = ShortcutExecutor._bash_argv(command)
+                if ShortcutExecutor._direct_command_line_too_long(popen_args):
+                    message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
+                    return CommandResult(
+                        success=False,
+                        message=message,
+                        display_type="log",
+                        error="命令过长",
+                        payload={"window_size": panel_size, "duration": time.monotonic() - start},
+                )
+                shell = False
+            elif command_type == "cmd":
+                if ShortcutExecutor._cmd_has_newline(command):
+                    popen_args = ShortcutExecutor._cmd_stdin_argv()
+                    stdin_data = ShortcutExecutor._cmd_stdin_script(command)
                 else:
-                    popen_args = ShortcutExecutor._bash_argv(command)
+                    popen_args = ShortcutExecutor._cmd_argv(command)
+                    if ShortcutExecutor._direct_command_line_too_long(popen_args):
+                        message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
+                        return CommandResult(
+                            success=False,
+                            message=message,
+                            display_type="log",
+                            error="命令过长",
+                            payload={"window_size": panel_size, "duration": time.monotonic() - start},
+                        )
                 shell = False
             else:
-                popen_args = command
-                shell = True
-            use_bash_fallback = False
+                return CommandResult(
+                    success=False,
+                    message=f"Unsupported command type: {command_type}",
+                    display_type="log",
+                    error="Unsupported command type",
+                    payload={"window_size": panel_size, "duration": time.monotonic() - start},
+                )
             try:
+                env = ShortcutExecutor._runtime_env(shortcut)
                 process = subprocess.Popen(
                     popen_args,
                     cwd=cwd,
-                    env=ShortcutExecutor._runtime_env(shortcut),
-                    stdin=subprocess.DEVNULL,
+                    env=env,
+                    stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=False,
                     shell=shell,
                 )
             except OSError as exc:
-                if command_type == "bash" and ("signal pipe" in str(exc) or "Win32 error 5" in str(exc)):
-                    logger.warning(
-                        "Bash capture Popen failed (%s), falling back to wrapper script",
-                        exc,
+                if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):
+                    fallback = ShortcutExecutor._bash_capture_via_script(
+                        command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut,
                     )
-                    bash_env = ShortcutExecutor._runtime_env(shortcut)
-                    bash_env["LANG"] = "en_US.UTF-8"
-                    process, bash_stdout_tmp, bash_stderr_tmp, wrapper_tmp_path, _marker = (
-                        ShortcutExecutor._bash_capture_with_fallback(
-                            command,
-                            tmp_path,
-                            bash_exe,
-                            cwd,
-                            bash_env,
-                            timeout_value,
-                            cancel_event,
-                        )
-                    )
-                    bash_marker_tmp = _marker
-                    use_bash_fallback = True
-                    logger.debug(
-                        "Bash capture fallback: exit_code=%s",
-                        process.returncode,
+                    if fallback is not None:
+                        return fallback
+                    message = ShortcutExecutor._bash_direct_capture_denied_message(str(exc))
+                    return CommandResult(
+                        success=False,
+                        message=message,
+                        display_type="log",
+                        error=str(exc),
+                        payload={
+                            "window_size": panel_size,
+                            "duration": time.monotonic() - start,
+                            "command": command,
+                        },
                     )
                 else:
                     raise
 
-            # Bash fallback: output is in temp files, build result directly
-            if use_bash_fallback:
-                _enc = getattr(shortcut, "command_encoding", "auto")
-                try:
-                    with open(bash_stdout_tmp, "rb") as _f:
-                        _out_bytes = _f.read()
-                except Exception:
-                    _out_bytes = b""
-                try:
-                    with open(bash_stderr_tmp, "rb") as _f:
-                        _err_bytes = _f.read()
-                except Exception:
-                    _err_bytes = b""
-                stdout, stdout_enc, stdout_fbk = ShortcutExecutor._decode_bytes(_out_bytes, _enc)
-                stderr, stderr_enc, stderr_fbk = ShortcutExecutor._decode_bytes(_err_bytes, _enc)
-                stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-                stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
-                marker_exit_code = ShortcutExecutor._read_bash_fallback_exit_code(bash_marker_tmp)
-                returncode = marker_exit_code if marker_exit_code is not None else process.returncode
-                timed_out = marker_exit_code is None and not bool(cancel_event and cancel_event.is_set())
-                cancelled = bool(cancel_event and cancel_event.is_set()) if not timed_out else False
-                success = (returncode == 0) and not timed_out and not cancelled
-                parts = []
-                if stdout:
-                    parts.append(stdout)
-                if stderr and not success:
-                    parts.append(stderr)
-                if not parts:
-                    parts.append("(无输出)")
-                message = "\n".join(parts)
-                if timed_out:
-                    message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
-                error = ""
-                if timed_out:
-                    error = "执行超时"
-                elif returncode != 0:
-                    error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
-                return CommandResult(
-                    success=success,
-                    message=message,
-                    display_type="log",
-                    payload={
-                        "window_size": panel_size,
-                        "wrap": False,
-                        "exit_code": returncode,
-                        "duration": time.monotonic() - start,
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "stdout_truncated": stdout_truncated,
-                        "stderr_truncated": stderr_truncated,
-                        "stdout_encoding": stdout_enc,
-                        "stderr_encoding": stderr_enc,
-                        "decode_fallback_used": stdout_fbk or stderr_fbk,
-                        "command": command,
-                        "timed_out": timed_out,
-                        "cancelled": cancelled,
-                    },
-                    actions=[CommandAction(type="copy", label="复制输出", value=message)],
-                    error=error,
-                )
-
             if on_update is not None:
+                stdin_pipe = getattr(process, "stdin", None)
+                if stdin_data is not None and stdin_pipe is not None:
+                    stdin_pipe.write(stdin_data)
+                    stdin_pipe.close()
                 output_queue = queue.Queue()
 
                 def _reader(pipe, name):
@@ -1702,11 +1754,16 @@ class CommandExecutionMixin:
 
                     now = time.monotonic()
                     if (stdout_parts or stderr_parts) and now - last_update >= COMMAND_CAPTURE_UPDATE_INTERVAL_SECONDS:
+                        update_stdout_bytes = b"".join(stdout_parts)
+                        update_stderr_bytes = b"".join(stderr_parts)
+                        if command_type == "cmd" and stdin_data is not None:
+                            update_stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(update_stdout_bytes)
+                            update_stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(update_stderr_bytes)
                         stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                            b"".join(stdout_parts), getattr(shortcut, "command_encoding", "auto")
+                            update_stdout_bytes, getattr(shortcut, "command_encoding", "auto"), command_type
                         )
                         stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                            b"".join(stderr_parts), getattr(shortcut, "command_encoding", "auto")
+                            update_stderr_bytes, getattr(shortcut, "command_encoding", "auto")
                         )
                         update_stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
                         update_stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
@@ -1763,13 +1820,16 @@ class CommandExecutionMixin:
                         stderr_parts.append(chunk)
                 stdout_bytes = b"".join(stdout_parts)
                 stderr_bytes = b"".join(stderr_parts)
+                if command_type == "cmd" and stdin_data is not None:
+                    stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stdout_bytes)
+                    stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stderr_bytes)
                 returncode = process.returncode
                 if cancelled:
                     stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                        stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                        stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
                     )
                     stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                        stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                        stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
                     )
                     stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
                     stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
@@ -1792,6 +1852,7 @@ class CommandExecutionMixin:
                             "decode_fallback_used": stdout_fallback or stderr_fallback,
                             "command": command,
                             "cancelled": True,
+                            "timed_out": False,
                         },
                         error="已取消",
                     )
@@ -1803,6 +1864,35 @@ class CommandExecutionMixin:
                 )
                 stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
                 stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+                if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
+                    fallback = ShortcutExecutor._bash_capture_via_script(
+                        command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut,
+                    )
+                    if fallback is not None:
+                        return fallback
+                    message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())
+                    return CommandResult(
+                        success=False,
+                        message=message,
+                        display_type="log",
+                        payload={
+                            "window_size": panel_size,
+                            "wrap": False,
+                            "exit_code": returncode,
+                            "duration": time.monotonic() - start,
+                            "stdout": stdout,
+                            "stderr": stderr,
+                            "stdout_truncated": stdout_truncated,
+                            "stderr_truncated": stderr_truncated,
+                            "stdout_encoding": stdout_encoding,
+                            "stderr_encoding": stderr_encoding,
+                            "decode_fallback_used": stdout_fallback or stderr_fallback,
+                            "command": command,
+                            "timed_out": timed_out,
+                        },
+                        actions=[CommandAction(type="copy", label="复制输出", value=message)],
+                        error=stderr.strip().splitlines()[0] if stderr.strip() else "Git Bash 直接捕获启动失败",
+                    )
                 success = (returncode == 0) and not timed_out
                 parts = []
                 if stdout:
@@ -1843,18 +1933,25 @@ class CommandExecutionMixin:
                 )
             try:
                 if cancel_event is None:
-                    stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_value)
+                    if stdin_data is None:
+                        stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_value)
+                    else:
+                        stdout_bytes, stderr_bytes = process.communicate(input=stdin_data, timeout=timeout_value)
                 else:
+                    stdin_pipe = getattr(process, "stdin", None)
+                    if stdin_data is not None and stdin_pipe is not None:
+                        stdin_pipe.write(stdin_data)
+                        stdin_pipe.close()
                     deadline = time.monotonic() + timeout_value
                     while process.poll() is None:
                         if cancel_event.is_set():
                             ShortcutExecutor._terminate_process_tree(process)
                             stdout_bytes, stderr_bytes = process.communicate()
                             stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
                             )
                             stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
                             )
                             stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
                             stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
@@ -1877,6 +1974,7 @@ class CommandExecutionMixin:
                                     "decode_fallback_used": stdout_fallback or stderr_fallback,
                                     "command": command,
                                     "cancelled": True,
+                                    "timed_out": False,
                                 },
                                 error="已取消",
                             )
@@ -1893,14 +1991,47 @@ class CommandExecutionMixin:
                 returncode = process.returncode
                 timed_out = True
 
+            if command_type == "cmd" and stdin_data is not None:
+                stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stdout_bytes)
+                stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stderr_bytes)
+
             stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
             )
             stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
+                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
             )
             stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
             stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+            if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
+                fallback = ShortcutExecutor._bash_capture_via_script(
+                    command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut,
+                )
+                if fallback is not None:
+                    return fallback
+                message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())
+                return CommandResult(
+                    success=False,
+                    message=message,
+                    display_type="log",
+                    payload={
+                        "window_size": panel_size,
+                        "wrap": False,
+                        "exit_code": returncode,
+                        "duration": time.monotonic() - start,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "stdout_truncated": stdout_truncated,
+                        "stderr_truncated": stderr_truncated,
+                        "stdout_encoding": stdout_encoding,
+                        "stderr_encoding": stderr_encoding,
+                        "decode_fallback_used": stdout_fallback or stderr_fallback,
+                        "command": command,
+                        "timed_out": timed_out,
+                    },
+                    actions=[CommandAction(type="copy", label="复制输出", value=message)],
+                    error=stderr.strip().splitlines()[0] if stderr.strip() else "Git Bash 直接捕获启动失败",
+                )
             success = (returncode == 0) and not timed_out
             parts = []
             if stdout:
@@ -1948,7 +2079,7 @@ class CommandExecutionMixin:
                 payload={"window_size": panel_size, "duration": time.monotonic() - start},
             )
         finally:
-            for _p in (tmp_path, wrapper_tmp_path, bash_stdout_tmp, bash_stderr_tmp, bash_marker_tmp):
+            for _p in (tmp_path,):
                 if _p:
                     try:
                         os.remove(_p)

@@ -104,6 +104,34 @@ def test_chain_uses_capture_for_captured_command(monkeypatch):
     assert "hello" in result.payload["items"][0]["detail"]
 
 
+def test_chain_uses_capture_for_captured_bash_command(monkeypatch):
+    cmd = ShortcutItem(
+        id="bash",
+        name="Bash",
+        type=ShortcutType.COMMAND,
+        command_type="bash",
+        capture_output=True,
+        show_window=False,
+        run_as_admin=False,
+    )
+    chain = ShortcutItem(type=ShortcutType.CHAIN, chain_steps=[{"shortcut_id": "bash"}])
+    seen = []
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            seen.append(shortcut.command_type)
+            return CommandResult(success=True, message="done", display_type="log", payload={"stdout": "bash out"})
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([cmd]))
+
+    assert result.success is True
+    assert seen == ["bash"]
+    assert "bash out" in result.payload["items"][0]["detail"]
+
+
 def test_chain_passes_previous_output_to_later_step(monkeypatch):
     first = ShortcutItem(
         id="first",

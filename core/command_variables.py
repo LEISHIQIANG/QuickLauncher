@@ -136,6 +136,12 @@ def quote_bash_arg(value: str) -> str:
     return f"'{v}'"
 
 
+def quote_powershell_arg(value: str) -> str:
+    """Quote one value as a literal PowerShell string."""
+    v = value or ""
+    return "'" + v.replace("'", "''") + "'"
+
+
 def get_app_dir() -> str:
     if getattr(sys, "frozen", False):
         return str(Path(sys.executable).parent)
@@ -295,6 +301,7 @@ def resolve_command_variables(
     strict_unknown: bool = True,
     raw_mode: bool = False,
     bash_mode: bool = False,
+    powershell_mode: bool = False,
 ) -> str:
     """Expand supported command variables in text.
 
@@ -334,7 +341,7 @@ def resolve_command_variables(
             value = os.path.dirname(_first_selected_file(files, "selected_file_dir"))
         elif base_key == "selected_files":
             if should_quote:
-                qfn = quote_bash_arg if bash_mode else quote_windows_arg
+                qfn = quote_bash_arg if bash_mode else quote_powershell_arg if powershell_mode else quote_windows_arg
                 return " ".join(qfn(path) for path in files)
             value = "\n".join(files)
         elif base_key == "date":
@@ -370,7 +377,11 @@ def resolve_command_variables(
             raise CommandVariableError("未知变量: {{" + spec + "}}")
 
         if should_quote:
-            return quote_bash_arg(value) if bash_mode else quote_windows_arg(value)
+            if bash_mode:
+                return quote_bash_arg(value)
+            if powershell_mode:
+                return quote_powershell_arg(value)
+            return quote_windows_arg(value)
         return value
 
     resolved = _TOKEN_RE.sub(repl, guarded)
