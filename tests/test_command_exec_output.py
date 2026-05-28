@@ -81,7 +81,8 @@ def test_decode_cmd_uses_oem_before_utf8(monkeypatch):
 
     def check_oem_before_utf8(data, preferred="auto", command_type=""):
         # Directly verify the candidate ordering logic
-        from core.command_exec.output import os as _os, ctypes as _ctypes
+        from core.command_exec.output import ctypes as _ctypes
+        from core.command_exec.output import os as _os
 
         candidates = []
         preferred = str(preferred or "auto").lower().strip()
