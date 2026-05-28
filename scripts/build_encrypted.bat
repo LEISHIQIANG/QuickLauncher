@@ -162,7 +162,6 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --show-progress ^
     --lto=yes ^
     --remove-output ^
-    --strip ^
     --no-pyi-file ^
     --windows-icon-from-ico="assets\app.ico" ^
     --enable-plugin=pyqt5 ^
