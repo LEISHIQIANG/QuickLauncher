@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from core.command_exec.runtime import normalize_command_type
+
 from .audit import log_rate_limit_exceeded, log_security_warning, log_validation_failure
 from .errors import PreprocessingResult, SecurityWarning, ValidationError
 from .rate_limiter import get_rate_limiter
@@ -16,7 +18,6 @@ from .security import (
     validate_variable_quoting,
 )
 from .validators import validate_command_length, validate_path
-from core.command_exec.runtime import normalize_command_type
 
 logger = logging.getLogger(__name__)
 
