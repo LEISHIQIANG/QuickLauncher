@@ -59,18 +59,32 @@ _WIN_PATH_RE = re.compile(r"^[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\
 _UNIX_PATH_RE = re.compile(r"^/(?:[^/\0]+/)*[^/\0]*$")
 
 # JWT (three base64url segments)
-_JWT_RE = re.compile(
-    r"^eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$"
-)
+_JWT_RE = re.compile(r"^eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$")
 
 # OpenAI API key
 _OPENAI_KEY_RE = re.compile(r"^sk-[a-zA-Z0-9]{20,}$")
 
 # Detect if text looks like code (has common keywords/syntax)
 _CODE_INDICATORS = {
-    "def ", "class ", "import ", "return ", "if __name__", "function ",
-    "const ", "let ", "var ", "=>", "::", "pub fn", "impl ",
-    "#include", "int main", "void ", "SELECT ", "FROM ", "WHERE ",
+    "def ",
+    "class ",
+    "import ",
+    "return ",
+    "if __name__",
+    "function ",
+    "const ",
+    "let ",
+    "var ",
+    "=>",
+    "::",
+    "pub fn",
+    "impl ",
+    "#include",
+    "int main",
+    "void ",
+    "SELECT ",
+    "FROM ",
+    "WHERE ",
 }
 
 # Known plain text indicators (short, no special structure)
@@ -267,6 +281,7 @@ def _make_summary(text: str, kind: str) -> str:
         parts = text.split(".")
         try:
             import base64
+
             padding = 4 - len(parts[0]) % 4
             if padding != 4:
                 padded = parts[0] + "=" * padding

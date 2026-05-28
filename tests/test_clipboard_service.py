@@ -54,9 +54,7 @@ class TestClipboardClassification:
         assert not cls.actions
 
     def test_with_actions(self):
-        cls = ClipboardClassification(
-            kind="json", confidence=0.98, summary="JSON object", actions=["format_json"]
-        )
+        cls = ClipboardClassification(kind="json", confidence=0.98, summary="JSON object", actions=["format_json"])
         assert "format_json" in cls.actions
 
 
@@ -92,9 +90,7 @@ class TestClipboardService:
         assert isinstance(text, str)
 
     def test_classify_empty(self):
-        classification = clipboard_service.classify(
-            ClipboardSnapshot(sequence=0, captured_at=0.0)
-        )
+        classification = clipboard_service.classify(ClipboardSnapshot(sequence=0, captured_at=0.0))
         assert classification.kind == "empty"
         assert classification.confidence == 1.0
 

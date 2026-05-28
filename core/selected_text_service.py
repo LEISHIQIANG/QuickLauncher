@@ -280,9 +280,7 @@ class SelectedTextService:
 
         # Acquire lock to prevent concurrent clipboard operations
         if not self._lock.acquire(timeout=timeout_ms / 1000.0):
-            return SelectedTextResult(
-                text="", success=False, method="clipboard_copy", error="lock_timeout"
-            )
+            return SelectedTextResult(text="", success=False, method="clipboard_copy", error="lock_timeout")
 
         try:
             snapshot = clipboard_service.read_snapshot()
@@ -419,9 +417,7 @@ class SelectedTextService:
                 token = win32security.OpenProcessToken(handle, win32security.TOKEN_QUERY)
                 try:
                     # Get integrity level
-                    labels = win32security.GetTokenInformation(
-                        token, ntsecuritycon.TokenIntegrityLevel
-                    )
+                    labels = win32security.GetTokenInformation(token, ntsecuritycon.TokenIntegrityLevel)
                     sid = win32security.ConvertSidToStringSid(labels)
                     return sid == _HIGH_INTEGRITY_SID
                 finally:

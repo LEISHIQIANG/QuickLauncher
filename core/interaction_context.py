@@ -78,6 +78,7 @@ class TriggerContext:
                     if pid:
                         try:
                             import psutil
+
                             try:
                                 proc = psutil.Process(pid)
                                 process_name = proc.name() or ""

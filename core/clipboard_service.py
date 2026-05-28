@@ -135,7 +135,7 @@ CF_DIB = 8
 CF_BITMAP = 2
 CF_DIBV5 = 17
 CF_HTML = 4934  # "HTML Format" registered format
-CF_RTF = 4930   # "Rich Text Format"
+CF_RTF = 4930  # "Rich Text Format"
 CF_LOCALE = 16
 CF_OEMTEXT = 7
 CF_PALETTE = 9
@@ -159,6 +159,7 @@ def _get_format_name(format_id: int) -> str:
         return _REGISTERED_FORMAT_NAMES[format_id]
     try:
         import win32clipboard
+
         name = win32clipboard.GetClipboardFormatName(format_id)
         _REGISTERED_FORMAT_NAMES[format_id] = name
         return name
@@ -186,6 +187,7 @@ class Win32ClipboardImpl:
             return
         try:
             import pythoncom
+
             try:
                 pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
             except pythoncom.CO_E_ALREADYINITIALIZED:
@@ -236,9 +238,11 @@ class Win32ClipboardImpl:
         import queue as _queue
 
         if Win32ClipboardImpl._sta_thread is None:
+
             def _sta_worker():
                 try:
                     import pythoncom
+
                     pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
                 except Exception:
                     pass
@@ -348,6 +352,7 @@ class Win32ClipboardImpl:
     def is_format_available(format_id: int) -> bool:
         try:
             import win32clipboard
+
             return win32clipboard.IsClipboardFormatAvailable(format_id)
         except Exception:
             return False
@@ -381,6 +386,7 @@ class Win32ClipboardImpl:
                             data = win32clipboard.GetClipboardData(fmt)
                             if data:
                                 import struct
+
                                 if fmt == CF_DIB:
                                     # BITMAPINFOHEADER starts at offset 0
                                     if isinstance(data, bytes) and len(data) >= 40:
@@ -526,6 +532,7 @@ class Win32ClipboardImpl:
                 win32clipboard.EmptyClipboard()
 
                 import win32con
+
                 win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, plain_text or "")
 
                 # Build HTML Format with required header
@@ -538,12 +545,8 @@ class Win32ClipboardImpl:
                 )
                 fragment = html
                 full_html = f"<!DOCTYPE html><html><body>{fragment}</body></html>"
-                header_offset = len(header.format(
-                    start=0, end=0, frag_start=0, frag_end=0
-                ))
-                frag_start = header_offset + len(
-                    "<!DOCTYPE html><html><body>"
-                )
+                header_offset = len(header.format(start=0, end=0, frag_start=0, frag_end=0))
+                frag_start = header_offset + len("<!DOCTYPE html><html><body>")
                 frag_end = frag_start + len(fragment)
                 end_all = header_offset + len(full_html)
 
@@ -582,6 +585,7 @@ class QtClipboardImpl:
     def read_text() -> str:
         try:
             from qt_compat import QApplication
+
             cb = QApplication.clipboard()
             return cb.text() or ""
         except Exception:
@@ -591,6 +595,7 @@ class QtClipboardImpl:
     def write_text(text: str) -> bool:
         try:
             from qt_compat import QApplication
+
             QApplication.clipboard().setText(text)
             return True
         except Exception:
@@ -633,6 +638,7 @@ class QtClipboardBridge:
                     def _sync_qt_clipboard(self):
                         try:
                             from qt_compat import QApplication
+
                             app = QApplication.instance()
                             if app is None:
                                 return

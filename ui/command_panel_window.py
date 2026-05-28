@@ -813,11 +813,7 @@ class CommandPanelWindow(ThemedToolWindow):
 
         risk_lines = "\n".join(f"- {risk.get('message') or risk.get('code')}" for risk in risks)
         command_text = str(getattr(shortcut, "command", "") or "").strip()
-        message = (
-            "该命令包含不可逆或强破坏性操作，确认后才会执行。\n\n"
-            f"{risk_lines}\n\n"
-            f"命令: {command_text}"
-        )
+        message = "该命令包含不可逆或强破坏性操作，确认后才会执行。\n\n" f"{risk_lines}\n\n" f"命令: {command_text}"
         try:
             from ui.styles.themed_messagebox import ThemedMessageBox
 
