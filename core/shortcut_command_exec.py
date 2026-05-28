@@ -252,7 +252,7 @@ class CommandExecutionMixin:
         detail = "\n".join(risk_lines)
         return CommandResult(
             success=False,
-            message="该命令包含不可逆或强破坏性操作，已在执行前拦截。",
+            message="该命令包含不可逆或强破坏性操作，请确认后执行。",
             display_type="confirm",
             error="需要确认",
             payload={

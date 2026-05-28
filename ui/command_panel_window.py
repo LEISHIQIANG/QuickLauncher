@@ -803,6 +803,11 @@ class CommandPanelWindow(ThemedToolWindow):
             return True
         try:
             from core import ShortcutExecutor
+            from core.shortcut_command_exec import CommandExecutionMixin
+
+            # If already confirmed by _render_confirm dialog, skip
+            if getattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False):
+                return True
 
             risks = ShortcutExecutor.command_requires_confirmation(shortcut)
         except Exception:
@@ -1397,6 +1402,33 @@ class CommandPanelWindow(ThemedToolWindow):
         payload = result.payload if isinstance(result.payload, dict) else {}
         detail = str(payload.get("detail") or payload.get("description") or "")
         body = "\n\n".join(part for part in [message, detail] if part)
+
+        # Show confirmation dialog instead of just text
+        if payload.get("requires_confirmation") and self._current_shortcut is not None:
+            try:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+
+                reply = ThemedMessageBox.question(
+                    self,
+                    "确认执行破坏性命令",
+                    body,
+                    ThemedMessageBox.Yes | ThemedMessageBox.No,
+                )
+                if reply == ThemedMessageBox.Yes:
+                    from core import ShortcutExecutor
+
+                    ShortcutExecutor.mark_command_confirmed(self._current_shortcut)
+                    # Re-execute (flag is set, _confirm_destructive_shortcut will skip)
+                    self._execute_current_shortcut_request()
+                    return
+                else:
+                    self._rendered_text = "已取消执行。"
+                    self.text.setPlainText("已取消执行。")
+                    self._update_subtitle("已取消")
+                    return
+            except Exception:
+                logger.debug("confirmation dialog failed, falling back to text", exc_info=True)
+
         self._render_text_like(result, body or "Confirm action", "text")
 
     def _render_actions(self, result: CommandResult):
