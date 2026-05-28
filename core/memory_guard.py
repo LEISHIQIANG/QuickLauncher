@@ -81,12 +81,10 @@ class MemoryGuard:
         try:
             from core.icon_extractor import IconExtractor
 
-            if level == "light":
-                IconExtractor.clear_expired_cache()
-            elif level == "moderate":
-                IconExtractor.clear_expired_cache()
-            else:
+            if level == "critical":
                 IconExtractor.clear_cache()
+            else:
+                IconExtractor.clear_expired_cache(level)
         except Exception as e:
             logger.debug("icon cache cleanup failed: %s", e)
 

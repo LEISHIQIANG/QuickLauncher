@@ -285,12 +285,23 @@ class IconExtractor:
             cls._cache_timestamps.pop(old_key, None)
 
     @classmethod
-    def clear_expired_cache(cls):
+    def clear_expired_cache(cls, level: str = "light"):
+        """Clear expired cache entries. Level controls aggression:
+        - light:  TTL-based (default 30 min)
+        - moderate: 5 min TTL
+        - critical:  clear everything
+        """
+        if level == "critical":
+            count = len(cls._cache)
+            cls.clear_cache()
+            return count
+
+        ttl = 300 if level == "moderate" else cls._CACHE_TTL_SECONDS  # 5 min for moderate
         now = time.time()
         expired = [
             key
             for key, timestamp in cls._cache_timestamps.items()
-            if timestamp and now - timestamp > cls._CACHE_TTL_SECONDS
+            if timestamp and now - timestamp > ttl
         ]
         for key in expired:
             cls._cache.pop(key, None)

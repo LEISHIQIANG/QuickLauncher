@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import logging
 import os
 import queue
@@ -13,6 +14,7 @@ import sys
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
 from qt_compat import QObject, pyqtSignal
@@ -84,11 +86,45 @@ def init_main_thread_invoker():
         _main_thread_invoker = MainThreadInvoker()
 
 
+def _write_atomic(path: str, content: str) -> None:
+    """Write content to path atomically via tempfile + rename to avoid races."""
+    dir_name = os.path.dirname(path)
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            suffix=os.path.splitext(path)[1],
+            dir=dir_name if dir_name else None,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(fd)
+        os.replace(tmp_path, path)
+        tmp_path = None
+    except Exception:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        raise
+
+
 class CommandExecutionMixin:
     _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{\{param:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
     _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{\{chain:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
     _SUPPORTED_COMMAND_TYPES = SUPPORTED_COMMAND_TYPES
     _DESTRUCTIVE_CONFIRMATION_ATTR = "_destructive_command_confirmed"
+    _executor: ThreadPoolExecutor | None = None
+    _executor_lock = threading.Lock()
+
+    @classmethod
+    def _get_executor(cls) -> ThreadPoolExecutor:
+        if cls._executor is None:
+            with cls._executor_lock:
+                if cls._executor is None:
+                    cls._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="CmdExec")
+        return cls._executor
 
     @staticmethod
     def _normalize_command_type(command_type: str) -> str:
@@ -511,20 +547,52 @@ class CommandExecutionMixin:
         argv.extend(["-c", command])
         return argv
 
+    _CMD_CACHE_DIR: str | None = None
+    _CMD_CACHE_DIR_LOCK = threading.Lock()
+
+    @classmethod
+    def _get_cmd_cache_dir(cls) -> str:
+        if cls._CMD_CACHE_DIR is None:
+            with cls._CMD_CACHE_DIR_LOCK:
+                if cls._CMD_CACHE_DIR is None:
+                    cache_dir = os.path.join(tempfile.gettempdir(), "QuickLauncher", "cmd_cache")
+                    os.makedirs(cache_dir, exist_ok=True)
+                    cls._CMD_CACHE_DIR = cache_dir
+        return cls._CMD_CACHE_DIR
+
+    @classmethod
+    def _cleanup_cmd_cache(cls) -> None:
+        """Clean all cached wrapper scripts. Safe to call multiple times."""
+        cache_dir = cls._get_cmd_cache_dir()
+        for fname in os.listdir(cache_dir):
+            fpath = os.path.join(cache_dir, fname)
+            try:
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
+
     @staticmethod
     def _write_temp_bash_script(command: str) -> str:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False, encoding="utf-8") as f:
-            f.write("#!/bin/bash\n")
-            f.write(command)
-            if not command.endswith("\n"):
-                f.write("\n")
-            return f.name
+        hash_ = hashlib.md5(command.encode("utf-8")).hexdigest()
+        cache_dir = CommandExecutionMixin._get_cmd_cache_dir()
+        path = os.path.join(cache_dir, f"{hash_}.sh")
+        if not os.path.exists(path):
+            # Atomic write via tempfile + rename to avoid races
+            _write_atomic(
+                path,
+                "#!/bin/bash\n" + command + ("" if command.endswith("\n") else "\n"),
+            )
+        return path
 
     @staticmethod
     def _write_temp_python_script(command: str) -> str:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
-            f.write(command)
-            return f.name
+        hash_ = hashlib.md5(command.encode("utf-8")).hexdigest()
+        cache_dir = CommandExecutionMixin._get_cmd_cache_dir()
+        path = os.path.join(cache_dir, f"{hash_}.py")
+        if not os.path.exists(path):
+            _write_atomic(path, command)
+        return path
 
     @staticmethod
     def _bash_capture_with_fallback(command, tmp_path, bash_exe, cwd, env, timeout_value, cancel_event):
@@ -1452,6 +1520,10 @@ class CommandExecutionMixin:
             return confirmation
 
         tmp_path = None
+        wrapper_tmp_path = None
+        bash_stdout_tmp = None
+        bash_stderr_tmp = None
+        bash_marker_tmp = None
         try:
             if command_type == "python":
                 python_exe = ShortcutExecutor._python_launcher()
@@ -1490,11 +1562,6 @@ class CommandExecutionMixin:
             else:
                 popen_args = command
                 shell = True
-
-            wrapper_tmp_path = None
-            bash_stdout_tmp = None
-            bash_stderr_tmp = None
-            bash_marker_tmp = None
             use_bash_fallback = False
             try:
                 process = subprocess.Popen(
@@ -1612,8 +1679,9 @@ class CommandExecutionMixin:
                         except Exception:
                             pass
 
-                threading.Thread(target=_reader, args=(process.stdout, "stdout"), daemon=True).start()
-                threading.Thread(target=_reader, args=(process.stderr, "stderr"), daemon=True).start()
+                executor = ShortcutExecutor._get_executor()
+                executor.submit(_reader, process.stdout, "stdout")
+                executor.submit(_reader, process.stderr, "stderr")
                 stdout_parts = []
                 stderr_parts = []
                 deadline = time.monotonic() + timeout_value

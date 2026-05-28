@@ -99,6 +99,13 @@ class DataManager:
             init_event_log(self.app_dir)
         except Exception:
             pass
+        # Initialize search history with data directory for persistence
+        try:
+            from .search_history import set_search_history_data_dir
+
+            set_search_history_data_dir(self.app_dir)
+        except Exception:
+            pass
         self._max_history_snapshots = 20
 
         from .config_migrator import ConfigMigrator
@@ -464,6 +471,15 @@ class DataManager:
 
         try:
             yield self
+        except Exception:
+            # Don't save partial changes on exception — reset all dirty flags
+            with self._save_lock:
+                if self._batch_depth > 0:
+                    self._batch_depth -= 1
+                self._batch_dirty = False
+                self._batch_force_immediate = False
+                self._save_pending = False
+            raise
         finally:
             should_flush = False
             flush_immediately = False

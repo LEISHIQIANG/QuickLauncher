@@ -119,6 +119,21 @@ def _install_native_crash_handler(crash_log_path: str):
         pass
 
 
+def _rotate_log(path: str, backup_count: int = 3, max_bytes: int = 5 * 1024 * 1024):
+    """Rotate a log file if it exceeds max_bytes, keeping up to backup_count backups."""
+    if not os.path.exists(path) or os.path.getsize(path) <= max_bytes:
+        return
+    for i in range(backup_count - 1, 0, -1):
+        old = f"{path}.{i}"
+        new = f"{path}.{i + 1}"
+        if os.path.exists(old):
+            if os.path.exists(new):
+                os.remove(new)
+            os.rename(old, new)
+    if os.path.exists(path):
+        os.rename(path, f"{path}.1")
+
+
 def setup_faulthandler(log_dir: str):
     import faulthandler
     import platform
@@ -128,16 +143,10 @@ def setup_faulthandler(log_dir: str):
     try:
         fh_path = os.path.join(log_dir, "faulthandler.log")
         crash_path = os.path.join(log_dir, "crash.log")
-        if os.path.exists(fh_path) and os.path.getsize(fh_path) > 5 * 1024 * 1024:
-            for i in range(1, 0, -1):
-                old = f"{fh_path}.{i}"
-                new = f"{fh_path}.{i+1}"
-                if os.path.exists(old):
-                    if os.path.exists(new):
-                        os.remove(new)
-                    os.rename(old, new)
-            if os.path.exists(fh_path):
-                os.rename(fh_path, f"{fh_path}.1")
+
+        # Rotate both logs at startup (max 3 backups, 5MB each)
+        _rotate_log(fh_path, backup_count=3, max_bytes=5 * 1024 * 1024)
+        _rotate_log(crash_path, backup_count=3, max_bytes=5 * 1024 * 1024)
 
         fh_file = open(fh_path, "a", encoding="utf-8", errors="ignore")
 

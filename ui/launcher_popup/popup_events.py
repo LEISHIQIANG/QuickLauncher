@@ -309,6 +309,15 @@ class PopupEventsMixin:
             clicked_item = self._get_clicked_item_at(pos)
 
             if clicked_item:
+                # Record search selection for learning
+                if getattr(self, "search_results", None):
+                    try:
+                        from core.search_history import record_search_selection
+
+                        record_search_selection(self.search_query, getattr(clicked_item, "id", ""))
+                    except Exception:
+                        pass
+
                 # 检查是否按住 Alt 键
                 is_alt_pressed = event.modifiers() & QtCompat.AltModifier
 
@@ -656,6 +665,13 @@ class PopupEventsMixin:
         elif key in (Qt.Key_Return, Qt.Key_Enter):
             if self.search_results and 0 <= self.search_selected_index < len(self.search_results):
                 shortcut = self.search_results[self.search_selected_index].shortcut
+                # Record search selection for learning
+                try:
+                    from core.search_history import record_search_selection
+
+                    record_search_selection(self.search_query, getattr(shortcut, "id", ""))
+                except Exception:
+                    pass
                 if hasattr(self, "_execute_item"):
                     try:
                         self._search_execute_from_keyboard = True

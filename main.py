@@ -8,8 +8,6 @@ import sys
 import traceback
 from datetime import datetime
 
-from core.i18n import tr
-
 
 # 确保项目根目录在 sys.path 中（双击运行时工作目录可能不是项目根目录）
 def _ensure_project_root_on_path():
@@ -141,6 +139,15 @@ def main():
     logger.info(f"QuickLauncher 启动 - {datetime.now()}")
     if os.environ.get("QL_SAFE_MODE"):
         logger.warning("安全模式已启用：插件/钩子/更新/自定义背景已禁用")
+
+    # Clean up cached command wrapper scripts from previous session
+    try:
+        from core.shortcut_command_exec import CommandExecutionMixin
+
+        CommandExecutionMixin._cleanup_cmd_cache()
+        logger.debug("已清理命令缓存目录")
+    except Exception:
+        pass
 
     try:
         root_dir = (
@@ -332,6 +339,7 @@ def main():
     except Exception as e:
         logger.error(f"启动失败: {e}\n{traceback.format_exc()}")
         try:
+            from core.i18n import tr as _tr
             from qt_compat import QApplication
             from ui.styles.themed_messagebox import ThemedMessageBox
 
@@ -339,8 +347,8 @@ def main():
                 QApplication(sys.argv)
             ThemedMessageBox.critical(
                 None,
-                tr("启动失败"),
-                tr("程序启动失败\n\n{error}\n\n详情请查看日志:\n{log_file}", error=e, log_file=log_file),
+                _tr("启动失败"),
+                _tr("程序启动失败\n\n{error}\n\n详情请查看日志:\n{log_file}", error=e, log_file=log_file),
             )
         except Exception as dialog_error:
             logger.debug("startup themed error dialog failed: %s", dialog_error)

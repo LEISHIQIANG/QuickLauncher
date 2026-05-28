@@ -424,7 +424,29 @@ class PopupSearchMixin:
 
         is_active = bool(self.search_query) or self._search_forced_active
         self._start_search_reveal_animation(is_active)
-        self._refresh_search_results()
+        self._debounce_refresh_search()
+
+    _SEARCH_DEBOUNCE_MS = 100
+
+    def _debounce_refresh_search(self):
+        """Debounce search: clear stale results immediately, search after typing pauses."""
+        try:
+            # Clear stale results so UI never shows mismatched data during typing
+            self.search_results = []
+            self.search_selected_index = -1
+            self.update()
+            # Lazy-init the debounce timer
+            timer = getattr(self, "_search_debounce_timer", None)
+            if timer is None:
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(self._refresh_search_results)
+                self._search_debounce_timer = timer
+            timer.stop()
+            timer.start(self._SEARCH_DEBOUNCE_MS)
+        except RuntimeError:
+            # QWidget not fully initialized (e.g. in test)
+            self._refresh_search_results()
 
     def _refresh_search_results(self):
         """核心刷新搜索结果，支持 Web 搜索引擎，Slash 命令及本地 + Dock 图标混合"""

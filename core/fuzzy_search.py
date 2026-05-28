@@ -8,6 +8,7 @@ from functools import lru_cache
 from typing import Iterable, Optional
 
 from .pinyin_search import pinyin_variants
+from .search_history import search_history_bonus
 
 
 @dataclass
@@ -311,6 +312,13 @@ def _shortcut_score(shortcut, query: str) -> tuple[Optional[float], list[str]]:
 
     if len(terms) > 1:
         score += min(18.0, (len(terms) - 1) * 6.0)
+
+    # Query history bonus — boost shortcuts the user picked before for similar queries
+    shortcut_id = _text(getattr(shortcut, "id", ""))
+    if shortcut_id:
+        history_bonus = search_history_bonus(query, shortcut_id)
+        if history_bonus:
+            score += history_bonus
 
     return score, matched_fields
 

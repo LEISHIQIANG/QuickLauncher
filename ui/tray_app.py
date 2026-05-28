@@ -240,6 +240,16 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
         self.memory_guard = MemoryGuard(critical_mb=200)  # 提高阈值到200MB
         self.memory_guard.register_cleanup_callback(self._cleanup_icon_cache)
+        self.memory_guard.register_cleanup_callback(
+            lambda level: (
+                None
+                if level == "light"
+                else (
+                    __import__("core.shortcut_command_exec", fromlist=["CommandExecutionMixin"])
+                    .CommandExecutionMixin._cleanup_cmd_cache()
+                )
+            )
+        )
         self._memory_check_timer = QTimer(self)
         self._memory_check_timer.setInterval(120000)  # 改为每120秒检查
         self._memory_check_timer.timeout.connect(self._check_memory)

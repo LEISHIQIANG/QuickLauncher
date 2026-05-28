@@ -192,6 +192,7 @@ REM no-UPX default and explicit manifest embedding below.
     --include-windows-runtime-dlls=no ^
     --lto=yes ^
     --remove-output ^
+    --strip ^
     --no-pyi-file ^
     --windows-icon-from-ico="assets\app.ico" ^
     --enable-plugin=pyqt5 ^

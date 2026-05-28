@@ -200,7 +200,7 @@ class Win32ClipboardImpl:
 
     @staticmethod
     def _open_clipboard(timeout_ms: int = 200) -> None:
-        """Open clipboard with exponential backoff retry."""
+        """Open clipboard with retry, bounded by timeout_ms."""
         import win32clipboard
 
         Win32ClipboardImpl._ensure_sta()
@@ -209,6 +209,7 @@ class Win32ClipboardImpl:
             Win32ClipboardImpl._run_on_sta_thread(win32clipboard.OpenClipboard)
             return
 
+        deadline = time.monotonic() + max(10.0, float(timeout_ms or 200)) / 1000.0
         last_error = None
         for attempt, delay_ms in enumerate(_OPEN_RETRY_DELAYS_MS):
             try:
@@ -224,11 +225,15 @@ class Win32ClipboardImpl:
                             logger.debug("Clipboard held by hwnd=%d", holder)
                     except Exception:
                         pass
-                if delay_ms:
-                    time.sleep(delay_ms / 1000.0)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                actual_delay = min(delay_ms / 1000.0, remaining)
+                if actual_delay > 0:
+                    time.sleep(actual_delay)
 
         raise ClipboardOpenError(
-            message=f"OpenClipboard failed after {len(_OPEN_RETRY_DELAYS_MS)} retries",
+            message=f"OpenClipboard failed within {timeout_ms}ms after {attempt + 1} attempts",
             detail={"last_error": str(last_error)},
         )
 
@@ -272,13 +277,13 @@ class Win32ClipboardImpl:
     # ---- read ----
 
     @staticmethod
-    def read_text() -> str:
+    def read_text(timeout_ms: int = 200) -> str:
         """Read clipboard text. Returns empty string on failure (never raises)."""
         try:
             import win32clipboard
             import win32con
 
-            Win32ClipboardImpl._open_clipboard()
+            Win32ClipboardImpl._open_clipboard(timeout_ms)
             try:
                 if win32clipboard.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT):
                     data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
@@ -300,13 +305,13 @@ class Win32ClipboardImpl:
         return ""
 
     @staticmethod
-    def write_text(text: str) -> bool:
+    def write_text(text: str, timeout_ms: int = 500) -> bool:
         """Write text to clipboard."""
         try:
             import win32clipboard
             import win32con
 
-            Win32ClipboardImpl._open_clipboard()
+            Win32ClipboardImpl._open_clipboard(timeout_ms)
             try:
                 win32clipboard.EmptyClipboard()
                 win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text or "")
@@ -705,7 +710,7 @@ class ClipboardService:
         if threading.current_thread() is threading.main_thread():
             return self._qt_impl.read_text()
         try:
-            return self._win32_impl.read_text()
+            return self._win32_impl.read_text(timeout_ms)
         except ClipboardOpenError:
             self._stats["open_failures"] += 1
             return ""
@@ -713,7 +718,7 @@ class ClipboardService:
     def read_text_win32(self, timeout_ms: int = 200) -> str:
         """Read clipboard text via Win32 — always thread-safe."""
         try:
-            return self._win32_impl.read_text()
+            return self._win32_impl.read_text(timeout_ms)
         except ClipboardOpenError:
             self._stats["open_failures"] += 1
             return ""
