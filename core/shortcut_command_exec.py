@@ -125,8 +125,17 @@ def _pipe_reader(pipe, output_queue, name):
 
 
 def _bash_fallback_result(
-    stdout_bytes, stderr_bytes, returncode, cancelled, timed_out,
-    shortcut, command, max_chars, panel_size, command_type, start,
+    stdout_bytes,
+    stderr_bytes,
+    returncode,
+    cancelled,
+    timed_out,
+    shortcut,
+    command,
+    max_chars,
+    panel_size,
+    command_type,
+    start,
 ) -> CommandResult:
     """Build a CommandResult for the bash script-fallback capture path."""
     stdout, stdout_encoding, stdout_fallback = decode_command_output(
@@ -645,7 +654,10 @@ class CommandExecutionMixin:
 
     @staticmethod
     def _direct_command_line_too_long(argv: list[str]) -> bool:
-        return os.name == "nt" and ShortcutExecutor._direct_command_line_length(argv) > WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS
+        return (
+            os.name == "nt"
+            and ShortcutExecutor._direct_command_line_length(argv) > WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS
+        )
 
     @staticmethod
     def _direct_command_line_length_error(command_type: str, argv: list[str]) -> str:
@@ -706,9 +718,7 @@ class CommandExecutionMixin:
 
     @staticmethod
     def _bash_direct_capture_denied_message(detail: str) -> str:
-        return "Git Bash 直接捕获启动失败且在回退模式下也失败了。" + (
-            f"\n\n{detail}" if detail else ""
-        )
+        return "Git Bash 直接捕获启动失败且在回退模式下也失败了。" + (f"\n\n{detail}" if detail else "")
 
     @staticmethod
     def _bash_write_script(command: str) -> str:
@@ -765,8 +775,17 @@ class CommandExecutionMixin:
                 timed_out = True
 
             return _bash_fallback_result(
-                stdout_bytes, stderr_bytes, returncode, False, timed_out,
-                shortcut, command, max_chars, panel_size, command_type, start,
+                stdout_bytes,
+                stderr_bytes,
+                returncode,
+                False,
+                timed_out,
+                shortcut,
+                command,
+                max_chars,
+                panel_size,
+                command_type,
+                start,
             )
         except Exception:
             logger.error("Bash script fallback also failed", exc_info=True)
@@ -1261,7 +1280,9 @@ class CommandExecutionMixin:
                             return False, launch_error
 
                     if show_window:
-                        process = subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)
+                        process = subprocess.Popen(
+                            argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False
+                        )
                     else:
                         process = ShortcutExecutor._popen_silent(
                             argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False
@@ -1651,7 +1672,7 @@ class CommandExecutionMixin:
                         display_type="log",
                         error="命令过长",
                         payload={"window_size": panel_size, "duration": time.monotonic() - start},
-                )
+                    )
                 shell = False
             elif command_type == "cmd":
                 if ShortcutExecutor._cmd_has_newline(command):
@@ -1692,7 +1713,15 @@ class CommandExecutionMixin:
             except OSError as exc:
                 if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):
                     fallback = ShortcutExecutor._bash_capture_via_script(
-                        command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut,
+                        command,
+                        cwd,
+                        env,
+                        timeout_value,
+                        start,
+                        max_chars,
+                        panel_size,
+                        command_type,
+                        shortcut,
                     )
                     if fallback is not None:
                         return fallback
@@ -1866,7 +1895,15 @@ class CommandExecutionMixin:
                 stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
                 if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
                     fallback = ShortcutExecutor._bash_capture_via_script(
-                        command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut,
+                        command,
+                        cwd,
+                        env,
+                        timeout_value,
+                        start,
+                        max_chars,
+                        panel_size,
+                        command_type,
+                        shortcut,
                     )
                     if fallback is not None:
                         return fallback
@@ -2005,7 +2042,15 @@ class CommandExecutionMixin:
             stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
             if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
                 fallback = ShortcutExecutor._bash_capture_via_script(
-                    command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut,
+                    command,
+                    cwd,
+                    env,
+                    timeout_value,
+                    start,
+                    max_chars,
+                    panel_size,
+                    command_type,
+                    shortcut,
                 )
                 if fallback is not None:
                     return fallback

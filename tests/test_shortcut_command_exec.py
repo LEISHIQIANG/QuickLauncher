@@ -1209,7 +1209,8 @@ def test_run_command_capture_python_subprocess(monkeypatch):
 
     # Ensure no temp file is written
     monkeypatch.setattr(
-        command_exec.ShortcutExecutor, "_write_temp_python_script",
+        command_exec.ShortcutExecutor,
+        "_write_temp_python_script",
         staticmethod(lambda script: (_ for _ in ()).throw(AssertionError("temp file should not be written"))),
     )
 
@@ -1271,7 +1272,9 @@ def test_run_command_capture_powershell_subprocess(monkeypatch):
 def test_powershell_argv_encodes_multiline_unicode_without_script_file(monkeypatch):
     powershell_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
     monkeypatch.setattr(command_exec, "ShortcutExecutor", command_exec.CommandExecutionMixin)
-    monkeypatch.setattr(command_exec.CommandExecutionMixin, "_powershell_launcher", staticmethod(lambda: powershell_exe))
+    monkeypatch.setattr(
+        command_exec.CommandExecutionMixin, "_powershell_launcher", staticmethod(lambda: powershell_exe)
+    )
 
     command = 'Write-Output "中文"\nWrite-Output "quote: \'"'
     argv = command_exec.CommandExecutionMixin._powershell_argv(command, no_exit=True)
@@ -1740,7 +1743,9 @@ def test_bash_capture_oserror_both_fail_returns_denied_message(monkeypatch):
             return {"PATH": "C:\\Windows\\System32"}
 
         @staticmethod
-        def _bash_capture_via_script(command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut):
+        def _bash_capture_via_script(
+            command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut
+        ):
             return None  # fallback also fails
 
     monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
@@ -1792,7 +1797,9 @@ def test_bash_capture_signal_pipe_stderr_returns_clear_failure(monkeypatch):
             return {"PATH": "C:\\Windows\\System32"}
 
         @staticmethod
-        def _bash_capture_via_script(command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut):
+        def _bash_capture_via_script(
+            command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut
+        ):
             return None  # fallback also fails
 
         @staticmethod
@@ -2009,7 +2016,9 @@ def test_bash_capture_oserror_fallback_succeeds(monkeypatch):
             return r"C:\Users\Test\AppData\Local\Temp\ql_script.sh"
 
         @staticmethod
-        def _bash_capture_via_script(command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut):
+        def _bash_capture_via_script(
+            command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut
+        ):
             fallback_called.append((command, command_type))
             return command_exec.CommandResult(
                 success=True,
@@ -2080,7 +2089,9 @@ def test_bash_capture_stderr_denied_fallback_succeeds(monkeypatch):
             return {"PATH": "C:\\Windows\\System32"}
 
         @staticmethod
-        def _bash_capture_via_script(command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut):
+        def _bash_capture_via_script(
+            command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut
+        ):
             fallback_called.append((command, command_type))
             return command_exec.CommandResult(
                 success=True,
@@ -2105,6 +2116,7 @@ def test_bash_capture_stderr_denied_fallback_succeeds(monkeypatch):
 
 def test_bash_capture_oserror_fallback_returns_denied(monkeypatch):
     """When both direct and fallback bash capture fail, show clear error."""
+
     class FakeExecutor(command_exec.CommandExecutionMixin):
         @staticmethod
         def _bash_launcher():
@@ -2119,7 +2131,9 @@ def test_bash_capture_oserror_fallback_returns_denied(monkeypatch):
             return {"PATH": "C:\\Windows\\System32"}
 
         @staticmethod
-        def _bash_capture_via_script(command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut):
+        def _bash_capture_via_script(
+            command, cwd, env, timeout_value, start, max_chars, panel_size, command_type, shortcut
+        ):
             return None  # fallback also fails
 
     monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
@@ -2157,7 +2171,9 @@ def test_python_visible_window_admin_launch(monkeypatch):
             return r"C:\Temp\ql_script.py"
 
         @staticmethod
-        def _launch_with_privilege(target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""):
+        def _launch_with_privilege(
+            target, parameters, directory, show_cmd=1, run_as_admin=False, admin_failure_message=""
+        ):
             captured["target"] = target
             captured["parameters"] = parameters
             captured["run_as_admin"] = run_as_admin
@@ -2203,6 +2219,7 @@ def test_decode_bytes_forwards_command_type(monkeypatch):
 
     class FakeProcess:
         returncode = 0
+
         def communicate(self, timeout=None):
             return b"hello", b""
 
