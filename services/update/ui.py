@@ -244,10 +244,7 @@ class UpdateDialog:
         title_layout.setContentsMargins(0, 0, 0, 0)
 
         icon_label = QLabel()
-        icon_label.setText("ℹ️")
-        icon_label.setStyleSheet("font-size: 20px; margin-top: -3px;")
-        icon_label.setFixedSize(24, 24)
-        icon_label.setAlignment(Qt.AlignCenter)
+        ThemedMessageBox.configure_icon_label(icon_label, ThemedMessageBox.Download)
         title_layout.addWidget(icon_label)
 
         title_label = QLabel(tr("发现更新"))
@@ -456,6 +453,7 @@ class UpdateDialog:
             tr("下载完成"),
             tr("新版本已下载完成，是否立即安装并重启？"),
             buttons=ThemedMessageBox.Yes | ThemedMessageBox.No,
+            icon_type=ThemedMessageBox.Download,
         )
         if result == ThemedMessageBox.Yes and on_install:
             on_install()

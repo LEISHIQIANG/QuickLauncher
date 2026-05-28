@@ -3,6 +3,9 @@
 提供跟随主题的 QMessageBox 替代品
 """
 
+import os
+import sys
+
 from core.i18n import tr
 from qt_compat import (
     QColor,
@@ -12,6 +15,7 @@ from qt_compat import (
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
     QPoint,
     QPushButton,
     Qt,
@@ -35,6 +39,15 @@ class ThemedMessageBox(QDialog):
     Question = 1
     Warning = 2
     Critical = 3
+    Download = 4
+
+    _ICON_FILE_NAMES = {
+        Information: "information.png",
+        Question: "question.png",
+        Warning: "warning.png",
+        Critical: "critical.png",
+        Download: "download.png",
+    }
 
     # 按钮类型
     Ok = 0x00000400
@@ -75,14 +88,9 @@ class ThemedMessageBox(QDialog):
             title_layout.setSpacing(8)
             title_layout.setContentsMargins(0, 0, 0, 0)
 
-            # 图标
             icon_label = QLabel()
-            icon_text = self._get_icon_text(icon_type)
-            icon_label.setText(icon_text)
-            icon_label.setStyleSheet("font-size: 20px; margin-top: -3px;")
-            icon_label.setFixedSize(24, 24)
-            icon_label.setAlignment(Qt.AlignCenter)
-            icon_label.raise_()  # 提升到最前面
+            self.configure_icon_label(icon_label, icon_type)
+            icon_label.raise_()
             title_layout.addWidget(icon_label)
 
             # 标题
@@ -156,16 +164,74 @@ class ThemedMessageBox(QDialog):
     def _coerce_parent(parent):
         return parent if parent is None or isinstance(parent, QWidget) else None
 
-    def _get_icon_text(self, icon_type):
+    @classmethod
+    def configure_icon_label(cls, icon_label, icon_type, size=24):
+        """Apply the themed PNG icon while preserving the original label size."""
+        icon_label.setFixedSize(size, size)
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet("background: transparent;")
+
+        pixmap = cls._get_icon_pixmap(icon_type, size)
+        if pixmap and not pixmap.isNull():
+            icon_label.setPixmap(pixmap)
+            return
+
+        icon_label.setText(cls._get_icon_text(icon_type))
+        icon_label.setStyleSheet("font-size: 20px; margin-top: -3px;")
+
+    @classmethod
+    def _get_icon_pixmap(cls, icon_type, size=24):
+        path = cls._get_icon_path(icon_type)
+        if not path:
+            return QPixmap()
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            return pixmap
+        return pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    @classmethod
+    def _get_icon_path(cls, icon_type):
+        file_name = cls._ICON_FILE_NAMES.get(icon_type, cls._ICON_FILE_NAMES[cls.Information])
+        relative_parts = ("dialog_icons", file_name)
+        for root in cls._asset_roots():
+            path = os.path.join(root, *relative_parts)
+            if os.path.exists(path):
+                return path
+        return ""
+
+    @staticmethod
+    def _asset_roots():
+        roots = []
+        if hasattr(sys, "_MEIPASS"):
+            roots.append(os.path.join(sys._MEIPASS, "assets"))
+        roots.extend(
+            [
+                os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets"),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets"),
+                os.path.join(os.getcwd(), "assets"),
+            ]
+        )
+
+        seen = set()
+        for root in roots:
+            normalized = os.path.normpath(root)
+            if normalized not in seen:
+                seen.add(normalized)
+                yield normalized
+
+    @classmethod
+    def _get_icon_text(cls, icon_type):
         """获取图标文本"""
-        if icon_type == self.Information:
+        if icon_type == cls.Information:
             return "ℹ️"
-        elif icon_type == self.Question:
+        elif icon_type == cls.Question:
             return "❓"
-        elif icon_type == self.Warning:
+        elif icon_type == cls.Warning:
             return "⚠️"
-        elif icon_type == self.Critical:
+        elif icon_type == cls.Critical:
             return "❌"
+        elif icon_type == cls.Download:
+            return "⬇"
         return "ℹ️"
 
     def _detect_theme(self):
@@ -329,7 +395,7 @@ class ThemedMessageBox(QDialog):
         return dialog.result()
 
     @staticmethod
-    def question(parent, title, text, buttons=None):
+    def question(parent, title, text, buttons=None, icon_type=None):
         """显示询问消息框"""
         # 兼容旧版的 signature: question(parent, title, message, theme="dark") -> bool
         is_legacy = False
@@ -340,7 +406,7 @@ class ThemedMessageBox(QDialog):
         if buttons is None:
             buttons = ThemedMessageBox.Yes | ThemedMessageBox.No
 
-        dialog = ThemedMessageBox(parent, ThemedMessageBox.Question, title, text, buttons)
+        dialog = ThemedMessageBox(parent, icon_type or ThemedMessageBox.Question, title, text, buttons)
         dialog.exec_()
         res = dialog.result()
 

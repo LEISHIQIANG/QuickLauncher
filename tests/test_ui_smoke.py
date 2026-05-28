@@ -67,6 +67,36 @@ def test_update_status_message_smoke():
     assert "50%" in UpdateDialog.show_download_progress_text(5, 10)
 
 
+def test_themed_messagebox_dialog_icons_are_png(qapp):
+    from pathlib import Path
+
+    from PIL import Image
+
+    from ui.styles.themed_messagebox import ThemedMessageBox
+
+    icon_types = (
+        ThemedMessageBox.Information,
+        ThemedMessageBox.Question,
+        ThemedMessageBox.Warning,
+        ThemedMessageBox.Critical,
+        ThemedMessageBox.Download,
+    )
+
+    for icon_type in icon_types:
+        path = Path(ThemedMessageBox._get_icon_path(icon_type))
+        assert path.suffix == ".png"
+        assert path.is_file()
+
+        with Image.open(path) as image:
+            assert image.mode == "RGBA"
+            assert image.size == (96, 96)
+
+        pixmap = ThemedMessageBox._get_icon_pixmap(icon_type, 24)
+        assert not pixmap.isNull()
+        assert pixmap.width() <= 24
+        assert pixmap.height() <= 24
+
+
 def test_config_window_create_close_smoke(qapp, tmp_path, monkeypatch):
     import ui.config_window.main_window as main_window_mod
     from ui.config_window.main_window import ConfigWindow
