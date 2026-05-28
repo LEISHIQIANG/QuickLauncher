@@ -1457,8 +1457,8 @@ def cmd_clip(context: CommandContext) -> CommandResult:
 
     if not clipboard_text and not clipboard_kind:
         try:
-            from .clipboard_service import clipboard_service
             from .clipboard_classifiers import classify_clipboard
+            from .clipboard_service import clipboard_service
 
             snapshot = clipboard_service.read_snapshot()
             if snapshot.text:

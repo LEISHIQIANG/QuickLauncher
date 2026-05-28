@@ -17,7 +17,6 @@ from typing import List, Optional
 
 from qt_compat import QObject, pyqtSignal
 
-from .command_risk import assess_command_risk
 from .command_exec import (
     SUPPORTED_COMMAND_TYPES,
     build_bash_fallback_wrapper,
@@ -39,6 +38,7 @@ from .command_registry import (
     set_pending_command_result,
     take_pending_command_result,
 )
+from .command_risk import assess_command_risk
 from .command_variables import (
     CommandVariableError,
     find_unquoted_external_command_variables,

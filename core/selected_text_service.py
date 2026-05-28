@@ -17,8 +17,7 @@ import logging
 import os
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Callable
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -291,24 +290,16 @@ class SelectedTextService:
 
             # Check for self-window (QuickLauncher window)
             if foreground_hwnd:
-                from .shortcut_hotkey import HotkeyExecutionMixin
-
                 # Get foreground window
                 current_fg = ctypes.windll.user32.GetForegroundWindow() if os.name == "nt" else 0
-                # If we can detect QL window, refuse
-                try:
-                    from core import call_callback
-
-                    # Check if our window is the foreground
-                    if current_fg and current_fg == self._get_self_hwnd():
-                        return SelectedTextResult(
-                            text="",
-                            success=False,
-                            method="clipboard_copy",
-                            error="self_window",
-                        )
-                except Exception:
-                    pass
+                # Check if our window is the foreground
+                if current_fg and current_fg == self._get_self_hwnd():
+                    return SelectedTextResult(
+                        text="",
+                        success=False,
+                        method="clipboard_copy",
+                        error="self_window",
+                    )
 
             # Restore foreground window and simulate Ctrl+C
             self._restore_window_and_copy(foreground_hwnd)
@@ -362,15 +353,6 @@ class SelectedTextService:
     def _restore_window_and_copy(self, foreground_hwnd: int | None = None) -> bool:
         """Restore foreground window and execute Ctrl+C."""
         try:
-            from core import call_callback
-
-            # Use restore_foreground_window from ShortcutExecutor via callback
-            try:
-                from core.shortcut_hotkey import HotkeyExecutionMixin as _he
-                from core.shortcut_window_control import WindowControlMixin as _wc
-            except Exception:
-                pass
-
             # Direct approach: use ctypes
             if os.name == "nt":
                 user32 = ctypes.windll.user32

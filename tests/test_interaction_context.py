@@ -1,7 +1,7 @@
 """Tests for interaction context."""
 
+from core.clipboard_service import ClipboardClassification, ClipboardSnapshot
 from core.interaction_context import InteractionContext, TriggerContext
-from core.clipboard_service import ClipboardSnapshot, ClipboardClassification
 from core.selected_text_service import SelectedTextResult
 
 

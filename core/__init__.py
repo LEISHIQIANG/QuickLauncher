@@ -1,5 +1,16 @@
 """核心模块"""
 
+from .clipboard_classifiers import classify_clipboard as classify_clipboard
+from .clipboard_classifiers import classify_text as classify_text
+from .clipboard_service import (
+    ClipboardClassification as ClipboardClassification,
+)
+from .clipboard_service import (
+    ClipboardService as ClipboardService,
+)
+from .clipboard_service import (
+    clipboard_service as clipboard_service,
+)
 from .data_manager import DataManager as DataManager
 from .data_models import DEFAULT_SPECIAL_APPS as DEFAULT_SPECIAL_APPS  # 添加这个
 from .data_models import AppData as AppData
@@ -7,13 +18,6 @@ from .data_models import AppSettings as AppSettings
 from .data_models import Folder as Folder
 from .data_models import ShortcutItem as ShortcutItem
 from .data_models import ShortcutType as ShortcutType
-from .clipboard_classifiers import classify_clipboard as classify_clipboard
-from .clipboard_classifiers import classify_text as classify_text
-from .clipboard_service import (
-    ClipboardClassification as ClipboardClassification,
-    ClipboardService as ClipboardService,
-    clipboard_service as clipboard_service,
-)
 from .interaction_context import InteractionContext as InteractionContext
 from .interaction_context import TriggerContext as TriggerContext
 from .selected_text_service import SelectedTextResult as SelectedTextResult

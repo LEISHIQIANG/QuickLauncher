@@ -14,7 +14,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .clipboard_service import ClipboardSnapshot, ClipboardClassification
+    from .clipboard_service import ClipboardClassification, ClipboardSnapshot
 
 # ---------------------------------------------------------------------------
 # ── Constants ─────────────────────────────────────────────────────────────

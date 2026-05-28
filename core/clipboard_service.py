@@ -17,6 +17,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import queue
 import threading
 import time
 from dataclasses import dataclass, field
@@ -176,7 +177,7 @@ class Win32ClipboardImpl:
     _com_local = threading.local()
     _use_worker_thread: bool = False
     _sta_thread: threading.Thread | None = None
-    _sta_queue: "queue.Queue" | None = None
+    _sta_queue: queue.Queue | None = None
 
     @staticmethod
     def _ensure_sta():

@@ -1,7 +1,5 @@
 """Tests for clipboard service."""
 
-from unittest.mock import patch
-
 from core.clipboard_service import (
     ClipboardClassification,
     ClipboardEmptyError,
