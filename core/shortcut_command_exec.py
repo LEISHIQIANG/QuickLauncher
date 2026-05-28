@@ -262,6 +262,7 @@ class CommandExecutionMixin:
                 "detail": detail,
                 "command_type": command_type,
                 "command": command,
+                "shortcut": shortcut,
             },
         )
 

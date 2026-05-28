@@ -798,6 +798,10 @@ class CommandPanelWindow(ThemedToolWindow):
         self._run_token = handle.request_id
         self._defer_focus_command_input()
 
+    def _rerun_with_shortcut(self, shortcut: ShortcutItem):
+        """Re-execute a shortcut from stored result after confirmation."""
+        self.run_shortcut(shortcut)
+
     def _confirm_destructive_shortcut(self, shortcut: ShortcutItem | None) -> bool:
         if shortcut is None:
             return True
@@ -1404,7 +1408,8 @@ class CommandPanelWindow(ThemedToolWindow):
         body = "\n\n".join(part for part in [message, detail] if part)
 
         # Show confirmation dialog instead of just text
-        if payload.get("requires_confirmation") and self._current_shortcut is not None:
+        shortcut = self._current_shortcut or payload.get("shortcut")
+        if payload.get("requires_confirmation") and shortcut is not None:
             try:
                 from ui.styles.themed_messagebox import ThemedMessageBox
 
@@ -1417,10 +1422,15 @@ class CommandPanelWindow(ThemedToolWindow):
                 if reply == ThemedMessageBox.Yes:
                     from core import ShortcutExecutor
 
-                    ShortcutExecutor.mark_command_confirmed(self._current_shortcut)
-                    # Re-execute (flag is set, _confirm_destructive_shortcut will skip)
-                    self._execute_current_shortcut_request()
-                    return
+                    ShortcutExecutor.mark_command_confirmed(shortcut)
+                    if self._current_shortcut is not None:
+                        # Re-execute from UI panel (flag is set, _confirm_destructive_shortcut will skip)
+                        self._execute_current_shortcut_request()
+                        return
+                    else:
+                        # Re-execute from stored result (popup path)
+                        self._rerun_with_shortcut(shortcut)
+                        return
                 else:
                     self._rendered_text = "已取消执行。"
                     self.text.setPlainText("已取消执行。")
