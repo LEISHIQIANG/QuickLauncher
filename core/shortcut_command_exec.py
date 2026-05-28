@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import locale
 import logging
 import os
 import queue
@@ -18,6 +17,21 @@ from typing import List, Optional
 
 from qt_compat import QObject, pyqtSignal
 
+from .command_risk import assess_command_risk
+from .command_exec import (
+    SUPPORTED_COMMAND_TYPES,
+    build_bash_fallback_wrapper,
+    chain_values,
+    command_panel_size,
+    command_param_defs,
+    command_param_values,
+    decode_command_output,
+    merge_runtime_env,
+    normalize_command_type,
+    read_bash_fallback_exit_code,
+    truncate_command_output,
+    wait_for_bash_fallback_completion,
+)
 from .command_registry import (
     CommandAction,
     CommandContext,
@@ -34,6 +48,14 @@ from .command_variables import (
     should_expand_command_variables,
 )
 from .data_models import ShortcutItem
+from .runtime_constants import (
+    COMMAND_CAPTURE_POLL_SECONDS,
+    COMMAND_CAPTURE_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_COMMAND_OUTPUT_MAX_CHARS,
+    DEFAULT_COMMAND_TIMEOUT_SECONDS,
+    PROCESS_TERMINATE_WAIT_SECONDS,
+    normalize_command_timeout_seconds,
+)
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
@@ -65,25 +87,12 @@ def init_main_thread_invoker():
 class CommandExecutionMixin:
     _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{\{param:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
     _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{\{chain:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
-    _SUPPORTED_COMMAND_TYPES = {"cmd", "powershell", "python", "bash", "builtin"}
+    _SUPPORTED_COMMAND_TYPES = SUPPORTED_COMMAND_TYPES
+    _DESTRUCTIVE_CONFIRMATION_ATTR = "_destructive_command_confirmed"
 
     @staticmethod
     def _normalize_command_type(command_type: str) -> str:
-        command_type = str(command_type or "cmd").strip().lower()
-        aliases = {
-            "command": "cmd",
-            "shell": "cmd",
-            "bat": "cmd",
-            "batch": "cmd",
-            "ps": "powershell",
-            "pwsh": "powershell",
-            "python3": "python",
-            "py": "python",
-            "git-bash": "bash",
-            "gitbash": "bash",
-            "sh": "bash",
-        }
-        return aliases.get(command_type, command_type or "cmd")
+        return normalize_command_type(command_type)
 
     @staticmethod
     def _cmd_launcher() -> Optional[str]:
@@ -174,83 +183,91 @@ class CommandExecutionMixin:
 
     @staticmethod
     def _command_param_defs(shortcut: ShortcutItem) -> list[dict]:
-        try:
-            return ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", []))
-        except Exception:
-            return []
+        return command_param_defs(shortcut)
 
     @staticmethod
     def _command_param_values(shortcut: ShortcutItem) -> dict[str, str]:
-        values = {}
-        for param in ShortcutExecutor._command_param_defs(shortcut):
-            values[param["name"]] = str(param.get("default") or "")
-        runtime = getattr(shortcut, "_runtime_param_values", None)
-        if isinstance(runtime, dict):
-            values.update({str(k): str(v) for k, v in runtime.items()})
-        return values
+        return command_param_values(shortcut)
 
     @staticmethod
     def _chain_values(shortcut: ShortcutItem) -> dict[str, str]:
-        values = getattr(shortcut, "_chain_values", None)
-        return dict(values or {}) if isinstance(values, dict) else {}
+        return chain_values(shortcut)
 
     @staticmethod
     def _runtime_env(shortcut: ShortcutItem) -> dict:
-        env = ShortcutExecutor._sanitized_child_env()
-        command_env = getattr(shortcut, "command_env", {}) or {}
-        if isinstance(command_env, str):
-            command_env = ShortcutItem._normalize_command_env(command_env)
-        if isinstance(command_env, dict):
-            for key, value in command_env.items():
-                key = str(key or "").strip()
-                if key:
-                    env[key] = str(value)
-        return env
+        return merge_runtime_env(shortcut, ShortcutExecutor._sanitized_child_env())
 
     @staticmethod
     def _command_panel_size(shortcut: ShortcutItem) -> str:
-        size = str(getattr(shortcut, "command_panel_size", "medium") or "medium").lower().strip()
-        return size if size in ("small", "medium", "large") else "medium"
+        return command_panel_size(shortcut)
+
+    @staticmethod
+    def command_requires_confirmation(
+        shortcut: ShortcutItem,
+        command: str | None = None,
+        command_type: str | None = None,
+    ) -> list[dict]:
+        """Return only the severe destructive risks that must be confirmed before execution."""
+        effective_type = ShortcutExecutor._normalize_command_type(
+            command_type if command_type is not None else getattr(shortcut, "command_type", "cmd")
+        )
+        return [
+            risk.to_dict()
+            for risk in assess_command_risk(shortcut, command=command, command_type=effective_type)
+            if risk.requires_confirmation
+        ]
+
+    @staticmethod
+    def mark_command_confirmed(shortcut: ShortcutItem, confirmed: bool = True) -> None:
+        """Mark one shortcut object as confirmed for its next destructive command execution."""
+        try:
+            setattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, bool(confirmed))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _consume_command_confirmation(shortcut: ShortcutItem) -> bool:
+        try:
+            if bool(getattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False)):
+                setattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False)
+                return True
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _destructive_confirmation_result(
+        shortcut: ShortcutItem,
+        command: str,
+        command_type: str,
+        *,
+        panel_size: str | None = None,
+    ) -> CommandResult | None:
+        risks = ShortcutExecutor.command_requires_confirmation(shortcut, command=command, command_type=command_type)
+        if not risks:
+            return None
+        if ShortcutExecutor._consume_command_confirmation(shortcut):
+            return None
+        risk_lines = [f"- {risk.get('message') or risk.get('code')}" for risk in risks]
+        detail = "\n".join(risk_lines)
+        return CommandResult(
+            success=False,
+            message="该命令包含不可逆或强破坏性操作，已在执行前拦截。",
+            display_type="confirm",
+            error="需要确认",
+            payload={
+                "window_size": panel_size or ShortcutExecutor._command_panel_size(shortcut),
+                "requires_confirmation": True,
+                "risks": risks,
+                "detail": detail,
+                "command_type": command_type,
+                "command": command,
+            },
+        )
 
     @staticmethod
     def _decode_bytes(data: bytes, preferred: str = "auto") -> tuple[str, str, bool]:
-        if isinstance(data, str):
-            return data, "text", False
-        data = data or b""
-        candidates: list[str] = []
-        preferred = str(preferred or "auto").lower().strip()
-        if preferred and preferred != "auto":
-            candidates.append(preferred)
-        candidates.append("utf-8")
-        if os.name == "nt":
-            try:
-                oem_cp = ctypes.windll.kernel32.GetOEMCP()
-                if oem_cp:
-                    candidates.append(f"cp{oem_cp}")
-            except Exception:
-                pass
-        try:
-            pref = locale.getpreferredencoding(False)
-            if pref:
-                candidates.append(pref)
-        except Exception:
-            pass
-        candidates.extend(["mbcs", "gbk"])
-
-        seen = set()
-        ordered = []
-        for enc in candidates:
-            key = enc.lower()
-            if key not in seen:
-                seen.add(key)
-                ordered.append(enc)
-
-        for idx, enc in enumerate(ordered):
-            try:
-                return data.decode(enc), enc, idx > 0
-            except Exception:
-                continue
-        return data.decode("utf-8", errors="replace"), "utf-8", True
+        return decode_command_output(data, preferred)
 
     @staticmethod
     def _preflight_command(
@@ -509,6 +526,73 @@ class CommandExecutionMixin:
             return f.name
 
     @staticmethod
+    def _bash_capture_with_fallback(command, tmp_path, bash_exe, cwd, env, timeout_value, cancel_event):
+        """Execute bash capture via wrapper script to avoid MSYS signal pipe error.
+
+        Creates a wrapper .sh that redirects stdout/stderr to temp files and
+        writes an exit-code marker. The main process polls the marker.
+
+        Returns (process, stdout_tmp, stderr_tmp, wrapper_path, marker_tmp).
+        Caller must clean up all returned temp file paths.
+        """
+        stdout_tmp = tempfile.NamedTemporaryFile(suffix=".out", delete=False).name
+        stderr_tmp = tempfile.NamedTemporaryFile(suffix=".err", delete=False).name
+        marker_tmp = tempfile.NamedTemporaryFile(suffix=".marker", delete=False).name
+        wrapper_path = tempfile.NamedTemporaryFile(suffix=".sh", delete=False).name
+        try:
+            os.remove(marker_tmp)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            logger.debug("cleanup initial bash marker failed: %s", marker_tmp, exc_info=True)
+
+        wrapper_content = build_bash_fallback_wrapper(
+            command,
+            tmp_path=tmp_path,
+            stdout_path=stdout_tmp,
+            stderr_path=stderr_tmp,
+            marker_path=marker_tmp,
+        )
+
+        try:
+            with open(wrapper_path, "w", encoding="utf-8") as f:
+                f.write(wrapper_content)
+
+            process = subprocess.Popen(
+                [bash_exe, wrapper_path],
+                cwd=cwd,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                text=False,
+                shell=False,
+            )
+        except Exception:
+            for p in (wrapper_path, stdout_tmp, stderr_tmp, marker_tmp):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+            raise
+
+        wait_for_bash_fallback_completion(
+            process=process,
+            marker_path=marker_tmp,
+            timeout_value=timeout_value,
+            cancel_event=cancel_event,
+            terminate_process_tree=ShortcutExecutor._terminate_process_tree,
+        )
+        try:
+            process.wait(timeout=2.0)
+        except Exception:
+            pass
+
+        return process, stdout_tmp, stderr_tmp, wrapper_path, marker_tmp
+
+    @staticmethod
+    def _read_bash_fallback_exit_code(marker_path: str | None) -> int | None:
+        return read_bash_fallback_exit_code(marker_path)
+
+    @staticmethod
     def _write_python_cmd_wrapper(script_path: str) -> str:
         python_exe = ShortcutExecutor._python_launcher()
         if not python_exe:
@@ -683,6 +767,11 @@ class CommandExecutionMixin:
                 logger.debug("内置命令规范化失败（可忽略）: %s", e)
 
         capture_output = bool(getattr(shortcut, "capture_output", False))
+        if not capture_output:
+            confirmation = ShortcutExecutor._destructive_confirmation_result(shortcut, command, command_type)
+            if confirmation is not None:
+                set_pending_command_result(confirmation)
+                return False, confirmation.message or confirmation.error
         preflight = ShortcutExecutor._preflight_command(
             shortcut,
             command,
@@ -752,6 +841,7 @@ class CommandExecutionMixin:
                     bash_exe = ShortcutExecutor._bash_launcher()
                     if not bash_exe:
                         return False, ShortcutExecutor._bash_launcher_error()
+                    logger.debug("Bash show-window: launcher=%s, route=shell-execute", bash_exe)
                     has_newline = "\n" in command or "\r" in command
                     if has_newline:
                         tmp_path = ShortcutExecutor._write_temp_bash_script(command)
@@ -797,24 +887,43 @@ class CommandExecutionMixin:
                         except Exception:
                             pass
                     return False, f"Bash command launch failed: {e}"
-            # silent mode
+            # silent mode — route through _launch_with_privilege to avoid
+            # inheriting restricted parent process environment (Win32 error 5)
             try:
                 bash_exe = ShortcutExecutor._bash_launcher()
                 if not bash_exe:
                     return False, ShortcutExecutor._bash_launcher_error()
+                logger.debug("Bash silent: launcher=%s, route=shell-execute-hidden", bash_exe)
                 has_newline = "\n" in command or "\r" in command
                 if has_newline:
                     tmp_path = ShortcutExecutor._write_temp_bash_script(command)
-                    process = ShortcutExecutor._popen_silent(
-                        [bash_exe, tmp_path],
-                        cwd=cwd,
-                        env=bash_env,
-                        shell=False,
-                    )
-                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
+                    bash_cmd = tmp_path
                 else:
-                    argv = ShortcutExecutor._bash_argv(command, login=False)
-                    ShortcutExecutor._popen_silent(argv, cwd=cwd, env=bash_env, shell=False)
+                    tmp_path = None
+                    bash_cmd = command
+                if os.name == "nt":
+                    launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                        bash_exe,
+                        subprocess.list2cmdline(["-c", bash_cmd]),
+                        cwd,
+                        show_cmd=0,
+                        run_as_admin=False,
+                    )
+                    if launched:
+                        if tmp_path:
+                            ShortcutExecutor._cleanup_file_later(None, tmp_path)
+                        return True, ""
+                    if launch_error:
+                        if tmp_path:
+                            try:
+                                os.remove(tmp_path)
+                            except Exception:
+                                pass
+                        return False, launch_error
+                argv = ShortcutExecutor._bash_argv(bash_cmd, login=False)
+                process = subprocess.Popen(argv, cwd=cwd, env=bash_env, shell=False)
+                if tmp_path:
+                    ShortcutExecutor._cleanup_file_later(process, tmp_path)
                 return True, ""
             except FileNotFoundError:
                 return False, ShortcutExecutor._bash_launcher_error()
@@ -1050,9 +1159,11 @@ class CommandExecutionMixin:
     @staticmethod
     def _capture_selected_text() -> str:
         """Copy selected text from the previous foreground window and restore clipboard."""
-        snapshot = ShortcutExecutor._snapshot_clipboard()
-        original_text = read_clipboard_text()
-        original_sequence = ShortcutExecutor._get_clipboard_sequence_number()
+        from .clipboard_service import clipboard_service
+
+        snapshot = clipboard_service.read_snapshot()
+        original_text = clipboard_service.read_text_win32()
+        original_sequence = clipboard_service.get_sequence_number()
         try:
             try:
                 ShortcutExecutor.restore_foreground_window_fast(timeout_ms=300)
@@ -1065,100 +1176,41 @@ class CommandExecutionMixin:
                 return ""
             for _ in range(12):
                 time.sleep(0.03)
-                if ShortcutExecutor._get_clipboard_sequence_number() != original_sequence:
+                if clipboard_service.get_sequence_number() != original_sequence:
                     break
-            if ShortcutExecutor._get_clipboard_sequence_number() == original_sequence:
+            if clipboard_service.get_sequence_number() == original_sequence:
                 return ""
-            return read_clipboard_text()
+            return clipboard_service.read_text_win32()
         finally:
-            if not ShortcutExecutor._restore_clipboard_snapshot(snapshot):
+            if not clipboard_service.restore_snapshot(snapshot):
                 try:
-                    ShortcutExecutor._write_clipboard_text(original_text)
+                    clipboard_service.write_text(original_text)
                 except Exception:
                     pass
 
     @staticmethod
     def _get_clipboard_sequence_number() -> int:
-        if os.name != "nt":
-            return 0
-        try:
-            return int(ctypes.windll.user32.GetClipboardSequenceNumber())
-        except Exception:
-            return 0
+        from .clipboard_service import clipboard_service
+
+        return clipboard_service.get_sequence_number()
 
     @staticmethod
     def _snapshot_clipboard():
-        if os.name != "nt":
-            return None
-        try:
-            import win32clipboard
-            import win32con
+        from .clipboard_service import clipboard_service
 
-            supported = {win32con.CF_UNICODETEXT, win32con.CF_TEXT}
-            if hasattr(win32con, "CF_HDROP"):
-                supported.add(win32con.CF_HDROP)
-
-            snapshot = []
-            win32clipboard.OpenClipboard()
-            try:
-                fmt = 0
-                while True:
-                    fmt = win32clipboard.EnumClipboardFormats(fmt)
-                    if not fmt:
-                        break
-                    try:
-                        data = win32clipboard.GetClipboardData(fmt)
-                    except Exception:
-                        continue
-                    if fmt in supported or isinstance(data, (bytes, bytearray, str, tuple)):
-                        snapshot.append((fmt, data))
-            finally:
-                win32clipboard.CloseClipboard()
-            return snapshot
-        except Exception as e:
-            logger.debug("clipboard snapshot failed: %s", e)
-            return None
+        return clipboard_service.read_snapshot()
 
     @staticmethod
     def _restore_clipboard_snapshot(snapshot) -> bool:
-        if snapshot is None or os.name != "nt":
-            return False
-        try:
-            import win32clipboard
+        from .clipboard_service import clipboard_service
 
-            win32clipboard.OpenClipboard()
-            try:
-                win32clipboard.EmptyClipboard()
-                ok = True
-                for fmt, data in snapshot:
-                    try:
-                        win32clipboard.SetClipboardData(fmt, data)
-                    except Exception as e:
-                        ok = False
-                        logger.debug("clipboard format restore failed %s: %s", fmt, e)
-                return ok
-            finally:
-                win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.debug("clipboard restore failed: %s", e)
-            return False
+        return clipboard_service.restore_snapshot(snapshot)
 
     @staticmethod
     def _write_clipboard_text(text: str) -> bool:
-        try:
-            import win32clipboard
-            import win32con
+        from .clipboard_service import clipboard_service
 
-            win32clipboard.OpenClipboard()
-            try:
-                win32clipboard.EmptyClipboard()
-                win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text or "")
-                return True
-            finally:
-                win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.debug("写入剪贴板失败: %s", e)
-            return False
+        return clipboard_service.write_text(text)
 
     @staticmethod
     def _open_builtin_directory(command: str) -> bool:
@@ -1285,11 +1337,7 @@ class CommandExecutionMixin:
 
     @staticmethod
     def _truncate_output(text: str, max_chars: int) -> tuple[str, bool]:
-        text = text or ""
-        max_chars = max(1000, int(max_chars or 20000))
-        if len(text) <= max_chars:
-            return text, False
-        return text[:max_chars] + "\n\n[输出过长，已截断]", True
+        return truncate_command_output(text, max_chars)
 
     @staticmethod
     def run_command_capture(
@@ -1302,10 +1350,12 @@ class CommandExecutionMixin:
         start = time.monotonic()
         command = shortcut.command or ""
         command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
-        max_chars = getattr(shortcut, "command_output_max_chars", 20000)
+        max_chars = getattr(shortcut, "command_output_max_chars", DEFAULT_COMMAND_OUTPUT_MAX_CHARS)
         panel_size = ShortcutExecutor._command_panel_size(shortcut)
-        timeout_value = float(
-            timeout if timeout is not None else getattr(shortcut, "command_timeout_seconds", 10.0) or 10.0
+        timeout_value = normalize_command_timeout_seconds(
+            timeout
+            if timeout is not None
+            else getattr(shortcut, "command_timeout_seconds", DEFAULT_COMMAND_TIMEOUT_SECONDS)
         )
 
         if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
@@ -1391,6 +1441,15 @@ class CommandExecutionMixin:
                 preflight.payload.setdefault("window_size", panel_size)
             return preflight
 
+        confirmation = ShortcutExecutor._destructive_confirmation_result(
+            shortcut,
+            command,
+            command_type,
+            panel_size=panel_size,
+        )
+        if confirmation is not None:
+            return confirmation
+
         tmp_path = None
         try:
             if command_type == "python":
@@ -1419,6 +1478,7 @@ class CommandExecutionMixin:
                         error="Git Bash 不可用",
                         payload={"window_size": panel_size},
                     )
+                logger.debug("Bash capture: launcher=%s, route=capture-direct", bash_exe)
                 has_newline = "\n" in command or "\r" in command
                 if has_newline:
                     tmp_path = ShortcutExecutor._write_temp_bash_script(command)
@@ -1430,16 +1490,111 @@ class CommandExecutionMixin:
                 popen_args = command
                 shell = True
 
-            process = subprocess.Popen(
-                popen_args,
-                cwd=cwd,
-                env=ShortcutExecutor._runtime_env(shortcut),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=False,
-                shell=shell,
-            )
+            wrapper_tmp_path = None
+            bash_stdout_tmp = None
+            bash_stderr_tmp = None
+            bash_marker_tmp = None
+            use_bash_fallback = False
+            try:
+                process = subprocess.Popen(
+                    popen_args,
+                    cwd=cwd,
+                    env=ShortcutExecutor._runtime_env(shortcut),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=False,
+                    shell=shell,
+                )
+            except OSError as exc:
+                if command_type == "bash" and ("signal pipe" in str(exc) or "Win32 error 5" in str(exc)):
+                    logger.warning(
+                        "Bash capture Popen failed (%s), falling back to wrapper script",
+                        exc,
+                    )
+                    bash_env = ShortcutExecutor._runtime_env(shortcut)
+                    bash_env["LANG"] = "en_US.UTF-8"
+                    process, bash_stdout_tmp, bash_stderr_tmp, wrapper_tmp_path, _marker = (
+                        ShortcutExecutor._bash_capture_with_fallback(
+                            command,
+                            tmp_path,
+                            bash_exe,
+                            cwd,
+                            bash_env,
+                            timeout_value,
+                            cancel_event,
+                        )
+                    )
+                    bash_marker_tmp = _marker
+                    use_bash_fallback = True
+                    logger.debug(
+                        "Bash capture fallback: exit_code=%s",
+                        process.returncode,
+                    )
+                else:
+                    raise
+
+            # Bash fallback: output is in temp files, build result directly
+            if use_bash_fallback:
+                _enc = getattr(shortcut, "command_encoding", "auto")
+                try:
+                    with open(bash_stdout_tmp, "rb") as _f:
+                        _out_bytes = _f.read()
+                except Exception:
+                    _out_bytes = b""
+                try:
+                    with open(bash_stderr_tmp, "rb") as _f:
+                        _err_bytes = _f.read()
+                except Exception:
+                    _err_bytes = b""
+                stdout, stdout_enc, stdout_fbk = ShortcutExecutor._decode_bytes(_out_bytes, _enc)
+                stderr, stderr_enc, stderr_fbk = ShortcutExecutor._decode_bytes(_err_bytes, _enc)
+                stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
+                stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+                marker_exit_code = ShortcutExecutor._read_bash_fallback_exit_code(bash_marker_tmp)
+                returncode = marker_exit_code if marker_exit_code is not None else process.returncode
+                timed_out = marker_exit_code is None and not bool(cancel_event and cancel_event.is_set())
+                cancelled = bool(cancel_event and cancel_event.is_set()) if not timed_out else False
+                success = (returncode == 0) and not timed_out and not cancelled
+                parts = []
+                if stdout:
+                    parts.append(stdout)
+                if stderr and not success:
+                    parts.append(stderr)
+                if not parts:
+                    parts.append("(无输出)")
+                message = "\n".join(parts)
+                if timed_out:
+                    message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
+                error = ""
+                if timed_out:
+                    error = "执行超时"
+                elif returncode != 0:
+                    error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
+                return CommandResult(
+                    success=success,
+                    message=message,
+                    display_type="log",
+                    payload={
+                        "window_size": panel_size,
+                        "wrap": False,
+                        "exit_code": returncode,
+                        "duration": time.monotonic() - start,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "stdout_truncated": stdout_truncated,
+                        "stderr_truncated": stderr_truncated,
+                        "stdout_encoding": stdout_enc,
+                        "stderr_encoding": stderr_enc,
+                        "decode_fallback_used": stdout_fbk or stderr_fbk,
+                        "command": command,
+                        "timed_out": timed_out,
+                        "cancelled": cancelled,
+                    },
+                    actions=[CommandAction(type="copy", label="复制输出", value=message)],
+                    error=error,
+                )
+
             if on_update is not None:
                 output_queue = queue.Queue()
 
@@ -1477,7 +1632,7 @@ class CommandExecutionMixin:
                             stderr_parts.append(chunk)
 
                     now = time.monotonic()
-                    if (stdout_parts or stderr_parts) and now - last_update >= 0.15:
+                    if (stdout_parts or stderr_parts) and now - last_update >= COMMAND_CAPTURE_UPDATE_INTERVAL_SECONDS:
                         stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
                             b"".join(stdout_parts), getattr(shortcut, "command_encoding", "auto")
                         )
@@ -1522,10 +1677,10 @@ class CommandExecutionMixin:
                         timed_out = True
                         ShortcutExecutor._terminate_process_tree(process)
                         break
-                    time.sleep(0.03)
+                    time.sleep(COMMAND_CAPTURE_POLL_SECONDS)
 
                 try:
-                    process.wait(timeout=2.0)
+                    process.wait(timeout=PROCESS_TERMINATE_WAIT_SECONDS)
                 except Exception:
                     pass
                 while True:
@@ -1659,7 +1814,7 @@ class CommandExecutionMixin:
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
                             raise subprocess.TimeoutExpired(popen_args, timeout_value)
-                        time.sleep(min(0.05, remaining))
+                        time.sleep(min(COMMAND_CAPTURE_POLL_SECONDS, remaining))
                     stdout_bytes, stderr_bytes = process.communicate()
                 returncode = process.returncode
                 timed_out = False
@@ -1724,16 +1879,17 @@ class CommandExecutionMixin:
                 payload={"window_size": panel_size, "duration": time.monotonic() - start},
             )
         finally:
-            if tmp_path:
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
+            for _p in (tmp_path, wrapper_tmp_path, bash_stdout_tmp, bash_stderr_tmp, bash_marker_tmp):
+                if _p:
+                    try:
+                        os.remove(_p)
+                    except Exception:
+                        pass
 
     @staticmethod
-    def test_command(shortcut: ShortcutItem, timeout: float = 10.0) -> dict:
+    def test_command(shortcut: ShortcutItem, timeout: float = DEFAULT_COMMAND_TIMEOUT_SECONDS) -> dict:
         """Run a command shortcut synchronously for the editor test button."""
-        old_timeout = getattr(shortcut, "command_timeout_seconds", 10.0)
+        old_timeout = getattr(shortcut, "command_timeout_seconds", DEFAULT_COMMAND_TIMEOUT_SECONDS)
         shortcut.command_timeout_seconds = timeout
         try:
             captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout)
@@ -1784,11 +1940,19 @@ class CommandExecutionMixin:
                         pass
 
                     clipboard_text = ""
+                    clipboard_kind = ""
+                    clipboard_files: list[str] = []
                     try:
-                        from qt_compat import QApplication
+                        from .clipboard_service import clipboard_service
 
-                        cb = QApplication.clipboard()
-                        clipboard_text = cb.text() or ""
+                        snapshot = clipboard_service.read_snapshot()
+                        clipboard_text = snapshot.text or ""
+                        clipboard_files = snapshot.file_paths or []
+                        if snapshot.text:
+                            from .clipboard_classifiers import classify_text
+
+                            kind, _, _ = classify_text(snapshot.text)
+                            clipboard_kind = kind
                     except Exception:
                         pass
 
@@ -1796,6 +1960,8 @@ class CommandExecutionMixin:
                         raw_input=command,
                         args_text=args_text,
                         clipboard_text=clipboard_text,
+                        clipboard_kind=clipboard_kind,
+                        clipboard_files=clipboard_files,
                         selected_files=selected_files,
                         update_callback=lambda r: set_pending_command_result(r),
                     )

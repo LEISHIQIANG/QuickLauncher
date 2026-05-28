@@ -60,6 +60,7 @@ from core.command_registry import CommandContext
 from core.commands import (
     cmd_base64,
     cmd_cidr,
+    cmd_clean_cache,
     cmd_color,
     cmd_config_repair,
     cmd_conflict,
@@ -256,6 +257,31 @@ def test_cmd_config_repair_scan_and_fix(monkeypatch):
     assert fixed.success is True
     assert fake.saved == 1
     assert fake.data.folders[0].items[0].command == "echo {{clipboard:q}}"
+
+
+def test_cmd_clean_cache_preview_uses_dry_run(monkeypatch):
+    from core import project_cache_cleaner
+
+    calls = []
+
+    def fake_clean(data_manager, dry_run=False):
+        calls.append((data_manager, dry_run))
+        return {
+            "total_removed": 3,
+            "total_size_freed_mb": 1.25,
+            "failed": 0,
+            "by_area": {"__pycache__": {"files_removed": 3, "size_freed_mb": 1.25}},
+        }
+
+    monkeypatch.setattr(project_cache_cleaner, "clean_unused_project_cache", fake_clean)
+
+    result = cmd_clean_cache(CommandContext(args_text="preview"))
+
+    assert result.success is True
+    assert calls == [(core.data_manager, True)]
+    assert "缓存清理预览" in result.message
+    assert "Python 字节码" in result.message
+    assert result.actions[0].value == result.message
 
 
 def test_cmd_copy_path():

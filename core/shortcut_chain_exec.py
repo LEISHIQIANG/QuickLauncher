@@ -8,8 +8,13 @@ from typing import Any
 
 from core.command_registry import CommandResult
 from core.data_models import ShortcutItem, ShortcutType
+from core.runtime_constants import (
+    COMMAND_CAPTURE_POLL_SECONDS,
+    COMMAND_CHAIN_MAX_STEPS,
+    COMMAND_CHAIN_SUMMARY_MAX_CHARS,
+)
 
-MAX_CHAIN_STEPS = 50
+MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
 
 
 def execute_shortcut_chain(
@@ -197,9 +202,9 @@ def _capture_summary(result: CommandResult) -> str:
     stdout = str(payload.get("stdout") or "").strip()
     stderr = str(payload.get("stderr") or "").strip()
     if stdout:
-        parts.append(stdout[:500])
+        parts.append(stdout[:COMMAND_CHAIN_SUMMARY_MAX_CHARS])
     if stderr:
-        parts.append(("stderr: " + stderr)[:500])
+        parts.append(("stderr: " + stderr)[:COMMAND_CHAIN_SUMMARY_MAX_CHARS])
     if not parts:
         parts.append(result.message or result.error or "")
     return "\n".join(part for part in parts if part)
@@ -230,5 +235,5 @@ def _sleep_with_cancel(seconds: float, cancel_event) -> bool:
     while time.perf_counter() < end:
         if _is_cancelled(cancel_event):
             return False
-        time.sleep(min(0.05, max(0.0, end - time.perf_counter())))
+        time.sleep(min(COMMAND_CAPTURE_POLL_SECONDS, max(0.0, end - time.perf_counter())))
     return not _is_cancelled(cancel_event)

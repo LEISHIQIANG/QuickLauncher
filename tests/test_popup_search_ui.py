@@ -71,6 +71,7 @@ def _popup_with_items(items):
     popup.search_query = ""
     popup.search_results = []
     popup.search_selected_index = -1
+    popup._plugin_search_seq = 0
     popup.search_cursor_pos = 0
     popup.search_selection_anchor = None
     popup._search_preedit_text = ""
@@ -87,6 +88,7 @@ def _popup_with_items(items):
     popup._page_render_cache = {}
     popup._start_search_reveal_animation = lambda active: None
     popup._body_y_offset = lambda: 0
+    popup.isVisible = lambda: True
     popup.update = lambda: None
     return popup
 
@@ -666,6 +668,30 @@ def test_slash_command_empty_query_sorting(monkeypatch):
 
     assert results[1].shortcut.id == "config"
     assert results[1].folder_name == "收藏命令"
+
+
+def test_plugin_search_results_drop_stale_query():
+    popup = _popup_with_items([])
+    popup.search_query = "/new"
+    popup._plugin_search_seq = 2
+
+    LauncherPopup._on_plugin_search_results_ready(
+        popup,
+        1,
+        "old",
+        [{"id": "plugin-old", "title": "Old", "command": "old", "plugin_id": "p", "folder": "P"}],
+    )
+
+    assert popup.search_results == []
+
+    LauncherPopup._on_plugin_search_results_ready(
+        popup,
+        2,
+        "new",
+        [{"id": "plugin-new", "title": "New", "command": "new", "plugin_id": "p", "folder": "P"}],
+    )
+
+    assert [result.shortcut.id for result in popup.search_results] == ["plugin-new"]
 
 
 def test_plain_search_includes_command_results(monkeypatch):

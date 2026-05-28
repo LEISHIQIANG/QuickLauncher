@@ -1,4 +1,5 @@
 import sys
+import threading
 import types
 
 import core.shortcut_command_exec as command_exec
@@ -1356,9 +1357,11 @@ def test_bash_execute_command_silent(monkeypatch):
             return [r"C:\Program Files\Git\bin\bash.exe", "-c", command]
 
         @staticmethod
-        def _popen_silent(*args, **kwargs):
-            captured["args"] = args
-            captured["kwargs"] = kwargs
+        def _launch_with_privilege(target, parameters, directory, show_cmd=1, run_as_admin=False, **kw):
+            captured["target"] = target
+            captured["parameters"] = parameters
+            captured["show_cmd"] = show_cmd
+            return True, ""
 
         @staticmethod
         def _runtime_env(shortcut):
@@ -1383,7 +1386,9 @@ def test_bash_execute_command_silent(monkeypatch):
 
     assert success
     assert error == ""
-    assert captured["args"][0] == [r"C:\Program Files\Git\bin\bash.exe", "-c", "ls -la"]
+    assert captured["target"] == r"C:\Program Files\Git\bin\bash.exe"
+    assert captured["show_cmd"] == 0
+    assert "--login" not in captured["parameters"]
 
 
 def test_bash_execute_command_show_window(monkeypatch):
@@ -1453,8 +1458,11 @@ def test_bash_multiline_command_creates_temp_script(monkeypatch):
             return path
 
         @staticmethod
-        def _popen_silent(*args, **kwargs):
-            captured["popen_args"] = args
+        def _launch_with_privilege(target, parameters, directory, show_cmd=1, run_as_admin=False, **kw):
+            captured["target"] = target
+            captured["parameters"] = parameters
+            captured["show_cmd"] = show_cmd
+            return True, ""
 
         @staticmethod
         def _cleanup_file_later(*args):
@@ -1479,7 +1487,8 @@ def test_bash_multiline_command_creates_temp_script(monkeypatch):
 
     assert success
     assert captured["script_command"] == "echo line1\necho line2"
-    assert "tmp_bash.sh" in captured["popen_args"][0][1]
+    assert captured["show_cmd"] == 0
+    assert "tmp_bash.sh" in captured["parameters"]
 
 
 def test_bash_capture_output(monkeypatch):
@@ -1527,3 +1536,241 @@ def test_bash_capture_output(monkeypatch):
 
     assert result.success
     assert "hello output" in result.payload.get("stdout", "")
+
+
+def test_bash_capture_fallback_on_signal_pipe_error(monkeypatch, tmp_path):
+    call_count = [0]
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise OSError("couldn't create signal pipe, Win32 error 5")
+            # Second call: the fallback wrapper — simulate by writing marker + output
+            self.returncode = 0
+            self.stdout = None
+            self.stderr = None
+            # Parse wrapper script to find output file paths
+            if args and isinstance(args[0], list) and len(args[0]) >= 2:
+                wrapper_path = args[0][1]
+                try:
+                    with open(wrapper_path, "r", encoding="utf-8") as wf:
+                        content = wf.read()
+                    import re
+
+                    m = re.search(r'>"([^"]+)"\s+2>"([^"]+)"', content)
+                    if m:
+                        open(m.group(1).replace("/", "\\"), "wb").write(b"fallback output\n")
+                    m2 = re.search(r'EXIT:\$\?"\s*>>"([^"]+)"', content)
+                    if m2:
+                        open(m2.group(1).replace("/", "\\"), "w").write("EXIT:0\n")
+                except Exception:
+                    pass
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+        def poll(self):
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    _counter = [0]
+
+    class _FakeTmp:
+        def __init__(self, path):
+            self.name = path
+
+    def fake_nmt(*args, **kwargs):
+        _counter[0] += 1
+        suffix = kwargs.get("suffix", "")
+        path = str(tmp_path / f"tmp_{_counter[0]}{suffix}")
+        # Don't create marker file — FakePopen will create it via wrapper parsing
+        if suffix != ".marker":
+            open(path, "wb").close()
+        return _FakeTmp(path)
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(command_exec.tempfile, "NamedTemporaryFile", fake_nmt)
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _bash_argv(command, login=False):
+            return [r"C:\Program Files\Git\bin\bash.exe", "-c", command]
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32"}
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "echo hello"
+    item.capture_output = True
+    item.show_window = False
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item, timeout=5.0)
+
+    assert result.success
+    assert result.payload["exit_code"] == 0
+    assert "fallback output" in result.payload.get("stdout", "")
+
+
+def test_bash_capture_fallback_timeout(monkeypatch, tmp_path):
+    call_count = [0]
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise OSError("couldn't create signal pipe, Win32 error 5")
+            # Second call: fallback wrapper — do NOT write marker (simulate timeout)
+            self.returncode = -15
+            self.stdout = None
+            self.stderr = None
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+        def poll(self):
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    _counter = [0]
+
+    class _FakeTmp:
+        def __init__(self, path):
+            self.name = path
+
+    def fake_nmt(*args, **kwargs):
+        _counter[0] += 1
+        suffix = kwargs.get("suffix", "")
+        path = str(tmp_path / f"tmp_{_counter[0]}{suffix}")
+        # Don't create marker file — let polling detect timeout
+        if suffix != ".marker":
+            open(path, "wb").close()
+        return _FakeTmp(path)
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(command_exec.tempfile, "NamedTemporaryFile", fake_nmt)
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _bash_argv(command, login=False):
+            return [r"C:\Program Files\Git\bin\bash.exe", "-c", command]
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32"}
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "sleep 999"
+    item.capture_output = True
+    item.show_window = False
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item, timeout=0.3)
+
+    assert not result.success
+    assert result.payload.get("timed_out") is True
+    assert "超时" in result.message
+
+
+def test_bash_capture_fallback_cancel(monkeypatch, tmp_path):
+    call_count = [0]
+    terminated = []
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise OSError("couldn't create signal pipe, Win32 error 5")
+            self.returncode = -15
+            self.stdout = None
+            self.stderr = None
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+        def poll(self):
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    _counter = [0]
+
+    class _FakeTmp:
+        def __init__(self, path):
+            self.name = path
+
+    def fake_nmt(*args, **kwargs):
+        _counter[0] += 1
+        suffix = kwargs.get("suffix", "")
+        path = str(tmp_path / f"tmp_{_counter[0]}{suffix}")
+        if suffix != ".marker":
+            open(path, "wb").close()
+        return _FakeTmp(path)
+
+    monkeypatch.setattr(command_exec.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(command_exec.tempfile, "NamedTemporaryFile", fake_nmt)
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _bash_launcher():
+            return r"C:\Program Files\Git\bin\bash.exe"
+
+        @staticmethod
+        def _bash_argv(command, login=False):
+            return [r"C:\Program Files\Git\bin\bash.exe", "-c", command]
+
+        @staticmethod
+        def _resolve_long_path(p):
+            return p
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {"PATH": "C:\\Windows\\System32"}
+
+        @staticmethod
+        def _terminate_process_tree(process):
+            terminated.append(process)
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "bash"
+    item.command = "sleep 999"
+    item.capture_output = True
+    item.show_window = False
+
+    cancel_event = threading.Event()
+    cancel_event.set()
+    result = command_exec.CommandExecutionMixin.run_command_capture(item, timeout=5.0, cancel_event=cancel_event)
+
+    assert not result.success
+    assert result.payload.get("cancelled") is True
+    assert result.payload.get("timed_out") is False
+    assert terminated

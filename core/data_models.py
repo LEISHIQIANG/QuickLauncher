@@ -8,6 +8,15 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from .runtime_constants import (
+    COMMAND_CHAIN_MAX_STEPS,
+    DEFAULT_COMMAND_OUTPUT_MAX_CHARS,
+    DEFAULT_COMMAND_TIMEOUT_SECONDS,
+    normalize_chain_step_delay_ms,
+    normalize_command_output_max_chars,
+    normalize_command_timeout_seconds,
+)
+
 try:
     from .builtin_commands import canonical_builtin_command
 except Exception:
@@ -60,8 +69,8 @@ class ShortcutItem:
     show_window: bool = False
     command_variables_enabled: bool = False
     capture_output: bool = False
-    command_timeout_seconds: float = 10.0
-    command_output_max_chars: int = 20000
+    command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS
+    command_output_max_chars: int = DEFAULT_COMMAND_OUTPUT_MAX_CHARS
     command_panel_size: str = "medium"  # small, medium, large
     command_params: List[dict] = field(default_factory=list)
     command_env: dict = field(default_factory=dict)
@@ -176,14 +185,8 @@ class ShortcutItem:
         item.show_window = data.get("show_window", False)
         item.command_variables_enabled = data.get("command_variables_enabled", False)
         item.capture_output = bool(data.get("capture_output", False))
-        try:
-            item.command_timeout_seconds = max(0.1, float(data.get("command_timeout_seconds", 10.0) or 10.0))
-        except Exception:
-            item.command_timeout_seconds = 10.0
-        try:
-            item.command_output_max_chars = max(1000, int(data.get("command_output_max_chars", 20000) or 20000))
-        except Exception:
-            item.command_output_max_chars = 20000
+        item.command_timeout_seconds = normalize_command_timeout_seconds(data.get("command_timeout_seconds"))
+        item.command_output_max_chars = normalize_command_output_max_chars(data.get("command_output_max_chars"))
         cps = str(data.get("command_panel_size", "medium") or "medium").lower().strip()
         item.command_panel_size = cps if cps in ("small", "medium", "large") else "medium"
         item.command_params = cls._normalize_command_params(data.get("command_params", []))
@@ -215,7 +218,7 @@ class ShortcutItem:
             result.append(value)
         return result
 
-    MAX_CHAIN_STEPS = 128
+    MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
 
     @staticmethod
     def _normalize_command_params(params) -> List[dict]:
@@ -278,10 +281,7 @@ class ShortcutItem:
             shortcut_id = str(step.get("shortcut_id") or "").strip()
             if not shortcut_id:
                 continue
-            try:
-                delay_ms = max(0, min(60000, int(step.get("delay_ms", 0) or 0)))
-            except Exception:
-                delay_ms = 0
+            delay_ms = normalize_chain_step_delay_ms(step.get("delay_ms", 0))
             normalized.append(
                 {
                     "id": str(step.get("id") or uuid.uuid4()),

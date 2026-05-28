@@ -14,7 +14,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
-from .command_variables import fetch_public_wan_ipv4, get_default_lan_ipv4, read_clipboard_text
+from .clipboard_service import clipboard_service
+from .command_variables import fetch_public_wan_ipv4, get_default_lan_ipv4
 from .data_models import ShortcutItem
 
 logger = logging.getLogger(__name__)
@@ -277,7 +278,7 @@ class UrlExecutionMixin:
             if allow_url_placeholder and base_key == "url":
                 return match.group(0)
             if base_key == "clipboard":
-                value = read_clipboard_text()
+                value = clipboard_service.read_text_win32()
             elif base_key == "date":
                 value = now.strftime("%Y-%m-%d")
             elif base_key == "time":

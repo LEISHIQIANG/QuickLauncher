@@ -13,9 +13,15 @@ class CommandRisk:
     level: str
     code: str
     message: str
+    requires_confirmation: bool = False
 
     def to_dict(self) -> dict:
-        return {"level": self.level, "code": self.code, "message": self.message}
+        return {
+            "level": self.level,
+            "code": self.code,
+            "message": self.message,
+            "requires_confirmation": self.requires_confirmation,
+        }
 
 
 _DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
@@ -39,6 +45,29 @@ _DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
         "通过 cmd 链式删除",
     ),
     ("taskkill_force", re.compile(r"\btaskkill\b.*\s/f\b", re.I), "强制结束进程"),
+]
+
+_CONFIRMATION_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
+    ("delete_tree", re.compile(r"\b(rmdir|rd)\b(?=[^\r\n]*\s/s\b)(?=[^\r\n]*\s/q\b)", re.I), "递归静默删除目录"),
+    ("delete_file", re.compile(r"\b(del|erase)\b(?=[^\r\n]*\s/s\b)(?=[^\r\n]*\s/q\b)", re.I), "递归静默删除文件"),
+    ("rm_rf", re.compile(r"\brm\b(?=[^\r\n]*-[A-Za-z]*r)(?=[^\r\n]*-[A-Za-z]*f)", re.I), "rm -rf 删除"),
+    (
+        "powershell_remove",
+        re.compile(r"\b(remove-item|rm)\b(?=[^\r\n]*\b-recurse\b)(?=[^\r\n]*\b-force\b)", re.I),
+        "PowerShell 递归强制删除",
+    ),
+    ("format_disk", re.compile(r"\bformat\s+[a-z]:", re.I), "格式化磁盘"),
+    ("diskpart", re.compile(r"\bdiskpart\b|\bbcdedit\b|\bbootrec\b", re.I), "磁盘或启动配置命令"),
+    (
+        "registry_delete_critical",
+        re.compile(
+            r"\breg\s+delete\s+"
+            r"(?:(?:HKLM|HKEY_LOCAL_MACHINE)\\(?:SYSTEM|SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run)"
+            r"|(?:HKCU|HKEY_CURRENT_USER)\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run)",
+            re.I,
+        ),
+        "删除关键注册表项",
+    ),
 ]
 
 
@@ -70,8 +99,23 @@ def assess_command_risk(
         risks.append(CommandRisk("info", "selected_text_variable", "使用选中文本变量"))
 
     if effective_type != "builtin":
+        confirmation_codes: set[str] = set()
+        for code, pattern, message in _CONFIRMATION_PATTERNS:
+            if pattern.search(command_text):
+                confirmation_codes.add(code)
+                if code not in {danger_code for danger_code, _, _ in _DANGEROUS_PATTERNS}:
+                    risks.append(CommandRisk("critical", code, message, requires_confirmation=True))
+
         for code, pattern, message in _DANGEROUS_PATTERNS:
             if pattern.search(command_text):
-                risks.append(CommandRisk("warn", code, message))
+                requires_confirmation = code in confirmation_codes
+                risks.append(
+                    CommandRisk(
+                        "critical" if requires_confirmation else "warn",
+                        code,
+                        message,
+                        requires_confirmation=requires_confirmation,
+                    )
+                )
 
     return risks

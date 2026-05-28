@@ -9,6 +9,9 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .command_metadata import CommandMetadata
+from .command_metadata import builtin_command_metadata as _builtin_command_metadata
+
 logger = logging.getLogger(__name__)
 
 COMMAND_INTERACTION_DIRECT = "direct"
@@ -16,7 +19,13 @@ COMMAND_INTERACTION_PANEL = "panel"
 MAX_COMMAND_RESULT_ACTIONS = 2
 MAX_SEARCH_SOURCE_RESULTS = 50
 SEARCH_SOURCE_RESULT_KEYS = {"id", "title", "name", "command", "folder", "icon_path"}
-SEARCH_SOURCE_TIMEOUT_SECONDS = 5
+SEARCH_SOURCE_TIMEOUT_SECONDS = 1.0
+SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS = 1.5
+
+
+def builtin_command_metadata(command_id: str, category: str = "") -> CommandMetadata:
+    """Compatibility facade for older imports from command_registry."""
+    return _builtin_command_metadata(command_id, category)
 
 
 # ============================================================
@@ -51,7 +60,13 @@ class CommandContext:
     args_text: str = ""
     args: dict[str, str] = field(default_factory=dict)
     clipboard_text: str = ""
+    clipboard_kind: str = ""
+    clipboard_files: list[str] = field(default_factory=list)
+    clipboard_html: str = ""
+    selected_text: str = ""
+    selected_text_method: str = ""
     selected_files: list[str] = field(default_factory=list)
+    context_meta: dict = field(default_factory=dict)
     update_callback: Callable[[CommandResult], None] | None = None
 
 
@@ -93,6 +108,14 @@ class CommandDefinition:
     interaction_mode: str = COMMAND_INTERACTION_PANEL
     search_terms: list[str] = field(default_factory=list)
     result_window_size: str = ""
+    metadata: CommandMetadata | dict = field(default_factory=CommandMetadata)
+
+    def __post_init__(self):
+        self.metadata = CommandMetadata.from_value(self.metadata, category=self.category)
+        if self.permission_level and self.permission_level != "user":
+            self.metadata.requires_admin = True
+        if self.metadata.requires_confirmation and self.metadata.risk_level == "low":
+            self.metadata.risk_level = "high"
 
 
 # ============================================================
@@ -172,6 +195,41 @@ def execute_search_source(source_id: str, query: str) -> list[dict]:
     finally:
         if pool is not None:
             pool.shutdown(wait=False, cancel_futures=True)
+
+
+def execute_search_sources(
+    query: str, timeout: float = SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS
+) -> list[tuple[str, dict, list[dict]]]:
+    """Execute plugin search sources concurrently within a bounded total timeout."""
+    sources = snapshot_search_sources()
+    if not sources:
+        return []
+    results: list[tuple[str, dict, list[dict]]] = []
+    max_workers = max(1, min(len(sources), 8))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        future_map = {
+            pool.submit(execute_search_source, source_id, query): (source_id, source_info)
+            for source_id, source_info in sources
+        }
+        done, pending = concurrent.futures.wait(future_map, timeout=max(0.01, float(timeout or 0)))
+        for future in done:
+            source_id, source_info = future_map[future]
+            try:
+                source_results = future.result()
+            except Exception:
+                logger.exception("plugin search source future failed: %s", source_id)
+                source_results = []
+            if source_results:
+                results.append((source_id, source_info, source_results))
+        for future in pending:
+            source_id, source_info = future_map[future]
+            plugin_id = str(source_info.get("plugin_id") or "")
+            logger.warning("plugin search source skipped by total timeout: %s", source_id)
+            callback = source_info.get("error_callback")
+            if callable(callback):
+                callback(plugin_id, "search", source_id, TimeoutError("search sources total timeout"), "")
+            future.cancel()
+    return results
 
 
 def take_pending_command_result() -> CommandResult | None:

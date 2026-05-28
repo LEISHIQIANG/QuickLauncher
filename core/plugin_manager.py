@@ -21,6 +21,7 @@ from .command_registry import (
     CommandAction,
     CommandContext,
     CommandDefinition,
+    CommandMetadata,
     CommandParam,
     CommandRegistry,
     CommandResult,
@@ -214,6 +215,11 @@ class PluginAPI:
         search_terms: list[str] | None = None,
         result_window_size: str = "",
         params: list[CommandParam | dict] | None = None,
+        risk_level: str = "low",
+        requires_admin: bool = False,
+        uses_network: bool = False,
+        modifies_system: bool = False,
+        requires_confirmation: bool = False,
     ) -> bool:
         if "." not in id:
             self.logger.warning("插件命令 ID 必须包含点号: %s", id)
@@ -253,6 +259,14 @@ class PluginAPI:
             search_terms=plugin_terms + list(search_terms or []),
             result_window_size=result_window_size,
             params=normalized_params,
+            metadata=CommandMetadata(
+                category=category,
+                risk_level=risk_level,
+                requires_admin=requires_admin,
+                uses_network=uses_network,
+                modifies_system=modifies_system,
+                requires_confirmation=requires_confirmation,
+            ),
         )
         self._staged_commands.append(cmd)
         return True

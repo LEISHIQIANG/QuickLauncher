@@ -756,6 +756,13 @@ class CommandPanelWindow(ThemedToolWindow):
         args = self._collect_param_args(None)
         if args is None:
             return
+        if not self._confirm_destructive_shortcut(shortcut):
+            self._set_running(False)
+            self._show_widget("text")
+            self.text.setPlainText("已取消执行。")
+            self._rendered_text = "已取消执行。"
+            self._update_subtitle("已取消")
+            return
         request = CommandExecutionRequest(
             command_id=getattr(shortcut, "id", "") or "",
             raw_input=self._current_raw_input,
@@ -790,6 +797,43 @@ class CommandPanelWindow(ThemedToolWindow):
         self._current_handle = handle
         self._run_token = handle.request_id
         self._defer_focus_command_input()
+
+    def _confirm_destructive_shortcut(self, shortcut: ShortcutItem | None) -> bool:
+        if shortcut is None:
+            return True
+        try:
+            from core import ShortcutExecutor
+
+            risks = ShortcutExecutor.command_requires_confirmation(shortcut)
+        except Exception:
+            logger.debug("destructive command confirmation check failed", exc_info=True)
+            return True
+        if not risks:
+            return True
+
+        risk_lines = "\n".join(f"- {risk.get('message') or risk.get('code')}" for risk in risks)
+        command_text = str(getattr(shortcut, "command", "") or "").strip()
+        message = (
+            "该命令包含不可逆或强破坏性操作，确认后才会执行。\n\n"
+            f"{risk_lines}\n\n"
+            f"命令: {command_text}"
+        )
+        try:
+            from ui.styles.themed_messagebox import ThemedMessageBox
+
+            reply = ThemedMessageBox.question(
+                self,
+                "确认执行破坏性命令",
+                message,
+                ThemedMessageBox.Yes | ThemedMessageBox.No,
+            )
+            if reply == ThemedMessageBox.Yes:
+                ShortcutExecutor.mark_command_confirmed(shortcut)
+                return True
+            return False
+        except Exception:
+            logger.debug("destructive command confirmation dialog failed", exc_info=True)
+            return False
 
     def _defer_focus_command_input(self):
         return
@@ -1455,9 +1499,32 @@ class CommandPanelWindow(ThemedToolWindow):
 
     def _update_subtitle(self, state: str):
         title = self._current_command_title or self._current_command_id or "命令"
-        self.set_subtitle(f"{title} / {state}")
+        metadata = self._command_metadata_summary(getattr(self, "_current_definition", None))
+        subtitle_parts = [title, state]
+        if metadata:
+            subtitle_parts.append(metadata)
+        self.set_subtitle(" / ".join(subtitle_parts))
         self.status_label.setText(state)
         self.status_label.setVisible(False)
+
+    def _command_metadata_summary(self, command_def) -> str:
+        metadata = getattr(command_def, "metadata", None)
+        if metadata is None:
+            return ""
+        risk_map = {"low": "低风险", "medium": "中风险", "high": "高风险", "critical": "严重风险"}
+        risk_level = str(getattr(metadata, "risk_level", "low") or "low")
+        parts = []
+        if risk_level != "low":
+            parts.append(risk_map.get(risk_level, risk_level))
+        if bool(getattr(metadata, "requires_admin", False)):
+            parts.append("管理员")
+        if bool(getattr(metadata, "uses_network", False)):
+            parts.append("网络")
+        if bool(getattr(metadata, "modifies_system", False)):
+            parts.append("修改系统")
+        if bool(getattr(metadata, "requires_confirmation", False)):
+            parts.append("需确认")
+        return " · ".join(parts)
 
     def _set_running(self, running: bool):
         self._running = bool(running)

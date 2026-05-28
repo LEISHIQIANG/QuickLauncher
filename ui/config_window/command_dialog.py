@@ -42,6 +42,12 @@ from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 
 from .base_dialog import BaseDialog
+from .command_profile_helpers import (
+    format_command_env,
+    format_command_params,
+    parse_command_env_text,
+    parse_command_params_text,
+)
 from .icon_browse_helper import choose_custom_icon
 from .theme_helper import get_small_checkbox_stylesheet
 
@@ -1165,59 +1171,19 @@ class CommandDialog(BaseDialog):
         self._insert_command_text(f"{{{{param:{name}:q}}}}")
 
     def _parse_command_params_text(self):
-        params = []
-        for line in self.command_params_edit.toPlainText().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = [part.strip() for part in line.split(",", 4)]
-            while len(parts) < 5:
-                parts.append("")
-            name, param_type, required, default, choices = parts
-            if not name:
-                continue
-            param_type = (param_type or "text").lower()
-            if param_type not in ("text", "choice", "bool", "file", "folder"):
-                param_type = "text"
-            params.append(
-                {
-                    "name": name,
-                    "type": param_type,
-                    "required": required.lower() in ("1", "true", "yes", "on", "required", "必填"),
-                    "default": default,
-                    "choices": [choice.strip() for choice in choices.split("|") if choice.strip()],
-                    "sensitive": False,
-                }
-            )
-        return ShortcutItem._normalize_command_params(params)
+        return parse_command_params_text(self.command_params_edit.toPlainText())
 
     @staticmethod
     def _format_command_params(params) -> str:
-        lines = []
-        for param in ShortcutItem._normalize_command_params(params):
-            choices = "|".join(str(choice) for choice in param.get("choices", []))
-            lines.append(
-                ",".join(
-                    [
-                        param.get("name", ""),
-                        param.get("type", "text"),
-                        "true" if param.get("required") else "false",
-                        str(param.get("default", "")),
-                        choices,
-                    ]
-                )
-            )
-        return "\n".join(lines)
+        return format_command_params(params)
 
     @staticmethod
     def _parse_env_text(text: str) -> dict:
-        return ShortcutItem._normalize_command_env(text)
+        return parse_command_env_text(text)
 
     @staticmethod
     def _format_env(env: dict) -> str:
-        if not isinstance(env, dict):
-            return ""
-        return "\n".join(f"{key}={value}" for key, value in env.items() if str(key).strip())
+        return format_command_env(env)
 
     def _set_command_profile_panel_expanded(self, expanded: bool):
         if not hasattr(self, "advanced_profile_frame"):

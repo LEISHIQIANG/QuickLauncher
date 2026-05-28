@@ -1270,4 +1270,18 @@ class SettingsPanel(
             self._slider_debounce_timer.stop()
         self._slider_debounce_timer.start()
 
+    def stop_background_timers(self):
+        """Stop debounced settings timers before the owning window closes."""
+        for timer_name in ("_slider_debounce_timer",):
+            timer = getattr(self, timer_name, None)
+            if timer is None:
+                continue
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        stop_command_timers = getattr(self, "_stop_command_page_timers", None)
+        if callable(stop_command_timers):
+            stop_command_timers()
+
     # Import/Export

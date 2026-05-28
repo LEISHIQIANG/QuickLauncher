@@ -36,6 +36,7 @@ from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
 
 from .theme_helper import get_radio_stylesheet, get_switch_stylesheet
+from .window_lifecycle import WindowLifecycleController
 
 
 class DotWidget(QWidget):
@@ -491,6 +492,7 @@ class ConfigWindow(QMainWindow):
         self._drag_drop_compat_applied = False
         self._shortcut_edit_active = False
         self._shortcut_dialog_release_delay_ms = 250
+        self._lifecycle = WindowLifecycleController(self, ("_anim_timer",))
 
         # 对话框实例引用（防止多实例冲突）
         self._active_file_dialog = None
@@ -524,7 +526,7 @@ class ConfigWindow(QMainWindow):
         # 延迟应用窗口阴影效果（需要在窗口显示后）
         self._shadow_applied = False
 
-        QTimer.singleShot(0, self._load_initial_folder)
+        self._lifecycle.defer(0, self._load_initial_folder)
 
         # 新手引导标记
         self._guide_shown = False
@@ -547,6 +549,7 @@ class ConfigWindow(QMainWindow):
 
     def showEvent(self, event):
         """窗口显示事件 - 首次运行显示引导、应用阴影效果"""
+        generation = self._lifecycle.open_generation()
         # 预先将窗口移动到偏移起点并设置为全透明，避免任何初始抖动
         pos = self.pos()
         self.setWindowOpacity(0.0)
@@ -555,7 +558,7 @@ class ConfigWindow(QMainWindow):
         super().showEvent(event)
         if not self._drag_drop_compat_applied:
             self._drag_drop_compat_applied = True
-            QTimer.singleShot(0, lambda: allow_drag_drop_for_widget(self))
+            self._lifecycle.defer(0, allow_drag_drop_for_widget, self, generation=generation)
         # 立即应用阴影和亚克力效果（去掉延迟，确保窗口零延迟渲染）
         self._apply_window_shadow()
         self._start_show_animation()
@@ -1268,17 +1271,21 @@ class ConfigWindow(QMainWindow):
 
     def closeEvent(self, event):
         """窗口关闭时确保数据已保存"""
+        lifecycle = getattr(self, "_lifecycle", None)
+        if lifecycle is not None:
+            lifecycle.close_generation()
+            lifecycle.stop_timers()
+        settings_panel = getattr(self, "settings_panel", None)
+        if settings_panel is not None and hasattr(settings_panel, "stop_background_timers"):
+            try:
+                settings_panel.stop_background_timers()
+            except Exception:
+                pass
         try:
             # 强制保存所有待保存的数据
             self.data_manager.flush_pending_save()
         except Exception:
             pass
-        anim_timer = getattr(self, "_anim_timer", None)
-        if anim_timer is not None:
-            try:
-                anim_timer.stop()
-            except Exception:
-                pass
         super().closeEvent(event)
 
     def _start_show_animation(self):

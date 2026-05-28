@@ -62,3 +62,36 @@ def test_command_risk_detects_expanded_dangerous_patterns():
     assert "powershell_exec_policy" in codes
     assert "service_control" in codes
     assert "taskkill_force" in codes
+
+
+def test_only_destructive_commands_require_confirmation():
+    item = ShortcutItem(type=ShortcutType.COMMAND, name="Admin Shell")
+    item.command_type = "cmd"
+    item.command = "echo ok"
+    item.run_as_admin = True
+
+    risks = assess_command_risk(item)
+
+    assert {risk.code for risk in risks} >= {"run_as_admin", "shell_command"}
+    assert not any(risk.requires_confirmation for risk in risks)
+
+
+def test_rm_rf_requires_confirmation():
+    item = ShortcutItem(type=ShortcutType.COMMAND, name="Delete")
+    item.command_type = "bash"
+    item.command = "rm -rf /tmp/old"
+
+    risks = assess_command_risk(item)
+
+    assert any(risk.code == "rm_rf" and risk.requires_confirmation for risk in risks)
+
+
+def test_recursive_quiet_delete_requires_confirmation():
+    item = ShortcutItem(type=ShortcutType.COMMAND, name="Delete")
+    item.command_type = "cmd"
+    item.command = r"rmdir /s /q C:\Temp\old"
+
+    risks = assess_command_risk(item)
+
+    assert any(risk.code == "delete_tree" and risk.level == "critical" for risk in risks)
+    assert any(risk.requires_confirmation for risk in risks)

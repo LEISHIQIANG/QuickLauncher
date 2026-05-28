@@ -19,6 +19,15 @@ jobs:
           python -m pip install -r requirements-dev.txt
       - name: Compile
         run: python -m compileall -q services core hooks ui tests main.py
+      - name: UTF-8 decode check
+        run: >
+          python -c "from pathlib import Path;
+          roots=[Path(p) for p in ('core','hooks','services','scripts','tests','ui')]+[Path('main.py'),Path('QuickLauncher.manifest')];
+          files=[];
+          [files.extend([r] if r.is_file() else list(r.rglob('*'))) for r in roots];
+          [p.read_text(encoding='utf-8') for p in files if p.is_file() and p.suffix.lower() in {'.py','.md','.yml','.yaml','.json','.toml','.iss','.bat','.xml','.manifest'}]"
+      - name: Release source gate
+        run: python scripts/check_release_artifacts.py --source-only
       - name: Lint
         run: >
           python -m ruff check --select F
@@ -42,4 +51,4 @@ jobs:
       - name: Format check
         run: python -m ruff format --check core/ hooks/ services/ scripts/ tests/ ui/ main.py
       - name: Tests
-        run: python -m pytest tests/ -q --cov=core --cov=ui --cov=services --cov=hooks --cov-report=term-missing --cov-fail-under=30
+        run: python -m pytest tests/ -q --cov=core --cov=ui --cov=services --cov=hooks --cov-report=term-missing --cov-fail-under=35

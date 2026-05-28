@@ -10,6 +10,7 @@ from qt_compat import (
     QFontMetrics,
     QPainter,
     QPixmap,
+    QRect,
     Qt,
     QtCompat,
     QThread,
@@ -47,11 +48,17 @@ class IconFlashOverlay(QWidget):
         self.launcher = launcher
         self._opacity = 0.0
         self._started_at = 0.0
-        self._last_started_at = 0.0
-        self._duration_ms = 140
+        self._duration_ms = 118
+        self._attack_ms = 18
+        self._peak_opacity = 0.38
         self._items = []
+        self._dirty_rect = QRect()
         self._timer = QTimer(self)
-        self._timer.setInterval(16)
+        self._timer.setInterval(8)
+        try:
+            self._timer.setTimerType(Qt.PreciseTimer)
+        except Exception:
+            pass
         self._timer.timeout.connect(self._tick)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
@@ -59,28 +66,35 @@ class IconFlashOverlay(QWidget):
         self.hide()
 
     def start(self):
-        now = time.perf_counter()
-        if now - self._last_started_at < 0.45:
-            return
+        if self.isVisible():
+            self.stop()
+
         self.setGeometry(self.launcher.rect())
         self._items = list(self._snapshot_icons())
         if not self._items:
             return
-        self._last_started_at = now
+        self._dirty_rect = self._calculate_dirty_rect()
         self.raise_()
         self._started_at = time.perf_counter()
-        self._opacity = 0.32
+        self._opacity = 0.0
         self.show()
         if not self._timer.isActive():
             self._timer.start()
-        self.update()
+        self.update(self._dirty_rect)
 
     def stop(self):
         if self._timer.isActive():
             self._timer.stop()
         self._opacity = 0.0
         self._items = []
+        dirty_rect = QRect(self._dirty_rect)
+        self._dirty_rect = QRect()
         self.hide()
+        if not dirty_rect.isNull():
+            try:
+                self.launcher.update(dirty_rect)
+            except Exception:
+                pass
 
     def _tick(self):
         elapsed_ms = (time.perf_counter() - self._started_at) * 1000.0
@@ -89,9 +103,21 @@ class IconFlashOverlay(QWidget):
             self.stop()
             return
 
-        eased = 1.0 - (1.0 - t) * (1.0 - t)
-        self._opacity = 0.32 * (1.0 - eased)
-        self.update()
+        attack = max(0.01, min(0.9, self._attack_ms / self._duration_ms))
+        if t < attack:
+            phase = t / attack
+            self._opacity = self._peak_opacity * (1.0 - (1.0 - phase) * (1.0 - phase))
+        else:
+            phase = (t - attack) / (1.0 - attack)
+            self._opacity = self._peak_opacity * (1.0 - phase) * (1.0 - phase)
+        self.update(self._dirty_rect)
+
+    def _calculate_dirty_rect(self):
+        dirty = QRect()
+        for x, y, pixmap, _cover in self._items:
+            rect = QRect(int(x), int(y), pixmap.width(), pixmap.height()).adjusted(-2, -2, 2, 2)
+            dirty = rect if dirty.isNull() else dirty.united(rect)
+        return dirty.intersected(self.rect())
 
     def _snapshot_icons(self):
         launcher = self.launcher
@@ -207,6 +233,9 @@ class IconFlashOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
         painter.setOpacity(self._opacity)
+        dirty = event.rect()
         for x, y, _pixmap, cover in self._items:
+            if not QRect(int(x), int(y), cover.width(), cover.height()).intersects(dirty):
+                continue
             painter.drawPixmap(x, y, cover)
         painter.end()

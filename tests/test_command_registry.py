@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import os
+import time
 
+import core.command_registry as command_registry
 from core.command_registry import (
     COMMAND_INTERACTION_DIRECT,
     COMMAND_INTERACTION_PANEL,
     CommandAction,
     CommandContext,
     CommandDefinition,
+    CommandMetadata,
     CommandParam,
     CommandRegistry,
     CommandResult,
     _CallbackHandler,
+    builtin_command_metadata,
+    execute_search_sources,
+    register_search_source,
+    remove_search_source,
     set_pending_command_result,
     take_pending_command_result,
 )
@@ -49,6 +56,39 @@ class TestCommandDefinition:
         )
         assert cmd.interaction_mode == COMMAND_INTERACTION_PANEL
         assert cmd.result_window_size == ""
+        assert cmd.metadata.category == "developer"
+        assert cmd.metadata.risk_level == "low"
+
+    def test_metadata_dict_is_normalized(self):
+        cmd = CommandDefinition(
+            id="hosts",
+            title="Hosts",
+            aliases=["hosts"],
+            description="Edit hosts",
+            category="system",
+            handler=lambda ctx: CommandResult(success=True),
+            metadata={"risk_level": "medium", "requires_admin": True, "modifies_system": True},
+        )
+
+        assert isinstance(cmd.metadata, CommandMetadata)
+        assert cmd.metadata.to_dict() == {
+            "category": "system",
+            "risk_level": "medium",
+            "requires_admin": True,
+            "uses_network": False,
+            "modifies_system": True,
+            "requires_confirmation": False,
+        }
+
+    def test_builtin_command_metadata_overrides(self):
+        hosts = builtin_command_metadata("hosts", "system")
+        git = builtin_command_metadata("git", "developer")
+
+        assert hosts.requires_admin is True
+        assert hosts.modifies_system is True
+        assert hosts.risk_level == "medium"
+        assert git.uses_network is True
+        assert git.modifies_system is True
 
 
 class TestCommandAction:
@@ -303,6 +343,19 @@ class TestCommandRegistry:
 
 
 class TestRegistryMigration:
+    def test_builtin_command_catalog_is_complete_and_fresh(self):
+        from core.builtin_command_catalog import PANEL_COMMAND_IDS, build_builtin_command_definitions
+
+        first = build_builtin_command_definitions()
+        second = build_builtin_command_definitions()
+        ids = [cmd.id for cmd in first]
+
+        assert len(ids) >= 25
+        assert len(ids) == len(set(ids))
+        assert {"clean-cache", "config-repair", "git", "plugin-reload"}.issubset(ids)
+        assert PANEL_COMMAND_IDS.issubset(set(ids))
+        assert first[0] is not second[0]
+
     def test_migrate_slash_commands_preserves_count(self):
         reg = CommandRegistry()
         count = reg.migrate_slash_commands()
@@ -431,6 +484,10 @@ class TestSlashCommandsRedirect:
         from core import registry
 
         assert registry.get("wifi").interaction_mode == COMMAND_INTERACTION_PANEL
+        assert registry.get("hosts").metadata.requires_admin is True
+        assert registry.get("hosts").metadata.modifies_system is True
+        assert registry.get("netdiag").metadata.uses_network is True
+        assert registry.get("git").metadata.modifies_system is True
         assert registry.get("env") is None
         assert registry.get("netdiag").interaction_mode == COMMAND_INTERACTION_PANEL
         assert registry.get("cidr").interaction_mode == COMMAND_INTERACTION_PANEL
@@ -985,3 +1042,35 @@ class TestPhase5PluginCommands:
         # Without plugin_manager, returns uninitialized error
         r = cmd_plugin_new(CommandContext(raw_input="/plugin-new", args_text="hello world!"))
         assert r.success is False
+
+
+def test_execute_search_sources_runs_sources_with_bounded_timeout(monkeypatch):
+    monkeypatch.setattr(command_registry, "SEARCH_SOURCE_TIMEOUT_SECONDS", 0.01)
+    errors = []
+
+    def fast(query):
+        return [{"id": "fast", "title": f"Fast {query}", "command": "echo fast"}]
+
+    def slow(query):
+        time.sleep(1)
+        return [{"id": "slow", "title": "Slow", "command": "echo slow"}]
+
+    try:
+        assert register_search_source(
+            "test_fast_source",
+            {"plugin_id": "fast_plugin", "handler": fast, "error_callback": lambda *args: errors.append(args)},
+        )
+        assert register_search_source(
+            "test_slow_source",
+            {"plugin_id": "slow_plugin", "handler": slow, "error_callback": lambda *args: errors.append(args)},
+        )
+
+        results = execute_search_sources("x", timeout=0.05)
+    finally:
+        remove_search_source("test_fast_source", plugin_id="fast_plugin")
+        remove_search_source("test_slow_source", plugin_id="slow_plugin")
+
+    flattened = {item["id"] for _source_id, _source_info, items in results for item in items}
+    assert "fast" in flattened
+    assert "slow" not in flattened
+    assert errors

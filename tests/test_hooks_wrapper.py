@@ -1,4 +1,5 @@
 import ctypes
+import hashlib
 
 from hooks import hooks_wrapper
 
@@ -61,3 +62,17 @@ def test_hooks_wrapper_reports_outdated_version(monkeypatch):
     assert diagnostics["loaded"] is True
     assert diagnostics["compatible"] is False
     assert diagnostics["expected_version"] == hooks_wrapper.HooksDLL.EXPECTED_VERSION
+
+
+def test_hooks_wrapper_reports_file_metadata(monkeypatch, tmp_path):
+    dll_path = tmp_path / "hooks.dll"
+    content = b"fake dll"
+    dll_path.write_bytes(content)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: _FakeDLL())
+
+    diagnostics = hooks_wrapper.HooksDLL(str(dll_path)).get_diagnostics()
+
+    assert diagnostics["exists"] is True
+    assert diagnostics["size_bytes"] == len(content)
+    assert diagnostics["sha256"] == hashlib.sha256(content).hexdigest()
+    assert diagnostics["path_resolved"].endswith("hooks.dll")

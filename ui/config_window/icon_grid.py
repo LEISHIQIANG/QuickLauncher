@@ -51,6 +51,7 @@ from ui.utils.smooth_scroll import SmoothScrollArea
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
+from .icon_grid_ordering import move_drag_group_order
 
 logger = logging.getLogger(__name__)
 
@@ -1628,39 +1629,25 @@ class IconGrid(QWidget):
 
     def _move_drag_group(self, source_id: str, target_id: str, drag_ids: list[str]) -> bool:
         self.icon_widgets = self._live_icon_widgets(self.icon_widgets)
-        id_to_index = {}
-        for i, widget in enumerate(self.icon_widgets):
-            sid = self._widget_shortcut_id(widget)
-            if sid:
-                id_to_index[sid] = i
-        if target_id not in id_to_index:
+        current_ids = [self._widget_shortcut_id(widget) for widget in self.icon_widgets]
+        new_ids = move_drag_group_order(current_ids, source_id, target_id, drag_ids)
+        if not new_ids:
             return False
 
-        ordered_ids = []
-        seen = set()
-        for widget in self.icon_widgets:
-            sid = self._widget_shortcut_id(widget)
-            if sid in drag_ids and sid not in seen:
-                ordered_ids.append(sid)
-                seen.add(sid)
-        if not ordered_ids or target_id in seen:
-            return False
-
-        source_idx = id_to_index.get(source_id, id_to_index[ordered_ids[0]])
-        target_idx = id_to_index[target_id]
-        moving_set = set(ordered_ids)
-        moving_widgets = [w for w in self.icon_widgets if self._widget_shortcut_id(w) in moving_set]
-        remaining_widgets = [w for w in self.icon_widgets if self._widget_shortcut_id(w) not in moving_set]
-        target_pos = next((i for i, w in enumerate(remaining_widgets) if self._widget_shortcut_id(w) == target_id), -1)
-        if target_pos < 0:
-            return False
-
-        insert_at = target_pos + 1 if source_idx < target_idx else target_pos
-        new_widgets = remaining_widgets[:insert_at] + moving_widgets + remaining_widgets[insert_at:]
-        new_ids = [self._widget_shortcut_id(w) for w in new_widgets]
-        current_ids = [self._widget_shortcut_id(w) for w in self.icon_widgets]
-        if new_ids == current_ids:
-            return False
+        remaining_widgets = list(self.icon_widgets)
+        new_widgets = []
+        for shortcut_id in new_ids:
+            match_index = next(
+                (
+                    index
+                    for index, widget in enumerate(remaining_widgets)
+                    if self._widget_shortcut_id(widget) == shortcut_id
+                ),
+                -1,
+            )
+            if match_index < 0:
+                return False
+            new_widgets.append(remaining_widgets.pop(match_index))
         self.icon_widgets = new_widgets
         return True
 

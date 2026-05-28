@@ -394,7 +394,7 @@ class SettingsCommandsPageMixin:
         self.builtin_filter_edit.setClearButtonEnabled(True)
         self.builtin_filter_edit.setFixedHeight(26)
         # Debounce search: don't rebuild 28+ widgets on every keystroke
-        self._builtin_filter_timer = QTimer()
+        self._builtin_filter_timer = QTimer(self)
         self._builtin_filter_timer.setSingleShot(True)
         self._builtin_filter_timer.setInterval(200)
         self._builtin_filter_timer.timeout.connect(self._refresh_command_settings)
@@ -755,11 +755,21 @@ class SettingsCommandsPageMixin:
     def _schedule_refresh(self):
         """Debounced refresh — coalesces rapid clicks into one rebuild."""
         if not hasattr(self, "_refresh_timer"):
-            self._refresh_timer = QTimer()
+            self._refresh_timer = QTimer(self)
             self._refresh_timer.setSingleShot(True)
             self._refresh_timer.setInterval(50)
             self._refresh_timer.timeout.connect(self._refresh_command_settings)
         self._refresh_timer.start()
+
+    def _stop_command_page_timers(self):
+        for timer_name in ("_builtin_filter_timer", "_refresh_timer"):
+            timer = getattr(self, timer_name, None)
+            if timer is None:
+                continue
+            try:
+                timer.stop()
+            except Exception:
+                pass
 
     def _on_unfavorite_command(self, cmd_id):
         try:

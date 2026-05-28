@@ -9,7 +9,9 @@ import zipfile
 
 import pytest
 
+from core import config_services as config_services_module
 from core.config_history import ConfigHistoryManager
+from core.config_importer import ConfigImporter
 from core.data_manager import DataManager
 from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
 
@@ -120,6 +122,68 @@ def test_record_shortcut_used_missing_id_does_not_save(monkeypatch):
     assert saves == []
 
 
+def test_legacy_import_dry_run_reports_without_mutating(tmp_path):
+    manager = _file_backed_manager(tmp_path, AppData(folders=[Folder(id="existing", name="Existing")]))
+    package = tmp_path / "legacy.zip"
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr(
+            "items.json",
+            json.dumps(
+                [
+                    {"name": "One", "type": "url", "url": "https://example.com"},
+                    {"name": "Two", "type": "command", "command": "echo ok"},
+                ],
+                ensure_ascii=False,
+            ),
+        )
+
+    count = ConfigImporter.import_config(manager, str(package), dry_run=True)
+    report = manager.get_last_import_report()
+
+    assert count == 2
+    assert report["dry_run"] is True
+    assert report["mode"] == "legacy"
+    assert len(manager.data.folders) == 1
+    assert manager.data.folders[0].items == []
+
+
+def test_legacy_import_rolls_back_memory_and_icons_on_failure(monkeypatch, tmp_path):
+    manager = _file_backed_manager(tmp_path, AppData(folders=[Folder(id="existing", name="Existing")]))
+    icon_dir = tmp_path / "imported_icons"
+    icon_dir.mkdir()
+    monkeypatch.setattr("core.config_importer.get_icon_dir", lambda: str(icon_dir))
+    package = tmp_path / "legacy.zip"
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr(
+            "items.json",
+            json.dumps(
+                [
+                    {"name": "Ok", "type": "url", "url": "https://example.com", "icon_path": "icons/ok.png"},
+                    {"name": "Boom", "type": "url", "url": "https://example.org"},
+                ],
+                ensure_ascii=False,
+            ),
+        )
+        zf.writestr("icons/ok.png", b"png")
+
+    original_from_dict = ShortcutItem.from_dict.__func__
+
+    def fail_on_boom(cls, data):
+        if data.get("name") == "Boom":
+            raise ValueError("boom")
+        return original_from_dict(cls, data)
+
+    monkeypatch.setattr(ShortcutItem, "from_dict", classmethod(fail_on_boom))
+
+    count = ConfigImporter.import_config(manager, str(package))
+
+    assert count == -1
+    assert len(manager.data.folders) == 1
+    assert manager.data.folders[0].id == "existing"
+    assert manager.data.folders[0].items == []
+    assert list(icon_dir.iterdir()) == []
+
+
 def test_record_shortcut_used_refreshes_smart_order(monkeypatch):
     low = ShortcutItem(id="low", name="Low", order=0, use_count=4, last_used_at=1)
     high = ShortcutItem(id="high", name="High", order=1, use_count=5, last_used_at=10)
@@ -205,9 +269,9 @@ def test_replace_data_file_restores_original_when_fallback_copy_fails(monkeypatc
     manager.data_file.write_text("original", encoding="utf-8")
     temp_file = manager.data_file.with_suffix(".tmp")
     temp_file.write_text("new", encoding="utf-8")
-    real_copyfile = data_manager_module.shutil.copyfile
+    real_copyfile = config_services_module.shutil.copyfile
 
-    monkeypatch.setattr(data_manager_module.os, "replace", lambda *args: (_ for _ in ()).throw(OSError("locked")))
+    monkeypatch.setattr(config_services_module.os, "replace", lambda *args: (_ for _ in ()).throw(OSError("locked")))
 
     calls = []
 
@@ -218,7 +282,7 @@ def test_replace_data_file_restores_original_when_fallback_copy_fails(monkeypatc
             raise OSError("copy failed")
         return real_copyfile(src, dst)
 
-    monkeypatch.setattr(data_manager_module.shutil, "copyfile", flaky_copyfile)
+    monkeypatch.setattr(config_services_module.shutil, "copyfile", flaky_copyfile)
 
     with pytest.raises(OSError):
         manager._replace_data_file(temp_file)

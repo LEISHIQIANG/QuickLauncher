@@ -12,20 +12,14 @@ import threading
 import uuid
 import zipfile
 from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 from .config_history import ConfigHistoryManager
-from .config_recovery import (
-    ConfigRecoveryReport,
-    quarantine_bad_config,
-    read_recovery_report,
-    write_recovery_report,
-)
+from .config_recovery import ConfigRecoveryReport
 from .config_repairs import apply_config_repairs
+from .config_services import ConfigBackupService, ConfigDataStore, ConfigPackageService, ConfigRecoveryService
 from .config_validation import (
-    latest_valid_backup,
     load_valid_data_file,
     sanitize_app_data_dict,
     validate_app_data,
@@ -129,6 +123,10 @@ class DataManager:
         self._last_import_report = new_import_report()
 
         self._ensure_dirs()
+        self.config_store = ConfigDataStore(self.data_file)
+        self.backup_service = ConfigBackupService(self.auto_backup_dir, self._max_auto_backups)
+        self.package_service = ConfigPackageService(self.app_dir)
+        self.recovery_service = ConfigRecoveryService(self.recovery_dir, self.auto_backup_dir, self.data_file)
         self.history_manager = ConfigHistoryManager(self.history_dir, self._max_history_snapshots)
         self.data = self._load()
         repair_report = self._apply_config_repairs_to_current()
@@ -151,6 +149,38 @@ class DataManager:
         self.icons_dir.mkdir(parents=True, exist_ok=True)
         self.history_dir.mkdir(parents=True, exist_ok=True)
         self.recovery_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_config_store(self) -> ConfigDataStore:
+        service = getattr(self, "config_store", None)
+        if service is None:
+            service = ConfigDataStore(self.data_file)
+            self.config_store = service
+        service.configure(self.data_file)
+        return service
+
+    def _get_backup_service(self) -> ConfigBackupService:
+        service = getattr(self, "backup_service", None)
+        if service is None:
+            service = ConfigBackupService(self.auto_backup_dir, self._max_auto_backups)
+            self.backup_service = service
+        service.configure(self.auto_backup_dir, self._max_auto_backups)
+        return service
+
+    def _get_recovery_service(self) -> ConfigRecoveryService:
+        service = getattr(self, "recovery_service", None)
+        if service is None:
+            service = ConfigRecoveryService(self.recovery_dir, self.auto_backup_dir, self.data_file)
+            self.recovery_service = service
+        service.configure(self.recovery_dir, self.auto_backup_dir, self.data_file)
+        return service
+
+    def _get_package_service(self) -> ConfigPackageService:
+        service = getattr(self, "package_service", None)
+        if service is None:
+            service = ConfigPackageService(self.app_dir)
+            self.package_service = service
+        service.configure(self.app_dir)
+        return service
 
     def _detach_icon_repo_folder(self) -> Folder | None:
         """Remove and return the runtime icon repository folder from AppData."""
@@ -327,7 +357,7 @@ class DataManager:
                 return loaded
             except Exception as e:
                 logger.warning("data manager message: %s", e)
-                quarantined = quarantine_bad_config(self.data_file, self.recovery_dir)
+                quarantined = self._get_recovery_service().quarantine_bad_config()
                 recovered = self._recover_from_latest_backup(str(e), quarantined)
                 if recovered is not None:
                     return recovered
@@ -379,35 +409,13 @@ class DataManager:
     ) -> Optional[AppData]:
         """Recover data.json from the newest valid auto backup."""
         try:
-            backup_path = latest_valid_backup(self.auto_backup_dir)
-            if not backup_path:
+            result = self._get_recovery_service().recover_from_latest_backup(reason, quarantined_path)
+            if result is None:
                 return None
-            loaded, issues = load_valid_data_file(backup_path)
-            status = "recovered"
-            recovery_issues = ["recovered_from_auto_backup"] + issues
-            try:
-                shutil.copy2(backup_path, self.data_file)
-            except Exception as copy_error:
-                status = "recovered_memory_only"
-                recovery_issues.append(f"persist_failed:{copy_error}")
-                logger.warning("data manager message: %s", copy_error)
-            self._config_status = {
-                "status": "warn",
-                "source": str(backup_path),
-                "issues": recovery_issues,
-            }
-            self._write_recovery_report(
-                ConfigRecoveryReport(
-                    status=status,
-                    reason=reason or "auto backup recovery",
-                    source_path=str(self.data_file),
-                    recovered_from=str(backup_path),
-                    quarantined_path=str(quarantined_path or ""),
-                    issues=recovery_issues,
-                )
-            )
-            logger.warning("data manager message: %s", backup_path)
-            return loaded
+            self._config_status = result.status
+            self._write_recovery_report(result.report)
+            logger.warning("data manager message: %s", result.report.recovered_from)
+            return result.data
         except Exception as exc:
             logger.error("data manager message: %s", exc)
             return None
@@ -531,16 +539,7 @@ class DataManager:
 
     def _serialize_data(self) -> str:
         """Serialize data and validate the JSON before writing it to disk."""
-        data_dict = self._main_data_dict()
-        issues = validate_app_data_dict(data_dict)
-        fatal = {"root_not_object", "folders_not_list"}
-        if any(issue in fatal for issue in issues):
-            raise ValueError(f"fatal config schema issues: {issues}")
-        if issues:
-            logger.warning("data manager message: %s", issues)
-        payload = json.dumps(data_dict, ensure_ascii=False, separators=(",", ":"))
-        json.loads(payload)
-        return payload
+        return self._get_config_store().serialize_data(self._main_data_dict())
 
     def _main_data_dict(self) -> dict:
         """Return AppData without the runtime-only icon repository folder."""
@@ -559,22 +558,10 @@ class DataManager:
         self._pending_history_summary = summary or ""
 
     def _write_recovery_report(self, report: ConfigRecoveryReport) -> None:
-        write_recovery_report(self.recovery_dir, report)
-        if report.status not in ("ok",):
-            try:
-                from .event_log import log_event
-
-                log_event(
-                    f"config.{report.status}",
-                    f"Config {report.status}: {report.reason}",
-                    {"source": report.source_path, "recovered_from": report.recovered_from},
-                )
-            except Exception:
-                pass
+        self._get_recovery_service().write_report(report)
 
     def get_recovery_report(self) -> dict:
-        report = read_recovery_report(self.recovery_dir)
-        return report.to_dict() if report else {}
+        return self._get_recovery_service().report_dict()
 
     def get_config_status(self) -> dict:
         """Return latest configuration load/save validation status."""
@@ -597,6 +584,8 @@ class DataManager:
     def get_last_import_report(self) -> dict:
         report = getattr(self, "_last_import_report", None) or new_import_report()
         return {
+            "dry_run": bool(report.get("dry_run", False)),
+            "mode": str(report.get("mode", "") or ""),
             "skipped_files": list(report.get("skipped_files", [])),
             "skipped_settings": list(report.get("skipped_settings", [])),
             "warnings": list(report.get("warnings", [])),
@@ -638,68 +627,15 @@ class DataManager:
 
     def _replace_data_file(self, temp_file: Path):
         """Replace data.json, falling back when Windows denies atomic rename."""
-        try:
-            os.replace(temp_file, self.data_file)
-            return
-        except OSError as replace_error:
-            logger.debug("atomic data replace failed, using guarded copy fallback: %s", replace_error)
-
-        fallback_backup = self.data_file.with_suffix(".write_backup")
-        had_original = self.data_file.exists()
-        try:
-            if had_original:
-                shutil.copy2(self.data_file, fallback_backup)
-            shutil.copyfile(temp_file, self.data_file)
-            try:
-                os.remove(temp_file)
-            except Exception as cleanup_error:
-                logger.debug("cleanup temp file after fallback copy failed: %s", cleanup_error)
-        except Exception:
-            if had_original and fallback_backup.exists():
-                try:
-                    shutil.copyfile(fallback_backup, self.data_file)
-                except Exception as restore_error:
-                    logger.error("restore data file after fallback failure failed: %s", restore_error)
-            raise
-        finally:
-            if fallback_backup.exists():
-                try:
-                    fallback_backup.unlink()
-                except Exception as cleanup_error:
-                    logger.debug("cleanup data write backup failed: %s", cleanup_error)
+        self._get_config_store().replace_data_file(temp_file)
 
     def _create_auto_backup(self):
         """Create a timestamped backup of the current data file before replacing it."""
-        if not self.data_file.exists():
-            return
-
-        try:
-            self.auto_backup_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            backup_path = self.auto_backup_dir / f"data_{timestamp}.json"
-            shutil.copy2(self.data_file, backup_path)
-            self._prune_auto_backups()
-        except Exception as e:
-            logger.debug("auto backup failed: %s", e)
+        self._get_backup_service().create_auto_backup(self.data_file)
 
     def _prune_auto_backups(self):
         """Keep only the newest configured automatic backups."""
-        if not self.auto_backup_dir.exists():
-            return
-
-        try:
-            backups = sorted(
-                self.auto_backup_dir.glob("data_*.json"),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            for old_backup in backups[self._max_auto_backups :]:
-                try:
-                    old_backup.unlink()
-                except Exception as e:
-                    logger.debug("delete old auto backup failed %s: %s", old_backup, e)
-        except Exception as e:
-            logger.debug("prune auto backups failed: %s", e)
+        self._get_backup_service().prune_auto_backups()
 
     def flush_pending_save(self):
         """Data manager."""
@@ -1464,17 +1400,7 @@ class DataManager:
                 }
                 zf.writestr("icon_repo.json", json.dumps(icon_repo_dict, ensure_ascii=False, indent=2))
 
-                # 备份额外用户配置文件
-                extra_config_files = {
-                    "custom_themes.json": self.app_dir / "custom_themes.json",
-                    "command_history.json": self.app_dir / "command_history.json",
-                }
-                for arc_name, file_path in extra_config_files.items():
-                    if file_path.exists():
-                        try:
-                            zf.write(file_path, arc_name)
-                        except Exception as extra_err:
-                            logger.debug("backup extra config %s failed: %s", arc_name, extra_err)
+                self._get_package_service().write_extra_config_files(zf)
 
                 if self.icons_dir.exists():
                     for file_path in self.icons_dir.iterdir():
@@ -1630,25 +1556,7 @@ class DataManager:
                             raise RuntimeError("save restored config failed")
                         set_imported_items(report, sum(len(f.items) for f in self.data.folders))
 
-                        # 恢复额外用户配置文件
-                        extra_restore_map = {
-                            "custom_themes.json": self.app_dir / "custom_themes.json",
-                            "command_history.json": self.app_dir / "command_history.json",
-                        }
-                        for arc_name, target_path in extra_restore_map.items():
-                            if has_zip_entry(safe_index, arc_name):
-                                try:
-                                    extra_text = read_zip_text(
-                                        zf,
-                                        safe_index,
-                                        arc_name,
-                                        max_bytes=MAX_CONFIG_BYTES,
-                                        report=report,
-                                    )
-                                    if extra_text is not None:
-                                        target_path.write_text(extra_text, encoding="utf-8")
-                                except Exception as extra_err:
-                                    logger.debug("restore extra config %s failed: %s", arc_name, extra_err)
+                        self._get_package_service().restore_extra_config_files(zf, safe_index, report)
                     except Exception:
                         self.data = old_data
                         self._last_saved_data_dict = old_saved

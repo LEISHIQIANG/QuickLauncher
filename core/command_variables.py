@@ -205,26 +205,14 @@ def fetch_public_wan_ipv4(timeout: float = 2.0) -> str:
 
 
 def read_clipboard_text() -> str:
-    """Read clipboard text without requiring Qt main-thread access."""
-    try:
-        import win32clipboard
-        import win32con
+    """Read clipboard text without requiring Qt main-thread access.
 
-        win32clipboard.OpenClipboard()
-        try:
-            if win32clipboard.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT):
-                data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
-                return data or ""
-            if win32clipboard.IsClipboardFormatAvailable(win32con.CF_TEXT):
-                data = win32clipboard.GetClipboardData(win32con.CF_TEXT)
-                if isinstance(data, (bytes, bytearray)):
-                    try:
-                        return data.decode("mbcs", errors="replace")
-                    except Exception:
-                        return data.decode(errors="replace")
-                return data or ""
-        finally:
-            win32clipboard.CloseClipboard()
+    Delegates to ClipboardService for thread-safe COM-initialized access.
+    """
+    try:
+        from .clipboard_service import clipboard_service
+
+        return clipboard_service.read_text_win32()
     except Exception:
         pass
     return ""

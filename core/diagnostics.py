@@ -50,6 +50,27 @@ _SENSITIVE_PATTERNS = [
     (re.compile(r"(Bearer\s+)\S{8,}", re.IGNORECASE), r"\1<REDACTED>", "bearer_token"),
     # Basic <base64> in Authorization headers
     (re.compile(r"(Basic\s+)\S{8,}", re.IGNORECASE), r"\1<REDACTED>", "basic_auth"),
+    # Header-shaped secrets in logs and JSONL payloads.
+    (
+        re.compile(r"\b((?:Authorization|Proxy-Authorization|X-Api-Key)\s*:\s*)[^\r\n]+", re.IGNORECASE),
+        r"\1<REDACTED>",
+        "auth_header",
+    ),
+    (
+        re.compile(r"\b((?:Cookie|Set-Cookie)\s*:\s*)[^\r\n]+", re.IGNORECASE),
+        r"\1<REDACTED>",
+        "cookie_header",
+    ),
+    # Additional common query-string or form keys.
+    (
+        re.compile(
+            r"((?:access_token|refresh_token|client_secret|x-api-key|sessionid|session_id)[=:])"
+            r"(['\"]?)([^\s&'\"]{4,})\2",
+            re.IGNORECASE,
+        ),
+        r"\1\2<REDACTED>\2",
+        "secret_param",
+    ),
 ]
 
 
@@ -249,6 +270,23 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
     except Exception as exc:
         items.append(DiagnosticItem("图标检查", "unknown", "无法执行图标检查", str(exc)))
 
+    try:
+        from .command_exec import known_shell_execution_entries
+
+        audit_entries = known_shell_execution_entries()
+        shell_true_count = sum(1 for entry in audit_entries if entry.get("python_shell_true"))
+        items.append(
+            DiagnosticItem(
+                "命令执行审计",
+                "warn" if shell_true_count else "ok",
+                f"已登记 {len(audit_entries)} 个 shell 执行入口，其中 shell=True {shell_true_count} 个",
+                json.dumps(audit_entries, ensure_ascii=False),
+                "新增命令执行入口必须补充审计记录、输入来源和保留 shell 的原因。",
+            )
+        )
+    except Exception as exc:
+        items.append(DiagnosticItem("命令执行审计", "unknown", "无法读取命令执行审计表", str(exc)))
+
     # Cached health state from shortcut_health_window scans
     try:
         from .shortcut_health import load_health_state
@@ -346,6 +384,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
 
         update_root = str(Path(getattr(data_manager, "app_dir", "")) / "downloads" / "updates")
         session = latest_session_state(update_root)
+        update_state = _read_json_file(Path(getattr(data_manager, "app_dir", "")) / ".update_state.json") or {}
         if session:
             install_info = session.get("install", {}) if isinstance(session.get("install"), dict) else {}
             install_status = install_info.get("status", "unknown")
@@ -382,12 +421,17 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 )
             )
         else:
+            check_status = str(update_state.get("last_check_status") or "")
+            check_error = str(update_state.get("last_check_error") or "")
+            summary = f"当前版本: {APP_VERSION}，无更新会话记录"
+            if check_status:
+                summary += f"，最近检查: {check_status}"
             items.append(
                 DiagnosticItem(
                     "更新系统",
-                    "ok",
-                    f"当前版本: {APP_VERSION}，无更新会话记录",
-                    "",
+                    "warn" if check_status == "failed" else "ok",
+                    summary,
+                    json.dumps(update_state, ensure_ascii=False) if update_state else check_error,
                 )
             )
     except Exception as exc:

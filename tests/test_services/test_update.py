@@ -186,6 +186,19 @@ class TestUpdateChecker:
 
         assert checker.is_version_skipped("9.9.9.9")
 
+    @patch("services.update.checker.ApiClient.get")
+    def test_check_failure_records_state_for_diagnostics(self, mock_get):
+        mock_get.side_effect = RuntimeError("network down")
+        state = {}
+        checker = UpdateChecker(UpdateConfig(update_source="api", check_url="http://localhost"))
+        checker._load_state = lambda: dict(state)
+        checker._save_state = lambda data: state.update(data)
+
+        assert checker.check_now() is None
+
+        assert state["last_check_status"] == "failed"
+        assert "network down" in state["last_check_error"]
+
     def test_state_file_uses_config_root_and_reads_legacy_path(self, tmp_path):
         fake_manager = MagicMock()
         fake_manager.app_dir = tmp_path / "config"

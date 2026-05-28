@@ -26,6 +26,8 @@ class UpdateChecker:
         self._timer: Optional[threading.Timer] = None
         self._listeners = []
         self._running = False
+        self._last_check_status = ""
+        self._last_check_error = ""
 
     def add_listener(self, callback):
         self._listeners.append(callback)
@@ -101,7 +103,10 @@ class UpdateChecker:
 
         try:
             if self._config.update_source == "github":
-                return self._do_github_release_check(APP_VERSION)
+                result = self._do_github_release_check(APP_VERSION)
+                self._last_check_status = "ok"
+                self._last_check_error = ""
+                return result
 
             resp = self._api.get(
                 "/check",
@@ -112,6 +117,8 @@ class UpdateChecker:
                 },
             )
             if not resp.get("has_update"):
+                self._last_check_status = "ok"
+                self._last_check_error = ""
                 return UpdateInfo(has_update=False)
             changelog = resp.get("changelog", {})
             info = UpdateInfo(
@@ -129,8 +136,12 @@ class UpdateChecker:
             validation_error = self._validate_update_info(info)
             if validation_error:
                 raise ValueError(validation_error)
+            self._last_check_status = "ok"
+            self._last_check_error = ""
             return info
         except Exception as exc:
+            self._last_check_status = "failed"
+            self._last_check_error = str(exc)
             self._notify("check_failed", str(exc))
             return None
 
@@ -258,6 +269,9 @@ class UpdateChecker:
     def _save_check_time(self):
         state = self._load_state()
         state["last_check"] = datetime.now().isoformat()
+        if self._last_check_status:
+            state["last_check_status"] = self._last_check_status
+            state["last_check_error"] = self._last_check_error
         self._save_state(state)
 
     def _schedule_next(self):

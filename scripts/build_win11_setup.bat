@@ -526,6 +526,13 @@ if !ERRORLEVEL! NEQ 0 (
 
 if exist "%SETUP_STAGE_DIR%" rmdir /s /q "%SETUP_STAGE_DIR%" >nul 2>&1
 
+!PYTHON_CMD! scripts\check_release_artifacts.py --version "%APP_VERSION%" --dist-dir "dist\QuickLauncher" --installer "dist\QuickLauncher_Setup_%APP_VERSION%.exe" --write-manifest "dist\QuickLauncher_release_%APP_VERSION%.json" --write-installer-sha256 "dist\QuickLauncher_Setup_%APP_VERSION%.sha256"
+if !ERRORLEVEL! NEQ 0 (
+    echo   [!] Release artifact verification failed.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
 echo.
 echo ========================================
 echo   [OK] Build successful! (Win11 optimized version)

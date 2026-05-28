@@ -9,9 +9,10 @@ from urllib.parse import urlparse
 
 from .command_risk import assess_command_risk
 from .data_models import AppData, ShortcutItem, ShortcutType
+from .runtime_constants import COMMAND_CHAIN_MAX_STEPS
 from .shortcut_url_exec import UrlExecutionMixin
 
-MAX_CHAIN_STEPS = ShortcutItem.MAX_CHAIN_STEPS
+MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
 
 _WINDOWS_ENV_VAR_RE = re.compile(r"%[^%]+%")
 

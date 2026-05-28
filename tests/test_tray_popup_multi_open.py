@@ -25,6 +25,33 @@ class FakePopup:
         self._visible = False
 
 
+class FakeTimer:
+    def __init__(self):
+        self.stopped = False
+
+    def isActive(self):
+        return True
+
+    def stop(self):
+        self.stopped = True
+
+
+class FakeRuntimeComponent:
+    def __init__(self):
+        self.stopped = False
+        self.hidden = False
+        self.uninstalled = False
+
+    def stop(self):
+        self.stopped = True
+
+    def hide(self):
+        self.hidden = True
+
+    def uninstall(self):
+        self.uninstalled = True
+
+
 def _tray_like(multi_open=True):
     tray = TrayApp.__new__(TrayApp)
     tray._extra_popup_windows = []
@@ -83,3 +110,37 @@ def test_prune_extra_popup_windows_handles_closed_popups():
     tray._prune_extra_popup_windows()
 
     assert tray._extra_popup_windows == [second]
+
+
+def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch):
+    tray = _tray_like(multi_open=True)
+    tray._settings_sync_timer = FakeTimer()
+    tray._sleep_timer = FakeTimer()
+    tray._deferred_startup_timer = FakeTimer()
+    tray._memory_check_timer = FakeTimer()
+    tray._process_check_timer = FakeTimer()
+    tray._update_checker = FakeRuntimeComponent()
+    tray.hotkey_manager = FakeRuntimeComponent()
+    tray.mouse_hook = FakeRuntimeComponent()
+    tray.keyboard_hook = FakeRuntimeComponent()
+    tray.tray_icon = FakeRuntimeComponent()
+    tray.config_window = FakePopup()
+    tray.diagnostics_window = FakePopup()
+    tray.log_window = None
+    tray.shortcut_health_window = None
+    tray.config_history_window = None
+    tray.slash_help_window = None
+    tray._toast = None
+
+    monkeypatch.setattr("core.folder_watcher.shutdown_watcher_manager", lambda: None)
+
+    tray._shutdown_runtime_components()
+
+    assert tray._settings_sync_timer.stopped is True
+    assert tray._update_checker.stopped is True
+    assert tray.hotkey_manager.stopped is True
+    assert tray.mouse_hook is None
+    assert tray.keyboard_hook is None
+    assert tray.tray_icon.hidden is True
+    assert tray.config_window is None
+    assert tray.diagnostics_window is None

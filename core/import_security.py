@@ -17,6 +17,8 @@ ALLOWED_BACKGROUND_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
 def new_import_report() -> dict:
     return {
+        "dry_run": False,
+        "mode": "",
         "skipped_files": [],
         "skipped_settings": [],
         "warnings": [],

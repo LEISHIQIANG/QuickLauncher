@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from core.command_registry import CommandAction, CommandDefinition, CommandParam, CommandResult
+from core.command_registry import CommandAction, CommandDefinition, CommandMetadata, CommandParam, CommandResult
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem, ShortcutType
 from qt_compat import QEvent, QPixmap, QPlainTextEdit, Qt, QTextOption, QTimer
@@ -28,6 +28,34 @@ def test_command_panel_renders_text_and_log(qapp):
 
     win.show_transient_result(CommandResult(message="line 1\nline 2", display_type="log"))
     assert win.text.toPlainText() == "line 1\nline 2"
+
+
+def test_command_panel_subtitle_includes_command_metadata(qapp):
+    win = _window(qapp)
+    command = CommandDefinition(
+        id="hosts",
+        title="Hosts",
+        aliases=["hosts"],
+        description="",
+        category="system",
+        handler=lambda ctx: CommandResult(success=True),
+        metadata=CommandMetadata(
+            category="system",
+            risk_level="medium",
+            requires_admin=True,
+            uses_network=False,
+            modifies_system=True,
+        ),
+    )
+    win._current_definition = command
+    win._current_command_title = command.title
+
+    win._update_subtitle("等待输入")
+
+    subtitle = win.subtitle_label.text()
+    assert "中风险" in subtitle
+    assert "管理员" in subtitle
+    assert "修改系统" in subtitle
 
 
 def test_live_log_update_preserves_manual_scroll_position(qapp):

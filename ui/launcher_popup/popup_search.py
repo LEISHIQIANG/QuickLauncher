@@ -1,6 +1,7 @@
 """Search bar editing, search logic, IME support and reveal animation for LauncherPopup."""
 
 import logging
+import threading
 import time
 
 from core.data_models import ShortcutItem, ShortcutType
@@ -428,6 +429,8 @@ class PopupSearchMixin:
     def _refresh_search_results(self):
         """核心刷新搜索结果，支持 Web 搜索引擎，Slash 命令及本地 + Dock 图标混合"""
         query = self.search_query.strip()
+        self._plugin_search_seq = int(self.__dict__.get("_plugin_search_seq", 0) or 0) + 1
+        plugin_search_seq = self._plugin_search_seq
         if not query:
             self.search_results = []
             self.search_selected_index = -1
@@ -530,40 +533,7 @@ class PopupSearchMixin:
             else:
                 append_command_results(matched_cmds, "Slash Commands", 100.0)
 
-            # Plugin search sources
-            try:
-                from core.command_registry import execute_search_source, snapshot_search_sources
-
-                for src_id, src_info in snapshot_search_sources():
-                    handler = src_info.get("handler")
-                    if handler is None:
-                        continue
-                    try:
-                        src_results = execute_search_source(src_id, cmd_query)
-                        if src_results:
-                            for sr in src_results:
-                                shortcut = ShortcutItem(
-                                    id=sr.get("id", src_id),
-                                    name=sr.get("title", sr.get("name", src_id)),
-                                    type=ShortcutType.COMMAND,
-                                    command=sr.get("command", ""),
-                                    command_type="builtin",
-                                    enabled=True,
-                                )
-                                results.append(
-                                    FuzzyMatchResult(
-                                        shortcut=shortcut,
-                                        folder_id=f"plugin_{src_info['plugin_id']}",
-                                        folder_name=sr.get("folder", src_info.get("plugin_id", "插件")),
-                                        score=150.0,
-                                        original_index=0,
-                                        matched_fields=["name"],
-                                    )
-                                )
-                    except Exception:
-                        logger.exception("搜索源 %s 查询失败", src_id)
-            except Exception:
-                pass
+            self._start_plugin_search(cmd_query, plugin_search_seq)
         else:
             # 3. 本地快捷图标 + Dock 图标的拼音/Fuzzy混合检索
             search_folders = [f for f in (self.pages or []) if not getattr(f, "is_icon_repo", False)]
@@ -595,6 +565,78 @@ class PopupSearchMixin:
         else:
             self.search_selected_index = -1
 
+        self.update()
+
+    def _start_plugin_search(self, cmd_query: str, token: int):
+        try:
+            signal = self.plugin_search_results_ready
+        except Exception:
+            return
+
+        def worker():
+            payload = []
+            try:
+                from core.command_registry import execute_search_sources
+
+                for src_id, src_info, src_results in execute_search_sources(cmd_query):
+                    for sr in src_results:
+                        payload.append(
+                            {
+                                "source_id": src_id,
+                                "plugin_id": src_info.get("plugin_id", "插件"),
+                                "id": sr.get("id", src_id),
+                                "title": sr.get("title", sr.get("name", src_id)),
+                                "command": sr.get("command", ""),
+                                "folder": sr.get("folder", src_info.get("plugin_id", "插件")),
+                            }
+                        )
+            except Exception:
+                logger.exception("插件搜索失败: %s", cmd_query)
+            try:
+                signal.emit(token, cmd_query, payload)
+            except RuntimeError:
+                pass
+
+        thread = threading.Thread(target=worker, name="QuickLauncherPluginSearch", daemon=True)
+        thread.start()
+
+    def _on_plugin_search_results_ready(self, token: int, cmd_query: str, payload):
+        if token != int(self.__dict__.get("_plugin_search_seq", 0) or 0):
+            return
+        if not str(getattr(self, "search_query", "") or "").startswith("/"):
+            return
+        if str(getattr(self, "search_query", "") or "")[1:] != cmd_query:
+            return
+        try:
+            if hasattr(self, "isVisible") and not self.isVisible():
+                return
+        except Exception:
+            return
+        additions = []
+        for sr in payload or []:
+            shortcut = ShortcutItem(
+                id=sr.get("id", sr.get("source_id", "")),
+                name=sr.get("title", sr.get("id", "")),
+                type=ShortcutType.COMMAND,
+                command=sr.get("command", ""),
+                command_type="builtin",
+                enabled=True,
+            )
+            additions.append(
+                FuzzyMatchResult(
+                    shortcut=shortcut,
+                    folder_id=f"plugin_{sr.get('plugin_id', '插件')}",
+                    folder_name=sr.get("folder", sr.get("plugin_id", "插件")),
+                    score=150.0,
+                    original_index=0,
+                    matched_fields=["name"],
+                )
+            )
+        if not additions:
+            return
+        self.search_results = list(getattr(self, "search_results", []) or []) + additions
+        if self.search_selected_index < 0:
+            self.search_selected_index = 0
         self.update()
 
     # ── Search layout / geometry helpers ─────────────────────────────
@@ -840,6 +882,7 @@ class PopupSearchMixin:
 
     def _reset_search_state(self):
         """重置所有搜索状态"""
+        self._plugin_search_seq = int(self.__dict__.get("_plugin_search_seq", 0) or 0) + 1
         self.search_query = ""
         self.search_results = []
         self.search_selected_index = -1

@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -201,7 +202,13 @@ class ConfigImporter:
             return False
 
     @staticmethod
-    def import_config(data_manager: DataManager, file_path: str, target_folder_id: Optional[str] = None) -> int:
+    def import_config(
+        data_manager: DataManager,
+        file_path: str,
+        target_folder_id: Optional[str] = None,
+        *,
+        dry_run: bool = False,
+    ) -> int:
         """
         从文件导入配置（支持完整备份和旧版格式）
 
@@ -227,9 +234,14 @@ class ConfigImporter:
                 safe_index = build_safe_zip_index(zf, report)
                 names = set(safe_index.keys())
                 # 检查是否为完整备份
+                report["dry_run"] = bool(dry_run)
                 if "data.json" in names:
+                    if dry_run:
+                        return ConfigImporter._preview_full_backup(data_manager, zf, safe_index, report)
                     return ConfigImporter._import_full_backup(data_manager, file_path)
                 elif "items.json" in names:
+                    if dry_run:
+                        return ConfigImporter._preview_legacy(data_manager, zf, safe_index, report)
                     return ConfigImporter._import_legacy(data_manager, zf, target_folder_id, safe_index, report)
                 else:
                     logger.error("文件格式错误: 缺少必要文件")
@@ -254,6 +266,95 @@ class ConfigImporter:
             return -1
 
     @staticmethod
+    def _preview_full_backup(
+        data_manager: DataManager,
+        zf: zipfile.ZipFile,
+        safe_index: dict,
+        report: dict,
+    ) -> int:
+        try:
+            data_json = read_zip_text(
+                zf,
+                safe_index,
+                "data.json",
+                max_bytes=MAX_CONFIG_BYTES,
+                report=report,
+                required=True,
+            )
+            if data_json is None:
+                return -1
+            data = json.loads(data_json)
+            folders = data.get("folders", []) if isinstance(data, dict) else []
+            count = 0
+            if isinstance(folders, list):
+                for folder in folders:
+                    items = folder.get("items", []) if isinstance(folder, dict) else []
+                    if isinstance(items, list):
+                        count += len([item for item in items if isinstance(item, dict)])
+            report["mode"] = "full_backup"
+            set_imported_items(report, count)
+            return count
+        except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
+            logger.warning("full backup preview rejected unsafe package: %s", e)
+            return -1
+        except Exception as e:
+            logger.exception("full backup preview failed: %s", e)
+            return -1
+
+    @staticmethod
+    def _preview_legacy(
+        data_manager: DataManager,
+        zf: zipfile.ZipFile,
+        safe_index: dict,
+        report: dict,
+    ) -> int:
+        try:
+            items_text = read_zip_text(
+                zf,
+                safe_index,
+                "items.json",
+                max_bytes=MAX_CONFIG_BYTES,
+                report=report,
+                required=True,
+            )
+            if items_text is None:
+                return -1
+            items_data = json.loads(items_text)
+            if not isinstance(items_data, list):
+                return -1
+            count = 0
+            for raw_item in items_data[:2048]:
+                if not isinstance(raw_item, dict):
+                    continue
+                count += 1
+                zip_icon_path = str(raw_item.get("icon_path") or "")
+                if (
+                    zip_icon_path
+                    and has_zip_entry(safe_index, zip_icon_path)
+                    and not is_allowed_icon_path(zip_icon_path)
+                ):
+                    skip_file(report, zip_icon_path, "unsupported icon extension")
+            if has_zip_entry(safe_index, "settings.json"):
+                settings_text = read_zip_text(
+                    zf,
+                    safe_index,
+                    "settings.json",
+                    max_bytes=MAX_CONFIG_BYTES,
+                    report=report,
+                )
+                if settings_text:
+                    sanitize_settings_dict(json.loads(settings_text), report)
+            report["mode"] = "legacy"
+            set_imported_items(report, count)
+            return count
+        except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
+            logger.warning("legacy config preview rejected unsafe package: %s", e)
+            return -1
+        except Exception as e:
+            logger.exception("legacy config preview failed: %s", e)
+            return -1
+
+    @staticmethod
     def _import_legacy_safe(
         data_manager: DataManager,
         zf: zipfile.ZipFile,
@@ -261,6 +362,10 @@ class ConfigImporter:
         safe_index: Optional[dict] = None,
         report: Optional[dict] = None,
     ) -> int:
+        old_data = None
+        old_saved = None
+        old_config_status = None
+        written_icon_paths: list[str] = []
         try:
             if safe_index is None:
                 report = report or new_import_report()
@@ -283,6 +388,10 @@ class ConfigImporter:
             if not isinstance(items_data, list):
                 logger.error("legacy import items.json is not a list")
                 return -1
+
+            old_data = copy.deepcopy(data_manager.data)
+            old_saved = copy.deepcopy(getattr(data_manager, "_last_saved_data_dict", None))
+            old_config_status = dict(getattr(data_manager, "_config_status", {}) or {})
 
             target_folder = data_manager.data.get_folder_by_id(target_folder_id) if target_folder_id else None
             if not target_folder:
@@ -319,6 +428,7 @@ class ConfigImporter:
                                 local_icon_path = os.path.join(local_icon_dir, new_icon_name)
                                 with open(local_icon_path, "wb") as target:
                                     target.write(icon_content)
+                                written_icon_paths.append(local_icon_path)
                                 item_dict["icon_path"] = local_icon_path
                             else:
                                 item_dict["icon_path"] = ""
@@ -339,7 +449,9 @@ class ConfigImporter:
                     )
                     if settings_text:
                         settings_data = json.loads(settings_text)
-                        data_manager.update_settings(**sanitize_settings_dict(settings_data, report))
+                        for key, value in sanitize_settings_dict(settings_data, report).items():
+                            if hasattr(data_manager.data.settings, key):
+                                setattr(data_manager.data.settings, key, value)
 
                 if imported_count > 0:
                     repair = getattr(data_manager, "_apply_config_repairs_to_current", None)
@@ -351,11 +463,37 @@ class ConfigImporter:
             logger.info("legacy config import completed: imported=%s", imported_count)
             return imported_count
         except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
+            ConfigImporter._rollback_legacy_import(
+                data_manager, old_data, old_saved, old_config_status, written_icon_paths
+            )
             logger.warning("legacy config import rejected unsafe package: %s", e)
             return -1
         except Exception as e:
+            ConfigImporter._rollback_legacy_import(
+                data_manager, old_data, old_saved, old_config_status, written_icon_paths
+            )
             logger.exception("legacy config import failed: %s", e)
             return -1
+
+    @staticmethod
+    def _rollback_legacy_import(
+        data_manager, old_data, old_saved, old_config_status, written_icon_paths: list[str]
+    ) -> None:
+        try:
+            if old_data is not None:
+                data_manager.data = old_data
+            if old_saved is not None:
+                data_manager._last_saved_data_dict = old_saved
+            if old_config_status is not None:
+                data_manager._config_status = old_config_status
+        except Exception as rollback_error:
+            logger.debug("legacy import memory rollback failed: %s", rollback_error)
+        for path in written_icon_paths:
+            try:
+                if path and os.path.isfile(path):
+                    os.remove(path)
+            except Exception as cleanup_error:
+                logger.debug("legacy import icon rollback failed %s: %s", path, cleanup_error)
 
     @staticmethod
     def _import_legacy(

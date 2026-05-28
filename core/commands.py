@@ -10,7 +10,6 @@ import io
 import ipaddress
 import json
 import os
-import platform
 import re
 import socket
 import ssl
@@ -30,6 +29,16 @@ except ImportError:
     _HAS_QRCODE = False
 
 from .command_registry import CommandAction, CommandContext, CommandResult
+from .commands_git import cmd_git as cmd_git
+from .commands_maintenance import cmd_clean_cache as cmd_clean_cache
+from .commands_maintenance import cmd_config_repair as cmd_config_repair
+from .commands_plugins import cmd_plugin_list as cmd_plugin_list
+from .commands_plugins import cmd_plugin_new as cmd_plugin_new
+from .commands_plugins import cmd_plugin_reload as cmd_plugin_reload
+from .commands_system import cmd_process as cmd_process
+from .commands_system import cmd_sysreport as cmd_sysreport
+from .commands_windows import cmd_env as cmd_env
+from .commands_windows import cmd_god as cmd_god
 
 # ---------------------------------------------------------------------------
 # ── /urlencode ─────────────────────────────────────────────────────────────
@@ -999,216 +1008,6 @@ def cmd_path_audit(context: CommandContext) -> CommandResult:
     )
 
 
-def _format_bytes(value: float) -> str:
-    units = ["B", "KB", "MB", "GB", "TB"]
-    size = float(value or 0)
-    for unit in units:
-        if size < 1024 or unit == units[-1]:
-            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
-        size /= 1024
-    return f"{size:.1f} TB"
-
-
-def _proc_info_block(info: dict) -> str:
-    mem = getattr(info.get("memory_info"), "rss", 0) or 0
-    cpu = info.get("cpu_percent")
-    lines = [
-        f"PID: {info.get('pid')}",
-        f"名称: {info.get('name') or '?'}",
-        f"内存: {_format_bytes(mem)}",
-    ]
-    if cpu is not None:
-        lines.append(f"CPU: {cpu}%")
-    exe = info.get("exe") or ""
-    if exe:
-        lines.append(f"路径: {exe}")
-    return "\n".join(lines)
-
-
-def cmd_process(context: CommandContext) -> CommandResult:
-    import psutil
-
-    args = context.args_text.strip()
-    parts = args.split()
-    mode = parts[0].lower() if parts else "top"
-
-    if mode == "kill" and len(parts) >= 2:
-        try:
-            pid = int(parts[1])
-            proc = psutil.Process(pid)
-            name = proc.name()
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except Exception:
-                proc.kill()
-            return CommandResult(success=True, message=f"已终止进程 PID {pid}: {name}")
-        except Exception as e:
-            return CommandResult(success=False, message=f"终止进程失败: {e}", error="终止失败")
-
-    keyword = ""
-    if mode in ("find", "search", "查找") and len(parts) >= 2:
-        keyword = " ".join(parts[1:]).lower()
-    elif mode not in ("top", "mem", "memory", "cpu", ""):
-        keyword = args.lower()
-
-    rows: list[dict] = []
-    for proc in psutil.process_iter(["pid", "name", "exe", "memory_info", "cpu_percent"]):
-        try:
-            info = dict(proc.info)
-        except Exception:
-            continue
-        haystack = f"{info.get('name') or ''} {info.get('exe') or ''}".lower()
-        if keyword and keyword not in haystack:
-            continue
-        rows.append(info)
-
-    if keyword:
-        rows.sort(key=lambda item: getattr(item.get("memory_info"), "rss", 0) or 0, reverse=True)
-        selected = rows[:20]
-        if not selected:
-            return CommandResult(success=True, message=f"未找到匹配进程: {keyword}")
-        title = f"匹配进程: {keyword}"
-    else:
-        sort_cpu = mode == "cpu"
-        rows.sort(
-            key=lambda item: (
-                (item.get("cpu_percent") or 0) if sort_cpu else (getattr(item.get("memory_info"), "rss", 0) or 0)
-            ),
-            reverse=True,
-        )
-        selected = rows[:10]
-        title = "CPU 占用最高进程" if sort_cpu else "内存占用最高进程"
-
-    message = title + "\n\n" + "\n\n".join(_proc_info_block(info) for info in selected)
-    return CommandResult(
-        success=True,
-        message=message,
-        payload={"rows": selected},
-        actions=[CommandAction(type="copy", label="复制进程列表", value=message)],
-    )
-
-
-def cmd_sysreport(context: CommandContext) -> CommandResult:
-    import psutil
-
-    try:
-        vm = psutil.virtual_memory()
-        disk_target = os.environ.get("SystemDrive", "C:") + "\\" if os.name == "nt" else "/"
-        disk = psutil.disk_usage(disk_target)
-        net = psutil.net_io_counters()
-        boot_time = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-
-        lines = [
-            "系统快照",
-            f"系统: {platform.platform()}",
-            f"启动时间: {boot_time}",
-            f"CPU: {cpu_percent:.1f}% | 核心: {psutil.cpu_count(logical=True)}",
-            f"内存: {_format_bytes(vm.used)} / {_format_bytes(vm.total)} ({vm.percent:.1f}%)",
-            f"磁盘: {_format_bytes(disk.used)} / {_format_bytes(disk.total)} ({disk.percent:.1f}%)",
-            f"网络累计: 发送 {_format_bytes(net.bytes_sent)} / 接收 {_format_bytes(net.bytes_recv)}",
-        ]
-        try:
-            battery = psutil.sensors_battery()
-            if battery is not None:
-                power = "接入电源" if battery.power_plugged else "电池供电"
-                lines.append(f"电池: {battery.percent:.1f}% ({power})")
-        except Exception:
-            pass
-
-        message = "\n".join(lines)
-        return CommandResult(
-            success=True,
-            message=message,
-            actions=[CommandAction(type="copy", label="复制系统快照", value=message)],
-        )
-    except Exception as e:
-        return CommandResult(success=False, message=f"生成系统快照失败: {e}", error="系统信息失败")
-
-
-def _get_plugin_manager():
-    try:
-        import types
-
-        import core
-
-        pm = getattr(core, "plugin_manager", None)
-        if pm is not None and not isinstance(pm, types.ModuleType):
-            return pm
-        return None
-    except Exception:
-        return None
-
-
-def cmd_plugin_list(context: CommandContext) -> CommandResult:
-    pm = _get_plugin_manager()
-    if pm is None:
-        return CommandResult(success=False, message="插件管理器未初始化", error="不可用")
-    plugins = pm.list_plugins()
-    if not plugins:
-        return CommandResult(success=False, message="没有找到插件", error="空")
-    lines = []
-    for p in plugins:
-        m = p.manifest
-        status = p.status
-        cmd_count = len(p.registered_commands)
-        err = f" [{p.error}]" if p.error else ""
-        lines.append(f"{m.id} v{m.version} — {status}{err}")
-        lines.append(f"  {m.description}")
-        if cmd_count:
-            lines.append(f"  已注册 {cmd_count} 个命令")
-    return CommandResult(
-        success=True,
-        message="\n".join(lines),
-        actions=[CommandAction(type="copy", label="复制列表", value="\n".join(lines))],
-    )
-
-
-def cmd_plugin_reload(context: CommandContext) -> CommandResult:
-    pm = _get_plugin_manager()
-    if pm is None:
-        return CommandResult(success=False, message="插件管理器未初始化", error="不可用")
-    args = context.args_text.strip()
-    if not args:
-        count = 0
-        for p in pm.list_plugins():
-            if p.status == "enabled":
-                if pm.reload_plugin(p.manifest.id):
-                    count += 1
-        return CommandResult(
-            success=True,
-            message=f"已重载 {count} 个已启用的插件",
-        )
-    if pm.reload_plugin(args):
-        return CommandResult(success=True, message=f"插件已重载: {args}")
-    return CommandResult(success=False, message=f"重载失败: {args}", error="重载错误")
-
-
-def cmd_plugin_new(context: CommandContext) -> CommandResult:
-    pm = _get_plugin_manager()
-    if pm is None:
-        return CommandResult(success=False, message="插件管理器未初始化", error="不可用")
-    plugin_id = context.args_text.strip()
-    if not plugin_id:
-        return CommandResult(success=False, message="请指定插件 ID", error="缺少输入")
-    safe = "".join(c for c in plugin_id if c.isalnum() or c in "-_")
-    if safe != plugin_id:
-        return CommandResult(success=False, message="插件 ID 只能包含字母、数字、短横线和下划线", error="格式错误")
-
-    import os
-
-    base = pm.plugins_dir
-    plugin_dir = os.path.join(base, plugin_id)
-    if os.path.exists(plugin_dir):
-        return CommandResult(success=False, message=f"插件目录已存在: {plugin_dir}", error="已存在")
-
-    from core.plugin_template import write_plugin_template
-
-    write_plugin_template(plugin_dir, plugin_id)
-    return CommandResult(success=True, message=f"已创建插件模板: {plugin_dir}\n使用 /plugin reload {plugin_id} 加载")
-
-
 # ---------------------------------------------------------------------------
 # ── Phase 3 Power-User Superpower Commands ─────────────────────────────────
 # ---------------------------------------------------------------------------
@@ -1474,278 +1273,12 @@ def cmd_port(context: CommandContext) -> CommandResult:
     )
 
 
-def cmd_env(context: CommandContext) -> CommandResult:
-    import subprocess
-
-    try:
-        subprocess.Popen(["rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"])
-        return CommandResult(success=True, message="已成功启动 Windows 系统环境变量编辑器。")
-    except Exception as e:
-        return CommandResult(success=False, message=f"启动环境变量编辑器失败: {e}", error="启动失败")
-
-
-def cmd_git(context: CommandContext) -> CommandResult:
-    import os
-    import shlex
-    import subprocess
-    import time
-
-    args = shlex.split(context.args_text or "", posix=False)
-    subcommand = (args[0].lower() if args else "status").strip()
-    allowed = {"status", "branch", "log", "diff", "fetch", "pull", "checkout"}
-    if subcommand not in allowed:
-        return CommandResult(
-            success=False,
-            message="用法: /git status|branch|log|diff|fetch|pull|checkout [参数]",
-            display_type="log",
-            error="未知 Git 子命令",
-            payload={"window_size": "large"},
-        )
-
-    rest = args[1:]
-    cwd = os.getcwd()
-    branch = ""
-    if subcommand == "checkout":
-        if not rest:
-            return CommandResult(
-                success=False,
-                message="用法: /git checkout <branch> [repo]",
-                display_type="log",
-                error="缺少分支名",
-                payload={"window_size": "large"},
-            )
-        branch = rest[0]
-        repo = rest[1] if len(rest) > 1 else ""
-    else:
-        repo = rest[0] if rest else ""
-    repo = os.path.abspath(repo or cwd)
-    if not os.path.isdir(repo):
-        return CommandResult(
-            success=False,
-            message=f"Git 工作目录不存在: {repo}",
-            display_type="log",
-            error="目录不存在",
-            payload={"repo": repo, "subcommand": subcommand, "window_size": "large"},
-        )
-
-    def run_git(extra: list[str], timeout: float = 20.0):
-        started = time.perf_counter()
-        proc = subprocess.Popen(
-            ["git", *extra],
-            cwd=repo,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            shell=False,
-        )
-        stdout, stderr = proc.communicate(timeout=timeout)
-        return proc.returncode, stdout or "", stderr or "", time.perf_counter() - started
-
-    try:
-        code, stdout, stderr, duration = run_git(["rev-parse", "--is-inside-work-tree"], timeout=5.0)
-    except Exception as e:
-        return CommandResult(
-            success=False,
-            message=f"无法运行 git: {e}",
-            display_type="log",
-            error=str(e),
-            payload={"repo": repo, "subcommand": subcommand, "window_size": "large"},
-        )
-    if code != 0 or stdout.strip().lower() != "true":
-        return CommandResult(
-            success=False,
-            message=f"不是 Git 仓库: {repo}\n{stderr.strip()}",
-            display_type="log",
-            error="不是 Git 仓库",
-            payload={
-                "repo": repo,
-                "subcommand": subcommand,
-                "exit_code": code,
-                "stderr": stderr,
-                "window_size": "large",
-            },
-        )
-
-    git_args = {
-        "status": ["status", "--short", "--branch"],
-        "branch": ["branch", "--all", "--verbose", "--no-abbrev"],
-        "log": ["log", "--oneline", "--decorate", "-n", "30"],
-        "diff": ["diff", "--stat"],
-        "fetch": ["fetch", "--all", "--prune"],
-        "pull": ["pull", "--ff-only"],
-        "checkout": ["checkout", branch],
-    }[subcommand]
-
-    try:
-        code, stdout, stderr, duration = run_git(git_args, timeout=60.0)
-    except subprocess.TimeoutExpired:
-        return CommandResult(
-            success=False,
-            message="Git 命令执行超时。",
-            display_type="log",
-            error="执行超时",
-            payload={"repo": repo, "subcommand": subcommand, "window_size": "large", "timed_out": True},
-        )
-    except Exception as e:
-        return CommandResult(
-            success=False,
-            message=f"Git 命令执行失败: {e}",
-            display_type="log",
-            error=str(e),
-            payload={"repo": repo, "subcommand": subcommand, "window_size": "large"},
-        )
-
-    payload = {
-        "repo": repo,
-        "subcommand": subcommand,
-        "exit_code": code,
-        "stdout": stdout,
-        "stderr": stderr,
-        "duration": duration,
-        "window_size": "large",
-        "wrap": False,
-    }
-    if subcommand == "status":
-        rows = []
-        for line in stdout.splitlines():
-            if line.startswith("##"):
-                rows.append(["branch", line[2:].strip(), ""])
-            elif len(line) >= 3:
-                rows.append([line[:2].strip() or "changed", line[3:], ""])
-        return CommandResult(
-            success=code == 0,
-            message=stdout or stderr,
-            display_type="table",
-            payload={**payload, "columns": ["Status", "Path", "Detail"], "rows": rows},
-            error="" if code == 0 else (stderr.strip() or f"exit {code}"),
-        )
-    if subcommand == "branch":
-        rows = [[line[:2].strip(), line[2:].strip()] for line in stdout.splitlines() if line.strip()]
-        return CommandResult(
-            success=code == 0,
-            message=stdout or stderr,
-            display_type="table",
-            payload={**payload, "columns": ["Current", "Branch"], "rows": rows},
-            error="" if code == 0 else (stderr.strip() or f"exit {code}"),
-        )
-    message = "\n".join(part for part in [stdout.strip(), stderr.strip()] if part) or "(无输出)"
-    return CommandResult(
-        success=code == 0,
-        message=message,
-        display_type="log",
-        payload=payload,
-        actions=[CommandAction(type="copy", label="复制输出", value=message)],
-        error="" if code == 0 else (stderr.strip().splitlines()[0] if stderr.strip() else f"exit {code}"),
-    )
-
-
 def cmd_dns(context: CommandContext) -> CommandResult:
     success, out = _run_cmd(["ipconfig", "/flushdns"])
     if success:
         return CommandResult(success=True, message="已成功清理 Windows DNS 缓存！")
     else:
         return CommandResult(success=False, message=f"清理 DNS 缓存失败：{out}", error="清理失败")
-
-
-def cmd_clean_cache(context: CommandContext) -> CommandResult:
-    from core import data_manager
-    from core.project_cache_cleaner import clean_unused_project_cache
-
-    dry_run = (context.args_text or "").strip().lower() in {"dry-run", "dryrun", "preview", "预览"}
-    stats = clean_unused_project_cache(data_manager, dry_run=dry_run)
-    removed = int(stats.get("total_removed", 0) or 0)
-    freed = float(stats.get("total_size_freed_mb", 0) or 0)
-    failed = int(stats.get("failed", 0) or 0)
-
-    lines = ["缓存清理预览:" if dry_run else "缓存清理完成:"]
-    lines.append(f"- 可清理/已清理: {removed} 个文件")
-    lines.append(f"- 可释放/已释放: {freed:.2f} MB")
-    if failed:
-        lines.append(f"- 失败: {failed} 项")
-
-    labels = {
-        "temp_icons": "临时图标",
-        "__pycache__": "Python 字节码",
-        ".pytest_cache": "pytest 缓存",
-        ".ruff_cache": "ruff 缓存",
-        "restore_temp": "恢复临时目录",
-        "empty_dirs": "空缓存目录",
-    }
-    for area, area_stats in sorted((stats.get("by_area") or {}).items()):
-        count = int(area_stats.get("files_removed", 0) or 0)
-        size = float(area_stats.get("size_freed_mb", 0) or 0)
-        if count:
-            lines.append(f"- {labels.get(area, area)}: {count} 项，{size:.2f} MB")
-
-    return CommandResult(
-        success=failed == 0,
-        message="\n".join(lines),
-        payload=stats,
-        actions=[CommandAction(type="copy", label="复制报告", value="\n".join(lines))],
-        error="" if failed == 0 else "部分缓存清理失败",
-    )
-
-
-def cmd_config_repair(context: CommandContext) -> CommandResult:
-    from core import data_manager
-    from core.config_repairs import apply_config_repairs, scan_config_repairs
-
-    if data_manager is None:
-        return CommandResult(success=False, message="数据管理器不可用", error="不可用")
-
-    mode = (context.args_text or "").strip().lower()
-    should_fix = mode in {"fix", "apply", "repair", "save", "修复", "应用"}
-    report = apply_config_repairs(data_manager.data) if should_fix else scan_config_repairs(data_manager.data)
-
-    if should_fix and report.changed:
-        try:
-            data_manager._mark_history("配置修复", f"应用 {report.repaired} 项配置修复")
-        except Exception:
-            pass
-        if not data_manager.save(immediate=True):
-            return CommandResult(
-                success=False, message="配置修复已计算，但保存失败", payload=report.to_dict(), error="保存失败"
-            )
-
-    action = "已修复" if should_fix else "扫描完成"
-    lines = [f"配置修复{action}: {report.repaired} 项可自动修复项"]
-    if report.problem_count:
-        lines.append(f"需要人工确认: {report.problem_count} 项")
-    if not report.issues:
-        lines.append("未发现需要修复的配置。")
-    else:
-        for issue in report.issues[:20]:
-            status = "fixed" if issue.fixed else "warn"
-            lines.append(f"- [{status}] {issue.path}: {issue.message}")
-        if len(report.issues) > 20:
-            lines.append(f"- ... 另有 {len(report.issues) - 20} 项")
-
-    message = "\n".join(lines)
-    return CommandResult(
-        success=report.problem_count == 0 or not should_fix,
-        message=message,
-        display_type="list",
-        payload=report.to_dict(),
-        actions=[CommandAction(type="copy", label="复制报告", value=message)],
-        error="" if report.problem_count == 0 else "存在未自动修复的问题",
-    )
-
-
-def cmd_god(context: CommandContext) -> CommandResult:
-    import subprocess
-
-    god_mode_guid = "shell:::{ED7BA470-8E54-465E-825C-99712043E01C}"
-    try:
-        os.startfile(god_mode_guid)
-        return CommandResult(success=True, message="已成功打开 Windows 上帝模式 (God Mode) 文件夹。")
-    except Exception:
-        try:
-            subprocess.Popen(["explorer.exe", god_mode_guid])
-            return CommandResult(success=True, message="已成功打开 Windows 上帝模式 (God Mode) 文件夹。")
-        except Exception as e:
-            return CommandResult(success=False, message=f"打开上帝模式失败: {e}", error="打开失败")
 
 
 def cmd_explorer(context: CommandContext) -> CommandResult:
@@ -1860,4 +1393,112 @@ def cmd_conflict(context: CommandContext) -> CommandResult:
     report_msg = "\n".join(lines).strip()
     return CommandResult(
         success=True, message=report_msg, actions=[CommandAction(type="copy", label="复制报告", value=report_msg)]
+    )
+
+
+# ---------------------------------------------------------------------------
+# ── /selected ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+
+def cmd_selected(context: CommandContext) -> CommandResult:
+    """Display selected text information."""
+    selected = (context.selected_text or "").strip()
+    method = (context.selected_text_method or "").strip()
+
+    if not selected:
+        # Try reading directly
+        try:
+            from .selected_text_service import selected_text_service
+
+            result = selected_text_service.get_selected_text(allow_clipboard_fallback=True)
+            if result.success and result.text:
+                selected = result.text
+                method = result.method
+        except Exception:
+            pass
+
+    if not selected:
+        return CommandResult(
+            success=False,
+            message="未检测到选中文字",
+            display_type="text",
+            actions=[CommandAction(type="copy", label="复制选中文字", value=selected)],
+            error="empty",
+        )
+
+    lines = [
+        f"选中文字: {selected[:200]}",
+        f"读取方式: {method or 'unknown'}",
+    ]
+    if len(selected) > 200:
+        lines.append(f"(共 {len(selected)} 字，仅显示前 200 字)")
+
+    return CommandResult(
+        success=True,
+        message="\n".join(lines),
+        display_type="text",
+        actions=[
+            CommandAction(type="copy", label="复制选中文字", value=selected),
+            CommandAction(type="copy", label="复制选中文字(URL编码)", value=urllib.parse.quote(selected)),
+        ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# ── /clip ─────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+
+def cmd_clip(context: CommandContext) -> CommandResult:
+    """Display clipboard information and classification."""
+    clipboard_text = (context.clipboard_text or "").strip()
+    clipboard_kind = (context.clipboard_kind or "").strip()
+
+    if not clipboard_text and not clipboard_kind:
+        try:
+            from .clipboard_service import clipboard_service
+            from .clipboard_classifiers import classify_clipboard
+
+            snapshot = clipboard_service.read_snapshot()
+            if snapshot.text:
+                clipboard_text = snapshot.text
+            classification = classify_clipboard(snapshot)
+            clipboard_kind = classification.kind
+        except Exception:
+            pass
+
+    if not clipboard_text:
+        return CommandResult(
+            success=False,
+            message="剪贴板为空",
+            error="empty",
+        )
+
+    lines = [f"类型: {clipboard_kind or 'text'}"]
+
+    if clipboard_kind == "file_list":
+        try:
+            files = context.clipboard_files or []
+            if files:
+                lines.append(f"文件: {len(files)} 个")
+                for f in files[:5]:
+                    lines.append(f"  {f}")
+                if len(files) > 5:
+                    lines.append(f"  ... 还有 {len(files) - 5} 个文件")
+        except Exception:
+            lines.append(f"内容: {clipboard_text[:200]}")
+    else:
+        lines.append(f"内容: {clipboard_text[:200]}")
+
+    if len(clipboard_text) > 200:
+        lines.append(f"(共 {len(clipboard_text)} 字，仅显示前 200 字)")
+
+    return CommandResult(
+        success=True,
+        message="\n".join(lines),
+        display_type="text",
+        actions=[
+            CommandAction(type="copy", label="复制内容", value=clipboard_text),
+        ],
     )

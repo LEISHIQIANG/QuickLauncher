@@ -4,8 +4,10 @@ C++ DLL钩子的Python封装
 """
 
 import ctypes
+import hashlib
 import logging
 import os
+from datetime import datetime
 from typing import Callable, Optional
 
 # 回调函数类型
@@ -157,8 +159,14 @@ class HooksDLL:
         compatible = bool(self.loaded and not self.missing_exports)
         version_ok = self.version is None or self.version >= self.EXPECTED_VERSION
         summary = "hooks.dll 可用" if compatible and version_ok else "hooks.dll 需要更新或不可用"
+        file_info = _dll_file_info(self.dll_path)
         return {
             "path": self.dll_path,
+            "path_resolved": file_info["path_resolved"],
+            "exists": file_info["exists"],
+            "size_bytes": file_info["size_bytes"],
+            "mtime": file_info["mtime"],
+            "sha256": file_info["sha256"],
             "loaded": self.loaded,
             "compatible": compatible and version_ok,
             "version": self.version,
@@ -283,3 +291,30 @@ class HooksDLL:
         """清除特殊应用列表"""
         if self._ready() and self._has_special_apps:
             self.dll.ClearSpecialApps()
+
+
+def _dll_file_info(path: str) -> dict:
+    info = {
+        "path_resolved": "",
+        "exists": False,
+        "size_bytes": 0,
+        "mtime": "",
+        "sha256": "",
+    }
+    try:
+        resolved = os.path.abspath(path or "")
+        info["path_resolved"] = resolved
+        if not os.path.isfile(resolved):
+            return info
+        stat = os.stat(resolved)
+        info["exists"] = True
+        info["size_bytes"] = int(stat.st_size)
+        info["mtime"] = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
+        digest = hashlib.sha256()
+        with open(resolved, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        info["sha256"] = digest.hexdigest()
+    except Exception as exc:
+        logger.debug("hooks.dll file diagnostics failed: %s", exc)
+    return info

@@ -48,6 +48,13 @@ from ui.styles.style import PopupMenu, get_dialog_stylesheet
 from ui.styles.themed_messagebox import ThemedMessageBox
 
 from .base_dialog import BaseDialog
+from .folder_panel_helpers import (
+    decode_mime_text,
+    is_auto_sync_folder_locked,
+    move_folder_id_to_target,
+    shortcut_ids_from_mime,
+    should_copy_shortcut_drop,
+)
 
 
 class FolderItemDelegate(QStyledItemDelegate):
@@ -866,7 +873,7 @@ class FolderPanel(QWidget):
                 source_folder_id = event.mimeData().data("application/x-source-folder-id").data().decode()
                 source_folder = self.data_manager.data.get_folder_by_id(source_folder_id)
 
-                if source_folder and source_folder.linked_path and source_folder.auto_sync:
+                if is_auto_sync_folder_locked(source_folder):
                     while QApplication.overrideCursor():
                         QApplication.restoreOverrideCursor()
                     QApplication.setOverrideCursor(Qt.ForbiddenCursor)
@@ -877,7 +884,7 @@ class FolderPanel(QWidget):
                 folder_id = item.data(QtCompat.UserRole)
                 folder = self.data_manager.data.get_folder_by_id(folder_id)
 
-                if folder and folder.linked_path and folder.auto_sync:
+                if is_auto_sync_folder_locked(folder):
                     while QApplication.overrideCursor():
                         QApplication.restoreOverrideCursor()
                     QApplication.setOverrideCursor(Qt.ForbiddenCursor)
@@ -970,41 +977,11 @@ class FolderPanel(QWidget):
 
     @staticmethod
     def _decode_mime_text(mime_data, fmt: str) -> str:
-        try:
-            payload = mime_data.data(fmt)
-            if hasattr(payload, "data"):
-                payload = payload.data()
-            return bytes(payload).decode("utf-8", errors="ignore")
-        except Exception:
-            return ""
+        return decode_mime_text(mime_data, fmt)
 
     @classmethod
     def _shortcut_ids_from_mime(cls, mime_data) -> list[str]:
-        raw_ids = ""
-        try:
-            if mime_data.hasFormat("application/x-shortcut-ids"):
-                raw_ids = cls._decode_mime_text(mime_data, "application/x-shortcut-ids")
-        except Exception:
-            raw_ids = ""
-
-        ids = [sid.strip() for sid in raw_ids.splitlines() if sid.strip()]
-        if not ids:
-            try:
-                if mime_data.hasFormat("application/x-shortcut-id"):
-                    single_id = cls._decode_mime_text(mime_data, "application/x-shortcut-id").strip()
-                    if single_id:
-                        ids = [single_id]
-            except Exception:
-                ids = []
-
-        deduped = []
-        seen = set()
-        for shortcut_id in ids:
-            if shortcut_id in seen:
-                continue
-            seen.add(shortcut_id)
-            deduped.append(shortcut_id)
-        return deduped
+        return shortcut_ids_from_mime(mime_data)
 
     def _list_drop_event(self, event):
         """处理放下事件"""
@@ -1086,27 +1063,28 @@ class FolderPanel(QWidget):
             target_folder_id = target_item.data(QtCompat.UserRole)
             folder = self.data_manager.data.get_folder_by_id(target_folder_id)
 
-            if folder and folder.linked_path and folder.auto_sync:
+            if is_auto_sync_folder_locked(folder):
                 event.ignore()
                 return
 
             if event.mimeData().hasFormat("application/x-source-folder-id"):
                 source_folder_id = self._decode_mime_text(event.mimeData(), "application/x-source-folder-id").strip()
                 source_folder = self.data_manager.data.get_folder_by_id(source_folder_id)
-                if source_folder and source_folder.linked_path and source_folder.auto_sync:
+                if is_auto_sync_folder_locked(source_folder):
                     event.ignore()
                     return
+            else:
+                source_folder = None
 
             shortcut_ids = self._shortcut_ids_from_mime(event.mimeData())
             if not shortcut_ids:
                 event.ignore()
                 return
 
-            copy_drag = bool(getattr(folder, "is_icon_repo", False))
             if event.mimeData().hasFormat("application/x-source-folder-id"):
                 source_folder_id = self._decode_mime_text(event.mimeData(), "application/x-source-folder-id").strip()
                 source_folder = self.data_manager.data.get_folder_by_id(source_folder_id)
-                copy_drag = copy_drag or bool(getattr(source_folder, "is_icon_repo", False))
+            copy_drag = should_copy_shortcut_drop(folder, source_folder)
 
             if copy_drag:
                 result = self.data_manager.copy_shortcuts_batch(shortcut_ids, target_folder_id)
@@ -1434,26 +1412,12 @@ class FolderPanel(QWidget):
 
     def _handle_folder_reorder(self, source_id: str, target_id: str):
         """处理文件夹重新排序（参考图标排列逻辑）"""
-        # 获取所有文件夹ID（从数据管理器，不是UI列表）
         all_folder_ids = [f.id for f in self.data_manager.data.folders]
-
-        source_index = -1
-        target_index = -1
-
-        for i, fid in enumerate(all_folder_ids):
-            if fid == source_id:
-                source_index = i
-            if fid == target_id:
-                target_index = i
-
-        if source_index < 0 or target_index < 0 or source_index == target_index:
+        reordered_ids = move_folder_id_to_target(all_folder_ids, source_id, target_id)
+        if not reordered_ids:
             return
 
-        # 移除源位置，插入到目标位置
-        all_folder_ids.pop(source_index)
-        all_folder_ids.insert(target_index, source_id)
-
-        self.data_manager.reorder_folders(all_folder_ids)
+        self.data_manager.reorder_folders(reordered_ids)
 
         # 保存当前选中的文件夹ID
         current_selected_id = source_id

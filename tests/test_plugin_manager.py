@@ -653,6 +653,29 @@ class TestPluginAPI:
         assert api.commit_staged() is True
         assert reg.get("my_plugin.panel").result_window_size == "large"
 
+    def test_register_command_metadata(self):
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+        ok = api.register_command(
+            id="my_plugin.clean",
+            title="Clean",
+            aliases=[],
+            description="",
+            category="maintenance",
+            handler=lambda ctx: CommandResult(success=True),
+            risk_level="medium",
+            uses_network=True,
+            modifies_system=True,
+        )
+
+        assert ok is True
+        assert api.commit_staged() is True
+        metadata = reg.get("my_plugin.clean").metadata
+        assert metadata.category == "maintenance"
+        assert metadata.risk_level == "medium"
+        assert metadata.uses_network is True
+        assert metadata.modifies_system is True
+
     def test_register_command_params(self):
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)

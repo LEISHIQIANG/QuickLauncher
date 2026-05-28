@@ -76,6 +76,7 @@ class LauncherPopup(
     # 启动错误信号 (name, error_msg)
     execution_error = pyqtSignal(str, str)
     command_panel_result_ready = pyqtSignal(object, str, str)
+    plugin_search_results_ready = pyqtSignal(int, str, object)
 
     # 全局背景缓存 (path, blur, width, height) -> QPixmap
     # 使用 OrderedDict 实现 LRU 缓存，限制大小防止内存泄漏
@@ -108,11 +109,14 @@ class LauncherPopup(
         # 保存 TrayApp 引用
         self._drag_drop_compat_applied = False
         self.tray_app = tray_app
+        self._lifecycle_generation = 0
+        self._closing = False
 
         # 连接信号
         self.bg_loaded_signal.connect(self._on_bg_loaded)
         self.execution_error.connect(self._on_execution_error)
         self.command_panel_result_ready.connect(self._on_command_panel_result_ready)
+        self.plugin_search_results_ready.connect(self._on_plugin_search_results_ready)
         self.folder_sync_finished.connect(self._on_folder_sync_finished)
         self._is_loading_bg = False
         self._pending_bg_params = None
@@ -290,6 +294,7 @@ class LauncherPopup(
         self.search_query = ""
         self.search_results = []
         self.search_selected_index = -1
+        self._plugin_search_seq = 0
         self.search_cursor_pos = 0
         self.search_selection_anchor = None
         self._search_preedit_text = ""
@@ -330,6 +335,50 @@ class LauncherPopup(
 
     revealProgress = pyqtProperty(float, getRevealProgress, setRevealProgress)
 
+    def _next_lifecycle_generation(self) -> int:
+        self._lifecycle_generation = int(getattr(self, "_lifecycle_generation", 0) or 0) + 1
+        return self._lifecycle_generation
+
+    def _run_if_lifecycle_current(self, generation: int, callback, *args) -> bool:
+        if generation != int(getattr(self, "_lifecycle_generation", -1) or -1):
+            return False
+        if bool(getattr(self, "_closing", False)):
+            return False
+        try:
+            callback(*args)
+            return True
+        except Exception as exc:
+            logger.debug("discarded popup lifecycle callback failed: %s", exc)
+            return False
+
+    def _defer_lifecycle_callback(self, delay_ms: int, callback, *args, generation: int | None = None) -> None:
+        token = int(self._lifecycle_generation if generation is None else generation)
+        QTimer.singleShot(
+            int(delay_ms),
+            lambda token=token, callback=callback, args=args: self._run_if_lifecycle_current(token, callback, *args),
+        )
+
+    def _stop_lifecycle_timers(self) -> None:
+        for timer_name in (
+            "_auto_close_timer",
+            "_indicator_timer",
+            "_search_cursor_timer",
+            "_search_anim_timer",
+            "_preload_batch_timer",
+            "_bg_load_timer",
+        ):
+            timer = self.__dict__.get(timer_name)
+            if timer is None:
+                continue
+            try:
+                timer.stop()
+            except Exception:
+                pass
+
+    def _start_auto_close_timer_if_visible(self) -> None:
+        if self.isVisible() and not self._auto_close_timer.isActive():
+            self._auto_close_timer.start()
+
     def prepare_show_animation_state(self):
         """Set a deterministic hidden animation state before the native window is shown."""
         self._is_hiding = False
@@ -364,27 +413,22 @@ class LauncherPopup(
         super().show()
 
     def showEvent(self, event):
+        self._closing = False
+        generation = self._next_lifecycle_generation()
         # 停止隐藏动画和重置状态
         self._is_hiding = False
         if hasattr(self, "hide_anim_group"):
             self.hide_anim_group.stop()
         if not self._drag_drop_compat_applied:
             self._drag_drop_compat_applied = True
-            QTimer.singleShot(0, lambda: allow_drag_drop_for_widget(self))
+            self._defer_lifecycle_callback(0, allow_drag_drop_for_widget, self, generation=generation)
 
         try:
             # 延迟启动，避免弹窗刚显示时鼠标尚未进入窗口就触发关闭
             if not self._auto_close_timer.isActive():
-                QTimer.singleShot(
-                    300,
-                    lambda: (
-                        self._auto_close_timer.start()
-                        if self.isVisible() and not self._auto_close_timer.isActive()
-                        else None
-                    ),
-                )
+                self._defer_lifecycle_callback(300, self._start_auto_close_timer_if_visible, generation=generation)
             # 延迟应用窗口特效，确保窗口尺寸和DPI已稳定
-            QTimer.singleShot(50, self._update_window_effect)
+            self._defer_lifecycle_callback(50, self._update_window_effect, generation=generation)
         except Exception:
             pass
 
@@ -396,13 +440,13 @@ class LauncherPopup(
         # 在这里延迟释放，避免影响后续图标点击时的快捷键执行
         try:
             if HAS_EXECUTOR:
-                QTimer.singleShot(50, self._release_residual_modifiers)
+                self._defer_lifecycle_callback(50, self._release_residual_modifiers, generation=generation)
         except Exception:
             pass
         # ===== 修复结束 =====
 
         # 延迟预热所有页面的动画缓存，确保后续翻页动画图标正常显示
-        QTimer.singleShot(200, self._preload_animation_pages)
+        self._defer_lifecycle_callback(200, self._preload_animation_pages, generation=generation)
 
         super().showEvent(event)
 
@@ -478,9 +522,11 @@ class LauncherPopup(
         super().hide()
 
     def hideEvent(self, event):
+        self._next_lifecycle_generation()
         overlay = getattr(self, "_icon_flash_overlay", None)
         if overlay is not None:
             overlay.stop()
+        self._stop_lifecycle_timers()
         try:
             self._reset_search_state()
         except Exception:
@@ -507,6 +553,12 @@ class LauncherPopup(
         # ===== 修复结束 =====
 
         super().hideEvent(event)
+
+    def closeEvent(self, event):
+        self._closing = True
+        self._next_lifecycle_generation()
+        self._stop_lifecycle_timers()
+        super().closeEvent(event)
 
     def _restore_focus_safe(self):
         """安全地恢复之前的前台窗口焦点"""
