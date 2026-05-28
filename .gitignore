@@ -49,6 +49,7 @@ Thumbs.db
 
 # 测试和覆盖率
 .pytest_cache/
+.playwright-mcp/
 .coverage
 htmlcov/
 coverage.xml
@@ -66,9 +67,7 @@ bandit-report.json
 # 不需要上传的文件
 config/
 dist/
-docs/*
-!docs/maintenance/
-!docs/maintenance/**
+docs/
 docs/_drafts/
 temp_icons/
 icons/
