@@ -725,7 +725,6 @@ def test_frozen_silent_python_without_launcher_does_not_fall_back_to_inline(monk
 
 
 def test_python_silent_uses_stdin_in_elevated_context(monkeypatch):
-    captured = {}
     thread_target = []
 
     class FakeExecutor(command_exec.CommandExecutionMixin):
