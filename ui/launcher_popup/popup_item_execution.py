@@ -274,6 +274,38 @@ class PopupItemExecutionMixin:
                 except Exception:
                     logger.exception("Command panel handoff failed; falling back to worker execution")
 
+        # 在 UI 线程预检查破坏性命令（避免确认流程导致面板被打开）
+        if (
+            HAS_EXECUTOR
+            and ShortcutExecutor
+            and item.type == ShortcutType.COMMAND
+            and not bool(getattr(item, "capture_output", False))
+        ):
+            try:
+                risks = ShortcutExecutor.command_requires_confirmation(item)
+                if risks:
+                    from ui.styles.themed_messagebox import ThemedMessageBox
+
+                    risk_lines = "\n".join(f"- {risk.get('message') or risk.get('code')}" for risk in risks)
+                    command_text = str(getattr(item, "command", "") or "").strip()
+                    message = (
+                        "该命令包含不可逆或强破坏性操作，确认后执行。\n\n"
+                        f"{risk_lines}\n\n"
+                        f"命令: {command_text}"
+                    )
+                    reply = ThemedMessageBox.question(
+                        self,
+                        "确认危险命令",
+                        message,
+                        ThemedMessageBox.Yes | ThemedMessageBox.No,
+                    )
+                    if reply != ThemedMessageBox.Yes:
+                        self._executing = False
+                        return
+                    ShortcutExecutor.mark_command_confirmed(item)
+            except Exception:
+                logger.debug("破坏性命令预检查失败", exc_info=True)
+
         # 使用线程执行，避免阻塞 UI
         def do_execute_thread():
             try:

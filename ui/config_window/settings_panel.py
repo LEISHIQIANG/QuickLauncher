@@ -122,7 +122,7 @@ class CompactProgressDialog(QDialog):
         self.msg_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignTop)
         self.msg_label.setStyleSheet(
             f"font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; "
-            f"font-size: 11px; line-height: 1.4; padding-left: 32px; "
+            f"font-size: 11px; line-height: 1.4; "
             f"background: transparent; color: {self.text_color};"
         )
         main_layout.addWidget(self.msg_label)

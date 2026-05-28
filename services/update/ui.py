@@ -264,7 +264,7 @@ class UpdateDialog:
 
         version_html = (
             f"<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; "
-            f'color: {secondary_color}; padding-left: 32px; margin-bottom: 4px;">'
+            f'color: {secondary_color}; margin-bottom: 4px;">'
             f'<span style="display:inline-block;background:{badge_bg};color:{badge_color};'
             f'padding:2px 8px;border-radius:4px;font-weight:400;border:1px solid {badge_border};">'
             f"v{update_info.version}</span>"
