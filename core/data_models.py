@@ -17,6 +17,7 @@ from .runtime_constants import (
     normalize_command_timeout_seconds,
 )
 
+
 class ShortcutType(Enum):
     """快捷方式类型"""
 
