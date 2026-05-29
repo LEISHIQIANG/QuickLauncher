@@ -8,6 +8,86 @@ import time
 
 logger = logging.getLogger(__name__)
 
+_COMMAND_PANEL_WINDOW_TITLES = ("命令面板", "Command Panel")
+
+
+def _root_hwnd(user32, hwnd: int) -> int:
+    try:
+        hwnd = int(hwnd or 0)
+        if not hwnd:
+            return 0
+        return int(user32.GetAncestor(hwnd, 2) or hwnd)  # GA_ROOT
+    except Exception:
+        return int(hwnd or 0)
+
+
+def _window_pid(user32, hwnd: int) -> int:
+    try:
+        from ctypes import wintypes
+
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(int(hwnd or 0), ctypes.byref(pid))
+        return int(pid.value)
+    except Exception:
+        return 0
+
+
+def _window_title(user32, hwnd: int) -> str:
+    try:
+        title_buf = ctypes.create_unicode_buffer(192)
+        user32.GetWindowTextW(int(hwnd or 0), title_buf, len(title_buf))
+        return title_buf.value or ""
+    except Exception:
+        return ""
+
+
+def _window_from_point(user32, x: int, y: int) -> int:
+    try:
+        from ctypes import wintypes
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+        return int(user32.WindowFromPoint(POINT(int(x), int(y))) or 0)
+    except Exception:
+        return 0
+
+
+def _own_command_panel_context_reason(x: int, y: int, command_panel_hwnd: int = 0) -> str:
+    """
+    Detect middle-click hook callbacks that originate from the independent
+    command panel. Packaged builds can report a transient middle-button event
+    while the frameless command panel is being dragged across monitors; handling
+    that callback would briefly summon the launcher popup.
+    """
+    try:
+        import os
+
+        user32 = ctypes.windll.user32
+        own_pid = os.getpid()
+        target_root = _root_hwnd(user32, int(command_panel_hwnd or 0))
+        if target_root and _window_pid(user32, target_root) != own_pid:
+            target_root = 0
+
+        candidates = (
+            ("foreground", int(user32.GetForegroundWindow() or 0)),
+            ("cursor", _window_from_point(user32, x, y)),
+        )
+        for label, hwnd in candidates:
+            root = _root_hwnd(user32, hwnd)
+            if not root:
+                continue
+            if target_root and root == target_root:
+                return f"command_panel_{label}"
+            if _window_pid(user32, root) != own_pid:
+                continue
+            title = _window_title(user32, root)
+            if any(marker in title for marker in _COMMAND_PANEL_WINDOW_TITLES):
+                return f"command_panel_title_{label}"
+    except Exception:
+        pass
+    return ""
+
 
 def _describe_window_at_point(x: int, y: int) -> str:
     try:
@@ -81,6 +161,15 @@ class PopupMixin:
             pass
 
         logger.info("HOOK_CALLBACK_DETAIL pos=(%s,%s)", x, y)
+        command_panel_reason = _own_command_panel_context_reason(
+            x,
+            y,
+            getattr(self, "_command_panel_hwnd", 0),
+        )
+        if command_panel_reason:
+            logger.info("HOOK_CALLBACK_IGNORED %s pos=(%s,%s)", command_panel_reason, x, y)
+            return
+
         if _is_own_native_dialog_foreground():
             logger.info("HOOK_CALLBACK_IGNORED own_native_dialog pos=(%s,%s)", x, y)
             return

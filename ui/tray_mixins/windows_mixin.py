@@ -280,6 +280,7 @@ class WindowsMixin:
 
             try:
                 hwnd = int(self.command_panel_window.winId())
+                self._command_panel_hwnd = hwnd
                 from ui.utils.window_effect import force_activate_window
 
                 force_activate_window(hwnd)
@@ -291,6 +292,10 @@ class WindowsMixin:
 
             self.command_panel_window = CommandPanelWindow(self.data_manager, self.command_result_store)
             self.command_panel_window.show()
+            try:
+                self._command_panel_hwnd = int(self.command_panel_window.winId())
+            except Exception:
+                pass
             return True
         except Exception as e:
             logger.error("显示命令面板失败: %s", e, exc_info=True)
