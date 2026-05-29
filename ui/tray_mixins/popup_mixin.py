@@ -69,9 +69,7 @@ def _own_command_panel_context_reason(x: int, y: int, command_panel_hwnd: int = 
         if target_root and _window_pid(user32, target_root) != own_pid:
             target_root = 0
 
-        candidates = (
-            ("cursor", _window_from_point(user32, x, y)),
-        )
+        candidates = (("cursor", _window_from_point(user32, x, y)),)
         for label, hwnd in candidates:
             root = _root_hwnd(user32, hwnd)
             if not root:
