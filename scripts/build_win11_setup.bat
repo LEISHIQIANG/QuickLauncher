@@ -86,9 +86,9 @@ REM ====================
 REM 1. Check Python 3.10+ (recommended)
 echo [0/4] Stopping any running QuickLauncher process...
 taskkill /IM QuickLauncher.exe /T /F >nul 2>&1
-timeout /t 3 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Seconds 3" >nul 2>&1
 taskkill /IM QuickLauncher.exe /F >nul 2>&1
-timeout /t 2 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
 tasklist /FI "IMAGENAME eq QuickLauncher.exe" 2>nul | find /I "QuickLauncher.exe" >nul
 if not errorlevel 1 (
     echo   [!] QuickLauncher.exe is still running. Please close it manually and retry.
@@ -167,6 +167,15 @@ echo   [!] This may take several minutes, please wait...
 REM Clean all caches (ensure latest code is used)
 echo   Cleaning all build caches...
 if exist "dist\QuickLauncher" rmdir /s /q "dist\QuickLauncher"
+if exist "dist\QuickLauncher" (
+    attrib -R "dist\QuickLauncher\*" /S /D >nul 2>&1
+    rmdir /s /q "dist\QuickLauncher" >nul 2>&1
+)
+if exist "dist\QuickLauncher" (
+    echo   [X] Failed to remove old dist\QuickLauncher. Close Explorer/antivirus handles and retry.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
 if exist "dist\main.dist" rmdir /s /q "dist\main.dist"
 if exist "dist\main.build" rmdir /s /q "dist\main.build"
 if exist "obfuscated_src" rmdir /s /q "obfuscated_src"
@@ -422,9 +431,27 @@ if exist "lib\test" rmdir /s /q lib\test 2>nul
 if exist "lib\unittest" rmdir /s /q lib\unittest 2>nul
 
 cd ..\..
+cd /d "%~dp0.."
 
-REM Rename output folder
-ren "dist\main.dist" "QuickLauncher"
+REM Stage output folder. Copy instead of rename because Nuitka/Defender can
+REM briefly keep handles under main.dist, which makes directory rename fail.
+set "QL_STAGE_OK="
+for /L %%R in (1,1,10) do (
+    if not defined QL_STAGE_OK (
+        if exist "dist\QuickLauncher" rmdir /s /q "dist\QuickLauncher" >nul 2>&1
+        robocopy "dist\main.dist" "dist\QuickLauncher" /MIR /NFL /NDL /NJH /NJS /NP >nul
+        if exist "dist\QuickLauncher\QuickLauncher.exe" (
+            if !ERRORLEVEL! LSS 8 set "QL_STAGE_OK=1"
+        )
+        if not defined QL_STAGE_OK powershell -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
+    )
+)
+if not defined QL_STAGE_OK (
+    echo   [X] Failed to stage dist\main.dist into dist\QuickLauncher.
+    echo   [X] A file lock or stale dist\QuickLauncher directory is blocking the build.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
 
 REM UPX compression. Disabled by default because UPX decompression can make the
 REM first visible Qt/DWM frame noticeably worse in the packaged build.
