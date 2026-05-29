@@ -762,6 +762,7 @@ class CommandExecutionMixin:
                 stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL,
                 shell=False,
+                **ShortcutExecutor._capture_popen_platform_kwargs(),
             )
 
             timed_out = False
@@ -932,6 +933,26 @@ class CommandExecutionMixin:
         except Exception as e:
             logger.debug(f"静默执行失败: {e}")
             return ""
+
+    @staticmethod
+    def _capture_popen_platform_kwargs() -> dict:
+        """Windows GUI builds need explicit no-window flags for captured console commands."""
+        if os.name != "nt":
+            return {}
+
+        kwargs = {}
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            kwargs["startupinfo"] = startupinfo
+        except Exception:
+            pass
+
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if creationflags:
+            kwargs["creationflags"] = creationflags
+        return kwargs
 
     @staticmethod
     def _execute_command(shortcut: ShortcutItem) -> tuple[bool, str]:
@@ -1709,6 +1730,7 @@ class CommandExecutionMixin:
                     stderr=subprocess.PIPE,
                     text=False,
                     shell=shell,
+                    **ShortcutExecutor._capture_popen_platform_kwargs(),
                 )
             except OSError as exc:
                 if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):

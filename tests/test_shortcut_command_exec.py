@@ -989,6 +989,40 @@ def test_run_command_capture_cmd_stdout_stderr_and_exit(monkeypatch):
     assert captured["kwargs"]["shell"] is False
 
 
+def test_run_command_capture_cmd_hides_console_on_windows(monkeypatch):
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return b"out", b""
+
+    captured = {}
+    no_window = 0x08000000
+
+    def fake_popen(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(command_exec.os, "name", "nt", raising=False)
+    monkeypatch.setattr(command_exec.subprocess, "CREATE_NO_WINDOW", no_window, raising=False)
+    monkeypatch.setattr(command_exec.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_cmd_launcher", staticmethod(lambda: "cmd.exe"))
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "curl ipinfo.io"
+    item.capture_output = True
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is True
+    assert captured["args"][0] == ["cmd.exe", "/d", "/s", "/c", "curl ipinfo.io"]
+    assert captured["kwargs"]["creationflags"] & no_window
+    assert captured["kwargs"]["shell"] is False
+
+
 def test_run_command_capture_cmd_multiline_uses_stdin_without_wrapper(monkeypatch):
     class FakeProcess:
         returncode = 0
