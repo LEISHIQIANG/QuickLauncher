@@ -42,7 +42,7 @@ def _patch_user32(monkeypatch, fake_user32):
 
 def test_command_panel_hook_context_matches_recorded_hwnd(monkeypatch):
     fake_user32 = _FakeUser32(
-        foreground=101,
+        cursor=101,
         roots={101: 100, 123: 100},
         pids={100: 42},
     )
@@ -50,7 +50,21 @@ def test_command_panel_hook_context_matches_recorded_hwnd(monkeypatch):
 
     reason = popup_mixin._own_command_panel_context_reason(10, 20, command_panel_hwnd=123)
 
-    assert reason == "command_panel_foreground"
+    assert reason == "command_panel_cursor"
+
+
+def test_command_panel_hook_context_ignores_foreground_only(monkeypatch):
+    fake_user32 = _FakeUser32(
+        foreground=101,
+        cursor=500,
+        roots={101: 100, 123: 100},
+        pids={100: 42, 500: 99},
+    )
+    _patch_user32(monkeypatch, fake_user32)
+
+    reason = popup_mixin._own_command_panel_context_reason(10, 20, command_panel_hwnd=123)
+
+    assert reason == ""
 
 
 def test_command_panel_hook_context_falls_back_to_own_window_title(monkeypatch):
