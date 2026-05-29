@@ -49,11 +49,11 @@ def test_win11_build_defaults_to_performance_profile_and_includes_plugins():
     assert "--include-data-files=PLUGIN_DEV.md=PLUGIN_DEV.md" in script
     assert 'xcopy "plugins" "dist\\QuickLauncher\\plugins\\" /E /I /Y' in script
     assert 'copy /Y "PLUGIN_DEV.md" "dist\\QuickLauncher\\"' in script
-    assert 'Failed to remove old dist\\QuickLauncher' in script
+    assert "Failed to remove old dist\\QuickLauncher" in script
     assert 'robocopy "dist\\main.dist" "dist\\QuickLauncher" /MIR' in script
-    assert 'Start-Sleep -Seconds 2' in script
+    assert "Start-Sleep -Seconds 2" in script
     assert 'cd /d "%~dp0.."' in script
-    assert 'Failed to stage dist\\main.dist into dist\\QuickLauncher' in script
+    assert "Failed to stage dist\\main.dist into dist\\QuickLauncher" in script
     assert 'if exist "dist\\QuickLauncher\\QuickLauncher.exe"' in script
     assert 'if not defined QL_UPX_EXE set "QL_UPX_EXE=0"' in script
     assert 'if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"' in script
