@@ -18,11 +18,7 @@ set "APP_PUBLISHER=Layton"
 set "DEFAULT_APP_VERSION=1.6.1.0"
 for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
 for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
-set "APP_VERSION="
-if not defined QL_LOGGING (
-    set /p APP_VERSION=Enter version [%DEFAULT_APP_VERSION%]:
-)
-if not defined APP_VERSION set "APP_VERSION=%DEFAULT_APP_VERSION%"
+set "APP_VERSION=%DEFAULT_APP_VERSION%"
 
 REM === 打包日志：交互输入完成后，用 PowerShell Tee-Object 记录后续所有输出 ===
 REM 第二次进入（QL_LOGGING=1）时跳过，直接执行构建

@@ -22,7 +22,13 @@ try:
     from pynput.keyboard import Key
 
     HAS_PYNPUT = True
-    keyboard = KeyboardController()
+    _keyboard = None
+
+    def keyboard():
+        global _keyboard
+        if _keyboard is None:
+            _keyboard = KeyboardController()
+        return _keyboard
 except ImportError:
     Key = None
     HAS_PYNPUT = False
@@ -681,26 +687,26 @@ class HotkeyExecutionMixin:
 
             # 按下所有修饰键
             for mk in mod_keys:
-                keyboard.press(mk)
+                keyboard().press(mk)
                 pressed_keys.append(mk)
                 time.sleep(0.01)
 
             # 按下主键
             time.sleep(0.01)
-            keyboard.press(main_key)
+            keyboard().press(main_key)
             pressed_keys.append(main_key)
 
             # 保持按键状态，让目标程序有足够时间识别
             time.sleep(0.08)
 
             # 立即释放主键
-            keyboard.release(main_key)
+            keyboard().release(main_key)
             pressed_keys.remove(main_key)
             time.sleep(0.01)
 
             # 立即释放所有修饰键（逆序）
             for mk in reversed(mod_keys):
-                keyboard.release(mk)
+                keyboard().release(mk)
                 pressed_keys.remove(mk)
                 time.sleep(0.01)
 
@@ -722,7 +728,7 @@ class HotkeyExecutionMixin:
             # 只在异常时才清理残留按键
             for k in reversed(pressed_keys):
                 try:
-                    keyboard.release(k)
+                    keyboard().release(k)
                 except Exception:
                     pass
             return False
