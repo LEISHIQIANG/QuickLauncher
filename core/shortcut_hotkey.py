@@ -19,6 +19,7 @@ from .shortcut_types import (
 
 _pynput_Key = None
 _pynput_KeyboardController = None
+_keyboard_instance = None
 HAS_PYNPUT = False
 
 
@@ -44,14 +45,10 @@ def Key():
 
 
 def keyboard():
+    global _keyboard_instance
     _import_pynput()
     if _pynput_KeyboardController is None:
         return None
-    global _keyboard_instance
-    try:
-        _keyboard_instance
-    except NameError:
-        _keyboard_instance = None
     if _keyboard_instance is None:
         _keyboard_instance = _pynput_KeyboardController()
     return _keyboard_instance
