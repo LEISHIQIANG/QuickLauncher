@@ -354,18 +354,15 @@ class CommandPanelWindow(ThemedToolWindow):
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
         if hasattr(self, "command_input_group"):
-            self.command_input_group.setStyleSheet(
-                f"""
+            self.command_input_group.setStyleSheet(f"""
                 QWidget {{
                     min-height: 28px;
                     border: 1px solid {border};
                     border-radius: 8px;
                     background: {bg};
                 }}
-            """
-            )
-        self.command_input.setStyleSheet(
-            f"""
+            """)
+        self.command_input.setStyleSheet(f"""
             QLineEdit {{
                 min-height: 28px;
                 padding: 0 10px;
@@ -379,11 +376,9 @@ class CommandPanelWindow(ThemedToolWindow):
             QLineEdit::placeholder {{
                 color: {placeholder};
             }}
-        """
-        )
+        """)
         if hasattr(self, "history_toggle_btn"):
-            self.history_toggle_btn.setStyleSheet(
-                f"""
+            self.history_toggle_btn.setStyleSheet(f"""
                 QPushButton {{
                     min-height: 28px;
                     padding: 0;
@@ -409,8 +404,7 @@ class CommandPanelWindow(ThemedToolWindow):
                     color: rgba(128, 128, 128, 0.30);
                     background: transparent;
                 }}
-            """
-            )
+            """)
 
     def _style_status_label(self):
         color = "rgba(255, 255, 255, 0.55)" if self._theme == "dark" else "rgba(60, 60, 67, 0.62)"
@@ -435,8 +429,7 @@ class CommandPanelWindow(ThemedToolWindow):
             header = "rgba(0, 0, 0, 0.04)"
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
-        self.table.setStyleSheet(
-            f"""
+        self.table.setStyleSheet(f"""
             QTableWidget {{
                 background: {bg};
                 border: 1px solid {grid};
@@ -453,8 +446,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-right: 1px solid {grid};
                 padding: 5px;
             }}
-        """
-        )
+        """)
         self.style_scrollbars(self.table)
 
     def _style_progress(self):
@@ -469,8 +461,7 @@ class CommandPanelWindow(ThemedToolWindow):
         label_style = f"font-size: 12px; color: {text}; background: transparent;"
         self.progress_title.setStyleSheet(label_style)
         self.progress_detail.setStyleSheet(label_style)
-        self.progress_bar.setStyleSheet(
-            f"""
+        self.progress_bar.setStyleSheet(f"""
             QProgressBar {{
                 border: none;
                 border-radius: 4px;
@@ -483,8 +474,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-radius: 4px;
                 background: {chunk};
             }}
-        """
-        )
+        """)
 
     def _style_command_suggestions(self):
         return
@@ -1472,7 +1462,9 @@ class CommandPanelWindow(ThemedToolWindow):
                 (
                     "danger"
                     if getattr(action, "danger", False)
-                    else "primary" if getattr(action, "primary", False) else ""
+                    else "primary"
+                    if getattr(action, "primary", False)
+                    else ""
                 ),
             )
             self.style_buttons(btn)
@@ -1504,8 +1496,7 @@ class CommandPanelWindow(ThemedToolWindow):
             bg, hover = danger_bg, danger_hover
         else:
             bg, hover = primary_bg, primary_hover
-        button.setStyleSheet(
-            f"""
+        button.setStyleSheet(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 10px;
@@ -1528,8 +1519,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 background: transparent;
                 border: 1px solid rgba(128, 128, 128, 0.22);
             }}
-        """
-        )
+        """)
 
     def _show_more_actions(self):
         actions = sorted(

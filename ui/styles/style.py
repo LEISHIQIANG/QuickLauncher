@@ -534,11 +534,7 @@ class StyleSheet:
                     background-color: rgba(190, 190, 197, 0.12);
                     color: rgba(235, 235, 245, 0.3);
                 }
-            """.replace(
-                "{selection_bg}", selection_bg
-            ).replace(
-                "{selection_text}", selection_text
-            )
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
         else:
             return """
                 QLineEdit, QTextEdit, QPlainTextEdit {
@@ -560,11 +556,7 @@ class StyleSheet:
                     background-color: #f5f5f7;
                     color: rgba(60, 60, 67, 0.3);
                 }
-            """.replace(
-                "{selection_bg}", selection_bg
-            ).replace(
-                "{selection_text}", selection_text
-            )
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
 
     @staticmethod
     def get_scrollbar_style(theme: str) -> str:
@@ -683,9 +675,7 @@ class StyleSheet:
                     color: {selection_text};
                     border: 1px solid rgba(10, 132, 255, 0.45);
                 }
-            """.replace(
-                    "{selection_bg}", selection_bg
-                )
+            """.replace("{selection_bg}", selection_bg)
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -745,9 +735,7 @@ class StyleSheet:
                     color: {selection_text};
                     border: 1px solid rgba(0, 122, 255, 0.25);
                 }
-            """.replace(
-                    "{selection_bg}", selection_bg
-                )
+            """.replace("{selection_bg}", selection_bg)
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1155,11 +1143,7 @@ class Glassmorphism:
                     background: transparent;
                     border: none;
                 }
-            """.replace(
-                "{selection_bg}", selection_bg
-            ).replace(
-                "{selection_text}", selection_text
-            )
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
         else:
             return """
                 /* Text Inputs */
@@ -1219,11 +1203,7 @@ class Glassmorphism:
                     background: transparent;
                     border: none;
                 }
-            """.replace(
-                "{selection_bg}", selection_bg
-            ).replace(
-                "{selection_text}", selection_text
-            )
+            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
 
     @staticmethod
     def get_neumorphism_groupbox_style(theme: str) -> str:
@@ -1303,9 +1283,7 @@ class Glassmorphism:
                 QListWidget::item:hover:!selected {
                     background: {selection_hover_bg};
                 }
-            """.replace(
-                    "{selection_bg}", selection_bg
-                )
+            """.replace("{selection_bg}", selection_bg)
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1333,9 +1311,7 @@ class Glassmorphism:
                 QListWidget::item:hover:!selected {
                     background: {selection_hover_bg};
                 }
-            """.replace(
-                    "{selection_bg}", selection_bg
-                )
+            """.replace("{selection_bg}", selection_bg)
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1504,11 +1480,7 @@ def get_menu_stylesheet(theme: str) -> str:
                 background-color: rgba(255, 255, 255, 16);
                 margin: 6px 10px;
             }
-        """.replace(
-            "{selection_bg}", selection_bg
-        ).replace(
-            "{selection_text}", selection_text
-        )
+        """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
     else:
         return """
             QMenu {
@@ -1536,11 +1508,7 @@ def get_menu_stylesheet(theme: str) -> str:
                 background-color: rgba(60, 60, 67, 18);
                 margin: 6px 10px;
             }
-        """.replace(
-            "{selection_bg}", selection_bg
-        ).replace(
-            "{selection_text}", selection_text
-        )
+        """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
 
 
 def get_dialog_stylesheet(theme: str) -> str:

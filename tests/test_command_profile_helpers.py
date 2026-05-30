@@ -7,15 +7,13 @@ from ui.config_window.command_profile_helpers import (
 
 
 def test_parse_command_params_text_normalizes_rows():
-    params = parse_command_params_text(
-        """
+    params = parse_command_params_text("""
         # comment
         host,choice,required,prod,prod|stage|
         flag,bool,yes,true,
         ignored,
         path,unknown,false,,
-        """
-    )
+        """)
 
     assert params == [
         {
@@ -54,12 +52,10 @@ def test_parse_command_params_text_normalizes_rows():
 
 
 def test_parse_command_params_text_skips_empty_names_and_supports_chinese_required():
-    params = parse_command_params_text(
-        """
+    params = parse_command_params_text("""
         ,text,true,,
         user,text,必填,guest,
-        """
-    )
+        """)
 
     assert params == [
         {
@@ -91,17 +87,12 @@ def test_format_command_params_round_trips_normalized_shape():
 
 
 def test_parse_and_format_command_env_text():
-    assert (
-        parse_command_env_text(
-            """
+    assert parse_command_env_text("""
         # ignored
         API_KEY = secret
         BAD_LINE
         EMPTY=
-        """
-        )
-        == {"API_KEY": "secret", "EMPTY": ""}
-    )
+        """) == {"API_KEY": "secret", "EMPTY": ""}
     assert format_command_env({"A": 1, " B ": "two", "": "skip", "C": None}) == "A=1\n B =two\nC=None"
     assert format_command_env(["not", "dict"]) == ""
 
