@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .data_models import AppData, AppSettings, ShortcutType
 from .import_security import skip_setting
@@ -72,7 +72,10 @@ def _safe_bool(value, default):
 def _safe_int(key: str, value, default, report: dict | None):
     minimum, maximum = _INT_RANGES[key]
     try:
-        converted = int(value)
+        try:
+            converted = int(value)
+        except ValueError:
+            converted = int(float(value))
     except (TypeError, ValueError):
         skip_setting(report, key, "invalid integer")
         return default

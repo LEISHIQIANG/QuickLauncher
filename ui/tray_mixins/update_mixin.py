@@ -121,9 +121,9 @@ class UpdateMixin:
             expected_hash=update_info.file_hash,
             expected_size=getattr(update_info, "file_size", 0),
             max_bytes=getattr(self._update_checker._config, "max_download_bytes", 0) if self._update_checker else 0,
-            allowed_hosts=getattr(self._update_checker._config, "allowed_download_hosts", None)
-            if self._update_checker
-            else None,
+            allowed_hosts=(
+                getattr(self._update_checker._config, "allowed_download_hosts", None) if self._update_checker else None
+            ),
             version=getattr(update_info, "version", ""),
         )
 

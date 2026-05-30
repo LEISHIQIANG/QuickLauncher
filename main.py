@@ -165,7 +165,7 @@ def main():
                 _cfg_path = os.path.join(root_dir, "config", "data.json")
                 _auto = False
                 if os.path.isfile(_cfg_path):
-                    with open(_cfg_path, "r", encoding="utf-8") as _f:
+                    with open(_cfg_path, encoding="utf-8") as _f:
                         _auto = _json.load(_f).get("settings", {}).get("auto_start", False)
                 from core.auto_start_manager import _ensure_auto_start
 
@@ -377,7 +377,19 @@ if __name__ == "__main__":
         print("[safe-mode] 已启用安全模式：插件/钩子/更新/自定义背景已禁用")
 
     if len(sys.argv) > 1:
-        if sys.argv[1] == "--install-service":
+        if sys.argv[1] == "--file-dialog":
+            # 独立进程运行文件对话框
+            sys.argv = [sys.argv[0]] + sys.argv[2:]
+            try:
+                from ui.utils.file_dialog_subprocess import main as run_dialog
+
+                run_dialog()
+            except Exception as e:
+                import json
+
+                print(json.dumps({"error": str(e)}))
+            sys.exit(0)
+        elif sys.argv[1] == "--install-service":
             from core.service_manager import enable_service_autostart
 
             success, msg = enable_service_autostart()

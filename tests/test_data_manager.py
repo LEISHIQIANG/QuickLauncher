@@ -727,8 +727,8 @@ def test_icon_repo_combines_system_and_user_sources_in_group_order(tmp_path):
     folder = manager._load_icon_repo_folder()
 
     assert [item.id for item in folder.items] == ["sys-early", "sys-late", "user-early", "user-late"]
-    assert getattr(folder.items[0], "_icon_repo_source") == "system"
-    assert getattr(folder.items[-1], "_icon_repo_source") == "user"
+    assert folder.items[0]._icon_repo_source == "system"
+    assert folder.items[-1]._icon_repo_source == "user"
     assert folder.items[0].icon_path.endswith(os.path.join("assets", "system_icons", "icons", "early.png"))
 
 
@@ -793,8 +793,8 @@ def test_copy_to_and_from_icon_repo_preserves_source_and_assigns_new_ids(tmp_pat
 def test_system_icon_repo_items_are_read_only_and_not_saved(tmp_path):
     system_item = ShortcutItem(id="system", name="System")
     user_item = ShortcutItem(id="user", name="User")
-    setattr(system_item, "_icon_repo_source", "system")
-    setattr(user_item, "_icon_repo_source", "user")
+    system_item._icon_repo_source = "system"
+    user_item._icon_repo_source = "user"
     target = Folder(id="target", name="Target")
     repo = Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[system_item, user_item])
     manager = _file_backed_manager(tmp_path, AppData(folders=[target, repo]))
@@ -837,8 +837,8 @@ def test_backup_full_config_includes_icon_repo_json(tmp_path):
 def test_backup_full_config_excludes_system_icons_from_icon_repo_json(tmp_path):
     system_item = ShortcutItem(id="system", name="System")
     user_item = ShortcutItem(id="user", name="User")
-    setattr(system_item, "_icon_repo_source", "system")
-    setattr(user_item, "_icon_repo_source", "user")
+    system_item._icon_repo_source = "system"
+    user_item._icon_repo_source = "user"
     data = AppData(
         folders=[
             Folder(id="default", name="Default"),

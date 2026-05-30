@@ -37,13 +37,17 @@ def setup_logging(log_dir: str) -> tuple:
 
     import sys
 
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setStream(open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1))
+    # Use a dedicated stream wrapping stdout's fd for consistent UTF-8 encoding.
+    # The stream is kept for the process lifetime (closed on exit by the OS).
+    _stdout_stream = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)  # noqa: SIM115
+    stream_handler = logging.StreamHandler(_stdout_stream)
     handlers = [stream_handler]
     if not disable_logging:
         handlers.append(RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"))
 
-    logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s", handlers=handlers)
+    logging.basicConfig(
+        level=log_level, format="%(asctime)s - [PID: %(process)d] - %(levelname)s - %(message)s", handlers=handlers
+    )
 
     return log_file, logging.getLogger("main")
 

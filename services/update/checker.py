@@ -6,7 +6,6 @@ import os
 import re
 import threading
 from datetime import datetime, timedelta
-from typing import Optional
 from urllib.parse import urlparse
 
 from services.api.base_client import ApiClient
@@ -23,7 +22,7 @@ class UpdateChecker:
     def __init__(self, config: UpdateConfig | None = None):
         self._config = config or UpdateConfig()
         self._api = ApiClient(self._config.check_url, timeout=10, verify_ssl=self._config.verify_ssl)
-        self._timer: Optional[threading.Timer] = None
+        self._timer: threading.Timer | None = None
         self._listeners = []
         self._running = False
         self._last_check_status = ""
@@ -48,7 +47,7 @@ class UpdateChecker:
         else:
             self._schedule_next()
 
-    def check_now(self) -> Optional[UpdateInfo]:
+    def check_now(self) -> UpdateInfo | None:
         result = self._do_check()
         self._save_check_time()
         if result is None:
@@ -98,7 +97,7 @@ class UpdateChecker:
         except Exception:
             return True
 
-    def _do_check(self) -> Optional[UpdateInfo]:
+    def _do_check(self) -> UpdateInfo | None:
         from core.version import APP_VERSION
 
         try:
@@ -243,12 +242,12 @@ class UpdateChecker:
         state_file = self._get_state_file()
         try:
             if os.path.isfile(state_file):
-                with open(state_file, "r", encoding="utf-8") as handle:
+                with open(state_file, encoding="utf-8") as handle:
                     data = json.load(handle)
                     return data if isinstance(data, dict) else {}
             legacy_state_file = self._get_legacy_state_file()
             if os.path.isfile(legacy_state_file):
-                with open(legacy_state_file, "r", encoding="utf-8") as handle:
+                with open(legacy_state_file, encoding="utf-8") as handle:
                     data = json.load(handle)
                 if isinstance(data, dict):
                     self._save_state(data)

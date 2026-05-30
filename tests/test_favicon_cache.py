@@ -1,3 +1,4 @@
+import pytest
 from PIL import Image
 
 
@@ -9,6 +10,7 @@ def _png_bytes(color, size=(32, 32)):
     return data.getvalue()
 
 
+@pytest.mark.slow
 def test_fetch_favicon_crops_wide_inline_svg_to_square_png(monkeypatch, tmp_path, qapp):
     from core import favicon_cache
 
@@ -305,6 +307,7 @@ def test_fetch_favicon_accepts_gif_served_from_ico_path(monkeypatch, tmp_path):
         assert rgba.getpixel((256, 256)) == (11, 22, 33, 255)
 
 
+@pytest.mark.slow
 def test_qt_raster_fallback_accepts_gif_data(tmp_path, qapp):
     from io import BytesIO
 
@@ -348,6 +351,7 @@ def test_fetch_favicon_force_refresh_bypasses_cached_png(monkeypatch, tmp_path):
         assert image.convert("RGBA").getpixel((256, 256)) == (40, 50, 60, 255)
 
 
+@pytest.mark.slow
 def test_fetch_favicon_accepts_html_scoped_inline_svg(monkeypatch, tmp_path, qapp):
     from core import favicon_cache
 
@@ -482,6 +486,7 @@ def test_fetch_favicon_blocks_redirect_to_loopback(monkeypatch, tmp_path):
     assert favicon_cache.fetch_favicon("https://public.example") == ""
 
 
+@pytest.mark.slow
 def test_render_svg_rejects_external_references(tmp_path, qapp):
     from core import favicon_cache
 

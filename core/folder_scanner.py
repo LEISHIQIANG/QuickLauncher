@@ -6,7 +6,6 @@
 import logging
 import uuid
 from pathlib import Path
-from typing import List
 
 from .data_models import ShortcutItem, ShortcutType
 from .shortcut_parser import ShortcutParser
@@ -33,7 +32,7 @@ class FolderScanner:
     ]
 
     @staticmethod
-    def scan_folder(folder_path: str) -> List[ShortcutItem]:
+    def scan_folder(folder_path: str) -> list[ShortcutItem]:
         """扫描文件夹(非递归,仅当前目录)
 
         Args:

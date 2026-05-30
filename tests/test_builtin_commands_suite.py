@@ -500,7 +500,7 @@ def test_cmd_tls(mock_ssl_context, mock_create_connection):
 def test_cmd_tls_dns_failure(mock_create_connection):
     mock_create_connection.side_effect = socket.gaierror(11001, "getaddrinfo failed")
 
-    res = cmd_tls(CommandContext(args_text="bad domain"))
+    res = cmd_tls(CommandContext(args_text="bad-domain-does-not-exist"))
     assert res.success is False
     assert "无法解析域名" in res.message
     assert "getaddrinfo failed" not in res.message

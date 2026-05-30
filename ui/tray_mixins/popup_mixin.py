@@ -157,7 +157,20 @@ class PopupMixin:
         except Exception:
             pass
 
+        paused_state = False
+        if hasattr(self, "mouse_hook") and self.mouse_hook:
+            try:
+                paused_state = self.mouse_hook.is_paused()
+            except Exception:
+                pass
+
+        # 如果当前鼠标钩子已被设为暂停，则100%拒绝在主线程分发信号与呼起弹窗，提供双重生命周期安全屏障
+        if paused_state is True:
+            logger.info("HOOK_CALLBACK_IGNORED hook_paused pos=(%s,%s)", x, y)
+            return
+
         logger.info("HOOK_CALLBACK_DETAIL pos=(%s,%s)", x, y)
+
         command_panel_reason = _own_command_panel_context_reason(
             x,
             y,

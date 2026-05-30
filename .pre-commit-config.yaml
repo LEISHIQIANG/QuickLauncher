@@ -8,3 +8,11 @@ repos:
     hooks:
       - id: ruff
         args: ["--fix"]
+  - repo: local
+    hooks:
+      - id: no-silent-exceptions
+        name: Reject silent except Exception: pass
+        entry: python scripts/check_silent_exceptions.py
+        language: python
+        types: [python]
+        stages: [commit]

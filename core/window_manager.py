@@ -5,7 +5,6 @@
 import ctypes
 import logging
 import os
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ class WindowManager:
             return False
 
     @staticmethod
-    def _get_windows_for_pids(pids: List[int]):
+    def _get_windows_for_pids(pids: list[int]):
         windows_by_pid = {pid: [] for pid in pids}
         pid_set = set(pids)
 
@@ -104,7 +103,7 @@ class WindowManager:
         return windows_by_pid
 
     @staticmethod
-    def _get_process_windows(pid: int) -> List[int]:
+    def _get_process_windows(pid: int) -> list[int]:
         """获取进程的所有窗口"""
         windows = []
 

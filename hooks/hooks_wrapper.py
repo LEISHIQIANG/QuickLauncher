@@ -7,8 +7,9 @@ import ctypes
 import hashlib
 import logging
 import os
+import threading
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable, Optional
 
 # 回调函数类型
 MOUSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
@@ -34,18 +35,29 @@ class HooksDLL:
     )
     _last_probe = {}
     _instance = None
+    _instance_lock = threading.Lock()
+    _load_attempted = False
 
     @classmethod
     def get_instance(cls, dll_path: str = None) -> "HooksDLL":
         """获取单例实例，避免多次加载DLL导致GC回调问题"""
-        if cls._instance is None or cls._instance.dll is None:
+        if cls._instance is not None and cls._instance.dll is not None:
+            return cls._instance
+        with cls._instance_lock:
+            if cls._instance is not None and cls._instance.dll is not None:
+                return cls._instance
+            if cls._load_attempted and cls._instance is not None:
+                # DLL 加载已尝试过但失败了，不再重复创建实例
+                return cls._instance
+            cls._load_attempted = True
             cls._instance = cls(dll_path)
-        return cls._instance
+            return cls._instance
 
     def __init__(self, dll_path: str = None):
         if dll_path is None:
-            hooks_dir = os.path.dirname(__file__)
+            hooks_dir = os.path.dirname(os.path.abspath(__file__))
             dll_path = os.path.join(hooks_dir, "hooks.dll")
+        dll_path = os.path.abspath(dll_path)
         self.dll_path = dll_path
         self.dll = None
         self.loaded = False
@@ -214,7 +226,7 @@ class HooksDLL:
             return False
         return self.dll.IsMousePaused()
 
-    def set_alt_double_click_callback(self, callback: Optional[Callable[[int, int], None]]):
+    def set_alt_double_click_callback(self, callback: Callable[[int, int], None] | None):
         """设置Alt+左键双击回调"""
         if callback:
             self._alt_dclick_callback_ref = MOUSE_CALLBACK(callback)
@@ -224,7 +236,7 @@ class HooksDLL:
             if self._ready():
                 self.dll.SetAltDoubleClickCallback(None)
 
-    def install_keyboard_hook(self, alt_double_tap_callback: Optional[Callable[[], None]] = None) -> bool:
+    def install_keyboard_hook(self, alt_double_tap_callback: Callable[[], None] | None = None) -> bool:
         """安装键盘钩子"""
         if alt_double_tap_callback:
             self._keyboard_callback_ref = KEYBOARD_CALLBACK(alt_double_tap_callback)

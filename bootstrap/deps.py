@@ -6,7 +6,21 @@ import sys
 
 def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_box):
     try:
-        if getattr(sys, "frozen", False):
+        is_compiled = (
+            getattr(sys, "frozen", False)
+            or getattr(sys, "_MEIPASS", False)
+            or ("__compiled__" in sys.builtin_module_names)
+        )
+        if not is_compiled:
+            try:
+                import builtins
+
+                if hasattr(builtins, "__compiled__"):
+                    is_compiled = True
+            except Exception:
+                pass
+
+        if is_compiled:
             return
         req = os.path.join(root_dir, "requirements.txt")
         if not os.path.exists(req):

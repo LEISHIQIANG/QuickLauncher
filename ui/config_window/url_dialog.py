@@ -11,7 +11,6 @@ from core.i18n import tr
 from qt_compat import (
     QCheckBox,
     QColor,
-    QFileDialog,
     QFont,
     QFormLayout,
     QGroupBox,
@@ -29,6 +28,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.safe_file_dialog import get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -153,25 +153,29 @@ class UrlDialog(BaseDialog):
 
         # 预览框样式
         if theme == "dark":
-            self.icon_preview.setStyleSheet("""
+            self.icon_preview.setStyleSheet(
+                """
                 QLabel {
                     background-color: rgba(255, 255, 255, 0.1);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 10px;
                 }
-            """)
+            """
+            )
         else:
             self.bg_color = "#f2f2f7"
             self.border_color = "rgba(0, 0, 0, 0.1)"
 
             # 预览框样式
-            self.icon_preview.setStyleSheet("""
+            self.icon_preview.setStyleSheet(
+                """
                 QLabel {
                     background-color: rgba(0, 0, 0, 0.05);
                     border: 1px solid rgba(0, 0, 0, 0.05);
                     border-radius: 10px;
                 }
-            """)
+            """
+            )
 
         # 使用与主配置窗口一致的 Glassmorphism 样式
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
@@ -359,17 +363,21 @@ class UrlDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet("""
+        self.invert_theme_cb.setStyleSheet(
+            """
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
+        """
+        )
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet("""
+        self.invert_current_cb.setStyleSheet(
+            """
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
+        """
+        )
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)
@@ -530,7 +538,7 @@ class UrlDialog(BaseDialog):
             return "", str(e)
 
     def _browse_browser(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_path, _ = get_open_file_name(
             self,
             tr("选择浏览器"),
             "",
@@ -735,7 +743,8 @@ class UrlDialog(BaseDialog):
                 try:
                     thread.setParent(None)
                     self._orphaned_threads.append(thread)
-                    thread.finished.connect(lambda t=thread, cls=type(self): cls._forget_orphaned_thread(t))
+                    _cls = type(self)
+                    thread.finished.connect(lambda t=thread, cls=_cls: cls._forget_orphaned_thread(t))
                     thread.finished.connect(thread.deleteLater)
                 except Exception:
                     pass

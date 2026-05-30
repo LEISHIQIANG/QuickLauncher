@@ -34,8 +34,7 @@ def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
         creationflags = 0x08000000 if os.name == "nt" else 0
         proc = subprocess.run(
             args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             creationflags=creationflags,
             timeout=timeout,
         )

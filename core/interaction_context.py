@@ -134,7 +134,7 @@ class InteractionContext:
     trigger: TriggerContext | None = None
     clipboard: ClipboardSnapshot | None = None
     clipboard_classification: ClipboardClassification | None = None
-    selected_text: "SelectedTextResult | None" = None  # noqa: F821
+    selected_text: SelectedTextResult | None = None  # noqa: F821
     selected_files: list[str] = field(default_factory=list)
     selected_files_status: str = "idle"
 
@@ -196,7 +196,7 @@ class InteractionContext:
 
         if with_selected_files:
             try:
-                from ui.launcher_popup.file_selection import get_selected_files_for_process
+                from core.file_selection import get_selected_files_for_process
 
                 files = get_selected_files_for_process() or []
                 ctx.selected_files = list(files)

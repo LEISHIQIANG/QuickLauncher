@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class ShortcutParser:
     """Parse .lnk and .url shortcut files."""
 
     @staticmethod
-    def parse(file_path: str) -> Dict[str, Any]:
+    def parse(file_path: str) -> dict[str, Any]:
         result = {
             "target": file_path,
             "args": "",
@@ -42,7 +42,7 @@ class ShortcutParser:
         return result
 
     @staticmethod
-    def _parse_lnk(file_path: str) -> Dict[str, Any]:
+    def _parse_lnk(file_path: str) -> dict[str, Any]:
         result = {
             "target": file_path,
             "args": "",
@@ -62,7 +62,7 @@ class ShortcutParser:
         return result
 
     @staticmethod
-    def _parse_lnk_with_win32com(file_path: str) -> Dict[str, Any] | None:
+    def _parse_lnk_with_win32com(file_path: str) -> dict[str, Any] | None:
         if not HAS_WIN32COM:
             return None
 
@@ -94,7 +94,7 @@ class ShortcutParser:
             return None
 
     @staticmethod
-    def _parse_lnk_with_powershell(file_path: str) -> Dict[str, Any] | None:
+    def _parse_lnk_with_powershell(file_path: str) -> dict[str, Any] | None:
         escaped = file_path.replace("`", "``").replace('"', '`"')
         script = (
             f"$shell = New-Object -ComObject WScript.Shell; "
@@ -158,7 +158,7 @@ class ShortcutParser:
         return result
 
     @staticmethod
-    def _parse_url(file_path: str) -> Dict[str, Any]:
+    def _parse_url(file_path: str) -> dict[str, Any]:
         result = {
             "target": file_path,
             "args": "",
@@ -167,7 +167,7 @@ class ShortcutParser:
             "icon_index": 0,
         }
 
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+        with open(file_path, encoding="utf-8", errors="ignore") as handle:
             for line in handle:
                 line = line.strip()
                 if line.startswith("URL="):

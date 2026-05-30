@@ -68,6 +68,7 @@ _PINYIN = {
     "开": "kai",
     "控": "kong",
     "快": "kuai",
+    "哩": "li",
     "理": "li",
     "览": "lan",
     "浏": "liu",
@@ -97,13 +98,16 @@ _PINYIN = {
     "时": "shi",
     "试": "shi",
     "视": "shi",
+    "示": "shi",
     "收": "shou",
     "首": "shou",
     "数": "shu",
     "索": "suo",
     "台": "tai",
+    "淘": "tao",
     "态": "tai",
     "特": "te",
+    "提": "ti",
     "替": "ti",
     "图": "tu",
     "托": "tuo",
@@ -122,11 +126,13 @@ _PINYIN = {
     "验": "yan",
     "页": "ye",
     "音": "yin",
+    "易": "yi",
     "应": "ying",
     "用": "yong",
     "游": "you",
     "语": "yu",
     "源": "yuan",
+    "云": "yun",
     "远": "yuan",
     "运": "yun",
     "站": "zhan",
@@ -150,7 +156,13 @@ _PINYIN = {
     "支": "zhi",
     "付": "fu",
     "宝": "bao",
+    "哔": "bi",
+    "册": "ce",
     "钉": "ding",
+    "东": "dong",
+    "符": "fu",
+    "京": "jing",
+    "里": "li",
     "聊": "liao",
     "抖": "dou",
     "快": "kuai",
@@ -262,6 +274,15 @@ def _get_external_pinyin(text: str) -> list[str]:
 def pinyin_variants(text: str) -> list[str]:
     """Return full-pinyin and initials variants for CJK text."""
     if not text:
+        return []
+
+    # Check if there is any Chinese character (early return for non-CJK)
+    has_cjk = False
+    for ch in text:
+        if "\u4e00" <= ch <= "\u9fff" or "\u3400" <= ch <= "\u4dbf" or "\uf900" <= ch <= "\ufa5f":
+            has_cjk = True
+            break
+    if not has_cjk:
         return []
 
     # 1. Try professional external libraries first if available

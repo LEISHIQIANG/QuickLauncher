@@ -20,8 +20,8 @@ import os
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +44,17 @@ class ClipboardOpenError(ClipboardError):
 
     code = "open_timeout"
 
+    def __init__(self, code: str = "open_timeout", message: str = "", detail: dict | None = None):
+        super().__init__(code, message, detail)
+
 
 class ClipboardFormatUnreadableError(ClipboardError):
     """Specified format cannot be read."""
 
     code = "format_unreadable"
+
+    def __init__(self, message: str = "", detail: dict | None = None):
+        super().__init__(self.code, message, detail)
 
 
 class ClipboardEmptyError(ClipboardError):
@@ -56,11 +62,17 @@ class ClipboardEmptyError(ClipboardError):
 
     code = "empty"
 
+    def __init__(self, code: str = "empty", message: str = "", detail: dict | None = None):
+        super().__init__(code, message, detail)
+
 
 class ClipboardRestoreError(ClipboardError):
     """Snapshot restore failed."""
 
     code = "restore_failed"
+
+    def __init__(self, message: str = "", detail: dict | None = None):
+        super().__init__(self.code, message, detail)
 
 
 class ClipboardComError(ClipboardError):
@@ -68,11 +80,17 @@ class ClipboardComError(ClipboardError):
 
     code = "com_init_failed"
 
+    def __init__(self, message: str = "", detail: dict | None = None):
+        super().__init__(self.code, message, detail)
+
 
 class ClipboardUipiError(ClipboardError):
     """UIPI blocked cross-integrity read."""
 
     code = "uipi_blocked"
+
+    def __init__(self, message: str = "", detail: dict | None = None):
+        super().__init__(self.code, message, detail)
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +163,6 @@ _DETECT_ONLY_FORMATS = {CF_DIB, CF_BITMAP, CF_DIBV5, CF_LOCALE, CF_OEMTEXT, CF_P
 
 # Registered format name cache
 _REGISTERED_FORMAT_NAMES: dict[int, str] = {}
-
-# Global clipboard lock — OpenClipboard is process-level, all threads must serialize
-_clipboard_lock = threading.RLock()
 
 # Backoff delays for OpenClipboard (ms)
 _OPEN_RETRY_DELAYS_MS = [10, 20, 50, 100, 100, 100, 200, 200]
@@ -290,7 +305,7 @@ class Win32ClipboardImpl:
                     return data or ""
                 if win32clipboard.IsClipboardFormatAvailable(win32con.CF_TEXT):
                     data = win32clipboard.GetClipboardData(win32con.CF_TEXT)
-                    if isinstance(data, (bytes, bytearray)):
+                    if isinstance(data, bytes | bytearray):
                         try:
                             return data.decode("mbcs", errors="replace")
                         except Exception:
@@ -440,7 +455,7 @@ class Win32ClipboardImpl:
                         snapshot.truncated = True
                 elif fmt == win32con.CF_TEXT:
                     if not snapshot.text:
-                        if isinstance(data, (bytes, bytearray)):
+                        if isinstance(data, bytes | bytearray):
                             try:
                                 snapshot.text = data.decode("mbcs", errors="replace")
                             except Exception:
@@ -448,12 +463,12 @@ class Win32ClipboardImpl:
                         else:
                             snapshot.text = str(data or "")
                 elif fmt == CF_HDROP:
-                    if isinstance(data, (tuple, list)):
+                    if isinstance(data, tuple | list):
                         snapshot.file_paths = list(data)
                     elif isinstance(data, str):
                         snapshot.file_paths = [data]
                 elif fmt == CF_HTML:
-                    if isinstance(data, (bytes, bytearray)):
+                    if isinstance(data, bytes | bytearray):
                         try:
                             snapshot.html = data.decode("utf-8", errors="replace")
                         except Exception:
@@ -623,10 +638,15 @@ class QtClipboardBridge:
 
     _instance = None
     _initialized = False
+    _lock = threading.Lock()
 
     @classmethod
     def get_instance(cls):
-        if cls._instance is None:
+        if cls._instance is not None:
+            return cls._instance
+        with cls._lock:
+            if cls._instance is not None:
+                return cls._instance
             try:
                 from qt_compat import QObject, pyqtSignal
 

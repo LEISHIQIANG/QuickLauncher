@@ -15,7 +15,7 @@ from qt_compat import (
     QColor,
     QComboBox,
     QEvent,
-    QFileDialog,
+    QFileDialog,  # noqa: F401
     QFont,
     QFormLayout,
     QHBoxLayout,
@@ -41,6 +41,7 @@ from qt_compat import (
 )
 from ui.styles.style import Colors, PopupMenu
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name, get_save_file_name
 
 logger = logging.getLogger(__name__)
 
@@ -353,15 +354,18 @@ class CommandPanelWindow(ThemedToolWindow):
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
         if hasattr(self, "command_input_group"):
-            self.command_input_group.setStyleSheet(f"""
+            self.command_input_group.setStyleSheet(
+                f"""
                 QWidget {{
                     min-height: 28px;
                     border: 1px solid {border};
                     border-radius: 8px;
                     background: {bg};
                 }}
-            """)
-        self.command_input.setStyleSheet(f"""
+            """
+            )
+        self.command_input.setStyleSheet(
+            f"""
             QLineEdit {{
                 min-height: 28px;
                 padding: 0 10px;
@@ -375,9 +379,11 @@ class CommandPanelWindow(ThemedToolWindow):
             QLineEdit::placeholder {{
                 color: {placeholder};
             }}
-        """)
+        """
+        )
         if hasattr(self, "history_toggle_btn"):
-            self.history_toggle_btn.setStyleSheet(f"""
+            self.history_toggle_btn.setStyleSheet(
+                f"""
                 QPushButton {{
                     min-height: 28px;
                     padding: 0;
@@ -403,7 +409,8 @@ class CommandPanelWindow(ThemedToolWindow):
                     color: rgba(128, 128, 128, 0.30);
                     background: transparent;
                 }}
-            """)
+            """
+            )
 
     def _style_status_label(self):
         color = "rgba(255, 255, 255, 0.55)" if self._theme == "dark" else "rgba(60, 60, 67, 0.62)"
@@ -428,7 +435,8 @@ class CommandPanelWindow(ThemedToolWindow):
             header = "rgba(0, 0, 0, 0.04)"
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
-        self.table.setStyleSheet(f"""
+        self.table.setStyleSheet(
+            f"""
             QTableWidget {{
                 background: {bg};
                 border: 1px solid {grid};
@@ -445,7 +453,8 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-right: 1px solid {grid};
                 padding: 5px;
             }}
-        """)
+        """
+        )
         self.style_scrollbars(self.table)
 
     def _style_progress(self):
@@ -460,7 +469,8 @@ class CommandPanelWindow(ThemedToolWindow):
         label_style = f"font-size: 12px; color: {text}; background: transparent;"
         self.progress_title.setStyleSheet(label_style)
         self.progress_detail.setStyleSheet(label_style)
-        self.progress_bar.setStyleSheet(f"""
+        self.progress_bar.setStyleSheet(
+            f"""
             QProgressBar {{
                 border: none;
                 border-radius: 4px;
@@ -473,7 +483,8 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-radius: 4px;
                 background: {chunk};
             }}
-        """)
+        """
+        )
 
     def _style_command_suggestions(self):
         return
@@ -945,9 +956,9 @@ class CommandPanelWindow(ThemedToolWindow):
 
             def _choose():
                 if param_type == "folder":
-                    path = QFileDialog.getExistingDirectory(self, "选择文件夹", edit.text())
+                    path = get_existing_directory(self, "选择文件夹", edit.text())
                 else:
-                    path, _ = QFileDialog.getOpenFileName(self, "选择文件", edit.text())
+                    path, _ = get_open_file_name(self, "选择文件", edit.text())
                 if path:
                     edit.setText(path)
 
@@ -1264,7 +1275,7 @@ class CommandPanelWindow(ThemedToolWindow):
             "progress_detail": self.progress_detail,
             "qr": self.qr_label,
         }
-        for key, widget in widgets.items():
+        for _key, widget in widgets.items():
             widget.setVisible(False)
         if name == "progress":
             self.progress_title.setVisible(True)
@@ -1306,14 +1317,14 @@ class CommandPanelWindow(ThemedToolWindow):
         payload = result.payload if isinstance(result.payload, dict) else {}
         rows = payload.get("rows") or []
         columns = payload.get("columns") or []
-        if rows and not isinstance(rows[0], (list, tuple, dict)):
+        if rows and not isinstance(rows[0], list | tuple | dict):
             rows = [[row] for row in rows]
         if rows and isinstance(rows[0], dict):
             if not columns:
                 columns = list(rows[0].keys())
             matrix = [[row.get(col, "") for col in columns] for row in rows]
         else:
-            matrix = [list(row) if isinstance(row, (list, tuple)) else [row] for row in rows]
+            matrix = [list(row) if isinstance(row, list | tuple) else [row] for row in rows]
             if not columns:
                 col_count = max([len(row) for row in matrix] or [1])
                 columns = [f"列 {idx + 1}" for idx in range(col_count)]
@@ -1354,7 +1365,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 status = str(item.get("status") or "")
                 detail = str(item.get("detail") or item.get("output_summary") or item.get("error") or "")
                 duration = item.get("duration", "")
-                duration_text = f" ({duration:.2f}s)" if isinstance(duration, (int, float)) else ""
+                duration_text = f" ({duration:.2f}s)" if isinstance(duration, int | float) else ""
                 text = f"[{status.upper() or 'INFO'}] {title}{duration_text}"
                 if detail:
                     text += f"\n{detail}"
@@ -1458,11 +1469,11 @@ class CommandPanelWindow(ThemedToolWindow):
             btn.setEnabled(bool(getattr(action, "enabled", True)))
             btn.setProperty(
                 "command_action_role",
-                "danger"
-                if getattr(action, "danger", False)
-                else "primary"
-                if getattr(action, "primary", False)
-                else "",
+                (
+                    "danger"
+                    if getattr(action, "danger", False)
+                    else "primary" if getattr(action, "primary", False) else ""
+                ),
             )
             self.style_buttons(btn)
             self._style_action_button(btn, action)
@@ -1493,7 +1504,8 @@ class CommandPanelWindow(ThemedToolWindow):
             bg, hover = danger_bg, danger_hover
         else:
             bg, hover = primary_bg, primary_hover
-        button.setStyleSheet(f"""
+        button.setStyleSheet(
+            f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 10px;
@@ -1516,11 +1528,12 @@ class CommandPanelWindow(ThemedToolWindow):
                 background: transparent;
                 border: 1px solid rgba(128, 128, 128, 0.22);
             }}
-        """)
+        """
+        )
 
     def _show_more_actions(self):
         actions = sorted(
-            list(getattr(self, "_all_actions", [])),
+            getattr(self, "_all_actions", []),
             key=lambda a: (not bool(getattr(a, "primary", False)), bool(getattr(a, "danger", False))),
         )
         extra = actions[len(self.action_buttons) :]
@@ -1602,7 +1615,7 @@ class CommandPanelWindow(ThemedToolWindow):
         text = self._rendered_text or self.text.toPlainText()
         if not text:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "保存命令结果", "", "文本文件 (*.txt);;所有文件 (*)")
+        path, _ = get_save_file_name(self, "保存命令结果", "", "文本文件 (*.txt);;所有文件 (*)")
         if path:
             try:
                 with open(path, "w", encoding="utf-8") as f:
@@ -1623,13 +1636,13 @@ class CommandPanelWindow(ThemedToolWindow):
             except Exception:
                 logger.warning("打开路径失败: %s", action.value, exc_info=True)
         elif action.type == "save_text" and action.value:
-            path, _ = QFileDialog.getSaveFileName(self, "保存文本", "", "文本文件 (*.txt);;所有文件 (*)")
+            path, _ = get_save_file_name(self, "保存文本", "", "文本文件 (*.txt);;所有文件 (*)")
             if path:
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(action.value)
         elif action.type == "save_file" and action.value:
             default_name = os.path.basename(action.value) if os.path.isfile(action.value) else "command-result"
-            path, _ = QFileDialog.getSaveFileName(self, "保存文件", default_name, "所有文件 (*)")
+            path, _ = get_save_file_name(self, "保存文件", default_name, "所有文件 (*)")
             if path:
                 import shutil
 

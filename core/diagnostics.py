@@ -115,13 +115,21 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         item_status = "ok" if recovery_status == "ok" else "warn"
         if recovery_status == "failed":
             item_status = "error"
+        reason = str(recovery.get("reason") or "")
+        summary_parts = [recovery_status]
+        if reason:
+            summary_parts.append(f" - {reason}")
+        recovered_from = str(recovery.get("recovered_from") or "")
+        if recovered_from:
+            summary_parts.append(f" (来源: {recovered_from})")
+        action_text = "打开配置历史或导入完整备份进行恢复。" if item_status != "ok" else ""
         items.append(
             DiagnosticItem(
                 "配置恢复",
                 item_status,
-                recovery_status,
+                "".join(summary_parts),
                 json.dumps(recovery, ensure_ascii=False),
-                "打开配置历史或导入完整备份进行恢复。",
+                action_text,
             )
         )
 
@@ -560,7 +568,7 @@ def _is_logging_disabled(data_manager) -> bool:
     if settings is None:
         return False
     if hasattr(settings, "enable_logging"):
-        return not bool(getattr(settings, "enable_logging"))
+        return not bool(settings.enable_logging)
     return bool(getattr(settings, "disable_logging", False))
 
 

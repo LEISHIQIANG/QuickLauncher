@@ -24,12 +24,14 @@ class AboutCardFrame(QFrame):
         self.update_theme(theme)
 
     def update_theme(self, theme):
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             #AboutCardFrame {
                 background: transparent;
                 border: none;
             }
-        """)
+        """
+        )
 
 
 class AboutQuoteFrame(QFrame):
@@ -41,12 +43,14 @@ class AboutQuoteFrame(QFrame):
         self.update_theme(theme)
 
     def update_theme(self, theme):
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             #AboutQuoteFrame {
                 background: transparent;
                 border: none;
             }
-        """)
+        """
+        )
 
 
 # 结构化卡片展示数据定义
@@ -389,7 +393,8 @@ class SettingsAboutPageMixin:
             bg_color = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
             border_color = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
             text_color = "rgba(255, 255, 255, 0.9)" if theme == "dark" else "rgba(28, 28, 30, 0.9)"
-            page._intro_group.setStyleSheet(f"""
+            page._intro_group.setStyleSheet(
+                f"""
                 QGroupBox {{
                     background-color: {bg_color};
                     border: 1px solid {border_color};
@@ -407,7 +412,8 @@ class SettingsAboutPageMixin:
                     color: {text_color};
                     font-weight: 400;
                 }}
-            """)
+            """
+            )
 
         # 2. 渲染特定主题的文字与 Badge 标记
         title_color = "#ffffff" if theme == "dark" else "#1c1c1e"
@@ -448,7 +454,7 @@ class SettingsAboutPageMixin:
             page._intro_lbl.setText(_generate_intro_html(theme))
 
         if hasattr(page, "_feature_lbls") and hasattr(page, "_feature_card_data"):
-            for lbl, (section_title, data) in zip(page._feature_lbls, page._feature_card_data):
+            for lbl, (_section_title, data) in zip(page._feature_lbls, page._feature_card_data):
                 lbl.setText(_generate_html_content(data, theme))
 
         if hasattr(page, "_footer_lbl") and page._footer_lbl:

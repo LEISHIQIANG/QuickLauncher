@@ -83,7 +83,8 @@ class TitleBar(QWidget):
         self.back_btn.setCursor(QtCompat.PointingHandCursor)
         self.back_btn.clicked.connect(self._on_back)
         self.back_btn.setVisible(False)
-        self.back_btn.setStyleSheet("""
+        self.back_btn.setStyleSheet(
+            """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -98,7 +99,8 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #007aff;
             }
-        """)
+        """
+        )
         layout.addWidget(self.back_btn)
 
         # 图标 (默认显示)
@@ -167,7 +169,8 @@ class TitleBar(QWidget):
         self.settings_btn.setCursor(QtCompat.PointingHandCursor)
         self.settings_btn.clicked.connect(self._on_settings)
 
-        self.settings_btn.setStyleSheet("""
+        self.settings_btn.setStyleSheet(
+            """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -179,7 +182,8 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #ffffff;
             }
-        """)
+        """
+        )
         layout.addWidget(self.settings_btn)
 
         # 关闭按钮
@@ -187,7 +191,8 @@ class TitleBar(QWidget):
         self.close_btn.setFixedSize(32, 32)
         self.close_btn.setCursor(QtCompat.PointingHandCursor)
         self.close_btn.clicked.connect(self._on_close)
-        self.close_btn.setStyleSheet("""
+        self.close_btn.setStyleSheet(
+            """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -199,7 +204,8 @@ class TitleBar(QWidget):
                 background-color: #e81123;
                 color: white;
             }
-        """)
+        """
+        )
         layout.addWidget(self.close_btn)
 
     def set_theme(self, theme: str):
@@ -237,7 +243,8 @@ class TitleBar(QWidget):
         self.settings_btn.setStyleSheet(btn_base_style + "QPushButton { font-size: 18px; }")
 
         # 关闭按钮特殊处理 hover 颜色
-        self.close_btn.setStyleSheet(f"""
+        self.close_btn.setStyleSheet(
+            f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -251,7 +258,8 @@ class TitleBar(QWidget):
                 background-color: #e81123;
                 color: white;
             }}
-        """)
+        """
+        )
 
         if not self._settings_icon_path:
             return

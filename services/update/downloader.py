@@ -8,7 +8,6 @@ import os
 import re
 import tempfile
 import threading
-from typing import Optional
 from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -60,8 +59,8 @@ class UpdateDownloader:
     def _do_download(
         self,
         url: str,
-        target_dir: Optional[str],
-        expected_hash: Optional[str],
+        target_dir: str | None,
+        expected_hash: str | None,
         expected_size: int = 0,
         max_bytes: int = 0,
         allowed_hosts: tuple[str, ...] | None = None,

@@ -2,10 +2,10 @@
 
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from functools import lru_cache
-from typing import Iterable, Optional
 
 from .pinyin_search import pinyin_variants
 from .search_history import search_history_bonus
@@ -144,7 +144,7 @@ def _word_boundary_bonus(haystack: str, start: int) -> float:
     return 0.0
 
 
-def _subsequence_score(needle: str, haystack: str) -> Optional[float]:
+def _subsequence_score(needle: str, haystack: str) -> float | None:
     if not needle:
         return 0.0
     if not haystack:
@@ -182,7 +182,7 @@ def _subsequence_score(needle: str, haystack: str) -> Optional[float]:
     return max(1.0, score)
 
 
-def _near_word_score(needle: str, tokens: list[str]) -> Optional[float]:
+def _near_word_score(needle: str, tokens: list[str]) -> float | None:
     if len(needle) < 3:
         return None
 
@@ -198,11 +198,11 @@ def _near_word_score(needle: str, tokens: list[str]) -> Optional[float]:
     return best or None
 
 
-def _single_term_score(term: str, value: str) -> Optional[float]:
+def _single_term_score(term: str, value: str) -> float | None:
     if not term:
         return 0.0
 
-    best: Optional[float] = None
+    best: float | None = None
     term_norm = _normalize_text(term)
     term_compact = _compact_text(term)
 
@@ -256,7 +256,7 @@ def _single_term_score(term: str, value: str) -> Optional[float]:
     return best
 
 
-def _shortcut_score(shortcut, query: str) -> tuple[Optional[float], list[str]]:
+def _shortcut_score(shortcut, query: str) -> tuple[float | None, list[str]]:
     terms = _split_query(query)
     if not terms:
         return None, []

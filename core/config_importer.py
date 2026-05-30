@@ -5,7 +5,6 @@ import os
 import uuid
 import zipfile
 from datetime import datetime
-from typing import Optional
 
 from .config_validation import sanitize_settings_dict
 from .data_manager import DataManager
@@ -77,7 +76,7 @@ class ConfigImporter:
             icon_files_to_include = []  # (src_path, arcname)
             icon_blobs_to_include = []  # (arcname, bytes)
 
-            def _qimage_to_bytes(image, fmt: str) -> Optional[bytes]:
+            def _qimage_to_bytes(image, fmt: str) -> bytes | None:
                 try:
                     from qt_compat import QBuffer, QByteArray, QIODevice
 
@@ -96,7 +95,7 @@ class ConfigImporter:
                 except Exception:
                     return None
 
-            def _extract_icon_blob(icon_path: str) -> Optional[bytes]:
+            def _extract_icon_blob(icon_path: str) -> bytes | None:
                 try:
                     image = IconExtractor.from_file(icon_path, size=256, return_image=True)
                     if not image or image.isNull():
@@ -205,7 +204,7 @@ class ConfigImporter:
     def import_config(
         data_manager: DataManager,
         file_path: str,
-        target_folder_id: Optional[str] = None,
+        target_folder_id: str | None = None,
         *,
         dry_run: bool = False,
     ) -> int:
@@ -358,9 +357,9 @@ class ConfigImporter:
     def _import_legacy_safe(
         data_manager: DataManager,
         zf: zipfile.ZipFile,
-        target_folder_id: Optional[str],
-        safe_index: Optional[dict] = None,
-        report: Optional[dict] = None,
+        target_folder_id: str | None,
+        safe_index: dict | None = None,
+        report: dict | None = None,
     ) -> int:
         old_data = None
         old_saved = None
@@ -499,9 +498,9 @@ class ConfigImporter:
     def _import_legacy(
         data_manager: DataManager,
         zf: zipfile.ZipFile,
-        target_folder_id: Optional[str],
-        safe_index: Optional[dict] = None,
-        report: Optional[dict] = None,
+        target_folder_id: str | None,
+        safe_index: dict | None = None,
+        report: dict | None = None,
     ) -> int:
         """导入旧版格式（仅快捷键、URL、命令）"""
         return ConfigImporter._import_legacy_safe(data_manager, zf, target_folder_id, safe_index, report)

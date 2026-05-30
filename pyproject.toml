@@ -14,8 +14,23 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = ["E501"]
+select = ["E", "F", "W", "I", "B", "C4", "UP"]
+ignore = ["E501", "B905"]
+
+[tool.coverage.run]
+source = ["core", "ui", "hooks", "bootstrap", "services"]
+omit = ["tests/*", "*/plugins/*", "*/dist/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+    "except ImportError",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "core/__init__.py" = ["E402"]

@@ -6,7 +6,7 @@ import re
 BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui", "launcher_popup")
 SRC = os.path.join(BASE, "popup_window.py")
 
-with open(SRC, "r", encoding="utf-8") as f:
+with open(SRC, encoding="utf-8") as f:
     raw = f.read()
     lines = raw.split("\n")  # split on newlines, no trailing \n issues
 
@@ -326,7 +326,7 @@ print(f"Rebuilt popup_window.py: {content.count(chr(10)) + 1} lines")
 
 # Verify remaining methods
 remaining = []
-for i, line in enumerate(content.split("\n")):
+for _i, line in enumerate(content.split("\n")):
     if re.match(r"^    def \w+\(self", line):
         name = re.search(r"def (\w+)\(", line).group(1)
         remaining.append(name)

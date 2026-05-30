@@ -132,6 +132,20 @@ plugin_manager = None
 data_manager = None
 
 
+def get_plugin_manager():
+    """获取全局 PluginManager 实例，未初始化时抛出 RuntimeError。"""
+    if plugin_manager is None:
+        raise RuntimeError("PluginManager 尚未初始化，请先调用 ensure_plugin_manager_initialized()")
+    return plugin_manager
+
+
+def get_data_manager():
+    """获取全局 DataManager 实例，未初始化时抛出 RuntimeError。"""
+    if data_manager is None:
+        raise RuntimeError("DataManager 尚未初始化，请先调用 set_data_manager()")
+    return data_manager
+
+
 def ensure_registry_initialized():
     """初始化命令注册中心（只执行一次）。"""
     global _registry_initialized

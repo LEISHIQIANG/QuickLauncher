@@ -257,8 +257,8 @@ def _get_current_user_identity() -> str:
             sam_name = (win32api.GetUserNameEx(2) or "").strip()  # NameSamCompatible
             if sam_name:
                 return sam_name
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("win32api.GetUserNameEx 调用失败，回退到环境变量: %s", e)
 
     username = (os.environ.get("USERNAME") or "").strip()
     domain = (os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or "").strip()
@@ -281,7 +281,8 @@ def _get_current_user_sid() -> str:
 
         sid_obj, _, _ = win32security.LookupAccountName(None, account_name)
         return win32security.ConvertSidToStringSid(sid_obj) or ""
-    except Exception:
+    except Exception as e:
+        logger.debug("获取用户 SID 失败: %s", e)
         return ""
 
 
@@ -323,7 +324,8 @@ def _is_current_account_admin() -> bool:
     except Exception:
         try:
             return bool(shell32.IsUserAnAdmin())
-        except Exception:
+        except Exception as e:
+            logger.debug("管理员权限检测失败 (get_process_elevation_status + shell32 均失败): %s", e)
             return False
 
 
@@ -338,7 +340,8 @@ def _is_current_process_elevated() -> bool:
     except Exception:
         try:
             return bool(shell32.IsUserAnAdmin())
-        except Exception:
+        except Exception as e:
+            logger.debug("进程提权检测失败: %s", e)
             return False
 
 
@@ -378,8 +381,8 @@ def _build_task_definition(
     if set_trigger_user and user_id:
         try:
             trigger.UserId = user_id
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置任务触发器 UserId 失败: %s", e)
 
     action = task_def.Actions.Create(0)  # TASK_ACTION_EXEC
     action.Path = task_path
@@ -393,13 +396,13 @@ def _build_task_definition(
     if set_principal_user and user_id:
         try:
             task_def.Principal.UserId = user_id
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置任务主体 UserId 失败: %s", e)
     try:
         # Best-effort scheduler hint; admin accounts are actually lowered by the launcher path.
         task_def.Principal.ProcessTokenSidType = 2
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("设置 ProcessTokenSidType 失败 (可忽略): %s", e)
 
     return task_def
 
@@ -625,8 +628,8 @@ def _run_elevated_helper(
             logger.error("自启动 helper 执行超时，已终止 helper 进程")
             try:
                 kernel32.TerminateProcess(sei.hProcess, HELPER_EXIT_FAILED)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("TerminateProcess 失败: %s", e)
             return False, "failed"
 
         exit_code = wintypes.DWORD(HELPER_EXIT_FAILED)
@@ -646,8 +649,8 @@ def _run_elevated_helper(
         if sei.hProcess:
             try:
                 kernel32.CloseHandle(sei.hProcess)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("CloseHandle(hProcess) 失败: %s", e)
 
 
 def run_autostart_helper(
@@ -827,18 +830,18 @@ def _create_process_with_token(
         if proc_info.hThread:
             try:
                 kernel32.CloseHandle(proc_info.hThread)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("CloseHandle(hThread) 失败: %s", e)
         if proc_info.hProcess:
             try:
                 kernel32.CloseHandle(proc_info.hProcess)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("CloseHandle(hProcess) 失败: %s", e)
         if env_created and env:
             try:
                 userenv.DestroyEnvironmentBlock(env)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("DestroyEnvironmentBlock 失败: %s", e)
 
 
 def _open_process_token_for_pid(pid: int, desired_access: int):
@@ -861,13 +864,13 @@ def _open_process_token_for_pid(pid: int, desired_access: int):
         if token:
             try:
                 kernel32.CloseHandle(token)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("CloseHandle(token) 失败: %s", e)
         if process:
             try:
                 kernel32.CloseHandle(process)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("CloseHandle(process) 失败: %s", e)
 
 
 def _is_process_elevated_by_pid(pid: int) -> bool | None:
@@ -892,8 +895,8 @@ def _is_process_elevated_by_pid(pid: int) -> bool | None:
     finally:
         try:
             kernel32.CloseHandle(token)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("CloseHandle(token) 失败: %s", e)
 
 
 def _get_shell_explorer_elevation() -> tuple[bool | None, int | None, str]:
@@ -950,12 +953,12 @@ def _get_shell_explorer_primary_token() -> tuple[object | None, int | None, str]
         if primary_token:
             try:
                 kernel32.CloseHandle(primary_token)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("CloseHandle(primary_token) 失败: %s", e)
         try:
             kernel32.CloseHandle(token)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("CloseHandle(token) 失败: %s", e)
 
 
 def _launch_via_explorer_token(
@@ -1008,8 +1011,8 @@ def _launch_via_explorer_token(
             finally:
                 try:
                     kernel32.CloseHandle(token)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("CloseHandle(token) 失败: %s", e)
 
         if reason == "shell_elevated":
             logger.error(
@@ -1091,8 +1094,8 @@ def _get_task_scheduler_service():
         import pythoncom
 
         pythoncom.CoInitialize()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("CoInitialize 失败 (可能已初始化): %s", e)
 
     import win32com.client
 
@@ -1114,8 +1117,8 @@ def _cleanup_legacy_task_scheduler_tasks() -> list[str]:
             try:
                 root_folder.DeleteTask(legacy_name, 0)
                 removed.append(legacy_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("删除旧版任务 %s 失败 (可能不存在): %s", legacy_name, e)
     except Exception as exc:
         logger.debug("清理旧版计划任务失败: %s", exc)
 
@@ -1143,8 +1146,8 @@ def enable_task_scheduler(exe_path: str | None = None, arguments: str = "", work
 
             try:
                 root_folder.DeleteTask(TASK_NAME, 0)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("删除旧任务失败 (首次注册属正常): %s", e)
 
             user_id = _get_current_user_identity()
             task_path, task_args, task_cwd, task_mode = _build_task_action_launch(path, args, cwd)
@@ -1202,8 +1205,8 @@ def disable_task_scheduler() -> bool:
         try:
             root_folder.DeleteTask(TASK_NAME, 0)
             removed = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("删除自启动任务失败 (可能不存在): %s", e)
 
         if _cleanup_legacy_task_scheduler_tasks():
             removed = True
@@ -1377,9 +1380,9 @@ def _has_legacy_tasks() -> bool:
                 root_folder.GetTask(name)
                 return True
             except Exception:
-                pass
-    except Exception:
-        pass
+                logger.debug("旧版任务 %s 不存在", name)
+    except Exception as e:
+        logger.debug("检查旧版任务失败: %s", e)
     return False
 
 

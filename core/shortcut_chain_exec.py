@@ -107,9 +107,9 @@ def execute_shortcut_chain(
             target_for_step = target
             if target is not None:
                 target_for_step = copy.copy(target)
-                setattr(target_for_step, "_chain_values", dict(chain_values))
+                target_for_step._chain_values = dict(chain_values)
                 if step.get("use_previous_output", False):
-                    setattr(target_for_step, "_runtime_input_values", {"input": previous_output})
+                    target_for_step._runtime_input_values = {"input": previous_output}
             step_success, detail, step_error, step_result = _execute_step(target_for_step, cancel_event)
 
         duration = time.perf_counter() - item_started

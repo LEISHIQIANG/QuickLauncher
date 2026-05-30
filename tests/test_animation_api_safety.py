@@ -48,7 +48,7 @@ def test_codebase_for_isactive_animation_vulnerabilities():
                     continue
                 file_path = os.path.join(root, file)
 
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(file_path, encoding="utf-8", errors="ignore") as f:
                     content = f.read()
 
                 try:

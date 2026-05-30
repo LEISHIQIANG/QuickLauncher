@@ -1,7 +1,10 @@
 import ctypes
+import logging
 import sys
 from ctypes import POINTER, Structure, byref, c_bool, c_int, c_void_p, sizeof, windll
 from ctypes.wintypes import DWORD, HWND, ULONG
+
+logger = logging.getLogger(__name__)
 
 BOOL = c_int
 HRGN = c_void_p
@@ -93,38 +96,38 @@ class WindowEffect:
         try:
             self.user32.IsWindow.argtypes = [HWND]
             self.user32.IsWindow.restype = BOOL
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 IsWindow argtypes 失败: %s", e)
 
         try:
             self.user32.GetDpiForWindow.argtypes = [HWND]
             self.user32.GetDpiForWindow.restype = ctypes.c_uint
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 GetDpiForWindow argtypes 失败: %s", e)
 
         try:
             self.gdi32.CreateRoundRectRgn.argtypes = [c_int, c_int, c_int, c_int, c_int, c_int]
             self.gdi32.CreateRoundRectRgn.restype = HRGN
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 CreateRoundRectRgn argtypes 失败: %s", e)
 
         try:
             self.gdi32.DeleteObject.argtypes = [c_void_p]
             self.gdi32.DeleteObject.restype = BOOL
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 DeleteObject argtypes 失败: %s", e)
 
         try:
             self.user32.SetWindowRgn.argtypes = [HWND, HRGN, BOOL]
             self.user32.SetWindowRgn.restype = c_int
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 SetWindowRgn argtypes 失败: %s", e)
 
         try:
             self.user32.MonitorFromWindow.argtypes = [HWND, DWORD]
             self.user32.MonitorFromWindow.restype = c_void_p
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 MonitorFromWindow argtypes 失败: %s", e)
 
     def is_win11(self):
         """实例方法：检测是否为 Windows 11"""

@@ -9,7 +9,6 @@ import logging
 import os
 import threading
 from ctypes import wintypes
-from typing import List
 
 from .data_models import ShortcutItem, ShortcutType
 from .shortcut_command_exec import CommandExecutionMixin
@@ -191,7 +190,7 @@ class ShortcutExecutor(
             return False, error_msg
 
     @staticmethod
-    def execute_with_files(shortcut: ShortcutItem, files: List[str]) -> bool:
+    def execute_with_files(shortcut: ShortcutItem, files: list[str]) -> bool:
         """使用快捷方式打开指定文件列表
 
         将拖放的文件作为参数传递给快捷方式对应的程序打开。

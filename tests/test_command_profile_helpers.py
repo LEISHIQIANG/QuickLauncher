@@ -91,14 +91,17 @@ def test_format_command_params_round_trips_normalized_shape():
 
 
 def test_parse_and_format_command_env_text():
-    assert parse_command_env_text(
-        """
+    assert (
+        parse_command_env_text(
+            """
         # ignored
         API_KEY = secret
         BAD_LINE
         EMPTY=
         """
-    ) == {"API_KEY": "secret", "EMPTY": ""}
+        )
+        == {"API_KEY": "secret", "EMPTY": ""}
+    )
     assert format_command_env({"A": 1, " B ": "two", "": "skip", "C": None}) == "A=1\n B =two\nC=None"
     assert format_command_env(["not", "dict"]) == ""
 

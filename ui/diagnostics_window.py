@@ -8,7 +8,6 @@ from datetime import datetime
 from core.diagnostics import collect_diagnostics, export_diagnostics_zip
 from qt_compat import (
     QApplication,
-    QFileDialog,
     QFont,
     QHBoxLayout,
     QPushButton,
@@ -20,6 +19,7 @@ from qt_compat import (
 from ui.styles.style import PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.safe_file_dialog import get_save_file_name
 
 
 class _DiagnosticsTextEdit(QTextEdit):
@@ -136,7 +136,7 @@ class DiagnosticsWindow(ThemedToolWindow):
     def export_package(self):
         default_name = f"QuickLauncher_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         default_path = os.path.join(str(self.data_manager.app_dir), default_name)
-        path, _ = QFileDialog.getSaveFileName(self, "导出诊断包", default_path, "Zip Files (*.zip)")
+        path, _ = get_save_file_name(self, "导出诊断包", default_path, "Zip Files (*.zip)")
         if not path:
             return
         if export_diagnostics_zip(self.data_manager, path, self.tray_app):
@@ -159,6 +159,19 @@ class DiagnosticsWindow(ThemedToolWindow):
             counts[key] = counts.get(key, 0) + 1
 
         lines = ['<pre style="font-family: Consolas, Courier New, monospace; font-size: 9pt;">']
+
+        # 显示恢复状态横幅（如果有恢复事件）
+        recovery_items = [it for it in self.items if it.title == "配置恢复"]
+        if recovery_items:
+            r = recovery_items[0]
+            banner_color = status_colors.get(str(r.status).lower(), "#888888")
+            lines.append(
+                f'<span style="color: {banner_color};"><b>[配置恢复] {self._html_escape(r.summary)}</b></span>'
+            )
+            if r.details:
+                lines.append(f"  {self._html_escape(r.details)}")
+            lines.append("")
+
         lines.append("<b>摘要</b>")
         lines.append(f'  <span style="color: {status_colors["error"]};">ERROR  : {counts.get("error", 0)}</span>')
         lines.append(f'  <span style="color: {status_colors["warn"]};">WARN   : {counts.get("warn", 0)}</span>')

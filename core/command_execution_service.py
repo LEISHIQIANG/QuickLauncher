@@ -6,8 +6,9 @@ import logging
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from core.command_registry import CommandContext, CommandDefinition, CommandResult
 from core.command_results import CommandResultStore
@@ -193,7 +194,7 @@ class CommandExecutionService:
 
             shortcut = request.shortcut
             if shortcut is not None and request.args:
-                setattr(shortcut, "_runtime_param_values", dict(request.args))
+                shortcut._runtime_param_values = dict(request.args)
             if (
                 shortcut is not None
                 and getattr(shortcut, "command_type", "cmd") in ("cmd", "python", "powershell", "bash")

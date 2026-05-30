@@ -10,9 +10,9 @@ import socket
 import subprocess
 import sys
 import urllib.request
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, Optional
 
 _MAX_EXTERNAL_INPUT_BYTES = 1 * 1024 * 1024
 
@@ -244,7 +244,7 @@ def collect_input_prompts(text: str) -> list[str]:
     return prompts
 
 
-def should_expand_command_variables(command_type: str, enabled: Optional[bool]) -> bool:
+def should_expand_command_variables(command_type: str, enabled: bool | None) -> bool:
     """Return whether a command shortcut should expand template variables."""
     if command_type == "builtin":
         return False
@@ -290,14 +290,14 @@ def is_value_only_variable_command(text: str) -> bool:
 def resolve_command_variables(
     text: str,
     *,
-    input_values: Optional[Dict[str, str]] = None,
-    param_values: Optional[Dict[str, str]] = None,
-    chain_values: Optional[Dict[str, str]] = None,
-    selected_files: Optional[list[str]] = None,
-    selected_text_provider: Optional[Callable[[], str]] = None,
-    clipboard_provider: Optional[Callable[[], str]] = None,
-    app_dir: Optional[str] = None,
-    config_dir: Optional[str] = None,
+    input_values: dict[str, str] | None = None,
+    param_values: dict[str, str] | None = None,
+    chain_values: dict[str, str] | None = None,
+    selected_files: list[str] | None = None,
+    selected_text_provider: Callable[[], str] | None = None,
+    clipboard_provider: Callable[[], str] | None = None,
+    app_dir: str | None = None,
+    config_dir: str | None = None,
     strict_unknown: bool = True,
     raw_mode: bool = False,
     bash_mode: bool = False,
@@ -400,13 +400,13 @@ def _split_spec(spec: str) -> tuple[str, bool]:
     return spec, False
 
 
-def _lookup_named_value(values: Dict[str, str], name: str, label: str) -> str:
+def _lookup_named_value(values: dict[str, str], name: str, label: str) -> str:
     if name in values:
         return values[name]
     raise CommandVariableError(f"缺少{label}: {name}")
 
 
-def _lookup_input_value(input_values: Dict[str, str], prompt: str) -> str:
+def _lookup_input_value(input_values: dict[str, str], prompt: str) -> str:
     if prompt in input_values:
         return input_values[prompt]
     if not prompt and "input" in input_values:

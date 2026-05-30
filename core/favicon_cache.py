@@ -396,7 +396,7 @@ def _validate_public_http_url(url: str) -> str:
         addresses = socket.getaddrinfo(host, parsed.port or (443 if scheme == "https" else 80), type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise UnsafeFaviconUrlError(f"host resolution failed: {host}") from exc
-    for family, _, _, _, sockaddr in addresses:
+    for _family, _, _, _, sockaddr in addresses:
         address = sockaddr[0]
         try:
             ip = ipaddress.ip_address(address)
@@ -549,10 +549,10 @@ def _fetch_html(url: str) -> tuple[str, str]:
             _sleep_before_html_retry(url, attempt, f"HTTP {e.code}")
         except urllib.error.URLError as e:
             reason = getattr(e, "reason", None)
-            if not isinstance(reason, (TimeoutError, socket.timeout)) or attempt >= _HTML_RETRIES:
+            if not isinstance(reason, TimeoutError | socket.timeout) or attempt >= _HTML_RETRIES:
                 raise
             _sleep_before_html_retry(url, attempt, "timeout")
-        except (TimeoutError, socket.timeout):
+        except TimeoutError:
             if attempt >= _HTML_RETRIES:
                 raise
             _sleep_before_html_retry(url, attempt, "timeout")
@@ -725,14 +725,14 @@ def _fetch_and_save_icon(icon_url: str, target: str) -> bool:
         return False
     except urllib.error.URLError as e:
         reason = getattr(e, "reason", None)
-        if isinstance(reason, (TimeoutError, socket.timeout)):
+        if isinstance(reason, TimeoutError | socket.timeout):
             logger.warning(
                 "图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs", icon_url, _ICON_TIMEOUT, exc_info=True
             )
         else:
             logger.debug("图标获取：候选图标请求失败 icon_url=%s error=%s", icon_url, e, exc_info=True)
         return False
-    except (TimeoutError, socket.timeout) as e:
+    except TimeoutError as e:
         logger.warning(
             "图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs error=%s", icon_url, _ICON_TIMEOUT, e, exc_info=True
         )

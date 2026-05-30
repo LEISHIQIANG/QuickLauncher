@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.shortcut_health import apply_health_fixes, check_shortcuts, save_health_state
+from core.shortcut_health import apply_health_fixes, check_shortcuts, preview_health_fixes, save_health_state
 from qt_compat import (
     QApplication,
     QFont,
@@ -139,6 +139,44 @@ class ShortcutHealthWindow(ThemedToolWindow):
         fix_ids = [issue.id for issue in self.issues if issue.fix_action]
         if not fix_ids:
             return
+
+        # 先展示修复预览，让用户确认
+        previews = preview_health_fixes(self.data_manager, fix_ids)
+        destructive = [p for p in previews if not p.safe]
+        safe_items = [p for p in previews if p.safe]
+
+        if previews:
+            preview_lines = []
+            if destructive:
+                preview_lines.append("⚠️ 以下操作不可逆：\n")
+                for p in destructive:
+                    preview_lines.append(f"  • {p.description}")
+                preview_lines.append("")
+            if safe_items:
+                preview_lines.append("安全修复：\n")
+                for p in safe_items:
+                    preview_lines.append(f"  • {p.description}")
+            preview_text = "\n".join(preview_lines)
+
+            if destructive:
+                result = ThemedMessageBox.question(
+                    self,
+                    "确认修复",
+                    f"{preview_text}\n\n确定要执行以上修复吗？",
+                    ThemedMessageBox.Yes | ThemedMessageBox.No,
+                )
+                if result != ThemedMessageBox.Yes:
+                    return
+            else:
+                result = ThemedMessageBox.question(
+                    self,
+                    "应用修复",
+                    f"{preview_text}\n\n确定要执行以上修复吗？",
+                    ThemedMessageBox.Yes | ThemedMessageBox.No,
+                )
+                if result != ThemedMessageBox.Yes:
+                    return
+
         result = apply_health_fixes(self.data_manager, fix_ids)
         self.refresh()
         skipped = result.get("skipped", 0)

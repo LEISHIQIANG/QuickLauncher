@@ -855,13 +855,15 @@ class IconGrid(QWidget):
             grid_bg = "rgba(255, 255, 255, 0.20)"
             grid_border = "rgba(0, 0, 0, 0.06)"
 
-        self.grid_area.setStyleSheet(f"""
+        self.grid_area.setStyleSheet(
+            f"""
             QWidget#iconGridArea {{
                 background-color: {grid_bg};
                 border: 1px solid {grid_border};
                 border-radius: 10px;
             }}
-        """)
+        """
+        )
 
         if theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
@@ -1094,7 +1096,7 @@ class IconGrid(QWidget):
         except Exception:
             pass
         icon_tasks = []
-        for i, shortcut in enumerate(items):
+        for _i, shortcut in enumerate(items):
             widget = IconWidget(shortcut, icon_size=icon_size, cell_size=cell_size, theme=theme)
             widget.setParent(self.container)
             widget.clicked.connect(lambda s=shortcut: self._on_item_clicked(s))
@@ -1760,13 +1762,15 @@ class IconGrid(QWidget):
                 bg = "rgba(224, 250, 240, 200)"
                 border = "2px dashed rgba(70, 180, 140, 180)"
 
-            self.grid_area.setStyleSheet(f"""
+            self.grid_area.setStyleSheet(
+                f"""
                 QWidget#iconGridArea {{
                     background-color: {bg};
                     border: {border};
                     border-radius: 10px;
                 }}
-            """)
+            """
+            )
         else:
             event.ignore()
 

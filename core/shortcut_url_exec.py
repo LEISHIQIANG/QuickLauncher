@@ -169,11 +169,11 @@ class UrlExecutionMixin:
                 f"HTTP {e.code}，已收到响应",
                 url,
             )
-        except (TimeoutError, socket.timeout):
+        except TimeoutError:
             return UrlExecutionMixin._latency_result(False, -1, "red", "访问超时", url)
         except URLError as e:
             reason = getattr(e, "reason", e)
-            message = "访问超时" if isinstance(reason, (TimeoutError, socket.timeout)) else f"无法访问: {reason}"
+            message = "访问超时" if isinstance(reason, TimeoutError | socket.timeout) else f"无法访问: {reason}"
             return UrlExecutionMixin._latency_result(False, -1, "red", message, url)
         except Exception as e:
             return UrlExecutionMixin._latency_result(False, -1, "red", f"无法访问: {e}", url)
@@ -201,7 +201,7 @@ class UrlExecutionMixin:
                 close = getattr(response, "close", None)
                 if close:
                     close()
-        except (HTTPError, URLError, TimeoutError, socket.timeout) as e:
+        except (HTTPError, URLError, TimeoutError) as e:
             elapsed_ms = UrlExecutionMixin._elapsed_latency_ms(start)
             if isinstance(e, HTTPError) and elapsed_ms <= timeout_ms:
                 return UrlExecutionMixin._latency_result(

@@ -13,7 +13,6 @@ import re
 import shlex
 import subprocess
 import time
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +74,8 @@ def launch_via_explorer_com(target: str, parameters: str = "", directory: str = 
 
 def launch_as_standard_user(
     target: str,
-    parameters: Optional[str] = None,
-    directory: Optional[str] = None,
+    parameters: str | None = None,
+    directory: str | None = None,
     show_cmd: int = 1,
     timeout_seconds: float = PRIVILEGE_LAUNCH_TIMEOUT_SECONDS,
 ) -> tuple[bool, str]:

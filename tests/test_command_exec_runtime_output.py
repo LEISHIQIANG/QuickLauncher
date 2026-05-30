@@ -20,7 +20,7 @@ def test_output_helpers_decode_and_truncate():
     text, encoding, fallback = decode_command_output("ready")
     assert (text, encoding, fallback) == ("ready", "text", False)
 
-    decoded, encoding, fallback = decode_command_output("中文".encode("utf-8"))
+    decoded, encoding, fallback = decode_command_output("中文".encode())
     assert decoded == "中文"
     assert encoding == "utf-8"
     assert fallback is False

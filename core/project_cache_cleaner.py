@@ -40,7 +40,7 @@ def get_project_cache_stats(data_manager=None) -> dict:
 
 def _get_install_dir(data_manager) -> Path:
     if data_manager is not None and getattr(data_manager, "install_dir", None):
-        return Path(getattr(data_manager, "install_dir")).resolve(strict=False)
+        return Path(data_manager.install_dir).resolve(strict=False)
     return Path(__file__).resolve(strict=False).parent.parent
 
 
@@ -66,7 +66,7 @@ def _iter_values(value):
     if isinstance(value, dict):
         for item in value.values():
             yield from _iter_values(item)
-    elif isinstance(value, (list, tuple, set)):
+    elif isinstance(value, list | tuple | set):
         for item in value:
             yield from _iter_values(item)
     else:
@@ -181,7 +181,7 @@ def _remove_dir_tree(path: Path, area: str, dry_run: bool, stats: dict):
     except UnsafePathError:
         stats["failed"] += 1
         return
-    files = [p for p in _iter_files(path)]
+    files = list(_iter_files(path))
     count = len(files)
     size = sum(_safe_size(p) for p in files)
     if not dry_run:

@@ -68,6 +68,12 @@ def normalize_zip_name(name: str) -> str | None:
         return None
     if len(raw) >= 2 and raw[1] == ":":
         return None
+    # Check for empty parts (consecutive slashes) before PurePosixPath normalizes them
+    if "//" in raw:
+        return None
+    # Check for dot components before PurePosixPath normalizes them
+    if raw.startswith("./") or raw.startswith("../") or "/./" in raw or "/../" in raw:
+        return None
     path = PurePosixPath(raw)
     if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
         return None
@@ -124,7 +130,7 @@ def read_zip_bytes(
     info = index.get(normalized.lower()) if normalized else None
     if info is None:
         if required:
-            add_warning(report, f"Missing required archive entry: {name}")
+            raise UnsafeZipError(f"Missing required archive entry: {name}")
         return None
     if info.file_size > max_bytes:
         skip_file(report, normalized or name, "file exceeds size limit")
@@ -156,7 +162,7 @@ def read_zip_text(
     except UnicodeDecodeError:
         skip_file(report, name, "not valid UTF-8")
         if required:
-            raise UnsafeZipError(f"required entry is not valid UTF-8: {name}")
+            raise UnsafeZipError(f"required entry is not valid UTF-8: {name}") from None
         return None
 
 

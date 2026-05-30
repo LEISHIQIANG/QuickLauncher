@@ -10,8 +10,8 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 PROBE_CODE = r"""
 import json
@@ -97,8 +97,7 @@ def _run_probe(command: tuple[str, ...], source: str) -> Candidate | None:
         proc = subprocess.run(
             [*command, "-c", PROBE_CODE],
             check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=8,
         )

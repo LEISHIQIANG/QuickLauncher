@@ -22,9 +22,21 @@ def _is_working_python(exe_path: str) -> bool:
 
 def maybe_reexec_in_venv(root_dir: str):
     try:
-        if getattr(sys, "frozen", False):
-            return
-        if os.environ.get("QL_REEXECED") == "1":
+        is_compiled = (
+            getattr(sys, "frozen", False)
+            or getattr(sys, "_MEIPASS", False)
+            or ("__compiled__" in sys.builtin_module_names)
+        )
+        if not is_compiled:
+            try:
+                import builtins
+
+                if hasattr(builtins, "__compiled__"):
+                    is_compiled = True
+            except Exception:
+                pass
+
+        if is_compiled:
             return
         venv_py = os.path.join(root_dir, ".venv", "Scripts", "python.exe")
         if not os.path.exists(venv_py):

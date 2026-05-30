@@ -11,10 +11,11 @@ import subprocess
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from .command_registry import (
     COMMAND_INTERACTION_PANEL,
@@ -101,7 +102,7 @@ class PluginManifest:
     trust_level: str = "local-trusted"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "PluginManifest":
+    def from_dict(cls, data: dict) -> PluginManifest:
         trust = data.get("trust_level", "").lower().replace(" ", "-")
         if trust not in PLUGIN_TRUST_LEVELS:
             trust = "local-trusted"
@@ -479,7 +480,7 @@ class PluginAPI:
     def get_selected_files(self) -> list[str]:
         self._check_permission("file.read")
         try:
-            from ui.launcher_popup.file_selection import get_selected_files_for_process
+            from core.file_selection import get_selected_files_for_process
 
             return get_selected_files_for_process() or []
         except Exception:
@@ -806,7 +807,7 @@ class PluginManager:
 
     def _load_manifest(self, directory: str, manifest_path: Path) -> PluginInfo | None:
         try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
+            with open(manifest_path, encoding="utf-8") as f:
                 raw = json.load(f)
             m = PluginManifest.from_dict(raw)
             if m.id and Path(directory).name != m.id:
@@ -1141,7 +1142,7 @@ class PluginManager:
                     plugin_id = manifest_data.get("id")
                     plugin_name: str = manifest_data.get("name", plugin_id)
                 except Exception as e:
-                    raise ValueError(f"解析 plugin.json 失败:\n{e}")
+                    raise ValueError(f"解析 plugin.json 失败:\n{e}") from e
 
                 if not plugin_id or not re.match(r"^[a-z0-9_-]+$", plugin_id):
                     raise ValueError("插件ID无效或格式不正确！")
@@ -1206,7 +1207,7 @@ class PluginManager:
                     try:
                         dst = resolve_under(staging_dir, staging_dir / safe_rel_path)
                     except UnsafePathError:
-                        raise ValueError(f"检测到路径穿越攻击，安装已终止: {filename}")
+                        raise ValueError(f"检测到路径穿越攻击，安装已终止: {filename}") from None
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     with zf.open(member) as src, open(dst, "wb") as fd:
                         shutil.copyfileobj(src, fd)
@@ -1244,7 +1245,7 @@ class PluginManager:
                     safe_rmtree_child(backup_dir.parent, backup_dir)
                 except Exception as rollback_err:
                     logger.error("回滚插件安装失败: %s", rollback_err)
-            raise _exc_info[1].with_traceback(_exc_info[2])
+            raise _exc_info[1].with_traceback(_exc_info[2]) from _exc_info[1]
         finally:
             if staging_dir and staging_dir.exists():
                 try:

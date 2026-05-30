@@ -4,8 +4,9 @@
 """
 
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, Optional, Tuple, Type, TypeVar
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,8 @@ T = TypeVar("T")
 def safe_execute(
     func: Callable[[], T],
     error_msg: str,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    default: Optional[T] = None,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+    default: T | None = None,
     log_level: str = "warning",
 ) -> T:
     """安全执行函数，捕获特定异常

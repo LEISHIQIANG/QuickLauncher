@@ -131,6 +131,13 @@ if not defined PYTHON_CMD (
     exit /b 1
 )
 
+REM Clean PATH to avoid conflicting C compilers (e.g. 32-bit TDM-GCC or mismatched MinGW)
+set "PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"
+for /f "delims=" %%i in ("!PYTHON_CMD!") do (
+    set "PY_DIR=%%~dpi"
+    if not "!PY_DIR!"=="" set "PATH=!PATH!;!PY_DIR!;!PY_DIR!\Scripts"
+)
+
 REM 2. Check Inno Setup
 set "ISCC="
 if exist "E:\Inno Setup 6\ISCC.exe" set "ISCC=E:\Inno Setup 6\ISCC.exe"
@@ -508,6 +515,10 @@ if exist "plugins" (
         if "%QL_NO_PAUSE%"=="" pause
         exit /b 1
     )
+    REM Clean __pycache__ and .pyc from staged plugins to keep release clean
+    for /r "dist\QuickLauncher\plugins" %%d in (__pycache__) do if exist "%%d" rmdir /s /q "%%d" >nul 2>&1
+    for /r "dist\QuickLauncher\plugins" %%f in (*.pyc) do if exist "%%f" del /q "%%f" >nul 2>&1
+    echo   [OK] Plugins copied and cleaned of __pycache__ / .pyc.
 ) else (
     echo   [Warning] plugins directory not found, skipping bundled plugins.
 )

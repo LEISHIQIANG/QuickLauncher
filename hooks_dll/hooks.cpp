@@ -2,6 +2,7 @@
 #include "hooks.h"
 #include <windows.h>
 #include <thread>
+#include <chrono>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -26,6 +27,18 @@ static std::atomic<bool> g_mouseRunning(false);
 static std::atomic<bool> g_keyboardRunning(false);
 static std::atomic<bool> g_mouseInstalling(false);
 static std::atomic<bool> g_keyboardInstalling(false);
+static std::atomic<bool> g_mouseThreadAlive(false);
+static std::atomic<bool> g_keyboardThreadAlive(false);
+
+static HMODULE GetCurrentDllModule() {
+    HMODULE hMod = NULL;
+    GetModuleHandleExA(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCSTR>(&GetCurrentDllModule),
+        &hMod
+    );
+    return hMod;
+}
 
 // 回调
 static MouseCallback g_mouseCallback = nullptr;
@@ -279,7 +292,11 @@ static std::string WindowSummary(HWND hwnd) {
     GetClassNameA(hwnd, className, sizeof(className));
 
     char title[192] = {0};
-    GetWindowTextA(hwnd, title, sizeof(title));
+    if (pid != GetCurrentProcessId()) {
+        GetWindowTextA(hwnd, title, sizeof(title));
+    } else {
+        lstrcpynA(title, "current_process_window", sizeof(title));
+    }
 
     std::ostringstream oss;
     oss << "hwnd=0x" << std::hex << reinterpret_cast<uintptr_t>(hwnd) << std::dec
@@ -482,7 +499,6 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     }
 
     if (g_mousePaused) {
-        LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_paused");
         return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
     }
 
@@ -521,14 +537,16 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 DWORD WINAPI MouseHookThread(LPVOID param) {
+    g_mouseThreadAlive = true;
     HANDLE readyEvent = (HANDLE)param;
     g_mouseThreadId = GetCurrentThreadId();
-    g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetModuleHandle(NULL), 0);
+    g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetCurrentDllModule(), 0);
 
     if (!g_mouseHook) {
         g_lastHookError = GetLastError();
         g_mouseRunning = false;
         g_mouseThreadId = 0;
+        g_mouseThreadAlive = false;
         if (readyEvent) SetEvent(readyEvent);
         return 1;
     }
@@ -549,6 +567,7 @@ DWORD WINAPI MouseHookThread(LPVOID param) {
     g_blockedDown = false;
     g_mouseThreadId = 0;
     g_mouseRunning = false;
+    g_mouseThreadAlive = false;
     return 0;
 }
 
@@ -643,14 +662,16 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 DWORD WINAPI KeyboardHookThread(LPVOID param) {
+    g_keyboardThreadAlive = true;
     HANDLE readyEvent = (HANDLE)param;
     g_keyboardThreadId = GetCurrentThreadId();
-    g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookProc, GetModuleHandle(NULL), 0);
+    g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookProc, GetCurrentDllModule(), 0);
 
     if (!g_keyboardHook) {
         g_lastHookError = GetLastError();
         g_keyboardRunning = false;
         g_keyboardThreadId = 0;
+        g_keyboardThreadAlive = false;
         if (readyEvent) SetEvent(readyEvent);
         return 1;
     }
@@ -675,6 +696,7 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
     g_hotkeyEnabled = false;
     g_keyboardThreadId = 0;
     g_keyboardRunning = false;
+    g_keyboardThreadAlive = false;
     return 0;
 }
 
@@ -691,6 +713,16 @@ bool InstallMouseHook(MouseCallback callback) {
     }
 
     g_mouseCallback = callback;
+
+    // 如果旧线程仍在运行，等待其安全退出，防止多线程钩子竞态
+    if (g_mouseThreadAlive.load()) {
+        int waitCount = 0;
+        while (g_mouseThreadAlive.load() && waitCount < 50) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            waitCount++;
+        }
+    }
+
     if (g_mouseRunning) {
         g_mouseInstalling = false;
         return g_mouseHook != NULL;
@@ -734,9 +766,9 @@ void UninstallMouseHook() {
     if (g_mouseThreadId) {
         PostThreadMessage(g_mouseThreadId, WM_QUIT, 0, 0);
     }
-    // 等待线程真正退出
+    // 等待线程真正退出 (超时设为 500ms 彻底防死锁，同时确保 unhook 完成)
     if (g_mouseThreadHandle) {
-        WaitForSingleObject(g_mouseThreadHandle, 2000);
+        WaitForSingleObject(g_mouseThreadHandle, 500);
         CloseHandle(g_mouseThreadHandle);
         g_mouseThreadHandle = NULL;
     }
@@ -768,6 +800,16 @@ bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
     }
 
     g_altDoubleTapCallback = altDoubleTapCallback;
+
+    // 如果旧线程仍在运行，等待其安全退出，防止多线程钩子竞态
+    if (g_keyboardThreadAlive.load()) {
+        int waitCount = 0;
+        while (g_keyboardThreadAlive.load() && waitCount < 50) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            waitCount++;
+        }
+    }
+
     if (g_keyboardRunning) {
         g_keyboardInstalling = false;
         return g_keyboardHook != NULL;
@@ -811,9 +853,9 @@ void UninstallKeyboardHook() {
     if (g_keyboardThreadId) {
         PostThreadMessage(g_keyboardThreadId, WM_QUIT, 0, 0);
     }
-    // 等待线程真正退出
+    // 等待线程真正退出 (超时设为 500ms 彻底防死锁，同时确保 unhook 完成)
     if (g_keyboardThreadHandle) {
-        WaitForSingleObject(g_keyboardThreadHandle, 2000);
+        WaitForSingleObject(g_keyboardThreadHandle, 500);
         CloseHandle(g_keyboardThreadHandle);
         g_keyboardThreadHandle = NULL;
     }

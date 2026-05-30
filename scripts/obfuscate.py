@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 QuickLauncher Code Obfuscator
 """
@@ -63,7 +62,7 @@ def obfuscate_code(code):
 
 def obfuscate_file(src_path, dst_path):
     try:
-        with open(src_path, "r", encoding="utf-8") as f:
+        with open(src_path, encoding="utf-8") as f:
             code = f.read()
 
         if not code.strip():

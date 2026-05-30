@@ -3,7 +3,6 @@
 import ctypes
 import logging
 import time
-from typing import List
 
 from .data_models import ShortcutItem
 from .shortcut_types import (
@@ -65,15 +64,15 @@ class HotkeyExecutionMixin:
         KEYEVENTF_EXTENDEDKEY = 0x0001
         try:
             ShortcutExecutor._sendinput_key_event(vk, True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("_sendinput_key_event 释放 VK=0x%02X 失败: %s", vk, e)
         try:
             flags = KEYEVENTF_KEYUP
             if ShortcutExecutor._is_extended_vk(vk):
                 flags |= KEYEVENTF_EXTENDEDKEY
             user32.keybd_event(vk, 0, flags, 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("keybd_event 释放 VK=0x%02X 失败: %s", vk, e)
 
     @staticmethod
     def _release_modifiers_strong():
@@ -313,7 +312,7 @@ class HotkeyExecutionMixin:
         }
 
     @staticmethod
-    def _execute_hotkey_sendinput(modifiers: List[str], key: str) -> bool:
+    def _execute_hotkey_sendinput(modifiers: list[str], key: str) -> bool:
         """使用 keybd_event + 随机延迟模拟真实按键"""
         import random
 
@@ -321,7 +320,7 @@ class HotkeyExecutionMixin:
         if not vk_main:
             return False
 
-        mod_vks: List[int] = []
+        mod_vks: list[int] = []
         for m in modifiers or []:
             vk = ShortcutExecutor._vk_from_key(m)
             if vk:
@@ -404,8 +403,8 @@ class HotkeyExecutionMixin:
             if ShortcutExecutor._is_extended_vk(vk):
                 flags |= KEYEVENTF_EXTENDEDKEY
             user32.keybd_event(vk, 0, flags, 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("keybd_event 释放 %s(VK=0x%02X) 失败: %s", key, vk, e)
 
     @staticmethod
     def _verify_and_release_all_modifiers():

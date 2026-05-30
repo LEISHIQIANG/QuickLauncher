@@ -288,7 +288,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         try:
             special_apps = tuple(getattr(settings, "special_apps", []) or [])
         except Exception:
-            special_apps = tuple()
+            special_apps = ()
 
         return {
             "hide_tray_icon": bool(getattr(settings, "hide_tray_icon", False)),
@@ -485,6 +485,18 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             pass
 
     def _shutdown_runtime_components(self):
+        # 停止后台线程
+        try:
+            _thread = self._icon_cache_clean_thread
+        except Exception:
+            _thread = None
+        if _thread is not None:
+            try:
+                _thread.quit()
+                _thread.wait(2000)
+            except Exception:
+                pass
+
         for timer_name in (
             "_settings_sync_timer",
             "_sleep_timer",

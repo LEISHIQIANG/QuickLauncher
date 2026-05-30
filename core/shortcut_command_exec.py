@@ -16,7 +16,6 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional
 
 from qt_compat import QObject, pyqtSignal
 
@@ -213,7 +212,7 @@ class CommandExecutionMixin:
         return normalize_command_type(command_type)
 
     @staticmethod
-    def _cmd_launcher() -> Optional[str]:
+    def _cmd_launcher() -> str | None:
         candidates = []
         if os.name == "nt":
             candidates.extend(
@@ -528,7 +527,7 @@ class CommandExecutionMixin:
         return None
 
     @staticmethod
-    def _python_launcher() -> Optional[str]:
+    def _python_launcher() -> str | None:
         """Return a Python executable suitable for user scripts."""
         if not ShortcutExecutor._is_packaged_runtime() and sys.executable:
             resolved = ShortcutExecutor._resolve_long_path(sys.executable)
@@ -580,7 +579,7 @@ class CommandExecutionMixin:
         return path
 
     @staticmethod
-    def _find_system_python_launcher() -> Optional[str]:
+    def _find_system_python_launcher() -> str | None:
         candidates = [shutil.which("py"), shutil.which("python3"), shutil.which("python")]
         app_dir = os.path.normcase(
             ShortcutExecutor._resolve_long_path(os.path.abspath(ShortcutExecutor._app_install_dir()))
@@ -605,7 +604,7 @@ class CommandExecutionMixin:
         )
 
     @staticmethod
-    def _powershell_launcher() -> Optional[str]:
+    def _powershell_launcher() -> str | None:
         candidates = [
             shutil.which("powershell.exe"),
             shutil.which("powershell"),
@@ -669,7 +668,7 @@ class CommandExecutionMixin:
         )
 
     @staticmethod
-    def _bash_launcher() -> Optional[str]:
+    def _bash_launcher() -> str | None:
         """Find Git Bash executable."""
         candidates = []
         # 1. shutil.which
@@ -902,7 +901,7 @@ class CommandExecutionMixin:
             logger.debug("Failed to terminate command process tree pid=%s: %s", pid, e)
 
     @staticmethod
-    def _run_silent_output(argv: List[str]) -> str:
+    def _run_silent_output(argv: list[str]) -> str:
         """静默执行命令并获取输出"""
         if os.name != "nt":
             return ""
@@ -2200,7 +2199,7 @@ class CommandExecutionMixin:
                 if cmd_def is not None and not isinstance(cmd_def.handler, _CallbackHandler):
                     selected_files = []
                     try:
-                        from ui.launcher_popup.file_selection import get_selected_files_for_process
+                        from core.file_selection import get_selected_files_for_process
 
                         selected_files = get_selected_files_for_process() or []
                     except Exception:

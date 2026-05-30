@@ -270,7 +270,7 @@ class UpdateDialog:
         if update_info.mandatory:
             version_html += (
                 f'<span style="margin-left:8px;display:inline-block;background:rgba(255,59,48,0.15);'
-                f'color:#ff3b30;padding:2px 8px;border-radius:4px;font-size:11px;'
+                f"color:#ff3b30;padding:2px 8px;border-radius:4px;font-size:11px;"
                 f'border:1px solid rgba(255,59,48,0.3);">{tr("强制更新")}</span>'
             )
         version_html += "</div>"

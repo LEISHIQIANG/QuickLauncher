@@ -6,8 +6,8 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, Optional
 
 try:
     from watchdog.events import FileSystemEventHandler
@@ -75,8 +75,8 @@ class FolderWatcherManager:
     """文件夹监听管理器(单例)"""
 
     def __init__(self):
-        self.observer: Optional[Observer] = None
-        self.watches: Dict[str, any] = {}  # folder_id -> watch_handle
+        self.observer: Observer | None = None
+        self.watches: dict[str, any] = {}  # folder_id -> watch_handle
 
         if WATCHDOG_AVAILABLE:
             self.observer = Observer()
@@ -142,7 +142,7 @@ class FolderWatcherManager:
 
 
 # 全局单例
-_watcher_manager: Optional[FolderWatcherManager] = None
+_watcher_manager: FolderWatcherManager | None = None
 _watcher_lock = threading.Lock()
 
 

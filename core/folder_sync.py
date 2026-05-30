@@ -6,7 +6,6 @@
 import logging
 import os
 import time
-from typing import Tuple
 
 from .data_manager import DataManager
 from .folder_scanner import FolderScanner
@@ -29,7 +28,7 @@ def _set_sync_status(folder_id: str, **kwargs):
     _last_sync_status[folder_id] = status
 
 
-def sync_folder(data_manager: DataManager, folder_id: str) -> Tuple[int, int]:
+def sync_folder(data_manager: DataManager, folder_id: str) -> tuple[int, int]:
     """同步文件夹内容
 
     根据用户需求: 完全同步(包括删除)

@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from .hooks_wrapper import HooksDLL
 
@@ -16,10 +16,10 @@ class KeyboardHook:
 
     def __init__(self):
         self._dll = HooksDLL.get_instance()
-        self._on_alt_double_tap: Optional[Callable[[], None]] = None
-        self._on_hotkey: Optional[Callable[[], None]] = None
+        self._on_alt_double_tap: Callable[[], None] | None = None
+        self._on_hotkey: Callable[[], None] | None = None
 
-    def install(self, on_alt_double_tap: Optional[Callable[[], None]] = None) -> bool:
+    def install(self, on_alt_double_tap: Callable[[], None] | None = None) -> bool:
         """安装键盘钩子"""
         self._on_alt_double_tap = on_alt_double_tap
         success = self._dll.install_keyboard_hook(on_alt_double_tap)
@@ -32,7 +32,7 @@ class KeyboardHook:
         self._dll.uninstall_keyboard_hook()
         logger.info("键盘钩子已卸载")
 
-    def set_hotkey(self, hotkey_str: str, callback: Optional[Callable[[], None]] = None):
+    def set_hotkey(self, hotkey_str: str, callback: Callable[[], None] | None = None):
         """设置热键"""
         self._on_hotkey = callback
         if not hotkey_str or not callback:

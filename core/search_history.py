@@ -66,7 +66,7 @@ class SearchHistory:
         """Trim oldest entries when history grows too large."""
         with self._lock:
             if len(self._data) <= max_entries:
-                return 0
+                return len(self._data)
             # Sort by total score (ascending) and keep top max_entries
             scored = [(sum(v.values()) if isinstance(v, dict) else 0.0, k, v) for k, v in self._data.items()]
             scored.sort(key=lambda x: x[0], reverse=True)
@@ -81,7 +81,7 @@ class SearchHistory:
         if not self._path or not os.path.isfile(self._path):
             return
         try:
-            with open(self._path, "r", encoding="utf-8") as f:
+            with open(self._path, encoding="utf-8") as f:
                 raw = json.load(f)
             if isinstance(raw, dict):
                 self._data = raw

@@ -68,4 +68,4 @@ def test_shortcut_parser_import_without_win32com_does_not_warn(monkeypatch, capl
         if saved_module is not None:
             sys.modules[module_name] = saved_module
         if core_package is not None and saved_attr is not None:
-            setattr(core_package, "shortcut_parser", saved_attr)
+            core_package.shortcut_parser = saved_attr

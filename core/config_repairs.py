@@ -55,7 +55,7 @@ class RepairReport:
         if issue.fixed:
             self.repaired += 1
 
-    def extend(self, other: "RepairReport") -> None:
+    def extend(self, other: RepairReport) -> None:
         self.issues.extend(other.issues)
         self.repaired += other.repaired
 

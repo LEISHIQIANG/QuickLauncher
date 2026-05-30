@@ -13,7 +13,6 @@ import uuid
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional
 
 from .config_history import ConfigHistoryManager
 from .config_recovery import ConfigRecoveryReport
@@ -110,6 +109,9 @@ class DataManager:
 
         from .config_migrator import ConfigMigrator
 
+        # 先检测上次迁移中断的残留，再判断是否需要完整迁移
+        if ConfigMigrator.needs_partial_recovery():
+            ConfigMigrator.recover_partial()
         if ConfigMigrator.needs_migration():
             ConfigMigrator.migrate()
 
@@ -230,9 +232,9 @@ class DataManager:
         self._write_icon_repo_items(user_items)
 
         for item in system_items:
-            setattr(item, "_icon_repo_source", "system")
+            item._icon_repo_source = "system"
         for item in user_items:
-            setattr(item, "_icon_repo_source", "user")
+            item._icon_repo_source = "user"
 
         items = sorted(system_items, key=lambda item: int(getattr(item, "order", 0) or 0)) + sorted(
             user_items, key=lambda item: int(getattr(item, "order", 0) or 0)
@@ -290,7 +292,7 @@ class DataManager:
         for item in user_items:
             if item.id in system_ids and item.name in system_names:
                 continue
-            setattr(item, "_icon_repo_source", "user")
+            item._icon_repo_source = "user"
             filtered.append(item)
         return filtered
 
@@ -320,7 +322,8 @@ class DataManager:
         temp_file = self.icon_repo_file.with_name(f"{self.icon_repo_file.stem}.{uuid.uuid4().hex}.tmp")
         try:
             temp_file.write_text(payload, encoding="utf-8")
-            os.replace(temp_file, self.icon_repo_file)
+            icon_repo_store = ConfigDataStore(self.icon_repo_file)
+            icon_repo_store.replace_data_file(temp_file)
             return True
         except Exception as exc:
             logger.error("save icon repository failed: %s", exc)
@@ -413,7 +416,7 @@ class DataManager:
 
     def _recover_from_latest_backup(
         self, reason: str = "", quarantined_path: Path | str | None = None
-    ) -> Optional[AppData]:
+    ) -> AppData | None:
         """Recover data.json from the newest valid auto backup."""
         try:
             result = self._get_recovery_service().recover_from_latest_backup(reason, quarantined_path)
@@ -719,7 +722,7 @@ class DataManager:
             return 0
 
         ranked = sorted(
-            list(getattr(folder, "items", []) or []),
+            getattr(folder, "items", []) or [],
             key=lambda item: (
                 -max(0, int(getattr(item, "use_count", 0) or 0)),
                 -max(0.0, float(getattr(item, "last_used_at", 0.0) or 0.0)),
@@ -767,7 +770,7 @@ class DataManager:
                 return True
             return False
 
-    def reorder_folders(self, folder_ids: List[str]):
+    def reorder_folders(self, folder_ids: list[str]):
         """Data manager."""
         with self._save_lock:
             self._mark_history("\u914d\u7f6e\u53d8\u66f4")
@@ -784,7 +787,7 @@ class DataManager:
             folder = self.data.get_folder_by_id(folder_id)
             if folder:
                 if getattr(folder, "is_icon_repo", False):
-                    setattr(shortcut, "_icon_repo_source", "user")
+                    shortcut._icon_repo_source = "user"
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 max_order = max((s.order for s in folder.items), default=-1)
                 shortcut.order = max_order + 1
@@ -793,7 +796,7 @@ class DataManager:
                 return True
             return False
 
-    def add_shortcuts(self, folder_id: str, shortcuts: List[ShortcutItem]) -> int:
+    def add_shortcuts(self, folder_id: str, shortcuts: list[ShortcutItem]) -> int:
         """Data manager."""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
@@ -803,7 +806,7 @@ class DataManager:
                 count = 0
                 for shortcut in shortcuts:
                     if getattr(folder, "is_icon_repo", False):
-                        setattr(shortcut, "_icon_repo_source", "user")
+                        shortcut._icon_repo_source = "user"
                     shortcut.order = max_order + 1 + count
                     folder.items.append(shortcut)
                     count += 1
@@ -812,11 +815,12 @@ class DataManager:
             return 0
 
     def _find_shortcut_with_folder(self, shortcut_id: str):
-        for folder in self.data.folders:
-            for item in folder.items:
-                if item.id == shortcut_id:
-                    return folder, item
-        return None, None
+        with self._save_lock:
+            for folder in self.data.folders:
+                for item in folder.items:
+                    if item.id == shortcut_id:
+                        return folder, item
+            return None, None
 
     def get_shortcut_by_id(self, shortcut_id: str):
         """Data manager."""
@@ -843,7 +847,7 @@ class DataManager:
                 if folder and not folder.is_dock:
                     target_folders = [folder]
             else:
-                target_folders = [folder for folder in self.data.get_pages()]
+                target_folders = list(self.data.get_pages())
 
             updated = 0
             with self.batch_update(immediate=True):
@@ -892,7 +896,7 @@ class DataManager:
             self._persist_folder_changes(source_folder, target_folder, immediate=True)
             return True
 
-    def delete_shortcuts_batch(self, shortcut_ids: List[str]) -> dict:
+    def delete_shortcuts_batch(self, shortcut_ids: list[str]) -> dict:
         """Data manager."""
         with self._save_lock:
             wanted = [sid for sid in shortcut_ids or [] if sid]
@@ -929,7 +933,7 @@ class DataManager:
                 "affected_ids": removed_ids,
             }
 
-    def move_shortcuts_batch(self, shortcut_ids: List[str], target_folder_id: str) -> dict:
+    def move_shortcuts_batch(self, shortcut_ids: list[str], target_folder_id: str) -> dict:
         """Data manager."""
         with self._save_lock:
             target_folder = self.data.get_folder_by_id(target_folder_id)
@@ -950,7 +954,7 @@ class DataManager:
                     icon_touched = icon_touched or getattr(source_folder, "is_icon_repo", False)
                     source_folder.items.remove(item)
                     if getattr(target_folder, "is_icon_repo", False):
-                        setattr(item, "_icon_repo_source", "user")
+                        item._icon_repo_source = "user"
                     elif getattr(source_folder, "is_icon_repo", False):
                         self._strip_icon_repo_runtime_source(item)
                     max_order = max((s.order for s in target_folder.items), default=-1)
@@ -969,7 +973,7 @@ class DataManager:
                 "affected_ids": moved,
             }
 
-    def copy_shortcuts_batch(self, shortcut_ids: List[str], target_folder_id: str) -> dict:
+    def copy_shortcuts_batch(self, shortcut_ids: list[str], target_folder_id: str) -> dict:
         """Copy shortcuts to a folder, assigning fresh ids and preserving the sources."""
         with self._save_lock:
             target_folder = self.data.get_folder_by_id(target_folder_id)
@@ -986,7 +990,7 @@ class DataManager:
                 new_item = copy.deepcopy(item)
                 new_item.id = str(uuid.uuid4())
                 if getattr(target_folder, "is_icon_repo", False):
-                    setattr(new_item, "_icon_repo_source", "user")
+                    new_item._icon_repo_source = "user"
                 else:
                     self._strip_icon_repo_runtime_source(new_item)
                 max_order += 1
@@ -1005,7 +1009,7 @@ class DataManager:
                 "affected_ids": copied,
             }
 
-    def set_shortcuts_enabled_batch(self, shortcut_ids: List[str], enabled: bool) -> dict:
+    def set_shortcuts_enabled_batch(self, shortcut_ids: list[str], enabled: bool) -> dict:
         """set_shortcuts_enabled_batch"""
         with self._save_lock:
             wanted = [sid for sid in shortcut_ids or [] if sid]
@@ -1047,7 +1051,7 @@ class DataManager:
                         if self._is_system_icon_repo_item(item):
                             return False
                         if getattr(folder, "is_icon_repo", False):
-                            setattr(shortcut, "_icon_repo_source", "user")
+                            shortcut._icon_repo_source = "user"
                         self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                         folder.items[i] = shortcut
                         self._persist_folder_changes(folder, immediate=True)
@@ -1069,7 +1073,7 @@ class DataManager:
                         return True
             return False
 
-    def reorder_shortcuts(self, folder_id: str, shortcut_ids: List[str]):
+    def reorder_shortcuts(self, folder_id: str, shortcut_ids: list[str]):
         """reorder_shortcuts"""
         with self._save_lock:
             folder = self.data.get_folder_by_id(folder_id)
@@ -1103,7 +1107,7 @@ class DataManager:
                     current_value = getattr(self.data.settings, key)
 
                     if current_value is value:
-                        if isinstance(value, (list, dict, set)):
+                        if isinstance(value, list | dict | set):
                             changed = True
                         continue
 
@@ -1119,8 +1123,14 @@ class DataManager:
 
     def get_settings(self) -> AppSettings:
         """get_settings"""
-        set_language(getattr(self.data.settings, "language", "zh_CN"))
-        return self.data.settings
+        with self._save_lock:
+            set_language(getattr(self.data.settings, "language", "zh_CN"))
+            snapshot = copy.copy(self.data.settings)
+            # 深拷贝可变列表字段，防止调用者修改列表污染原始数据
+            snapshot.enabled_plugins = list(snapshot.enabled_plugins)
+            snapshot.favorite_commands = list(snapshot.favorite_commands)
+            snapshot.disabled_builtin_commands = list(snapshot.disabled_builtin_commands)
+            return snapshot
 
     def set_language(self, language: str, immediate: bool = True) -> str:
         """Set the application language without requiring a UI switch control."""
@@ -1157,11 +1167,12 @@ class DataManager:
         if not self.icons_dir.exists():
             return stats
 
-        used_icons = set()
-        for folder in self.data.folders:
-            for item in folder.items:
-                if item.icon_path:
-                    used_icons.add(os.path.normcase(os.path.abspath(item.icon_path)))
+        with self._save_lock:
+            used_icons = set()
+            for folder in self.data.folders:
+                for item in folder.items:
+                    if item.icon_path:
+                        used_icons.add(os.path.normcase(os.path.abspath(item.icon_path)))
 
         seen_hashes = {}  # hash -> file_path
 
@@ -1313,7 +1324,7 @@ class DataManager:
             try:
                 winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
                 cache_info["registry_keys"].append(key_path)
-            except WindowsError:
+            except OSError:
                 pass
 
         return cache_info
@@ -1360,7 +1371,7 @@ class DataManager:
                 try:
                     winreg.DeleteValue(reg_key, "QuickLauncher")
                     stats["registry_keys_removed"] += 1
-                except WindowsError:
+                except OSError:
                     pass
                 winreg.CloseKey(reg_key)
             except Exception as e:
@@ -1391,42 +1402,45 @@ class DataManager:
 
     def backup_full_config(self, save_path: str) -> bool:
         """backup_full_config"""
-        try:
-            if not self.save(immediate=True):
+        with self._save_lock:
+            try:
+                if not self.save(immediate=True):
+                    return False
+
+                with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    data_dict = self._main_data_dict()
+
+                    bg_path = getattr(self.data.settings, "custom_bg_path", "")
+                    if bg_path and os.path.exists(bg_path):
+                        ext = os.path.splitext(bg_path)[1]
+                        arc_bg_name = f"background{ext}"
+                        zf.write(bg_path, arc_bg_name)
+                        data_dict["settings"]["custom_bg_path"] = arc_bg_name
+
+                    zf.writestr("data.json", json.dumps(data_dict, ensure_ascii=False, indent=2))
+                    icon_repo_folder = self.data.get_folder_by_id("icon_repo")
+                    icon_repo_items = [
+                        item
+                        for item in getattr(icon_repo_folder, "items", [])
+                        if not self._is_system_icon_repo_item(item)
+                    ]
+                    icon_repo_dict = {
+                        "version": "1.0",
+                        "items": [item.to_dict() for item in icon_repo_items],
+                    }
+                    zf.writestr("icon_repo.json", json.dumps(icon_repo_dict, ensure_ascii=False, indent=2))
+
+                    self._get_package_service().write_extra_config_files(zf)
+
+                    if self.icons_dir.exists():
+                        for file_path in self.icons_dir.iterdir():
+                            if file_path.is_file():
+                                zf.write(file_path, f"icons/{file_path.name}")
+
+                return True
+            except Exception as e:
+                logger.error("backup_full_config failed: %s", e)
                 return False
-
-            with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                data_dict = self._main_data_dict()
-
-                bg_path = getattr(self.data.settings, "custom_bg_path", "")
-                if bg_path and os.path.exists(bg_path):
-                    ext = os.path.splitext(bg_path)[1]
-                    arc_bg_name = f"background{ext}"
-                    zf.write(bg_path, arc_bg_name)
-                    data_dict["settings"]["custom_bg_path"] = arc_bg_name
-
-                zf.writestr("data.json", json.dumps(data_dict, ensure_ascii=False, indent=2))
-                icon_repo_folder = self.data.get_folder_by_id("icon_repo")
-                icon_repo_items = [
-                    item for item in getattr(icon_repo_folder, "items", []) if not self._is_system_icon_repo_item(item)
-                ]
-                icon_repo_dict = {
-                    "version": "1.0",
-                    "items": [item.to_dict() for item in icon_repo_items],
-                }
-                zf.writestr("icon_repo.json", json.dumps(icon_repo_dict, ensure_ascii=False, indent=2))
-
-                self._get_package_service().write_extra_config_files(zf)
-
-                if self.icons_dir.exists():
-                    for file_path in self.icons_dir.iterdir():
-                        if file_path.is_file():
-                            zf.write(file_path, f"icons/{file_path.name}")
-
-            return True
-        except Exception as e:
-            logger.error("backup_full_config failed: %s", e)
-            return False
 
     def restore_full_config(self, backup_path: str) -> bool:
         """Data manager."""
@@ -1618,107 +1632,110 @@ class DataManager:
 
     def export_shareable_config(self, save_path: str) -> bool:
         """Data manager."""
-        try:
-            self.save(immediate=True)
+        with self._save_lock:
+            try:
+                self.save(immediate=True)
 
-            data_dict = self.data.to_dict()
+                data_dict = self.data.to_dict()
 
-            shareable_dict = {"version": data_dict.get("version", "1.0"), "items": []}
+                shareable_dict = {"version": data_dict.get("version", "1.0"), "items": []}
 
-            icon_entries = []  # [(source_path, mode, archive_name)]
+                icon_entries = []  # [(source_path, mode, archive_name)]
 
-            folders = data_dict.get("folders", [])
-            for folder in folders:
-                items = folder.get("items", folder.get("shortcuts", []))
-                for shortcut in items:
-                    shortcut_type = shortcut.get("type", "file")
-                    if shortcut_type in ["hotkey", "command", "url"]:
-                        original_id = shortcut.get("id") or str(uuid.uuid4())
-                        item_copy = {
-                            "id": original_id,
-                            "name": shortcut.get("name", ""),
-                            "type": shortcut.get("type", ""),
-                            "order": shortcut.get("order", 0),
-                            "enabled": shortcut.get("enabled", True),
-                            "tags": shortcut.get("tags", []),
-                            "last_used_at": shortcut.get("last_used_at", 0.0),
-                            "use_count": shortcut.get("use_count", 0),
-                            "alias": shortcut.get("alias", ""),
-                            "target_path": shortcut.get("target_path", ""),
-                            "target_args": shortcut.get("target_args", ""),
-                            "working_dir": shortcut.get("working_dir", ""),
-                            "hotkey": shortcut.get("hotkey", ""),
-                            "hotkey_modifiers": shortcut.get("hotkey_modifiers", []),
-                            "hotkey_key": shortcut.get("hotkey_key", ""),
-                            "url": shortcut.get("url", ""),
-                            "preferred_browser_path": shortcut.get("preferred_browser_path", ""),
-                            "preferred_browser_args": shortcut.get("preferred_browser_args", ""),
-                            "command": shortcut.get("command", ""),
-                            "command_type": shortcut.get("command_type", "cmd"),
-                            "trigger_mode": shortcut.get("trigger_mode", "immediate"),
-                            "show_window": shortcut.get("show_window", False),
-                            "run_as_admin": shortcut.get("run_as_admin", False),
-                            "command_variables_enabled": shortcut.get("command_variables_enabled", False),
-                            "icon_data": shortcut.get("icon_data", ""),
-                            "icon_invert_with_theme": shortcut.get("icon_invert_with_theme", False),
-                            "icon_invert_current": shortcut.get("icon_invert_current", False),
-                            "icon_invert_theme_when_set": shortcut.get("icon_invert_theme_when_set", ""),
-                        }
+                folders = data_dict.get("folders", [])
+                for folder in folders:
+                    items = folder.get("items", folder.get("shortcuts", []))
+                    for shortcut in items:
+                        shortcut_type = shortcut.get("type", "file")
+                        if shortcut_type in ["hotkey", "command", "url"]:
+                            original_id = shortcut.get("id") or str(uuid.uuid4())
+                            item_copy = {
+                                "id": original_id,
+                                "name": shortcut.get("name", ""),
+                                "type": shortcut.get("type", ""),
+                                "order": shortcut.get("order", 0),
+                                "enabled": shortcut.get("enabled", True),
+                                "tags": shortcut.get("tags", []),
+                                "last_used_at": shortcut.get("last_used_at", 0.0),
+                                "use_count": shortcut.get("use_count", 0),
+                                "alias": shortcut.get("alias", ""),
+                                "target_path": shortcut.get("target_path", ""),
+                                "target_args": shortcut.get("target_args", ""),
+                                "working_dir": shortcut.get("working_dir", ""),
+                                "hotkey": shortcut.get("hotkey", ""),
+                                "hotkey_modifiers": shortcut.get("hotkey_modifiers", []),
+                                "hotkey_key": shortcut.get("hotkey_key", ""),
+                                "url": shortcut.get("url", ""),
+                                "preferred_browser_path": shortcut.get("preferred_browser_path", ""),
+                                "preferred_browser_args": shortcut.get("preferred_browser_args", ""),
+                                "command": shortcut.get("command", ""),
+                                "command_type": shortcut.get("command_type", "cmd"),
+                                "trigger_mode": shortcut.get("trigger_mode", "immediate"),
+                                "show_window": shortcut.get("show_window", False),
+                                "run_as_admin": shortcut.get("run_as_admin", False),
+                                "command_variables_enabled": shortcut.get("command_variables_enabled", False),
+                                "icon_data": shortcut.get("icon_data", ""),
+                                "icon_invert_with_theme": shortcut.get("icon_invert_with_theme", False),
+                                "icon_invert_current": shortcut.get("icon_invert_current", False),
+                                "icon_invert_theme_when_set": shortcut.get("icon_invert_theme_when_set", ""),
+                            }
 
-                        icon_path = shortcut.get("icon_path", "")
-                        if icon_path:
-                            actual_path = icon_path.split(",")[0] if "," in icon_path else icon_path
+                            icon_path = shortcut.get("icon_path", "")
+                            if icon_path:
+                                actual_path = icon_path.split(",")[0] if "," in icon_path else icon_path
 
-                            if os.path.exists(actual_path):
-                                ext = os.path.splitext(actual_path)[1].lower()
-                                if ext in [".exe", ".dll"]:
-                                    new_icon_name = f"{original_id}.png"
-                                    icon_entries.append((icon_path, "extract", new_icon_name))
+                                if os.path.exists(actual_path):
+                                    ext = os.path.splitext(actual_path)[1].lower()
+                                    if ext in [".exe", ".dll"]:
+                                        new_icon_name = f"{original_id}.png"
+                                        icon_entries.append((icon_path, "extract", new_icon_name))
+                                    else:
+                                        original_ext = os.path.splitext(actual_path)[1] or ".png"
+                                        new_icon_name = f"{original_id}{original_ext}"
+                                        icon_entries.append((actual_path, "copy", new_icon_name))
+
+                                    item_copy["icon_path"] = f"icons/{new_icon_name}"
                                 else:
-                                    original_ext = os.path.splitext(actual_path)[1] or ".png"
-                                    new_icon_name = f"{original_id}{original_ext}"
-                                    icon_entries.append((actual_path, "copy", new_icon_name))
-
-                                item_copy["icon_path"] = f"icons/{new_icon_name}"
+                                    item_copy["icon_path"] = ""
                             else:
                                 item_copy["icon_path"] = ""
-                        else:
-                            item_copy["icon_path"] = ""
 
-                        shareable_dict["items"].append(item_copy)
+                            shareable_dict["items"].append(item_copy)
 
-            with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("config.json", json.dumps(shareable_dict, ensure_ascii=False, indent=2))
+                with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr("config.json", json.dumps(shareable_dict, ensure_ascii=False, indent=2))
 
-                for orig_path, mode, new_name in icon_entries:
-                    try:
-                        if mode == "extract":
-                            from core.icon_extractor import IconExtractor
+                    for orig_path, mode, new_name in icon_entries:
+                        try:
+                            if mode == "extract":
+                                from core.icon_extractor import IconExtractor
 
-                            pixmap = IconExtractor.from_file(orig_path, size=256, return_image=False)
-                            if pixmap and not pixmap.isNull():
-                                ext = os.path.splitext(new_name)[1].lower() or ".png"
-                                with tempfile.NamedTemporaryFile(suffix=ext, prefix="ql_icon_", delete=False) as tmp:
-                                    tmp_path = tmp.name
-                                try:
-                                    success = pixmap.save(tmp_path, "PNG")
-                                    if success:
-                                        zf.write(tmp_path, f"icons/{new_name}")
-                                finally:
+                                pixmap = IconExtractor.from_file(orig_path, size=256, return_image=False)
+                                if pixmap and not pixmap.isNull():
+                                    ext = os.path.splitext(new_name)[1].lower() or ".png"
+                                    with tempfile.NamedTemporaryFile(
+                                        suffix=ext, prefix="ql_icon_", delete=False
+                                    ) as tmp:
+                                        tmp_path = tmp.name
                                     try:
-                                        os.remove(tmp_path)
-                                    except OSError:
-                                        pass
-                        else:
-                            zf.write(orig_path, f"icons/{new_name}")
-                    except Exception as e:
-                        logger.warning("failed to add icon %s: %s", orig_path, e)
+                                        success = pixmap.save(tmp_path, "PNG")
+                                        if success:
+                                            zf.write(tmp_path, f"icons/{new_name}")
+                                    finally:
+                                        try:
+                                            os.remove(tmp_path)
+                                        except OSError:
+                                            pass
+                            else:
+                                zf.write(orig_path, f"icons/{new_name}")
+                        except Exception as e:
+                            logger.warning("failed to add icon %s: %s", orig_path, e)
 
-            return True
+                return True
 
-        except Exception as e:
-            logger.exception("export_shareable_config failed: %s", e)
-            return False
+            except Exception as e:
+                logger.exception("export_shareable_config failed: %s", e)
+                return False
 
     def import_shareable_config(self, import_path: str, merge: bool = True) -> bool:
         """Data manager."""
@@ -1852,7 +1869,7 @@ class DataManager:
                         icon_path.unlink()
                 except Exception as cleanup_error:
                     logger.debug("cleanup imported icon failed %s: %s", icon_path, cleanup_error)
-            if isinstance(e, (UnsafeZipError, ValueError, json.JSONDecodeError)):
+            if isinstance(e, UnsafeZipError | ValueError | json.JSONDecodeError):
                 logger.warning("import_shareable_config rejected unsafe package: %s", e)
             else:
                 logger.exception("import_shareable_config failed: %s", e)

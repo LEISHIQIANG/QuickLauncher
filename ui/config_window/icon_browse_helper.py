@@ -2,7 +2,8 @@
 
 import os
 
-from qt_compat import QDialog, QFileDialog
+from qt_compat import QDialog
+from ui.utils.safe_file_dialog import get_open_file_name
 
 from .icon_picker_dialog import IconPickerDialog
 
@@ -10,19 +11,10 @@ ICON_FILE_FILTER = "Icon Files (*.ico *.png *.jpg *.jpeg *.bmp *.exe *.dll);;All
 
 
 def choose_custom_icon(parent, title: str = "Choose Icon") -> str:
-    # Nuitka 打包后主线程 COM 公寓可能未初始化，QFileDialog 内部用 IFileOpenDialog
-    # 需要确保 STA 已初始化，否则抛 RPC_E_WRONG_THREAD (0x8001010e)
-    try:
-        import ctypes
-
-        ctypes.windll.ole32.CoInitializeEx(None, 0x2)
-    except Exception:
-        pass
-
     from .base_dialog import _trace_to_crash_log
 
     _trace_to_crash_log(f"QFileDialog: choose_custom_icon title={title}")
-    file_path, _ = QFileDialog.getOpenFileName(parent, title, "", ICON_FILE_FILTER)
+    file_path, _ = get_open_file_name(parent, title, "", ICON_FILE_FILTER)
     if not file_path:
         return ""
 

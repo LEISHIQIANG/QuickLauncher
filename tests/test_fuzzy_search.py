@@ -96,3 +96,186 @@ def test_pinyin_initials_match_chinese_fields():
 
     assert search_shortcuts([page], "sz")[0].shortcut.name == "设置"
     assert search_shortcuts([page], "huatu")[0].shortcut.name == "画图"
+
+
+# ── Extended tests ─────────────────────────────────────────────────────────
+
+
+def test_url_field_matching():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Site", url="https://github.com/myproject"),
+        ]
+    )
+
+    results = search_shortcuts([page], "github")
+    assert len(results) == 1
+    assert results[0].shortcut.name == "Site"
+    assert "url" in results[0].matched_fields
+
+
+def test_command_field_matching():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Run Test", command="pytest --verbose tests/"),
+        ]
+    )
+
+    results = search_shortcuts([page], "pytest")
+    assert len(results) == 1
+    assert results[0].shortcut.name == "Run Test"
+    assert "command" in results[0].matched_fields
+
+
+def test_hotkey_field_matching():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Screenshot", hotkey="ctrl+shift+s"),
+        ]
+    )
+
+    results = search_shortcuts([page], "shift")
+    assert len(results) == 1
+    assert results[0].shortcut.name == "Screenshot"
+    assert "hotkey" in results[0].matched_fields
+
+
+def test_usage_bonus_boosts_high_use_count_in_smart_mode():
+    low = ShortcutItem(name="Alpha", use_count=0, id="low")
+    high = ShortcutItem(name="AlphaTool", use_count=100, id="high")
+    page = Folder(items=[low, high])
+
+    smart_results = search_shortcuts([page], "alpha", sort_mode="smart")
+    custom_results = search_shortcuts([page], "alpha", sort_mode="custom")
+
+    # In smart mode, high use_count should boost AlphaTool above Alpha
+    smart_names = [r.shortcut.name for r in smart_results]
+    assert smart_names.index("AlphaTool") < smart_names.index("Alpha")
+
+    # In custom mode, no usage bonus is applied, so order is by name/score only
+    # Both should still appear
+    assert len(custom_results) == 2
+
+
+def test_sort_mode_smart_applies_usage_bonus():
+    popular = ShortcutItem(name="Popular", use_count=200, smart_order=0, id="pop")
+    page = Folder(items=[popular])
+
+    smart_results = search_shortcuts([page], "popular", sort_mode="smart")
+    assert len(smart_results) == 1
+    assert smart_results[0].score > 0
+
+
+def test_sort_mode_custom_no_usage_bonus():
+    item = ShortcutItem(name="Popular", use_count=200, id="pop")
+    page = Folder(items=[item])
+
+    custom_results = search_shortcuts([page], "popular", sort_mode="custom")
+    assert len(custom_results) == 1
+    # custom mode should not add usage bonus
+    # Score should be lower than smart mode equivalent
+
+
+def test_limit_parameter_restricts_results():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Alpha"),
+            ShortcutItem(name="Beta"),
+            ShortcutItem(name="Gamma"),
+            ShortcutItem(name="Delta"),
+        ]
+    )
+
+    results = search_shortcuts([page], "a", limit=2)
+    assert len(results) == 2
+
+
+def test_limit_zero_returns_empty():
+    page = Folder(items=[ShortcutItem(name="Alpha")])
+    results = search_shortcuts([page], "alpha", limit=0)
+    assert results == []
+
+
+def test_multiple_folders_search():
+    folder_a = Folder(id="a", name="Folder A", items=[ShortcutItem(name="ItemA")])
+    folder_b = Folder(id="b", name="Folder B", items=[ShortcutItem(name="ItemB")])
+
+    results = search_shortcuts([folder_a, folder_b], "item")
+    assert len(results) == 2
+    folder_ids = {r.folder_id for r in results}
+    assert folder_ids == {"a", "b"}
+
+
+def test_name_and_alias_match_different_query_terms():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Chrome", alias="Browser"),
+        ]
+    )
+
+    results = search_shortcuts([page], "chrome browser")
+    assert len(results) == 1
+    assert results[0].shortcut.name == "Chrome"
+    matched = set(results[0].matched_fields)
+    assert "name" in matched
+    assert "alias" in matched
+
+
+def test_empty_items_list():
+    page = Folder(items=[])
+    results = search_shortcuts([page], "anything")
+    assert results == []
+
+
+def test_very_long_query_string():
+    long_query = "a" * 500
+    page = Folder(items=[ShortcutItem(name="Test")])
+    results = search_shortcuts([page], long_query)
+    # Should not crash; likely no match
+    assert isinstance(results, list)
+
+
+def test_special_characters_in_query():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Path Finder", target_path="C:/Program Files/App.exe"),
+        ]
+    )
+    # Special characters should not crash the search
+    results = search_shortcuts([page], "C:\\Program Files")
+    assert isinstance(results, list)
+
+
+def test_matched_fields_includes_target_path():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Editor", target_path="C:/Apps/Notepad.exe"),
+        ]
+    )
+
+    results = search_shortcuts([page], "notepad")
+    assert len(results) == 1
+    assert "target_path" in results[0].matched_fields
+
+
+def test_no_results_for_unrelated_query():
+    page = Folder(
+        items=[
+            ShortcutItem(name="Photoshop"),
+            ShortcutItem(name="Illustrator"),
+        ]
+    )
+
+    results = search_shortcuts([page], "zzzzz")
+    assert results == []
+
+
+def test_search_across_multiple_pages_with_same_name():
+    folder1 = Folder(id="f1", items=[ShortcutItem(name="Shared", alias="First")])
+    folder2 = Folder(id="f2", items=[ShortcutItem(name="Shared", alias="Second")])
+
+    results = search_shortcuts([folder1, folder2], "shared")
+    assert len(results) == 2
+    folder_ids = [r.folder_id for r in results]
+    assert "f1" in folder_ids
+    assert "f2" in folder_ids

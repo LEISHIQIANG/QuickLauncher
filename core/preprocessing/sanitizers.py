@@ -24,7 +24,15 @@ def enforce_size_limit(value: str, max_bytes: int = _MAX_SIZE_BYTES) -> str:
     encoded = value.encode("utf-8", errors="surrogateescape")
     if len(encoded) <= max_bytes:
         return value
-    return encoded[:max_bytes].decode("utf-8", errors="replace")
+    # Truncate at character boundary to avoid breaking multibyte chars
+    truncated = encoded[:max_bytes]
+    # Try decoding progressively shorter strings until we find a valid boundary
+    for i in range(len(truncated), 0, -1):
+        try:
+            return truncated[:i].decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            continue
+    return ""
 
 
 def normalize_encoding(value: str) -> str:

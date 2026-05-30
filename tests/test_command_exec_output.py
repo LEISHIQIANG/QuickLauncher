@@ -126,13 +126,13 @@ def test_decode_cmd_uses_oem_before_utf8(monkeypatch):
 def test_decode_cmd_oem_bytes_fail_utf8_then_fallback(monkeypatch):
     """CMD output decoding should not crash regardless of OEM CP."""
     # Use bytes that are valid UTF-8. Decoding should succeed regardless of OEM CP.
-    utf8_bytes = "test".encode("utf-8")
+    utf8_bytes = b"test"
     text, encoding, fallback = decode_command_output(utf8_bytes, command_type="cmd")
     assert text == "test"
     assert isinstance(encoding, str)
 
     # Non-ASCII UTF-8 bytes should also decode eventually (through OEM or UTF-8)
-    non_ascii = "abc123".encode("utf-8")
+    non_ascii = b"abc123"
     text2, encoding2, fallback2 = decode_command_output(non_ascii, command_type="cmd")
     assert text2 == "abc123"
 
@@ -152,7 +152,7 @@ def test_decode_powershell_uses_utf8_first(monkeypatch):
     monkeypatch.setattr("core.command_exec.output.os.name", "nt", raising=False)
     monkeypatch.setattr("core.command_exec.output.ctypes.windll.kernel32.GetOEMCP", lambda: 936, raising=False)
 
-    utf8_bytes = "中文".encode("utf-8")  # 中文 in UTF-8
+    utf8_bytes = "中文".encode()  # 中文 in UTF-8
     text, encoding, fallback = decode_command_output(utf8_bytes, command_type="powershell")
     assert text == "中文"
     assert encoding == "utf-8"
@@ -164,7 +164,7 @@ def test_decode_cmd_explicit_preferred_overrides_oem(monkeypatch):
     monkeypatch.setattr("core.command_exec.output.os.name", "nt", raising=False)
     monkeypatch.setattr("core.command_exec.output.ctypes.windll.kernel32.GetOEMCP", lambda: 936, raising=False)
 
-    utf8_bytes = "hello".encode("utf-8")
+    utf8_bytes = b"hello"
     text, encoding, fallback = decode_command_output(utf8_bytes, preferred="utf-8", command_type="cmd")
     assert encoding == "utf-8"
 
@@ -176,3 +176,78 @@ def test_decode_cmd_no_oem_non_windows(monkeypatch):
     text, encoding, fallback = decode_command_output(b"hello", command_type="cmd")
     assert text == "hello"
     assert encoding == "utf-8"
+
+
+# ── Additional edge-case tests ───────────────────────────────────────────
+
+
+def test_truncate_empty_string():
+    text, truncated = truncate_command_output("", 10_000)
+    assert text == ""
+    assert truncated is False
+
+
+def test_truncate_exact_boundary_not_truncated():
+    text = "x" * 1000
+    result, truncated = truncate_command_output(text, 1000)
+    assert result == text
+    assert truncated is False
+
+
+def test_truncate_min_clamp_below_1000():
+    """max_chars below MIN_COMMAND_OUTPUT_MAX_CHARS (1000) is clamped to 1000."""
+    text = "b" * 500
+    result, truncated = truncate_command_output(text, 10)
+    assert truncated is False
+    assert result == text
+
+
+def test_decode_garbage_bytes_replacement():
+    """Invalid byte sequences across all candidates should use replacement."""
+    data = b"\xff\xfe\x80\x81"
+    text, enc, fallback = decode_command_output(data)
+    assert fallback is True
+    assert enc == "utf-8"
+
+
+def test_decode_with_preferred_latin1():
+    data = "café".encode("latin-1")
+    text, enc, fallback = decode_command_output(data, preferred="latin-1")
+    assert "caf" in text
+    assert enc == "latin-1"
+
+
+def test_decode_cmd_oem_exception_handled(monkeypatch):
+    """If GetOEMCP raises, decoding still works via other candidates."""
+
+    def raise_os_error():
+        raise OSError("no dll")
+
+    monkeypatch.setattr("core.command_exec.output.os.name", "nt", raising=False)
+    monkeypatch.setattr(
+        "core.command_exec.output.ctypes.windll.kernel32.GetOEMCP",
+        raise_os_error,
+        raising=False,
+    )
+
+    text, enc, fallback = decode_command_output(b"test", command_type="cmd")
+    assert text == "test"
+    assert enc == "utf-8"
+
+
+def test_decode_utf8_chinese_text():
+    data = "中文".encode()
+    text, enc, fallback = decode_command_output(data, preferred="utf-8")
+    assert text == "中文"
+    assert enc == "utf-8"
+    assert fallback is False
+
+
+def test_decode_preferred_auto_skipped():
+    """preferred='auto' should be treated as no preference."""
+    data = b"hello"
+    text, enc, fallback = decode_command_output(data, preferred="auto")
+    assert text == "hello"
+    # auto is skipped, so utf-8 is the first real candidate
+    assert enc == "utf-8"
+    assert fallback is False

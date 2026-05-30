@@ -479,16 +479,19 @@ class FolderPanel(QWidget):
             btn_hover_text = "rgba(28, 28, 30, 0.9)"
             btn_color = "rgba(28, 28, 30, 0.65)"
 
-        self.list_frame.setStyleSheet(f"""
+        self.list_frame.setStyleSheet(
+            f"""
             QFrame#folderListFrame {{
                 background-color: {frame_bg};
                 border: 1px solid {frame_border};
                 border-radius: 10px;
             }}
-        """)
+        """
+        )
 
         # Items are drawn by FolderItemWidget, stylesheet just resets default background
-        self.folder_list.setStyleSheet("""
+        self.folder_list.setStyleSheet(
+            """
             QListWidget#folderList {
                 outline: none;
                 background: transparent;
@@ -508,7 +511,8 @@ class FolderPanel(QWidget):
                 background: transparent;
                 border: none;
             }
-        """)
+        """
+        )
 
         # Propagate theme change to any existing FolderItemWidgets
         for i in range(self.folder_list.count()):
@@ -518,7 +522,8 @@ class FolderPanel(QWidget):
                 widget.theme = theme
                 widget.update()
 
-        self.add_btn.setStyleSheet(f"""
+        self.add_btn.setStyleSheet(
+            f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 4px 13px;
@@ -537,7 +542,8 @@ class FolderPanel(QWidget):
             QPushButton:pressed {{
                 opacity: 0.7;
             }}
-        """)
+        """
+        )
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)

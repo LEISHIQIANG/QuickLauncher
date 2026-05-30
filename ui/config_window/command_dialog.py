@@ -13,7 +13,6 @@ from qt_compat import (
     QCheckBox,
     QColor,
     QComboBox,
-    QFileDialog,
     QFont,
     QFormLayout,
     QFrame,
@@ -39,6 +38,7 @@ from qt_compat import (
 )
 from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
+from ui.utils.safe_file_dialog import get_existing_directory
 
 from .base_dialog import BaseDialog
 from .command_profile_helpers import (
@@ -385,11 +385,13 @@ class CommandDialog(BaseDialog):
 
         # --- 命令输入框容器样式 ---
         # 只有容器负责背景和边框，内部编辑器完全透明
-        self.command_container.setStyleSheet(f"""
+        self.command_container.setStyleSheet(
+            f"""
             #CommandContainer {{
                 {input_style}
             }}
-        """)
+        """
+        )
 
         # 内部编辑器：透明、无边框、无背景
         editor_style = f"""
@@ -458,7 +460,8 @@ class CommandDialog(BaseDialog):
         profile_toggle_hover = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(255, 255, 255, 0.82)"
         profile_toggle_border = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(0, 0, 0, 0.08)"
         profile_toggle_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
-        self.advanced_profile_toggle.setStyleSheet(f"""
+        self.advanced_profile_toggle.setStyleSheet(
+            f"""
             QPushButton#CommandProfileToggle {{
                 background-color: {profile_toggle_bg};
                 border: 1px solid {profile_toggle_border};
@@ -478,13 +481,16 @@ class CommandDialog(BaseDialog):
             QPushButton#CommandProfileToggle:checked {{
                 background-color: {profile_toggle_hover};
             }}
-        """)
-        self.advanced_profile_frame.setStyleSheet("""
+        """
+        )
+        self.advanced_profile_frame.setStyleSheet(
+            """
             QFrame#CommandProfileFrame {
                 background: transparent;
                 border: none;
             }
-        """)
+        """
+        )
         self._set_command_profile_toggle_icon(self.advanced_profile_toggle.isChecked())
 
         # 应用单选按钮样式
@@ -519,21 +525,20 @@ class CommandDialog(BaseDialog):
         self.invert_current_cb.setStyleSheet(cb_style)
         compact_option_cb_style = (
             cb_style
-            + """
-            QCheckBox {
+            + f"""
+            QCheckBox {{
                 font-size: 12px;
                 spacing: 6px;
                 font-weight: 400;
-            }
-            QCheckBox:disabled {
-                color: %s;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox:disabled {{
+                color: {capture_spin_disabled_text};
+            }}
+            QCheckBox::indicator {{
                 width: 12px;
                 height: 12px;
-            }
+            }}
             """
-            % capture_spin_disabled_text
         )
         self.show_window_cb.setStyleSheet(compact_option_cb_style)
         self.run_as_admin_cb.setStyleSheet(compact_option_cb_style)
@@ -587,13 +592,15 @@ class CommandDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(32, 32)
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet("""
+        self.icon_preview.setStyleSheet(
+            """
             QLabel {
                 background-color: rgba(255, 255, 255, 0.2);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 10px;
             }
-        """)
+        """
+        )
         icon_layout.addWidget(self.icon_preview)
 
         icon_path_layout = QVBoxLayout()
@@ -625,17 +632,21 @@ class CommandDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet("""
+        self.invert_theme_cb.setStyleSheet(
+            """
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
+        """
+        )
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet("""
+        self.invert_current_cb.setStyleSheet(
+            """
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
+        """
+        )
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)
@@ -1240,7 +1251,7 @@ class CommandDialog(BaseDialog):
             self.resize(target_width, target_height)
 
     def _browse_workdir(self):
-        folder = QFileDialog.getExistingDirectory(self, tr("选择工作目录"))
+        folder = get_existing_directory(self, tr("选择工作目录"))
         if folder:
             self.workdir_edit.setText(folder)
 
@@ -1334,7 +1345,7 @@ class CommandDialog(BaseDialog):
             self.test_output.setPlainText("测试运行已取消。")
             return
         if inputs:
-            setattr(shortcut, "_runtime_input_values", inputs)
+            shortcut._runtime_input_values = inputs
 
         self._test_btn.setEnabled(False)
         self.test_output.setPlainText("正在测试...")
@@ -1409,7 +1420,8 @@ class CommandDialog(BaseDialog):
             try:
                 thread.setParent(None)
                 self._orphaned_threads.append(thread)
-                thread.finished.connect(lambda t=thread, cls=type(self): cls._forget_orphaned_thread(t))
+                _cls = type(self)
+                thread.finished.connect(lambda t=thread: _cls._forget_orphaned_thread(t))
                 thread.finished.connect(thread.deleteLater)
             except Exception:
                 pass

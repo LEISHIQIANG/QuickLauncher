@@ -107,19 +107,24 @@ class ThemedToolWindow(QDialog):
             text_secondary = "rgba(60, 60, 67, 0.6)"
 
         self.setStyleSheet("QDialog { background: transparent; }")
-        self.title_label.setStyleSheet(f"""
+        self.title_label.setStyleSheet(
+            f"""
             font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
-        """)
+        """
+        )
         self.title_label.setFont(get_qfont(14, 400))
-        self.subtitle_label.setStyleSheet(f"""
+        self.subtitle_label.setStyleSheet(
+            f"""
             font-size: 11px;
             color: {text_secondary};
             background: transparent;
             padding-left: 6px;
-        """)
-        self.close_btn_top.setStyleSheet(f"""
+        """
+        )
+        self.close_btn_top.setStyleSheet(
+            f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -137,7 +142,8 @@ class ThemedToolWindow(QDialog):
                 background: #C50F1F;
                 color: #ffffff;
             }}
-        """)
+        """
+        )
         tune_font_rendering(self, recursive=True)
         self.title_label.setFont(get_qfont(14, 400))
 

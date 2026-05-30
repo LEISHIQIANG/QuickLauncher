@@ -50,18 +50,21 @@ class SettingsDataPageMixin:
 
         # 警告说明
         warning_label = QLabel(tr("以下操作不可逆，请谨慎使用"))
-        warning_label.setStyleSheet(f"""
+        warning_label.setStyleSheet(
+            f"""
             {get_font_css_with_size(12, 600)}
             color: #ff6b6b;
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """
+        )
         danger_layout.addWidget(warning_label)
 
         # 清除所有配置按钮
         self.factory_reset_btn = QPushButton(tr("清除所有配置"))
         self.factory_reset_btn.setFixedHeight(36)
-        self.factory_reset_btn.setStyleSheet(f"""
+        self.factory_reset_btn.setStyleSheet(
+            f"""
             QPushButton {{
                 background-color: #dc3545;
                 color: white;
@@ -76,18 +79,21 @@ class SettingsDataPageMixin:
             QPushButton:pressed {{
                 background-color: #bd2130;
             }}
-        """)
+        """
+        )
         self.factory_reset_btn.clicked.connect(self._on_factory_reset_clicked)
         danger_layout.addWidget(self.factory_reset_btn)
 
         # 说明文本
         reset_desc = QLabel(tr("清除所有配置、图标缓存、快速搜索列表、右键扩展注册表项，并重启应用"))
         reset_desc.setObjectName("data_desc_3")
-        reset_desc.setStyleSheet(f"""
+        reset_desc.setStyleSheet(
+            f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 4px 0px 0px 0px;
-        """)
+        """
+        )
         reset_desc.setWordWrap(True)
         danger_layout.addWidget(reset_desc)

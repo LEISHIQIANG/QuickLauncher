@@ -17,17 +17,19 @@ def test_launch_privilege_four_quadrants(monkeypatch):
 
         class FakeExecutor(FileExecutionMixin):
             @staticmethod
-            def _is_launch_context_elevated():
-                return current_elevated
+            def _is_launch_context_elevated(curr_elevated=current_elevated):
+                return curr_elevated
 
             @staticmethod
-            def _launch_as_standard_user_direct(target, parameters="", directory="", show_cmd=1):
-                calls.append(("downgrade", target, parameters, directory, show_cmd))
+            def _launch_as_standard_user_direct(target, parameters="", directory="", show_cmd=1, _calls=calls):
+                _calls.append(("downgrade", target, parameters, directory, show_cmd))
                 return True, ""
 
             @staticmethod
-            def _shell_execute_open_raw_result(target, parameters=None, directory=None, show_cmd=1, verb="open"):
-                calls.append(("shell", target, parameters, directory, show_cmd, verb))
+            def _shell_execute_open_raw_result(
+                target, parameters=None, directory=None, show_cmd=1, verb="open", _calls=calls
+            ):
+                _calls.append(("shell", target, parameters, directory, show_cmd, verb))
                 return True, ""
 
         monkeypatch.setattr(file_exec, "ShortcutExecutor", FakeExecutor)

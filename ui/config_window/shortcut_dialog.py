@@ -12,7 +12,6 @@ from core.i18n import tr
 from qt_compat import (
     QCheckBox,
     QColor,
-    QFileDialog,
     QFont,
     QFormLayout,
     QGroupBox,
@@ -24,15 +23,56 @@ from qt_compat import (
     QPixmap,
     QPushButton,
     QtCompat,
+    QThread,
     QVBoxLayout,
+    pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
 from .theme_helper import get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
+
+
+class _IconLoadThread(QThread):
+    """后台线程：提取图标，避免阻塞主线程。"""
+
+    finished = pyqtSignal(object)  # QPixmap or None
+
+    def __init__(self, custom_icon_path: str, target_path: str, parent=None):
+        super().__init__(parent)
+        self._custom_icon_path = custom_icon_path
+        self._target_path = target_path
+
+    def run(self):
+        from core.icon_extractor import IconExtractor
+
+        pixmap = None
+
+        # 1. 尝试自定义图标
+        icon_path = self._custom_icon_path
+        if icon_path:
+            # 去掉 index 后缀判断文件是否存在
+            check_path = icon_path
+            if "," in icon_path:
+                check_path = icon_path.rsplit(",", 1)[0]
+            if os.path.exists(check_path) or "," in icon_path:
+                try:
+                    pixmap = IconExtractor.from_file(icon_path, 48)
+                except Exception:
+                    pass
+
+        # 2. 尝试目标文件图标
+        if not pixmap and self._target_path:
+            try:
+                pixmap = IconExtractor.extract(self._target_path, self._target_path, 48, fallback_to_default=False)
+            except Exception:
+                pass
+
+        self.finished.emit(pixmap)
 
 
 class ShortcutDialog(BaseDialog):
@@ -201,13 +241,15 @@ class ShortcutDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(32, 32)
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet("""
+        self.icon_preview.setStyleSheet(
+            """
             QLabel {
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
             }
-        """)
+        """
+        )
         icon_layout.addWidget(self.icon_preview)
 
         # 图标路径和按钮
@@ -240,17 +282,21 @@ class ShortcutDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet("""
+        self.invert_theme_cb.setStyleSheet(
+            """
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
+        """
+        )
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet("""
+        self.invert_current_cb.setStyleSheet(
+            """
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
+        """
+        )
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)
@@ -300,44 +346,42 @@ class ShortcutDialog(BaseDialog):
         self._update_icon_preview()
 
     def _update_icon_preview(self):
-        """更新图标预览"""
-        pixmap = None
+        """更新图标预览（异步加载，避免阻塞主线程）"""
+        # 取消上一次未完成的加载
+        thread = getattr(self, "_icon_thread", None)
+        if thread is not None and thread.isRunning():
+            thread.finished.disconnect()
+            thread.terminate()
+            thread.wait(200)
+            thread.deleteLater()
+            self._icon_thread = None
 
-        # 1. 尝试自定义图标
-        if self._custom_icon_path and os.path.exists(self._custom_icon_path):
-            try:
-                from core.icon_extractor import IconExtractor
+        custom = self._custom_icon_path or ""
+        target = self.target_edit.text().strip() if hasattr(self, "target_edit") else ""
 
-                pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
-            except Exception:
-                pass
-            if not pixmap or pixmap.isNull():
-                logger.warning(
-                    "[IconDiag] shortcut dialog custom preview failed icon_path=%r target=%r",
-                    self._custom_icon_path,
-                    self.target_edit.text().strip(),
-                )
+        if not custom and not target:
+            # 无路径，直接显示默认图标
+            pixmap = self._create_file_icon(48)
+            self._apply_icon_to_preview(pixmap)
+            return
 
-        # 2. 尝试目标文件图标
-        if not pixmap and self.target_edit.text():
-            target = self.target_edit.text().strip()
-            try:
-                from core.icon_extractor import IconExtractor
+        # 先显示默认图标，后台加载真实图标
+        self._apply_icon_to_preview(self._create_file_icon(48))
 
-                pixmap = IconExtractor.extract(target, target, 48, fallback_to_default=False)
-            except Exception:
-                pass
-            if not pixmap or pixmap.isNull():
-                logger.warning(
-                    "[IconDiag] shortcut dialog target preview failed target=%r custom_icon=%r",
-                    target,
-                    self._custom_icon_path,
-                )
+        thread = _IconLoadThread(custom, target, parent=None)
+        thread.finished.connect(self._on_icon_loaded)
+        self._icon_thread = thread
+        thread.start()
 
-        # 3. 默认图标
+    def _on_icon_loaded(self, pixmap):
+        """后台图标加载完成"""
+        self._icon_thread = None
         if not pixmap or pixmap.isNull():
             pixmap = self._create_file_icon(48)
+        self._apply_icon_to_preview(pixmap)
 
+    def _apply_icon_to_preview(self, pixmap):
+        """将图标应用到预览控件（仅在主线程调用）"""
         # 应用反转
         if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor
@@ -373,8 +417,11 @@ class ShortcutDialog(BaseDialog):
 
     def _browse_target(self):
         """浏览目标文件"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, tr("选择目标"), "", tr("可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)")
+        file_path, _ = get_open_file_name(
+            self,
+            tr("选择目标"),
+            "",
+            tr("可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)"),
         )
 
         if file_path:
@@ -402,7 +449,7 @@ class ShortcutDialog(BaseDialog):
 
     def _browse_workdir(self):
         """浏览工作目录"""
-        folder = QFileDialog.getExistingDirectory(self, tr("选择工作目录"))
+        folder = get_existing_directory(self, tr("选择工作目录"))
         if folder:
             self.workdir_edit.setText(folder)
 
@@ -445,6 +492,20 @@ class ShortcutDialog(BaseDialog):
             return
 
         self.accept()
+
+    def done(self, result):
+        thread = getattr(self, "_icon_thread", None)
+        if thread is not None:
+            try:
+                thread.finished.disconnect(self._on_icon_loaded)
+            except Exception:
+                pass
+            if thread.isRunning():
+                thread.terminate()
+                thread.wait(200)
+            thread.deleteLater()
+            self._icon_thread = None
+        super().done(result)
 
     def get_shortcut(self) -> ShortcutItem:
         """获取快捷方式"""

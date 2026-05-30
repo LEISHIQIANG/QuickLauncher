@@ -6,8 +6,8 @@ when the active language is switched to English. Default language is Chinese.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 DEFAULT_LANGUAGE = "zh_CN"
 SUPPORTED_LANGUAGES = ("zh_CN", "en_US")

@@ -5,7 +5,6 @@ import logging
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
-    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -16,6 +15,7 @@ from qt_compat import (
     QtCompat,
     QWidget,
 )
+from ui.utils.safe_file_dialog import get_open_file_name
 
 logger = logging.getLogger(__name__)
 
@@ -357,7 +357,7 @@ class SettingsAppearancePageMixin:
         self.settings_changed.emit()
 
     def _browse_bg_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择背景图片", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        file_path, _ = get_open_file_name(self, "选择背景图片", "", "Images (*.png *.jpg *.jpeg *.bmp)")
         if file_path:
             self.bg_path_edit.setText(file_path)
             self.data_manager.update_settings(custom_bg_path=file_path)

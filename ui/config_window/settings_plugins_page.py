@@ -10,7 +10,7 @@ from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, is_plugin_package_path
 from qt_compat import (
     QDialog,
     QEvent,
-    QFileDialog,
+    QFileDialog,  # noqa: F401
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -23,6 +23,7 @@ from qt_compat import (
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
+from ui.utils.safe_file_dialog import get_open_file_name
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +45,14 @@ class SettingsPluginsPageMixin:
         desc.setObjectName("plugins_desc")
         desc.setWordWrap(True)
         desc.setMinimumWidth(0)
-        desc.setStyleSheet(f"""
+        desc.setStyleSheet(
+            f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """
+        )
         layout.addWidget(desc)
 
         # Plugin list area
@@ -248,7 +251,8 @@ class SettingsPluginsPageMixin:
             text_color = "rgba(28, 28, 30, 0.9)"
             sub_text_color = "rgba(28, 28, 30, 0.65)"
 
-        card.setStyleSheet(f"""
+        card.setStyleSheet(
+            f"""
             QWidget#PluginCard {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
@@ -257,7 +261,8 @@ class SettingsPluginsPageMixin:
             QWidget#PluginCard:hover {{
                 background-color: {hover_bg};
             }}
-        """)
+        """
+        )
 
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 10, 12, 10)
@@ -767,7 +772,7 @@ class SettingsPluginsPageMixin:
             ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
             return
 
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_path, _ = get_open_file_name(
             self,
             "选择插件安装包",
             "",

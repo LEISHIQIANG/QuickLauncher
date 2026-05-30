@@ -3,6 +3,7 @@
 提供跟随主题的 QMessageBox 替代品
 """
 
+import logging
 import os
 import sys
 
@@ -29,6 +30,78 @@ from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11
 
 from .style import get_dialog_stylesheet
+
+logger = logging.getLogger(__name__)
+
+
+def _execute_native_message_box(parent, title, text, icon_type, buttons) -> int:
+    """
+    同步安全地在主线程呼起 Qt 原生系统消息框。
+    在调用前原子同步暂停鼠标钩子，绝对防止瞬间误触与死锁，且完全集成于 Qt 事件循环。
+    提供极其详尽的步骤追踪，便于环境审计。
+    """
+    # logger.debug("[消息框追踪] ================= 开始执行安全消息框流程 ================= ")
+
+    try:
+        from ui.utils.safe_file_dialog import _global_mouse_hook
+    except ImportError:
+        _global_mouse_hook = None
+
+    mouse_hook_paused = False
+
+    if _global_mouse_hook:
+        try:
+            # logger.debug("[消息框追踪] 步骤 1: 尝试原子暂停 DLL 鼠标钩子")
+            _global_mouse_hook.set_paused(True)
+            mouse_hook_paused = True
+            # logger.debug("[消息框追踪] 步骤 1: 鼠标钩子已成功暂停")
+        except Exception as he:
+            logger.warning(f"[消息框追踪] 步骤 1 异常: 暂停鼠标钩子失败: {he}")
+    else:
+        pass
+        # logger.debug("[消息框追踪] 步骤 1: _global_mouse_hook 为空，跳过暂停")
+
+    res = 1024  # Default/None
+    try:
+        # logger.debug("[消息框追踪] 步骤 2: 准备启动 QMessageBox...")
+        from PyQt5.QtWidgets import QMessageBox
+
+        msg_box = QMessageBox(parent)
+        msg_box.setWindowTitle(title or "提示")
+        msg_box.setText(text)
+
+        # 映射图标
+        if icon_type == "info":
+            msg_box.setIcon(QMessageBox.Information)
+        elif icon_type == "question":
+            msg_box.setIcon(QMessageBox.Question)
+        elif icon_type == "warning":
+            msg_box.setIcon(QMessageBox.Warning)
+        elif icon_type == "critical":
+            msg_box.setIcon(QMessageBox.Critical)
+
+        # 映射按钮
+        msg_box.setStandardButtons(QMessageBox.StandardButtons(buttons))
+
+        # logger.debug("[消息框追踪] 步骤 2: 正在运行 msg_box.exec_()...")
+        res = msg_box.exec_()
+        # logger.debug(f"[消息框追踪] 步骤 2: msg_box 执行完成，返回值为: {res}")
+    except Exception as e:
+        logger.error(f"[消息框追踪] 步骤 2 异常: {e}", exc_info=True)
+    finally:
+        if _global_mouse_hook and mouse_hook_paused:
+            try:
+                # logger.debug("[消息框追踪] 步骤 3: 尝试解除暂停并恢复鼠标钩子")
+                _global_mouse_hook.set_paused(False)
+                # logger.debug("[消息框追踪] 步骤 3: 鼠标钩子恢复成功")
+            except Exception as he:
+                logger.warning(f"[消息框追踪] 步骤 3 异常: {he}")
+        else:
+            pass
+            # logger.debug("[消息框追踪] 步骤 3: 无需恢复鼠标钩子")
+
+    # logger.debug("[消息框追踪] ================= 安全消息框流程执行完毕 ================= ")
+    return res
 
 
 class ThemedMessageBox(QDialog):
@@ -387,16 +460,17 @@ class ThemedMessageBox(QDialog):
 
     @staticmethod
     def information(parent, title, text, max_width=None):
-        """显示信息消息框"""
-        dialog = ThemedMessageBox(parent, ThemedMessageBox.Information, title, text, ThemedMessageBox.Ok)
-        if max_width is not None:
-            dialog.setMaximumWidth(max_width)
-        dialog.exec_()
-        return dialog.result()
+        """显示信息消息框 - 原生 Windows 风格"""
+        from PyQt5.QtWidgets import QMessageBox
+
+        _execute_native_message_box(parent, title or "信息", text, "info", QMessageBox.Ok)
+        return ThemedMessageBox.Ok
 
     @staticmethod
     def question(parent, title, text, buttons=None, icon_type=None):
-        """显示询问消息框"""
+        """显示询问消息框 - 原生 Windows 风格"""
+        from PyQt5.QtWidgets import QMessageBox
+
         # 兼容旧版的 signature: question(parent, title, message, theme="dark") -> bool
         is_legacy = False
         if isinstance(buttons, str):
@@ -404,29 +478,29 @@ class ThemedMessageBox(QDialog):
             buttons = None
 
         if buttons is None:
-            buttons = ThemedMessageBox.Yes | ThemedMessageBox.No
+            buttons = QMessageBox.Yes | QMessageBox.No
 
-        dialog = ThemedMessageBox(parent, icon_type or ThemedMessageBox.Question, title, text, buttons)
-        dialog.exec_()
-        res = dialog.result()
+        res = _execute_native_message_box(parent, title or "询问", text, "question", buttons)
 
         if is_legacy:
-            return res == ThemedMessageBox.Yes
+            return res == QMessageBox.Yes
         return res
 
     @staticmethod
     def warning(parent, title, text):
-        """显示警告消息框"""
-        dialog = ThemedMessageBox(parent, ThemedMessageBox.Warning, title, text, ThemedMessageBox.Ok)
-        dialog.exec_()
-        return dialog.result()
+        """显示警告消息框 - 原生 Windows 风格"""
+        from PyQt5.QtWidgets import QMessageBox
+
+        _execute_native_message_box(parent, title or "警告", text, "warning", QMessageBox.Ok)
+        return ThemedMessageBox.Ok
 
     @staticmethod
     def critical(parent, title, text):
-        """显示错误消息框"""
-        dialog = ThemedMessageBox(parent, ThemedMessageBox.Critical, title, text, ThemedMessageBox.Ok)
-        dialog.exec_()
-        return dialog.result()
+        """显示错误消息框 - 原生 Windows 风格"""
+        from PyQt5.QtWidgets import QMessageBox
+
+        _execute_native_message_box(parent, title or "错误", text, "critical", QMessageBox.Ok)
+        return ThemedMessageBox.Ok
 
 
 class ThemedInputDialog(QDialog):

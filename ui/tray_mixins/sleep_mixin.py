@@ -14,21 +14,23 @@ class SleepMixin:
         settings = None
         try:
             settings = self.data_manager.get_settings()
-        except Exception:
+        except Exception as e:
+            logger.debug("获取设置失败 (_mark_activity): %s", e)
             settings = None
 
         if not getattr(settings, "sleep_mode_enabled", True):
             try:
                 if self._sleep_timer.isActive():
                     self._sleep_timer.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("停止 sleep_timer 失败: %s", e)
             return
 
         timeout_s = 10
         try:
             timeout_s = max(1, int(getattr(settings, "sleep_timeout_seconds", 10) or 10))
-        except Exception:
+        except Exception as e:
+            logger.debug("读取 sleep_timeout_seconds 失败: %s", e)
             timeout_s = 10
 
         if self._sleeping:
@@ -43,8 +45,8 @@ class SleepMixin:
 
         try:
             self._sleep_timer.start(timeout_s * 1000)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("启动 sleep_timer 失败: %s", e)
 
     def _enter_light_sleep(self):
         if self._sleeping:
@@ -52,7 +54,8 @@ class SleepMixin:
 
         try:
             settings = self.data_manager.get_settings()
-        except Exception:
+        except Exception as e:
+            logger.debug("获取设置失败 (_enter_light_sleep): %s", e)
             settings = None
 
         if not getattr(settings, "sleep_mode_enabled", True):
@@ -68,8 +71,8 @@ class SleepMixin:
                         timeout_s = 10
                     try:
                         self._sleep_timer.start(timeout_s * 1000)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("重启 sleep_timer 失败: %s", e)
                     return
             except Exception:
                 pass
@@ -187,8 +190,8 @@ class SleepMixin:
         try:
             if not self._memory_check_timer.isActive():
                 self._memory_check_timer.start()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("重启 memory_check_timer 失败: %s", e)
 
         try:
             if self._sleep_was_hw_accel:
@@ -202,8 +205,8 @@ class SleepMixin:
                 self._install_keyboard_hook_and_hotkey()
             else:
                 self.hotkey_manager.start()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("恢复键盘钩子/热键失败: %s", e)
 
         try:
             if self.mouse_hook and self._mouse_paused_state:

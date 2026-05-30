@@ -3,7 +3,6 @@
 import ctypes
 import logging
 from ctypes import wintypes
-from typing import Optional
 
 user32 = ctypes.windll.user32
 shell32 = ctypes.windll.shell32
@@ -46,7 +45,7 @@ ShortcutExecutor = None
 
 class WindowControlMixin:
     @staticmethod
-    def _get_window_at_cursor() -> Optional[int]:
+    def _get_window_at_cursor() -> int | None:
         """获取鼠标位置的顶级窗口句柄
 
         Returns:

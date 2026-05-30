@@ -28,7 +28,7 @@ def normalize_command_timeout_seconds(value, default: float = DEFAULT_COMMAND_TI
 def normalize_command_output_max_chars(value, default: int = DEFAULT_COMMAND_OUTPUT_MAX_CHARS) -> int:
     """Return a bounded output limit aligned with command capture truncation."""
     try:
-        return max(MIN_COMMAND_OUTPUT_MAX_CHARS, int(value or default))
+        return max(MIN_COMMAND_OUTPUT_MAX_CHARS, int(value if value is not None else default))
     except Exception:
         return default
 

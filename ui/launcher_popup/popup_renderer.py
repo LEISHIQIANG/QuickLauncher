@@ -671,9 +671,9 @@ class PopupRendererMixin:
             hover_color,
             drop_highlight_color,
             bg_mode,
-            y_offset=self._body_y_offset()
-            if hasattr(self, "_body_y_offset")
-            else getattr(self, "search_bar_height", 30),
+            y_offset=(
+                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", 30)
+            ),
             selected_index=selected,
         )
 

@@ -70,6 +70,13 @@ if not defined PYTHON_CMD (
     exit /b 1
 )
 
+REM Clean PATH to avoid conflicting C compilers (e.g. 32-bit TDM-GCC or mismatched MinGW)
+set "PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"
+for /f "delims=" %%i in ("!PYTHON_CMD!") do (
+    set "PY_DIR=%%~dpi"
+    if not "!PY_DIR!"=="" set "PATH=!PATH!;!PY_DIR!;!PY_DIR!\Scripts"
+)
+
 REM ============================================
 REM [2/5] Check Inno Setup
 REM ============================================

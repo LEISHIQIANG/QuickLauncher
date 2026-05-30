@@ -7,10 +7,10 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,8 @@ class ConfigHistoryManager:
 
     def __init__(self, history_dir: Path | str, max_snapshots: int = 20):
         self.history_dir = Path(history_dir)
-        self.max_snapshots = int(max(1, max_snapshots or 20))
+        val = 20 if max_snapshots is None else max_snapshots
+        self.max_snapshots = int(max(1, val))
 
     def record_snapshot(self, data_dict: dict, action: str = "change", summary: str = "") -> ConfigSnapshot | None:
         """Persist a compressed snapshot and prune old entries."""

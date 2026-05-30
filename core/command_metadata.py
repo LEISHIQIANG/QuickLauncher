@@ -16,7 +16,7 @@ class CommandMetadata:
     requires_confirmation: bool = False
 
     @classmethod
-    def from_value(cls, value: "CommandMetadata | dict | None", *, category: str = "") -> "CommandMetadata":
+    def from_value(cls, value: CommandMetadata | dict | None, *, category: str = "") -> CommandMetadata:
         if isinstance(value, CommandMetadata):
             metadata = value
         elif isinstance(value, dict):

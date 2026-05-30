@@ -94,6 +94,33 @@ def check_source_metadata(root: Path = ROOT, version: str | None = None) -> Rele
     return ReleaseCheckResult(ok=not errors, errors=errors, manifest=manifest)
 
 
+_FORBIDDEN_PATTERNS = (
+    "__pycache__",
+    ".pyc",
+)
+
+_UPLOAD_ARTIFACT_PATTERNS = (
+    ".upload-config",
+    ".credentials",
+)
+
+
+def _scan_debris(dist_dir: Path) -> list[str]:
+    """Return human-readable descriptions of forbidden files found under *dist_dir*."""
+    debris: list[str] = []
+    if not dist_dir.is_dir():
+        return debris
+    for path in dist_dir.rglob("*"):
+        name = path.name
+        if name in _FORBIDDEN_PATTERNS:
+            debris.append(f"forbidden directory: {path.relative_to(dist_dir)}")
+        elif any(name.endswith(ext) for ext in (".pyc",)):
+            debris.append(f"forbidden bytecode: {path.relative_to(dist_dir)}")
+        elif any(name.startswith(prefix) for prefix in _UPLOAD_ARTIFACT_PATTERNS):
+            debris.append(f"forbidden upload artifact: {path.relative_to(dist_dir)}")
+    return debris
+
+
 def check_release_artifacts(
     root: Path = ROOT,
     *,
@@ -110,6 +137,11 @@ def check_release_artifacts(
 
     dist_dir = Path(dist_dir or root / "dist" / "QuickLauncher")
     installer = Path(installer or root / "dist" / f"QuickLauncher_Setup_{version}.exe")
+
+    # Scan for forbidden debris (pycache, bytecode, temp uploads)
+    debris = _scan_debris(dist_dir)
+    errors.extend(debris)
+    release_manifest["debris_found"] = len(debris)
 
     required_artifacts = [
         (dist_dir / "QuickLauncher.exe", min_exe_bytes),

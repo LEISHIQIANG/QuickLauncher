@@ -6,8 +6,9 @@ import concurrent.futures
 import logging
 import threading
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from .command_metadata import CommandMetadata
 from .command_metadata import builtin_command_metadata as _builtin_command_metadata

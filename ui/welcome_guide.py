@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core.version import APP_VERSION
 from qt_compat import (
     QCheckBox,
     QColor,
@@ -52,7 +53,7 @@ class WelcomeGuide(QDialog):
         self.steps = [
             {
                 "title": "欢迎使用 QuickLauncher！",
-                "content": "QuickLauncher v2.6.7.7\n轻量级快捷启动工具\n\n• 鼠标中键快速唤出启动面板\n• 支持文件、文件夹、打开网址、快捷键、运行命令\n• 自定义主题和透明度\n\n让我们开始 30 秒快速上手教程",
+                "content": f"QuickLauncher v{APP_VERSION}\n轻量级快捷启动工具\n\n• 鼠标中键快速唤出启动面板\n• 支持文件、文件夹、打开网址、快捷键、运行命令\n• 自定义主题和透明度\n\n让我们开始 30 秒快速上手教程",
                 "icon": "🚀",
             },
             {

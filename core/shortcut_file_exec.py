@@ -8,7 +8,6 @@ import shlex
 import subprocess
 import threading
 import time
-from typing import List, Optional
 
 import win32process
 
@@ -41,7 +40,7 @@ except ImportError:
 
 class FileExecutionMixin:
     @staticmethod
-    def _resolve_shortcut(path: str) -> Optional[str]:
+    def _resolve_shortcut(path: str) -> str | None:
         """解析快捷方式获取真实目标路径
 
         Args:
@@ -119,7 +118,7 @@ class FileExecutionMixin:
         return path
 
     @staticmethod
-    def _open_folder_with_files(folder: str, files: List[str], run_as_admin: bool = False) -> bool:
+    def _open_folder_with_files(folder: str, files: list[str], run_as_admin: bool = False) -> bool:
         """打开文件夹并选中文件（用于文件夹类型快捷方式）
 
         Args:
@@ -160,7 +159,7 @@ class FileExecutionMixin:
 
     @staticmethod
     def _open_exe_with_files(
-        exe_path: str, files: List[str], extra_args: str = "", working_dir: str = "", run_as_admin: bool = False
+        exe_path: str, files: list[str], extra_args: str = "", working_dir: str = "", run_as_admin: bool = False
     ) -> bool:
         """使用可执行文件打开文件列表
 
@@ -259,7 +258,7 @@ class FileExecutionMixin:
         return success
 
     @staticmethod
-    def _open_file_with_files(target: str, files: List[str], run_as_admin: bool = False) -> bool:
+    def _open_file_with_files(target: str, files: list[str], run_as_admin: bool = False) -> bool:
         """使用非 exe 文件（如脚本、文档等）关联的程序打开文件"""
         success = True
         target_dir = os.path.dirname(os.path.abspath(target)) if target else None
@@ -309,8 +308,8 @@ class FileExecutionMixin:
     @staticmethod
     def _shell_execute_open_raw(
         target: str,
-        parameters: Optional[str] = None,
-        directory: Optional[str] = None,
+        parameters: str | None = None,
+        directory: str | None = None,
         show_cmd: int = 1,
         verb: str = "open",
     ) -> bool:
@@ -340,8 +339,8 @@ class FileExecutionMixin:
     @staticmethod
     def _shell_execute_open_raw_result(
         target: str,
-        parameters: Optional[str] = None,
-        directory: Optional[str] = None,
+        parameters: str | None = None,
+        directory: str | None = None,
         show_cmd: int = 1,
         verb: str = "open",
     ) -> tuple[bool, str]:
@@ -353,8 +352,8 @@ class FileExecutionMixin:
     @staticmethod
     def _launch_with_privilege(
         target: str,
-        parameters: Optional[str] = None,
-        directory: Optional[str] = None,
+        parameters: str | None = None,
+        directory: str | None = None,
         show_cmd: int = 1,
         run_as_admin: bool = False,
         admin_failure_message: str = "Administrator launch failed.",
@@ -449,8 +448,8 @@ class FileExecutionMixin:
     @staticmethod
     def _shell_execute_open(
         target: str,
-        parameters: Optional[str] = None,
-        directory: Optional[str] = None,
+        parameters: str | None = None,
+        directory: str | None = None,
         show_cmd: int = 1,
         run_as_admin: bool = False,
     ) -> bool:
@@ -508,7 +507,7 @@ class FileExecutionMixin:
 
         threading.Thread(target=run, daemon=True, name="ActivateLaunchedApp").start()
 
-    def _shell_execute_cmd(command: str, cwd: Optional[str] = None, run_as_admin: bool = False) -> bool:
+    def _shell_execute_cmd(command: str, cwd: str | None = None, run_as_admin: bool = False) -> bool:
         """通过 cmd.exe 执行命令，并统一走 ShellExecute 的提权/降权路径。"""
         if os.name != "nt":
             return False
@@ -606,7 +605,7 @@ class FileExecutionMixin:
             return False, f"Launch failed: {str(e)}"
 
     @staticmethod
-    def _safe_split_args(args_text: str) -> List[str]:
+    def _safe_split_args(args_text: str) -> list[str]:
         args_text = (args_text or "").strip()
         if not args_text:
             return []

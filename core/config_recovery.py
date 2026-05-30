@@ -31,7 +31,7 @@ class ConfigRecoveryReport:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: object) -> "ConfigRecoveryReport":
+    def from_dict(cls, data: object) -> ConfigRecoveryReport:
         if not isinstance(data, dict):
             return cls(status="unknown", reason="invalid recovery report")
         return cls(
@@ -40,9 +40,11 @@ class ConfigRecoveryReport:
             source_path=str(data.get("source_path") or ""),
             recovered_from=str(data.get("recovered_from") or ""),
             quarantined_path=str(data.get("quarantined_path") or ""),
-            issues=[str(item) for item in data.get("issues", []) if item is not None]
-            if isinstance(data.get("issues", []), list)
-            else [],
+            issues=(
+                [str(item) for item in data.get("issues", []) if item is not None]
+                if isinstance(data.get("issues", []), list)
+                else []
+            ),
             created_at=str(data.get("created_at") or datetime.now().isoformat(timespec="seconds")),
         )
 
@@ -66,8 +68,8 @@ def write_recovery_report(recovery_dir: Path | str, report: ConfigRecoveryReport
 
 
 def read_recovery_report(recovery_dir: Path | str) -> ConfigRecoveryReport | None:
-    path = recovery_state_path(recovery_dir)
     try:
+        path = recovery_state_path(recovery_dir)
         if not path.exists():
             return None
         return ConfigRecoveryReport.from_dict(json.loads(path.read_text(encoding="utf-8")))
@@ -78,15 +80,16 @@ def read_recovery_report(recovery_dir: Path | str) -> ConfigRecoveryReport | Non
 
 def quarantine_bad_config(data_file: Path | str, recovery_dir: Path | str) -> Path | None:
     """Copy a damaged data.json into recovery storage and prune old copies."""
-    source = Path(data_file)
-    if not source.exists() or not source.is_file():
-        return None
-
-    recovery_root = Path(recovery_dir)
-    recovery_root.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    target = recovery_root / f"bad_data_{timestamp}.json"
     try:
+        source = Path(data_file)
+        if not source.exists() or not source.is_file():
+            return None
+
+        recovery_root = Path(recovery_dir)
+        recovery_root.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        target = recovery_root / f"bad_data_{timestamp}.json"
+
         size = source.stat().st_size
         if size <= MAX_QUARANTINED_BYTES:
             shutil.copy2(source, target)

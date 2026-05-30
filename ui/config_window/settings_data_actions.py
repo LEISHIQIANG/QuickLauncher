@@ -6,13 +6,13 @@ import sys
 
 from qt_compat import (
     QApplication,
-    QFileDialog,
     QtCompat,
     QThread,
     pyqtSignal,
 )
 from ui.config_window.settings_helpers import ExportThread, ImportThread, ProgressDialog
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.utils.safe_file_dialog import get_open_file_name, get_save_file_name
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,9 @@ class SettingsDataActionsMixin:
 
     def _on_export_clicked(self):
         # Same as old settings
+        logger.info(f"[导出配置] 按钮被点击, frozen={getattr(sys, 'frozen', False)}")
         try:
-            file_path, _ = QFileDialog.getSaveFileName(self, "导出配置", "", "QuickLauncher 配置包 (*.qlpack)")
+            file_path, _ = get_save_file_name(self, "导出配置", "", "QuickLauncher 配置包 (*.qlpack)")
             if not file_path:
                 return
             if not file_path.endswith(".qlpack"):
@@ -40,6 +41,8 @@ class SettingsDataActionsMixin:
             progress.show()
 
             self.export_thread = ExportThread(self.data_manager, file_path)
+            self.export_thread.finished.connect(self.export_thread.deleteLater)
+            self.export_thread.finished.connect(lambda: setattr(self, "export_thread", None))
 
             def on_finished(success, msg):
                 if not self._is_progress_dialog_alive(progress):
@@ -52,8 +55,9 @@ class SettingsDataActionsMixin:
             ThemedMessageBox.critical(self, "错误", str(e))
 
     def _on_import_clicked(self):
+        logger.info(f"[导入配置] 按钮被点击, frozen={getattr(sys, 'frozen', False)}")
         try:
-            file_path, _ = QFileDialog.getOpenFileName(self, "导入配置", "", "QuickLauncher 配置包 (*.qlpack)")
+            file_path, _ = get_open_file_name(self, "导入配置", "", "QuickLauncher 配置包 (*.qlpack)")
             if not file_path:
                 return
 
@@ -61,6 +65,8 @@ class SettingsDataActionsMixin:
             progress.show()
 
             self.import_thread = ImportThread(self.data_manager, file_path)
+            self.import_thread.finished.connect(self.import_thread.deleteLater)
+            self.import_thread.finished.connect(lambda: setattr(self, "import_thread", None))
 
             def on_finished(success, count, msg):
                 if not self._is_progress_dialog_alive(progress):
@@ -90,7 +96,7 @@ class SettingsDataActionsMixin:
             from datetime import datetime
 
             default_name = f"QuickLauncher_FullBackup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            path, _ = QFileDialog.getSaveFileName(self, "保存全量备份", default_name, "Zip Files (*.zip)")
+            path, _ = get_save_file_name(self, "保存全量备份", default_name, "Zip Files (*.zip)")
             if not path:
                 return
 
@@ -103,15 +109,13 @@ class SettingsDataActionsMixin:
             ThemedMessageBox.critical(self, "错误", str(e))
 
     def _on_restore_full_clicked(self):
-        path, _ = QFileDialog.getOpenFileName(self, "选择全量备份文件", "", "Zip Files (*.zip)")
+        path, _ = get_open_file_name(self, "选择全量备份文件", "", "Zip Files (*.zip)")
         if not path:
             return
 
         if not path.lower().endswith(".zip"):
             ThemedMessageBox.warning(self, "错误", "请选择 .zip 格式的备份文件")
             return
-
-        self.data_manager.get_settings().theme
 
         result = ThemedMessageBox.question(
             self,
@@ -143,7 +147,7 @@ class SettingsDataActionsMixin:
             from datetime import datetime
 
             default_name = f"QuickLauncher_Share_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            path, _ = QFileDialog.getSaveFileName(self, "导出分享配置", default_name, "Zip Files (*.zip)")
+            path, _ = get_save_file_name(self, "导出分享配置", default_name, "Zip Files (*.zip)")
             if not path:
                 return
 
@@ -163,7 +167,7 @@ class SettingsDataActionsMixin:
     def _on_import_shareable_clicked(self):
         """导入分享配置"""
         try:
-            path, _ = QFileDialog.getOpenFileName(self, "选择分享配置文件", "", "Zip Files (*.zip)")
+            path, _ = get_open_file_name(self, "选择分享配置文件", "", "Zip Files (*.zip)")
             if not path:
                 return
 

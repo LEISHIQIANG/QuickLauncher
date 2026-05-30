@@ -145,7 +145,7 @@ def _is_path(text: str) -> tuple[bool, float]:
         return True, 0.95 if exists else 0.80
     if _UNIX_PATH_RE.match(stripped):
         exists = os.path.exists(stripped)
-        return True, 0.90 if exists else 0.75
+        return True, 0.90 if exists else 0.80
     return False, 0.0
 
 
@@ -176,7 +176,7 @@ def _is_domain(text: str) -> tuple[bool, float]:
 def _is_code(text: str) -> tuple[bool, float]:
     """Check if text looks like source code."""
     stripped = text.strip()
-    if len(stripped) < 50:
+    if len(stripped) < 30:
         return False, 0.0
     lines = stripped.splitlines()
     if len(lines) < 3:
@@ -308,7 +308,7 @@ def _make_summary(text: str, kind: str) -> str:
         return text[:100].replace("\n", " ").strip()
 
 
-def classify_clipboard(snapshot: "ClipboardSnapshot") -> "ClipboardClassification":
+def classify_clipboard(snapshot: ClipboardSnapshot) -> ClipboardClassification:
     """Classify clipboard content from a snapshot."""
     from .clipboard_service import ClipboardClassification
 

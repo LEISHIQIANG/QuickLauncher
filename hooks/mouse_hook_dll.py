@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import Callable, List, Optional
+from collections.abc import Callable
 
 from .hooks_wrapper import HooksDLL
 
@@ -16,11 +16,11 @@ class MouseHook:
 
     def __init__(self):
         self._dll = HooksDLL.get_instance()
-        self._callback: Optional[Callable[[int, int], None]] = None
-        self._alt_double_click_callback: Optional[Callable[[int, int], None]] = None
+        self._callback: Callable[[int, int], None] | None = None
+        self._alt_double_click_callback: Callable[[int, int], None] | None = None
         self._keyboard_hook = None
 
-    def set_special_apps(self, apps: List[str]):
+    def set_special_apps(self, apps: list[str]):
         """设置特殊应用列表"""
         self._dll.set_special_apps(apps)
 
@@ -49,26 +49,35 @@ class MouseHook:
         """设置键盘钩子引用"""
         self._keyboard_hook = kb_hook
 
-    def set_alt_double_click_callback(self, callback: Optional[Callable[[int, int], None]]):
+    def set_alt_double_click_callback(self, callback: Callable[[int, int], None] | None):
         """设置Alt+左键双击回调"""
         self._alt_double_click_callback = callback
         self._dll.set_alt_double_click_callback(callback)
 
     def get_stats(self) -> dict:
-        """获取统计信息"""
+        """获取统计信息（基于实际 DLL 状态）"""
+        try:
+            diagnostics = self._dll.get_diagnostics()
+            hook_ok = diagnostics.get("loaded", False) and diagnostics.get("compatible", False)
+        except Exception as e:
+            logger.debug("获取 DLL 诊断信息失败: %s", e)
+            hook_ok = False
         return {
-            "total_events": 0,
-            "blocked_events": 0,
-            "safe_mode_activations": 0,
-            "errors": 0,
-            "is_safe_mode": False,
-            "is_blocked": False,
-            "hook_health_ok": True,
+            "total_events": None,
+            "blocked_events": None,
+            "safe_mode_activations": None,
+            "errors": None,
+            "is_safe_mode": self.is_paused(),
+            "is_blocked": not self._dll._ready() if hasattr(self._dll, "_ready") else False,
+            "hook_health_ok": hook_ok,
         }
 
     def force_release(self):
-        """强制释放拦截状态"""
-        pass
+        """强制释放所有修饰键"""
+        try:
+            self._dll.release_all_modifier_keys()
+        except Exception as e:
+            logger.warning("force_release 失败: %s", e)
 
     @property
     def alt_held(self) -> bool:

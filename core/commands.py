@@ -19,7 +19,7 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 try:
     import qrcode
@@ -384,7 +384,7 @@ def cmd_uuid(context: CommandContext) -> CommandResult:
 def cmd_timestamp(context: CommandContext) -> CommandResult:
     args = context.args_text.strip()
     if not args:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         local = now.astimezone()
         return CommandResult(
             success=True,
@@ -396,7 +396,7 @@ def cmd_timestamp(context: CommandContext) -> CommandResult:
         ts = int(args)
         if ts > 1e12:
             ts /= 1000
-        dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
+        dt = datetime.fromtimestamp(ts, tz=UTC).astimezone()
         return CommandResult(
             success=True,
             message=dt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -832,9 +832,17 @@ def _normalize_tls_target(text: str) -> tuple[str, int, str]:
     target = parts[0]
     port_hint = parts[1] if len(parts) >= 2 and parts[1].isdigit() else ""
 
+    invalid_format = False
+    if len(parts) >= 2:
+        if not parts[1].isdigit() or len(parts) > 2:
+            invalid_format = True
+
     parsed = urllib.parse.urlparse(target if "://" in target else "https://" + target)
     host = (parsed.hostname or target).strip().strip("[]").rstrip(".,;")
     port = parsed.port or (int(port_hint) if port_hint else 443)
+
+    if invalid_format:
+        host = raw
 
     try:
         ascii_host = host.encode("idna").decode("ascii")
@@ -893,8 +901,8 @@ def cmd_tls(context: CommandContext) -> CommandResult:
     not_after_raw = cert.get("notAfter", "")
     days_left_text = "未知"
     try:
-        expires_at = datetime.strptime(not_after_raw, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-        days_left = int((expires_at - datetime.now(timezone.utc)).total_seconds() // 86400)
+        expires_at = datetime.strptime(not_after_raw, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=UTC)
+        days_left = int((expires_at - datetime.now(UTC)).total_seconds() // 86400)
         days_left_text = f"{days_left} 天"
     except Exception:
         pass
@@ -1023,8 +1031,7 @@ def _run_cmd(args: list[str]) -> tuple[bool, str]:
         creationflags = 0x08000000 if os.name == "nt" else 0
         proc = subprocess.run(
             args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             creationflags=creationflags,
             timeout=10,
         )
@@ -1230,8 +1237,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
                 try:
                     proc_kill = subprocess.run(
                         ["taskkill", "/F", "/PID", str(pid)],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        capture_output=True,
                         creationflags=0x08000000,
                         timeout=3,
                     )
@@ -1352,7 +1358,7 @@ def cmd_conflict(context: CommandContext) -> CommandResult:
         hotkey_to_items.setdefault(item.hotkey.strip().lower(), []).append(item)
 
     internal_conflicts = []
-    for hk, items in hotkey_to_items.items():
+    for _hk, items in hotkey_to_items.items():
         if len(items) > 1:
             names = [it.name for it in items]
             internal_conflicts.append(f"- 快捷键 '{items[0].hotkey}' 被多个项目同时使用: {', '.join(names)}")

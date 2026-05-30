@@ -6,7 +6,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
 
 from .runtime_constants import (
     COMMAND_CHAIN_MAX_STEPS,
@@ -38,10 +37,10 @@ class ShortcutItem:
     type: ShortcutType = ShortcutType.FILE
     order: int = 0
     enabled: bool = True
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     last_used_at: float = 0.0
     use_count: int = 0
-    smart_order: Optional[int] = None
+    smart_order: int | None = None
 
     # 文件类型
     target_path: str = ""
@@ -50,7 +49,7 @@ class ShortcutItem:
 
     # 快捷键类型
     hotkey: str = ""
-    hotkey_modifiers: List[str] = field(default_factory=list)
+    hotkey_modifiers: list[str] = field(default_factory=list)
     hotkey_key: str = ""
 
     # URL类型
@@ -67,10 +66,10 @@ class ShortcutItem:
     command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS
     command_output_max_chars: int = DEFAULT_COMMAND_OUTPUT_MAX_CHARS
     command_panel_size: str = "medium"  # small, medium, large
-    command_params: List[dict] = field(default_factory=list)
+    command_params: list[dict] = field(default_factory=list)
     command_env: dict = field(default_factory=dict)
     command_encoding: str = "auto"
-    chain_steps: List[dict] = field(default_factory=list)
+    chain_steps: list[dict] = field(default_factory=list)
     chain_result_window: str = "medium"  # none, small, medium, large
     raw_mode: bool = False  # 原始模式，跳过变量预处理
 
@@ -186,7 +185,7 @@ class ShortcutItem:
         return item
 
     @staticmethod
-    def _normalize_tags(tags) -> List[str]:
+    def _normalize_tags(tags) -> list[str]:
         if not tags:
             return []
         if isinstance(tags, str):
@@ -207,7 +206,7 @@ class ShortcutItem:
     MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
 
     @staticmethod
-    def _normalize_command_params(params) -> List[dict]:
+    def _normalize_command_params(params) -> list[dict]:
         if not isinstance(params, list):
             return []
         normalized = []
@@ -255,7 +254,7 @@ class ShortcutItem:
         return {str(k).strip(): str(v) for k, v in env.items() if str(k).strip()}
 
     @staticmethod
-    def _normalize_chain_steps(steps) -> List[dict]:
+    def _normalize_chain_steps(steps) -> list[dict]:
         if not isinstance(steps, list):
             return []
         if len(steps) > ShortcutItem.MAX_CHAIN_STEPS:
@@ -304,7 +303,7 @@ class Folder:
     is_system: bool = False
     is_dock: bool = False
     is_icon_repo: bool = False
-    items: List[ShortcutItem] = field(default_factory=list)
+    items: list[ShortcutItem] = field(default_factory=list)
 
     # 文件夹自动导入功能
     linked_path: str = ""  # 绑定的物理文件夹路径
@@ -413,9 +412,9 @@ class AppSettings:
     popup_max_rows: int = 3  # 中键弹窗每列最大行数
 
     # 命令与插件设置
-    enabled_plugins: List[str] = field(default_factory=list)
-    favorite_commands: List[str] = field(default_factory=list)
-    disabled_builtin_commands: List[str] = field(default_factory=list)
+    enabled_plugins: list[str] = field(default_factory=list)
+    favorite_commands: list[str] = field(default_factory=list)
+    disabled_builtin_commands: list[str] = field(default_factory=list)
     plugin_dev_mode: bool = False
 
     # 预处理设置
@@ -464,7 +463,7 @@ class AppSettings:
 
     custom_bg_path: str = ""
 
-    special_apps: List[str] = field(default_factory=lambda: DEFAULT_SPECIAL_APPS.copy())
+    special_apps: list[str] = field(default_factory=lambda: DEFAULT_SPECIAL_APPS.copy())
 
     @property
     def bg_alpha_255(self) -> int:
@@ -560,7 +559,7 @@ class AppData:
 
     version: str = "2.5"
     settings: AppSettings = field(default_factory=AppSettings)
-    folders: List[Folder] = field(default_factory=list)
+    folders: list[Folder] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.folders:
@@ -571,16 +570,16 @@ class AppData:
         default = Folder(id="default", name="常用", order=1, is_system=True, is_dock=False)
         self.folders = [dock, default]
 
-    def get_dock(self) -> Optional[Folder]:
+    def get_dock(self) -> Folder | None:
         for folder in self.folders:
             if folder.is_dock:
                 return folder
         return None
 
-    def get_pages(self) -> List[Folder]:
+    def get_pages(self) -> list[Folder]:
         return [f for f in self.folders if not f.is_dock]
 
-    def get_folder_by_id(self, folder_id: str) -> Optional[Folder]:
+    def get_folder_by_id(self, folder_id: str) -> Folder | None:
         for folder in self.folders:
             if folder.id == folder_id:
                 return folder

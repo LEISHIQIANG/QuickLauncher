@@ -46,7 +46,8 @@ class DragDropListWidget(QListWidget):
         self._initial_drag_row = -1
 
         # Transparent background and zero focus outlines
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QListWidget {
                 background: transparent;
                 border: none;
@@ -65,7 +66,8 @@ class DragDropListWidget(QListWidget):
             QListWidget::item:selected {
                 background: transparent;
             }
-        """)
+        """
+        )
 
     def startDrag(self, supported_actions):
         item = self.currentItem()
@@ -344,12 +346,14 @@ class SettingsCommandsPageMixin:
         fav_desc.setObjectName("fav_desc")
         fav_desc.setWordWrap(True)
         fav_desc.setMinimumWidth(0)
-        fav_desc.setStyleSheet(f"""
+        fav_desc.setStyleSheet(
+            f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """
+        )
         layout2.addWidget(fav_desc)
 
         # Drag & Drop list widget for favorite commands
@@ -365,12 +369,14 @@ class SettingsCommandsPageMixin:
 
         # Placeholder label when no favorites are present
         self.fav_placeholder_lbl = QLabel(tr("暂未收藏任何命令"))
-        self.fav_placeholder_lbl.setStyleSheet(f"""
+        self.fav_placeholder_lbl.setStyleSheet(
+            f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             font-style: italic;
             padding: 4px;
-        """)
+        """
+        )
         layout2.addWidget(self.fav_placeholder_lbl)
 
         # ── Disabled builtin commands ──
@@ -380,12 +386,14 @@ class SettingsCommandsPageMixin:
         disable_desc.setObjectName("disable_desc")
         disable_desc.setWordWrap(True)
         disable_desc.setMinimumWidth(0)
-        disable_desc.setStyleSheet(f"""
+        disable_desc.setStyleSheet(
+            f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """
+        )
         layout3.addWidget(disable_desc)
 
         # Search filter for built-in commands

@@ -84,7 +84,7 @@ def read_recent_events(config_dir: Path | str, max_lines: int = 200) -> list[dic
         path = Path(config_dir) / _EVENTS_FILE
         if not path.exists():
             return []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
         events = []
         for line in lines[-max_lines:]:

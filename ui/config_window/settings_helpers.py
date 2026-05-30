@@ -140,7 +140,7 @@ class NumberedListDelegate(QStyledItemDelegate):
         except Exception:
             if painter.isActive():
                 painter.restore()
-            super(NumberedListDelegate, self).paint(painter, option, index)
+            super().paint(painter, option, index)
 
     def createEditor(self, parent, option, index):
         self.editing_row = index.row()

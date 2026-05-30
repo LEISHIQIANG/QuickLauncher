@@ -18,11 +18,11 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-dev.txt
       - name: Compile
-        run: python -m compileall -q services core hooks ui tests main.py
+        run: python -m compileall -q services core hooks ui tests main.py plugins bootstrap qt_compat.py
       - name: UTF-8 decode check
         run: >
           python -c "from pathlib import Path;
-          roots=[Path(p) for p in ('core','hooks','services','scripts','tests','ui')]+[Path('main.py'),Path('QuickLauncher.manifest')];
+          roots=[Path(p) for p in ('core','hooks','services','scripts','tests','ui','plugins','bootstrap')]+[Path('main.py'),Path('qt_compat.py'),Path('QuickLauncher.manifest')];
           files=[];
           [files.extend([r] if r.is_file() else list(r.rglob('*'))) for r in roots];
           [p.read_text(encoding='utf-8') for p in files if p.is_file() and p.suffix.lower() in {'.py','.md','.yml','.yaml','.json','.toml','.iss','.bat','.xml','.manifest'}]"
@@ -47,8 +47,8 @@ jobs:
           tests/test_shortcut_command_exec.py
           ui/config_window/command_dialog.py
       - name: Lint (expanded)
-        run: python -m ruff check core/ hooks/ services/ scripts/ tests/ ui/ main.py
+        run: python -m ruff check core/ hooks/ services/ scripts/ tests/ ui/ main.py plugins/ bootstrap/ qt_compat.py
       - name: Format check
-        run: python -m ruff format --check core/ hooks/ services/ scripts/ tests/ ui/ main.py
+        run: python -m ruff format --check core/ hooks/ services/ scripts/ tests/ ui/ main.py plugins/ bootstrap/ qt_compat.py
       - name: Tests
         run: python -m pytest tests/ -q --cov=core --cov=ui --cov=services --cov=hooks --cov-report=term-missing --cov-fail-under=35

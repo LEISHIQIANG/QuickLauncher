@@ -44,6 +44,15 @@ class HooksMixin:
             except Exception:
                 pass
             self.mouse_hook = hook
+
+            # 设置全局钩子引用，供文件对话框使用
+            try:
+                from ui.utils.safe_file_dialog import set_global_mouse_hook
+
+                set_global_mouse_hook(hook)
+            except Exception:
+                pass
+
             self._apply_mouse_hook_settings()
 
             logger.info("鼠标触发已切换到 DLL Hook")
@@ -62,6 +71,14 @@ class HooksMixin:
             from hooks.keyboard_hook_dll import KeyboardHook
 
             self.keyboard_hook = KeyboardHook()
+
+            # 设置全局键盘钩子引用，供文件对话框使用
+            try:
+                from ui.utils.safe_file_dialog import set_global_keyboard_hook
+
+                set_global_keyboard_hook(self.keyboard_hook)
+            except Exception:
+                pass
 
             success = self.keyboard_hook.install(on_alt_double_tap=self._on_alt_double_tap_from_hook)
 

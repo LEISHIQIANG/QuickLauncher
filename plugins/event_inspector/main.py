@@ -50,8 +50,7 @@ def _read_events_wevtutil(log_name: str, hours_back: int, max_events: int) -> li
     try:
         result = subprocess.run(
             ["wevtutil", "qe", log_name, "/q:" + query, "/c:" + str(max_events), "/f:text"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=15,
             creationflags=0x08000000,
         )

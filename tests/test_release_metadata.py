@@ -106,3 +106,34 @@ def test_release_artifact_checker_fails_missing_hooks(tmp_path):
 
     assert not result.ok
     assert any("hooks.dll" in error for error in result.errors)
+
+
+def test_release_artifact_checker_rejects_pycache(tmp_path):
+    dist = tmp_path / "QuickLauncher"
+    (dist / "hooks").mkdir(parents=True)
+    (dist / "assets").mkdir()
+    (dist / "plugins" / "sample").mkdir(parents=True)
+    (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
+    (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "plugins" / "sample" / "plugin.json").write_text("{}", encoding="utf-8")
+    (dist / "plugins" / "sample" / "main.py").write_text("pass\n", encoding="utf-8")
+    # Simulate __pycache__ debris that should be caught
+    pycache = dist / "plugins" / "sample" / "__pycache__"
+    pycache.mkdir()
+    (pycache / "main.cpython-312.pyc").write_bytes(b"")
+    installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
+    installer.write_bytes(b"setup")
+
+    result = check_release_artifacts(ROOT, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1)
+
+    assert not result.ok
+    debris_errors = [e for e in result.errors if "pycache" in e.lower() or ".pyc" in e.lower()]
+    assert len(debris_errors) >= 1, f"Expected debris errors, got: {result.errors}"
+
+
+def test_build_script_cleans_pycache_from_plugins():
+    script = (ROOT / "scripts" / "build_win11_setup.bat").read_text(encoding="utf-8")
+    assert "rmdir /s /q" in script
+    assert "__pycache__" in script
+    assert "*.pyc" in script

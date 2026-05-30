@@ -22,6 +22,7 @@ from qt_compat import (
     QTextOption,
 )
 from ui.styles.style import PopupMenu
+from ui.utils.safe_file_dialog import get_save_file_name
 
 logger = logging.getLogger(__name__)
 
@@ -630,11 +631,9 @@ class PopupCommandResultMixin:
             import os
             import shutil
 
-            from PyQt5.QtWidgets import QFileDialog
-
             src_path = action.value
             default_name = os.path.basename(src_path) if os.path.isfile(src_path) else "qrcode.png"
-            dst, _ = QFileDialog.getSaveFileName(self, "保存图片", default_name, "PNG 图片 (*.png);;所有文件 (*)")
+            dst, _ = get_save_file_name(self, "保存图片", default_name, "PNG 图片 (*.png);;所有文件 (*)")
             if dst:
                 try:
                     if os.path.isfile(src_path):
@@ -643,9 +642,7 @@ class PopupCommandResultMixin:
                     logger.warning("保存图片失败: %s", e)
             self.clear_command_result()
         elif action.type == "save_text" and action.value:
-            from PyQt5.QtWidgets import QFileDialog
-
-            path, _ = QFileDialog.getSaveFileName(self, "保存文件", "", "文本文件 (*.txt);;所有文件 (*)")
+            path, _ = get_save_file_name(self, "保存文件", "", "文本文件 (*.txt);;所有文件 (*)")
             if path:
                 try:
                     with open(path, "w", encoding="utf-8") as f:

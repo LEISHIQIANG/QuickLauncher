@@ -435,7 +435,8 @@ class NavigationWidget(QListWidget):
         self.theme = theme
         self._apply_nav_icons(theme)
 
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QListWidget {
                 background-color: transparent;
                 border: none;
@@ -456,7 +457,8 @@ class NavigationWidget(QListWidget):
                 background-color: transparent;
                 border: none;
             }
-        """)
+        """
+        )
 
     def _apply_nav_icons(self, theme: str):
         from .action_button_icons import create_action_button_icon
@@ -515,7 +517,8 @@ class BaseSettingPage(SmoothScrollArea):
         group.setFont(get_qfont(14))
         group.setProperty("settingsGroupTitle", title)
 
-        group.setStyleSheet("""
+        group.setStyleSheet(
+            """
             QGroupBox {
                 border: none;
                 padding-top: 5px;
@@ -528,7 +531,8 @@ class BaseSettingPage(SmoothScrollArea):
                 padding-left: 18px;
                 color: white;
             }
-        """)
+        """
+        )
 
         icon_label = QLabel()
         icon_label.setObjectName("SettingsGroupIcon")

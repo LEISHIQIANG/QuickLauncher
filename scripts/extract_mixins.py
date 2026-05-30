@@ -5,7 +5,7 @@ import re
 
 BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui", "launcher_popup")
 
-with open(os.path.join(BASE, "popup_window.py"), "r", encoding="utf-8") as f:
+with open(os.path.join(BASE, "popup_window.py"), encoding="utf-8") as f:
     lines = f.readlines()
 
 # ============================================================
@@ -276,7 +276,7 @@ print(f"\nRebuilt popup_window.py: {final_lines} lines")
 
 # Verify remaining methods
 remaining = []
-for i, line in enumerate(content.split("\n")):
+for _i, line in enumerate(content.split("\n")):
     if re.match(r"^    def \w+\(self", line):
         name = re.search(r"def (\w+)\(", line).group(1)
         remaining.append(name)
