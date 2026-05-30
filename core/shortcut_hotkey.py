@@ -29,7 +29,7 @@ try:
         if _keyboard is None:
             _keyboard = KeyboardController()
         return _keyboard
-except ImportError:
+except Exception:
     Key = None
     HAS_PYNPUT = False
     keyboard = None

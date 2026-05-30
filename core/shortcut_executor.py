@@ -32,9 +32,9 @@ try:
     from pynput.keyboard import Key
 
     HAS_PYNPUT = True
-except ImportError:
+except Exception:
+    Key = None
     HAS_PYNPUT = False
-    logger.warning("pynput 未安装，快捷键功能受限")
 
 # ===== 配置 user32 函数签名（仅限本模块特有的函数） =====
 user32.SetWindowPos.argtypes = [
