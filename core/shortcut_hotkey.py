@@ -2,6 +2,7 @@
 
 import ctypes
 import logging
+import os
 import time
 
 from .data_models import ShortcutItem
@@ -18,6 +19,8 @@ from .shortcut_types import (
 )
 
 try:
+    if os.environ.get("CI"):
+        raise ImportError("pynput skipped in CI environment")
     from pynput.keyboard import Controller as KeyboardController
     from pynput.keyboard import Key
 

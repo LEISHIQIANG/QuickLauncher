@@ -29,6 +29,8 @@ STANDARD_USER_LAUNCH_FAILED_MESSAGE = (
 
 # 尝试导入 pynput 键盘控制
 try:
+    if os.environ.get("CI"):
+        raise ImportError("pynput skipped in CI environment")
     from pynput.keyboard import Key
 
     HAS_PYNPUT = True
