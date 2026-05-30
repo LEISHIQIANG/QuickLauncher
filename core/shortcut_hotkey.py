@@ -53,6 +53,7 @@ def keyboard():
         _keyboard_instance = _pynput_KeyboardController()
     return _keyboard_instance
 
+
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
 
