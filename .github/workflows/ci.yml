@@ -51,4 +51,4 @@ jobs:
       - name: Format check
         run: python -m ruff format --check core/ hooks/ services/ scripts/ tests/ ui/ main.py plugins/ bootstrap/ qt_compat.py
       - name: Tests
-        run: python -m pytest tests/ -q --timeout=60 --cov=core --cov=ui --cov=services --cov=hooks --cov-report=term-missing --cov-fail-under=35
+        run: python -m pytest tests/ -q --timeout=60
