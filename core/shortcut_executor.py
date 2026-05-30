@@ -27,16 +27,27 @@ STANDARD_USER_LAUNCH_FAILED_MESSAGE = (
     "请先以普通权限启动 QuickLauncher，或为该项目显式勾选“以管理员身份运行”。"
 )
 
-# 尝试导入 pynput 键盘控制
-try:
-    if os.environ.get("CI"):
-        raise ImportError("pynput skipped in CI environment")
-    from pynput.keyboard import Key
+# 尝试导入 pynput 键盘控制 — 懒加载避免模块级阻塞
+_pynput_Key = None
+HAS_PYNPUT = False
 
-    HAS_PYNPUT = True
-except Exception:
-    Key = None
-    HAS_PYNPUT = False
+
+def _import_pynput():
+    global HAS_PYNPUT, _pynput_Key
+    if HAS_PYNPUT or _pynput_Key is not None:
+        return
+    try:
+        from pynput.keyboard import Key as K
+
+        _pynput_Key = K
+        HAS_PYNPUT = True
+    except Exception:
+        HAS_PYNPUT = False
+
+
+def Key():
+    _import_pynput()
+    return _pynput_Key
 
 # ===== 配置 user32 函数签名（仅限本模块特有的函数） =====
 user32.SetWindowPos.argtypes = [
@@ -81,62 +92,43 @@ class ShortcutExecutor(
     _hotkey_lock_timeout = 2.0
     _last_cleanup_time = 0
 
-    # pynput 特殊键映射
+    # pynput 特殊键映射（懒加载，避免模块级 pynput 导入阻塞）
     PYNPUT_SPECIAL_KEYS = {}
-    if HAS_PYNPUT:
-        PYNPUT_SPECIAL_KEYS = {
-            # 修饰键
-            "ctrl": Key.ctrl,
-            "control": Key.ctrl,
-            "alt": Key.alt,
-            "menu": Key.alt,
-            "shift": Key.shift,
-            "win": Key.cmd,
-            "lwin": Key.cmd,
-            "rwin": Key.cmd_r,
-            # 功能键
-            "tab": Key.tab,
-            "enter": Key.enter,
-            "return": Key.enter,
-            "escape": Key.esc,
-            "esc": Key.esc,
-            "space": Key.space,
-            "backspace": Key.backspace,
-            "back": Key.backspace,
-            "delete": Key.delete,
-            "del": Key.delete,
-            "insert": Key.insert,
-            "ins": Key.insert,
-            "home": Key.home,
-            "end": Key.end,
-            "pageup": Key.page_up,
-            "pgup": Key.page_up,
-            "pagedown": Key.page_down,
-            "pgdn": Key.page_down,
-            # 方向键
-            "up": Key.up,
-            "down": Key.down,
-            "left": Key.left,
-            "right": Key.right,
-            # F键
-            "f1": Key.f1,
-            "f2": Key.f2,
-            "f3": Key.f3,
-            "f4": Key.f4,
-            "f5": Key.f5,
-            "f6": Key.f6,
-            "f7": Key.f7,
-            "f8": Key.f8,
-            "f9": Key.f9,
-            "f10": Key.f10,
-            "f11": Key.f11,
-            "f12": Key.f12,
-            # 其他
-            "capslock": Key.caps_lock,
-            "numlock": Key.num_lock,
-            "scrolllock": Key.scroll_lock,
-            "printscreen": Key.print_screen,
-            "pause": Key.pause,
+    _PYNPUT_KEYS_LOADED = False
+
+    @classmethod
+    def _ensure_pynput_keys(cls):
+        if cls._PYNPUT_KEYS_LOADED:
+            return
+        cls._PYNPUT_KEYS_LOADED = True
+        k = Key()
+        if k is None:
+            return
+        cls.PYNPUT_SPECIAL_KEYS = {
+            "ctrl": k.ctrl, "control": k.ctrl,
+            "alt": k.alt, "menu": k.alt,
+            "shift": k.shift,
+            "win": k.cmd, "lwin": k.cmd, "rwin": k.cmd_r,
+            "tab": k.tab,
+            "enter": k.enter, "return": k.enter,
+            "escape": k.esc, "esc": k.esc,
+            "space": k.space,
+            "backspace": k.backspace, "back": k.backspace,
+            "delete": k.delete, "del": k.delete,
+            "insert": k.insert, "ins": k.insert,
+            "home": k.home, "end": k.end,
+            "pageup": k.page_up, "pgup": k.page_up,
+            "pagedown": k.page_down, "pgdn": k.page_down,
+            "up": k.up, "down": k.down,
+            "left": k.left, "right": k.right,
+            "f1": k.f1, "f2": k.f2, "f3": k.f3, "f4": k.f4,
+            "f5": k.f5, "f6": k.f6, "f7": k.f7, "f8": k.f8,
+            "f9": k.f9, "f10": k.f10, "f11": k.f11, "f12": k.f12,
+            "capslock": k.caps_lock,
+            "numlock": k.num_lock,
+            "scrolllock": k.scroll_lock,
+            "printscreen": k.print_screen,
+            "pause": k.pause,
         }
 
     # ===== POINT 结构体（用于获取鼠标位置）=====

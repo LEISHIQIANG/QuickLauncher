@@ -2,7 +2,6 @@
 
 import ctypes
 import logging
-import os
 import time
 
 from .data_models import ShortcutItem
@@ -18,24 +17,44 @@ from .shortcut_types import (
     user32,
 )
 
-try:
-    if os.environ.get("CI"):
-        raise ImportError("pynput skipped in CI environment")
-    from pynput.keyboard import Controller as KeyboardController
-    from pynput.keyboard import Key
+_pynput_Key = None
+_pynput_KeyboardController = None
+HAS_PYNPUT = False
 
-    HAS_PYNPUT = True
-    _keyboard = None
 
-    def keyboard():
-        global _keyboard
-        if _keyboard is None:
-            _keyboard = KeyboardController()
-        return _keyboard
-except Exception:
-    Key = None
-    HAS_PYNPUT = False
-    keyboard = None
+def _import_pynput():
+    """Lazy pynput import — avoids blocking module-level init on headless CI."""
+    global HAS_PYNPUT, _pynput_Key, _pynput_KeyboardController
+    if HAS_PYNPUT or _pynput_Key is not None:
+        return
+    try:
+        from pynput.keyboard import Controller as KC
+        from pynput.keyboard import Key as K
+
+        _pynput_Key = K
+        _pynput_KeyboardController = KC
+        HAS_PYNPUT = True
+    except Exception:
+        HAS_PYNPUT = False
+
+
+def Key():
+    _import_pynput()
+    return _pynput_Key
+
+
+def keyboard():
+    _import_pynput()
+    if _pynput_KeyboardController is None:
+        return None
+    global _keyboard_instance
+    try:
+        _keyboard_instance
+    except NameError:
+        _keyboard_instance = None
+    if _keyboard_instance is None:
+        _keyboard_instance = _pynput_KeyboardController()
+    return _keyboard_instance
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
@@ -650,6 +669,7 @@ class HotkeyExecutionMixin:
         """将字符串转换为 pynput 键"""
         key_lower = key_str.lower().strip()
 
+        ShortcutExecutor._ensure_pynput_keys()
         # 检查特殊键
         if key_lower in ShortcutExecutor.PYNPUT_SPECIAL_KEYS:
             return ShortcutExecutor.PYNPUT_SPECIAL_KEYS[key_lower]
