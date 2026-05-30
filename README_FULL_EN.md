@@ -1,6 +1,5 @@
 # QuickLauncher Full Documentation
 
-[![CI](https://github.com/LEISHIQIANG/QuickLauncher/actions/workflows/ci.yml/badge.svg)](https://github.com/LEISHIQIANG/QuickLauncher/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12-yellow.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20|%2011-lightgrey.svg)](https://www.microsoft.com/windows)
@@ -34,9 +33,7 @@ QuickLauncher is a **Windows desktop quick launcher** built with **Python + PyQt
 - [Tech Stack](#18-tech-stack)
 - [Getting Started](#getting-started)
 - [Development Guide](#development-guide)
-- [CI/CD](#cicd)
 - [Contributing](#contributing)
-
 ---
 
 ## Core Features Overview
@@ -1041,7 +1038,6 @@ QuickLauncher/
 │   └── icons/                       #   Icon cache
 │
 └── .github/                         # GitHub configuration
-    ├── workflows/ci.yml             #   CI pipeline
     ├── ISSUE_TEMPLATE/              #   Issue templates
     └── PULL_REQUEST_TEMPLATE.md     #   PR template
 ```
@@ -1062,7 +1058,6 @@ QuickLauncher/
 | **Packaging** | Nuitka (compilation) + Inno Setup (installer) |
 | **Code Quality** | ruff (lint), black (formatting), mypy (type checking) |
 | **Testing** | pytest + pytest-cov |
-| **CI** | GitHub Actions (Windows) |
 
 ### Production Dependencies
 
@@ -1141,19 +1136,6 @@ ruff format core/ ui/ hooks/ services/
 - Mixins only import `qt_compat` and `core`, avoiding circular imports
 
 ---
-
-## CI/CD
-
-The project is configured with a GitHub Actions CI pipeline (`.github/workflows/ci.yml`):
-
-- **Triggers**: All push and pull_request
-- **Environment**: `windows-latest` + Python 3.12
-- **Check Steps**:
-  1. Install dependencies
-  2. Compilation check (`compileall`)
-  3. Ruff lint (two rounds: core modules + full)
-  4. Format check
-  5. pytest + coverage (minimum 30% threshold)
 
 ---
 
