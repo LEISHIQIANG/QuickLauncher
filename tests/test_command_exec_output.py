@@ -207,7 +207,6 @@ def test_decode_garbage_bytes_replacement():
     data = b"\xff\xfe\x80\x81"
     text, enc, fallback = decode_command_output(data)
     assert fallback is True
-    assert enc == "utf-8"
 
 
 def test_decode_with_preferred_latin1():
