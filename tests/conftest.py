@@ -10,15 +10,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # pynput's platform-specific backends can hang or crash without an interactive
 # desktop session, which blocks pytest collection indefinitely.
 if os.environ.get("CI") or os.environ.get("PYTEST_CURRENT_TEST"):
-    # Block win32ui on CI to prevent MFC initialization from hanging in session 0
-    sys.modules["win32ui"] = None
-
     for mod_name in [
         "pynput",
         "pynput.keyboard",
         "pynput.keyboard._win32",
         "pynput._util",
         "pynput._util.win32",
+        "win32ui",
+        "win32gui",
+        "win32com",
+        "win32com.client",
+        "pythoncom",
     ]:
         if mod_name not in sys.modules:
             sys.modules[mod_name] = MagicMock()
