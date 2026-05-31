@@ -1,10 +1,10 @@
 # QuickLauncher 插件开发指南
 
-QuickLauncher 插件适合封装“能解决一个明确问题”的本地能力，例如文件校验、进程排查、启动项审计、网络诊断、系统信息整理等。尽量避免把插件做成大量零散的文本转换按钮；如果确实是文本工具，也建议围绕一个具体工作流组织。
+QuickLauncher 插件适合封装"能解决一个明确问题"的本地能力，例如文件校验、进程排查、启动项审计、网络诊断、系统信息整理等。尽量避免把插件做成大量零散的文本转换按钮；如果确实是文本工具，也建议围绕一个具体工作流组织。
 
 ## 快速开始
 
-1. 在设置页点击“新建开发插件...”，或输入 `/plugin new my_plugin`。
+1. 在设置页点击"新建开发插件..."，或输入 `/plugin new my_plugin`。
 2. 新插件会生成：
 
 ```text
@@ -32,6 +32,16 @@ plugins/my_plugin/
 - 大量依赖剪贴板作为唯一输入来源的命令。
 - 长时间后台联网、自动下载或自动修改系统状态的插件。
 - 默认需要管理员权限或执行任意命令的插件。
+
+## 当前插件
+
+| 插件 | 重点能力 | 适合场景 |
+|---|---|---|
+| `file_tools` | 复制路径、文件哈希 | 校验文件、排查路径、复制选中文件信息 |
+| `process_tools` | 进程资源排行、查找进程 | 找高占用进程、确认某个程序是否在运行 |
+| `startup_tools` | 启动项审计、PATH 检查 | 排查开机慢、环境变量污染、命令找不到 |
+| `network_tools` | Ping、DNS 查询 | 基础网络连通性诊断 |
+| `text_tools` | 文本反转、统计、大小写 | 少量通用文本处理 |
 
 ## plugin.json
 
@@ -122,32 +132,13 @@ api.register_command(
 2. `plugin.json` 的插件默认 `icon`
 3. 系统默认命令图标
 
-## 命令 ID 与搜索
+## 搜索规则
 
-命令 ID 必须包含点号：
+QuickLauncher 会搜索插件清单和命令注册信息中的以下字段：
 
-```text
-my_plugin.hello
-```
+**插件级：** `id`、`name`、`description`、`keywords`
 
-点号前是命名空间。插件 id 如果使用短横线，例如 `my-plugin`，建议命令命名空间使用下划线：
-
-```text
-my_plugin.hello
-```
-
-QuickLauncher 会搜索：
-
-- 命令 ID
-- 命令标题
-- aliases
-- 命令描述
-- category
-- 插件 id
-- 插件 name
-- 插件 description
-- 插件 keywords
-- `api.register_command(..., search_terms=[...])`
+**命令级：** `id`、`title`、`aliases`、`description`、`category`、`search_terms`
 
 建议：
 
@@ -275,22 +266,26 @@ CommandResult(
 | `message` | 结果文本 |
 | `display_type` | 结果类型，默认 `text` |
 | `payload` | 结构化扩展数据 |
-| `actions` | 结果动作；独立命令面板会显示完整动作区，旧弹窗兼容层只显示前两个 |
+| `actions` | 结果动作 |
 | `error` | 错误摘要 |
+
+### 结果类型
 
 推荐的 `display_type`：
 
 | display_type | 适用场景 | payload 约定 |
 |---|---|---|
 | `text` | 普通短文本 | 可选 `window_size` |
-| `log` | stdout/stderr、HTTP 响应、长日志 | `wrap=False`、`window_size="large"` |
-| `table` | 进程、端口、列表型数据 | `columns` + `rows`，复制用 TSV |
-| `kv` | 系统信息、网络摘要 | `items=[[key, value], ...]` |
-| `list` | 检查报告、动作链步骤 | `items=[{"title": ..., "status": ..., "detail": ...}]` |
-| `progress` | 长任务阶段进度 | `progress` 字段 + `payload.current/total/detail` |
-| `qr` | 二维码结果 | `payload.image_path` |
+| `log` | stdout/stderr、HTTP 响应、长日志 | `{"wrap": false, "window_size": "large"}` |
+| `table` | 进程、端口、列表型数据 | `{"columns": [...], "rows": [...]}`，复制用 TSV |
+| `kv` | 系统信息、网络摘要 | `{"items": [[key, value], ...]}` |
+| `list` | 检查报告、动作链步骤 | `{"items": [{"title": ..., "status": ..., "detail": ...}]}` |
+| `progress` | 长任务阶段进度 | `{"current": ..., "total": ..., "detail": ...}` |
+| `qr` | 二维码结果 | `{"image_path": ...}` |
 
 `payload["window_size"]` 可以是 `small`、`medium`、`large` 或 `auto`。固定模板用于稳定布局，`auto` 才允许根据内容动态调整。
+
+### 结果按钮
 
 动作类型：
 
@@ -301,16 +296,14 @@ CommandResult(
 | `open_file` | 打开文件 |
 | `open_folder` | 打开文件夹 |
 
-### 结果按钮数量
-
 独立命令面板会保留完整 `actions`。旧中键弹窗结果面板只作为兼容回退，空间有限时只显示前两个动作。
 
-建议给高频动作设置 `primary=True`，危险动作设置 `danger=True`，不可用动作设置 `enabled=False`。不要返回自定义“关闭”按钮；关闭面板由 QuickLauncher 自动提供。
+建议给高频动作设置 `primary=True`，危险动作设置 `danger=True`，不可用动作设置 `enabled=False`。不要返回自定义"关闭"按钮；关闭面板由 QuickLauncher 自动提供。
 
 ## 权限说明
 
 > **重要**：当前插件以兼容模式（in-process）运行，与 QuickLauncher 主程序共享同一个 Python 进程。
-> 
+>
 > 这意味着：
 > 1. 插件的 `permissions` 声明本质上是**高风险提醒**，并非强权限隔离。
 > 2. 插件仍可通过原生 Python API（如 `open()`、`subprocess`、`urllib`）绕过 `PluginAPI` 直接访问系统。
@@ -341,15 +334,33 @@ CommandResult(
   - 对可能耗时的操作，分批次执行或使用内部 `timeout` 保护。
   - 捕获超时后返回带错误提示的 `CommandResult`，而不是让线程悬空。
   - 长任务优先通过 `context.update_callback(CommandResult(display_type="progress", ...))` 汇报阶段性状态，最终返回完整结果。
+
+## 最佳实践
+
 - 不要在模块 import 时执行扫描、联网、读大文件等操作。
 - 外部命令使用参数数组，不要拼接 shell 字符串。
 - 文件路径用 `pathlib.Path`，展示给用户时给出完整路径。
 - 异常要转成 `CommandResult(success=False, message=...)`。
 - 插件自己的持久化数据放 `api.data_dir`。
 
-## README 要写什么
+## CHANGELOG 记录要求
 
-每个插件都应该带 `README.md`，建议包含：
+每次修改插件代码文件后，必须在项目根目录的 `CHANGELOG.md` 中记录变更。格式要求：
+
+- 以日期为章节标题，一天一个章节（**注意**：只有当天有变更时才需要新建章节）
+- 每个变更条目注明修改的文件和主要内容
+- 同一日期的多条变更归入同一章节
+
+```text
+## 2026-05-31
+
+- core/plugin_manager.py：完善插件隔离/隔离区
+- PLUGIN_DEV.md：补充 CHANGELOG 记录要求文档
+```
+
+## README 编写要求
+
+每个插件都应该带 `README.md`，README 是必需的维护材料。建议包含：
 
 - 插件定位：解决什么实际问题。
 - 命令列表：命令 ID、别名、参数、输出。
@@ -358,6 +369,8 @@ CommandResult(
 - 风险说明：是否读取文件、运行进程、联网、修改系统。
 - 故障排查：常见失败原因。
 - 维护信息：版本、作者、兼容性。
+
+插件越接近系统能力、文件操作、进程操作，越应该把权限和风险写清楚。
 
 ## 控制台命令
 

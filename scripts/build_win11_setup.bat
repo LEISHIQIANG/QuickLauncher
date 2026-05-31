@@ -227,7 +227,7 @@ REM no-UPX default and explicit manifest embedding below.
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
     --include-data-dir=plugins=plugins ^
-    --include-data-files=PLUGIN_DEV.md=PLUGIN_DEV.md ^
+    --include-data-files=plugins\PLUGIN_DEV.md=PLUGIN_DEV.md ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
     --include-package=core ^
@@ -519,8 +519,8 @@ if exist "plugins" (
     echo   [Warning] plugins directory not found, skipping bundled plugins.
 )
 
-if exist "PLUGIN_DEV.md" (
-    copy /Y "PLUGIN_DEV.md" "dist\QuickLauncher\" >nul
+if exist "plugins\PLUGIN_DEV.md" (
+    copy /Y "plugins\PLUGIN_DEV.md" "dist\QuickLauncher\" >nul
 )
 
 echo.
