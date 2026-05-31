@@ -1,7 +1,11 @@
 """Launcher popup drag/drop regression tests."""
 
+import pytest
+
 import ui.launcher_popup.popup_drag_drop as drag_drop
 from core.data_models import ShortcutItem, ShortcutType
+
+pytestmark = pytest.mark.ui
 
 
 class _DummyManager:

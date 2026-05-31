@@ -15,6 +15,8 @@ from core.command_registry import CommandRegistry
 from core.path_security import UnsafePathError
 from core.plugin_manager import PluginManager
 
+pytestmark = pytest.mark.ui
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

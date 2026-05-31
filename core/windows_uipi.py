@@ -138,8 +138,8 @@ def is_process_elevated() -> bool:
         if token:
             try:
                 kernel32.CloseHandle(token)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭令牌句柄失败: %s", exc, exc_info=True)
 
 
 def get_process_elevation_status() -> dict:
@@ -158,8 +158,8 @@ def get_process_elevation_status() -> dict:
     token = wintypes.HANDLE()
     try:
         status["is_user_an_admin"] = bool(shell32.IsUserAnAdmin())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("检查用户管理员状态失败: %s", exc, exc_info=True)
 
     try:
         if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)):
@@ -197,8 +197,8 @@ def get_process_elevation_status() -> dict:
         if token:
             try:
                 kernel32.CloseHandle(token)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭令牌句柄失败: %s", exc, exc_info=True)
 
 
 def format_process_elevation_status() -> str:

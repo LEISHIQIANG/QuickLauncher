@@ -70,7 +70,7 @@ def _rotate_if_needed(path: Path) -> None:
                     try:
                         src.unlink()
                     except Exception:
-                        pass
+                        logger.debug("删除旧事件日志备份失败", exc_info=True)
                 else:
                     src.rename(dst)
         path.rename(path.with_suffix(".jsonl.1"))
@@ -95,7 +95,7 @@ def read_recent_events(config_dir: Path | str, max_lines: int = 200) -> list[dic
                     if isinstance(data, dict):
                         events.append(data)
                 except json.JSONDecodeError:
-                    pass
+                    logger.debug("解析事件日志行失败", exc_info=True)
         return events
     except Exception:
         return []

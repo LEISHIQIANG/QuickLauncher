@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -13,6 +14,8 @@ import urllib.request
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _MAX_EXTERNAL_INPUT_BYTES = 1 * 1024 * 1024
 
@@ -220,7 +223,7 @@ def read_clipboard_text() -> str:
 
         return clipboard_service.read_text_win32()
     except Exception:
-        pass
+        logger.debug("读取剪贴板文本失败", exc_info=True)
     return ""
 
 

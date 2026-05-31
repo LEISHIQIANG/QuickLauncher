@@ -103,8 +103,8 @@ def _write_atomic(path: str, content: str) -> None:
         if tmp_path is not None:
             try:
                 os.unlink(tmp_path)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("删除临时文件失败: %s", exc, exc_info=True)
         raise
 
 
@@ -119,8 +119,8 @@ def _pipe_reader(pipe, output_queue, name):
     finally:
         try:
             pipe.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("关闭管道失败: %s", exc, exc_info=True)
 
 
 def _bash_fallback_result(
@@ -377,8 +377,8 @@ class CommandExecutionMixin:
         """Mark one shortcut object as confirmed for its next destructive command execution."""
         try:
             setattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, bool(confirmed))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置确认属性失败: %s", exc, exc_info=True)
 
     @staticmethod
     def _consume_command_confirmation(shortcut: ShortcutItem) -> bool:
@@ -386,8 +386,8 @@ class CommandExecutionMixin:
             if bool(getattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False)):
                 setattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False)
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("消费确认属性失败: %s", exc, exc_info=True)
         return False
 
     @staticmethod
@@ -492,7 +492,7 @@ class CommandExecutionMixin:
                         }
                     )
             except FileNotFoundError:
-                pass
+                logger.debug("预检时找不到shell启动器", exc_info=True)
         if command_type in ("cmd", "powershell", "bash"):
             unsafe = find_unquoted_external_command_variables(command)
             if unsafe:
@@ -570,8 +570,8 @@ class CommandExecutionMixin:
             result = ctypes.windll.kernel32.GetLongPathNameW(path, buf, 4096)
             if 0 < result < 4096:
                 return buf.value
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取长路径名失败: %s", exc, exc_info=True)
         # If GetLongPathNameW fails (e.g. 8.3 names disabled on this volume),
         # verify the path actually exists — a stale short-path will break .cmd wrappers.
         if not os.path.exists(path):
@@ -686,9 +686,9 @@ class CommandExecutionMixin:
                         if install_path:
                             candidates.append(os.path.join(install_path, "bin", "bash.exe"))
                     except (OSError, FileNotFoundError):
-                        pass
+                        logger.debug("查找GitForWindows注册表项失败", exc_info=True)
             except ImportError:
-                pass
+                logger.debug("winreg模块不可用", exc_info=True)
             # 3. Common install paths
             program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
             program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
@@ -794,8 +794,8 @@ class CommandExecutionMixin:
             try:
                 if os.path.exists(script_path):
                     os.remove(script_path)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("删除临时脚本失败: %s", exc, exc_info=True)
 
     @staticmethod
     def _bash_argv(command: str, *, login: bool = False) -> list[str]:
@@ -830,8 +830,8 @@ class CommandExecutionMixin:
             try:
                 if os.path.isfile(fpath):
                     os.remove(fpath)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("删除缓存文件失败 %s: %s", fpath, exc, exc_info=True)
 
     @staticmethod
     def _write_temp_python_script(command: str) -> str:
@@ -862,10 +862,10 @@ class CommandExecutionMixin:
                 ShortcutExecutor._terminate_process_tree(process)
                 try:
                     process.wait(timeout=2.0)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                except Exception as exc:
+                    logger.debug("等待进程终止失败: %s", exc, exc_info=True)
+            except Exception as exc:
+                logger.debug("清理进程失败: %s", exc, exc_info=True)
             for path in paths:
                 try:
                     if path and os.path.exists(path):
@@ -883,8 +883,8 @@ class CommandExecutionMixin:
         pid = getattr(process, "pid", None)
         try:
             process.kill()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("终止进程失败: %s", exc, exc_info=True)
         if os.name != "nt" or not pid:
             return
         try:
@@ -945,8 +945,8 @@ class CommandExecutionMixin:
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
             kwargs["startupinfo"] = startupinfo
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置进程启动信息失败: %s", exc, exc_info=True)
 
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         if creationflags:
@@ -1144,15 +1144,15 @@ class CommandExecutionMixin:
                     try:
                         if tmp_path and os.path.exists(tmp_path):
                             os.remove(tmp_path)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("删除临时Python文件失败: %s", exc, exc_info=True)
                     return False, ShortcutExecutor._python_launcher_error()
                 except Exception as e:
                     try:
                         if tmp_path and os.path.exists(tmp_path):
                             os.remove(tmp_path)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("删除临时Python文件失败: %s", exc, exc_info=True)
                     return False, f"Python 代码执行失败: {e}"
             try:
                 python_exe = ShortcutExecutor._python_launcher()
@@ -1198,7 +1198,7 @@ class CommandExecutionMixin:
                         logger.error(f"Python stdin exec failed: {e}")
 
                 threading.Thread(target=_launch_python_stdin, daemon=True, name="PythonStdinExec").start()
-                logger.info("执行命令(Silent Python stdin): %s", command)
+                logger.debug("执行命令(Silent Python stdin): %s", command)
                 return True, ""
             except FileNotFoundError:
                 return False, ShortcutExecutor._python_launcher_error()
@@ -1236,7 +1236,7 @@ class CommandExecutionMixin:
                     if stdin_pipe is not None:
                         stdin_pipe.write(ShortcutExecutor._cmd_stdin_script(command))
                         stdin_pipe.close()
-                    logger.info("执行命令(Silent CMD stdin): %s", command)
+                    logger.debug("执行命令(Silent CMD stdin): %s", command)
                     return True, ""
                 except Exception as e:
                     error_msg = f"命令启动失败: {e}"
@@ -1266,7 +1266,7 @@ class CommandExecutionMixin:
                             admin_failure_message="Administrator launch failed.",
                         )
                         if launched:
-                            logger.info(f"Launch via ShellExecute: {exe_path}")
+                            logger.debug(f"Launch via ShellExecute: {exe_path}")
                             return True, ""
                         if launch_error:
                             return False, launch_error
@@ -1276,7 +1276,7 @@ class CommandExecutionMixin:
                         process = ShortcutExecutor._popen_silent(
                             parsed, cwd=cwd or exe_dir or None, env=ShortcutExecutor._runtime_env(shortcut), shell=False
                         )
-                    logger.info(f"执行程序({'Visible' if show_window else 'Silent'}): {exe_path}")
+                    logger.debug(f"执行程序({'Visible' if show_window else 'Silent'}): {exe_path}")
                 else:
                     # 通过 cmd.exe 直接传入原始命令文本；单行/多行都不写临时 .cmd。
                     cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
@@ -1294,7 +1294,7 @@ class CommandExecutionMixin:
                             admin_failure_message="Administrator launch failed.",
                         )
                         if launched:
-                            logger.info(f"Command via ShellExecute: {command}")
+                            logger.debug(f"Command via ShellExecute: {command}")
                             return True, ""
                         if launch_error:
                             return False, launch_error
@@ -1307,7 +1307,7 @@ class CommandExecutionMixin:
                         process = ShortcutExecutor._popen_silent(
                             argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False
                         )
-                    logger.info(f"执行命令({'Visible' if show_window else 'Silent'} CMD): {command}")
+                    logger.debug(f"执行命令({'Visible' if show_window else 'Silent'} CMD): {command}")
 
             except Exception as e:
                 error_msg = f"命令启动失败: {e}"
@@ -1393,8 +1393,8 @@ class CommandExecutionMixin:
             if not clipboard_service.restore_snapshot(snapshot):
                 try:
                     clipboard_service.write_text(original_text)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("恢复剪贴板文本失败: %s", exc, exc_info=True)
 
     @staticmethod
     def _get_clipboard_sequence_number() -> int:
@@ -1452,7 +1452,7 @@ class CommandExecutionMixin:
             opener = getattr(os, "startfile", None)
             if callable(opener):
                 opener(path)
-                logger.info("Opened built-in filesystem target: %s", path)
+                logger.debug("Opened built-in filesystem target: %s", path)
                 return True
             return ShortcutExecutor._shell_execute_open(path)
         except Exception as e:
@@ -1778,8 +1778,8 @@ class CommandExecutionMixin:
                     finally:
                         try:
                             pipe.close()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("关闭输出管道失败: %s", exc, exc_info=True)
 
                 executor = ShortcutExecutor._get_executor()
                 executor.submit(_reader, process.stdout, "stdout")
@@ -1857,8 +1857,8 @@ class CommandExecutionMixin:
 
                 try:
                     process.wait(timeout=PROCESS_TERMINATE_WAIT_SECONDS)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("等待进程结束失败: %s", exc, exc_info=True)
                 while True:
                     try:
                         name, chunk = output_queue.get_nowait()
@@ -2149,8 +2149,8 @@ class CommandExecutionMixin:
                 if _p:
                     try:
                         os.remove(_p)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("删除临时文件失败 %s: %s", _p, exc, exc_info=True)
 
     @staticmethod
     def test_command(shortcut: ShortcutItem, timeout: float = DEFAULT_COMMAND_TIMEOUT_SECONDS) -> dict:
@@ -2202,8 +2202,8 @@ class CommandExecutionMixin:
                         from core.file_selection import get_selected_files_for_process
 
                         selected_files = get_selected_files_for_process() or []
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("获取选中文件失败: %s", exc, exc_info=True)
 
                     clipboard_text = ""
                     clipboard_kind = ""
@@ -2219,8 +2219,8 @@ class CommandExecutionMixin:
 
                             kind, _, _ = classify_text(snapshot.text)
                             clipboard_kind = kind
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("读取剪贴板快照失败: %s", exc, exc_info=True)
 
                     ctx = CommandContext(
                         raw_input=command,
@@ -2234,8 +2234,8 @@ class CommandExecutionMixin:
                     result = cmd_def.handler(ctx)
                     set_pending_command_result(result)
                     return result.success
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("执行内置命令失败: %s", exc, exc_info=True)
 
         canonical = canonical_builtin_command(cmd_name)
         command_name = canonical or cmd_name
@@ -2251,7 +2251,7 @@ class CommandExecutionMixin:
                         logger.info(f"UI内置命令(通过主线程): {canonical}")
                     elif ShortcutExecutor._is_qt_main_thread():
                         result = call_callback(canonical)
-                        if result is False:
+                        if not result:
                             logger.error("UI内置命令回调返回失败: %s", canonical)
                             return False
                     else:
@@ -2327,14 +2327,11 @@ class CommandExecutionMixin:
                 logger.debug(f"开始发送延迟IPC命令: {command} (frozen={is_frozen})")
                 result = ShortcutExecutor._send_ipc_command(command)
                 if result:
-                    logger.info(f"延迟IPC命令发送成功: {command}")
+                    logger.debug(f"延迟IPC命令发送成功: {command}")
                 else:
                     logger.warning(f"延迟IPC命令发送失败: {command}")
-            except Exception as e:
-                logger.error(f"延迟IPC命令异常: {e}")
-                import traceback
-
-                logger.error(traceback.format_exc())
+            except Exception:
+                logger.exception("延迟IPC命令发送失败")
 
         try:
             # 使用 Python 线程而不是 QTimer，避免线程亲和性问题
@@ -2414,7 +2411,7 @@ class CommandExecutionMixin:
 
                         if write_ok or bytes_written > 0:
                             socket.disconnectFromServer()
-                            logger.info(f"IPC命令发送成功: {command} (尝试 {attempt} 次)")
+                            logger.debug(f"IPC命令发送成功: {command} (尝试 {attempt} 次)")
                             return True
 
                         # 即使 waitForBytesWritten 返回 False，数据可能已发送
@@ -2432,8 +2429,8 @@ class CommandExecutionMixin:
 
                 try:
                     socket.disconnectFromServer()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("断开IPC套接字连接失败: %s", exc, exc_info=True)
 
                 # 优化重试延迟策略：
                 # 前3次快速重试（50-100ms），之后逐渐增加到最大200ms
@@ -2446,14 +2443,11 @@ class CommandExecutionMixin:
             try:
                 if last_socket:
                     last_socket.disconnectFromServer()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("断开最后的IPC套接字连接失败: %s", exc, exc_info=True)
 
             logger.warning(f"IPC命令发送失败（超时）: {command}, 共尝试 {attempt} 次, 最后错误: {last_error}")
             return False
-        except Exception as e:
-            logger.error(f"发送IPC命令失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("IPC命令发送异常")
             return False

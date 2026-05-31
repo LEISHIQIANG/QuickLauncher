@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import shutil
 import subprocess
@@ -10,6 +11,8 @@ import time
 from pathlib import Path
 
 from core.command_registry import CommandAction, CommandResult
+
+logger = logging.getLogger(__name__)
 
 SAFE_CLEAN_CATEGORIES = {
     "recycle": "回收站",
@@ -143,7 +146,7 @@ def _dir_size(path: Path, max_depth: int = 2, timeout_at: float = 0) -> int:
                 except (OSError, PermissionError):
                     continue
     except (OSError, PermissionError):
-        pass
+        logger.debug("扫描目录大小失败: %s", path, exc_info=True)
     return total
 
 
@@ -166,7 +169,8 @@ def _scan_recycle_bin() -> tuple[int, str]:
         ctypes.windll.shell32.SHQueryRecycleBinW(None, ctypes.byref(info))
         if info.i64Size > 0:
             return (info.i64Size, f"回收站: {info.i64NumItems} 项 / ~{_format_bytes(info.i64Size)}")
-    except Exception:
+    except Exception as exc:
+        logger.debug("查询回收站大小失败: %s", exc, exc_info=True)
         pass
     return (0, "回收站 (请使用 '/disk-clean recycle' 清空)")
 
@@ -182,7 +186,8 @@ def _scan_temp() -> tuple[int, str]:
 
 
 def _scan_prefetch() -> tuple[int, str]:
-    path = _safe_path("C:\\Windows\\Prefetch")
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    path = _safe_path(os.path.join(system_root, "Prefetch"))
     if not path:
         return (0, "Prefetch (未找到)")
     size = _dir_size(path, max_depth=1)
@@ -208,7 +213,7 @@ def _scan_recent() -> tuple[int, str]:
     try:
         count = sum(1 for _ in os.scandir(str(recent)))
     except (OSError, PermissionError):
-        pass
+        logger.debug("扫描最近文档数量失败", exc_info=True)
     return (0, f"最近文档: {count} 个快捷方式 (清理后不会释放大量空间)")
 
 
@@ -286,11 +291,12 @@ def _clean_temp() -> tuple[bool, str]:
 
 
 def _clean_prefetch() -> tuple[bool, str]:
-    path = "C:\\Windows\\Prefetch"
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    path = os.path.join(system_root, "Prefetch")
     if not os.path.isdir(path):
         return (False, "Prefetch 目录不存在")
     if not _is_admin():
-        return _run_elevated("cmd.exe", '/c del /f /q "C:\\Windows\\Prefetch\\*.*" >nul 2>&1')
+        return _run_elevated("cmd.exe", f'/c del /f /q "{path}\\*.*" >nul 2>&1')
     count = 0
     errors = 0
     for entry in os.scandir(path):
@@ -343,7 +349,7 @@ def _rmtree_fast(root: str, max_depth: int) -> tuple[int, int]:
                         try:
                             os.rmdir(entry.path)
                         except OSError:
-                            pass
+                            logger.debug("删除空目录失败: %s", entry.path, exc_info=True)
                 except (OSError, PermissionError, FileNotFoundError):
                     errors += 1
     except (OSError, PermissionError, FileNotFoundError):
@@ -362,19 +368,20 @@ def _clean_recent() -> tuple[bool, str]:
                 os.remove(entry.path)
                 count += 1
         except (OSError, PermissionError):
-            pass
+            logger.debug("清理最近文档快捷方式失败: %s", entry.path, exc_info=True)
     return (True, f"已清理 {count} 个最近文档快捷方式")
 
 
 def _clean_delivery_opt() -> tuple[bool, str]:
-    path = "C:\\Windows\\SoftwareDistribution\\Download"
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    path = os.path.join(system_root, "SoftwareDistribution", "Download")
     if not os.path.isdir(path):
         return (False, "Delivery Optimization 目录不存在")
     if not _is_admin():
         cmd = (
             "/c net stop wuauserv /y >nul 2>&1 & net stop bits /y >nul 2>&1 & "
-            'del /f /q "C:\\Windows\\SoftwareDistribution\\Download\\*.*" >nul 2>&1 & '
-            'for /d %i in ("C:\\Windows\\SoftwareDistribution\\Download\\*") do '
+            f'del /f /q "{path}\\*.*" >nul 2>&1 & '
+            f'for /d %i in ("{path}\\*") do '
             'rd /s /q "%i" 2>nul & net start wuauserv >nul 2>&1 & net start bits >nul 2>&1'
         )
         return _run_elevated("cmd.exe", cmd)
@@ -396,7 +403,8 @@ def _clean_delivery_opt() -> tuple[bool, str]:
                 creationflags=0x08000000,
             )
             service_stopped = True
-        except Exception:
+        except Exception as exc:
+            logger.debug("停止BITS服务失败: %s", exc, exc_info=True)
             pass
 
         count = 0
@@ -409,7 +417,7 @@ def _clean_delivery_opt() -> tuple[bool, str]:
                     shutil.rmtree(entry.path, ignore_errors=True)
                     count += 1
             except (OSError, PermissionError, FileNotFoundError):
-                pass
+                logger.warning("清理更新缓存文件失败: %s", entry.path, exc_info=True)
 
         if service_stopped:
             try:
@@ -427,7 +435,8 @@ def _clean_delivery_opt() -> tuple[bool, str]:
                     timeout=5,
                     creationflags=0x08000000,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.debug("启动BITS服务失败: %s", exc, exc_info=True)
                 pass
 
         return (True, f"已清理 {count} 个更新缓存文件")
@@ -446,7 +455,7 @@ def _clean_thumbcache() -> tuple[bool, str]:
                 os.remove(entry.path)
                 count += 1
         except (OSError, PermissionError):
-            pass
+            logger.debug("清理缩略图缓存文件失败: %s", entry.path, exc_info=True)
     return (True, f"已清理 {count} 个缩略图缓存文件")
 
 

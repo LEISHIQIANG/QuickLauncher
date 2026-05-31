@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import subprocess
@@ -10,6 +11,8 @@ import sys
 
 from core.path_security import UnsafePathError, resolve_under
 from services.update.session import find_session_for_installer, update_session_state, utc_now_text
+
+logger = logging.getLogger(__name__)
 
 _SHA256_RE = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
 
@@ -28,7 +31,7 @@ class UpdateInstaller:
             try:
                 callback(event, data)
             except Exception:
-                pass
+                logger.debug("通知安装回调失败", exc_info=True)
 
     def install(self, installer_path: str, expected_hash: str = "", trusted_dir: str = "", data_manager=None):
         session_dir, _session_state = find_session_for_installer(installer_path)

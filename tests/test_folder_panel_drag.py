@@ -2,8 +2,12 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from qt_compat import QtCompat
 from ui.config_window.folder_panel import FolderListWidget, FolderPanel
+
+pytestmark = pytest.mark.ui
 
 
 def test_folder_list_widget_delegates_drag_drop_events(qapp):

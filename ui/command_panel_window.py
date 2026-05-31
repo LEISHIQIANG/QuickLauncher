@@ -9,6 +9,7 @@ import webbrowser
 from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
 from core.command_registry import CommandParam, CommandResult
 from core.data_models import ShortcutItem
+from core.i18n import tr
 from qt_compat import (
     QApplication,
     QCheckBox,
@@ -144,8 +145,8 @@ class CommandPanelWindow(ThemedToolWindow):
         if app is not None:
             try:
                 app.focusChanged.connect(self._on_app_focus_changed)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("连接焦点变更信号: %s", exc, exc_info=True)
 
         input_row = QHBoxLayout()
         input_row.setContentsMargins(0, 0, 4, 0)
@@ -159,7 +160,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.history_toggle_btn = CommandHistoryDropButton()
         self.history_toggle_btn.setFixedWidth(26)
         self.history_toggle_btn.setFixedHeight(28)
-        self.history_toggle_btn.setToolTip("最近命令")
+        self.history_toggle_btn.setToolTip(tr("最近命令"))
         self.history_toggle_btn.setFocusPolicy(Qt.NoFocus)
         self.history_toggle_btn.clicked.connect(self._show_history_menu)
         input_group_layout.addWidget(self.history_toggle_btn)
@@ -266,24 +267,24 @@ class CommandPanelWindow(ThemedToolWindow):
                 continue
             try:
                 widget.installEventFilter(self)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("安装事件过滤器: %s", exc, exc_info=True)
 
     def _configure_window_interaction(self):
         """Keep the panel from using QDialog's implicit Enter/Esc close behavior."""
         for button in self._panel_buttons():
             self._neutralize_button_default(button)
         try:
-            self.close_btn_top.setToolTip("关闭")
+            self.close_btn_top.setToolTip(tr("关闭"))
             self.close_btn_top.setFocusPolicy(Qt.NoFocus)
             self._neutralize_button_default(self.close_btn_top)
             try:
                 self.close_btn_top.clicked.disconnect()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("断开关闭按钮信号: %s", exc, exc_info=True)
             self.close_btn_top.clicked.connect(self._close_panel)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("断开关闭按钮信号: %s", exc, exc_info=True)
 
     def _panel_buttons(self):
         buttons = [
@@ -303,8 +304,8 @@ class CommandPanelWindow(ThemedToolWindow):
         try:
             button.setAutoDefault(False)
             button.setDefault(False)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置按钮默认属性: %s", exc, exc_info=True)
 
     def _apply_content_theme(self):
         if hasattr(self, "text"):
@@ -533,13 +534,13 @@ class CommandPanelWindow(ThemedToolWindow):
     def _clear_command_input_focus(self):
         try:
             self.setFocusProxy(None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清除焦点代理: %s", exc, exc_info=True)
         try:
             self.command_input.clearFocus()
             self.command_input.setFocusPolicy(Qt.NoFocus)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清除输入框焦点: %s", exc, exc_info=True)
 
     def eventFilter(self, obj, event):
         try:
@@ -560,8 +561,8 @@ class CommandPanelWindow(ThemedToolWindow):
                 if not self._is_command_input_or_suggestion_widget(obj):
                     self.command_input.clearFocus()
                     self._hide_command_suggestions()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("配置关闭按钮: %s", exc, exc_info=True)
         return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event):
@@ -1033,15 +1034,15 @@ class CommandPanelWindow(ThemedToolWindow):
             menu.setWindowFlags(flags)
             menu.setAttribute(Qt.WA_ShowWithoutActivating, True)
             menu.setFocusPolicy(Qt.NoFocus)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置弹出菜单窗口标志: %s", exc, exc_info=True)
         self._move_popup_menu_to_input(menu)
         menu.show()
         menu.raise_()
         try:
             menu._apply_blur_effect()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用模糊效果: %s", exc, exc_info=True)
 
     def _move_popup_menu_to_input(self, menu):
         anchor = getattr(self, "command_input_group", self.command_input)
@@ -1081,8 +1082,8 @@ class CommandPanelWindow(ThemedToolWindow):
         try:
             if self.command_suggestion_popup is not None:
                 self.command_suggestion_popup.hide()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("隐藏命令建议弹窗: %s", exc, exc_info=True)
 
     def _on_command_suggestion_clicked(self, item):
         command_id = str(item.data(Qt.UserRole) or item.text() or "").strip()
@@ -1175,8 +1176,8 @@ class CommandPanelWindow(ThemedToolWindow):
             menu._layout.setSpacing(2)
             menu._btn_style_dark = compact_style
             menu._btn_style_light = compact_style
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置历史菜单布局失败: %s", exc, exc_info=True)
 
     def _history_menu_width(self) -> int:
         anchor = getattr(self, "command_input_group", self.command_input)
@@ -1382,8 +1383,8 @@ class CommandPanelWindow(ThemedToolWindow):
         if total:
             try:
                 progress = float(current or 0) / float(total)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("计算进度值失败: %s", exc, exc_info=True)
         progress = max(0.0, min(1.0, float(progress or 0.0)))
         self.progress_title.setText(title)
         self.progress_detail.setText(detail)
@@ -1448,8 +1449,8 @@ class CommandPanelWindow(ThemedToolWindow):
             btn.hide()
             try:
                 btn.clicked.disconnect()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("断开按钮信号: %s", exc, exc_info=True)
         primary_actions = sorted(
             self._all_actions,
             key=lambda a: (not bool(getattr(a, "primary", False)), bool(getattr(a, "danger", False))),
@@ -1462,9 +1463,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 (
                     "danger"
                     if getattr(action, "danger", False)
-                    else "primary"
-                    if getattr(action, "primary", False)
-                    else ""
+                    else "primary" if getattr(action, "primary", False) else ""
                 ),
             )
             self.style_buttons(btn)
@@ -1666,8 +1665,8 @@ class CommandPanelWindow(ThemedToolWindow):
 
             if registry is not None:
                 return registry.get(command_id) or registry.get(registry.get_canonical(command_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("查询命令注册表: %s", exc, exc_info=True)
         return None
 
     def _apply_size_for_result(self, result: CommandResult, command_def=None):

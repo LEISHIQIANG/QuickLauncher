@@ -7,10 +7,13 @@ The static SLASH_COMMANDS list is kept for backward compatibility
 (e.g. slash_help_window.py imports it directly).
 """
 
+import logging
 from dataclasses import dataclass
 
 # Avoid circular import at module level — imported lazily inside functions
 # from core.command_registry import _CallbackHandler
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -321,8 +324,8 @@ def find_matching_commands(query: str) -> list[SlashCommand]:
             results = registry.find(cmd_word)
             converted = [_convert_to_slash_command(c) for c in results]
             return [c for c in converted if c is not None]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("从注册表查找命令失败: %s", exc, exc_info=True)
 
     # Fall back to old implementation
     query_lower = cmd_word.lower()
@@ -378,6 +381,6 @@ def get_command_by_alias(alias: str) -> SlashCommand | None:
                 cmd_def = registry.get(canonical)
                 if cmd_def is not None:
                     return _convert_to_slash_command(cmd_def)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("从注册表获取规范命令失败: %s", exc, exc_info=True)
     return _ALIAS_TO_COMMAND.get(alias.lower())

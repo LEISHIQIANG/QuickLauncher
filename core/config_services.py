@@ -170,7 +170,7 @@ class ConfigRecoveryService:
                     {"source": report.source_path, "recovered_from": report.recovered_from},
                 )
             except Exception:
-                pass
+                logger.debug("记录配置恢复事件失败", exc_info=True)
 
     def read_report(self) -> ConfigRecoveryReport | None:
         return read_recovery_report(self.recovery_dir)

@@ -474,8 +474,8 @@ class PluginAPI:
             from qt_compat import QApplication
 
             QApplication.clipboard().setText(text)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("写入剪贴板失败: %s", exc, exc_info=True)
 
     def get_selected_files(self) -> list[str]:
         self._check_permission("file.read")
@@ -705,8 +705,8 @@ class PluginManager:
             from .event_log import log_event
 
             log_event("plugin.quarantined", f"Plugin {plugin_id} quarantined", {"reason": reason})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("记录插件隔离事件失败: %s", exc, exc_info=True)
 
     def clear_quarantine(self, plugin_id: str) -> bool:
         """Clear quarantine state and reset failure counters for a plugin."""
@@ -949,7 +949,7 @@ class PluginManager:
             try:
                 confirmed = self._confirm_high_risk_callback(info)
             except TypeError:
-                confirmed = self._confirm_high_risk_callback(info.manifest.name)  # type: ignore[misc]
+                confirmed = self._confirm_high_risk_callback(info.manifest.name)
             if not confirmed:
                 logger.info("用户取消启用插件: %s", info.manifest.name)
                 return False
@@ -1257,7 +1257,7 @@ class PluginManager:
                     if not any(staging_base.iterdir()):
                         staging_base.rmdir()
                 except OSError:
-                    pass
+                    logger.debug("删除插件暂存目录失败", exc_info=True)
 
     # ---- queries ----
 

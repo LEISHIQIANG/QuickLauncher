@@ -3,8 +3,12 @@ import sys
 import threading
 import types
 
+import pytest
+
 import core.shortcut_command_exec as command_exec
 from core.data_models import ShortcutItem, ShortcutType
+
+pytestmark = pytest.mark.ui
 
 
 def test_python_visible_window_runs_python_directly(monkeypatch):

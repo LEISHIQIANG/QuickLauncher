@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import threading
@@ -15,6 +16,8 @@ from core.folder_watcher import (
     get_watcher_manager,
     shutdown_watcher_manager,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # FolderChangeHandler tests
@@ -120,7 +123,8 @@ def manager():
     yield mgr
     try:
         mgr.stop_all()
-    except Exception:
+    except Exception as exc:
+        logger.debug("停止监视器失败: %s", exc, exc_info=True)
         pass
 
 
@@ -226,7 +230,8 @@ def _reset_global():
     if original is not None:
         try:
             original.stop_all()
-        except Exception:
+        except Exception as exc:
+            logger.debug("停止原始监视器失败: %s", exc, exc_info=True)
             pass
 
 

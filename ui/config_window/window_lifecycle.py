@@ -58,4 +58,4 @@ class WindowLifecycleController:
             try:
                 timer.stop()
             except Exception:
-                pass
+                logger.debug("停止定时器失败", exc_info=True)

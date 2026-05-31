@@ -21,9 +21,15 @@ class ReleaseCheckResult:
 
 
 def _default_version(root: Path) -> str:
-    namespace: dict[str, str] = {}
-    exec((root / "core" / "version.py").read_text(encoding="utf-8"), namespace)
-    return str(namespace["APP_VERSION"])
+    import ast
+
+    tree = ast.parse((root / "core" / "version.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "APP_VERSION":
+                    return str(ast.literal_eval(node.value))
+    return "0.0.0.0"
 
 
 def _sha256(path: Path) -> str:

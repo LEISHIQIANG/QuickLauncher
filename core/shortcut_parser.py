@@ -10,11 +10,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 try:
-    import win32com.client  # type: ignore
+    import win32com.client
 
     HAS_WIN32COM = True
 except ImportError:
-    win32com = None  # type: ignore[assignment]
+    win32com = None
     HAS_WIN32COM = False
 
 
@@ -67,7 +67,7 @@ class ShortcutParser:
             return None
 
         try:
-            shell = win32com.client.Dispatch("WScript.Shell")  # type: ignore[union-attr]
+            shell = win32com.client.Dispatch("WScript.Shell")
             shortcut = shell.CreateShortcut(file_path)
 
             result = {
@@ -86,7 +86,7 @@ class ShortcutParser:
                     try:
                         result["icon_index"] = int(parts[1])
                     except ValueError:
-                        pass
+                        logger.debug("解析win32com图标索引失败: %s", parts[1])
 
             return result
         except Exception as exc:
@@ -153,7 +153,7 @@ class ShortcutParser:
                 try:
                     result["icon_index"] = int(icon_bits[1])
                 except ValueError:
-                    pass
+                    logger.debug("解析PowerShell图标索引失败: %s", icon_bits[1])
 
         return result
 
@@ -178,6 +178,6 @@ class ShortcutParser:
                     try:
                         result["icon_index"] = int(line[10:])
                     except ValueError:
-                        pass
+                        logger.debug("解析URL文件图标索引失败: %s", line[10:])
 
         return result

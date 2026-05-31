@@ -46,6 +46,10 @@ class _IconLoadThread(QThread):
         super().__init__(parent)
         self._custom_icon_path = custom_icon_path
         self._target_path = target_path
+        self._stop_requested = False
+
+    def request_stop(self):
+        self._stop_requested = True
 
     def run(self):
         from core.icon_extractor import IconExtractor
@@ -54,7 +58,7 @@ class _IconLoadThread(QThread):
 
         # 1. 尝试自定义图标
         icon_path = self._custom_icon_path
-        if icon_path:
+        if icon_path and not self._stop_requested:
             # 去掉 index 后缀判断文件是否存在
             check_path = icon_path
             if "," in icon_path:
@@ -62,17 +66,18 @@ class _IconLoadThread(QThread):
             if os.path.exists(check_path) or "," in icon_path:
                 try:
                     pixmap = IconExtractor.from_file(icon_path, 48)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("从文件加载图标失败: %s", exc, exc_info=True)
 
         # 2. 尝试目标文件图标
-        if not pixmap and self._target_path:
+        if not pixmap and self._target_path and not self._stop_requested:
             try:
                 pixmap = IconExtractor.extract(self._target_path, self._target_path, 48, fallback_to_default=False)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("提取目标文件图标失败: %s", exc, exc_info=True)
 
-        self.finished.emit(pixmap)
+        if not self._stop_requested:
+            self.finished.emit(pixmap)
 
 
 class ShortcutDialog(BaseDialog):
@@ -107,8 +112,8 @@ class ShortcutDialog(BaseDialog):
             finally:
                 painter.end()
             self.setWindowIcon(QIcon(pixmap))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置窗口图标失败: %s", exc, exc_info=True)
 
     def _apply_theme(self):
         """应用主题"""
@@ -120,9 +125,7 @@ class ShortcutDialog(BaseDialog):
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = (
-            base_style
-            + f"""
+        custom_style = base_style + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -141,7 +144,6 @@ class ShortcutDialog(BaseDialog):
                 font-size: 13px;
             }}
         """
-        )
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -241,15 +243,13 @@ class ShortcutDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(32, 32)
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(
-            """
+        self.icon_preview.setStyleSheet("""
             QLabel {
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
             }
-        """
-        )
+        """)
         icon_layout.addWidget(self.icon_preview)
 
         # 图标路径和按钮
@@ -282,21 +282,17 @@ class ShortcutDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet(
-            """
+        self.invert_theme_cb.setStyleSheet("""
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """
-        )
+        """)
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet(
-            """
+        self.invert_current_cb.setStyleSheet("""
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """
-        )
+        """)
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)
@@ -350,9 +346,15 @@ class ShortcutDialog(BaseDialog):
         # 取消上一次未完成的加载
         thread = getattr(self, "_icon_thread", None)
         if thread is not None and thread.isRunning():
-            thread.finished.disconnect()
-            thread.terminate()
-            thread.wait(200)
+            thread.request_stop()
+            try:
+                thread.finished.disconnect()
+            except Exception:
+                logger.debug("断开图标线程信号失败", exc_info=True)
+            thread.wait(500)
+            if thread.isRunning():
+                thread.terminate()
+                thread.wait(200)
             thread.deleteLater()
             self._icon_thread = None
 
@@ -441,8 +443,8 @@ class ShortcutDialog(BaseDialog):
                     self.target_edit.setText(info.get("target", file_path))
                     self.args_edit.setText(info.get("args", ""))
                     self.workdir_edit.setText(info.get("working_dir", ""))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("解析快捷方式文件失败: %s", exc, exc_info=True)
 
             # 更新预览
             self._update_icon_preview()
@@ -498,8 +500,8 @@ class ShortcutDialog(BaseDialog):
         if thread is not None:
             try:
                 thread.finished.disconnect(self._on_icon_loaded)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("断开图标线程信号失败: %s", exc, exc_info=True)
             if thread.isRunning():
                 thread.terminate()
                 thread.wait(200)

@@ -12,7 +12,7 @@ from .audit import (
     build_command_execution_audit,
     known_shell_execution_entries,
 )
-from .output import decode_command_output, truncate_command_output
+from .output import build_bash_fallback_result, decode_command_output, truncate_command_output
 from .profiles import (
     chain_values,
     command_panel_size,
@@ -24,6 +24,7 @@ from .profiles import (
 from .runtime import SUPPORTED_COMMAND_TYPES, is_supported_command_type, normalize_command_type
 
 __all__ = [
+    "build_bash_fallback_result",
     "chain_values",
     "command_panel_size",
     "command_param_defs",

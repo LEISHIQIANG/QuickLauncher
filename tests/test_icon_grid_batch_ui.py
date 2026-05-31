@@ -2,10 +2,14 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 import ui.config_window.icon_grid as grid_mod
 from core import ShortcutItem, ShortcutType
 from qt_compat import QPoint, Qt
 from ui.config_window.icon_grid import IconContainer, IconGrid, IconWidget
+
+pytestmark = pytest.mark.ui
 
 
 class _Widget:

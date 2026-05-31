@@ -137,7 +137,7 @@ class FolderWatcherManager:
                 observer.stop()
                 observer.join(timeout=1.5)
             except Exception:
-                pass
+                logger.debug("停止文件夹监听器失败", exc_info=True)
         self.watches.clear()
 
 

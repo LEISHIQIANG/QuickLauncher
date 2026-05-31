@@ -231,7 +231,7 @@ class SettingsSystemPageMixin:
                 self.auto_start_cb.setChecked(False)
         except Exception as e:
             logger.debug("Failed to load auto-start state: %s", e, exc_info=True)
-            self.auto_start_cb.setToolTip("检测开机自启状态失败，请查看日志。")
+            self.auto_start_cb.setToolTip(tr("检测开机自启状态失败，请查看日志。"))
             self.auto_start_cb.setChecked(False)
 
         self.show_on_startup_cb.setChecked(settings.show_on_startup)
@@ -289,7 +289,7 @@ class SettingsSystemPageMixin:
             logger.error("开机自启：启用失败")
 
             if method == "cancelled":
-                ThemedMessageBox.warning(self, "已取消", "你取消了管理员授权，自启动未启用。")
+                ThemedMessageBox.warning(self, tr("已取消"), tr("你取消了管理员授权，自启动未启用。"))
             else:
                 ThemedMessageBox.critical(
                     self, "启用失败", "helper 创建开机自启失败。\n\n请检查 UAC、任务计划程序服务和日志。"
@@ -307,8 +307,8 @@ class SettingsSystemPageMixin:
             from core.service_manager import _cleanup_legacy_service
 
             _cleanup_legacy_service()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清理旧服务失败: %s", exc, exc_info=True)
 
         if success:
             self.data_manager.update_settings(auto_start=False)
@@ -318,9 +318,9 @@ class SettingsSystemPageMixin:
 
         self._updating = False
         if method == "cancelled":
-            ThemedMessageBox.warning(self, "已取消", "你取消了管理员授权，自启动保持原状。")
+            ThemedMessageBox.warning(self, tr("已取消"), tr("你取消了管理员授权，自启动保持原状。"))
         else:
-            ThemedMessageBox.critical(self, "禁用失败", "helper 禁用开机自启失败，自启动保持原状。")
+            ThemedMessageBox.critical(self, tr("禁用失败"), tr("helper 禁用开机自启失败，自启动保持原状。"))
         QTimer.singleShot(0, lambda: self._reset_checkbox_state(True))
 
     def _reset_checkbox_state(self, checked):
@@ -373,7 +373,7 @@ class SettingsSystemPageMixin:
                 self.disable_logging_cb.setChecked(False)
         else:
             self.data_manager.update_settings(disable_logging=False)
-            ThemedMessageBox.warning(self, "需要重启", "重新启用日志需要重启程序才能生效。")
+            ThemedMessageBox.warning(self, tr("需要重启"), tr("重新启用日志需要重启程序才能生效。"))
 
     def _on_debug_log_changed(self, state):
         if self._updating:
@@ -466,11 +466,8 @@ fso.DeleteFile WScript.ScriptFullName
 
             QTimer.singleShot(100, QApplication.quit)
 
-        except Exception as e:
-            logger.error(f"重启失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("重启失败")
 
     def _on_theme_changed(self, button):
         if self._updating:
@@ -562,8 +559,8 @@ fso.DeleteFile WScript.ScriptFullName
         for widget in self._language_fade_targets():
             try:
                 widget.setGraphicsEffect(None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
     def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
         group = QParallelAnimationGroup(self)

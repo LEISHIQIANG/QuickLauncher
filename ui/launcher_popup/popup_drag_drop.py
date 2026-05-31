@@ -163,7 +163,7 @@ class PopupDragDropMixin:
 
         if target_item and target_item.type in (ShortcutType.FILE, ShortcutType.FOLDER):
             event.acceptProposedAction()
-            logger.info(f"拖放文件到: {target_item.name}, 文件数: {len(dropped_files)}")
+            logger.debug(f"拖放文件到: {target_item.name}, 文件数: {len(dropped_files)}")
 
             # 执行拖放打开
             self._execute_drop(target_item, dropped_files)
@@ -183,7 +183,7 @@ class PopupDragDropMixin:
             return
 
         self._executing = True
-        logger.info(f"拖放执行: {item.name} 打开 {len(files)} 个文件")
+        logger.debug(f"拖放执行: {item.name} 打开 {len(files)} 个文件")
 
         should_close = not self.is_pinned
 
@@ -246,8 +246,8 @@ class PopupDragDropMixin:
                                 )
                             else:
                                 subprocess.Popen(
-                                    f'start "" "{target}" "{file_path}"',
-                                    shell=True,
+                                    ["cmd", "/c", "start", "", target, file_path],
+                                    shell=False,
                                     creationflags=subprocess.CREATE_NO_WINDOW
                                     | CREATE_NEW_PROCESS_GROUP
                                     | CREATE_BREAKAWAY_FROM_JOB,
@@ -256,7 +256,7 @@ class PopupDragDropMixin:
                                     stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL,
                                 )
-                            logger.info(f"后备方案打开: {target} -> {file_path}")
+                            logger.debug(f"后备方案打开: {target} -> {file_path}")
                         except Exception as e:
                             logger.error(f"后备方案失败: {e}")
                             success = False
@@ -268,11 +268,8 @@ class PopupDragDropMixin:
                             signal.emit()
                 except Exception as stats_error:
                     logger.debug("record shortcut usage failed for dropped files: %s", stats_error)
-        except Exception as e:
-            logger.error(f"拖放执行失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("拖放执行失败")
         finally:
             self._executing = False
             if should_close:

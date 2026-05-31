@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core.i18n import tr
 from core.version import APP_VERSION
 from qt_compat import (
     QCheckBox,
@@ -37,7 +38,7 @@ class WelcomeGuide(QDialog):
 
     def __init__(self, parent=None, theme="dark"):
         super().__init__(parent)
-        self.setWindowTitle("欢迎使用 QuickLauncher")
+        self.setWindowTitle(tr("欢迎使用 QuickLauncher"))
         self.setModal(True)
         self._theme = theme
         self.corner_radius = 8 if is_win11() else 12
@@ -52,28 +53,39 @@ class WelcomeGuide(QDialog):
 
         self.steps = [
             {
-                "title": "欢迎使用 QuickLauncher！",
-                "content": f"QuickLauncher v{APP_VERSION}\n轻量级快捷启动工具\n\n• 鼠标中键快速唤出启动面板\n• 支持文件、文件夹、打开网址、快捷键、运行命令\n• 自定义主题和透明度\n\n让我们开始 30 秒快速上手教程",
+                "title": tr("欢迎使用 QuickLauncher！"),
+                "content": tr(
+                    "QuickLauncher v{version}\n轻量级快捷启动工具\n\n• 鼠标中键快速唤出启动面板\n• 支持文件、文件夹、打开网址、快捷键、运行命令\n• 自定义主题和透明度\n\n让我们开始 30 秒快速上手教程",
+                    version=APP_VERSION,
+                ),
                 "icon": "🚀",
             },
             {
-                "title": "第一步：添加快捷方式",
-                "content": "在设置窗口中，有三种方式添加快捷方式：\n\n1. 直接拖拽文件/文件夹到中间区域\n2. 点击底部按钮添加（快捷方式/打开网址/快捷键/运行命令）\n3. 双击图标可以编辑\n\n提示：支持拖入 .lnk 快捷方式文件",
+                "title": tr("第一步：添加快捷方式"),
+                "content": tr(
+                    "在设置窗口中，有三种方式添加快捷方式：\n\n1. 直接拖拽文件/文件夹到中间区域\n2. 点击底部按钮添加（快捷方式/打开网址/快捷键/运行命令）\n3. 双击图标可以编辑\n\n提示：支持拖入 .lnk 快捷方式文件"
+                ),
                 "icon": "📁",
             },
             {
-                "title": "第二步：使用启动器",
-                "content": "配置完成后，随时可以唤出启动器：\n\n• 默认：鼠标中键\n• 特殊软件：Ctrl + 中键（避免冲突）\n• 锁定：右键空白处锁定窗口\n• 强制新开：Alt + 左键点击图标",
+                "title": tr("第二步：使用启动器"),
+                "content": tr(
+                    "配置完成后，随时可以唤出启动器：\n\n• 默认：鼠标中键\n• 特殊软件：Ctrl + 中键（避免冲突）\n• 锁定：右键空白处锁定窗口\n• 强制新开：Alt + 左键点击图标"
+                ),
                 "icon": "🖱️",
             },
             {
-                "title": "第三步：个性化设置",
-                "content": "在右侧设置面板可以自定义：\n\n• 主题：深色/浅色\n• 透明度：背景、Dock、图标\n• 尺寸：图标大小、列数、圆角\n• 背景：纯色/图片/主题色\n\n滚轮可快速调节透明度（Ctrl/Shift+滚轮）",
+                "title": tr("第三步：个性化设置"),
+                "content": tr(
+                    "在右侧设置面板可以自定义：\n\n• 主题：深色/浅色\n• 透明度：背景、Dock、图标\n• 尺寸：图标大小、列数、圆角\n• 背景：纯色/图片/主题色\n\n滚轮可快速调节透明度（Ctrl/Shift+滚轮）"
+                ),
                 "icon": "🎨",
             },
             {
-                "title": "开始使用！",
-                "content": "现在你已经掌握了基本用法\n\n更多功能：\n• Dock 栏：顶部/底部常驻图标\n• 拖放联动：拖文件到图标上打开\n• 分类管理：左侧创建多个分类\n\n祝你使用愉快！",
+                "title": tr("开始使用！"),
+                "content": tr(
+                    "现在你已经掌握了基本用法\n\n更多功能：\n• Dock 栏：顶部/底部常驻图标\n• 拖放联动：拖文件到图标上打开\n• 分类管理：左侧创建多个分类\n\n祝你使用愉快！"
+                ),
                 "icon": "✨",
             },
         ]
@@ -119,24 +131,24 @@ class WelcomeGuide(QDialog):
         btn_layout.setSpacing(12)
 
         # 左下角：不再显示复选框
-        self.dont_show_cb = QCheckBox("不再显示")
+        self.dont_show_cb = QCheckBox(tr("不再显示"))
         self.dont_show_cb.setStyleSheet("font-size: 12px;")
         btn_layout.addWidget(self.dont_show_cb)
 
         btn_layout.addStretch()
 
-        self.skip_btn = QPushButton("跳过")
+        self.skip_btn = QPushButton(tr("跳过"))
         self.skip_btn.setFixedSize(80, 32)
         self.skip_btn.clicked.connect(lambda: logger.info("skip_btn clicked") or self.reject())
         btn_layout.addWidget(self.skip_btn)
 
-        self.prev_btn = QPushButton("上一步")
+        self.prev_btn = QPushButton(tr("上一步"))
         self.prev_btn.setFixedSize(80, 32)
         self.prev_btn.clicked.connect(lambda: logger.info("prev_btn clicked") or self._prev_step())
         self.prev_btn.setEnabled(False)
         btn_layout.addWidget(self.prev_btn)
 
-        self.next_btn = QPushButton("下一步")
+        self.next_btn = QPushButton(tr("下一步"))
         self.next_btn.setFixedSize(90, 32)
         self.next_btn.setDefault(True)
         self.next_btn.clicked.connect(lambda: logger.info("next_btn clicked") or self._next_step())
@@ -157,12 +169,9 @@ class WelcomeGuide(QDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         btn_style = Glassmorphism.get_flat_action_button_style(theme)
 
-        self.setStyleSheet(
-            base_style
-            + """
+        self.setStyleSheet(base_style + """
             QDialog { background: transparent; }
-        """
-        )
+        """)
 
         for btn in [self.skip_btn, self.prev_btn, self.next_btn]:
             btn.setStyleSheet(btn_style)
@@ -181,9 +190,9 @@ class WelcomeGuide(QDialog):
         self.prev_btn.setEnabled(self.current_step > 0)
 
         if self.current_step == len(self.steps) - 1:
-            self.next_btn.setText("开始使用")
+            self.next_btn.setText(tr("开始使用"))
         else:
-            self.next_btn.setText("下一步")
+            self.next_btn.setText(tr("下一步"))
 
     def _next_step(self):
         logger.info(f"_next_step called, current_step={self.current_step}")

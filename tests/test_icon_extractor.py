@@ -5,7 +5,10 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows shell icons only")
+pytestmark = [
+    pytest.mark.ui,
+    pytest.mark.skipif(sys.platform != "win32", reason="Windows shell icons only"),
+]
 
 
 @pytest.fixture(scope="module")

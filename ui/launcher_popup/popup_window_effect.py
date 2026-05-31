@@ -148,19 +148,19 @@ class PopupLayoutMixin:
         self.setWindowOpacity(0)  # 初始透明度为 0
         try:
             self.setAttribute(QtCompat.WA_NoSystemBackground, True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置WA_NoSystemBackground失败: %s", exc, exc_info=True)
 
         # 启用DPI感知，确保在不同缩放屏幕上正确显示
         try:
             self.setAttribute(QtCompat.WA_NativeWindow, True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置WA_NativeWindow失败: %s", exc, exc_info=True)
         try:
             self.setFocusPolicy(QtCompat.StrongFocus)
             self.setAttribute(Qt.WA_InputMethodEnabled, True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置焦点策略和输入法失败: %s", exc, exc_info=True)
 
     def _calculate_fixed_size(self, y_offset_override=None):
         """基于"常用"页面计算固定窗口大小"""
@@ -261,6 +261,6 @@ class PopupLayoutMixin:
                 QTimer.singleShot(50, self._update_window_effect)
             else:
                 self._update_window_effect()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("处理窗口移动事件失败: %s", exc, exc_info=True)
         super().moveEvent(event)

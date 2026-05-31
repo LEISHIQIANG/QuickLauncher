@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -12,6 +13,8 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 PROBE_CODE = r"""
 import json
@@ -144,7 +147,7 @@ def _where_all(executable: str) -> list[str]:
         if proc.returncode == 0:
             found.extend(line.strip() for line in proc.stdout.splitlines() if line.strip())
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        logger.debug("搜索Python可执行文件失败", exc_info=True)
 
     result = []
     seen = set()

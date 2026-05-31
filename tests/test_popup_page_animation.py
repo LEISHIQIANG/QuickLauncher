@@ -2,12 +2,16 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 import ui.launcher_popup.popup_search as popup_search_mod
 import ui.launcher_popup.popup_window_helpers as popup_helpers_mod
 from core.data_models import Folder, ShortcutItem
 from qt_compat import QFont, QPixmap, QWidget
 from ui.launcher_popup.popup_window import LauncherPopup
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
+
+pytestmark = pytest.mark.ui
 
 
 def _popup_for_animation():

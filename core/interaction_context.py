@@ -82,10 +82,10 @@ class TriggerContext:
                             try:
                                 proc = psutil.Process(pid)
                                 process_name = proc.name() or ""
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("通过psutil获取进程名失败: %s", exc, exc_info=True)
                         except ImportError:
-                            pass
+                            logger.debug("psutil模块不可用", exc_info=True)
                         if not process_name:
                             try:
                                 kernel32 = ctypes.windll.kernel32
@@ -97,12 +97,12 @@ class TriggerContext:
                                         # Use QueryFullProcessImageNameW
                                         kernel32.QueryFullProcessImageNameW(handle, 0, exe_buf, ctypes.byref(size))
                                         process_name = os.path.basename(exe_buf.value or "")
-                                    except Exception:
-                                        pass
+                                    except Exception as exc:
+                                        logger.debug("通过Windows API获取进程名失败: %s", exc, exc_info=True)
                                     finally:
                                         kernel32.CloseHandle(handle)
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("打开进程句柄失败: %s", exc, exc_info=True)
 
                 # Get mouse position
                 pt = ctypes.wintypes.POINT()

@@ -3,10 +3,13 @@
 将配置从 APPDATA 迁移到安装目录
 """
 
+import logging
 import os
 import shutil
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _MIGRATION_MARKER = ".migration_done"
 _BACKUP_DIR = ".pre_migration_backup"
@@ -91,8 +94,8 @@ class ConfigMigrator:
             if progress_callback:
                 try:
                     progress_callback(msg, progress)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("调用进度回调失败: %s", exc, exc_info=True)
 
         if not old_dir.exists():
             stats["success"] = True
@@ -109,7 +112,7 @@ class ConfigMigrator:
                     else:
                         shutil.move(str(item), str(target))
                     stats["files_recovered"] += 1
-                    logger.info(f"已补迁: {item.name}")
+                    logger.debug(f"已补迁: {item.name}")
                 except Exception as e:
                     stats["errors"].append(f"补迁 {item.name} 失败: {e}")
                     logger.error(f"补迁 {item.name} 失败: {e}")
@@ -118,8 +121,8 @@ class ConfigMigrator:
             try:
                 if old_dir.exists() and not any(old_dir.iterdir()):
                     old_dir.rmdir()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("删除空旧目录失败: %s", exc, exc_info=True)
 
             # 写入完成标记
             try:
@@ -164,7 +167,7 @@ class ConfigMigrator:
 
         try:
             if not old_dir.exists():
-                logger.info(f"旧配置目录不存在: {old_dir}")
+                logger.debug(f"旧配置目录不存在: {old_dir}")
                 stats["success"] = True
                 return stats
 
@@ -182,7 +185,7 @@ class ConfigMigrator:
                 stats["success"] = True
                 return stats
 
-            logger.info(f"开始迁移配置: {old_dir} -> {new_dir}")
+            logger.debug(f"开始迁移配置: {old_dir} -> {new_dir}")
             new_dir.mkdir(parents=True, exist_ok=True)
             report("正在迁移配置文件...", 0.1)
 
@@ -209,7 +212,7 @@ class ConfigMigrator:
                     else:
                         shutil.move(str(item), str(target))
                     stats["files_moved"] += 1
-                    logger.info(f"已迁移: {item.name}")
+                    logger.debug(f"已迁移: {item.name}")
                 except Exception as e:
                     stats["errors"].append(f"迁移 {item.name} 失败: {e}")
                     logger.error(f"迁移 {item.name} 失败: {e}")
@@ -229,7 +232,7 @@ class ConfigMigrator:
                     remaining = list(old_dir.iterdir())
                     if not remaining:
                         old_dir.rmdir()
-                        logger.info(f"已删除旧配置目录: {old_dir}")
+                        logger.debug(f"已删除旧配置目录: {old_dir}")
                     else:
                         logger.warning(f"旧配置目录仍有残留文件: {[f.name for f in remaining]}")
             except Exception as e:
@@ -239,8 +242,8 @@ class ConfigMigrator:
             try:
                 if backup_dir.exists():
                     shutil.rmtree(str(backup_dir))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("删除备份目录失败: %s", exc, exc_info=True)
 
             stats["success"] = True
             report("配置迁移成功", 1.0)

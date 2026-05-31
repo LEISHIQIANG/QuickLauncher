@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
+
 from ui.tray_app import TrayApp
+
+pytestmark = pytest.mark.ui
 
 
 class FakePopup:

@@ -201,7 +201,7 @@ class UpdateDownloader:
             if path and os.path.exists(path):
                 os.remove(path)
         except Exception:
-            pass
+            logger.debug("删除下载文件失败", exc_info=True)
 
 
 def _is_allowed_host(host: str, allowed_hosts: tuple[str, ...]) -> bool:

@@ -35,8 +35,8 @@ class UpdateMixin:
                     self._update_checker._config.download_dir_name,
                 )
                 mark_latest_session_first_start_confirmed(update_root)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("标记首次启动确认失败: %s", exc, exc_info=True)
             logger.info("Update system initialized")
         except Exception as e:
             logger.debug("Update system initialization failed: %s", e)
@@ -113,8 +113,8 @@ class UpdateMixin:
                 "downloads",
                 self._update_checker._config.download_dir_name,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("构造下载目标目录失败: %s", exc, exc_info=True)
         self._update_downloader.download(
             update_info.download_url,
             target_dir=target_dir,
@@ -159,8 +159,8 @@ class UpdateMixin:
                     "downloads",
                     self._update_checker._config.download_dir_name,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("构造安装可信目录失败: %s", exc, exc_info=True)
             self._update_installer.install(
                 installer_path,
                 expected_hash=getattr(update_info, "file_hash", "") if update_info else "",
@@ -178,5 +178,5 @@ class UpdateMixin:
         try:
             if self._update_checker:
                 self._update_checker.skip_version(version)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("跳过版本失败: %s", exc, exc_info=True)

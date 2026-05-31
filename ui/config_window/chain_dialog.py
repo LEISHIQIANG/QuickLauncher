@@ -275,8 +275,8 @@ class ChainDialog(BaseDialog):
         if anim_timer is not None:
             try:
                 anim_timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止动画定时器失败: %s", exc, exc_info=True)
 
         self._close_anim_origin_pos = self.pos()
         self._close_anim_step = 0
@@ -513,9 +513,7 @@ class ChainDialog(BaseDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
 
-        custom = (
-            base_style
-            + f"""
+        custom = base_style + f"""
             QDialog {{ background: transparent; border: none; }}
             QLabel, QCheckBox, QGroupBox, QLineEdit, QSpinBox, QPushButton {{
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
@@ -569,7 +567,6 @@ class ChainDialog(BaseDialog):
                 padding: 2px 4px;
             }}
         """
-        )
         self._tip_stylesheet = f"QToolTip {{ background: {tip_bg}; color: {tip_fg}; border: 1px solid {tip_border}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 400; }}"
         self.setStyleSheet(custom)
 
@@ -610,7 +607,7 @@ class ChainDialog(BaseDialog):
             f"font-family: 'Cascadia Code', 'Consolas', monospace; }}"
         )
         # viewport 必须用 palette 强制上色，否则 BaseDialog 透明背景会让点击时闪白
-        from PyQt5.QtGui import QPalette
+        from qt_compat import QPalette
 
         vp = self.result_view.viewport()
         pal = self.result_view.palette()
@@ -688,8 +685,8 @@ class ChainDialog(BaseDialog):
 
                 if "," in self._custom_icon_path or os.path.exists(self._custom_icon_path):
                     pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("加载自定义图标失败: %s", exc, exc_info=True)
         if not pixmap or pixmap.isNull():
             pixmap = self._create_chain_icon(48)
         if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
@@ -697,8 +694,8 @@ class ChainDialog(BaseDialog):
                 from core.icon_extractor import IconExtractor
 
                 pixmap = IconExtractor.invert_pixmap(pixmap)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("反转图标失败: %s", exc, exc_info=True)
         if pixmap and not pixmap.isNull():
             pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
         self.icon_preview.setPixmap(pixmap)
@@ -766,8 +763,8 @@ class ChainDialog(BaseDialog):
                     pm = IconExtractor.from_file(folder_ico, source_size, return_image=False)
                     if pm and not pm.isNull():
                         return pm
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取快捷方式图标失败: %s", exc, exc_info=True)
         return None
 
     # ── 卡片刷新 ─────────────────────────────────────────────

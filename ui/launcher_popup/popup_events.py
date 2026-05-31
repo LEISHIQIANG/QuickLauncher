@@ -122,14 +122,14 @@ class PopupEventsMixin:
         try:
             if te is not None and te.isVisible() and te.hasFocus():
                 return False
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("检查结果文本框焦点失败: %s", exc, exc_info=True)
 
         try:
             if self._search_selection_bounds():
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("检查搜索选择边界失败: %s", exc, exc_info=True)
 
         return self._search_query_matches_result_command()
 
@@ -147,8 +147,8 @@ class PopupEventsMixin:
 
         try:
             self.setCursor(Qt.IBeamCursor if self._search_bar_contains(pos) else QtCompat.ArrowCursor)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置光标样式失败: %s", exc, exc_info=True)
 
         new_hover = -1
         new_dock_hover = -1
@@ -234,8 +234,8 @@ class PopupEventsMixin:
             self._start_search_reveal_animation(True)
             try:
                 self.setFocus()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置焦点失败: %s", exc, exc_info=True)
             cursor = self._search_pos_from_point(pos)
             modifiers = event.modifiers()
             if modifiers & QtCompat.ShiftModifier:
@@ -315,8 +315,8 @@ class PopupEventsMixin:
                         from core.search_history import record_search_selection
 
                         record_search_selection(self.search_query, getattr(clicked_item, "id", ""))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("记录搜索选择失败: %s", exc, exc_info=True)
 
                 # 检查是否按住 Alt 键
                 is_alt_pressed = event.modifiers() & QtCompat.AltModifier
@@ -580,8 +580,8 @@ class PopupEventsMixin:
             else:
                 try:
                     super().keyPressEvent(event)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("处理按键事件失败: %s", exc, exc_info=True)
                 return
 
         # 3. 搜索激活状态下的按键逻辑
@@ -670,8 +670,8 @@ class PopupEventsMixin:
                     from core.search_history import record_search_selection
 
                     record_search_selection(self.search_query, getattr(shortcut, "id", ""))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("记录搜索选择失败: %s", exc, exc_info=True)
                 if hasattr(self, "_execute_item"):
                     try:
                         self._search_execute_from_keyboard = True
@@ -691,8 +691,8 @@ class PopupEventsMixin:
         else:
             try:
                 super().keyPressEvent(event)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("处理按键事件失败: %s", exc, exc_info=True)
 
     def _switch_page(self, direction: int):
         """切换页面"""
@@ -753,8 +753,8 @@ class PopupEventsMixin:
                 right_pressed = (user32.GetAsyncKeyState(0x02) & 0x8000) != 0
                 if left_pressed or right_pressed:
                     QTimer.singleShot(50, self.hide)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("检查鼠标按键状态失败: %s", exc, exc_info=True)
 
     def focusOutEvent(self, event):
         """失去焦点"""

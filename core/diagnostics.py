@@ -320,7 +320,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                     )
                 )
     except Exception:
-        pass
+        logger.debug("收集图标缓存诊断信息失败", exc_info=True)
 
     try:
         memory_guard = getattr(tray_app, "memory_guard", None)

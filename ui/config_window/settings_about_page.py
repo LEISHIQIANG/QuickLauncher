@@ -1,5 +1,6 @@
 """About settings page builder."""
 
+import logging
 import os
 
 from core import APP_VERSION
@@ -14,6 +15,8 @@ from qt_compat import (
     QVBoxLayout,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class AboutCardFrame(QFrame):
     """用于关于页面的高级玻璃拟态卡片容器。"""
@@ -24,14 +27,12 @@ class AboutCardFrame(QFrame):
         self.update_theme(theme)
 
     def update_theme(self, theme):
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             #AboutCardFrame {
                 background: transparent;
                 border: none;
             }
-        """
-        )
+        """)
 
 
 class AboutQuoteFrame(QFrame):
@@ -43,14 +44,12 @@ class AboutQuoteFrame(QFrame):
         self.update_theme(theme)
 
     def update_theme(self, theme):
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             #AboutQuoteFrame {
                 background: transparent;
                 border: none;
             }
-        """
-        )
+        """)
 
 
 # 结构化卡片展示数据定义
@@ -250,7 +249,7 @@ class SettingsAboutPageMixin:
                     icon_label.setPixmap(pixmap.scaled(64, 64, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation))
                     header_card_layout.addWidget(icon_label)
         except Exception:
-            pass
+            logger.debug("加载关于页图标失败", exc_info=True)
 
         title_layout = QVBoxLayout()
         title_layout.setSpacing(0)
@@ -393,8 +392,7 @@ class SettingsAboutPageMixin:
             bg_color = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
             border_color = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
             text_color = "rgba(255, 255, 255, 0.9)" if theme == "dark" else "rgba(28, 28, 30, 0.9)"
-            page._intro_group.setStyleSheet(
-                f"""
+            page._intro_group.setStyleSheet(f"""
                 QGroupBox {{
                     background-color: {bg_color};
                     border: 1px solid {border_color};
@@ -412,8 +410,7 @@ class SettingsAboutPageMixin:
                     color: {text_color};
                     font-weight: 400;
                 }}
-            """
-            )
+            """)
 
         # 2. 渲染特定主题的文字与 Badge 标记
         title_color = "#ffffff" if theme == "dark" else "#1c1c1e"

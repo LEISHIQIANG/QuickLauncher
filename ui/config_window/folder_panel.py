@@ -2,6 +2,7 @@
 文件夹面板
 """
 
+import logging
 import os
 import sys
 import time
@@ -55,6 +56,8 @@ from .folder_panel_helpers import (
     shortcut_ids_from_mime,
     should_copy_shortcut_drop,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class FolderItemDelegate(QStyledItemDelegate):
@@ -444,8 +447,8 @@ class FolderPanel(QWidget):
         if hasattr(self.folder_list, "setFrameShape"):
             try:
                 self.folder_list.setFrameShape(QFrame.NoFrame)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置框架形状失败: %s", exc, exc_info=True)
 
         list_frame_layout.addWidget(self.folder_list)
 
@@ -479,19 +482,16 @@ class FolderPanel(QWidget):
             btn_hover_text = "rgba(28, 28, 30, 0.9)"
             btn_color = "rgba(28, 28, 30, 0.65)"
 
-        self.list_frame.setStyleSheet(
-            f"""
+        self.list_frame.setStyleSheet(f"""
             QFrame#folderListFrame {{
                 background-color: {frame_bg};
                 border: 1px solid {frame_border};
                 border-radius: 10px;
             }}
-        """
-        )
+        """)
 
         # Items are drawn by FolderItemWidget, stylesheet just resets default background
-        self.folder_list.setStyleSheet(
-            """
+        self.folder_list.setStyleSheet("""
             QListWidget#folderList {
                 outline: none;
                 background: transparent;
@@ -511,8 +511,7 @@ class FolderPanel(QWidget):
                 background: transparent;
                 border: none;
             }
-        """
-        )
+        """)
 
         # Propagate theme change to any existing FolderItemWidgets
         for i in range(self.folder_list.count()):
@@ -522,8 +521,7 @@ class FolderPanel(QWidget):
                 widget.theme = theme
                 widget.update()
 
-        self.add_btn.setStyleSheet(
-            f"""
+        self.add_btn.setStyleSheet(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 4px 13px;
@@ -542,8 +540,7 @@ class FolderPanel(QWidget):
             QPushButton:pressed {{
                 opacity: 0.7;
             }}
-        """
-        )
+        """)
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
@@ -763,8 +760,8 @@ class FolderPanel(QWidget):
             # If the drag was cancelled or finished, restore full opacity
             try:
                 widget.setGraphicsEffect(None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
     def _list_drag_enter_event(self, event):
         """处理拖入事件"""
@@ -816,7 +813,7 @@ class FolderPanel(QWidget):
                         if w:
                             old_positions[id(it)] = w.pos()
                     except RuntimeError:
-                        pass
+                        logger.debug("拖拽时获取文件夹列表项控件位置失败", exc_info=True)
 
                 try:
                     widget = self.folder_list.itemWidget(source_item)
@@ -838,7 +835,7 @@ class FolderPanel(QWidget):
                         widget.show()
                     self.folder_list.setCurrentItem(source_item)
                 except RuntimeError:
-                    pass
+                    logger.debug("拖拽重排序文件夹列表项失败", exc_info=True)
                 finally:
                     self.folder_list.blockSignals(False)
 
@@ -869,7 +866,7 @@ class FolderPanel(QWidget):
                                 w._pos_anim = anim
                                 anim.start()
                         except RuntimeError:
-                            pass
+                            logger.debug("拖拽移动时启动位置动画失败", exc_info=True)
         # 外部拖入
         elif event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -926,7 +923,7 @@ class FolderPanel(QWidget):
                         if w:
                             old_positions[id(it)] = w.pos()
                     except RuntimeError:
-                        pass
+                        logger.debug("拖拽离开时获取文件夹列表项控件位置失败", exc_info=True)
 
                 try:
                     widget = self.folder_list.itemWidget(source_item)
@@ -946,7 +943,7 @@ class FolderPanel(QWidget):
                         widget.show()
                     self.folder_list.setCurrentItem(source_item)
                 except RuntimeError:
-                    pass
+                    logger.debug("拖拽离开时恢复文件夹列表项位置失败", exc_info=True)
                 finally:
                     self.folder_list.blockSignals(False)
 
@@ -974,7 +971,7 @@ class FolderPanel(QWidget):
                                 w._pos_anim = anim
                                 anim.start()
                         except RuntimeError:
-                            pass
+                            logger.debug("拖拽离开时启动位置动画失败", exc_info=True)
 
         for i in range(self.folder_list.count()):
             list_item = self.folder_list.item(i)
@@ -1006,8 +1003,8 @@ class FolderPanel(QWidget):
             if widget:
                 try:
                     widget.setGraphicsEffect(None)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
             if hasattr(self, "_initial_drag_row") and self._initial_drag_row >= 0:
                 # 重新保存序列并刷新
@@ -1231,7 +1228,9 @@ class FolderPanel(QWidget):
         shortcuts = FolderScanner.scan_folder(folder_path)
 
         if not shortcuts:
-            ThemedMessageBox.warning(self, "文件夹为空", "文件夹中没有找到支持的内容(子文件夹、.lnk 或 .exe 文件)")
+            ThemedMessageBox.warning(
+                self, tr("文件夹为空"), tr("文件夹中没有找到支持的内容(子文件夹、.lnk 或 .exe 文件)")
+            )
             return
 
         # 3. 创建新分类
@@ -1263,7 +1262,11 @@ class FolderPanel(QWidget):
             self._start_folder_watch(folder.id)
 
         # 9. 显示成功消息
-        ThemedMessageBox.information(self, "导入成功", f"已导入 {len(shortcuts)} 个项目到分类 '{folder_name}'")
+        ThemedMessageBox.information(
+            self,
+            tr("导入成功"),
+            tr("已导入 {count} 个项目到分类 '{folder_name}'", count=len(shortcuts), folder_name=folder_name),
+        )
 
     def _manual_sync(self, folder_id: str):
         """手动同步文件夹"""
@@ -1271,7 +1274,9 @@ class FolderPanel(QWidget):
 
         added, removed = sync_folder(self.data_manager, folder_id)
 
-        ThemedMessageBox.information(self, "同步完成", f"新增 {added} 项,删除 {removed} 项")
+        ThemedMessageBox.information(
+            self, tr("同步完成"), tr("新增 {added} 项,删除 {removed} 项", added=added, removed=removed)
+        )
 
         # 如果当前选中的是这个文件夹,刷新显示
         current_item = self.folder_list.currentItem()
@@ -1375,8 +1380,8 @@ class FolderPanel(QWidget):
                             parent.settings_changed.emit()
                             break
                         parent = parent.parent()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("发送设置变更信号失败: %s", exc, exc_info=True)
         except Exception as e:
             sync_logger.error(f"自动同步失败: {e}")
 

@@ -45,14 +45,12 @@ class SettingsPluginsPageMixin:
         desc.setObjectName("plugins_desc")
         desc.setWordWrap(True)
         desc.setMinimumWidth(0)
-        desc.setStyleSheet(
-            f"""
+        desc.setStyleSheet(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """
-        )
+        """)
         layout.addWidget(desc)
 
         # Plugin list area
@@ -116,8 +114,8 @@ class SettingsPluginsPageMixin:
                     viewport.setAcceptDrops(True)
                     viewport.installEventFilter(self)
                     targets.append(viewport)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("设置viewport拖放失败: %s", exc, exc_info=True)
 
             content_widget = getattr(widget, "content_widget", None)
             if content_widget is not None and content_widget not in targets:
@@ -125,8 +123,8 @@ class SettingsPluginsPageMixin:
                     content_widget.setAcceptDrops(True)
                     content_widget.installEventFilter(self)
                     targets.append(content_widget)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("设置content_widget拖放失败: %s", exc, exc_info=True)
         self._plugin_package_drop_targets = targets
 
     def eventFilter(self, obj, event):
@@ -166,8 +164,8 @@ class SettingsPluginsPageMixin:
         try:
             if hasattr(self, "page_plugins") and self.page_plugins:
                 return self.page_plugins.verticalScrollBar().value()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取插件页面滚动位置失败: %s", exc, exc_info=True)
         return None
 
     def _restore_plugin_scroll(self, value):
@@ -181,8 +179,8 @@ class SettingsPluginsPageMixin:
                     self.page_plugins._scroll_pos = float(bar.value())
                 if hasattr(self.page_plugins, "_velocity"):
                     self.page_plugins._velocity = 0.0
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("恢复插件页面滚动位置失败: %s", exc, exc_info=True)
 
     def _rebuild_plugin_list(self, preserve_scroll=False):
         """Rebuild the plugin status list from the current plugin manager state."""
@@ -251,8 +249,7 @@ class SettingsPluginsPageMixin:
             text_color = "rgba(28, 28, 30, 0.9)"
             sub_text_color = "rgba(28, 28, 30, 0.65)"
 
-        card.setStyleSheet(
-            f"""
+        card.setStyleSheet(f"""
             QWidget#PluginCard {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
@@ -261,8 +258,7 @@ class SettingsPluginsPageMixin:
             QWidget#PluginCard:hover {{
                 background-color: {hover_bg};
             }}
-        """
-        )
+        """)
 
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 10, 12, 10)
@@ -501,16 +497,16 @@ class SettingsPluginsPageMixin:
         action_btn = refs["action_btn"]
         try:
             action_btn.clicked.disconnect()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("断开按钮信号失败: %s", exc, exc_info=True)
         if is_quarantined:
-            action_btn.setText("清除隔离")
+            action_btn.setText(tr("清除隔离"))
             action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_clear_quarantine(pid))
         elif status == "enabled":
-            action_btn.setText("禁用")
+            action_btn.setText(tr("禁用"))
             action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_disable_plugin(pid))
         else:
-            action_btn.setText("启用")
+            action_btn.setText(tr("启用"))
             action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_enable_plugin(plugin_id))
 
     def _refresh_plugin_card_state(self, plugin_id):
@@ -539,7 +535,9 @@ class SettingsPluginsPageMixin:
         else:
             info = plugin_manager.get_plugin(plugin_id)
             err = info.error if info else "未知错误"
-            ThemedMessageBox.critical(self, "启用失败", f"无法启用插件 {plugin_id}: {err}")
+            ThemedMessageBox.critical(
+                self, tr("启用失败"), tr("无法启用插件 {plugin_id}: {err}", plugin_id=plugin_id, err=err)
+            )
 
     def _on_disable_plugin(self, plugin_id):
         from core import plugin_manager
@@ -563,9 +561,11 @@ class SettingsPluginsPageMixin:
             return
         if plugin_manager.clear_quarantine(plugin_id):
             self._refresh_plugin_card_state(plugin_id)
-            ThemedMessageBox.information(self, "已清除", f"插件 {plugin_id} 已解除隔离。")
+            ThemedMessageBox.information(self, tr("已清除"), tr("插件 {plugin_id} 已解除隔离。", plugin_id=plugin_id))
         else:
-            ThemedMessageBox.critical(self, "操作失败", f"无法清除插件 {plugin_id} 的隔离状态。")
+            ThemedMessageBox.critical(
+                self, tr("操作失败"), tr("无法清除插件 {plugin_id} 的隔离状态。", plugin_id=plugin_id)
+            )
 
     def _on_view_error_details(self, plugin_id):
         """Show recent plugin errors from plugin_errors.jsonl."""
@@ -578,7 +578,7 @@ class SettingsPluginsPageMixin:
             config_dir = Path(str(self.data_manager.config_dir))
             errors_file = config_dir / "plugin_errors.jsonl"
             if not errors_file.exists():
-                ThemedMessageBox.information(self, "错误详情", "暂无错误记录。")
+                ThemedMessageBox.information(self, tr("错误详情"), tr("暂无错误记录。"))
                 return
 
             # Guard against reading very large files on main thread
@@ -600,7 +600,9 @@ class SettingsPluginsPageMixin:
                     continue
 
             if not plugin_errors:
-                ThemedMessageBox.information(self, "错误详情", f"插件 {plugin_id} 暂无错误记录。")
+                ThemedMessageBox.information(
+                    self, tr("错误详情"), tr("插件 {plugin_id} 暂无错误记录。", plugin_id=plugin_id)
+                )
                 return
 
             # Show last 20 errors
@@ -632,7 +634,7 @@ class SettingsPluginsPageMixin:
             layout.addWidget(close_btn)
             dialog.exec()
         except Exception as exc:
-            ThemedMessageBox.critical(self, "读取失败", f"无法读取错误记录: {exc}")
+            ThemedMessageBox.critical(self, tr("读取失败"), tr("无法读取错误记录: {error}", error=exc))
 
     def _on_reload_plugin(self, plugin_id):
         from core import plugin_manager
@@ -644,7 +646,9 @@ class SettingsPluginsPageMixin:
         else:
             info = plugin_manager.get_plugin(plugin_id)
             err = info.error if info else "未知错误"
-            ThemedMessageBox.critical(self, "重载失败", f"无法重载插件 {plugin_id}: {err}")
+            ThemedMessageBox.critical(
+                self, tr("重载失败"), tr("无法重载插件 {plugin_id}: {err}", plugin_id=plugin_id, err=err)
+            )
 
     def _on_open_plugin_dir(self, plugin_id):
         from core import plugin_manager
@@ -657,7 +661,7 @@ class SettingsPluginsPageMixin:
                 os.startfile(p.directory)
             except Exception as e:
                 logger.error("无法打开插件目录: %s", e)
-                ThemedMessageBox.warning(self, "打开失败", f"无法打开插件目录:\n{e}")
+                ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开插件目录:\n{error}", error=e))
 
     def _on_delete_plugin(self, plugin_info):
         m = plugin_info.manifest
@@ -677,10 +681,10 @@ class SettingsPluginsPageMixin:
         try:
             plugin_manager.delete_plugin_files(m.id)
             self._rebuild_plugin_list(preserve_scroll=True)
-            ThemedMessageBox.information(self, "删除成功", f'插件 "{m.name}" 已被成功删除。')
+            ThemedMessageBox.information(self, tr("删除成功"), tr('插件 "{name}" 已被成功删除。', name=m.name))
         except Exception as e:
             logger.error("删除插件目录失败: %s", e)
-            ThemedMessageBox.critical(self, "删除失败", f"删除插件文件失败:\n{e}")
+            ThemedMessageBox.critical(self, tr("删除失败"), tr("删除插件文件失败:\n{error}", error=e))
 
     def _on_refresh_plugins(self):
         """Re-scan the plugins directory and rebuild the list."""
@@ -715,7 +719,7 @@ class SettingsPluginsPageMixin:
 
         if plugin_manager is None:
             self._plugin_create_dialog_active = False
-            ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
+            ThemedMessageBox.warning(self, tr("错误"), tr("插件管理器未初始化！"))
             return
 
         dialog = PluginCreateDialog(self, self.current_theme)
@@ -728,7 +732,7 @@ class SettingsPluginsPageMixin:
         plugin_id = dialog.plugin_id
         plugin_dir = os.path.join(plugin_manager.plugins_dir, plugin_id)
         if os.path.exists(plugin_dir):
-            ThemedMessageBox.warning(self, "创建失败", f"插件目录已存在: {plugin_id}")
+            ThemedMessageBox.warning(self, tr("创建失败"), tr("插件目录已存在: {plugin_id}", plugin_id=plugin_id))
             return
 
         try:
@@ -751,25 +755,29 @@ class SettingsPluginsPageMixin:
             # Show success message
             ThemedMessageBox.information(
                 self,
-                "新建成功",
-                f'插件 "{dialog.plugin_name}" 模板已成功创建于 plugins/{plugin_id}/。\n即将打开该目录以供编辑。',
+                tr("新建成功"),
+                tr(
+                    '插件 "{name}" 模板已成功创建于 plugins/{plugin_id}/。\n即将打开该目录以供编辑。',
+                    name=dialog.plugin_name,
+                    plugin_id=plugin_id,
+                ),
             )
 
             # Open directory
             try:
                 os.startfile(plugin_dir)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("打开插件目录失败: %s", exc, exc_info=True)
 
         except Exception as e:
             logger.error("新建开发插件失败: %s", e, exc_info=True)
-            ThemedMessageBox.critical(self, "错误", f"新建开发插件失败:\n{e}")
+            ThemedMessageBox.critical(self, tr("错误"), tr("新建开发插件失败:\n{error}", error=e))
 
     def _on_install_plugin_clicked(self):
         from core import plugin_manager
 
         if plugin_manager is None:
-            ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
+            ThemedMessageBox.warning(self, tr("错误"), tr("插件管理器未初始化！"))
             return
 
         file_path, _ = get_open_file_name(
@@ -787,7 +795,7 @@ class SettingsPluginsPageMixin:
         from core import plugin_manager
 
         if plugin_manager is None:
-            ThemedMessageBox.warning(self, "错误", "插件管理器未初始化！")
+            ThemedMessageBox.warning(self, tr("错误"), tr("插件管理器未初始化！"))
             return
 
         try:
@@ -804,7 +812,7 @@ class SettingsPluginsPageMixin:
                 ),
             )
         except ValueError as e:
-            ThemedMessageBox.critical(self, "安装失败", f"无法安装插件:\n{e}")
+            ThemedMessageBox.critical(self, tr("安装失败"), tr("无法安装插件:\n{error}", error=e))
             return
 
         if plugin_id is None:
@@ -826,27 +834,27 @@ class SettingsPluginsPageMixin:
         if enabled:
             ThemedMessageBox.information(
                 self,
-                "安装并启用成功",
-                f'插件 "{plugin_name}" 已成功安装并启用。',
+                tr("安装并启用成功"),
+                tr('插件 "{name}" 已成功安装并启用。', name=plugin_name),
             )
         elif info and info.status == "error":
             ThemedMessageBox.warning(
                 self,
-                "安装成功但启用失败",
-                f'插件 "{plugin_name}" 已安装，但启用失败:\n{info.error}',
+                tr("安装成功但启用失败"),
+                tr('插件 "{name}" 已安装，但启用失败:\n{error}', name=plugin_name, error=info.error),
             )
         else:
             ThemedMessageBox.information(
                 self,
-                "安装成功",
-                f'插件 "{plugin_name}" 已安装，但尚未启用。',
+                tr("安装成功"),
+                tr('插件 "{name}" 已安装，但尚未启用。', name=plugin_name),
             )
 
 
 class PluginCreateDialog(QDialog):
     def __init__(self, parent=None, theme="dark"):
         super().__init__(parent)
-        self.setWindowTitle("新建开发插件")
+        self.setWindowTitle(tr("新建开发插件"))
         self.setModal(True)
         self.setMinimumSize(340, 320)
         self.theme = theme
@@ -913,10 +921,10 @@ class PluginCreateDialog(QDialog):
 
         plugin_id = self.id_edit.text().strip()
         if not plugin_id:
-            ThemedMessageBox.warning(self, "输入错误", "插件ID不能为空！")
+            ThemedMessageBox.warning(self, tr("输入错误"), tr("插件ID不能为空！"))
             return
         if not re.match(r"^[a-z0-9_-]+$", plugin_id):
-            ThemedMessageBox.warning(self, "输入错误", "插件ID只能包含小写字母、数字、下划线 and 减号！")
+            ThemedMessageBox.warning(self, tr("输入错误"), tr("插件ID只能包含小写字母、数字、下划线 and 减号！"))
             return
 
         self.plugin_id = plugin_id

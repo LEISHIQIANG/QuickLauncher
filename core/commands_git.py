@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import subprocess
 import time
 
 from .command_registry import CommandAction, CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_SUBCOMMANDS = {"status", "branch", "log", "diff", "fetch", "pull", "checkout"}
 
@@ -37,7 +40,7 @@ def _run_git(repo: str, extra: list[str], timeout: float = 20.0) -> tuple[int, s
             try:
                 proc.communicate(timeout=2.0)
             except Exception:
-                pass
+                logger.debug("终止进程后读取输出失败", exc_info=True)
         raise
     return proc.returncode, stdout or "", stderr or "", time.perf_counter() - started
 

@@ -19,7 +19,7 @@ def main():
     filter_str = args.get("filter", "")
 
     # 延迟导入PyQt5，只在需要时导入
-    from PyQt5.QtWidgets import QApplication, QFileDialog
+    from qt_compat import QApplication, QFileDialog
 
     QApplication(sys.argv)
     result = None

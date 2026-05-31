@@ -233,8 +233,8 @@ class CompactProgressDialog(QDialog):
                     effect.set_window_region(hwnd, w, h, self.corner_radius)
 
             enable_acrylic_for_config_window(self, self.theme, blur_amount=30, radius=self.corner_radius)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
     def done(self, result):
         self._dialog_finished = True
@@ -243,8 +243,8 @@ class CompactProgressDialog(QDialog):
             if anim is not None:
                 try:
                     anim.stop()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("停止动画失败: %s", exc, exc_info=True)
         super().done(result)
 
     def show_success(self, msg, title=""):
@@ -435,8 +435,7 @@ class NavigationWidget(QListWidget):
         self.theme = theme
         self._apply_nav_icons(theme)
 
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QListWidget {
                 background-color: transparent;
                 border: none;
@@ -457,8 +456,7 @@ class NavigationWidget(QListWidget):
                 background-color: transparent;
                 border: none;
             }
-        """
-        )
+        """)
 
     def _apply_nav_icons(self, theme: str):
         from .action_button_icons import create_action_button_icon
@@ -517,8 +515,7 @@ class BaseSettingPage(SmoothScrollArea):
         group.setFont(get_qfont(14))
         group.setProperty("settingsGroupTitle", title)
 
-        group.setStyleSheet(
-            """
+        group.setStyleSheet("""
             QGroupBox {
                 border: none;
                 padding-top: 5px;
@@ -531,8 +528,7 @@ class BaseSettingPage(SmoothScrollArea):
                 padding-left: 18px;
                 color: white;
             }
-        """
-        )
+        """)
 
         icon_label = QLabel()
         icon_label.setObjectName("SettingsGroupIcon")
@@ -867,8 +863,8 @@ class BaseSettingPage(SmoothScrollArea):
         try:
             self.verticalScrollBar().setStyleSheet(scrollbar_style)
             self.horizontalScrollBar().setStyleSheet(scrollbar_style)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置滚动条样式失败: %s", exc, exc_info=True)
 
         style = f"""
             QGroupBox {{
@@ -1157,8 +1153,8 @@ class SettingsPanel(
             theme = self.data_manager.get_settings().theme
             if hasattr(page, "apply_theme"):
                 page.apply_theme(theme)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用页面主题失败: %s", exc, exc_info=True)
 
     def _init_nav_items(self):
         items = [
@@ -1209,8 +1205,8 @@ class SettingsPanel(
             return
         try:
             page.verticalScrollBar().setValue(value)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("恢复页面滚动位置失败: %s", exc, exc_info=True)
 
     def _on_nav_changed(self):
         items = self.nav_widget.selectedItems()
@@ -1282,8 +1278,8 @@ class SettingsPanel(
                 continue
             try:
                 timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止防抖定时器失败: %s", exc, exc_info=True)
         stop_command_timers = getattr(self, "_stop_command_page_timers", None)
         if callable(stop_command_timers):
             stop_command_timers()

@@ -45,8 +45,8 @@ class WindowManager:
                                 if not owner:
                                     _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
                                     visible_windows.append((hwnd, window_pid))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("枚举窗口回调失败: %s", exc, exc_info=True)
                 return True
 
             win32gui.EnumWindows(callback, None)
@@ -62,7 +62,7 @@ class WindowManager:
                         if pname and pname.lower().replace(".exe", "").startswith(process_name):
                             is_match = True
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
+                        logger.debug("获取进程信息失败", exc_info=True)
                     pid_cache[pid] = is_match
 
                 if pid_cache[pid]:
@@ -91,14 +91,14 @@ class WindowManager:
                             owner = win32gui.GetWindow(hwnd, win32con.GW_OWNER)
                             if not owner:
                                 windows_by_pid[window_pid].append(hwnd)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("枚举窗口回调失败: %s", exc, exc_info=True)
             return True
 
         try:
             win32gui.EnumWindows(callback, None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("枚举窗口失败: %s", exc, exc_info=True)
 
         return windows_by_pid
 
@@ -118,14 +118,14 @@ class WindowManager:
                             owner = win32gui.GetWindow(hwnd, win32con.GW_OWNER)
                             if not owner:
                                 windows.append(hwnd)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("枚举进程窗口回调失败: %s", exc, exc_info=True)
             return True
 
         try:
             win32gui.EnumWindows(callback, None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("枚举窗口失败: %s", exc, exc_info=True)
 
         return windows
 

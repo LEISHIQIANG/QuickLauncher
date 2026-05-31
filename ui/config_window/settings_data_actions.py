@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 
+from core.i18n import tr
 from qt_compat import (
     QApplication,
     QtCompat,
@@ -101,9 +102,9 @@ class SettingsDataActionsMixin:
                 return
 
             if self.data_manager.backup_full_config(path):
-                ThemedMessageBox.information(self, "备份成功", f"全量备份已保存至:\n{path}")
+                ThemedMessageBox.information(self, tr("备份成功"), tr("全量备份已保存至:\n{path}", path=path))
             else:
-                ThemedMessageBox.warning(self, "备份失败", "无法创建备份文件，请检查日志。")
+                ThemedMessageBox.warning(self, tr("备份失败"), tr("无法创建备份文件，请检查日志。"))
 
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
@@ -114,7 +115,7 @@ class SettingsDataActionsMixin:
             return
 
         if not path.lower().endswith(".zip"):
-            ThemedMessageBox.warning(self, "错误", "请选择 .zip 格式的备份文件")
+            ThemedMessageBox.warning(self, tr("错误"), tr("请选择 .zip 格式的备份文件"))
             return
 
         result = ThemedMessageBox.question(
@@ -135,11 +136,11 @@ class SettingsDataActionsMixin:
             if success:
                 report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
                 if report.get("has_warnings"):
-                    ThemedMessageBox.warning(self, "导入提示", "部分不安全内容已跳过，请查看日志或诊断信息。")
-                ThemedMessageBox.information(self, "恢复成功", "配置已恢复，程序即将重启。")
+                    ThemedMessageBox.warning(self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。"))
+                ThemedMessageBox.information(self, tr("恢复成功"), tr("配置已恢复，程序即将重启。"))
                 self._restart_application()
             else:
-                ThemedMessageBox.warning(self, "恢复失败", "无法恢复备份，文件可能已损坏或格式不正确。")
+                ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复备份，文件可能已损坏或格式不正确。"))
 
     def _on_export_shareable_clicked(self):
         """导出分享配置"""
@@ -154,12 +155,12 @@ class SettingsDataActionsMixin:
             if self.data_manager.export_shareable_config(path):
                 ThemedMessageBox.information(
                     self,
-                    "导出成功",
-                    f"分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用",
+                    tr("导出成功"),
+                    tr("分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用", path=path),
                     max_width=320,
                 )
             else:
-                ThemedMessageBox.warning(self, "导出失败", "无法导出分享配置，请检查日志。")
+                ThemedMessageBox.warning(self, tr("导出失败"), tr("无法导出分享配置，请检查日志。"))
 
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
@@ -174,14 +175,14 @@ class SettingsDataActionsMixin:
             if self.data_manager.import_shareable_config(path):
                 report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
                 if report.get("has_warnings"):
-                    ThemedMessageBox.warning(self, "导入提示", "部分不安全内容已跳过，请查看日志或诊断信息。")
+                    ThemedMessageBox.warning(self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。"))
                 ThemedMessageBox.information(
                     self, "导入成功", "分享配置已导入到「导入图标」分类\n\n请重启应用以查看效果"
                 )
                 # 导入成功后需要刷新以显示新分类
                 self.settings_changed.emit()
             else:
-                ThemedMessageBox.warning(self, "导入失败", "无法导入分享配置，文件可能已损坏或格式不正确。")
+                ThemedMessageBox.warning(self, tr("导入失败"), tr("无法导入分享配置，文件可能已损坏或格式不正确。"))
 
         except Exception as e:
             ThemedMessageBox.critical(self, "错误", str(e))
@@ -196,14 +197,14 @@ class SettingsDataActionsMixin:
             else:
                 try:
                     self._config_history_window.set_theme(self.data_manager.get_settings().theme)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("设置配置历史窗口主题失败: %s", exc, exc_info=True)
                 self._config_history_window.refresh()
             self._config_history_window.show()
             self._config_history_window.raise_()
             self._config_history_window.activateWindow()
         except Exception as e:
-            ThemedMessageBox.warning(self, "打开失败", f"无法打开配置历史:\n{e}")
+            ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开配置历史:\n{error}", error=e))
 
     def _on_factory_reset_clicked(self):
         """处理清除所有配置按钮点击"""
@@ -243,10 +244,10 @@ class SettingsDataActionsMixin:
         # 执行清除所有配置
         progress = ProgressDialog(self, "清除所有配置", theme=theme)
         try:
-            progress.msg_label.setText("正在清理数据...")
+            progress.msg_label.setText(tr("正在清理数据..."))
             progress.ok_btn.setVisible(False)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置进度对话框失败: %s", exc, exc_info=True)
         progress.show()
 
         class _FactoryResetThread(QThread):
@@ -263,8 +264,8 @@ class SettingsDataActionsMixin:
                     def on_progress(msg, pct):
                         try:
                             self.progress_signal.emit(msg, pct)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("发送进度信号失败: %s", exc, exc_info=True)
 
                     stats = self.data_manager.factory_reset(callback=on_progress)
                     self.finished_signal.emit(stats)
@@ -275,18 +276,18 @@ class SettingsDataActionsMixin:
             try:
                 progress.msg_label.setText(msg)
                 progress.progress_bar.setValue(int(pct * 100))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("更新进度显示失败: %s", exc, exc_info=True)
 
         def on_reset_finished(stats):
             try:
                 progress.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭进度对话框失败: %s", exc, exc_info=True)
 
             error = stats.get("error")
             if error:
-                ThemedMessageBox.critical(self, "错误", f"清除所有配置失败:\n{error}")
+                ThemedMessageBox.critical(self, tr("错误"), tr("清除所有配置失败:\n{error}", error=error))
                 return
 
             # 显示完成信息
@@ -352,4 +353,4 @@ class SettingsDataActionsMixin:
             QApplication.instance().quit()
 
         except Exception as e:
-            ThemedMessageBox.warning(self, "警告", f"自动重启失败，请手动重启应用。\n错误: {e}")
+            ThemedMessageBox.warning(self, tr("警告"), tr("自动重启失败，请手动重启应用。\n错误: {error}", error=e))

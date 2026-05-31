@@ -1,8 +1,12 @@
 from collections import OrderedDict
 from types import SimpleNamespace
 
+import pytest
+
 from core.data_models import ShortcutItem, ShortcutType
 from ui.launcher_popup.popup_icons import PopupIconMixin
+
+pytestmark = pytest.mark.ui
 
 
 class _IconHarness(PopupIconMixin):

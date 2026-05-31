@@ -31,8 +31,8 @@ def launch_via_explorer_com(target: str, parameters: str = "", directory: str = 
 
         pythoncom.CoInitialize()
         _com_initialized = True
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("初始化COM失败: %s", exc, exc_info=True)
 
     try:
         import ctypes
@@ -68,8 +68,8 @@ def launch_via_explorer_com(target: str, parameters: str = "", directory: str = 
                 import pythoncom
 
                 pythoncom.CoUninitialize()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("反初始化COM失败: %s", exc, exc_info=True)
 
 
 def launch_as_standard_user(
@@ -171,8 +171,8 @@ def launch_as_standard_user(
             launched, com_err = launch_via_explorer_com(target, params, cwd, show_cmd)
             if launched:
                 return True, ""
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("通过Explorer COM启动失败: %s", exc, exc_info=True)
         return False, str(exc)
 
 

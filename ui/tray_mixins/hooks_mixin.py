@@ -24,8 +24,8 @@ class HooksMixin:
             if self.mouse_hook:
                 try:
                     self.mouse_hook.uninstall()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("卸载鼠标钩子失败: %s", exc, exc_info=True)
                 self.mouse_hook = None
 
             hook = MouseHook()
@@ -36,13 +36,13 @@ class HooksMixin:
             if self.keyboard_hook:
                 try:
                     hook.set_keyboard_hook(self.keyboard_hook)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("关联键盘钩子失败: %s", exc, exc_info=True)
 
             try:
                 hook.set_paused(self._mouse_paused_state)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置鼠标钩子暂停状态失败: %s", exc, exc_info=True)
             self.mouse_hook = hook
 
             # 设置全局钩子引用，供文件对话框使用
@@ -50,18 +50,15 @@ class HooksMixin:
                 from ui.utils.safe_file_dialog import set_global_mouse_hook
 
                 set_global_mouse_hook(hook)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置全局鼠标钩子失败: %s", exc, exc_info=True)
 
             self._apply_mouse_hook_settings()
 
             logger.info("鼠标触发已切换到 DLL Hook")
             return True
-        except Exception as e:
-            logger.error(f"安装鼠标后端失败 [dll_hook]: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("安装鼠标后端失败 [dll_hook]")
             self.mouse_hook = None
             return False
 
@@ -77,8 +74,8 @@ class HooksMixin:
                 from ui.utils.safe_file_dialog import set_global_keyboard_hook
 
                 set_global_keyboard_hook(self.keyboard_hook)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置全局键盘钩子失败: %s", exc, exc_info=True)
 
             success = self.keyboard_hook.install(on_alt_double_tap=self._on_alt_double_tap_from_hook)
 
@@ -90,11 +87,8 @@ class HooksMixin:
             else:
                 logger.warning("  键盘钩子安装失败")
 
-        except Exception as e:
-            logger.error(f"  键盘钩子异常: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("键盘钩子异常")
 
     def _install_keyboard_hook_and_hotkey(self):
         """安装键盘钩子并启动热键管理器（延迟执行）"""
@@ -118,8 +112,8 @@ class HooksMixin:
             if self.keyboard_hook:
                 self.keyboard_hook.uninstall()
                 self.keyboard_hook.install(self._on_alt_double_tap_from_hook)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("重装键盘钩子失败: %s", exc, exc_info=True)
 
     def _check_new_processes(self):
         """检测特定软件启动时重装钩子（仅监测可能有钩子冲突的软件）"""
@@ -139,8 +133,8 @@ class HooksMixin:
                     name = proc.info["name"].lower()
                     if any(app in name for app in target_apps):
                         current_pids.add(proc.info["pid"])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("获取进程信息失败: %s", exc, exc_info=True)
 
             if not self._known_processes:
                 self._known_processes = current_pids
@@ -152,22 +146,22 @@ class HooksMixin:
                 self._reinstall_hooks()
 
             self._known_processes = current_pids
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新特殊应用监控失败: %s", exc, exc_info=True)
 
     def _on_alt_double_tap_from_hook(self):
         """Alt双击回调 (从键盘钩子线程调用，必须极快返回)"""
         try:
             self._alt_double_tap_signal.emit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("发送Alt双击信号失败: %s", exc, exc_info=True)
 
     def _on_hook_hotkey_from_hook(self):
         """键盘钩子热键回调 (从钩子线程调用，必须极快返回)"""
         try:
             self._hook_hotkey_signal.emit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("发送热键信号失败: %s", exc, exc_info=True)
 
     def _on_alt_double_tap(self):
         """处理 Alt 双击 - 切换鼠标中键钩子暂停状态 (主线程)"""
@@ -190,8 +184,8 @@ class HooksMixin:
             try:
                 settings = self.data_manager.get_settings()
                 theme = getattr(settings, "theme", "dark") or "dark"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取主题设置失败: %s", exc, exc_info=True)
 
             # 显示 Toast 通知
             if new_paused:

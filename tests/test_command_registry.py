@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 
@@ -24,6 +25,8 @@ from core.command_registry import (
     set_pending_command_result,
     take_pending_command_result,
 )
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # Data model tests
@@ -171,10 +174,10 @@ class TestCallbackHandler:
     def test_wraps_callback_name(self):
         h = _CallbackHandler("show_config_window")
         assert h._callback_name == "show_config_window"
-        # Calling it should not crash — call_callback returns None for unregistered,
-        # which _CallbackHandler treats as success (no explicit failure signal)
+        # call_callback returns None for unregistered callbacks,
+        # which _CallbackHandler treats as failure (falsy result)
         result = h(CommandContext())
-        assert result.message == "执行成功"
+        assert result.message == "命令执行失败: show_config_window"
 
 
 # ============================================================
@@ -942,7 +945,8 @@ class TestPhase3HashCommand:
         finally:
             try:
                 os.unlink(path)
-            except Exception:
+            except Exception as exc:
+                logger.debug("删除临时文件失败: %s", exc, exc_info=True)
                 pass
 
     def test_sha256(self):
@@ -960,7 +964,8 @@ class TestPhase3HashCommand:
         finally:
             try:
                 os.unlink(path)
-            except Exception:
+            except Exception as exc:
+                logger.debug("删除临时文件失败: %s", exc, exc_info=True)
                 pass
 
 

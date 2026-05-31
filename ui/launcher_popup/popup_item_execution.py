@@ -6,6 +6,7 @@ import threading
 import time
 
 from core.data_models import ShortcutItem, ShortcutType
+from core.i18n import tr
 from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
@@ -35,8 +36,8 @@ class PopupItemExecutionMixin:
             if selected_files_for_item:
                 try:
                     item._runtime_selected_files = list(selected_files_for_item)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("设置运行时选中文件失败: %s", exc, exc_info=True)
 
         # 检查是否有选中文件需要打开
         files_to_use = []
@@ -44,7 +45,7 @@ class PopupItemExecutionMixin:
             files_to_use = self._take_valid_selected_files_for_click()
 
         if files_to_use:
-            logger.info(f"使用Explorer选中文件启动: {item.name}, 文件: {files_to_use}")
+            logger.debug(f"使用Explorer选中文件启动: {item.name}, 文件: {files_to_use}")
             if not self.is_pinned:
                 self.hide()
             self._clear_selected_files_context()
@@ -94,8 +95,8 @@ class PopupItemExecutionMixin:
                     and not isinstance(cmd_def.handler, _CallbackHandler)
                 ):
                     input_prompts = []
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("检查命令交互模式失败: %s", exc, exc_info=True)
 
         if input_prompts:
             try:
@@ -190,8 +191,8 @@ class PopupItemExecutionMixin:
                             clipboard_text = ""
                             try:
                                 clipboard_text = self._read_clipboard_text()
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("读取剪贴板文本失败: %s", exc, exc_info=True)
 
                             selected_files = []
                             try:
@@ -199,8 +200,8 @@ class PopupItemExecutionMixin:
                                     selected_files = list(selected_files_for_item)
                                 elif self.__dict__.get("_selected_files_status", "") == "ready":
                                     selected_files = list(self.__dict__.get("_selected_files", []) or [])
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("获取选中文件列表失败: %s", exc, exc_info=True)
 
                             tray_app = getattr(self, "tray_app", None)
                             if tray_app is not None and hasattr(tray_app, "show_command_panel"):
@@ -238,7 +239,7 @@ class PopupItemExecutionMixin:
 
         self._executing = True
         self._launched_app = True  # 启动外部程序，隐藏时不恢复焦点
-        logger.info(f"执行: {item.name} (类型: {item.type})")
+        logger.debug(f"执行: {item.name} (类型: {item.type})")
 
         force_close_capture_command = (
             item.type == ShortcutType.COMMAND
@@ -430,7 +431,9 @@ class PopupItemExecutionMixin:
         try:
             from ui.styles.themed_messagebox import ThemedMessageBox
 
-            ThemedMessageBox.critical(self.window(), "启动失败", f"无法启动: {name}\n\n原因: {error}")
+            ThemedMessageBox.critical(
+                self.window(), tr("启动失败"), tr("无法启动: {name}\n\n原因: {error}", name=name, error=error)
+            )
         except Exception as e:
             logger.error(f"显示错误弹窗失败: {e}")
 

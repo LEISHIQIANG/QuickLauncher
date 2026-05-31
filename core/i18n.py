@@ -197,6 +197,34 @@ _EN_US: dict[str, str] = {
     "保存命令状态失败:\n{error}": "Failed to save command state:\n{error}",
     "收藏失败:\n{error}": "Failed to favorite:\n{error}",
     "重新排序失败:\n{error}": "Failed to reorder:\n{error}",
+    "正在扫描图标、路径和命令风险...": "Scanning icons, paths, and command risks...",
+    "扫描缺失图标、失效路径、重复项、URL 和命令风险": "Scan missing icons, invalid paths, duplicates, URLs, and command risks",
+    "扫描失败: {error}": "Scan failed: {error}",
+    "⚠️ 以下操作不可逆：\n": "⚠️ The following actions cannot be undone:\n",
+    "安全修复：\n": "Safe fixes:\n",
+    "确认修复": "Confirm",
+    "确定要执行以上修复吗？": "Are you sure you want to apply the above fixes?",
+    "已应用 {count} 项修复。": "Applied {count} fix(es).",
+    "\n已跳过 {skipped} 项被删除图标覆盖的重复修复。": "\nSkipped {skipped} duplicate fix(es) covered by deleted icons.",
+    "\n有 {failed} 项修复失败，请重新扫描后查看报告。": "\n{failed} fix(es) failed. Rescan and check the report.",
+    "修复完成": "Fix Complete",
+    "清理完成": "Clean Complete",
+    "已清理 {removed} 个未使用的网页图标缓存，释放 {freed:.1f} MB。": "Cleaned {removed} unused favicon cache(s), freed {freed:.1f} MB.",
+    "未发现问题。": "No issues found.",
+    "<b>摘要</b>": "<b>Summary</b>",
+    "<b>明细</b>": "<b>Details</b>",
+    "分类:": "Category:",
+    "说明:": "Description:",
+    "修复动作:": "Fix action:",
+    "缓存\n  网页图标: {total_files} 个，{total_size_mb} MB\n  未使用: {unused_files} 个，{unused_size_mb} MB": (
+        "Cache\n  Favicons: {total_files}, {total_size_mb} MB\n  Unused: {unused_files}, {unused_size_mb} MB"
+    ),
+    "缓存\n  网页图标: 无法读取 ({exc})": "Cache\n  Favicons: cannot read ({exc})",
+    "清除失效图标路径": "Clear invalid icon path",
+    "删除该图标": "Delete this icon",
+    "清空失效工作目录": "Clear invalid working directory",
+    "关闭该分类自动同步": "Disable auto-sync for this category",
+    "禁用该快捷方式": "Disable this shortcut",
     "刷新": "Ref",
     "关闭": "X",
     "清除": "Clr",
@@ -305,6 +333,18 @@ _EN_US: dict[str, str] = {
     "诊断包已导出:\n{path}": "Diagnostics package exported:\n{path}",
     "导出失败": "Fail",
     "无法导出诊断包，请查看运行日志。": "Unable to export diagnostics package. Check the runtime log.",
+    "复制": "Copy",
+    "全选": "Select All",
+    "正在收集诊断信息...": "Collecting diagnostics...",
+    "运行环境、配置、钩子、热键、缓存和最近错误": "Runtime, config, hooks, hotkeys, cache, and recent errors",
+    "诊断收集失败: {error}": "Diagnostics collection failed: {error}",
+    "配置恢复": "Config Restore",
+    "[配置恢复]": "[Config Restore]",
+    "<b>摘要</b>": "<b>Summary</b>",
+    "<b>明细</b>": "<b>Details</b>",
+    "  摘要:": "  Summary:",
+    "  详情:": "  Details:",
+    "  建议:": "  Suggestion:",
     "清空日志": "Clr",
     "无法清空日志: {error}": "Unable to clear log: {error}",
     "重新扫描": "Scan",
@@ -343,6 +383,12 @@ _EN_US: dict[str, str] = {
     "正在清理数据...": "Clean data",
     "运行结果会显示在这里": "Output",
     "检测开机自启状态失败，请查看日志。": "Failed to detect auto-start status. Check the log.",
+    "最近命令": "Recent",
+    "高级设置": "Adv",
+    "输入要执行的 PowerShell 命令（静默运行，不显示窗口）:": "Enter the PowerShell command to run silently:",
+    "输入要执行的 Bash 命令（通过 Git Bash 运行）:": "Enter the Bash command to run via Git Bash:",
+    "清除隔离": "Clear",
+    "新建开发插件": "New Dev Plugin",
     "＋ 新建分类": "+ New",
     "是否启用文件夹自动同步?\n(启用后,文件夹内容变化时会自动更新)": "Enable auto folder sync?\n(When enabled, folder changes will update automatically)",
     "复制列表": "Copy",
@@ -375,6 +421,36 @@ _EN_US: dict[str, str] = {
     "👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)": "👇 Click a drink above to get a sponsorship QR code (click the coffee cup to interact)",
     "💬 反馈建议 / 进群交流": "💬 Feedback",
     "🧩 运行模式: 兼容模式 (in-process, 未强隔离)": "🧩 Run Mode: Compatibility Mode (in-process, no strong isolation)",
+    "斜杠命令帮助": "Slash Command Help",
+    "输入 / 进入命令模式，继续输入英文或中文可筛选": "Type / to enter command mode, continue typing in English or Chinese to filter",
+    "应用": "Apps",
+    "项目内部": "Project",
+    "开发者工具": "Developer Tools",
+    "网络工具": "Network",
+    "窗口": "Window",
+    "Windows 系统": "Windows System",
+    "帮助": "Help",
+    "别名": "Alias",
+    "欢迎使用 QuickLauncher！": "Welcome to QuickLauncher!",
+    "QuickLauncher v{version}\n轻量级快捷启动工具\n\n• 鼠标中键快速唤出启动面板\n• 支持文件、文件夹、打开网址、快捷键、运行命令\n• 自定义主题和透明度\n\n让我们开始 30 秒快速上手教程": (
+        "QuickLauncher v{version}\nLightweight quick launch tool\n\n• Middle mouse button to quickly open the launcher\n• Supports files, folders, URLs, hotkeys, and commands\n• Customizable themes and opacity\n\nLet's start a 30-second quick tutorial"
+    ),
+    "第一步：添加快捷方式": "Step 1: Add Shortcuts",
+    "在设置窗口中，有三种方式添加快捷方式：\n\n1. 直接拖拽文件/文件夹到中间区域\n2. 点击底部按钮添加（快捷方式/打开网址/快捷键/运行命令）\n3. 双击图标可以编辑\n\n提示：支持拖入 .lnk 快捷方式文件": (
+        "In the settings window, there are three ways to add shortcuts:\n\n1. Drag files/folders directly to the center area\n2. Click the bottom buttons to add (Shortcut/URL/Hotkey/Command)\n3. Double-click an icon to edit\n\nTip: Supports dragging in .lnk shortcut files"
+    ),
+    "第二步：使用启动器": "Step 2: Use the Launcher",
+    "配置完成后，随时可以唤出启动器：\n\n• 默认：鼠标中键\n• 特殊软件：Ctrl + 中键（避免冲突）\n• 锁定：右键空白处锁定窗口\n• 强制新开：Alt + 左键点击图标": (
+        "After configuration, you can open the launcher anytime:\n\n• Default: Middle mouse button\n• Special apps: Ctrl + Middle click (avoid conflicts)\n• Pin: Right-click empty area to pin the window\n• Force new instance: Alt + Left click on icon"
+    ),
+    "第三步：个性化设置": "Step 3: Personalize",
+    "在右侧设置面板可以自定义：\n\n• 主题：深色/浅色\n• 透明度：背景、Dock、图标\n• 尺寸：图标大小、列数、圆角\n• 背景：纯色/图片/主题色\n\n滚轮可快速调节透明度（Ctrl/Shift+滚轮）": (
+        "Customize in the right settings panel:\n\n• Theme: Dark/Light\n• Opacity: Background, Dock, Icons\n• Size: Icon size, columns, border radius\n• Background: Solid color/Image/Theme color\n\nScroll wheel to quickly adjust opacity (Ctrl/Shift+Scroll)"
+    ),
+    "开始使用！": "Get Started!",
+    "现在你已经掌握了基本用法\n\n更多功能：\n• Dock 栏：顶部/底部常驻图标\n• 拖放联动：拖文件到图标上打开\n• 分类管理：左侧创建多个分类\n\n祝你使用愉快！": (
+        "You've mastered the basics now\n\nMore features:\n• Dock bar: Top/bottom persistent icons\n• Drag and drop: Drag files onto icons to open\n• Category management: Create categories on the left\n\nEnjoy using QuickLauncher!"
+    ),
 }
 
 _EN_US.update(
@@ -476,6 +552,169 @@ _EN_US.update(
         "无法拉起全屏收款窗口": "Pay fail",
         "✕ 点击空白处关闭": "✕ Blank",
         "插件是扩展 QuickLauncher 功能的扩展模块。\n当前兼容模式：插件与主程序同权限运行，仅安装您信任的插件。\n插件声明权限为高风险提示，并非强权限隔离。\n插件目录: plugins/": "Plugins extend QuickLauncher with additional features.\nCurrent compatibility mode: plugins run with the same privileges as the main app. Only install plugins you trust.\nDeclared plugin permissions are high-risk warnings, not strong permission isolation.\nPlugin directory: plugins/",
+        "简介": "Intro",
+        "版本 {version}": "Version {version}",
+        "QuickLauncher 是一款面向 Windows 桌面的快速启动与轻量自动化工具。"
+        "按下鼠标中键呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；"
+        "支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。": (
+            "QuickLauncher is a fast launcher and lightweight automation tool for Windows desktop. "
+            "Press the middle mouse button to open the launcher and manage apps, folders, URLs, commands, and hotkeys "
+            "in one place; it also supports search, Dock, category sync, drag-and-drop delivery, smart sorting, "
+            "config backup, and highly customizable appearance."
+        ),
+        "中键呼出弹窗，再次中键 / Esc / 点击外部区域即隐藏；"
+        "输入关键字模糊搜索名称、别名和标签，Enter 执行、方向键切换；"
+        "右键锁定弹窗防止自动隐藏，滚轮或 ←→ 翻页切换分类。": (
+            "Middle click to open the popup; middle click again, Esc, or clicking outside hides it. "
+            "Type keywords for fuzzy search on names, aliases, and tags; press Enter to execute, "
+            "use arrow keys to switch. Right-click to lock the popup and prevent auto-hide; "
+            "use the scroll wheel or ←/→ keys to switch categories."
+        ),
+        "四类快捷方式：启动程序或文件（支持参数、工作目录、管理员运行），"
+        "打开文件夹，访问网址（支持指定浏览器和延迟测试），"
+        "运行命令（CMD / PowerShell / Python / 内置命令，支持变量解析），"
+        "录制快捷键（区分左右修饰键、测试发送）。": (
+            "Four types of shortcuts: launch programs or files (with arguments, working directory, admin mode), "
+            "open folders, visit URLs (with browser selection and latency testing), "
+            "run commands (CMD/PowerShell/Python/built-in with variable parsing), "
+            "and record hotkeys (distinguishing left/right modifier keys with test send)."
+        ),
+        "左侧分类栏可创建、重命名、拖拽排序；Dock 分类放置高频项目；"
+        "拖入物理文件夹自动导入 .lnk 和 .exe，支持手动或自动同步。": (
+            "The left category bar supports create, rename, drag reorder, and quick delete. "
+            "The Dock category holds high-frequency items. "
+            "Dragging in a physical folder automatically imports .lnk and .exe files, "
+            "with manual or automatic sync."
+        ),
+        "命令变量：{{clipboard}}、{{input}}、{{date}}、{{time}} 等动态替换；"
+        "拖放文件到图标即用该程序打开；Ctrl + 滚轮调节背景透明度；"
+        "Alt + 双击暂停/恢复中键弹窗；轻睡眠、图标缓存清理等稳定性辅助。": (
+            "Command variables: {{clipboard}}, {{input}}, {{date}}, {{time}} and more dynamic replacements. "
+            "Drag and drop files onto an icon to open them with that program. "
+            "Ctrl + scroll wheel adjusts background opacity. "
+            "Alt + double-click pauses/resumes the middle-click popup. "
+            "Light sleep and icon cache cleaning for stability."
+        ),
+        "支持完整配置包的导出、导入和分享；"
+        "自动保存最近 20 次配置快照，可随时回滚；"
+        "图标路径失效时自动在同目录重定向修复。": (
+            "Support for exporting, importing, and sharing complete config packages. "
+            "Automatically saves the last 20 config snapshots for easy rollback. "
+            "Automatically redirects to fix icon paths when they become invalid."
+        ),
+        "最近 20 次重要配置变更快照，可用于恢复": "Latest 20 config snapshots for restore",
+        "打开恢复目录": "Recovery",
+        "打开备份目录": "Backup",
+        "复制恢复报告": "Report",
+        "暂无历史快照。重要配置变更后会自动保存最近 20 次快照": (
+            "No snapshots yet. The last 20 snapshots are saved automatically."
+        ),
+        "配置变更": "Config change",
+        "配置恢复状态：暂无恢复记录。": "Config recovery: no records.",
+        "正常": "OK",
+        "已自动恢复": "Auto recovered",
+        "使用默认配置": "Default config",
+        "状态: {status_text}": "Status: {status_text}",
+        "来源: {source}": "Source: {source}",
+        "隔离文件: {quarantined}": "Quarantined: {quarantined}",
+        "问题: {issues}": "Issues: {issues}",
+        "提示": "Info",
+        "已复制": "Copied",
+        "确认恢复": "Restore?",
+        "确认恢复选中的历史快照吗？当前配置会先被记录为新的历史快照。": (
+            "Restore the selected snapshot? Current config will be saved as a new snapshot first."
+        ),
+        "恢复目录不存在。": "Recovery directory not found.",
+        "备份目录不存在。": "Backup directory not found.",
+        "恢复报告已复制到剪贴板。": "Recovery report copied to clipboard.",
+        "暂无恢复报告。": "No recovery report.",
+        "无法打开目录: {error}": "Cannot open directory: {error}",
+        "文件夹为空": "Folder empty",
+        "文件夹中没有找到支持的内容(子文件夹、.lnk 或 .exe 文件)": (
+            "No supported content found (subfolders, .lnk or .exe files)"
+        ),
+        "导入成功": "Import OK",
+        "已导入 {count} 个项目到分类 '{folder_name}'": ("Imported {count} item(s) to category '{folder_name}'"),
+        "同步完成": "Sync Complete",
+        "新增 {added} 项,删除 {removed} 项": "{added} added, {removed} removed",
+        "无法加载设置面板:\n{error}": "Unable to load settings panel:\n{error}",
+        "备份成功": "Backup OK",
+        "全量备份已保存至:\n{path}": "Full backup saved to:\n{path}",
+        "备份失败": "Backup Fail",
+        "无法创建备份文件，请检查日志。": "Cannot create backup file. Check the log.",
+        "请选择 .zip 格式的备份文件": "Please select a .zip backup file",
+        "导入提示": "Import Info",
+        "部分不安全内容已跳过，请查看日志或诊断信息。": (
+            "Some unsafe content was skipped. Check the log or diagnostics."
+        ),
+        "恢复成功": "Restore OK",
+        "配置已恢复，程序即将重启。": "Config restored. The app will restart.",
+        "无法恢复备份，文件可能已损坏或格式不正确。": (
+            "Cannot restore backup. The file may be corrupted or in an incorrect format."
+        ),
+        "导出成功": "Export OK",
+        "分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用": (
+            "Shareable config exported to:\n{path}\n\nThis config can be shared with other users"
+        ),
+        "无法导出分享配置，请检查日志。": "Cannot export shareable config. Check the log.",
+        "导入失败": "Import Fail",
+        "无法导入分享配置，文件可能已损坏或格式不正确。": (
+            "Cannot import shareable config. The file may be corrupted or in an incorrect format."
+        ),
+        "无法打开配置历史:\n{error}": "Cannot open config history:\n{error}",
+        "清除所有配置失败:\n{error}": "Failed to clear all config:\n{error}",
+        "警告": "Warn",
+        "自动重启失败，请手动重启应用。\n错误: {error}": (
+            "Auto-restart failed. Please restart the app manually.\nError: {error}"
+        ),
+        "启用失败": "Enable Fail",
+        "无法启用插件 {plugin_id}: {err}": "Cannot enable plugin {plugin_id}: {err}",
+        "已清除": "Cleared",
+        "插件 {plugin_id} 已解除隔离。": "Plugin {plugin_id} has been cleared.",
+        "无法清除插件 {plugin_id} 的隔离状态。": ("Cannot clear quarantine for plugin {plugin_id}."),
+        "错误详情": "Error Details",
+        "暂无错误记录。": "No error records.",
+        "插件 {plugin_id} 暂无错误记录。": "No error records for plugin {plugin_id}.",
+        "读取失败": "Read Fail",
+        "无法读取错误记录: {error}": "Cannot read error records: {error}",
+        "重载失败": "Reload Fail",
+        "无法重载插件 {plugin_id}: {err}": "Cannot reload plugin {plugin_id}: {err}",
+        "无法打开插件目录:\n{error}": "Cannot open plugin directory:\n{error}",
+        "删除成功": "Delete OK",
+        '插件 "{name}" 已被成功删除。': 'Plugin "{name}" has been deleted.',
+        "删除失败": "Delete Fail",
+        "删除插件文件失败:\n{error}": "Failed to delete plugin files:\n{error}",
+        "插件管理器未初始化！": "Plugin manager not initialized!",
+        "创建失败": "Create Fail",
+        "插件目录已存在: {plugin_id}": "Plugin directory already exists: {plugin_id}",
+        "新建成功": "Create OK",
+        '插件 "{name}" 模板已成功创建于 plugins/{plugin_id}/。\n即将打开该目录以供编辑。': (
+            'Plugin "{name}" template created at plugins/{plugin_id}/.\nOpening the directory for editing.'
+        ),
+        "新建开发插件失败:\n{error}": "Failed to create development plugin:\n{error}",
+        "安装失败": "Install Fail",
+        "无法安装插件:\n{error}": "Cannot install plugin:\n{error}",
+        "安装并启用成功": "Install & Enable OK",
+        '插件 "{name}" 已成功安装并启用。': 'Plugin "{name}" has been installed and enabled.',
+        "安装成功但启用失败": "Install OK but Enable Fail",
+        '插件 "{name}" 已安装，但启用失败:\n{error}': ('Plugin "{name}" installed but enable failed:\n{error}'),
+        "安装成功": "Install OK",
+        '插件 "{name}" 已安装，但尚未启用。': 'Plugin "{name}" installed but not enabled.',
+        "输入错误": "Input Error",
+        "插件ID不能为空！": "Plugin ID cannot be empty!",
+        "插件ID只能包含小写字母、数字、下划线 and 减号！": (
+            "Plugin ID can only contain lowercase letters, numbers, underscores and hyphens!"
+        ),
+        "已取消": "Cancelled",
+        "你取消了管理员授权，自启动未启用。": ("You cancelled admin authorization. Auto-start not enabled."),
+        "你取消了管理员授权，自启动保持原状。": ("You cancelled admin authorization. Auto-start unchanged."),
+        "禁用失败": "Disable Fail",
+        "helper 禁用开机自启失败，自启动保持原状。": ("Helper failed to disable auto-start. Keeping current state."),
+        "需要重启": "Restart Required",
+        "重新启用日志需要重启程序才能生效。": ("Re-enabling logging requires a restart to take effect."),
+        "无法启动: {name}\n\n原因: {error}": ("Cannot launch: {name}\n\nReason: {error}"),
+        "确认清空": "Confirm Clear",
+        "确定要清空所有日志内容吗？": "Are you sure you want to clear all log content?",
     }
 )
 

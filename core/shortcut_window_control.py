@@ -156,11 +156,8 @@ class WindowControlMixin:
                 logger.error(f"SetWindowPos 失败, 错误码: {error}")
                 return False
 
-        except Exception as e:
-            logger.error(f"设置置顶失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("设置窗口置顶失败")
             return False
 
     @staticmethod
@@ -223,9 +220,6 @@ class WindowControlMixin:
                 logger.error(f"SetWindowPos 失败, 错误码: {error}")
                 return False
 
-        except Exception as e:
-            logger.error(f"切换置顶失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("切换窗口置顶状态失败")
             return False

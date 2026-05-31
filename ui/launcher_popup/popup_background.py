@@ -180,8 +180,8 @@ class PopupBackgroundMixin:
         try:
             if self._pending_bg_params and self._pending_bg_params != params:
                 self._bg_load_timer.start(0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("启动背景加载定时器失败: %s", exc, exc_info=True)
 
     def _get_cached_bg_pixmap(self) -> QPixmap:
         """获取缓存的背景图片"""
@@ -207,8 +207,8 @@ class PopupBackgroundMixin:
             screen = QApplication.screenAt(self.pos())
             if screen:
                 dpr = screen.devicePixelRatio()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取设备像素比失败: %s", exc, exc_info=True)
 
         params = (
             path,
@@ -250,17 +250,17 @@ class PopupBackgroundMixin:
                             self._pending_bg_params = params
                             self._bg_load_timer.start(120)
                         return self._bg_cache
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as exc:
+                    logger.debug("获取全局背景缓存失败: %s", exc, exc_info=True)
+        except Exception as exc:
+            logger.debug("获取缓存背景图片失败: %s", exc, exc_info=True)
 
         try:
             if self._pending_bg_params != params or not self._bg_load_timer.isActive():
                 self._pending_bg_params = params
                 self._bg_load_timer.start(120)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("调度背景加载失败: %s", exc, exc_info=True)
         return None
 
     def _schedule_bg_load(self):
@@ -279,8 +279,8 @@ class PopupBackgroundMixin:
                 screen = QApplication.screenAt(self.pos())
                 if screen:
                     dpr = screen.devicePixelRatio()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取设备像素比失败: %s", exc, exc_info=True)
 
             params = (path, blur_radius, self.width(), self.height(), self._get_paint_corner_radius(), dpr)
             if self._pending_bg_params != params or not self._bg_load_timer.isActive():
@@ -296,8 +296,8 @@ class PopupBackgroundMixin:
         if self._is_loading_bg:
             try:
                 self._bg_load_timer.start(60)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("重启背景加载定时器失败: %s", exc, exc_info=True)
             return
 
         self._is_loading_bg = True

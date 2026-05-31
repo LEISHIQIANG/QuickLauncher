@@ -31,7 +31,7 @@ def _normalize_window_hwnd(hwnd) -> int:
                 break
             current = int(parent)
     except Exception:
-        pass
+        logger.debug("遍历父窗口句柄失败", exc_info=True)
     return int(current or 0)
 
 

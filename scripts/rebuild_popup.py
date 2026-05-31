@@ -368,7 +368,7 @@ from qt_compat import (
     QtCompat,
     QTimer,
 )
-from ui.launcher_popup.window_detection import _is_desktop_window, _is_explorer_like_window
+from core.window_detection import _is_desktop_window, _is_explorer_like_window
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +430,7 @@ from qt_compat import (
 )
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker
-from ui.launcher_popup.window_detection import _is_desktop_window, _is_explorer_like_window
+from core.window_detection import _is_desktop_window, _is_explorer_like_window
 
 logger = logging.getLogger(__name__)
 

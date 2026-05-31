@@ -50,7 +50,7 @@ class StartupMixin:
                     try:
                         last_cleaned_version = marker_file.read_text(encoding="utf-8").strip()
                     except Exception:
-                        pass
+                        logger.debug("读取图标缓存清理标记失败", exc_info=True)
 
                 if last_cleaned_version != APP_VERSION:
                     need_deep_clean = True

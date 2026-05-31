@@ -37,6 +37,7 @@ from PyQt5.QtGui import (
     QFont,
     QFontDatabase,
     QFontMetrics,
+    QGuiApplication,
     QIcon,
     QImage,
     QImageIOHandler,
@@ -45,8 +46,10 @@ from PyQt5.QtGui import (
     QLinearGradient,
     QPainter,
     QPainterPath,
+    QPalette,
     QPen,
     QPixmap,
+    QRadialGradient,
     QRegion,
     QTextCursor,
 )
@@ -54,6 +57,16 @@ from PyQt5.QtGui import (
     QTextOption as QTextOption,
 )
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
+
+try:
+    from PyQt5.QtSvg import QSvgRenderer
+except ImportError:
+    QSvgRenderer = None  # noqa: N814
+
+try:
+    from PyQt5.QtWinExtras import QtWin
+except ImportError:
+    QtWin = None  # noqa: N814
 from PyQt5.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -394,7 +407,7 @@ def setup_high_dpi():
             except Exception:
                 ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
-        pass
+        logger.debug("设置DPI感知失败", exc_info=True)
 
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
@@ -404,7 +417,7 @@ def setup_high_dpi():
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     except AttributeError:
-        pass
+        logger.debug("设置高DPI缩放属性失败", exc_info=True)
 
 
 def get_standard_icon(app, icon_name):
@@ -495,6 +508,7 @@ __all__ = [
     "QFont",
     "QFontMetrics",
     "QFontDatabase",
+    "QGuiApplication",
     "QKeySequence",
     "QDrag",
     "QCursor",
@@ -504,6 +518,8 @@ __all__ = [
     "QRegion",
     "QBitmap",
     "QLinearGradient",
+    "QPalette",
+    "QRadialGradient",
     "Qt",
     "QObject",
     "QTimer",
@@ -527,4 +543,6 @@ __all__ = [
     "QParallelAnimationGroup",
     "QLocalServer",
     "QLocalSocket",
+    "QSvgRenderer",
+    "QtWin",
 ]

@@ -1,11 +1,14 @@
 """Update notification UI helpers."""
 
 import html
+import logging
 import re
 
 from core.i18n import tr
 from services.update.config import UpdateInfo
 from ui.styles.themed_messagebox import ThemedMessageBox
+
+logger = logging.getLogger(__name__)
 
 
 def _markdown_to_html(md: str, theme: str = "dark") -> str:
@@ -206,8 +209,8 @@ class UpdateDialog:
         elif parent and hasattr(parent, "data_manager"):
             try:
                 theme = parent.data_manager.get_settings().theme
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取父窗口主题失败: %s", exc, exc_info=True)
 
         dialog = QDialog(parent)
         dialog.setWindowTitle(tr("发现更新"))
@@ -402,8 +405,8 @@ class UpdateDialog:
                     if w > 0 and h > 0:
                         effect.set_window_region(hwnd, w, h, corner_radius)
                 enable_acrylic_for_config_window(dialog, theme, blur_amount=30, radius=corner_radius)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
         def done_result(result):
             dialog._dialog_finished = True
@@ -412,8 +415,8 @@ class UpdateDialog:
                 if anim is not None:
                     try:
                         anim.stop()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("停止动画失败: %s", exc, exc_info=True)
             QDialog.done(dialog, result)
 
         dialog.done = done_result

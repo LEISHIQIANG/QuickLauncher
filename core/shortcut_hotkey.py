@@ -414,8 +414,8 @@ class HotkeyExecutionMixin:
             logger.error(f"强制释放修饰键失败: {e}")
         try:
             ShortcutExecutor._release_modifiers_strong()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("强制释放修饰键调用失败: %s", exc, exc_info=True)
 
     @staticmethod
     def _force_release_key(key: str):
@@ -467,8 +467,8 @@ class HotkeyExecutionMixin:
                 state = user32.GetAsyncKeyState(vk)
                 if (state & 0x8000) != 0:
                     stuck_keys.append((vk, name))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("检测修饰键状态失败: %s", exc, exc_info=True)
 
         # 如果有卡住的键，尝试释放
         if stuck_keys:
@@ -485,8 +485,8 @@ class HotkeyExecutionMixin:
                             flags |= KEYEVENTF_EXTENDEDKEY
                         user32.keybd_event(vk, 0, flags, 0)
                         time.sleep(0.002)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("keybd_event释放修饰键失败: %s", exc, exc_info=True)
 
                     # 检查是否已释放
                     try:
@@ -494,32 +494,32 @@ class HotkeyExecutionMixin:
                         if (state & 0x8000) == 0:
                             released = True
                             break
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("检查修饰键释放状态失败: %s", exc, exc_info=True)
 
                 # 尝试方法2: _release_vk_strong
                 if not released:
                     try:
                         ShortcutExecutor._release_vk_strong(vk)
                         time.sleep(0.005)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("强力释放修饰键失败: %s", exc, exc_info=True)
 
                     # 再次检查
                     try:
                         state = user32.GetAsyncKeyState(vk)
                         if (state & 0x8000) == 0:
                             released = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("再次检查修饰键释放状态失败: %s", exc, exc_info=True)
 
                 # 尝试方法3: SendInput（使用模块级结构）
                 if not released:
                     try:
                         ShortcutExecutor._sendinput_key_event(vk, True)
                         time.sleep(0.002)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("SendInput释放修饰键失败: %s", exc, exc_info=True)
 
                 if released:
                     logger.debug(f"成功释放修饰键: {name}")
@@ -566,8 +566,8 @@ class HotkeyExecutionMixin:
                 if ShortcutExecutor._is_extended_vk(vk):
                     flags |= KEYEVENTF_EXTENDEDKEY
                 user32.keybd_event(vk, 0, flags, 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("预执行清理keybd_event释放失败: %s", exc, exc_info=True)
 
         time.sleep(0.015)
 
@@ -575,8 +575,8 @@ class HotkeyExecutionMixin:
         for vk in all_modifier_vks:
             try:
                 ShortcutExecutor._sendinput_key_event(vk, True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("预执行清理SendInput释放失败: %s", exc, exc_info=True)
 
         time.sleep(0.015)
 
@@ -587,8 +587,8 @@ class HotkeyExecutionMixin:
                 try:
                     if (user32.GetAsyncKeyState(vk) & 0x8000) != 0:
                         still_stuck.append(vk)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("预执行检测残留按键状态失败: %s", exc, exc_info=True)
 
             if not still_stuck:
                 break
@@ -598,8 +598,8 @@ class HotkeyExecutionMixin:
                 try:
                     ShortcutExecutor._release_vk_strong(vk)
                     time.sleep(0.003)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("预执行强力释放残留按键失败: %s", exc, exc_info=True)
 
             time.sleep(0.020)
 
@@ -739,7 +739,7 @@ class HotkeyExecutionMixin:
                         user32.keybd_event(vk, 0, 0x0002, 0)
                         time.sleep(0.005)
                 except Exception:
-                    pass
+                    logger.debug("释放Alt键失败", exc_info=True)
 
             logger.info(f"[pynput] 快捷键发送完成: {shortcut.hotkey}")
             return True
@@ -750,8 +750,8 @@ class HotkeyExecutionMixin:
             for k in reversed(pressed_keys):
                 try:
                     keyboard().release(k)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("pynput释放按键失败: %s", exc, exc_info=True)
             return False
 
     @staticmethod
@@ -828,12 +828,12 @@ class HotkeyExecutionMixin:
                 try:
                     if (user32.GetAsyncKeyState(vk) & 0x8000) != 0:
                         ShortcutExecutor._release_vk_strong(vk)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("ctypes释放残留修饰键失败: %s", exc, exc_info=True)
 
             # 额外调用全面验证释放
             time.sleep(0.010)
             try:
                 ShortcutExecutor._verify_and_release_all_modifiers()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("最终验证释放修饰键失败: %s", exc, exc_info=True)

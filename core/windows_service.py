@@ -60,8 +60,8 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
         if self.main_process:
             try:
                 self.main_process.terminate()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("终止主进程失败: %s", exc, exc_info=True)
 
     def SvcDoRun(self):
         servicemanager.LogMsg(
@@ -90,8 +90,8 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
                 match = re.search(r'([A-Za-z]:[^"]+QuickLauncher\.exe)', image_path)
                 if match:
                     exe_path = match.group(1)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("从服务注册表读取路径失败: %s", exc, exc_info=True)
 
         # 降级方案1：从安装注册表获取
         if not exe_path:
@@ -105,8 +105,8 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
                 install_path, _ = winreg.QueryValueEx(key, "InstallLocation")
                 winreg.CloseKey(key)
                 exe_path = os.path.join(install_path, "QuickLauncher.exe")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("从安装注册表获取路径失败: %s", exc, exc_info=True)
 
         # 降级方案2：使用 exe 同目录
         if not exe_path:
@@ -128,8 +128,8 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
                 if "explorer.exe" in result.stdout:
                     time.sleep(2)  # 等待桌面加载
                     break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("检查explorer进程失败: %s", exc, exc_info=True)
             time.sleep(1)
 
         # 启动主程序（以当前登录用户身份）
@@ -172,8 +172,8 @@ def install_service():
             )
             try:
                 win32service.ChangeServiceConfig2(hs, win32service.SERVICE_CONFIG_DESCRIPTION, SERVICE_DESCRIPTION)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置服务描述失败: %s", exc, exc_info=True)
             win32service.CloseServiceHandle(hs)
         finally:
             win32service.CloseServiceHandle(scm)

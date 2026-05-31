@@ -18,7 +18,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from qt_compat import QThread, pyqtSignal
-from ui.launcher_popup.window_detection import (
+from core.window_detection import (
     _normalize_window_hwnd,
     _is_desktop_window,
     _window_from_point,
@@ -302,8 +302,8 @@ def get_selected_files_for_process() -> list[str]:
                 files = getattr(widget, "_selected_files", None)
                 if files:
                     return list(files)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("从弹窗获取选中文件失败: %s", exc, exc_info=True)
 
     if not HAS_WIN32_SHELL:
         return []
@@ -341,6 +341,6 @@ def get_selected_files_for_process() -> list[str]:
                     continue
         finally:
             pythoncom.CoUninitialize()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("通过COM获取选中文件失败: %s", exc, exc_info=True)
     return []

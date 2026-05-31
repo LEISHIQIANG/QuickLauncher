@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 CONFIG_WINDOW_COMMANDS = {"show_config", "show_config_window", "config_window"}
 TOPMOST_TOGGLE_COMMANDS = {"topmost", "置顶", "pin", "toggle_topmost"}
 TOPMOST_ON_COMMANDS = {"topmost_on", "置顶开", "pin_on"}
@@ -251,8 +255,8 @@ def canonical_builtin_command(command: str) -> str:
                 if cmd_def is not None and isinstance(cmd_def.handler, _CallbackHandler):
                     return cmd_def.handler._callback_name
                 return canonical
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("获取规范命令名失败: %s", exc, exc_info=True)
 
     val = BUILTIN_COMMAND_ALIASES.get(clean_cmd.lower())
     if val:
@@ -278,8 +282,8 @@ def canonical_builtin_command(command: str) -> str:
                 if cmd_def is not None and isinstance(cmd_def.handler, _CallbackHandler):
                     return cmd_def.handler._callback_name
                 return canonical
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("获取规范命令名失败: %s", exc, exc_info=True)
     return BUILTIN_COMMAND_ALIASES.get(cmd_name.lower(), "") or SIMPLE_WINDOWS_SYSTEM_COMMAND_ALIASES.get(
         cmd_name.lower(), ""
     )

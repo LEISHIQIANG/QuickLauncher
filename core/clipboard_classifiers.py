@@ -9,12 +9,15 @@ Priority rules:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .clipboard_service import ClipboardClassification, ClipboardSnapshot
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ── Constants ─────────────────────────────────────────────────────────────
@@ -275,7 +278,7 @@ def _make_summary(text: str, kind: str) -> str:
             elif isinstance(parsed, list):
                 return f"JSON array: {len(parsed)} items"
         except Exception:
-            pass
+            logger.debug("解析JSON内容失败", exc_info=True)
         return f"JSON: {len(text)} chars"
     elif kind == "jwt":
         parts = text.split(".")

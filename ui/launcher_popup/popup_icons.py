@@ -97,8 +97,8 @@ class PopupIconMixin:
                 if cached is not None:
                     self._icon_pixmap_cache.move_to_end(cache_key)
                     return cached
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("从缓存获取图标失败: %s", exc, exc_info=True)
 
         return None
 
@@ -139,8 +139,8 @@ class PopupIconMixin:
             if _should_invert_icon is not None:
                 current_theme = getattr(self.settings, "theme", "dark") if hasattr(self, "settings") else "dark"
                 need_invert = _should_invert_icon(item, current_theme)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("检查图标反转失败: %s", exc, exc_info=True)
 
         if getattr(self, "_suspend_icon_extraction", False):
             cached = self._get_cached_icon_for_animation(item, need_invert)

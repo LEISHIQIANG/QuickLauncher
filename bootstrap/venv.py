@@ -1,6 +1,9 @@
+import logging
 import os
 import subprocess
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def _is_working_python(exe_path: str) -> bool:
@@ -34,7 +37,7 @@ def maybe_reexec_in_venv(root_dir: str):
                 if hasattr(builtins, "__compiled__"):
                     is_compiled = True
             except Exception:
-                pass
+                logger.debug("检测编译状态失败", exc_info=True)
 
         if is_compiled:
             return

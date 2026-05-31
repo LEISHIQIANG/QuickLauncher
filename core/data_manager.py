@@ -96,15 +96,15 @@ class DataManager:
             from .event_log import init_event_log
 
             init_event_log(self.app_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("初始化事件日志失败: %s", exc, exc_info=True)
         # Initialize search history with data directory for persistence
         try:
             from .search_history import set_search_history_data_dir
 
             set_search_history_data_dir(self.app_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("初始化搜索历史数据目录失败: %s", exc, exc_info=True)
         self._max_history_snapshots = 20
 
         from .config_migrator import ConfigMigrator
@@ -308,8 +308,8 @@ class DataManager:
     def _strip_icon_repo_runtime_source(item: ShortcutItem) -> ShortcutItem:
         try:
             delattr(item, "_icon_repo_source")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("删除运行时属性失败: %s", exc, exc_info=True)
         return item
 
     def _write_icon_repo_items(self, items: list[ShortcutItem]) -> bool:
@@ -330,8 +330,8 @@ class DataManager:
             try:
                 if temp_file.exists():
                     temp_file.unlink()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清理临时文件失败: %s", exc, exc_info=True)
             return False
 
     def save_icon_repo(self) -> bool:
@@ -1234,8 +1234,8 @@ class DataManager:
                             seen_hashes[file_hash] = file_path_str
                     else:
                         seen_hashes[file_hash] = file_path_str
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("计算文件哈希失败: %s", exc, exc_info=True)
 
             if should_delete:
                 stats["total_removed"] += 1
@@ -1325,7 +1325,7 @@ class DataManager:
                 winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
                 cache_info["registry_keys"].append(key_path)
             except OSError:
-                pass
+                logger.debug("打开注册表键失败: %s", key_path, exc_info=True)
 
         return cache_info
 
@@ -1359,8 +1359,8 @@ class DataManager:
                 if callback:
                     try:
                         callback(msg, progress)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("回调函数执行失败: %s", exc, exc_info=True)
                 logger.info(msg)
 
             report("Resetting startup registry entry...", 0.1)
@@ -1372,7 +1372,7 @@ class DataManager:
                     winreg.DeleteValue(reg_key, "QuickLauncher")
                     stats["registry_keys_removed"] += 1
                 except OSError:
-                    pass
+                    logger.debug("删除注册表启动项失败", exc_info=True)
                 winreg.CloseKey(reg_key)
             except Exception as e:
                 stats["errors"].append(f"Factory reset step failed: {e}")
@@ -1725,7 +1725,7 @@ class DataManager:
                                         try:
                                             os.remove(tmp_path)
                                         except OSError:
-                                            pass
+                                            logger.debug("删除临时图标文件失败: %s", tmp_path, exc_info=True)
                             else:
                                 zf.write(orig_path, f"icons/{new_name}")
                         except Exception as e:

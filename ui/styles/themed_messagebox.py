@@ -64,7 +64,7 @@ def _execute_native_message_box(parent, title, text, icon_type, buttons) -> int:
     res = 1024  # Default/None
     try:
         # logger.debug("[消息框追踪] 步骤 2: 准备启动 QMessageBox...")
-        from PyQt5.QtWidgets import QMessageBox
+        from qt_compat import QMessageBox
 
         msg_box = QMessageBox(parent)
         msg_box.setWindowTitle(title or "提示")
@@ -322,16 +322,16 @@ class ThemedMessageBox(QDialog):
                         theme = parent.data_manager.get_settings().theme
                         break
                     parent = parent.parent() if hasattr(parent, "parent") else None
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("从父窗口获取主题失败: %s", exc, exc_info=True)
         if theme == "dark" and not self.parent():
             try:
                 from core import DataManager
 
                 dm = DataManager()
                 theme = dm.get_settings().theme
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("从DataManager获取主题失败: %s", exc, exc_info=True)
         return theme
 
     def _apply_theme(self):
@@ -444,8 +444,8 @@ class ThemedMessageBox(QDialog):
                     effect.set_window_region(hwnd, w, h, self.corner_radius)
 
             enable_acrylic_for_config_window(self, self._theme, blur_amount=30, radius=self.corner_radius)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
     def done(self, result):
         self._dialog_finished = True
@@ -454,52 +454,72 @@ class ThemedMessageBox(QDialog):
             if anim is not None:
                 try:
                     anim.stop()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("停止动画失败: %s", exc, exc_info=True)
         super().done(result)
 
     @staticmethod
-    def information(parent, title, text, max_width=None):
-        """显示信息消息框 - 原生 Windows 风格"""
-        from PyQt5.QtWidgets import QMessageBox
+    def _exec_with_hook_pause(dialog):
+        """在鼠标钩子暂停状态下执行对话框，防止误触"""
+        _global_mouse_hook = None
+        try:
+            from ui.utils.safe_file_dialog import _global_mouse_hook as _gmh
+            _global_mouse_hook = _gmh
+        except ImportError:
+            pass
+        mouse_hook_paused = False
+        if _global_mouse_hook:
+            try:
+                _global_mouse_hook.set_paused(True)
+                mouse_hook_paused = True
+            except Exception:
+                pass
+        try:
+            dialog.exec_()
+        finally:
+            if _global_mouse_hook and mouse_hook_paused:
+                try:
+                    _global_mouse_hook.set_paused(False)
+                except Exception:
+                    pass
+        return dialog.result()
 
-        _execute_native_message_box(parent, title or "信息", text, "info", QMessageBox.Ok)
+    @staticmethod
+    def information(parent, title, text, max_width=None):
+        """显示信息消息框 - 主题化样式"""
+        dialog = ThemedMessageBox(parent, ThemedMessageBox.Information, title or "信息", text, ThemedMessageBox.Ok)
+        if max_width:
+            dialog.setMaximumWidth(max_width)
+        ThemedMessageBox._exec_with_hook_pause(dialog)
         return ThemedMessageBox.Ok
 
     @staticmethod
     def question(parent, title, text, buttons=None, icon_type=None):
-        """显示询问消息框 - 原生 Windows 风格"""
-        from PyQt5.QtWidgets import QMessageBox
-
-        # 兼容旧版的 signature: question(parent, title, message, theme="dark") -> bool
-        is_legacy = False
-        if isinstance(buttons, str):
-            is_legacy = True
-            buttons = None
-
-        if buttons is None:
-            buttons = QMessageBox.Yes | QMessageBox.No
-
-        res = _execute_native_message_box(parent, title or "询问", text, "question", buttons)
-
+        """显示询问消息框 - 主题化样式"""
+        is_legacy = isinstance(buttons, str)
         if is_legacy:
-            return res == QMessageBox.Yes
-        return res
+            buttons = None
+        if buttons is None:
+            buttons = ThemedMessageBox.Yes | ThemedMessageBox.No
+        icon = ThemedMessageBox.Question if icon_type is None else icon_type
+        dialog = ThemedMessageBox(parent, icon, title or "询问", text, buttons)
+        result = ThemedMessageBox._exec_with_hook_pause(dialog)
+        if is_legacy:
+            return result == ThemedMessageBox.Yes
+        return result
 
     @staticmethod
     def warning(parent, title, text):
-        """显示警告消息框 - 原生 Windows 风格"""
-        from PyQt5.QtWidgets import QMessageBox
-
-        _execute_native_message_box(parent, title or "警告", text, "warning", QMessageBox.Ok)
+        """显示警告消息框 - 主题化样式"""
+        dialog = ThemedMessageBox(parent, ThemedMessageBox.Warning, title or "警告", text, ThemedMessageBox.Ok)
+        ThemedMessageBox._exec_with_hook_pause(dialog)
         return ThemedMessageBox.Ok
 
     @staticmethod
     def critical(parent, title, text):
-        """显示错误消息框 - 原生 Windows 风格"""
-        from PyQt5.QtWidgets import QMessageBox
-
-        _execute_native_message_box(parent, title or "错误", text, "critical", QMessageBox.Ok)
+        """显示错误消息框 - 主题化样式"""
+        dialog = ThemedMessageBox(parent, ThemedMessageBox.Critical, title or "错误", text, ThemedMessageBox.Ok)
+        ThemedMessageBox._exec_with_hook_pause(dialog)
         return ThemedMessageBox.Ok
 
 
@@ -697,8 +717,8 @@ class ThemedInputDialog(QDialog):
                     effect.set_window_region(hwnd, w, h, self.corner_radius)
 
             enable_acrylic_for_config_window(self, self._theme, blur_amount=30, radius=self.corner_radius)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
     def done(self, result):
         self._dialog_finished = True
@@ -707,8 +727,8 @@ class ThemedInputDialog(QDialog):
             if anim is not None:
                 try:
                     anim.stop()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("停止动画失败: %s", exc, exc_info=True)
         super().done(result)
 
     @staticmethod

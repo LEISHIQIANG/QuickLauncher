@@ -3,8 +3,11 @@
 import ast
 import os
 
+import pytest
+
 from qt_compat import QPoint
 
+pytestmark = pytest.mark.ui
 # List of allowed variable names or patterns that can call .isActive()
 ALLOWED_ISACTIVE_CALLERS = {
     "painter",

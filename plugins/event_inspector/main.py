@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
 
 from core.command_registry import CommandAction, CommandResult
+
+logger = logging.getLogger(__name__)
 
 LOG_TYPES = ("System", "Application")
 HOURS_BACK = 24
@@ -153,7 +156,7 @@ def _try_win32evtlog(log_name: str, hours_back: int, max_events: int) -> list[di
         try:
             win32evtlog.CloseEventLog(hand)
         except Exception:
-            pass
+            logger.debug("关闭事件日志句柄失败", exc_info=True)
 
     return events
 

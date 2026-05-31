@@ -46,8 +46,7 @@ class DragDropListWidget(QListWidget):
         self._initial_drag_row = -1
 
         # Transparent background and zero focus outlines
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QListWidget {
                 background: transparent;
                 border: none;
@@ -66,8 +65,7 @@ class DragDropListWidget(QListWidget):
             QListWidget::item:selected {
                 background: transparent;
             }
-        """
-        )
+        """)
 
     def startDrag(self, supported_actions):
         item = self.currentItem()
@@ -129,8 +127,8 @@ class DragDropListWidget(QListWidget):
             # If the drag was cancelled or finished, restore full opacity
             try:
                 widget.setGraphicsEffect(None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
             # ALWAYS trigger the drag-finished callback to cleanly refresh the entire UI list and prevent disappearing widgets!
             if self.on_drag_finished_callback:
@@ -174,7 +172,7 @@ class DragDropListWidget(QListWidget):
                     if w:
                         old_positions[id(it)] = w.pos()
                 except RuntimeError:
-                    pass
+                    logger.debug("拖拽时获取列表项控件位置失败", exc_info=True)
 
             try:
                 widget = self.itemWidget(source_item)
@@ -192,14 +190,14 @@ class DragDropListWidget(QListWidget):
 
                 if widget:
                     self.setItemWidget(source_item, widget)
-                    # Force set size hint of the item to invalidate list layout cache on the first swap!
+                    # Force set size hint of the item to invalidate layout cache on the first swap!
                     widget_size = widget.sizeHint()
                     widget_size.setHeight(widget_size.height() + 4)
                     source_item.setSizeHint(widget_size)
                     widget.show()  # Ensure visible inside viewport!
                 self.setCurrentItem(source_item)
             except RuntimeError:
-                pass
+                logger.debug("拖拽重排序列表项失败", exc_info=True)
             finally:
                 self.blockSignals(False)
 
@@ -233,7 +231,7 @@ class DragDropListWidget(QListWidget):
                             w._pos_anim = anim
                             anim.start()
                     except RuntimeError:
-                        pass
+                        logger.debug("拖拽移动时启动位置动画失败", exc_info=True)
 
     def dragLeaveEvent(self, event):
         # If drag left, restore position to initial row
@@ -249,7 +247,30 @@ class DragDropListWidget(QListWidget):
                         if w:
                             old_positions[id(it)] = w.pos()
                     except RuntimeError:
-                        pass
+                        logger.debug("拖拽离开时获取列表项控件位置失败", exc_info=True)
+
+                try:
+                    widget = self.itemWidget(source_item)
+                except RuntimeError:
+                    widget = None
+
+                self.blockSignals(True)
+                try:
+                    if widget:
+                        self.removeItemWidget(source_item)
+
+                    self.takeItem(current_row)
+                    self.insertItem(self._initial_drag_row, source_item)
+                    if widget:
+                        self.setItemWidget(source_item, widget)
+                        # Force set size hint of the item to invalidate layout cache on the first swap!
+                        widget_size = widget.sizeHint()
+                        widget_size.setHeight(widget_size.height() + 4)
+                        source_item.setSizeHint(widget_size)
+                        widget.show()  # Ensure visible inside viewport!
+                    self.setCurrentItem(source_item)
+                except RuntimeError:
+                    logger.debug("拖拽离开时恢复列表项位置失败", exc_info=True)
 
                 try:
                     widget = self.itemWidget(source_item)
@@ -272,7 +293,7 @@ class DragDropListWidget(QListWidget):
                         widget.show()  # Ensure visible inside viewport!
                     self.setCurrentItem(source_item)
                 except RuntimeError:
-                    pass
+                    logger.debug("拖拽时设置当前项失败", exc_info=True)
                 finally:
                     self.blockSignals(False)
 
@@ -302,7 +323,7 @@ class DragDropListWidget(QListWidget):
                                 w._pos_anim = anim
                                 anim.start()
                         except RuntimeError:
-                            pass
+                            logger.debug("拖拽离开时启动位置动画失败", exc_info=True)
         super().dragLeaveEvent(event)
 
     def dropEvent(self, event):
@@ -322,8 +343,8 @@ class DragDropListWidget(QListWidget):
         if widget:
             try:
                 widget.setGraphicsEffect(None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
         event.ignore()  # Prevent default Qt drop widget destruction behavior
 
@@ -346,14 +367,12 @@ class SettingsCommandsPageMixin:
         fav_desc.setObjectName("fav_desc")
         fav_desc.setWordWrap(True)
         fav_desc.setMinimumWidth(0)
-        fav_desc.setStyleSheet(
-            f"""
+        fav_desc.setStyleSheet(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """
-        )
+        """)
         layout2.addWidget(fav_desc)
 
         # Drag & Drop list widget for favorite commands
@@ -369,14 +388,12 @@ class SettingsCommandsPageMixin:
 
         # Placeholder label when no favorites are present
         self.fav_placeholder_lbl = QLabel(tr("暂未收藏任何命令"))
-        self.fav_placeholder_lbl.setStyleSheet(
-            f"""
+        self.fav_placeholder_lbl.setStyleSheet(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             font-style: italic;
             padding: 4px;
-        """
-        )
+        """)
         layout2.addWidget(self.fav_placeholder_lbl)
 
         # ── Disabled builtin commands ──
@@ -386,14 +403,12 @@ class SettingsCommandsPageMixin:
         disable_desc.setObjectName("disable_desc")
         disable_desc.setWordWrap(True)
         disable_desc.setMinimumWidth(0)
-        disable_desc.setStyleSheet(
-            f"""
+        disable_desc.setStyleSheet(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """
-        )
+        """)
         layout3.addWidget(disable_desc)
 
         # Search filter for built-in commands
@@ -464,7 +479,7 @@ class SettingsCommandsPageMixin:
                             w._pos_anim.stop()
                             w._pos_anim = None
                     except RuntimeError:
-                        pass
+                        logger.debug("刷新时停止收藏项位置动画失败", exc_info=True)
 
             # 1. Favorites List Rebuild (Recreated because it's small and dynamic in size/order)
             self.fav_list_widget.clear()
@@ -722,8 +737,8 @@ class SettingsCommandsPageMixin:
                 fav_btn.setText(tr("取消收藏") if is_fav else tr("收藏"))
                 try:
                     fav_btn.clicked.disconnect()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("断开收藏按钮信号失败: %s", exc, exc_info=True)
                 if is_fav:
                     fav_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_unfavorite_command(cid))
                 else:
@@ -733,8 +748,8 @@ class SettingsCommandsPageMixin:
                 toggle_btn.setText(tr("启用") if is_disabled else tr("禁用"))
                 try:
                     toggle_btn.clicked.disconnect()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("断开启用按钮信号失败: %s", exc, exc_info=True)
                 if is_disabled:
                     toggle_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_toggle_builtin_command(cid, True))
                 else:
@@ -776,8 +791,8 @@ class SettingsCommandsPageMixin:
                 continue
             try:
                 timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止定时器失败: %s", exc, exc_info=True)
 
     def _on_unfavorite_command(self, cmd_id):
         try:

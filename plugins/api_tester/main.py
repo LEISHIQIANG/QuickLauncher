@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.error
 import urllib.parse
@@ -11,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 
 from core.command_registry import CommandAction, CommandResult
+
+logger = logging.getLogger(__name__)
 
 HISTORY_MAX = 30
 REQUEST_TIMEOUT = 8
@@ -71,14 +74,15 @@ def _format_body(body: bytes, content_type: str) -> str:
             parsed = json.loads(text)
             return json.dumps(parsed, ensure_ascii=False, indent=2)
         except json.JSONDecodeError:
-            pass
+            logger.debug("解析JSON响应失败", exc_info=True)
     elif "xml" in content_type or "html" in content_type:
         try:
             import xml.dom.minidom
 
             dom = xml.dom.minidom.parseString(text)
             return dom.toprettyxml(indent="  ")
-        except Exception:
+        except Exception as exc:
+            logger.debug("格式化XML/HTML响应失败: %s", exc, exc_info=True)
             pass
     return text[:MAX_RESPONSE_SIZE]
 
@@ -185,8 +189,8 @@ def _handle_request(context, method: str, data_dir: str) -> CommandResult:
             }
         )
         _save_history(data_dir, hist)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("保存请求历史失败: %s", exc, exc_info=True)
 
     return CommandResult(
         success=True,

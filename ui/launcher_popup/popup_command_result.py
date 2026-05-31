@@ -122,8 +122,8 @@ class ResultTextEdit(QTextEdit):
         theme = "dark"
         try:
             theme = getattr(self.launcher.settings, "theme", "dark")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主题设置失败: %s", exc, exc_info=True)
 
         has_text = bool(self.toPlainText())
         has_selection = self.textCursor().hasSelection()
@@ -280,8 +280,8 @@ class PopupCommandResultMixin:
                 fmt.setTopMargin(0)
                 fmt.setBottomMargin(0)
                 te.document().rootFrame().setFrameFormat(fmt)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置文档框架格式失败: %s", exc, exc_info=True)
 
             # Apply styling directly to the vertical scrollbar child widget for bulletproof styling propagation
             te.verticalScrollBar().setStyleSheet(
@@ -305,8 +305,8 @@ class PopupCommandResultMixin:
                 f"  background: none;"
                 f"}}"
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置滚动条样式失败: %s", exc, exc_info=True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -355,12 +355,12 @@ class PopupCommandResultMixin:
         try:
             if hide_timer is not None and hide_timer.isActive():
                 hide_timer.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("停止隐藏定时器失败: %s", exc, exc_info=True)
         try:
             self.update()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新窗口失败: %s", exc, exc_info=True)
         return True
 
     def clear_command_result(self):
@@ -374,12 +374,12 @@ class PopupCommandResultMixin:
         if result_text_edit is not None:
             try:
                 result_text_edit.hide()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("隐藏结果文本框失败: %s", exc, exc_info=True)
         try:
             self.setFocus()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置焦点失败: %s", exc, exc_info=True)
         self.update()
 
     def has_command_result(self):
@@ -430,7 +430,7 @@ class PopupCommandResultMixin:
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family, 8)
-        from PyQt5.QtGui import QFontMetrics
+        from qt_compat import QFontMetrics
 
         fm = QFontMetrics(font)
         text_w = fm.horizontalAdvance("关闭") if hasattr(fm, "horizontalAdvance") else fm.width("关闭")
@@ -454,7 +454,7 @@ class PopupCommandResultMixin:
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family, 8)
-        from PyQt5.QtGui import QFontMetrics
+        from qt_compat import QFontMetrics
 
         fm = QFontMetrics(font)
 
@@ -511,8 +511,8 @@ class PopupCommandResultMixin:
 
         try:
             self.setCursor(Qt.PointingHandCursor if hover is not None else QtCompat.ArrowCursor)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置光标失败: %s", exc, exc_info=True)
         return hover
 
     def clear_result_button_feedback(self):
@@ -677,8 +677,8 @@ class PopupCommandResultMixin:
 
             if data_manager is not None:
                 return self._command_id in data_manager.get_settings().favorite_commands
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("检查收藏状态失败: %s", exc, exc_info=True)
         return False
 
     def _star_rect(self, card_rect):
@@ -735,8 +735,8 @@ class PopupCommandResultMixin:
                     painter.setBrush(swatch_color)
                     painter.setPen(QtCompat.NoPen)
                     painter.drawRoundedRect(swatch_rect, 6, 6)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("绘制颜色色块失败: %s", exc, exc_info=True)
 
         # Table display
         table_top = card_y + 16

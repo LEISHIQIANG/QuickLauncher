@@ -3,18 +3,19 @@
 import logging
 import random
 
-from PyQt5.QtCore import QEasingCurve, Qt  # 引入核心 Qt 常量与缓动曲线
-from PyQt5.QtGui import QLinearGradient, QRadialGradient
-from PyQt5.QtWidgets import QGraphicsOpacityEffect
+from qt_compat import QRadialGradient
 
 from core.i18n import tr
 from qt_compat import (
     QBrush,
     QColor,
+    QEasingCurve,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
@@ -24,6 +25,7 @@ from qt_compat import (
     QPushButton,
     QRect,
     QRectF,
+    Qt,
     QtCompat,
     QTimer,
     QVBoxLayout,
@@ -771,15 +773,13 @@ class SettingsSupportPageMixin:
         if hasattr(self, "_qr_container"):
             card_bg = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
             card_border = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
-            self._qr_container.setStyleSheet(
-                f"""
+            self._qr_container.setStyleSheet(f"""
                 QFrame#QRContainer {{
                     background-color: {card_bg};
                     border: 1px solid {card_border};
                     border-radius: 16px;
                 }}
-            """
-            )
+            """)
 
             # 动态应用精致的、独立于全局 Compact 按钮的高对比度微章按钮样式表
             if theme == "dark":

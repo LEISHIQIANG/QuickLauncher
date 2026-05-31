@@ -58,8 +58,8 @@ class HotkeyManager(QObject):
         if self._dll:
             try:
                 self._dll.clear_hotkey()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清除DLL热键失败: %s", exc, exc_info=True)
         self._is_running = False
 
     def _normalize_hotkey(self, hotkey_str: str) -> str:
@@ -213,12 +213,9 @@ class HotkeyManager(QObject):
             try:
                 self._dll.clear_hotkey()
             except Exception:
-                pass
-        except Exception as e:
-            logger.error(f"DLL hook failed: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+                logger.debug("清除DLL热键失败", exc_info=True)
+        except Exception:
+            logger.exception("DLL钩子设置热键失败")
 
         return False
 
@@ -248,8 +245,8 @@ class HotkeyManager(QObject):
                     timer.timeout.connect(lambda: self._dispatch_timer.start() if self._dispatch_timer else None)
                     timer.start(0)
                     return
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("跨线程调度QTimer失败: %s", exc, exc_info=True)
             logger.warning("无法跨线程调度 QTimer.start，热键激活可能延迟")
         except Exception:
             return
@@ -269,5 +266,5 @@ class HotkeyManager(QObject):
         try:
             self.activated.emit()
             # 不自动释放修饰键，避免干扰
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("发送热键激活信号失败: %s", exc, exc_info=True)

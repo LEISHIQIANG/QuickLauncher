@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from core import APP_VERSION
+from core.i18n import tr
 from qt_compat import QLabel
 from ui.themed_tool_window import ThemedToolWindow
 from ui.utils.font_manager import get_qfont
@@ -63,7 +64,7 @@ class AboutWindow(ThemedToolWindow):
     """纯文本关于窗口，无图标，无滚动条，无底框，高度自适应。"""
 
     def __init__(self, theme: str = "light", parent=None):
-        super().__init__("关于 QuickLauncher", theme=theme, parent=parent)
+        super().__init__(tr("关于 QuickLauncher"), theme=theme, parent=parent)
         self.setFixedWidth(560)
         self.setMinimumWidth(400)
         self.root_layout.setContentsMargins(12, 0, 0, 12)
@@ -82,18 +83,18 @@ class AboutWindow(ThemedToolWindow):
         title.setFont(get_qfont(14, 400))
         self.content_layout.addWidget(title)
 
-        version = QLabel(f"版本 {APP_VERSION}")
+        version = QLabel(tr("版本 {version}", version=APP_VERSION))
         version.setObjectName("about_version")
         version.setFont(get_qfont(12, 400))
         self.content_layout.addWidget(version)
 
         for section_title, body in _ABOUT_SECTIONS:
-            hdr = QLabel(section_title)
+            hdr = QLabel(tr(section_title))
             hdr.setObjectName("about_section")
             hdr.setFont(get_qfont(12, 400))
             self.content_layout.addWidget(hdr)
 
-            body_label = QLabel(body)
+            body_label = QLabel(tr(body))
             body_label.setObjectName("about_body")
             body_label.setWordWrap(True)
             body_label.setFont(get_qfont(12, 400))

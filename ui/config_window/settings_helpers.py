@@ -2,6 +2,8 @@
 设置面板 - 精确布局版本
 """
 
+import logging
+
 from qt_compat import (
     QBrush,
     QCheckBox,
@@ -26,6 +28,8 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.utils.window_effect import get_window_effect
+
+logger = logging.getLogger(__name__)
 
 
 class ExportThread(QThread):
@@ -83,8 +87,8 @@ class NumberedListDelegate(QStyledItemDelegate):
                         theme = p.data_manager.get_settings().theme
                         break
                     p = p.parent()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取父窗口主题失败: %s", exc, exc_info=True)
 
             is_selected = bool(option.state & QtCompat.State_Selected)
             is_hover = bool(option.state & QtCompat.State_MouseOver)
@@ -289,8 +293,8 @@ class ProgressDialog(QDialog):
                     effect.set_window_region(hwnd, w, h, self.corner_radius)
 
             enable_acrylic_for_config_window(self, self.theme, blur_amount=30, radius=self.corner_radius)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
     def done(self, result):
         self._dialog_finished = True

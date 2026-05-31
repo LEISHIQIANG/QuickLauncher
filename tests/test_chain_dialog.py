@@ -1,8 +1,12 @@
+import pytest
+
 from core.data_models import Folder, ShortcutItem, ShortcutType
 from qt_compat import QWidget
 from ui.config_window.base_dialog import BaseDialog
 from ui.config_window.chain_dialog import ChainDialog
 from ui.config_window.theme_helper import get_small_checkbox_stylesheet
+
+pytestmark = pytest.mark.ui
 
 
 class _Settings:

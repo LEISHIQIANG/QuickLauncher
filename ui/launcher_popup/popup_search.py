@@ -62,8 +62,8 @@ class PopupSearchMixin:
         if type(event).__name__ != "_FakeInputMethodEvent":
             try:
                 super().inputMethodEvent(event)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("转发输入法事件: %s", exc, exc_info=True)
 
     def inputMethodQuery(self, query):
         """Expose caret and surrounding text to IME for Chinese/Japanese/Korean input."""
@@ -84,8 +84,8 @@ class PopupSearchMixin:
                     start, end = bounds
                     return self.search_query[start:end]
                 return ""
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("查询输入法属性失败: %s", exc, exc_info=True)
         try:
             return super().inputMethodQuery(query)
         except Exception:
@@ -235,15 +235,15 @@ class PopupSearchMixin:
         try:
             if timer is not None and self._is_search_active():
                 timer.start()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("启动搜索光标定时器失败: %s", exc, exc_info=True)
 
     def _toggle_search_cursor(self):
         if not self._is_search_active():
             try:
                 self._search_cursor_timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止搜索光标定时器: %s", exc, exc_info=True)
             self._search_cursor_visible = True
             return
         self._search_cursor_visible = not bool(getattr(self, "_search_cursor_visible", True))
@@ -353,8 +353,8 @@ class PopupSearchMixin:
             clipboard = QApplication.clipboard()
             if clipboard is not None:
                 clipboard.setText(text)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("复制到剪贴板: %s", exc, exc_info=True)
 
     def _cut_search_selection(self):
         if not self._selected_search_text():
@@ -403,8 +403,8 @@ class PopupSearchMixin:
             clipboard = QApplication.clipboard()
             if clipboard is not None:
                 return clipboard.text() or ""
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("读取剪贴板: %s", exc, exc_info=True)
         return ""
 
     # ── Search logic ─────────────────────────────────────────────────
@@ -519,8 +519,8 @@ class PopupSearchMixin:
 
                     if data_manager is not None:
                         fav_order = data_manager.get_settings().favorite_commands or []
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("获取设置: %s", exc, exc_info=True)
 
                 cmd_map = {cmd_info.canonical: cmd_info for cmd_info in matched_cmds}
                 fav_results = []
@@ -617,7 +617,7 @@ class PopupSearchMixin:
             try:
                 signal.emit(token, cmd_query, payload)
             except RuntimeError:
-                pass
+                logger.debug("发送插件搜索信号失败", exc_info=True)
 
         thread = threading.Thread(target=worker, name="QuickLauncherPluginSearch", daemon=True)
         thread.start()
@@ -725,8 +725,8 @@ class PopupSearchMixin:
         self.setGeometry(left, top, width, height)
         try:
             self._update_window_effect()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新窗口特效: %s", exc, exc_info=True)
 
     def _apply_search_geometry(
         self, skip_effect_update=False, repaint=True, restore_updates=True, progress_override=None
@@ -779,8 +779,8 @@ class PopupSearchMixin:
                         self._geometry_adjusting = False
                         self._update_window_effect()
                         self._geometry_adjusting = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("更新窗口特效: %s", exc, exc_info=True)
 
                 # 启用更新并重绘
                 if restore_updates:
@@ -885,8 +885,8 @@ class PopupSearchMixin:
 
             if "pytest" in sys.modules:
                 self.repaint()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("pytest模式重绘检测失败: %s", exc, exc_info=True)
 
     def _finish_search_hide_geometry(self):
         """收尾隐藏动画并恢复尺寸"""
@@ -899,8 +899,8 @@ class PopupSearchMixin:
 
             if "pytest" in sys.modules:
                 self.repaint()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("pytest模式重绘检测失败: %s", exc, exc_info=True)
 
     def _reset_search_state(self):
         """重置所有搜索状态"""
@@ -930,8 +930,8 @@ class PopupSearchMixin:
         try:
             self._apply_search_geometry()
             self.clearMask()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("重置搜索框几何和遮罩失败: %s", exc, exc_info=True)
         self.update()
 
     # ── Page animation preloading ────────────────────────────────────
@@ -988,8 +988,8 @@ class PopupSearchMixin:
             while idx < len(items) and time.perf_counter() < deadline:
                 try:
                     self._get_icon(items[idx])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("预加载图标: %s", exc, exc_info=True)
                 idx += 1
             self._preload_icon_idx = idx
             if idx < len(items):
@@ -1006,8 +1006,8 @@ class PopupSearchMixin:
             bg_mode = getattr(self.settings, "bg_mode", "acrylic")
             try:
                 self._get_page_animation_pixmap(page_idx, text_color, hover_color, drop_highlight_color, bg_mode)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("预渲染页面动画缓存: %s", exc, exc_info=True)
             if page_queue:
                 return  # 还有页面未渲染，下一帧继续
 
@@ -1028,8 +1028,8 @@ class PopupSearchMixin:
         for page_idx in pages:
             try:
                 self._get_page_animation_pixmap(page_idx, text_color, hover_color, drop_highlight_color, bg_mode)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("预渲染页面动画缓存: %s", exc, exc_info=True)
 
     def _request_page_animation_update(self):
         """请求页面切换动画的重绘区域"""

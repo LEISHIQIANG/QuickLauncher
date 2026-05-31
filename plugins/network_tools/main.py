@@ -2,11 +2,14 @@
 
 import ctypes
 import locale
+import logging
 import os
 import socket
 import subprocess
 
 from core.command_registry import CommandAction, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def register(api):
@@ -51,7 +54,7 @@ def _run_cmd(args: list[str], timeout: int = 10) -> tuple[bool, str]:
                 if oem_cp:
                     encodings.append(f"cp{oem_cp}")
             except Exception:
-                pass
+                logger.debug("获取OEM代码页失败", exc_info=True)
 
         pref_enc = locale.getpreferredencoding(False)
         if pref_enc:

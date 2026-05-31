@@ -513,7 +513,7 @@ def _replace_cached_icon(candidate: str, target: str) -> bool:
             if os.path.exists(temp_target):
                 os.remove(temp_target)
         except Exception:
-            pass
+            logger.debug("清理favicon临时文件失败", exc_info=True)
 
 
 def _render_inline_svg_candidates(svgs: list[str], target: str) -> bool:
@@ -857,8 +857,7 @@ def _raster_to_png(data: bytes, target: str, source: str = "") -> bool:
 
 def _qt_raster_to_png(data: bytes, target: str, source: str = "") -> bool:
     try:
-        from PyQt5.QtCore import QByteArray, Qt
-        from PyQt5.QtGui import QGuiApplication, QImage, QPainter
+        from qt_compat import QByteArray, QGuiApplication, QImage, QPainter, Qt
 
         app = QGuiApplication.instance()
         if app is None:
@@ -940,9 +939,11 @@ def _ensure_pillow_decoders():
 
 def _render_svg_to_png(svg: str, target: str) -> bool:
     try:
-        from PyQt5.QtCore import QByteArray, QRectF, Qt
-        from PyQt5.QtGui import QGuiApplication, QImage, QPainter
-        from PyQt5.QtSvg import QSvgRenderer
+        from qt_compat import QByteArray, QGuiApplication, QImage, QPainter, QRectF, QSvgRenderer, Qt
+
+        if QSvgRenderer is None:
+            logger.warning("QSvgRenderer 不可用，SVG 渲染跳过 target=%s", target)
+            return False
 
         svg = _sanitize_svg_for_qt(svg)
         app = QGuiApplication.instance()

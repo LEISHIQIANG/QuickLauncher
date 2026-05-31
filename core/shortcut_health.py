@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -11,6 +12,8 @@ from .command_risk import assess_command_risk
 from .data_models import AppData, ShortcutItem, ShortcutType
 from .runtime_constants import COMMAND_CHAIN_MAX_STEPS
 from .shortcut_url_exec import UrlExecutionMixin
+
+logger = logging.getLogger(__name__)
 
 MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
 
@@ -77,7 +80,7 @@ def _shortcut_type(shortcut: ShortcutItem) -> ShortcutType:
 
 def _resolve_lnk_target(path: str) -> str:
     try:
-        import win32com.client  # type: ignore
+        import win32com.client
 
         shell = win32com.client.Dispatch("WScript.Shell")
         shortcut = shell.CreateShortcut(path)
@@ -407,8 +410,8 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
     if callable(mark_history):
         try:
             mark_history("Shortcut health fixes", f"Applying {len(issues)} selected health fix(es)")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("标记历史记录失败: %s", exc, exc_info=True)
     with data_manager.batch_update(immediate=True):
         for issue in issues:
             if issue.shortcut_id in deleted_shortcuts:
@@ -461,8 +464,8 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
                     f"Applied {applied} health fix(es)",
                     {"applied": applied, "skipped": skipped, "failed": len(issues) - applied - skipped},
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("记录健康修复事件失败: %s", exc, exc_info=True)
 
     failed = max(0, len(issues) - applied - skipped)
     return {"requested": len(issues), "applied": applied, "skipped": skipped, "failed": failed}

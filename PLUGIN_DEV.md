@@ -375,3 +375,7 @@ CommandResult(
 - `plugins/process_tools/`
 - `plugins/startup_tools/`
 - `plugins/network_tools/`
+- `plugins/api_tester/`
+- `plugins/disk_cleaner/`
+- `plugins/event_inspector/`
+- `plugins/text_tools/`

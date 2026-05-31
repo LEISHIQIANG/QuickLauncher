@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 
+from core.i18n import tr
 from core.icon_extractor import IconExtractor
 from qt_compat import (
     QHBoxLayout,
@@ -94,7 +95,7 @@ class IconPickerDialog(BaseDialog):
     def _start_loading(self):
         count = IconExtractor.get_icon_count(self.file_path)
         if count <= 0:
-            self.info_label.setText("未找到可选图标")
+            self.info_label.setText(tr("未找到可选图标"))
             return
 
         self.info_label.setText(f"发现 {count} 个图标，正在加载...")
@@ -165,10 +166,11 @@ class IconPickerDialog(BaseDialog):
         self._closing = True
         try:
             self.load_progress.disconnect(self._update_progress)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("断开进度信号失败: %s", exc, exc_info=True)
         try:
             self.icon_loaded.disconnect(self._add_icon_item)
-        except Exception:
+        except Exception as exc:
+            logger.debug("断开图标加载信号失败: %s", exc, exc_info=True)
             pass
         super().done(result)

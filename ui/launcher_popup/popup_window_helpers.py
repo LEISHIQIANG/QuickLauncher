@@ -57,8 +57,8 @@ class IconFlashOverlay(QWidget):
         self._timer.setInterval(8)
         try:
             self._timer.setTimerType(Qt.PreciseTimer)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置定时器类型失败: %s", exc, exc_info=True)
         self._timer.timeout.connect(self._tick)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
@@ -93,8 +93,8 @@ class IconFlashOverlay(QWidget):
         if not dirty_rect.isNull():
             try:
                 self.launcher.update(dirty_rect)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("更新启动器区域失败: %s", exc, exc_info=True)
 
     def _tick(self):
         elapsed_ms = (time.perf_counter() - self._started_at) * 1000.0

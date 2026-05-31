@@ -1,8 +1,12 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.data_models import AppData, Folder, ShortcutItem
 from core.diagnostics import DiagnosticItem
 from services.update.config import UpdateInfo
+
+pytestmark = pytest.mark.ui
 
 
 class _SmokeManager:

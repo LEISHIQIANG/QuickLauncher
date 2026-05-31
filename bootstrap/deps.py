@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 
+logger = logging.getLogger(__name__)
+
 
 def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_box):
     try:
@@ -18,7 +20,7 @@ def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_b
                 if hasattr(builtins, "__compiled__"):
                     is_compiled = True
             except Exception:
-                pass
+                logger.debug("检测编译状态失败", exc_info=True)
 
         if is_compiled:
             return

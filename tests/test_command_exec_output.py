@@ -1,6 +1,10 @@
 """Tests for command output decoding and truncation."""
 
+import logging
+
 from core.command_exec.output import decode_command_output, truncate_command_output
+
+logger = logging.getLogger(__name__)
 
 
 def test_decode_str_input_passthrough():
@@ -96,7 +100,7 @@ def test_decode_cmd_uses_oem_before_utf8(monkeypatch):
                 if oem_cp:
                     oem_enc = f"cp{oem_cp}"
             except Exception:
-                pass
+                logger.debug("获取OEM代码页失败", exc_info=True)
 
         effective_type = str(command_type or "").lower().strip() if command_type else ""
 

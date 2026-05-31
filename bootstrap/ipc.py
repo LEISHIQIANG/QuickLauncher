@@ -1,5 +1,4 @@
 import logging
-import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +34,8 @@ def create_ipc_server(app, server_name: str, on_show_config):
                         QTimer.singleShot(0, cb)
                     else:
                         _pending["show_config"] = True
-        except Exception as e:
-            logger.error(f"IPC处理失败: {e}\n{traceback.format_exc()}")
+        except Exception:
+            logger.exception("IPC处理失败")
 
     server = QLocalServer()
     server.removeServer(server_name)
@@ -66,7 +65,7 @@ def try_connect_existing(server_name: str) -> bool:
             socket.flush()
             socket.waitForBytesWritten(200)
         except Exception:
-            pass
+            logger.debug("发送IPC消息失败", exc_info=True)
         socket.close()
         return True
     socket.close()

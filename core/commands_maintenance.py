@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from .command_registry import CommandAction, CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_clean_cache(context: CommandContext) -> CommandResult:
@@ -59,7 +63,7 @@ def cmd_config_repair(context: CommandContext) -> CommandResult:
         try:
             data_manager._mark_history("配置修复", f"应用 {report.repaired} 项配置修复")
         except Exception:
-            pass
+            logger.debug("记录配置修复历史失败", exc_info=True)
         if not data_manager.save(immediate=True):
             return CommandResult(
                 success=False, message="配置修复已计算，但保存失败", payload=report.to_dict(), error="保存失败"

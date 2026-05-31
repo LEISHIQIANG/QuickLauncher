@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 import core.privilege_launch_channel as channel
+
+logger = logging.getLogger(__name__)
 
 
 def test_standard_user_channel_keeps_single_three_second_budget(monkeypatch):
@@ -68,6 +72,6 @@ def test_cmd_start_rejects_control_characters():
         try:
             channel._build_cmd_start_line(r"C:\Temp\doc.txt", value)
         except ValueError:
-            pass
+            logger.debug("拒绝控制字符参数", exc_info=True)
         else:
             raise AssertionError(f"unsafe control characters were accepted: {value!r}")

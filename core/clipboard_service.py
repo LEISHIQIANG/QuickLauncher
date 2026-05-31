@@ -238,8 +238,8 @@ class Win32ClipboardImpl:
                         holder = ctypes.windll.user32.GetOpenClipboardWindow()
                         if holder:
                             logger.debug("Clipboard held by hwnd=%d", holder)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("获取剪贴板持有窗口句柄失败: %s", exc, exc_info=True)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
@@ -264,8 +264,8 @@ class Win32ClipboardImpl:
                     import pythoncom
 
                     pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("STA线程COM初始化失败: %s", exc, exc_info=True)
                 q = Win32ClipboardImpl._sta_queue
                 while True:
                     try:
@@ -274,8 +274,8 @@ class Win32ClipboardImpl:
                             rq.put(cmd(*a, **kw))
                         except Exception as e:
                             rq.put(e)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("STA线程队列操作失败: %s", exc, exc_info=True)
 
             Win32ClipboardImpl._sta_queue = _queue.Queue()
             t = threading.Thread(target=_sta_worker, daemon=True, name="ClipboardSTA")
@@ -315,8 +315,8 @@ class Win32ClipboardImpl:
                 win32clipboard.CloseClipboard()
         except ClipboardOpenError:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("读取剪贴板文本失败: %s", exc, exc_info=True)
         return ""
 
     @staticmethod
@@ -364,8 +364,8 @@ class Win32ClipboardImpl:
                     formats.append(ClipboardFormatInfo(format_id=fmt, name=name, readable=True))
             finally:
                 win32clipboard.CloseClipboard()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("枚举剪贴板格式失败: %s", exc, exc_info=True)
         return formats
 
     @staticmethod
@@ -428,8 +428,8 @@ class Win32ClipboardImpl:
                                             "format": "DIBV5",
                                             "size_hint": len(data),
                                         }
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("解析DIB图片信息失败: %s", exc, exc_info=True)
                     continue
 
                 try:
@@ -488,8 +488,8 @@ class Win32ClipboardImpl:
         finally:
             try:
                 win32clipboard.CloseClipboard()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭剪贴板句柄失败: %s", exc, exc_info=True)
 
         return snapshot
 
@@ -582,8 +582,8 @@ class Win32ClipboardImpl:
                 try:
                     cf_html_id = win32clipboard.RegisterClipboardFormat("HTML Format")
                     win32clipboard.SetClipboardData(cf_html_id, cf_html_data)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("写入HTML格式到剪贴板失败: %s", exc, exc_info=True)
 
                 return True
             finally:
@@ -670,8 +670,8 @@ class QtClipboardBridge:
                             text = Win32ClipboardImpl.read_text()
                             if text is not None:
                                 QApplication.clipboard().setText(text)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Qt剪贴板同步失败: %s", exc, exc_info=True)
 
                 cls._instance = _Bridge()
             except Exception:
@@ -684,8 +684,8 @@ class QtClipboardBridge:
         if bridge is not None:
             try:
                 bridge.notify_change()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("剪贴板桥接通知失败: %s", exc, exc_info=True)
 
 
 # ---------------------------------------------------------------------------

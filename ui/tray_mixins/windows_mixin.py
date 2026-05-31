@@ -30,8 +30,8 @@ class WindowsMixin:
                     if panel and hasattr(panel, "hotkey_recording_changed"):
                         panel.hotkey_recording_changed.connect(self._on_hotkey_recording_changed)
                         self._hotkey_signal_connected = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("连接热键录制信号失败: %s", exc, exc_info=True)
 
             if not getattr(self, "_special_apps_signal_connected", False):
                 try:
@@ -39,8 +39,8 @@ class WindowsMixin:
                     if panel and hasattr(panel, "special_apps_changed"):
                         panel.special_apps_changed.connect(self._sync_special_apps_to_hook)
                         self._special_apps_signal_connected = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("连接特殊应用信号失败: %s", exc, exc_info=True)
 
             self.config_window.show()
 
@@ -60,10 +60,7 @@ class WindowsMixin:
                 "配置窗口已显示并进入四段式强力激活流程，耗时 %.1f ms", (time.perf_counter() - config_start) * 1000
             )
         except Exception as e:
-            logger.error(f"显示配置窗口失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+            logger.exception("显示配置窗口失败")
             from core.i18n import tr
             from ui.styles.themed_messagebox import ThemedMessageBox
 
@@ -85,8 +82,8 @@ class WindowsMixin:
                     self.keyboard_hook.set_hotkey("", None)
                 return
             pass
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置热键录制状态失败: %s", exc, exc_info=True)
 
     def _show_log(self):
         """显示日志窗口"""
@@ -137,11 +134,8 @@ class WindowsMixin:
 
             QTimer.singleShot(100, self.log_window.load_log)
             logger.info("日志窗口显示完成")
-        except Exception as e:
-            logger.error(f"显示日志窗口失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("显示日志窗口失败")
 
     def _show_slash_help(self):
         """显示斜杠命令帮助。"""
@@ -284,8 +278,8 @@ class WindowsMixin:
                 from ui.utils.window_effect import force_activate_window
 
                 force_activate_window(hwnd)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("激活命令面板窗口失败: %s", exc, exc_info=True)
             return True
         except RuntimeError:
             from ui.command_panel_window import CommandPanelWindow
@@ -294,8 +288,8 @@ class WindowsMixin:
             self.command_panel_window.show()
             try:
                 self._command_panel_hwnd = int(self.command_panel_window.winId())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取命令面板窗口ID失败: %s", exc, exc_info=True)
             return True
         except Exception as e:
             logger.error("显示命令面板失败: %s", e, exc_info=True)

@@ -255,8 +255,8 @@ class IconExtractor:
         painter = QPainter(canvas)
         try:
             painter.setCompositionMode(QPainter.CompositionMode_Source)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置合成模式失败: %s", exc, exc_info=True)
         painter.drawImage((size - scaled.width()) // 2, (size - scaled.height()) // 2, scaled)
         painter.end()
 
@@ -367,8 +367,8 @@ class IconExtractor:
         if cls._is_valid_icon(result):
             try:
                 result.setDevicePixelRatio(dpr)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置图标设备像素比失败: %s", exc, exc_info=True)
             cls._remember_cache(cache_key, result)
             cls._diag(
                 "extract ok key=%s size=%s physical_size=%s return_image=%s image=%sx%s",
@@ -397,14 +397,14 @@ class IconExtractor:
                         name = os.path.splitext(os.path.basename(path))[0]
                         if name:
                             break
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("提取文件名失败: %s", exc, exc_info=True)
             default_icon = cls._create_default_icon(size, name)
             if default_icon:
                 try:
                     default_icon.setDevicePixelRatio(dpr)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("设置默认图标设备像素比失败: %s", exc, exc_info=True)
             return default_icon
         cls._warn_once(
             cache_key,
@@ -616,8 +616,8 @@ class IconExtractor:
             destroy_icon.argtypes = [wintypes.HICON]
             destroy_icon.restype = wintypes.BOOL
             destroy_icon(hicon)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("销毁图标句柄失败: %s", exc, exc_info=True)
 
     @classmethod
     def _hicon_to_pixmap(
@@ -652,7 +652,7 @@ class IconExtractor:
         # 2. 备选尝试 QtWin 接口
         if not return_image:
             try:
-                from PyQt5.QtWinExtras import QtWin
+                from qt_compat import QtWin
 
                 pixmap = QtWin.fromHICON(hicon_handle)
                 if pixmap and not pixmap.isNull():
@@ -714,33 +714,33 @@ class IconExtractor:
                 try:
                     if hdc_mem2 is not None and old_bmp is not None:
                         hdc_mem2.SelectObject(old_bmp)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("恢复位图对象失败: %s", exc, exc_info=True)
                 try:
                     if hdc_mem2 is not None:
                         hdc_mem2.DeleteDC()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("删除内存DC2失败: %s", exc, exc_info=True)
                 try:
                     if hdc_mem is not None:
                         hdc_mem.DeleteDC()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("删除内存DC失败: %s", exc, exc_info=True)
                 try:
                     if hdc is not None:
                         win32gui.ReleaseDC(0, hdc)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("释放设备上下文失败: %s", exc, exc_info=True)
                 try:
                     if hbm_color is not None:
                         win32gui.DeleteObject(hbm_color)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("删除颜色位图失败: %s", exc, exc_info=True)
                 try:
                     if hbm_mask is not None:
                         win32gui.DeleteObject(hbm_mask)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("删除掩码位图失败: %s", exc, exc_info=True)
 
         return None
 

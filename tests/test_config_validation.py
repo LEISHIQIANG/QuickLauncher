@@ -1,7 +1,10 @@
 import json
+import logging
 
 from core.config_validation import load_valid_data_file, validate_app_data_dict
 from core.data_models import AppData
+
+logger = logging.getLogger(__name__)
 
 
 def test_validate_app_data_dict_detects_duplicate_shortcut_ids():
@@ -206,7 +209,7 @@ def test_load_valid_data_file_malformed_json(tmp_path):
     try:
         load_valid_data_file(path)
     except (json.JSONDecodeError, ValueError):
-        pass
+        logger.debug("加载损坏JSON数据文件", exc_info=True)
     else:
         raise AssertionError("malformed JSON should raise")
 

@@ -94,11 +94,8 @@ def call_callback(name: str, *args, **kwargs):
             result = callback(*args, **kwargs)
             logger.debug(f"回调执行完成: {name}")
             return result
-        except Exception as e:
-            logger.error(f"回调执行失败 {name}: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("回调执行失败: %s", name)
             return None
     else:
         logger.warning(f"回调未找到: {name}")

@@ -55,8 +55,8 @@ class ToastNotification(QWidget):
         except Exception:
             try:
                 self.setAttribute(Qt.WA_ShowWithoutActivating, True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置窗口属性失败: %s", exc, exc_info=True)
 
         self._setup_ui()
 
@@ -124,9 +124,11 @@ class ToastNotification(QWidget):
         # 关闭已有的 toast
         if ToastNotification._current_instance and ToastNotification._current_instance is not self:
             try:
-                ToastNotification._current_instance.hide()
-            except Exception:
-                pass
+                old = ToastNotification._current_instance
+                old.hide()
+                old.deleteLater()
+            except Exception as exc:
+                logger.debug("隐藏当前Toast实例失败: %s", exc, exc_info=True)
         ToastNotification._current_instance = self
 
         self._theme = theme
@@ -143,8 +145,7 @@ class ToastNotification(QWidget):
         else:
             color = "#1c1c1e"
 
-        self.label.setStyleSheet(
-            f"""
+        self.label.setStyleSheet(f"""
             QLabel {{
                 color: {color};
                 font-size: 13px;
@@ -152,8 +153,7 @@ class ToastNotification(QWidget):
                 padding: 0 24px;
                 background: transparent;
             }}
-        """
-        )
+        """)
         self.label.setFont(get_qfont(13, 400))
         self.label.setText(text)
 
@@ -166,8 +166,8 @@ class ToastNotification(QWidget):
         screen = None
         try:
             screen = QApplication.primaryScreen()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主屏幕失败: %s", exc, exc_info=True)
         if screen:
             geo = screen.availableGeometry()
             x = geo.left() + (geo.width() - self.width()) // 2
@@ -218,23 +218,23 @@ class ToastNotification(QWidget):
                 enable_acrylic_for_config_window(self, self._theme, blur_amount=10)
             else:
                 enable_acrylic_for_config_window(self, self._theme, blur_amount=8, radius=radius)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
     def hideEvent(self, event):
         """隐藏时停止计时器"""
         try:
             self._auto_hide_timer.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("停止自动隐藏定时器失败: %s", exc, exc_info=True)
         try:
             self._fade_timer.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("停止淡出定时器失败: %s", exc, exc_info=True)
         self._fade_opacity = 1.0
         try:
             self.setWindowOpacity(1.0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置窗口不透明度失败: %s", exc, exc_info=True)
         self._acrylic_applied = False
         super().hideEvent(event)

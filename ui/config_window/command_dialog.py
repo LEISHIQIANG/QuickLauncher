@@ -272,10 +272,9 @@ class CommandDialog(BaseDialog):
                 painter.end()
 
             self.setWindowIcon(QIcon(pixmap))
-        except Exception as e:
+        except Exception as exc:
             # 即使设置图标失败也不要崩溃
-            logger.debug(f"设置窗口图标失败: {e}")
-            pass
+            logger.debug("设置窗口图标失败: %s", exc, exc_info=True)
 
     def _apply_theme(self):
         """应用主题"""
@@ -290,9 +289,7 @@ class CommandDialog(BaseDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
 
-        custom_style = (
-            base_style
-            + f"""
+        custom_style = base_style + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -311,7 +308,6 @@ class CommandDialog(BaseDialog):
                 font-size: 13px;
             }}
         """
-        )
         self.setStyleSheet(custom_style)
 
         # 1. 样式重置与定义
@@ -385,13 +381,11 @@ class CommandDialog(BaseDialog):
 
         # --- 命令输入框容器样式 ---
         # 只有容器负责背景和边框，内部编辑器完全透明
-        self.command_container.setStyleSheet(
-            f"""
+        self.command_container.setStyleSheet(f"""
             #CommandContainer {{
                 {input_style}
             }}
-        """
-        )
+        """)
 
         # 内部编辑器：透明、无边框、无背景
         editor_style = f"""
@@ -405,17 +399,14 @@ class CommandDialog(BaseDialog):
             }}
         """
         self.command_edit.setStyleSheet(editor_style)
-        self.test_output.setStyleSheet(
-            editor_style
-            + f"""
+        self.test_output.setStyleSheet(editor_style + f"""
             QPlainTextEdit {{
                 background-color: {"rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.75)"};
                 border: 1px solid {border_color};
                 border-radius: 8px;
                 padding: 4px;
             }}
-        """
-        )
+        """)
         # 再次强制视口透明（双重保险）
         if hasattr(self.command_edit, "viewport"):
             self.command_edit.viewport().setStyleSheet("background: transparent;")
@@ -460,8 +451,7 @@ class CommandDialog(BaseDialog):
         profile_toggle_hover = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(255, 255, 255, 0.82)"
         profile_toggle_border = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(0, 0, 0, 0.08)"
         profile_toggle_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
-        self.advanced_profile_toggle.setStyleSheet(
-            f"""
+        self.advanced_profile_toggle.setStyleSheet(f"""
             QPushButton#CommandProfileToggle {{
                 background-color: {profile_toggle_bg};
                 border: 1px solid {profile_toggle_border};
@@ -481,16 +471,13 @@ class CommandDialog(BaseDialog):
             QPushButton#CommandProfileToggle:checked {{
                 background-color: {profile_toggle_hover};
             }}
-        """
-        )
-        self.advanced_profile_frame.setStyleSheet(
-            """
+        """)
+        self.advanced_profile_frame.setStyleSheet("""
             QFrame#CommandProfileFrame {
                 background: transparent;
                 border: none;
             }
-        """
-        )
+        """)
         self._set_command_profile_toggle_icon(self.advanced_profile_toggle.isChecked())
 
         # 应用单选按钮样式
@@ -500,8 +487,8 @@ class CommandDialog(BaseDialog):
             radio_style = get_radio_stylesheet(theme)
             self.trigger_immediate_rb.setStyleSheet(radio_style)
             self.trigger_after_close_rb.setStyleSheet(radio_style)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用单选按钮样式失败: %s", exc, exc_info=True)
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -523,9 +510,7 @@ class CommandDialog(BaseDialog):
         cb_style = get_small_checkbox_stylesheet(theme)
         self.invert_theme_cb.setStyleSheet(cb_style)
         self.invert_current_cb.setStyleSheet(cb_style)
-        compact_option_cb_style = (
-            cb_style
-            + f"""
+        compact_option_cb_style = cb_style + f"""
             QCheckBox {{
                 font-size: 12px;
                 spacing: 6px;
@@ -539,7 +524,6 @@ class CommandDialog(BaseDialog):
                 height: 12px;
             }}
             """
-        )
         self.show_window_cb.setStyleSheet(compact_option_cb_style)
         self.run_as_admin_cb.setStyleSheet(compact_option_cb_style)
         self.variable_expansion_cb.setStyleSheet(compact_option_cb_style)
@@ -592,15 +576,13 @@ class CommandDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(32, 32)
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(
-            """
+        self.icon_preview.setStyleSheet("""
             QLabel {
                 background-color: rgba(255, 255, 255, 0.2);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 10px;
             }
-        """
-        )
+        """)
         icon_layout.addWidget(self.icon_preview)
 
         icon_path_layout = QVBoxLayout()
@@ -632,21 +614,17 @@ class CommandDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet(
-            """
+        self.invert_theme_cb.setStyleSheet("""
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """
-        )
+        """)
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet(
-            """
+        self.invert_current_cb.setStyleSheet("""
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """
-        )
+        """)
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)
@@ -755,7 +733,7 @@ class CommandDialog(BaseDialog):
         self.advanced_profile_toggle.setCheckable(True)
         self.advanced_profile_toggle.setChecked(False)
         self.advanced_profile_toggle.setFixedSize(42, 12)
-        self.advanced_profile_toggle.setToolTip("高级设置")
+        self.advanced_profile_toggle.setToolTip(tr("高级设置"))
         self.advanced_profile_toggle.setCursor(QtCompat.PointingHandCursor)
         self.advanced_profile_toggle.clicked.connect(self._toggle_command_profile_panel)
         self.show_window_cb = QCheckBox("显示执行窗口")
@@ -912,7 +890,7 @@ class CommandDialog(BaseDialog):
     def _on_type_changed(self, index):
         """类型改变"""
         if index == 0:  # CMD
-            self.hint_label.setText("输入要执行的CMD命令（静默运行，不显示窗口）:")
+            self.hint_label.setText(tr("输入要执行的CMD命令（静默运行，不显示窗口）:"))
             self.command_edit.setPlaceholderText("例如: shutdown /s /t 0")
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
@@ -924,7 +902,7 @@ class CommandDialog(BaseDialog):
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
         elif index == 1:  # PowerShell
-            self.hint_label.setText("输入要执行的 PowerShell 命令（静默运行，不显示窗口）:")
+            self.hint_label.setText(tr("输入要执行的 PowerShell 命令（静默运行，不显示窗口）:"))
             self.command_edit.setPlaceholderText("例如: Get-ChildItem {{selected_file_dir:q}}")
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
@@ -936,7 +914,7 @@ class CommandDialog(BaseDialog):
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
         elif index == 2:  # Python
-            self.hint_label.setText("输入要执行的 Python 代码（通过系统 Python 运行）:")
+            self.hint_label.setText(tr("输入要执行的 Python 代码（通过系统 Python 运行）:"))
             self.command_edit.setPlaceholderText("例如: os.system('notepad')")
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
@@ -948,7 +926,7 @@ class CommandDialog(BaseDialog):
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
         elif index == 3:  # Git Bash
-            self.hint_label.setText("输入要执行的 Bash 命令（通过 Git Bash 运行）:")
+            self.hint_label.setText(tr("输入要执行的 Bash 命令（通过 Git Bash 运行）:"))
             self.command_edit.setPlaceholderText("例如: ls -la /c/Users")
             self.input_stack.setCurrentIndex(0)
             self.input_stack.setFixedHeight(100)
@@ -960,7 +938,7 @@ class CommandDialog(BaseDialog):
             if not getattr(self, "_loading_data", False):
                 self.variable_expansion_cb.setChecked(False)
         elif index == 4:  # Built-in
-            self.hint_label.setText("选择内置命令:")
+            self.hint_label.setText(tr("选择内置命令:"))
             self.input_stack.setCurrentIndex(1)
             self.input_stack.setFixedHeight(48)
             self.show_window_cb.setChecked(False)
@@ -1310,7 +1288,8 @@ class CommandDialog(BaseDialog):
             from core.command_variables import collect_input_prompts
 
             prompts = collect_input_prompts(command)
-        except Exception:
+        except Exception as exc:
+            logger.debug("收集输入提示失败: %s", exc, exc_info=True)
             return {}
         values = {}
         for prompt in prompts:
@@ -1392,8 +1371,8 @@ class CommandDialog(BaseDialog):
                     try:
                         process.wait(timeout=1.0)
                         logger.info("测试后台挂起子进程已被成功强制终止清理")
-                    except Exception:
-                        logger.debug("子进程终止超时")
+                    except Exception as exc:
+                        logger.debug("子进程终止超时: %s", exc, exc_info=True)
             except Exception as e:
                 logger.debug(f"清理挂起子进程时发生异常: {e}")
 
@@ -1402,20 +1381,20 @@ class CommandDialog(BaseDialog):
             return
         try:
             thread.finished_signal.disconnect(self._show_test_result)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("断开信号失败: %s", exc, exc_info=True)
         try:
             thread.suppress_result_signal()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("抑制结果信号失败: %s", exc, exc_info=True)
         if thread.isRunning():
             thread.wait(500)
         if thread.isRunning():
             try:
                 thread.terminate()
                 thread.wait(200)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("终止线程失败: %s", exc, exc_info=True)
         if thread.isRunning():
             try:
                 thread.setParent(None)
@@ -1423,14 +1402,14 @@ class CommandDialog(BaseDialog):
                 _cls = type(self)
                 thread.finished.connect(lambda t=thread: _cls._forget_orphaned_thread(t))
                 thread.finished.connect(thread.deleteLater)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置孤儿线程清理失败: %s", exc, exc_info=True)
             self._command_test_thread = None
         else:
             try:
                 thread.deleteLater()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("删除线程失败: %s", exc, exc_info=True)
             self._command_test_thread = None
 
     @classmethod
@@ -1438,7 +1417,7 @@ class CommandDialog(BaseDialog):
         try:
             cls._orphaned_threads.remove(thread)
         except ValueError:
-            pass
+            logger.debug("移除孤立线程记录失败", exc_info=True)
 
     @classmethod
     def _cleanup_finished_orphans(cls):
@@ -1525,8 +1504,8 @@ class CommandDialog(BaseDialog):
             # 手动调用一次以初始化界面状态
             self._on_type_changed(self.type_combo.currentIndex())
 
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("加载数据失败: %s", exc, exc_info=True)
         finally:
             self._loading_data = False
 
@@ -1577,8 +1556,8 @@ class CommandDialog(BaseDialog):
                 self.icon_preview.setPixmap(pixmap)
             else:
                 self.icon_preview.clear()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新图标预览失败: %s", exc, exc_info=True)
         finally:
             self._updating_icon = False
 
@@ -1622,7 +1601,7 @@ class CommandDialog(BaseDialog):
                 painter.end()
             return pixmap
         except Exception as e:
-            print(f"Error creating command icon: {e}")
+            logger.error("创建命令图标失败: %s", e, exc_info=True)
             # 返回一个空的透明图片防止后续崩溃
             empty = QPixmap(size, size)
             empty.fill(QtCompat.transparent)
@@ -1668,9 +1647,9 @@ class CommandDialog(BaseDialog):
             try:
                 from ui.styles.themed_messagebox import ThemedMessageBox
 
-                ThemedMessageBox.warning(self, "校验失败", "请输入命令名称！")
-            except Exception:
-                pass
+                ThemedMessageBox.warning(self, tr("校验失败"), tr("请输入命令名称！"))
+            except Exception as exc:
+                logger.debug("显示警告对话框失败: %s", exc, exc_info=True)
             return
 
         if not command:
@@ -1681,9 +1660,9 @@ class CommandDialog(BaseDialog):
                 try:
                     from ui.styles.themed_messagebox import ThemedMessageBox
 
-                    ThemedMessageBox.warning(self, "校验失败", "请输入命令内容！")
-                except Exception:
-                    pass
+                    ThemedMessageBox.warning(self, tr("校验失败"), tr("请输入命令内容！"))
+                except Exception as exc:
+                    logger.debug("显示警告对话框失败: %s", exc, exc_info=True)
                 return
 
         if (

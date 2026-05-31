@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
+from core.i18n import tr
 from qt_compat import (
     QEvent,
     QFont,
@@ -29,14 +30,14 @@ class ConfigHistoryWindow(ThemedToolWindow):
     def __init__(self, data_manager, parent=None):
         self.data_manager = data_manager
         theme = getattr(data_manager.get_settings(), "theme", "light")
-        super().__init__("配置历史", theme=theme, parent=parent)
+        super().__init__(tr("配置历史"), theme=theme, parent=parent)
         self.resize(700, 480)
         self._setup_ui()
         self._apply_content_theme()
         self.refresh()
 
     def _setup_ui(self):
-        self.set_subtitle("最近 20 次重要配置变更快照，可用于恢复")
+        self.set_subtitle(tr("最近 20 次重要配置变更快照，可用于恢复"))
 
         self.recovery_label = QLabel("")
         self.recovery_label.setWordWrap(True)
@@ -46,15 +47,15 @@ class ConfigHistoryWindow(ThemedToolWindow):
         recovery_btn_layout = QHBoxLayout()
         recovery_btn_layout.setSpacing(8)
 
-        self.open_recovery_dir_btn = QPushButton("打开恢复目录")
+        self.open_recovery_dir_btn = QPushButton(tr("打开恢复目录"))
         self.open_recovery_dir_btn.clicked.connect(self._open_recovery_dir)
         recovery_btn_layout.addWidget(self.open_recovery_dir_btn)
 
-        self.open_backup_dir_btn = QPushButton("打开备份目录")
+        self.open_backup_dir_btn = QPushButton(tr("打开备份目录"))
         self.open_backup_dir_btn.clicked.connect(self._open_backup_dir)
         recovery_btn_layout.addWidget(self.open_backup_dir_btn)
 
-        self.copy_report_btn = QPushButton("复制恢复报告")
+        self.copy_report_btn = QPushButton(tr("复制恢复报告"))
         self.copy_report_btn.clicked.connect(self._copy_recovery_report)
         recovery_btn_layout.addWidget(self.copy_report_btn)
 
@@ -74,11 +75,11 @@ class ConfigHistoryWindow(ThemedToolWindow):
         self._install_list_tooltips()
 
         buttons = QHBoxLayout()
-        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn = QPushButton(tr("刷新"))
         self.refresh_btn.clicked.connect(self.refresh)
         buttons.addWidget(self.refresh_btn)
 
-        self.restore_btn = QPushButton("恢复选中快照")
+        self.restore_btn = QPushButton(tr("恢复选中快照"))
         self.restore_btn.clicked.connect(self.restore_selected)
         buttons.addWidget(self.restore_btn)
 
@@ -146,13 +147,13 @@ class ConfigHistoryWindow(ThemedToolWindow):
         self.list_widget.clear()
         self.snapshots = self.data_manager.list_config_history()
         if not self.snapshots:
-            item = QListWidgetItem("暂无历史快照。重要配置变更后会自动保存最近 20 次快照")
+            item = QListWidgetItem(tr("暂无历史快照。重要配置变更后会自动保存最近 20 次快照"))
             item.setSizeHint(QSize(0, 32))
             self.list_widget.addItem(item)
             return
         for snapshot in self.snapshots:
             ts = datetime.fromtimestamp(snapshot.timestamp).strftime("%Y-%m-%d %H:%M:%S")
-            action = snapshot.action or "配置变更"
+            action = snapshot.action or tr("配置变更")
             summary = snapshot.summary or ""
             if summary and summary != action:
                 text = f"{ts}  {action}  {summary}"
@@ -169,24 +170,24 @@ class ConfigHistoryWindow(ThemedToolWindow):
     def _refresh_recovery_status(self):
         report = getattr(self.data_manager, "get_recovery_report", lambda: {})()
         if not report:
-            self.recovery_label.setText("配置恢复状态：暂无恢复记录。")
+            self.recovery_label.setText(tr("配置恢复状态：暂无恢复记录。"))
             return
         status = report.get("status", "unknown")
         status_labels = {
-            "ok": "正常",
-            "recovered": "已自动恢复",
-            "fallback_default": "使用默认配置",
-            "failed": "恢复失败",
+            "ok": tr("正常"),
+            "recovered": tr("已自动恢复"),
+            "fallback_default": tr("使用默认配置"),
+            "failed": tr("恢复失败"),
         }
         status_text = status_labels.get(status, status)
         source = report.get("recovered_from") or report.get("source_path") or "-"
         quarantined = report.get("quarantined_path") or "-"
         issues = report.get("issues", [])
-        parts = [f"状态: {status_text}", f"来源: {source}"]
+        parts = [tr("状态: {status_text}", status_text=status_text), tr("来源: {source}", source=source)]
         if quarantined and quarantined != "-":
-            parts.append(f"隔离文件: {quarantined}")
+            parts.append(tr("隔离文件: {quarantined}", quarantined=quarantined))
         if issues:
-            parts.append(f"问题: {', '.join(issues[:3])}")
+            parts.append(tr("问题: {issues}", issues=", ".join(issues[:3])))
         self.recovery_label.setText(" | ".join(parts))
 
     def _open_recovery_dir(self):
@@ -195,9 +196,9 @@ class ConfigHistoryWindow(ThemedToolWindow):
             try:
                 os.startfile(str(recovery_dir))
             except OSError as exc:
-                ThemedMessageBox.warning(self, "打开失败", f"无法打开目录: {exc}")
+                ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开目录: {error}", error=str(exc)))
         else:
-            ThemedMessageBox.information(self, "提示", "恢复目录不存在。")
+            ThemedMessageBox.information(self, tr("提示"), tr("恢复目录不存在。"))
 
     def _open_backup_dir(self):
         backup_dir = getattr(self.data_manager, "auto_backup_dir", None)
@@ -205,9 +206,9 @@ class ConfigHistoryWindow(ThemedToolWindow):
             try:
                 os.startfile(str(backup_dir))
             except OSError as exc:
-                ThemedMessageBox.warning(self, "打开失败", f"无法打开目录: {exc}")
+                ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开目录: {error}", error=str(exc)))
         else:
-            ThemedMessageBox.information(self, "提示", "备份目录不存在。")
+            ThemedMessageBox.information(self, tr("提示"), tr("备份目录不存在。"))
 
     def _copy_recovery_report(self):
         report = getattr(self.data_manager, "get_recovery_report", lambda: {})()
@@ -218,9 +219,9 @@ class ConfigHistoryWindow(ThemedToolWindow):
 
             text = json.dumps(report, ensure_ascii=False, indent=2)
             QApplication.clipboard().setText(text)
-            ThemedMessageBox.information(self, "已复制", "恢复报告已复制到剪贴板。")
+            ThemedMessageBox.information(self, tr("已复制"), tr("恢复报告已复制到剪贴板。"))
         else:
-            ThemedMessageBox.information(self, "提示", "暂无恢复报告。")
+            ThemedMessageBox.information(self, tr("提示"), tr("暂无恢复报告。"))
 
     def restore_selected(self):
         item = self.list_widget.currentItem()
@@ -231,14 +232,14 @@ class ConfigHistoryWindow(ThemedToolWindow):
             return
         result = ThemedMessageBox.question(
             self,
-            "确认恢复",
-            "确认恢复选中的历史快照吗？当前配置会先被记录为新的历史快照。",
+            tr("确认恢复"),
+            tr("确认恢复选中的历史快照吗？当前配置会先被记录为新的历史快照。"),
             ThemedMessageBox.Yes | ThemedMessageBox.No,
         )
         if result != ThemedMessageBox.Yes:
             return
         if self.data_manager.restore_config_history(str(snapshot_id)):
-            ThemedMessageBox.information(self, "恢复完成", "历史快照已恢复，请重启或刷新窗口查看。")
+            ThemedMessageBox.information(self, tr("恢复完成"), tr("历史快照已恢复，请重启或刷新窗口查看。"))
             self.refresh()
         else:
-            ThemedMessageBox.warning(self, "恢复失败", "无法恢复该历史快照。")
+            ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复该历史快照。"))

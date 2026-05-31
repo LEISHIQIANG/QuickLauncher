@@ -201,10 +201,7 @@ class ShortcutExecutor(
 
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"执行快捷方式失败: {error_msg}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+            logger.exception("执行快捷方式失败")
             return False, error_msg
 
     @staticmethod

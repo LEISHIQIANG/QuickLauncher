@@ -2,6 +2,7 @@
 URL编辑对话框
 """
 
+import logging
 import os
 import sys
 
@@ -33,6 +34,8 @@ from ui.utils.safe_file_dialog import get_open_file_name
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
 from .theme_helper import get_small_checkbox_stylesheet
+
+logger = logging.getLogger(__name__)
 
 
 class UrlLatencyTestThread(QThread):
@@ -143,8 +146,8 @@ class UrlDialog(BaseDialog):
             finally:
                 painter.end()
             self.setWindowIcon(QIcon(pixmap))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置窗口图标失败: %s", exc, exc_info=True)
 
     def _apply_theme(self):
         """应用主题"""
@@ -153,38 +156,32 @@ class UrlDialog(BaseDialog):
 
         # 预览框样式
         if theme == "dark":
-            self.icon_preview.setStyleSheet(
-                """
+            self.icon_preview.setStyleSheet("""
                 QLabel {
                     background-color: rgba(255, 255, 255, 0.1);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 10px;
                 }
-            """
-            )
+            """)
         else:
             self.bg_color = "#f2f2f7"
             self.border_color = "rgba(0, 0, 0, 0.1)"
 
             # 预览框样式
-            self.icon_preview.setStyleSheet(
-                """
+            self.icon_preview.setStyleSheet("""
                 QLabel {
                     background-color: rgba(0, 0, 0, 0.05);
                     border: 1px solid rgba(0, 0, 0, 0.05);
                     border-radius: 10px;
                 }
-            """
-            )
+            """)
 
         # 使用与主配置窗口一致的 Glassmorphism 样式
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = (
-            base_style
-            + f"""
+        custom_style = base_style + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -203,7 +200,6 @@ class UrlDialog(BaseDialog):
                 font-size: 13px;
             }}
         """
-        )
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -363,21 +359,17 @@ class UrlDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet(
-            """
+        self.invert_theme_cb.setStyleSheet("""
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """
-        )
+        """)
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet(
-            """
+        self.invert_current_cb.setStyleSheet("""
             QCheckBox { font-size: 5px; spacing: 2px; }
             QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
             QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """
-        )
+        """)
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)
@@ -562,7 +554,7 @@ class UrlDialog(BaseDialog):
 
         self._icon_fetch_request_id += 1
         self._auto_icon_btn.setEnabled(False)
-        self._auto_icon_btn.setText("获取中...")
+        self._auto_icon_btn.setText(tr("获取中..."))
         self._icon_fetch_thread = UrlIconFetchThread(url, parent=None)
         self._icon_fetch_thread.request_id = self._icon_fetch_request_id
         self._icon_fetch_thread.finished_signal.connect(self._show_auto_icon_result)
@@ -581,9 +573,9 @@ class UrlDialog(BaseDialog):
             self.invert_theme_cb.setChecked(False)
             self.invert_current_cb.setChecked(False)
             self._update_icon_preview()
-            self._auto_icon_btn.setText("自动获取")
+            self._auto_icon_btn.setText(tr("自动获取"))
         else:
-            self._auto_icon_btn.setText("未获取到")
+            self._auto_icon_btn.setText(tr("未获取到"))
             QTimer.singleShot(1200, self._restore_auto_icon_button)
 
         self._auto_icon_btn.setEnabled(True)
@@ -592,7 +584,7 @@ class UrlDialog(BaseDialog):
     def _restore_auto_icon_button(self):
         if getattr(self, "_dialog_finished", False) or not self.isVisible():
             return
-        self._auto_icon_btn.setText("自动获取")
+        self._auto_icon_btn.setText(tr("自动获取"))
 
     def _update_icon_preview(self):
         """更新图标预览"""
@@ -604,8 +596,8 @@ class UrlDialog(BaseDialog):
                 from core.icon_extractor import IconExtractor
 
                 pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("加载自定义图标失败: %s", exc, exc_info=True)
 
         # 3. 默认图标
         if not pixmap or pixmap.isNull():
@@ -691,8 +683,8 @@ class UrlDialog(BaseDialog):
             if error:
                 self.url_edit.setFocus()
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("准备URL失败: %s", exc, exc_info=True)
 
         self.accept()
 
@@ -725,20 +717,20 @@ class UrlDialog(BaseDialog):
                 continue
             try:
                 thread.finished_signal.disconnect(slot)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("断开线程信号失败: %s", exc, exc_info=True)
             try:
                 thread.suppress_result_signal()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("抑制结果信号失败: %s", exc, exc_info=True)
             if thread.isRunning():
                 thread.wait(500)
             if thread.isRunning():
                 try:
                     thread.terminate()
                     thread.wait(200)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("终止线程失败: %s", exc, exc_info=True)
             if thread.isRunning():
                 try:
                     thread.setParent(None)
@@ -746,14 +738,14 @@ class UrlDialog(BaseDialog):
                     _cls = type(self)
                     thread.finished.connect(lambda t=thread, cls=_cls: cls._forget_orphaned_thread(t))
                     thread.finished.connect(thread.deleteLater)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("设置孤立线程失败: %s", exc, exc_info=True)
                 setattr(self, attr, None)
             else:
                 try:
                     thread.deleteLater()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("删除线程失败: %s", exc, exc_info=True)
                 setattr(self, attr, None)
 
     @classmethod
@@ -761,7 +753,7 @@ class UrlDialog(BaseDialog):
         try:
             cls._orphaned_threads.remove(thread)
         except ValueError:
-            pass
+            logger.debug("移除孤立线程记录失败", exc_info=True)
 
     def showEvent(self, event):
         """显示时进行延迟测试"""

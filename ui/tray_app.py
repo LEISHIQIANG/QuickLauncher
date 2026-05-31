@@ -54,8 +54,8 @@ class IconCacheCleanThread(QThread):
 
                 if hasattr(IconExtractor, "clear_cache"):
                     IconExtractor.clear_cache()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("清理图标提取器缓存: %s", exc, exc_info=True)
             self.finished_signal.emit(self.data_manager.clean_icon_cache(dry_run=False), "")
         except Exception as exc:
             self.finished_signal.emit({}, str(exc))
@@ -102,8 +102,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         _plugins_enabled = True
         try:
             _plugins_enabled = self.data_manager.get_settings().enable_plugins
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取设置: %s", exc, exc_info=True)
         if _safe_mode:
             logger.info("安全模式：插件系统已禁用")
         elif _plugins_enabled:
@@ -274,8 +274,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             try:
                 if getattr(self.data_manager.get_settings(), "auto_update_enabled", False):
                     QTimer.singleShot(5000, self._init_update_system)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取设置: %s", exc, exc_info=True)
         else:
             logger.info("安全模式：自动更新检查已禁用")
 
@@ -468,8 +468,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         except Exception:
             try:
                 timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止定时器失败: %s", exc, exc_info=True)
 
     def _close_widget_if_present(self, attr_name):
         widget = getattr(self, attr_name, None)
@@ -477,12 +477,12 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             return
         try:
             widget.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("关闭窗口组件: %s", exc, exc_info=True)
         try:
             setattr(self, attr_name, None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清除窗口引用失败: %s", exc, exc_info=True)
 
     def _shutdown_runtime_components(self):
         # 停止后台线程
@@ -494,8 +494,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             try:
                 _thread.quit()
                 _thread.wait(2000)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("退出图标缓存清理线程失败: %s", exc, exc_info=True)
 
         for timer_name in (
             "_settings_sync_timer",
@@ -529,21 +529,21 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         if mouse_hook:
             try:
                 mouse_hook.uninstall()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("卸载鼠标钩子: %s", exc, exc_info=True)
 
         keyboard_hook = self.keyboard_hook
         self.keyboard_hook = None
         if keyboard_hook:
             try:
                 keyboard_hook.uninstall()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("卸载键盘钩子: %s", exc, exc_info=True)
 
         try:
             self.tray_icon.hide()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("隐藏托盘图标: %s", exc, exc_info=True)
 
         for attr_name in (
             "config_window",
@@ -562,8 +562,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         for popup in list(getattr(self, "_extra_popup_windows", []) or []):
             try:
                 popup.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭弹窗: %s", exc, exc_info=True)
         self._extra_popup_windows = []
 
     def _restart(self):
@@ -575,14 +575,14 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         if self.mouse_hook:
             try:
                 self.mouse_hook.uninstall()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("卸载鼠标钩子: %s", exc, exc_info=True)
 
         if self.keyboard_hook:
             try:
                 self.keyboard_hook.uninstall()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("卸载键盘钩子: %s", exc, exc_info=True)
 
         # 隐藏托盘
         self.tray_icon.hide()
@@ -670,10 +670,7 @@ fso.DeleteFile WScript.ScriptFullName
             QTimer.singleShot(100, QApplication.quit)
 
         except Exception as e:
-            logger.error(f"重新启动失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+            logger.exception("重新启动失败")
             # TrayApp 是 QObject，不能作为 QDialog 的 parent
             # 尝试使用配置窗口作为 parent，如果没有则使用 None
             parent = self.config_window if self.config_window else None
@@ -765,8 +762,8 @@ fso.DeleteFile WScript.ScriptFullName
             else:
                 try:
                     self.hotkey_manager.start()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("启动热键管理器: %s", exc, exc_info=True)
 
             self._sync_special_apps_to_hook()
             theme = self.data_manager.get_settings().theme

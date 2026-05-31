@@ -264,7 +264,7 @@ class _CallbackHandler:
 
         try:
             result = call_callback(self._callback_name)
-            if result is False:
+            if not result:
                 return CommandResult(
                     success=False,
                     message=f"命令执行失败: {self._callback_name}",

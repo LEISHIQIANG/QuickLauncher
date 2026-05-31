@@ -3,20 +3,20 @@
 import time
 from types import SimpleNamespace
 
+import pytest
+
+import core.window_detection as window_detection
 import ui.launcher_popup.file_selection as file_selection
 import ui.launcher_popup.popup_data_refresh as popup_data_refresh
 import ui.launcher_popup.popup_item_execution as popup_item_execution
 import ui.launcher_popup.popup_window as popup_window
-import core.window_detection as window_detection
 from core.data_models import ShortcutItem, ShortcutType
 from qt_compat import QColor
 from ui.launcher_popup.popup_renderer import PopupRendererMixin
 
-
-
-import pytest
-
 pytestmark = pytest.mark.ui
+
+
 class _FakeItem:
     def __init__(self, path):
         self.Path = path

@@ -1,10 +1,14 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.command_registry import CommandAction, CommandDefinition, CommandMetadata, CommandParam, CommandResult
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem, ShortcutType
 from qt_compat import QEvent, QPixmap, QPlainTextEdit, Qt, QTextOption, QTimer
 from ui.command_panel_window import COMMAND_PANEL_SIZE_PRESETS, CommandPanelWindow
+
+pytestmark = pytest.mark.ui
 
 
 class FakeSettings:

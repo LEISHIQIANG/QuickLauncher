@@ -17,7 +17,7 @@ except ImportError:
     HAS_WIN32_SHELL = False
 
 try:
-    from ui.launcher_popup.window_detection import (
+    from core.window_detection import (
         _is_desktop_window,
         _normalize_window_hwnd,
         _window_selection_kind,
@@ -85,5 +85,5 @@ def get_selected_files_for_process() -> list[str]:
         finally:
             pythoncom.CoUninitialize()
     except Exception:
-        pass
+        logger.debug("获取文件选择路径失败", exc_info=True)
     return []

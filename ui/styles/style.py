@@ -7,10 +7,7 @@
 """
 
 import logging
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from qt_compat import (
     QApplication,
     QColor,
@@ -24,6 +21,8 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class Colors:
@@ -190,8 +189,8 @@ class PopupMenu(QWidget):
                 policy = getattr(Qt.FocusPolicy, "NoFocus", None)
             if policy is not None:
                 btn.setFocusPolicy(policy)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置按钮焦点策略失败: %s", exc, exc_info=True)
         btn.setStyleSheet(self._btn_style_dark if self._theme == "dark" else self._btn_style_light)
         btn.clicked.connect(lambda: self._trigger(callback))
         # 悬停到普通菜单项时收起子菜单
@@ -222,8 +221,8 @@ class PopupMenu(QWidget):
                 policy = getattr(Qt.FocusPolicy, "NoFocus", None)
             if policy is not None:
                 btn.setFocusPolicy(policy)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置按钮焦点策略失败: %s", exc, exc_info=True)
         btn.setStyleSheet(self._btn_style_dark if self._theme == "dark" else self._btn_style_light)
         self._layout.addWidget(btn)
 
@@ -298,8 +297,8 @@ class PopupMenu(QWidget):
         try:
             self.activateWindow()
             self.setFocus()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("激活菜单窗口失败: %s", exc, exc_info=True)
         # 窗口显示后应用模糊效果和圆角裁剪
         self._apply_blur_effect()
 
@@ -326,8 +325,8 @@ class PopupMenu(QWidget):
         """失去焦点时隐藏"""
         try:
             self.hide()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("隐藏菜单失败: %s", exc, exc_info=True)
         return super().focusOutEvent(event)
 
     def keyPressEvent(self, event):
@@ -337,8 +336,8 @@ class PopupMenu(QWidget):
             if key == QtCompat.Key_Escape:
                 self.hide()
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("处理按键事件失败: %s", exc, exc_info=True)
         return super().keyPressEvent(event)
 
     def _apply_blur_effect(self):

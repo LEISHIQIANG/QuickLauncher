@@ -167,13 +167,13 @@ class WindowEffect:
                         windll.shcore.GetDpiForMonitor(h_monitor, 0, byref(dpi_x), byref(dpi_y))
                         if dpi_x.value > 0:
                             dpi = dpi_x.value
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("获取显示器DPI失败: %s", exc, exc_info=True)
 
             if dpi > 0:
                 return float(dpi) / 96.0
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("计算DPI缩放失败: %s", exc, exc_info=True)
         return 1.0
 
     def set_acrylic(
@@ -265,8 +265,8 @@ class WindowEffect:
             dwmapi.DwmSetWindowAttribute(
                 HWND(int(hwnd)), DWORD(DWMWA_WINDOW_CORNER_PREFERENCE), byref(pref), sizeof(pref)
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置窗口圆角偏好失败: %s", exc, exc_info=True)
 
     def set_window_region(self, hwnd: int, w: int, h: int, r: int, x: int = 0, y: int = 0):
         """设置窗口圆角裁剪区域 (Win10/Win7) - 增强版，彻底消除直角残留
@@ -311,10 +311,10 @@ class WindowEffect:
                 # 如果失败，删除区域句柄
                 try:
                     self.gdi32.DeleteObject(HRGN(hrgn))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as exc:
+                    logger.debug("删除GDI对象失败: %s", exc, exc_info=True)
+        except Exception as exc:
+            logger.debug("设置窗口区域失败: %s", exc, exc_info=True)
 
     def clear_window_region(self, hwnd: int):
         """清除窗口裁剪区域"""
@@ -322,8 +322,8 @@ class WindowEffect:
             if not self._is_window(hwnd):
                 return
             self.user32.SetWindowRgn(HWND(int(hwnd)), HRGN(0), BOOL(1))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清除窗口区域失败: %s", exc, exc_info=True)
 
     def set_aero_blur(self, hwnd: int, enable: bool = True):
         """设置传统 Aero 模糊 (Win7/Win10 早期风格)"""
@@ -389,8 +389,8 @@ class WindowEffect:
             if bb.hRgnBlur:
                 self.gdi32.DeleteObject(bb.hRgnBlur)
 
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置DWM模糊失败: %s", exc, exc_info=True)
 
     def apply_unified_round_corners(self, hwnd: int, w: int, h: int, r: int = 12):
         """
@@ -599,8 +599,8 @@ def enable_window_shadow_and_round_corners(widget, radius: int = 12, force_regio
                     # 2. DWM Blur Behind 负责模糊效果（使用相同的区域）
                     effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
                     return True
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("应用Win10模糊效果失败: %s", exc, exc_info=True)
             return False
     except Exception:
         return False
@@ -671,9 +671,7 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
 
         return True
     except Exception:
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("应用窗口效果失败")
         return False
 
 

@@ -1,10 +1,17 @@
 """Launcher popup search interaction regressions."""
 
+import logging
 from types import SimpleNamespace
 
 from core.data_models import Folder, ShortcutItem, ShortcutType
+
+logger = logging.getLogger(__name__)
+import pytest
+
 from qt_compat import QPoint, QRect, Qt, QtCompat
 from ui.launcher_popup.popup_window import LauncherPopup
+
+pytestmark = pytest.mark.ui
 
 
 class _FakeKeyEvent:
@@ -749,7 +756,7 @@ def test_command_result_keys_and_autofill(monkeypatch):
     try:
         popup._execute_item(item)
     except Exception:
-        pass
+        logger.debug("执行弹窗项目失败", exc_info=True)
 
     assert popup.search_query == "/wifi"
 

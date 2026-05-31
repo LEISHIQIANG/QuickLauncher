@@ -1,6 +1,7 @@
 """Hotkey edit dialog."""
 
 import ctypes
+import logging
 import os
 import sys
 
@@ -36,6 +37,8 @@ from ui.tooltip_helper import install_tooltip
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
 from .theme_helper import get_radio_stylesheet, get_small_checkbox_stylesheet
+
+logger = logging.getLogger(__name__)
 
 _MODIFIER_VKS = {
     "lshift": 0xA0,
@@ -285,8 +288,8 @@ class HotkeyDialog(BaseDialog):
             finally:
                 painter.end()
             self.setWindowIcon(QIcon(pixmap))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置窗口图标失败: %s", exc, exc_info=True)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -412,9 +415,7 @@ class HotkeyDialog(BaseDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
-        self.setStyleSheet(
-            base_style
-            + f"""
+        self.setStyleSheet(base_style + f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -432,8 +433,7 @@ class HotkeyDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """
-        )
+        """)
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
         for btn in [
             self.hotkey_input.clear_btn,
@@ -507,7 +507,7 @@ class HotkeyDialog(BaseDialog):
             return
         preview = self._build_shortcut_preview()
         self._test_btn.setEnabled(False)
-        self.test_result_label.setText("发送中...")
+        self.test_result_label.setText(tr("发送中..."))
 
         import threading
 
@@ -547,8 +547,8 @@ class HotkeyDialog(BaseDialog):
                 from core.icon_extractor import IconExtractor
 
                 pixmap = IconExtractor.from_file(self._custom_icon_path, 40)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("加载自定义图标失败: %s", exc, exc_info=True)
         if not pixmap or pixmap.isNull():
             pixmap = self._create_hotkey_icon(40)
         if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
@@ -612,11 +612,13 @@ class HotkeyDialog(BaseDialog):
 
             is_conflict, conflict_desc = check_conflict(hotkey_str)
             if is_conflict:
-                result = ThemedMessageBox.question(self, "快捷键冲突", f"{conflict_desc}\n\n是否仍要使用此快捷键？")
+                result = ThemedMessageBox.question(
+                    self, tr("快捷键冲突"), tr("{conflict}\n\n是否仍要使用此快捷键？", conflict=conflict_desc)
+                )
                 if not result:
                     return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("检查快捷键冲突失败: %s", exc, exc_info=True)
         self.accept()
 
     def get_shortcut(self) -> ShortcutItem:

@@ -81,8 +81,8 @@ def _own_command_panel_context_reason(x: int, y: int, command_panel_hwnd: int = 
             title = _window_title(user32, root)
             if any(marker in title for marker in _COMMAND_PANEL_WINDOW_TITLES):
                 return f"command_panel_title_{label}"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("检查命令面板窗口上下文失败: %s", exc, exc_info=True)
     return ""
 
 
@@ -154,18 +154,18 @@ class PopupMixin:
             pt = POINT()
             ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
             x, y = pt.x, pt.y
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取光标位置失败: %s", exc, exc_info=True)
 
         paused_state = False
         if hasattr(self, "mouse_hook") and self.mouse_hook:
             try:
                 paused_state = self.mouse_hook.is_paused()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("检查鼠标钩子暂停状态失败: %s", exc, exc_info=True)
 
         # 如果当前鼠标钩子已被设为暂停，则100%拒绝在主线程分发信号与呼起弹窗，提供双重生命周期安全屏障
-        if paused_state is True:
+        if paused_state:
             logger.info("HOOK_CALLBACK_IGNORED hook_paused pos=(%s,%s)", x, y)
             return
 
@@ -217,15 +217,15 @@ class PopupMixin:
 
         try:
             _get_shortcut_executor().save_foreground_window()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("保存前台窗口失败: %s", exc, exc_info=True)
 
         self._has_shown_popup = True
         try:
             if self._deferred_startup_timer and self._deferred_startup_timer.isActive():
                 self._deferred_startup_timer.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("停止延迟启动定时器失败: %s", exc, exc_info=True)
 
         if not self._icon_preload_started:
             from qt_compat import QTimer
@@ -287,11 +287,8 @@ class PopupMixin:
                 self.popup_window.raise_()
                 logger.info("弹出窗口已创建并显示，耗时 %.1f ms", (time.perf_counter() - popup_start) * 1000)
 
-        except Exception as e:
-            logger.error(f"显示弹出窗口失败: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("显示弹出窗口失败")
 
     def _should_multi_open_pinned_popup(self, popup) -> bool:
         try:
@@ -308,8 +305,8 @@ class PopupMixin:
                 self._extra_popup_windows.append(popup)
                 self._trim_extra_popup_windows()
                 logger.debug("固定弹窗已保留，当前保留数量: %d", len(self._extra_popup_windows))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("保留额外弹窗失败: %s", exc, exc_info=True)
 
     def _trim_extra_popup_windows(self):
         max_extra = max(0, int(getattr(self, "_max_extra_popup_windows", 2) or 0))
@@ -317,11 +314,12 @@ class PopupMixin:
             old_popup = self._extra_popup_windows.pop(0)
             try:
                 old_popup.close()
+                old_popup.deleteLater()
             except Exception:
                 try:
                     old_popup.hide()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("隐藏旧弹窗失败: %s", exc, exc_info=True)
 
     def _prune_extra_popup_windows(self):
         kept = []
@@ -330,7 +328,7 @@ class PopupMixin:
                 _ = popup.width()
                 kept.append(popup)
             except RuntimeError:
-                pass
+                logger.debug("检查弹窗宽度失败(C++对象已销毁)", exc_info=True)
             except Exception:
                 kept.append(popup)
         self._extra_popup_windows = kept

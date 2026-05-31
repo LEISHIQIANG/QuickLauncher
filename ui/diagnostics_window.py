@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 
 from core.diagnostics import collect_diagnostics, export_diagnostics_zip
+from core.i18n import tr
 from qt_compat import (
     QApplication,
     QFont,
@@ -34,8 +35,8 @@ class _DiagnosticsTextEdit(QTextEdit):
 
     def contextMenuEvent(self, event):
         menu = PopupMenu(theme=self._theme, radius=12, parent=None)
-        menu.add_action("复制", lambda: self.copy(), enabled=self.textCursor().hasSelection())
-        menu.add_action("全选", lambda: self.selectAll(), enabled=len(self.toPlainText()) > 0)
+        menu.add_action(tr("复制"), lambda: self.copy(), enabled=self.textCursor().hasSelection())
+        menu.add_action(tr("全选"), lambda: self.selectAll(), enabled=len(self.toPlainText()) > 0)
         menu.popup(event.globalPos())
 
 
@@ -63,15 +64,15 @@ class DiagnosticsWindow(ThemedToolWindow):
         self._collect_thread = None
         self.items = []
         theme = getattr(data_manager.get_settings(), "theme", "light")
-        super().__init__("诊断中心", theme=theme, parent=parent)
+        super().__init__(tr("诊断中心"), theme=theme, parent=parent)
         self.resize(760, 560)
         self._setup_ui()
         self._apply_content_theme()
-        self.text.setHtml("正在收集诊断信息...")
+        self.text.setHtml(tr("正在收集诊断信息..."))
         QTimer.singleShot(80, self.refresh)
 
     def _setup_ui(self):
-        self.set_subtitle("运行环境、配置、钩子、热键、缓存和最近错误")
+        self.set_subtitle(tr("运行环境、配置、钩子、热键、缓存和最近错误"))
 
         self.text = _DiagnosticsTextEdit()
         self.text.setReadOnly(True)
@@ -82,15 +83,15 @@ class DiagnosticsWindow(ThemedToolWindow):
         self.content_layout.addWidget(self.text)
 
         buttons = QHBoxLayout()
-        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn = QPushButton(tr("刷新"))
         self.refresh_btn.clicked.connect(self.refresh)
         buttons.addWidget(self.refresh_btn)
 
-        self.copy_btn = QPushButton("复制摘要")
+        self.copy_btn = QPushButton(tr("复制摘要"))
         self.copy_btn.clicked.connect(self.copy_summary)
         buttons.addWidget(self.copy_btn)
 
-        self.export_btn = QPushButton("导出诊断包")
+        self.export_btn = QPushButton(tr("导出诊断包"))
         self.export_btn.clicked.connect(self.export_package)
         buttons.addWidget(self.export_btn)
 
@@ -111,7 +112,7 @@ class DiagnosticsWindow(ThemedToolWindow):
     def refresh(self):
         if self._collect_thread and self._collect_thread.isRunning():
             return
-        self.text.setHtml("正在收集诊断信息...")
+        self.text.setHtml(tr("正在收集诊断信息..."))
         self.refresh_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
         self._collect_thread = DiagnosticsCollectThread(self.data_manager, self.tray_app)
@@ -125,7 +126,7 @@ class DiagnosticsWindow(ThemedToolWindow):
         self.export_btn.setEnabled(True)
         if error:
             self.items = []
-            self.text.setHtml(f"诊断收集失败: {error}")
+            self.text.setHtml(tr("诊断收集失败: {error}", error=error))
             return
         self.items = list(items or [])
         self.text.setHtml(self._format_items())
@@ -136,13 +137,13 @@ class DiagnosticsWindow(ThemedToolWindow):
     def export_package(self):
         default_name = f"QuickLauncher_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         default_path = os.path.join(str(self.data_manager.app_dir), default_name)
-        path, _ = get_save_file_name(self, "导出诊断包", default_path, "Zip Files (*.zip)")
+        path, _ = get_save_file_name(self, tr("导出诊断包"), default_path, "Zip Files (*.zip)")
         if not path:
             return
         if export_diagnostics_zip(self.data_manager, path, self.tray_app):
-            ThemedMessageBox.information(self, "导出完成", f"诊断包已导出:\n{path}")
+            ThemedMessageBox.information(self, tr("导出完成"), tr("诊断包已导出:\n{path}", path=path))
         else:
-            ThemedMessageBox.warning(self, "导出失败", "无法导出诊断包，请查看运行日志。")
+            ThemedMessageBox.warning(self, tr("导出失败"), tr("无法导出诊断包，请查看运行日志。"))
 
     def _format_items(self) -> str:
         """格式化诊断项为HTML，带颜色支持"""
@@ -161,34 +162,34 @@ class DiagnosticsWindow(ThemedToolWindow):
         lines = ['<pre style="font-family: Consolas, Courier New, monospace; font-size: 9pt;">']
 
         # 显示恢复状态横幅（如果有恢复事件）
-        recovery_items = [it for it in self.items if it.title == "配置恢复"]
+        recovery_items = [it for it in self.items if it.title == tr("配置恢复")]
         if recovery_items:
             r = recovery_items[0]
             banner_color = status_colors.get(str(r.status).lower(), "#888888")
             lines.append(
-                f'<span style="color: {banner_color};"><b>[配置恢复] {self._html_escape(r.summary)}</b></span>'
+                f'<span style="color: {banner_color};"><b>{tr("[配置恢复]")} {self._html_escape(r.summary)}</b></span>'
             )
             if r.details:
                 lines.append(f"  {self._html_escape(r.details)}")
             lines.append("")
 
-        lines.append("<b>摘要</b>")
+        lines.append(tr("<b>摘要</b>"))
         lines.append(f'  <span style="color: {status_colors["error"]};">ERROR  : {counts.get("error", 0)}</span>')
         lines.append(f'  <span style="color: {status_colors["warn"]};">WARN   : {counts.get("warn", 0)}</span>')
         lines.append(f'  <span style="color: {status_colors["ok"]};">OK     : {counts.get("ok", 0)}</span>')
         lines.append(f'  <span style="color: {status_colors["unknown"]};">UNKNOWN: {counts.get("unknown", 0)}</span>')
         lines.append("")
-        lines.append("<b>明细</b>")
+        lines.append(tr("<b>明细</b>"))
 
         for item in sorted(self.items, key=self._diagnostic_sort_key):
             status_upper = item.status.upper()
             color = status_colors.get(str(item.status).lower(), "#888888")
             lines.append(f'<span style="color: {color};">[{status_upper}] {self._html_escape(item.title)}</span>')
-            lines.append(f"  摘要: {self._html_escape(item.summary)}")
+            lines.append(f"{tr('  摘要:')} {self._html_escape(item.summary)}")
             if item.details:
-                lines.append(f"  详情: {self._html_escape(item.details)}")
+                lines.append(f"{tr('  详情:')} {self._html_escape(item.details)}")
             if item.action:
-                lines.append(f"  建议: {self._html_escape(item.action)}")
+                lines.append(f"{tr('  建议:')} {self._html_escape(item.action)}")
             lines.append("")
 
         lines.append("</pre>")

@@ -173,8 +173,8 @@ class _IconLoadWorker(QObject):
             import ctypes
 
             ctypes.windll.ole32.CoInitialize(None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("COM初始化: %s", exc, exc_info=True)
 
         try:
             for sid, icon_path, target_path, size, stype in self._tasks:
@@ -225,8 +225,8 @@ class _IconLoadWorker(QObject):
                 import ctypes
 
                 ctypes.windll.ole32.CoUninitialize()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("COM反初始化: %s", exc, exc_info=True)
             self.completed.emit()
 
     @staticmethod
@@ -644,7 +644,7 @@ class IconWidget(QFrame):
                     self.setGraphicsEffect(None)
                 self._set_normal_style()
             except RuntimeError:
-                pass
+                logger.debug("拖动结束后恢复图标视觉效果失败", exc_info=True)
 
             # Notify parent grid that drag has ended
             parent = self.parent()
@@ -667,8 +667,8 @@ class IconWidget(QFrame):
             try:
                 local_pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
                 pointer_pos = self.mapToGlobal(local_pos)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取拖拽指针位置失败: %s", exc, exc_info=True)
 
             parent = self.parent()
             while parent:
@@ -836,8 +836,8 @@ class IconGrid(QWidget):
         try:
             theme = self.data_manager.get_settings().theme
             self.apply_theme(theme)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主题设置: %s", exc, exc_info=True)
 
     def apply_theme(self, theme: str):
         """应用主题样式"""
@@ -855,15 +855,13 @@ class IconGrid(QWidget):
             grid_bg = "rgba(255, 255, 255, 0.20)"
             grid_border = "rgba(0, 0, 0, 0.06)"
 
-        self.grid_area.setStyleSheet(
-            f"""
+        self.grid_area.setStyleSheet(f"""
             QWidget#iconGridArea {{
                 background-color: {grid_bg};
                 border: 1px solid {grid_border};
                 border-radius: 10px;
             }}
-        """
-        )
+        """)
 
         if theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
@@ -1093,8 +1091,8 @@ class IconGrid(QWidget):
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主题设置: %s", exc, exc_info=True)
         icon_tasks = []
         for _i, shortcut in enumerate(items):
             widget = IconWidget(shortcut, icon_size=icon_size, cell_size=cell_size, theme=theme)
@@ -1146,7 +1144,7 @@ class IconGrid(QWidget):
                     widget._pos_anim = None
                 widget.deleteLater()
             except RuntimeError:
-                pass
+                logger.debug("清除图标控件时删除控件失败", exc_info=True)
         self.icon_widgets.clear()
         self._initial_widgets = []
         self._drag_visual_widgets = []
@@ -1178,9 +1176,9 @@ class IconGrid(QWidget):
             try:
                 worker.cancel()
             except RuntimeError:
-                pass
-            except Exception:
-                pass
+                logger.debug("取消图标加载worker失败", exc_info=True)
+            except Exception as exc:
+                logger.debug("取消图标加载任务失败: %s", exc, exc_info=True)
 
         thread = getattr(self, "_icon_thread", None)
         if thread is not None:
@@ -1188,7 +1186,7 @@ class IconGrid(QWidget):
                 thread.quit()
                 thread.wait(2000)
             except RuntimeError:
-                pass
+                logger.debug("停止图标加载线程失败", exc_info=True)
             self._icon_thread = None
             self._icon_worker = None
 
@@ -1246,12 +1244,12 @@ class IconGrid(QWidget):
                 theme = "dark"
                 try:
                     theme = self.data_manager.get_settings().theme
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("获取主题设置: %s", exc, exc_info=True)
                 if should_invert_icon(item, theme):
                     image = IconExtractor.invert_image(image)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取主题设置: %s", exc, exc_info=True)
 
         pixmap = QPixmap.fromImage(image)
         for w in list(self.icon_widgets):
@@ -1436,8 +1434,8 @@ class IconGrid(QWidget):
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主题设置: %s", exc, exc_info=True)
 
         menu = PopupMenu(theme=theme, radius=12, parent=None)
         menu.add_action(tr("快捷方式"), lambda: self.add_file_requested.emit(), enabled=True)
@@ -1455,14 +1453,14 @@ class IconGrid(QWidget):
             radius = 10
             try:
                 menu.adjustSize()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("调整菜单大小: %s", exc, exc_info=True)
             path = QPainterPath()
             rect = menu.rect()
             path.addRoundedRect(rect, radius, radius)
             menu.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("调整菜单大小: %s", exc, exc_info=True)
 
     @staticmethod
     def _widget_shortcut_id(widget) -> str | None:
@@ -1538,7 +1536,7 @@ class IconGrid(QWidget):
                 widget.setGraphicsEffect(effect)
                 self._drag_visual_widgets.append(widget)
             except RuntimeError:
-                pass
+                logger.debug("设置拖动图标透明度效果失败", exc_info=True)
 
     def end_drag_visuals(self):
         for widget in vars(self).get("_drag_visual_widgets", []) or []:
@@ -1547,7 +1545,7 @@ class IconGrid(QWidget):
                 widget.setGraphicsEffect(None)
                 widget._set_normal_style()
             except RuntimeError:
-                pass
+                logger.debug("恢复拖动图标视觉效果失败", exc_info=True)
         self._drag_visual_widgets = []
         self._active_drag_ids = []
 
@@ -1752,8 +1750,8 @@ class IconGrid(QWidget):
             theme = "dark"
             try:
                 theme = self.data_manager.get_settings().theme
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取主题设置: %s", exc, exc_info=True)
 
             if theme == "dark":
                 bg = "rgba(168, 230, 207, 25)"
@@ -1762,15 +1760,13 @@ class IconGrid(QWidget):
                 bg = "rgba(224, 250, 240, 200)"
                 border = "2px dashed rgba(70, 180, 140, 180)"
 
-            self.grid_area.setStyleSheet(
-                f"""
+            self.grid_area.setStyleSheet(f"""
                 QWidget#iconGridArea {{
                     background-color: {bg};
                     border: {border};
                     border-radius: 10px;
                 }}
-            """
-            )
+            """)
         else:
             event.ignore()
 
@@ -1779,8 +1775,8 @@ class IconGrid(QWidget):
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主题设置: %s", exc, exc_info=True)
         self.apply_theme(theme)
         super().dragLeaveEvent(event)
 
@@ -1788,8 +1784,8 @@ class IconGrid(QWidget):
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主题设置: %s", exc, exc_info=True)
         self.apply_theme(theme)
 
         if not self.current_folder_id:
@@ -1842,8 +1838,8 @@ class IconGrid(QWidget):
                 shortcut.target_path = info.get("target", file_path)
                 shortcut.target_args = info.get("args", "")
                 shortcut.working_dir = info.get("working_dir", "")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("解析快捷方式文件失败: %s", exc, exc_info=True)
         return shortcut
 
     def _add_from_file(self, file_path: str):

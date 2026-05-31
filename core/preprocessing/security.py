@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -96,8 +99,8 @@ def validate_safe_path(path: str, base_dir: str | None = None) -> SecurityIssue 
                     description="路径超出允许目录",
                     mitigation=f"路径必须在 {base_dir} 内",
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("检查路径逃逸失败: %s", exc, exc_info=True)
 
     return None
 
@@ -122,8 +125,8 @@ def validate_variable_quoting(command: str, command_type: str) -> list[SecurityI
                     mitigation="将 {{" + var + "}} 改为 {{" + var + ":q}}",
                 )
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("检查未引用变量失败: %s", exc, exc_info=True)
 
     return issues
 

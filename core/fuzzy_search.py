@@ -1,5 +1,6 @@
 """Fuzzy search helpers for launcher shortcuts."""
 
+import logging
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -9,6 +10,8 @@ from functools import lru_cache
 
 from .pinyin_search import pinyin_variants
 from .search_history import search_history_bonus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -342,7 +345,7 @@ def _order_value(shortcut, sort_mode: str, original_index: int) -> int:
             try:
                 return int(smart_order)
             except Exception:
-                pass
+                logger.debug("解析smart_order值失败", exc_info=True)
     try:
         return int(getattr(shortcut, "order", original_index))
     except Exception:

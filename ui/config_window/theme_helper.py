@@ -2,11 +2,13 @@
 主题助手 - 统一管理对话框主题
 """
 
+import logging
 import os
 import tempfile
-import traceback
 
 from qt_compat import QBrush, QColor, QPainter, QPen, QPixmap, QRectF, QtCompat
+
+logger = logging.getLogger(__name__)
 
 # 内存缓存，避免重复文件系统访问
 _icon_path_cache = {}
@@ -17,7 +19,7 @@ def log_error(msg):
         with open("debug_crash.log", "a", encoding="utf-8") as f:
             f.write(msg + "\n")
     except Exception:
-        pass
+        logger.debug("写入调试日志文件失败", exc_info=True)
 
 
 def get_temp_icon_dir():
@@ -117,8 +119,8 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
         normalized_path = file_path.replace("\\", "/")
         _set_cached_icon_path(cache_key, normalized_path)
         return normalized_path
-    except Exception as e:
-        log_error(f"Error creating radio icon: {e}\n{traceback.format_exc()}")
+    except Exception:
+        logger.exception("创建单选按钮图标失败")
         return ""
 
 
@@ -200,8 +202,8 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
         normalized_path = file_path.replace("\\", "/")
         _set_cached_icon_path(cache_key, normalized_path)
         return normalized_path
-    except Exception as e:
-        log_error(f"Error creating switch icon: {e}\n{traceback.format_exc()}")
+    except Exception:
+        logger.exception("创建开关图标失败")
         return ""
 
 
@@ -282,8 +284,8 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
         normalized_path = file_path.replace("\\", "/")
         _set_cached_icon_path(cache_key, normalized_path)
         return normalized_path
-    except Exception as e:
-        log_error(f"Error creating checkbox icon: {e}\n{traceback.format_exc()}")
+    except Exception:
+        logger.exception("创建复选框图标失败")
         return ""
 
 

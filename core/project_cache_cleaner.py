@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
+
+logger = logging.getLogger(__name__)
 
 _CACHE_DIR_NAMES = {".pytest_cache", ".ruff_cache", "__pycache__"}
 _BYTECODE_SUFFIXES = {".pyc", ".pyo"}
@@ -62,7 +65,7 @@ def _iter_values(value):
         try:
             value = value.to_dict()
         except Exception:
-            pass
+            logger.debug("转换值为字典失败", exc_info=True)
     if isinstance(value, dict):
         for item in value.values():
             yield from _iter_values(item)

@@ -1268,7 +1268,7 @@ def _delete_registry_value() -> bool:
             winreg.DeleteValue(key, APP_NAME)
             logger.info("注册表自启动已删除")
         except FileNotFoundError:
-            pass
+            logger.debug("注册表自启动值不存在", exc_info=True)
         finally:
             winreg.CloseKey(key)
         return True

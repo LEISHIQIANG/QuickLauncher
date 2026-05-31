@@ -2,11 +2,13 @@
 日志查看窗口 - 与主配置窗口风格统一
 """
 
+import logging
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.i18n import tr
 from qt_compat import (
     QColor,
     QDialog,
@@ -29,6 +31,8 @@ from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
+
+logger = logging.getLogger(__name__)
 
 
 class RoundedMenuPlainTextEdit(QPlainTextEdit):
@@ -61,7 +65,7 @@ class LogWindow(QDialog):
         self._auto_refresh_timer = None
         self._full_log_content = ""  # 完整日志内容缓存
 
-        self.setWindowTitle("运行日志")
+        self.setWindowTitle(tr("运行日志"))
         self.resize(700, 500)
 
         # 无边框 + 透明背景
@@ -91,8 +95,8 @@ class LogWindow(QDialog):
                     if not icon.isNull():
                         self.setWindowIcon(icon)
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("加载窗口图标失败: %s", exc, exc_info=True)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -210,8 +214,8 @@ class LogWindow(QDialog):
                             pixmap.scaled(QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                         )
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("加载标题栏图标失败: %s", exc, exc_info=True)
 
     def set_theme(self, theme: str):
         """外部切换主题"""
@@ -258,22 +262,18 @@ class LogWindow(QDialog):
         """
         self.close_btn_top.setStyleSheet(close_top_style)
 
-        self.title_label.setStyleSheet(
-            f"""
+        self.title_label.setStyleSheet(f"""
             font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
-        """
-        )
+        """)
         self.title_label.setFont(get_qfont(14, 400))
-        self.path_label.setStyleSheet(
-            f"""
+        self.path_label.setStyleSheet(f"""
             font-size: 11px;
             color: {text_secondary};
             background: transparent;
             padding-left: 6px;
-        """
-        )
+        """)
 
         # 日志文本框完全透明
         log_edit_style = f"""
@@ -341,8 +341,8 @@ class LogWindow(QDialog):
                 enable_acrylic_for_config_window(self, self._theme, blur_amount=8, radius=radius)
 
             self._blur_applied = True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用模糊效果失败: %s", exc, exc_info=True)
 
     def paintEvent(self, event):
         """绘制圆角半透明背景 - 与主配置窗口一致"""
@@ -394,8 +394,8 @@ class LogWindow(QDialog):
                     if w > 0 and h > 0:
                         effect.set_window_region(hwnd, w, h, radius)
                         effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新窗口区域失败: %s", exc, exc_info=True)
 
     def showEvent(self, event):
         """显示时应用模糊效果和启动动画"""
@@ -469,8 +469,7 @@ class LogWindow(QDialog):
             info_active_bg = "rgba(0, 122, 255, 0.15)"
             info_active_border = "rgba(0, 122, 255, 0.4)"
 
-        self.info_filter_btn.setStyleSheet(
-            f"""
+        self.info_filter_btn.setStyleSheet(f"""
             QPushButton {{
                 font-size: 11px; padding: 4px 8px;
                 background: {info_bg}; border: 1px solid {info_border};
@@ -478,8 +477,7 @@ class LogWindow(QDialog):
             }}
             QPushButton:hover {{ background: {info_active_bg}; border: 1px solid {info_active_border}; }}
             QPushButton:checked {{ background: {info_active_bg}; border: 1px solid {info_active_border}; font-weight: 400; }}
-        """
-        )
+        """)
 
         # DEBUG 按钮 - 淡黄色（柔和）
         if is_dark:
@@ -495,8 +493,7 @@ class LogWindow(QDialog):
             debug_active_bg = "rgba(255, 214, 10, 0.10)"
             debug_active_border = "rgba(200, 170, 0, 0.22)"
 
-        self.debug_filter_btn.setStyleSheet(
-            f"""
+        self.debug_filter_btn.setStyleSheet(f"""
             QPushButton {{
                 font-size: 11px; padding: 4px 8px;
                 background: {debug_bg}; border: 1px solid {debug_border};
@@ -504,8 +501,7 @@ class LogWindow(QDialog):
             }}
             QPushButton:hover {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; }}
             QPushButton:checked {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; font-weight: 400; }}
-        """
-        )
+        """)
 
         # ERROR 按钮 - 淡红色（柔和）
         if is_dark:
@@ -521,8 +517,7 @@ class LogWindow(QDialog):
             error_active_bg = "rgba(255, 69, 58, 0.10)"
             error_active_border = "rgba(220, 50, 40, 0.22)"
 
-        self.error_filter_btn.setStyleSheet(
-            f"""
+        self.error_filter_btn.setStyleSheet(f"""
             QPushButton {{
                 font-size: 11px; padding: 4px 8px;
                 background: {error_bg}; border: 1px solid {error_border};
@@ -530,8 +525,7 @@ class LogWindow(QDialog):
             }}
             QPushButton:hover {{ background: {error_active_bg}; border: 1px solid {error_active_border}; }}
             QPushButton:checked {{ background: {error_active_bg}; border: 1px solid {error_active_border}; font-weight: 400; }}
-        """
-        )
+        """)
 
     def _count_log_levels(self, content: str):
         """统计日志中各级别的条数"""
@@ -614,7 +608,7 @@ class LogWindow(QDialog):
 
     def clear_log(self):
         """清空日志"""
-        confirmed = ThemedMessageBox.question(self, "确认清空", "确定要清空所有日志内容吗？")
+        confirmed = ThemedMessageBox.question(self, tr("确认清空"), tr("确定要清空所有日志内容吗？"))
         if confirmed == ThemedMessageBox.Yes:
             try:
                 with open(self.log_path, "w", encoding="utf-8") as f:
@@ -624,4 +618,4 @@ class LogWindow(QDialog):
                 self.error_filter_btn.setChecked(True)
                 self.load_log()
             except Exception as e:
-                ThemedMessageBox.warning(self, "错误", f"无法清空日志: {e}")
+                ThemedMessageBox.warning(self, tr("错误"), tr("无法清空日志: {error}", error=e))

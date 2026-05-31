@@ -1,7 +1,11 @@
+import pytest
+
 import core.shortcut_hotkey as hotkey_mod
 import hooks.hotkey_manager as manager_mod
 from core.shortcut_hotkey import HotkeyExecutionMixin
 from hooks.keyboard_hook_dll import KeyboardHook
+
+pytestmark = pytest.mark.ui
 
 
 def test_extended_function_keys_are_supported(monkeypatch):

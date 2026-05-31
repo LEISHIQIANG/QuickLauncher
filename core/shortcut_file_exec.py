@@ -141,13 +141,13 @@ class FileExecutionMixin:
                     admin_failure_message="Administrator launch failed.",
                 )
                 if launched:
-                    logger.info(f"打开文件夹: {folder}")
+                    logger.debug(f"打开文件夹: {folder}")
                     return True
                 if launch_error:
                     logger.warning("%s: %s", folder, launch_error)
                     return False
             os.startfile(folder)
-            logger.info(f"打开文件夹: {folder}")
+            logger.debug(f"打开文件夹: {folder}")
 
             # TODO: 可以扩展为将文件复制到该文件夹
             # 或者用 explorer /select 选中文件（如果在同一文件夹）
@@ -187,7 +187,7 @@ class FileExecutionMixin:
             # 添加所有文件
             cmd_args.extend(files)
 
-            logger.info(f"执行命令: {cmd_args}")
+            logger.debug(f"执行命令: {cmd_args}")
 
             exe_dir = os.path.dirname(os.path.abspath(exe_path)) if exe_path else None
             cwd = working_dir.strip() if working_dir else ""
@@ -239,7 +239,7 @@ class FileExecutionMixin:
                         admin_failure_message="Administrator launch failed.",
                     )
                     if launched:
-                        logger.info(f"ShellExecute launched: {exe_path} {file_path}")
+                        logger.debug(f"ShellExecute launched: {exe_path} {file_path}")
                         continue
                     if launch_error:
                         logger.warning("%s: %s", exe_path, launch_error)
@@ -251,7 +251,7 @@ class FileExecutionMixin:
                 ShortcutExecutor._popen_silent(
                     cmd, cwd=cwd or exe_dir or None, env=ShortcutExecutor._sanitized_child_env()
                 )
-                logger.info(f"用 {exe_path} 打开: {file_path}")
+                logger.debug(f"用 {exe_path} 打开: {file_path}")
             except Exception as e:
                 logger.error(f"逐个打开文件失败 {file_path}: {e}")
                 success = False
@@ -275,7 +275,7 @@ class FileExecutionMixin:
                         admin_failure_message="Administrator launch failed.",
                     )
                     if launched:
-                        logger.info(f"Associated launch succeeded: target={target}, file={file_path}")
+                        logger.debug(f"Associated launch succeeded: target={target}, file={file_path}")
                         continue
                     if launch_error:
                         logger.warning("%s: %s", target, launch_error)
@@ -285,9 +285,9 @@ class FileExecutionMixin:
                         return False
 
                 # 使用 start 命令，让 Windows 决定用什么程序打开
-                cmd = f'start "" "{target}" "{file_path}"'
-                ShortcutExecutor._popen_silent(cmd, shell=True)
-                logger.info(f"Start 命令打开: {cmd}")
+                cmd = ["cmd", "/c", "start", "", target, file_path]
+                ShortcutExecutor._popen_silent(cmd, shell=False)
+                logger.debug(f"Start 命令打开: {cmd}")
             except Exception as e:
                 logger.error(f"打开文件失败 {file_path}: {e}")
                 success = False
@@ -295,10 +295,10 @@ class FileExecutionMixin:
                     if run_as_admin:
                         return False
                     os.startfile(file_path)
-                    logger.info(f"os.startfile 打开: {file_path}")
+                    logger.debug(f"os.startfile 打开: {file_path}")
                     success = True
                 except Exception:
-                    pass
+                    logger.debug("使用os.startfile打开文件失败", exc_info=True)
         return success
 
     @staticmethod
@@ -384,7 +384,7 @@ class FileExecutionMixin:
         )
 
         if route == PRIVILEGE_ROUTE_DOWNGRADE:
-            logger.info("Attempting standard-user launch from elevated context: %s", target)
+            logger.debug("Attempting standard-user launch from elevated context: %s", target)
             downgraded, downgrade_error = ShortcutExecutor._launch_as_standard_user_direct(
                 target,
                 parameters or "",
@@ -392,7 +392,7 @@ class FileExecutionMixin:
                 show_cmd,
             )
             if downgraded:
-                logger.info("Standard-user launch succeeded: %s", target)
+                logger.debug("Standard-user launch succeeded: %s", target)
                 return True, ""
             logger.warning("Standard-user launch failed, returning error: %s (%s)", target, downgrade_error)
             return False, standard_user_failure_message

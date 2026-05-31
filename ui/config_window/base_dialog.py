@@ -25,8 +25,8 @@ def _trace_to_crash_log(msg: str):
             log_dir = str(Path(__file__).parent.parent.parent / "config")
         with open(os.path.join(log_dir, "crash.log"), "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().isoformat()}] {msg}\n")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("写入崩溃日志失败: %s", exc, exc_info=True)
 
 
 class BaseDialog(QDialog):
@@ -168,8 +168,8 @@ class BaseDialog(QDialog):
                 if w > 0 and h > 0:
                     effect.set_window_region(hwnd, w, h, self.corner_radius)
             enable_acrylic_for_config_window(self, theme, blur_amount=10)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
 
     def done(self, result):
         _trace_to_crash_log(f"done: {type(self).__name__} result={result}")
@@ -178,14 +178,14 @@ class BaseDialog(QDialog):
         if effects_timer is not None:
             try:
                 effects_timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止特效定时器失败: %s", exc, exc_info=True)
         anim_timer = getattr(self, "_anim_timer", None)
         if anim_timer is not None:
             try:
                 anim_timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止动画定时器失败: %s", exc, exc_info=True)
         super().done(result)
 
     def _start_show_animation(self, target_pos=None):

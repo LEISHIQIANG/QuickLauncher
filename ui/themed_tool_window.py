@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -27,6 +28,8 @@ from qt_compat import (
 from ui.styles.style import Colors, StyleSheet
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
+
+logger = logging.getLogger(__name__)
 
 
 class ThemedToolWindow(QDialog):
@@ -107,24 +110,19 @@ class ThemedToolWindow(QDialog):
             text_secondary = "rgba(60, 60, 67, 0.6)"
 
         self.setStyleSheet("QDialog { background: transparent; }")
-        self.title_label.setStyleSheet(
-            f"""
+        self.title_label.setStyleSheet(f"""
             font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
-        """
-        )
+        """)
         self.title_label.setFont(get_qfont(14, 400))
-        self.subtitle_label.setStyleSheet(
-            f"""
+        self.subtitle_label.setStyleSheet(f"""
             font-size: 11px;
             color: {text_secondary};
             background: transparent;
             padding-left: 6px;
-        """
-        )
-        self.close_btn_top.setStyleSheet(
-            f"""
+        """)
+        self.close_btn_top.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -142,8 +140,7 @@ class ThemedToolWindow(QDialog):
                 background: #C50F1F;
                 color: #ffffff;
             }}
-        """
-        )
+        """)
         tune_font_rendering(self, recursive=True)
         self.title_label.setFont(get_qfont(14, 400))
 
@@ -160,8 +157,7 @@ class ThemedToolWindow(QDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(
-            f"""
+        widget.setStyleSheet(f"""
             QPlainTextEdit {{
                 background: transparent;
                 border: none;
@@ -169,9 +165,7 @@ class ThemedToolWindow(QDialog):
                 selection-background-color: {selection_bg};
                 selection-color: {selection_text};
             }}
-        """
-            + scrollbar_style
-        )
+        """ + scrollbar_style)
         self.style_scrollbars(widget)
 
     def style_list_widget(self, widget: QListWidget):
@@ -196,8 +190,7 @@ class ThemedToolWindow(QDialog):
         padding = "4px 7px" if compact else "8px 10px"
         radius = "4px" if compact else "6px"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(
-            f"""
+        widget.setStyleSheet(f"""
             QListWidget {{
                 background: transparent;
                 border: 1px solid {border};
@@ -219,9 +212,7 @@ class ThemedToolWindow(QDialog):
                 color: {selected_text};
                 border: 1px solid {selected_border};
             }}
-        """
-            + scrollbar_style
-        )
+        """ + scrollbar_style)
         self.style_scrollbars(widget)
 
     def style_scrollbars(self, widget):
@@ -231,8 +222,8 @@ class ThemedToolWindow(QDialog):
             try:
                 scrollbar = getattr(widget, accessor)()
                 scrollbar.setStyleSheet(scrollbar_style)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置滚动条样式失败: %s", exc, exc_info=True)
 
     def style_buttons(self, *buttons: QPushButton):
         theme = self._theme
@@ -285,8 +276,8 @@ class ThemedToolWindow(QDialog):
                     if not icon.isNull():
                         self.setWindowIcon(icon)
                         return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("加载窗口图标失败: %s", exc, exc_info=True)
 
     def _load_title_icon(self):
         try:
@@ -298,8 +289,8 @@ class ThemedToolWindow(QDialog):
                             pixmap.scaled(QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                         )
                         return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("加载标题图标失败: %s", exc, exc_info=True)
 
     @staticmethod
     def _possible_icon_paths():
@@ -324,8 +315,8 @@ class ThemedToolWindow(QDialog):
             else:
                 enable_acrylic_for_config_window(self, self._theme, blur_amount=8, radius=radius)
             self._blur_applied = True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用模糊效果失败: %s", exc, exc_info=True)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -370,8 +361,8 @@ class ThemedToolWindow(QDialog):
                     effect = get_window_effect()
                     effect.set_window_region(hwnd, self.width(), self.height(), 12)
                     effect.set_dwm_blur_behind(hwnd, self.width(), self.height(), 12, enable=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("调整窗口区域失败: %s", exc, exc_info=True)
 
     def showEvent(self, event):
         super().showEvent(event)

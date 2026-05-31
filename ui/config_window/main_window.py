@@ -2,8 +2,11 @@
 主配置窗口 - 无标题栏版本（圆角优化）
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import APP_VERSION, DataManager, ShortcutItem, ShortcutType
@@ -83,8 +86,7 @@ class TitleBar(QWidget):
         self.back_btn.setCursor(QtCompat.PointingHandCursor)
         self.back_btn.clicked.connect(self._on_back)
         self.back_btn.setVisible(False)
-        self.back_btn.setStyleSheet(
-            """
+        self.back_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
@@ -99,8 +101,7 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #007aff;
             }
-        """
-        )
+        """)
         layout.addWidget(self.back_btn)
 
         # 图标 (默认显示)
@@ -131,8 +132,8 @@ class TitleBar(QWidget):
                     self.icon_label.setPixmap(
                         pixmap.scaled(icon_size, icon_size, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("加载窗口图标失败: %s", exc, exc_info=True)
         layout.addWidget(self.icon_label, alignment=QtCompat.AlignVCenter)
         layout.addSpacing(6)
 
@@ -163,14 +164,14 @@ class TitleBar(QWidget):
                 self.settings_btn.setIconSize(QSize(20, 20))
             else:
                 self.settings_btn.setText("⚙")
-        except Exception:
+        except Exception as exc:
+            logger.debug("加载设置图标失败: %s", exc, exc_info=True)
             self.settings_btn.setText("⚙")
 
         self.settings_btn.setCursor(QtCompat.PointingHandCursor)
         self.settings_btn.clicked.connect(self._on_settings)
 
-        self.settings_btn.setStyleSheet(
-            """
+        self.settings_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
@@ -182,8 +183,7 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #ffffff;
             }
-        """
-        )
+        """)
         layout.addWidget(self.settings_btn)
 
         # 关闭按钮
@@ -191,8 +191,7 @@ class TitleBar(QWidget):
         self.close_btn.setFixedSize(32, 32)
         self.close_btn.setCursor(QtCompat.PointingHandCursor)
         self.close_btn.clicked.connect(self._on_close)
-        self.close_btn.setStyleSheet(
-            """
+        self.close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
@@ -204,8 +203,7 @@ class TitleBar(QWidget):
                 background-color: #e81123;
                 color: white;
             }
-        """
-        )
+        """)
         layout.addWidget(self.close_btn)
 
     def set_theme(self, theme: str):
@@ -243,8 +241,7 @@ class TitleBar(QWidget):
         self.settings_btn.setStyleSheet(btn_base_style + "QPushButton { font-size: 18px; }")
 
         # 关闭按钮特殊处理 hover 颜色
-        self.close_btn.setStyleSheet(
-            f"""
+        self.close_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -258,8 +255,7 @@ class TitleBar(QWidget):
                 background-color: #e81123;
                 color: white;
             }}
-        """
-        )
+        """)
 
         if not self._settings_icon_path:
             return
@@ -296,8 +292,8 @@ class TitleBar(QWidget):
                 self.settings_btn.setIcon(QIcon(self._settings_icon_path))
 
             self.settings_btn.setIconSize(QSize(20, 20))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用主题到设置图标失败: %s", exc, exc_info=True)
 
     def set_mode(self, is_settings):
         self._in_settings_mode = is_settings
@@ -391,7 +387,7 @@ class RoundedWindow(QWidget):
                 color = QColor(r, g, b, a)
                 return color
             except (ValueError, IndexError):
-                pass
+                logger.debug("解析rgba颜色值失败", exc_info=True)
         # 回退到标准 QColor 解析
         return QColor(color_str)
 
@@ -407,14 +403,15 @@ class RoundedWindow(QWidget):
                 if is_win10():
                     painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
                     painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("设置渲染提示失败: %s", exc, exc_info=True)
 
             try:
                 from ui.utils.window_effect import is_win10
 
                 inset = 1.0 if is_win10() else 0.5
-            except Exception:
+            except Exception as exc:
+                logger.debug("获取窗口边距失败: %s", exc, exc_info=True)
                 inset = 0.5
 
             path = QPainterPath()
@@ -436,7 +433,8 @@ class RoundedWindow(QWidget):
                         tint_color.setAlpha(min(tint_color.alpha(), 150))
                     else:
                         tint_color.setAlpha(min(tint_color.alpha(), 100))
-                except Exception:
+                except Exception as exc:
+                    logger.debug("设置色调透明度失败: %s", exc, exc_info=True)
                     tint_color.setAlpha(min(tint_color.alpha(), 100))
                 painter.fillPath(path, tint_color)
             else:
@@ -473,8 +471,8 @@ class RoundedWindow(QWidget):
                         self.corner_radius + 0.5,
                     )
                     painter.drawPath(outer_path)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("绘制边框柔化失败: %s", exc, exc_info=True)
         finally:
             painter.end()
 
@@ -547,13 +545,8 @@ class ConfigWindow(QMainWindow):
                 from .welcome_integration import show_welcome_if_first_run
 
                 show_welcome_if_first_run(self, self.data_manager)
-            except Exception as e:
-                import logging
-
-                logging.error(f"新手引导加载失败: {e}")
-                import traceback
-
-                traceback.print_exc()
+            except Exception:
+                logger.exception("新手引导加载失败")
 
     def showEvent(self, event):
         """窗口显示事件 - 首次运行显示引导、应用阴影效果"""
@@ -702,19 +695,14 @@ class ConfigWindow(QMainWindow):
 
             logger.info("设置面板创建成功")
         except Exception as e:
-            import logging
-            import traceback
+            logger.exception("创建设置面板失败")
 
-            logger = logging.getLogger(__name__)
-            logger.error(f"创建设置面板失败: {e}")
-            logger.error(traceback.format_exc())
-
-            # 显示错误提示
             try:
                 from ui.styles.themed_messagebox import ThemedMessageBox
 
-                ThemedMessageBox.critical(self, "错误", f"无法加载设置面板:\n{e}")
-            except Exception:
+                ThemedMessageBox.critical(self, tr("错误"), tr("无法加载设置面板:\n{error}", error=e))
+            except Exception as exc:
+                logger.debug("显示错误对话框失败: %s", exc, exc_info=True)
                 QMessageBox.critical(self, "错误", f"无法加载设置面板:\n{e}")
             raise
 
@@ -744,7 +732,7 @@ class ConfigWindow(QMainWindow):
             if info and not info.has_update:
                 UpdateNotification.show_up_to_date(parent=self)
         except Exception as e:
-            ThemedMessageBox.warning(self, "检查更新失败", f"无法检查更新:\n{e}")
+            ThemedMessageBox.warning(self, tr("检查更新失败"), tr("无法检查更新:\n{error}", error=e))
 
     def _show_launcher(self):
         self._slide_to_page(0, direction="right")
@@ -892,14 +880,14 @@ class ConfigWindow(QMainWindow):
         if hasattr(self, "icon_grid") and hasattr(self.icon_grid, "apply_theme"):
             try:
                 self.icon_grid.apply_theme(theme)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("应用图标网格主题失败: %s", exc, exc_info=True)
 
         if hasattr(self.folder_panel, "apply_theme"):
             try:
                 self.folder_panel.apply_theme(theme)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("应用文件夹面板主题失败: %s", exc, exc_info=True)
 
         # QSS设置font-family/font-size会重建QFont对象，丢失渲染优化属性
         # 递归给所有子控件重新设置 hinting 和抗锯齿
@@ -959,7 +947,7 @@ class ConfigWindow(QMainWindow):
                 try:
                     btn.setEnabled(enabled)
                 except RuntimeError:
-                    pass
+                    logger.debug("设置按钮启用状态失败", exc_info=True)
 
     def _run_shortcut_dialog(self, dialog, on_accept):
         # 记录到对话框历史中保持强引用，防止因局部垃圾回收触发闪退
@@ -1242,8 +1230,8 @@ class ConfigWindow(QMainWindow):
             # 临时断开信号
             try:
                 self.folder_panel.folder_selected.disconnect()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("断开文件夹选择信号失败: %s", exc, exc_info=True)
 
             self.folder_panel._load_folders()
 
@@ -1287,13 +1275,13 @@ class ConfigWindow(QMainWindow):
         if settings_panel is not None and hasattr(settings_panel, "stop_background_timers"):
             try:
                 settings_panel.stop_background_timers()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止后台定时器失败: %s", exc, exc_info=True)
         try:
             # 强制保存所有待保存的数据
             self.data_manager.flush_pending_save()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("保存数据失败: %s", exc, exc_info=True)
         super().closeEvent(event)
 
     def _start_show_animation(self):
@@ -1362,8 +1350,8 @@ class ConfigWindow(QMainWindow):
 
                 # 尝试启用模糊效果 (内部会处理 Win10 的圆角区域和不透明度)
                 enable_acrylic_for_config_window(self, theme, blur_amount=8, radius=radius)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用窗口阴影失败: %s", exc, exc_info=True)
 
     def resizeEvent(self, event):
         """窗口大小变化时更新圆角区域（仅 Win10 需要）"""
@@ -1381,5 +1369,5 @@ class ConfigWindow(QMainWindow):
                         # 使用与初始化时相同的逻辑
                         effect.set_window_region(hwnd, w, h, radius)
                         effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("调整窗口大小时更新圆角失败: %s", exc, exc_info=True)

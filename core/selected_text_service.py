@@ -384,7 +384,7 @@ class SelectedTextService:
                     if wid:
                         return int(wid)
         except Exception:
-            pass
+            logger.debug("获取Qt窗口ID失败", exc_info=True)
         return 0
 
     # ------------------------------------------------------------------

@@ -9,6 +9,7 @@ import hashlib
 import io
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -39,6 +40,8 @@ from .commands_system import cmd_process as cmd_process
 from .commands_system import cmd_sysreport as cmd_sysreport
 from .commands_windows import cmd_env as cmd_env
 from .commands_windows import cmd_god as cmd_god
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ── /urlencode ─────────────────────────────────────────────────────────────
@@ -189,16 +192,16 @@ def _get_local_ipv4_addresses() -> list[tuple[str, str]]:
                     continue
                 addresses.append((ip, iface))
                 seen.add(ip)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("通过psutil获取内网IP地址失败: %s", exc, exc_info=True)
 
     if not addresses:
         try:
             primary = _get_primary_local_ip()
             if primary and not ipaddress.ip_address(primary).is_loopback:
                 addresses.append((primary, "primary"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取主内网IP地址失败: %s", exc, exc_info=True)
 
     return addresses
 
@@ -486,6 +489,7 @@ def cmd_base64(context: CommandContext) -> CommandResult:
 _URL_DETECT = re.compile(r"^(https?://|ftp://)[^\s]+$", re.I)
 _qr_file_servers: dict[int, tuple] = {}
 _qr_server_lock = threading.Lock()
+_qr_temp_files: list[str] = []
 
 
 def _qr_get_local_ip() -> str:
@@ -505,8 +509,8 @@ def stop_qr_file_server(port: int):
         httpd = entry[0]
         try:
             httpd.shutdown()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("关闭二维码文件服务器失败: %s", exc, exc_info=True)
 
 
 def _stop_all_qr_file_servers():
@@ -516,18 +520,29 @@ def _stop_all_qr_file_servers():
         stop_qr_file_server(port)
 
 
+def _cleanup_qr_temp_files():
+    for path in _qr_temp_files:
+        try:
+            if os.path.isfile(path):
+                os.unlink(path)
+        except OSError:
+            logger.debug("清理QR临时文件失败", exc_info=True)
+    _qr_temp_files.clear()
+
+
 atexit.register(_stop_all_qr_file_servers)
+atexit.register(_cleanup_qr_temp_files)
 
 
 def _start_qr_file_server(dir_path: str, file_path: str):
     import http.server
     import socketserver
 
-    with socketserver.TCPServer(("0.0.0.0", 0), http.server.SimpleHTTPRequestHandler) as s:
+    with socketserver.TCPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler) as s:
         port = s.server_address[1]
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=dir_path)
-    httpd = socketserver.TCPServer(("0.0.0.0", port), handler)
+    httpd = socketserver.TCPServer(("127.0.0.1", port), handler)
     httpd.timeout = 0.5
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
@@ -586,6 +601,7 @@ def cmd_qr(context: CommandContext) -> CommandResult:
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         tmp.write(buf.read())
         tmp.close()
+        _qr_temp_files.append(tmp.name)
         actions = extra_actions + [
             CommandAction(type="open_file", label="查看图片", value=tmp.name),
             CommandAction(type="save_file", label="保存图片", value=tmp.name),
@@ -904,8 +920,8 @@ def cmd_tls(context: CommandContext) -> CommandResult:
         expires_at = datetime.strptime(not_after_raw, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=UTC)
         days_left = int((expires_at - datetime.now(UTC)).total_seconds() // 86400)
         days_left_text = f"{days_left} 天"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("解析TLS证书到期时间失败: %s", exc, exc_info=True)
 
     san_entries = [value for key, value in cert.get("subjectAltName", []) if key.lower() == "dns"]
     san_display = ", ".join(san_entries[:8])
@@ -1047,8 +1063,8 @@ def _run_cmd(args: list[str]) -> tuple[bool, str]:
                 oem_cp = ctypes.windll.kernel32.GetOEMCP()
                 if oem_cp:
                     encodings.append(f"cp{oem_cp}")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("获取OEM代码页失败: %s", exc, exc_info=True)
 
         pref_enc = locale.getpreferredencoding(False)
         if pref_enc:
@@ -1195,7 +1211,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
                                 try:
                                     pids.add(int(pid))
                                 except ValueError:
-                                    pass
+                                    logger.debug("解析端口PID失败", exc_info=True)
 
     if not pids:
         return CommandResult(success=True, message=f"目前没有进程占用 TCP/UDP 端口 {port_number}。")
@@ -1228,8 +1244,8 @@ def cmd_port(context: CommandContext) -> CommandResult:
                     proc.kill()
                     killed_pids.append(pid)
                     success_term = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("强制终止进程PID=%s失败: %s", pid, exc, exc_info=True)
 
             if not success_term:
                 import subprocess
@@ -1300,8 +1316,8 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
             if proc.info["name"] and proc.info["name"].lower() == "explorer.exe":
                 try:
                     proc.kill()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("终止explorer进程失败: %s", exc, exc_info=True)
 
     time.sleep(1.0)
 
@@ -1311,8 +1327,8 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
             if proc.info["name"] and proc.info["name"].lower() == "explorer.exe":
                 already_running = True
                 break
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("检测explorer进程状态失败: %s", exc, exc_info=True)
 
     if already_running:
         return CommandResult(success=True, message="Windows 资源管理器已成功自动重启！")
@@ -1421,8 +1437,8 @@ def cmd_selected(context: CommandContext) -> CommandResult:
             if result.success and result.text:
                 selected = result.text
                 method = result.method
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("读取选中文字失败: %s", exc, exc_info=True)
 
     if not selected:
         return CommandResult(
@@ -1471,8 +1487,8 @@ def cmd_clip(context: CommandContext) -> CommandResult:
                 clipboard_text = snapshot.text
             classification = classify_clipboard(snapshot)
             clipboard_kind = classification.kind
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("读取剪贴板分类信息失败: %s", exc, exc_info=True)
 
     if not clipboard_text:
         return CommandResult(

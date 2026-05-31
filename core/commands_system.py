@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 from datetime import datetime
 
 from .command_registry import CommandAction, CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def _format_bytes(value: float) -> str:
@@ -125,7 +128,7 @@ def cmd_sysreport(context: CommandContext) -> CommandResult:
                 power = "接入电源" if battery.power_plugged else "电池供电"
                 lines.append(f"电池: {battery.percent:.1f}% ({power})")
         except Exception:
-            pass
+            logger.debug("获取电池信息失败", exc_info=True)
 
         message = "\n".join(lines)
         return CommandResult(

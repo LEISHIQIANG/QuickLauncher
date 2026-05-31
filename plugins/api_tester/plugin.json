@@ -37,6 +37,13 @@
       "category": "开发"
     },
     {
+      "id": "api_tester.patch",
+      "title": "HTTP PATCH",
+      "aliases": ["api-patch", "http-patch"],
+      "description": "发送 PATCH 请求到指定 URL",
+      "category": "开发"
+    },
+    {
       "id": "api_tester.history",
       "title": "请求历史",
       "aliases": ["api-history", "api-his", "请求历史"],
