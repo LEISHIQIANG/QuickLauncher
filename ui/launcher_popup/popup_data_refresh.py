@@ -11,6 +11,7 @@ try:
 except ImportError:
     HAS_WIN32_SHELL = False
 
+from core.window_detection import _is_desktop_window, _is_explorer_like_window
 from qt_compat import (
     QPixmap,
     QtCompat,
@@ -18,7 +19,6 @@ from qt_compat import (
 )
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker
-from ui.launcher_popup.window_detection import _is_desktop_window, _is_explorer_like_window
 from ui.utils.window_effect import is_win10, is_win11
 
 logger = logging.getLogger(__name__)
@@ -135,8 +135,8 @@ class PopupDataRefreshMixin:
             if bg_params_changed or layout_changed:
                 try:
                     self._schedule_bg_load()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("调度背景加载失败: %s", exc, exc_info=True)
 
     def refresh_settings(self):
         """外部调用刷新设置"""
@@ -187,35 +187,35 @@ class PopupDataRefreshMixin:
 
         try:
             self.ensurePolished()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("确保窗口抛光失败: %s", exc, exc_info=True)
 
         try:
             # Force native window creation while the popup is still off-screen.
             self.winId()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取窗口ID失败: %s", exc, exc_info=True)
 
         try:
             self.preload_background()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("预加载背景失败: %s", exc, exc_info=True)
 
         try:
             self.preload_visible_icons(force=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("预加载可见图标失败: %s", exc, exc_info=True)
 
         try:
             if hasattr(self, "preload_page_animation_pixmaps"):
                 self.preload_page_animation_pixmaps()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("预加载页面动画像素图失败: %s", exc, exc_info=True)
 
         try:
             self._update_window_effect()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新窗口特效失败: %s", exc, exc_info=True)
 
         old_progress = self._reveal_progress
         old_opacity = self.windowOpacity()
@@ -291,26 +291,26 @@ class PopupDataRefreshMixin:
                 self._request_page_animation_update()
             else:
                 self.update()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("请求页面动画更新失败: %s", exc, exc_info=True)
 
     def _schedule_selected_files_expiry_refresh(self):
         context = getattr(self, "_selected_files_context", None)
         request_id = int(getattr(context, "request_id", 0) or 0)
-        captured_at = float(getattr(self, "_selected_files_captured_at", 0.0) or 0.0)
-        if not request_id or captured_at <= 0.0:
+        started_at = float(getattr(self, "_selected_files_request_started_at", 0.0) or 0.0)
+        if not request_id or started_at <= 0.0:
             return
         delay_ms = int(float(self.SELECTED_FILES_CACHE_TTL_SECONDS) * 1000) + 50
-        QTimer.singleShot(delay_ms, lambda: self._expire_selected_files_if_current(request_id, captured_at))
+        QTimer.singleShot(delay_ms, lambda: self._expire_selected_files_if_current(request_id, started_at))
 
-    def _expire_selected_files_if_current(self, request_id: int, captured_at: float):
+    def _expire_selected_files_if_current(self, request_id: int, started_at: float):
         context = getattr(self, "_selected_files_context", None)
         if int(getattr(context, "request_id", 0) or 0) != int(request_id or 0):
             return
-        current_captured_at = float(getattr(self, "_selected_files_captured_at", 0.0) or 0.0)
-        if abs(current_captured_at - float(captured_at or 0.0)) > 0.001:
+        current_started_at = float(getattr(self, "_selected_files_request_started_at", 0.0) or 0.0)
+        if abs(current_started_at - float(started_at or 0.0)) > 0.001:
             return
-        if (time.monotonic() - current_captured_at) < float(self.SELECTED_FILES_CACHE_TTL_SECONDS):
+        if (time.monotonic() - current_started_at) < float(self.SELECTED_FILES_CACHE_TTL_SECONDS):
             return
         logger.info("selection_request ignore id=%s reason=expired_cache", request_id)
         self._clear_selected_files_context()
@@ -338,8 +338,8 @@ class PopupDataRefreshMixin:
             self._clear_selected_files_context()
             return []
 
-        captured_at = float(state.get("_selected_files_captured_at", 0.0) or 0.0)
-        if (time.monotonic() - captured_at) > self.SELECTED_FILES_CACHE_TTL_SECONDS:
+        started_at = float(state.get("_selected_files_request_started_at", 0.0) or 0.0)
+        if (time.monotonic() - started_at) > self.SELECTED_FILES_CACHE_TTL_SECONDS:
             logger.info("selection_request ignore id=%s reason=expired_cache", context.request_id)
             self._clear_selected_files_context()
             return []

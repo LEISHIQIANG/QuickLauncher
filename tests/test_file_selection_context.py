@@ -7,12 +7,16 @@ import ui.launcher_popup.file_selection as file_selection
 import ui.launcher_popup.popup_data_refresh as popup_data_refresh
 import ui.launcher_popup.popup_item_execution as popup_item_execution
 import ui.launcher_popup.popup_window as popup_window
-import ui.launcher_popup.window_detection as window_detection
+import core.window_detection as window_detection
 from core.data_models import ShortcutItem, ShortcutType
 from qt_compat import QColor
 from ui.launcher_popup.popup_renderer import PopupRendererMixin
 
 
+
+import pytest
+
+pytestmark = pytest.mark.ui
 class _FakeItem:
     def __init__(self, path):
         self.Path = path
@@ -241,9 +245,10 @@ def _popup_for_selection():
     popup._selected_files_status = "ready"
     popup._selected_files_request_hwnd = 100
     popup._selected_files_source_hwnd = 100
+    popup._selected_files_request_started_at = time.monotonic()
     popup._selected_files_captured_at = time.monotonic()
     popup._selected_files_context = SimpleNamespace(request_id=1, target_kind="explorer")
-    popup.SELECTED_FILES_CACHE_TTL_SECONDS = 5.0
+    popup.SELECTED_FILES_CACHE_TTL_SECONDS = 8.0
     popup._request_page_animation_update = lambda: None
     popup.update = lambda: None
     return popup
@@ -259,7 +264,7 @@ def test_popup_consumes_ready_selection_cache(monkeypatch):
 
 def test_popup_drops_expired_selection_cache(monkeypatch):
     popup = _popup_for_selection()
-    popup._selected_files_captured_at = time.monotonic() - 6.0
+    popup._selected_files_request_started_at = time.monotonic() - 9.0
     monkeypatch.setattr(popup_data_refresh, "_is_explorer_like_window", lambda hwnd: hwnd == 100)
     monkeypatch.setattr(popup_data_refresh, "_is_desktop_window", lambda _hwnd: False)
 
@@ -269,14 +274,14 @@ def test_popup_drops_expired_selection_cache(monkeypatch):
 
 def test_selection_expiry_refresh_clears_state_and_repaints_indicator():
     popup = _popup_for_selection()
-    popup._selected_files_captured_at = time.monotonic() - 6.0
+    popup._selected_files_request_started_at = time.monotonic() - 9.0
     repaint_count = []
     popup._request_page_animation_update = lambda: repaint_count.append(True)
 
     popup_window.LauncherPopup._expire_selected_files_if_current(
         popup,
         request_id=1,
-        captured_at=popup._selected_files_captured_at,
+        started_at=popup._selected_files_request_started_at,
     )
 
     assert popup._selected_files_status == "idle"
@@ -340,8 +345,10 @@ def test_indicator_turns_orange_only_for_valid_ready_selection_in_dark_theme():
         settings=SimpleNamespace(theme="dark"),
         _selected_files_status="ready",
         _selected_files=["C:/front.txt"],
+        _selected_files_request_started_at=time.monotonic(),
         _selected_files_captured_at=time.monotonic(),
-        SELECTED_FILES_CACHE_TTL_SECONDS=5.0,
+        _selected_files_context=SimpleNamespace(target_kind="explorer"),
+        SELECTED_FILES_CACHE_TTL_SECONDS=8.0,
     )
 
     color = PopupRendererMixin._indicator_accent_color(widget, QColor(10, 132, 255))
@@ -354,10 +361,44 @@ def test_indicator_uses_darker_orange_for_light_theme():
         settings=SimpleNamespace(theme="light"),
         _selected_files_status="ready",
         _selected_files=["C:/front.txt"],
+        _selected_files_request_started_at=time.monotonic(),
         _selected_files_captured_at=time.monotonic(),
-        SELECTED_FILES_CACHE_TTL_SECONDS=5.0,
+        _selected_files_context=SimpleNamespace(target_kind="explorer"),
+        SELECTED_FILES_CACHE_TTL_SECONDS=8.0,
     )
 
     color = PopupRendererMixin._indicator_accent_color(widget, QColor(0, 122, 255))
 
     assert (color.red(), color.green(), color.blue()) == (201, 92, 0)
+
+
+def test_indicator_uses_green_for_desktop_selection_in_dark_theme():
+    widget = SimpleNamespace(
+        settings=SimpleNamespace(theme="dark"),
+        _selected_files_status="ready",
+        _selected_files=["C:/desktop_file.txt"],
+        _selected_files_request_started_at=time.monotonic(),
+        _selected_files_captured_at=time.monotonic(),
+        _selected_files_context=SimpleNamespace(target_kind="desktop"),
+        SELECTED_FILES_CACHE_TTL_SECONDS=8.0,
+    )
+
+    color = PopupRendererMixin._indicator_accent_color(widget, QColor(10, 132, 255))
+
+    assert (color.red(), color.green(), color.blue()) == (46, 204, 113)
+
+
+def test_indicator_uses_green_for_desktop_selection_in_light_theme():
+    widget = SimpleNamespace(
+        settings=SimpleNamespace(theme="light"),
+        _selected_files_status="ready",
+        _selected_files=["C:/desktop_file.txt"],
+        _selected_files_request_started_at=time.monotonic(),
+        _selected_files_captured_at=time.monotonic(),
+        _selected_files_context=SimpleNamespace(target_kind="desktop"),
+        SELECTED_FILES_CACHE_TTL_SECONDS=8.0,
+    )
+
+    color = PopupRendererMixin._indicator_accent_color(widget, QColor(0, 122, 255))
+
+    assert (color.red(), color.green(), color.blue()) == (39, 174, 96)

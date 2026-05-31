@@ -58,14 +58,14 @@ class PopupRendererMixin:
         painter = QPainter(self)
         try:
             painter.setClipRegion(event.region())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("设置绘制裁剪区域失败: %s", exc, exc_info=True)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.TextAntialiasing)
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
         dirty_rect = event.rect()
 
-        (theme_bg, text_color, hover_color, border_color, accent_color, dock_bg, drop_highlight_color) = (
+        theme_bg, text_color, hover_color, border_color, accent_color, dock_bg, drop_highlight_color = (
             self._get_theme_colors()
         )
 
@@ -490,20 +490,20 @@ class PopupRendererMixin:
             widget_dpr = float(self.devicePixelRatioF() or 0.0)
             if widget_dpr > 0:
                 dpr = widget_dpr
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取设备像素比失败: %s", exc, exc_info=True)
         try:
             widget_dpi_x = float(self.logicalDpiX() or 0.0)
             if widget_dpi_x > 0:
                 dpi_x = widget_dpi_x
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取逻辑DPI X失败: %s", exc, exc_info=True)
         try:
             widget_dpi_y = float(self.logicalDpiY() or 0.0)
             if widget_dpi_y > 0:
                 dpi_y = widget_dpi_y
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取逻辑DPI Y失败: %s", exc, exc_info=True)
 
         dpr = max(1.0, dpr)
         dpi_x = dpi_x if dpi_x > 0 else 96.0
@@ -901,14 +901,22 @@ class PopupRendererMixin:
         if getattr(self, "_selected_files_status", "") != "ready" or not getattr(self, "_selected_files", None):
             return accent_color
 
-        captured_at = float(getattr(self, "_selected_files_captured_at", 0.0) or 0.0)
-        ttl = float(getattr(self, "SELECTED_FILES_CACHE_TTL_SECONDS", 5.0) or 5.0)
-        if captured_at <= 0.0 or (time.monotonic() - captured_at) > ttl:
+        started_at = float(getattr(self, "_selected_files_request_started_at", 0.0) or 0.0)
+        ttl = float(getattr(self, "SELECTED_FILES_CACHE_TTL_SECONDS", 8.0) or 8.0)
+        if started_at <= 0.0 or (time.monotonic() - started_at) > ttl:
             return accent_color
 
-        if getattr(self.settings, "theme", "dark") == "dark":
-            return QColor(255, 159, 10)
-        return QColor(201, 92, 0)
+        # 根据窗口类型返回不同颜色：explorer=橙色，desktop=绿色
+        context = getattr(self, "_selected_files_context", None)
+        target_kind = getattr(context, "target_kind", "explorer")
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"
+
+        if target_kind == "desktop":
+            # 桌面文件选中：绿色
+            return QColor(46, 204, 113) if is_dark else QColor(39, 174, 96)
+        else:
+            # 资源管理器窗口文件选中：橙色（保持不变）
+            return QColor(255, 159, 10) if is_dark else QColor(201, 92, 0)
 
     def _draw_dock(
         self,
@@ -1034,7 +1042,7 @@ class PopupRendererMixin:
         if not hasattr(self, "pages") or not self.pages:
             return
         try:
-            (theme_bg, text_color, hover_color, border_color, accent_color, dock_bg, drop_highlight_color) = (
+            theme_bg, text_color, hover_color, border_color, accent_color, dock_bg, drop_highlight_color = (
                 self._get_theme_colors()
             )
             bg_mode = getattr(self.settings, "bg_mode", "theme")
@@ -1048,8 +1056,8 @@ class PopupRendererMixin:
                     if item is not None:
                         try:
                             self._get_icon(item)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("预加载图标失败: %s", exc, exc_info=True)
 
                 # Pre-render the page animation pixmap
                 self._get_page_animation_pixmap(page_idx, text_color, hover_color, drop_highlight_color, bg_mode)

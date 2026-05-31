@@ -92,7 +92,7 @@ class LauncherPopup(
     # 文件夹同步完成信号
     folder_sync_finished = pyqtSignal()
 
-    SELECTED_FILES_CACHE_TTL_SECONDS = 5.0
+    SELECTED_FILES_CACHE_TTL_SECONDS = 8.0
 
     def __init__(
         self,
@@ -211,8 +211,8 @@ class LauncherPopup(
                 self._request_page_animation_update()
             else:
                 self.update()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("更新窗口失败: %s", exc, exc_info=True)
 
         # 立即捕获当前环境 (HWND)
         current_hwnd = 0
@@ -372,8 +372,8 @@ class LauncherPopup(
                 continue
             try:
                 timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止定时器失败: %s", exc, exc_info=True)
 
     def _start_auto_close_timer_if_visible(self) -> None:
         if self.isVisible() and not self._auto_close_timer.isActive():
@@ -388,23 +388,23 @@ class LauncherPopup(
             try:
                 if group and group.state() == QtCompat.QParallelAnimationGroup.State.Running:
                     group.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止动画组失败: %s", exc, exc_info=True)
 
         self._reveal_progress = 0.0
         if hasattr(self, "anim_group"):
             try:
                 self.anim_group.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("停止动画组失败: %s", exc, exc_info=True)
 
         self.setWindowOpacity(0.0)
         self.update()
 
         try:
             QApplication.processEvents()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("处理事件队列失败: %s", exc, exc_info=True)
 
     def show(self):
         """Show with a stable fade-in start state."""
@@ -429,8 +429,8 @@ class LauncherPopup(
                 self._defer_lifecycle_callback(300, self._start_auto_close_timer_if_visible, generation=generation)
             # 延迟应用窗口特效，确保窗口尺寸和DPI已稳定
             self._defer_lifecycle_callback(50, self._update_window_effect, generation=generation)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("延迟生命周期回调失败: %s", exc, exc_info=True)
 
         # 启动出现动画
         self._start_show_animation()
@@ -441,8 +441,8 @@ class LauncherPopup(
         try:
             if HAS_EXECUTOR:
                 self._defer_lifecycle_callback(50, self._release_residual_modifiers, generation=generation)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("延迟释放残留修饰键失败: %s", exc, exc_info=True)
         # ===== 修复结束 =====
 
         # 延迟预热所有页面的动画缓存，确保后续翻页动画图标正常显示
@@ -529,14 +529,14 @@ class LauncherPopup(
         self._stop_lifecycle_timers()
         try:
             self._reset_search_state()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("重置搜索状态失败: %s", exc, exc_info=True)
         self._search_body_anchor_y = 0
         try:
             if self._auto_close_timer.isActive():
                 self._auto_close_timer.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("停止自动关闭定时器失败: %s", exc, exc_info=True)
         self._release_background_cache()
 
         # ===== 修复 Win10 左键选择失效 bug =====
@@ -548,8 +548,8 @@ class LauncherPopup(
                 # 延迟一小段时间再恢复焦点，确保隐藏动画完成
                 QTimer.singleShot(50, self._restore_focus_safe)
             self._launched_app = False
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("恢复焦点失败: %s", exc, exc_info=True)
         # ===== 修复结束 =====
 
         super().hideEvent(event)
@@ -633,8 +633,8 @@ class LauncherPopup(
             timer = self.__dict__.get("_search_cursor_timer")
             if timer is not None:
                 timer.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("停止搜索光标定时器失败: %s", exc, exc_info=True)
         self._search_reveal_progress = 0.0
         self._search_target_progress = 0.0
         self._search_hide_geometry_pending = False
@@ -652,8 +652,8 @@ class LauncherPopup(
             self._search_body_anchor_y = preserved_search_state["body_anchor_y"]
         try:
             self.clearMask()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清除窗口遮罩失败: %s", exc, exc_info=True)
 
         # 强制刷新屏幕DPI信息
         QApplication.processEvents()
@@ -817,8 +817,8 @@ class LauncherPopup(
         if HAS_EXECUTOR:
             try:
                 ShortcutExecutor.save_foreground_window()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("保存前台窗口失败: %s", exc, exc_info=True)
 
         # 确保重绘
         self.update()
