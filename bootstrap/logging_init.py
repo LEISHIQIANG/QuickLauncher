@@ -2,6 +2,8 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+logger = logging.getLogger(__name__)
+
 
 def get_log_dir() -> str:
     import sys
@@ -32,8 +34,8 @@ def setup_logging(log_dir: str) -> tuple:
         if getattr(settings, "enable_debug_log", False):
             log_level = logging.DEBUG
         disable_logging = getattr(settings, "disable_logging", False)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("获取日志设置失败: %s", exc, exc_info=True)
 
     import sys
 
@@ -52,8 +54,13 @@ def setup_logging(log_dir: str) -> tuple:
     return log_file, logging.getLogger("main")
 
 
+# 全局引用，防止回调函数被垃圾回收
+_crash_handler_ref = None
+
+
 def _install_native_crash_handler(crash_log_path: str):
     """安装 Windows 原生异常处理器，捕获 faulthandler 抓不到的硬崩溃。"""
+    global _crash_handler_ref
     import ctypes
     from ctypes import wintypes
 
@@ -113,14 +120,15 @@ def _install_native_crash_handler(crash_log_path: str):
                 kernel32.WriteFile(h, ctypes.c_char_p(msg), len(msg), ctypes.byref(written), None)
                 kernel32.FlushFileBuffers(h)
                 kernel32.CloseHandle(h)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("写入崩溃日志失败: %s", exc, exc_info=True)
         return EXCEPTION_CONTINUE_SEARCH
 
     try:
-        kernel32.AddVectoredExceptionHandler(0, _handler)
-    except Exception:
-        pass
+        _crash_handler_ref = _handler  # 保持引用防止GC
+        kernel32.AddVectoredExceptionHandler(0, _crash_handler_ref)
+    except Exception as exc:
+        logger.debug("添加异常处理器失败: %s", exc, exc_info=True)
 
 
 def _rotate_log(path: str, backup_count: int = 3, max_bytes: int = 5 * 1024 * 1024):
@@ -180,5 +188,5 @@ def setup_faulthandler(log_dir: str):
             cf.write(f"[BOOT] {now}  exe={exe}\n")
         _install_native_crash_handler(crash_path)
 
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("初始化崩溃日志失败: %s", exc, exc_info=True)

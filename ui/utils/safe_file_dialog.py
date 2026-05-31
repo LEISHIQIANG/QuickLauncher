@@ -8,7 +8,7 @@
 
 import logging
 
-from PyQt5.QtWidgets import QApplication, QFileDialog
+from qt_compat import QApplication, QFileDialog
 
 logger = logging.getLogger(__name__)
 logger.debug("[safe_file_dialog] 纯 Qt 原生 Windows 对话框集成模块已加载")
@@ -37,53 +37,6 @@ def _execute_dialog_synchronously(parent, func, *args, **kwargs) -> str:
     同步安全激活方案：通过 QTimer.singleShot 或直接调用，并加挂极其详尽的日志追踪。
     """
     # logger.debug(f"[文件对话框追踪][PID: {os.getpid()}] ================= 开始执行安全文件对话框流程 ================= ")
-
-    try:
-        import ctypes
-        import ctypes.wintypes
-
-        TH32CS_SNAPMODULE = 0x00000008
-        TH32CS_SNAPMODULE32 = 0x00000010
-
-        class MODULEENTRY32W(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", ctypes.wintypes.DWORD),
-                ("th32ModuleID", ctypes.wintypes.DWORD),
-                ("th32ProcessID", ctypes.wintypes.DWORD),
-                ("GlblcntUsage", ctypes.wintypes.DWORD),
-                ("ProccntUsage", ctypes.wintypes.DWORD),
-                ("modBaseAddr", ctypes.c_void_p),
-                ("modBaseSize", ctypes.wintypes.DWORD),
-                ("hModule", ctypes.wintypes.HMODULE),
-                ("szModule", ctypes.c_wchar * 256),
-                ("szExePath", ctypes.c_wchar * 260),
-            ]
-
-        kernel32 = ctypes.windll.kernel32
-
-        kernel32.CreateToolhelp32Snapshot.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.DWORD]
-        kernel32.CreateToolhelp32Snapshot.restype = ctypes.wintypes.HANDLE
-        kernel32.Module32FirstW.argtypes = [ctypes.wintypes.HANDLE, ctypes.POINTER(MODULEENTRY32W)]
-        kernel32.Module32FirstW.restype = ctypes.wintypes.BOOL
-        kernel32.Module32NextW.argtypes = [ctypes.wintypes.HANDLE, ctypes.POINTER(MODULEENTRY32W)]
-        kernel32.Module32NextW.restype = ctypes.wintypes.BOOL
-
-        hSnapshot = kernel32.CreateToolhelp32Snapshot(
-            TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, kernel32.GetCurrentProcessId()
-        )
-        if hSnapshot != ctypes.wintypes.HANDLE(-1).value:
-            me = MODULEENTRY32W()
-            me.dwSize = ctypes.sizeof(MODULEENTRY32W)
-            if kernel32.Module32FirstW(hSnapshot, ctypes.byref(me)):
-                while True:
-                    # path = me.szExePath
-                    # if "hooks" in path.lower():
-                    #     logger.debug(f"[文件对话框追踪][MODULE] szModule: {me.szModule}, Handle: {hex(me.hModule)}, Path: {path}")
-                    if not kernel32.Module32NextW(hSnapshot, ctypes.byref(me)):
-                        break
-            kernel32.CloseHandle(hSnapshot)
-    except Exception as me:
-        logger.debug(f"模块枚举失败: {me}")
 
     mouse_hook_paused = False
 
