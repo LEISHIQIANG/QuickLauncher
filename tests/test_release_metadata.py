@@ -46,9 +46,9 @@ def test_win11_build_defaults_to_performance_profile_and_includes_plugins():
 
     assert 'if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=smooth"' in script
     assert "--include-data-dir=plugins=plugins" in script
-    assert "--include-data-files=PLUGIN_DEV.md=PLUGIN_DEV.md" in script
+    assert "--include-data-files=plugins\\PLUGIN_DEV.md=PLUGIN_DEV.md" in script
     assert 'xcopy "plugins" "dist\\QuickLauncher\\plugins\\" /E /I /Y' in script
-    assert 'copy /Y "PLUGIN_DEV.md" "dist\\QuickLauncher\\"' in script
+    assert 'copy /Y "plugins\\PLUGIN_DEV.md" "dist\\QuickLauncher\\"' in script
     assert "Failed to remove old dist\\QuickLauncher" in script
     assert 'robocopy "dist\\main.dist" "dist\\QuickLauncher" /MIR' in script
     assert "Start-Sleep -Seconds 2" in script

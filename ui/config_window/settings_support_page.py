@@ -3,8 +3,6 @@
 import logging
 import random
 
-from qt_compat import QRadialGradient
-
 from core.i18n import tr
 from qt_compat import (
     QBrush,
@@ -23,6 +21,7 @@ from qt_compat import (
     QPoint,
     QPointF,
     QPushButton,
+    QRadialGradient,
     QRect,
     QRectF,
     Qt,

@@ -81,6 +81,7 @@ def check_source_metadata(root: Path = ROOT, version: str | None = None) -> Rele
         root / "assets" / "app.ico",
         root / "hooks" / "hooks.dll",
         root / "QuickLauncher.manifest",
+        root / "plugins" / "PLUGIN_DEV.md",
         root / "scripts" / "installer.iss",
         root / "scripts" / "build_win11_setup.bat",
     ]
