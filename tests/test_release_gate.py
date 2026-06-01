@@ -56,11 +56,21 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
     assert commands[1] == ["py-test", "-m", "pytest", "--basetemp", str(release_gate.PYTEST_BASETEMP)]
     assert envs[1]["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    assert commands[2][:3] == ["py-test", "-m", "compileall"]
-    assert envs[2]["PYTHONPYCACHEPREFIX"] == str(release_gate.COMPILE_PYCACHE_PREFIX)
+    assert commands[2] == [
+        "py-test",
+        "scripts/audit_broad_exceptions.py",
+        "--max-total",
+        "1257",
+        "--max-unlogged",
+        "333",
+    ]
+    assert envs[2]["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    assert commands[3] == ["py-test", "scripts/check_release_artifacts.py", "--source-only"]
-    assert envs[3]["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert commands[3][:3] == ["py-test", "-m", "compileall"]
+    assert envs[3]["PYTHONPYCACHEPREFIX"] == str(release_gate.COMPILE_PYCACHE_PREFIX)
+
+    assert commands[4] == ["py-test", "scripts/check_release_artifacts.py", "--source-only"]
+    assert envs[4]["PYTHONDONTWRITEBYTECODE"] == "1"
 
 
 def test_release_gate_step_order_matches_spec():
@@ -68,6 +78,7 @@ def test_release_gate_step_order_matches_spec():
     assert [step.name for step in steps] == [
         "ruff",
         "pytest",
+        "broad exception audit",
         "compileall",
         "release metadata",
     ]
