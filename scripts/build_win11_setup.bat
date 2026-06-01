@@ -571,13 +571,45 @@ REM Create portable zip package
 echo.
 echo [5/4] Creating portable zip package...
 set "PORTABLE_NAME=QuickLauncher_Portable_%APP_VERSION%"
+if exist "%PORTABLE_NAME%" if not exist "%PORTABLE_NAME%\" (
+    del /f /q "%PORTABLE_NAME%" >nul 2>&1
+    if exist "%PORTABLE_NAME%" (
+        echo   [!] Failed to remove stale root marker %PORTABLE_NAME%.
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
+if exist "dist\%PORTABLE_NAME%\" (
+    rmdir /s /q "dist\%PORTABLE_NAME%" >nul 2>&1
+    if exist "dist\%PORTABLE_NAME%\" (
+        echo   [!] Failed to remove stale portable folder dist\%PORTABLE_NAME%.
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
+if exist "dist\%PORTABLE_NAME%" (
+    del /f /q "dist\%PORTABLE_NAME%" >nul 2>&1
+    if exist "dist\%PORTABLE_NAME%" (
+        echo   [!] Failed to remove stale portable path dist\%PORTABLE_NAME%.
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
+if exist "dist\%PORTABLE_NAME%.zip" (
+    del /f /q "dist\%PORTABLE_NAME%.zip" >nul 2>&1
+    if exist "dist\%PORTABLE_NAME%.zip" (
+        echo   [!] Failed to remove stale portable zip dist\%PORTABLE_NAME%.zip.
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
 ren "dist\QuickLauncher" "%PORTABLE_NAME%"
 if !ERRORLEVEL! NEQ 0 (
     echo   [!] Failed to rename dist\QuickLauncher to %PORTABLE_NAME%.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
-echo   [OK] Renamed dist\QuickLauncher ^-> %PORTABLE_NAME%
+echo   [OK] Renamed dist\QuickLauncher -^> %PORTABLE_NAME%
 
 echo   Compressing to %PORTABLE_NAME%.zip...
 powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
