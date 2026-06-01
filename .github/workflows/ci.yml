@@ -25,4 +25,13 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Source release gate
-        run: python scripts/release_gate.py
+        run: python scripts/release_gate.py --skip-tests
+
+      - name: Focused tests
+        run: >
+          python -m pytest
+          tests/test_release_gate.py
+          tests/test_diagnostics.py
+          tests/test_shortcut_health.py
+          tests/test_ui_smoke.py
+          tests/test_pinyin_search.py

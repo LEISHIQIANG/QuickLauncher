@@ -14,6 +14,7 @@ from core.i18n import tr
 from qt_compat import (
     QApplication,
     QColor,
+    QDialog,
     QDrag,
     QEasingCurve,
     QFont,
@@ -54,6 +55,111 @@ from .base_dialog import BaseDialog
 from .icon_grid_ordering import move_drag_group_order
 
 logger = logging.getLogger(__name__)
+
+
+class SimpleStatusDialog(QDialog):
+    """简单状态对话框 - 参照ThemedMessageBox实现"""
+
+    def __init__(self, title, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setFixedSize(220, 80)
+        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
+        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        self.setWindowOpacity(0)
+
+        from ui.utils.window_effect import is_win11
+        self.corner_radius = 8 if is_win11() else 12
+        self.bg_color = QColor(28, 28, 30, 180)
+        self.border_color = QColor(190, 190, 197, 60)
+        self._acrylic_applied = False
+        self._dialog_finished = False
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        self.label = QLabel()
+        self.label.setAlignment(QtCompat.AlignCenter)
+        self.label.setStyleSheet("font-size: 13px; background: transparent;")
+        layout.addWidget(self.label)
+
+        self._apply_theme()
+
+    def _apply_theme(self):
+        theme = self._detect_theme()
+        if theme == "dark":
+            self.bg_color = QColor(28, 28, 30, 180)
+            self.border_color = QColor(190, 190, 197, 60)
+        else:
+            self.bg_color = QColor(242, 242, 247, 160)
+            self.border_color = QColor(229, 229, 234, 150)
+
+    def _detect_theme(self):
+        theme = "dark"
+        if self.parent():
+            try:
+                parent = self.parent()
+                while parent:
+                    if hasattr(parent, "data_manager"):
+                        theme = parent.data_manager.get_settings().theme
+                        break
+                    parent = parent.parent()
+            except Exception:
+                pass
+        return theme
+
+    def paintEvent(self, event):
+        from ui.utils.window_effect import is_win10
+        painter = QPainter(self)
+        painter.setRenderHint(QtCompat.Antialiasing)
+        if is_win10():
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
+            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+        inset = 1.0 if is_win10() else 0.5
+        path = QPainterPath()
+        path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius)
+        tint_color = QColor(self.bg_color)
+        if is_win10():
+            tint_color.setAlpha(min(tint_color.alpha(), 150))
+        else:
+            tint_color.setAlpha(min(tint_color.alpha(), 100))
+        painter.fillPath(path, tint_color)
+        pen_color = QColor(self.border_color)
+        pen_color.setAlpha(min(pen_color.alpha(), 120))
+        painter.setPen(QPen(pen_color, 1))
+        painter.drawPath(path)
+        painter.end()
+
+    def showEvent(self, event):
+        from ui.utils.dialog_helper import center_dialog_on_main_window
+        from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
+        self._dialog_finished = False
+        self.adjustSize()
+        center_dialog_on_main_window(self)
+        super().showEvent(event)
+        if not self._acrylic_applied:
+            self._acrylic_applied = True
+            try:
+                hwnd = int(self.winId())
+                if hwnd:
+                    effect = get_window_effect()
+                    theme = self._detect_theme()
+                    if is_win11():
+                        effect.set_round_corners(hwnd, enable=True)
+                    else:
+                        w, h = self.width(), self.height()
+                        if w > 0 and h > 0:
+                            effect.set_window_region(hwnd, w, h, self.corner_radius)
+                    enable_acrylic_for_config_window(self, theme, blur_amount=10)
+            except Exception:
+                pass
+        self.setWindowOpacity(1.0)
+
+    def update_text(self, text):
+        self.label.setText(text)
+        QApplication.processEvents()
 
 
 class MoveFolderDialog(BaseDialog):
@@ -127,6 +233,32 @@ class MoveFolderDialog(BaseDialog):
         super()._apply_theme_colors()
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(self.theme)
         self.setStyleSheet(base_style + "QDialog { background: transparent; border: none; }")
+
+        if self.theme == "dark":
+            btn_bg = "rgba(255,255,255,0.18)"
+            btn_hover = "rgba(255,255,255,0.28)"
+            btn_border = "rgba(255,255,255,0.22)"
+            btn_text = "rgba(255,255,255,0.85)"
+        else:
+            btn_bg = "rgba(255,255,255,0.75)"
+            btn_hover = "rgba(255,255,255,0.95)"
+            btn_border = "rgba(255,255,255,0.35)"
+            btn_text = "#1D1D1F"
+
+        btn_style = f"""
+            QPushButton {{
+                background-color: {btn_bg};
+                border: 1px solid {btn_border};
+                border-radius: 8px;
+                padding: 4px 13px;
+                color: {btn_text};
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {btn_hover}; }}
+            QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
+        """
+        self.cancel_btn.setStyleSheet(btn_style)
+        self.ok_btn.setStyleSheet(btn_style)
 
 
 class IconContainer(QWidget):
@@ -1393,6 +1525,75 @@ class IconGrid(QWidget):
         self.load_folder(self.current_folder_id)
         self.shortcut_added.emit()
 
+    def _has_url_shortcuts(self, ids):
+        """检查选中的快捷方式中是否包含网站类型"""
+        shortcut_map = vars(self).get("_shortcut_map", {}) or {}
+        for sid in ids:
+            shortcut = shortcut_map.get(sid)
+            if shortcut and shortcut.type == ShortcutType.URL:
+                return True
+        return False
+
+    def _batch_fetch_icons(self, ids):
+        """批量获取网站图标 - 并发获取"""
+        if not ids:
+            return
+        shortcut_map = vars(self).get("_shortcut_map", {}) or {}
+        url_shortcuts = [
+            shortcut_map.get(sid)
+            for sid in ids
+            if shortcut_map.get(sid)
+            and shortcut_map.get(sid).type == ShortcutType.URL
+            and shortcut_map.get(sid).url
+        ]
+        if not url_shortcuts:
+            ThemedMessageBox.warning(self, tr("批量获取图标"), tr("所选快捷方式中没有有效的网站地址"))
+            return
+
+        status_dialog = SimpleStatusDialog(tr("批量获取图标"), self)
+        status_dialog.update_text(tr("正在获取图标... 0/{total}", total=len(url_shortcuts)))
+        status_dialog.show()
+        QApplication.processEvents()
+
+        self._take_batch_snapshot()
+        success_count = 0
+        completed_count = 0
+        total = len(url_shortcuts)
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def fetch_one(shortcut):
+            try:
+                from core.favicon_cache import fetch_favicon
+                icon_path = fetch_favicon(shortcut.url, force_refresh=True)
+                return (shortcut, icon_path, None)
+            except Exception as e:
+                return (shortcut, None, e)
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(fetch_one, s): s for s in url_shortcuts}
+            for future in as_completed(futures):
+                shortcut, icon_path, error = future.result()
+                completed_count += 1
+                if icon_path:
+                    shortcut.icon_path = icon_path
+                    success_count += 1
+                elif error:
+                    logger.debug("获取图标失败 %s: %s", shortcut.name, error, exc_info=True)
+                status_dialog.update_text(tr("正在获取图标... {current}/{total}", current=completed_count, total=total))
+
+        status_dialog.close()
+
+        self.data_manager.save(immediate=True)
+        self.load_folder(self.current_folder_id)
+        self.shortcut_added.emit()
+
+        ThemedMessageBox.information(
+            self,
+            tr("批量获取图标"),
+            tr("成功获取 {success}/{total} 个图标", success=success_count, total=total)
+        )
+
     def _show_context_menu(self, pos: QPoint, shortcut: ShortcutItem):
         theme = "dark"
         parent = self.parent()
@@ -1406,6 +1607,8 @@ class IconGrid(QWidget):
         multi = len(ids) > 1
         mutable_ids = self._filter_mutable_shortcut_ids(ids)
         system_item = self._is_system_icon_repo_item(shortcut)
+        has_url_shortcuts = self._has_url_shortcuts(ids)
+
         menu = PopupMenu(theme=theme, radius=12, parent=None)
         menu.add_action("编辑", lambda: self._emit_edit_if_allowed(shortcut), enabled=not multi and not system_item)
         menu.add_separator()
@@ -1416,6 +1619,9 @@ class IconGrid(QWidget):
             "禁用所选", lambda ids=mutable_ids: self._batch_set_enabled(ids, False), enabled=bool(mutable_ids)
         )
         menu.add_action("移动所选到...", lambda ids=ids: self._batch_move(ids), enabled=bool(ids))
+        if multi and has_url_shortcuts:
+            menu.add_separator()
+            menu.add_action(tr("批量获取图标"), lambda ids=ids: self._batch_fetch_icons(ids), enabled=True)
         menu.add_separator()
         if multi:
             menu.add_action(tr("删除所选"), lambda ids=mutable_ids: self._batch_delete(ids), enabled=bool(mutable_ids))
