@@ -33,6 +33,29 @@ class _SmokeManager:
     def get_icon_cache_stats(self):
         return {"total_files": 0, "total_size_mb": 0}
 
+    def _find_shortcut_with_folder(self, shortcut_id):
+        for folder in self.data.folders:
+            for item in folder.items:
+                if item.id == shortcut_id:
+                    return folder, item
+        return None, None
+
+    def batch_update(self, immediate=False):
+        class Ctx:
+            def __enter__(self_nonlocal):
+                return self
+
+            def __exit__(self_nonlocal, *args):
+                return False
+
+        return Ctx()
+
+    def save(self, immediate=False):
+        return True
+
+    def _mark_history(self, title, detail):
+        return None
+
 
 def test_diagnostics_window_create_format_close_smoke(qapp, tmp_path, monkeypatch):
     import ui.diagnostics_window as diagnostics_mod
@@ -43,6 +66,36 @@ def test_diagnostics_window_create_format_close_smoke(qapp, tmp_path, monkeypatc
     try:
         window._on_collect_finished([DiagnosticItem("Smoke", "ok", "ready", "details")], "")
         assert "Smoke" in window.text.toPlainText()
+    finally:
+        window.close()
+        qapp.processEvents()
+
+
+def test_diagnostics_window_one_click_fix_smoke(qapp, tmp_path, monkeypatch):
+    import ui.diagnostics_window as diagnostics_mod
+    from ui.diagnostics_window import DiagnosticsWindow
+
+    manager = _SmokeManager(tmp_path)
+    manager.data.folders[0].items[0].target_path = str(tmp_path / "missing.exe")
+    monkeypatch.setattr(diagnostics_mod, "QTimer", SimpleNamespace(singleShot=lambda _ms, _func: None))
+    monkeypatch.setattr(
+        diagnostics_mod.ThemedMessageBox,
+        "question",
+        lambda *args, **kwargs: diagnostics_mod.ThemedMessageBox.Yes,
+    )
+    infos = []
+    monkeypatch.setattr(diagnostics_mod.ThemedMessageBox, "information", lambda *args, **kwargs: infos.append(args))
+
+    window = DiagnosticsWindow(manager)
+    try:
+        window.refresh = lambda: None
+        window._on_collect_finished([DiagnosticItem("图标检查", "error", "bad", "", "", {"fixable": 1})], "")
+        assert window.fix_btn.isEnabled()
+
+        window.apply_all_fixes()
+
+        assert manager.data.folders[0].items == []
+        assert infos
     finally:
         window.close()
         qapp.processEvents()

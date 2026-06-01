@@ -65,33 +65,33 @@ class UpdateInstaller:
                 return
 
         current_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.getcwd()
-        log_path = os.path.join(session_dir, "update_install.log")
-        update_session_state(
-            session_dir,
-            status="installing",
-            install={
-                "status": "started",
-                "started_at": utc_now_text(),
-                "installer_path": installer_path,
-                "pre_install_backup": pre_install_backup,
-                "log_path": log_path,
-                "error": "",
-            },
-        )
+        log_path = os.path.join(session_dir, "update_install.log") if session_dir else ""
+        if session_dir:
+            update_session_state(
+                session_dir,
+                status="installing",
+                install={
+                    "status": "started",
+                    "started_at": utc_now_text(),
+                    "installer_path": installer_path,
+                    "pre_install_backup": pre_install_backup,
+                    "log_path": log_path,
+                    "error": "",
+                },
+            )
         self._notify("started")
         try:
-            subprocess.Popen(
-                [
-                    installer_path,
-                    "/VERYSILENT",
-                    "/SUPPRESSMSGBOXES",
-                    f"/DIR={current_dir}",
-                    "/TASKS=desktopicon",
-                    "/MERGETASKS=!associate_qlauncher",
-                    f"/LOG={log_path}",
-                ],
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-            )
+            command = [
+                installer_path,
+                "/VERYSILENT",
+                "/SUPPRESSMSGBOXES",
+                f"/DIR={current_dir}",
+                "/TASKS=desktopicon",
+                "/MERGETASKS=!associate_qlauncher",
+            ]
+            if log_path:
+                command.append(f"/LOG={log_path}")
+            subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             sys.exit(0)
         except Exception as exc:
             self._fail_session(session_dir, f"failed to start installer: {exc}")

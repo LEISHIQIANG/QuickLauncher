@@ -118,6 +118,36 @@ def test_apply_health_fixes_disables_missing_folder_sync(tmp_path):
     assert folder.auto_sync is False
 
 
+def test_apply_health_fixes_handles_mixed_one_click_repairs(tmp_path):
+    target = tmp_path / "app.exe"
+    target.write_text("", encoding="utf-8")
+    delete_item = ShortcutItem(id="delete", name="Delete", type=ShortcutType.FILE)
+    delete_item.target_path = str(tmp_path / "missing.exe")
+    icon_item = ShortcutItem(id="icon", name="Icon", type=ShortcutType.FILE)
+    icon_item.target_path = str(target)
+    icon_item.icon_path = str(tmp_path / "missing.ico")
+    workdir_item = ShortcutItem(id="workdir", name="Workdir", type=ShortcutType.FILE)
+    workdir_item.target_path = str(target)
+    workdir_item.working_dir = str(tmp_path / "missing-workdir")
+    folder = Folder(
+        id="f",
+        name="Folder",
+        linked_path=str(tmp_path / "missing-folder"),
+        auto_sync=True,
+        items=[delete_item, icon_item, workdir_item],
+    )
+    data = AppData(folders=[folder])
+
+    fix_ids = [issue.id for issue in check_shortcuts(data) if issue.fix_action]
+    result = apply_health_fixes(Manager(data), fix_ids)
+
+    assert result == {"requested": 4, "applied": 4, "skipped": 0, "failed": 0}
+    assert [item.id for item in folder.items] == ["icon", "workdir"]
+    assert icon_item.icon_path == ""
+    assert workdir_item.working_dir == ""
+    assert folder.auto_sync is False
+
+
 def test_duplicate_name_is_debug_only():
     first = ShortcutItem(id="v1", name="Visual", type=ShortcutType.FILE)
     second = ShortcutItem(id="v2", name="Visual", type=ShortcutType.FILE)

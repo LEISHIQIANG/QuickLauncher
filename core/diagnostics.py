@@ -9,7 +9,7 @@ import platform
 import re
 import threading
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -81,6 +81,7 @@ class DiagnosticItem:
     summary: str
     details: str = ""
     action: str = ""
+    metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +90,7 @@ class DiagnosticItem:
             "summary": self.summary,
             "details": self.details,
             "action": self.action,
+            "metadata": self.metadata,
         }
 
 
@@ -253,11 +255,13 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         from .shortcut_health import check_shortcuts
 
         health_issues = check_shortcuts(data_manager.data)
-        error_count = sum(1 for issue in health_issues if issue.severity == "error")
-        warn_count = sum(1 for issue in health_issues if issue.severity == "warn")
-        debug_count = sum(1 for issue in health_issues if issue.severity == "debug")
-        info_count = sum(1 for issue in health_issues if issue.severity == "info")
-        fixable_count = sum(1 for issue in health_issues if issue.fix_action)
+        health_summary = _summarize_shortcut_health_issues(health_issues)
+        counts = health_summary["counts"]
+        error_count = counts.get("error", 0)
+        warn_count = counts.get("warn", 0)
+        debug_count = counts.get("debug", 0)
+        info_count = counts.get("info", 0)
+        fixable_count = health_summary["fixable"]
         status = "error" if error_count else ("warn" if warn_count else "ok")
         important_issues = [issue for issue in health_issues if issue.severity in ("error", "warn")]
         details = "\n".join(
@@ -272,7 +276,8 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 status,
                 f"ERROR {error_count} / WARN {warn_count} / 其他 {debug_count + info_count} / 可修复 {fixable_count}",
                 details,
-                "可在系统设置 -> 日志修复 -> 图标检查中执行修复。" if fixable_count else "",
+                "可在诊断中心一键修复，或在系统设置 -> 日志修复 -> 图标检查中查看细节。" if fixable_count else "",
+                health_summary,
             )
         )
     except Exception as exc:
@@ -619,19 +624,41 @@ def _build_shortcut_health_summary(data_manager) -> dict | None:
         from .shortcut_health import check_shortcuts
 
         issues = check_shortcuts(data_manager.data)
-        counts: dict[str, int] = {}
-        for issue in issues:
-            severity = str(getattr(issue, "severity", "unknown") or "unknown")
-            counts[severity] = counts.get(severity, 0) + 1
-        return {
-            "total": len(issues),
-            "counts": counts,
-            "fixable": sum(1 for issue in issues if getattr(issue, "fix_action", "")),
-            "issues": [issue.to_dict() for issue in issues[:MAX_SHORTCUT_ISSUES]],
-            "truncated": len(issues) > MAX_SHORTCUT_ISSUES,
-        }
+        summary = _summarize_shortcut_health_issues(issues)
+        summary["issues"] = [issue.to_dict() for issue in issues[:MAX_SHORTCUT_ISSUES]]
+        summary["truncated"] = len(issues) > MAX_SHORTCUT_ISSUES
+        return summary
     except Exception as exc:
         return {"error": str(exc)}
+
+
+def _summarize_shortcut_health_issues(issues: list) -> dict:
+    counts: dict[str, int] = {}
+    issue_type_counts: dict[str, int] = {}
+    action_counts: dict[str, int] = {}
+    for issue in issues:
+        severity = str(getattr(issue, "severity", "unknown") or "unknown")
+        issue_type = str(getattr(issue, "issue_type", "unknown") or "unknown")
+        fix_action = str(getattr(issue, "fix_action", "") or "")
+        counts[severity] = counts.get(severity, 0) + 1
+        issue_type_counts[issue_type] = issue_type_counts.get(issue_type, 0) + 1
+        if fix_action:
+            action_counts[fix_action] = action_counts.get(fix_action, 0) + 1
+    destructive_fix_count = action_counts.get("delete_shortcut", 0)
+    top_issue_types = [
+        {"issue_type": issue_type, "count": count}
+        for issue_type, count in sorted(issue_type_counts.items(), key=lambda item: (-item[1], item[0]))[:8]
+    ]
+    return {
+        "total": len(issues),
+        "counts": counts,
+        "fixable": sum(action_counts.values()),
+        "destructive_fix_count": destructive_fix_count,
+        "safe_fix_count": sum(action_counts.values()) - destructive_fix_count,
+        "action_counts": action_counts,
+        "issue_type_counts": issue_type_counts,
+        "top_issue_types": top_issue_types,
+    }
 
 
 def _read_tail_text(path: Path, max_bytes: int = MAX_DIAGNOSTIC_TEXT_BYTES) -> str:

@@ -37,6 +37,10 @@ def test_collect_diagnostics_returns_core_sections(tmp_path):
     assert any(item.title == "Hook DLL" for item in items)
     assert any(item.title == "命令执行审计" for item in items)
     assert any(_json_details(item).get("status") == "ok" for item in items)
+    health = next(item for item in items if item.title == "图标检查")
+    assert health.metadata["fixable"] >= 1
+    assert health.metadata["destructive_fix_count"] >= 1
+    assert health.metadata["action_counts"]["delete_shortcut"] >= 1
 
 
 def test_export_diagnostics_zip_sanitizes_logs_and_includes_structured_state(tmp_path, monkeypatch):
@@ -104,6 +108,9 @@ def test_export_diagnostics_zip_sanitizes_logs_and_includes_structured_state(tmp
         assert diagnostics["config_status"]["recovery"]["status"] == "recovered"
         assert manifest["limits"]["max_plugin_error_lines"] == 200
         assert shortcut_summary["total"] >= 1
+        assert shortcut_summary["fixable"] >= 1
+        assert shortcut_summary["destructive_fix_count"] >= 1
+        assert shortcut_summary["action_counts"]["delete_shortcut"] >= 1
         assert update_session["session_id"] == "session-1"
         assert redaction["cookie_header"] >= 1
         assert redaction["auth_header"] >= 1

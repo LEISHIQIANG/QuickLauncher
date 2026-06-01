@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.6.2.0] - 2026-06-01
+
+### Added
+
+- 诊断中心升级为一站式诊断修复中心，支持汇总可修复项并批量应用快捷方式健康修复。
+- 新增本地发布门禁脚本 `scripts/release_gate.py`。
+- 新增 GitHub Actions 源码门禁，覆盖编译、ruff、测试和 release 元数据校验。
+
+### Changed
+
+- 诊断报告和导出包增加快捷方式健康修复统计，包括删除类修复数量和修复动作分布。
+
 ## [1.6.1.0] - 2026-05-30
 
 ### Added

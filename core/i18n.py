@@ -328,6 +328,16 @@ _EN_US: dict[str, str] = {
     "恢复失败": "Fail",
     "无法恢复该历史快照。": "Restore fail",
     "复制摘要": "Copy",
+    "一键修复": "Fix All",
+    "未发现可自动修复的问题。": "No automatically fixable issues found.",
+    "可修复: {fixable} 项，其中删除快捷方式: {destructive} 项": (
+        "Fixable: {fixable}, including {destructive} shortcut deletion(s)"
+    ),
+    "扫描时间: {time}": "Scan time: {time}",
+    "上次修复: 应用 {applied} / 跳过 {skipped} / 失败 {failed}": (
+        "Last fix: applied {applied} / skipped {skipped} / failed {failed}"
+    ),
+    "  ... 另有 {count} 项删除操作": "  ... plus {count} deletion(s)",
     "导出诊断包": "Export",
     "导出完成": "Out",
     "诊断包已导出:\n{path}": "Diagnostics package exported:\n{path}",

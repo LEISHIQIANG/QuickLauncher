@@ -7,6 +7,7 @@ from datetime import datetime
 
 from core.diagnostics import collect_diagnostics, export_diagnostics_zip
 from core.i18n import tr
+from core.shortcut_health import apply_health_fixes, check_shortcuts, preview_health_fixes, save_health_state
 from qt_compat import (
     QApplication,
     QFont,
@@ -63,6 +64,9 @@ class DiagnosticsWindow(ThemedToolWindow):
         self.tray_app = tray_app
         self._collect_thread = None
         self.items = []
+        self.shortcut_issues = []
+        self._last_repair_result = None
+        self._last_scan_at = ""
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__(tr("诊断中心"), theme=theme, parent=parent)
         self.resize(760, 560)
@@ -91,6 +95,11 @@ class DiagnosticsWindow(ThemedToolWindow):
         self.copy_btn.clicked.connect(self.copy_summary)
         buttons.addWidget(self.copy_btn)
 
+        self.fix_btn = QPushButton(tr("一键修复"))
+        self.fix_btn.clicked.connect(self.apply_all_fixes)
+        self.fix_btn.setEnabled(False)
+        buttons.addWidget(self.fix_btn)
+
         self.export_btn = QPushButton(tr("导出诊断包"))
         self.export_btn.clicked.connect(self.export_package)
         buttons.addWidget(self.export_btn)
@@ -105,6 +114,7 @@ class DiagnosticsWindow(ThemedToolWindow):
         buttons = [
             getattr(self, "refresh_btn", None),
             getattr(self, "copy_btn", None),
+            getattr(self, "fix_btn", None),
             getattr(self, "export_btn", None),
         ]
         self.style_buttons(*(button for button in buttons if button is not None))
@@ -114,6 +124,7 @@ class DiagnosticsWindow(ThemedToolWindow):
             return
         self.text.setHtml(tr("正在收集诊断信息..."))
         self.refresh_btn.setEnabled(False)
+        self.fix_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
         self._collect_thread = DiagnosticsCollectThread(self.data_manager, self.tray_app)
         self._collect_thread.finished_signal.connect(self._on_collect_finished)
@@ -126,9 +137,13 @@ class DiagnosticsWindow(ThemedToolWindow):
         self.export_btn.setEnabled(True)
         if error:
             self.items = []
+            self.shortcut_issues = []
+            self.fix_btn.setEnabled(False)
             self.text.setHtml(tr("诊断收集失败: {error}", error=error))
             return
         self.items = list(items or [])
+        self.shortcut_issues = self._scan_shortcut_issues()
+        self.fix_btn.setEnabled(any(issue.fix_action for issue in self.shortcut_issues))
         self.text.setHtml(self._format_items())
 
     def copy_summary(self):
@@ -145,6 +160,43 @@ class DiagnosticsWindow(ThemedToolWindow):
         else:
             ThemedMessageBox.warning(self, tr("导出失败"), tr("无法导出诊断包，请查看运行日志。"))
 
+    def apply_all_fixes(self):
+        fix_ids = [issue.id for issue in self.shortcut_issues if issue.fix_action]
+        if not fix_ids:
+            ThemedMessageBox.information(self, tr("一键修复"), tr("未发现可自动修复的问题。"))
+            return
+
+        previews = preview_health_fixes(self.data_manager, fix_ids)
+        if not previews:
+            ThemedMessageBox.information(self, tr("一键修复"), tr("未发现可自动修复的问题。"))
+            return
+
+        destructive = [p for p in previews if not p.safe]
+        safe_items = [p for p in previews if p.safe]
+        preview_text = self._format_fix_preview(destructive, safe_items)
+        confirm_msg = preview_text + "\n\n" + tr("确定要执行以上修复吗？")
+        result = ThemedMessageBox.question(
+            self,
+            tr("确认修复"),
+            confirm_msg,
+            ThemedMessageBox.Yes | ThemedMessageBox.No,
+        )
+        if result != ThemedMessageBox.Yes:
+            return
+
+        self.fix_btn.setEnabled(False)
+        repair_result = apply_health_fixes(self.data_manager, fix_ids)
+        self._last_repair_result = repair_result
+        self.refresh()
+        skipped = repair_result.get("skipped", 0)
+        failed = repair_result.get("failed", 0)
+        detail = tr("已应用 {count} 项修复。", count=repair_result.get("applied", 0))
+        if skipped:
+            detail += tr("\n已跳过 {skipped} 项被删除图标覆盖的重复修复。", skipped=skipped)
+        if failed:
+            detail += tr("\n有 {failed} 项修复失败，请重新扫描后查看报告。", failed=failed)
+        ThemedMessageBox.information(self, tr("修复完成"), detail)
+
     def _format_items(self) -> str:
         """格式化诊断项为HTML，带颜色支持"""
         status_colors = {
@@ -158,6 +210,7 @@ class DiagnosticsWindow(ThemedToolWindow):
         for item in self.items:
             key = str(item.status).lower()
             counts[key] = counts.get(key, 0) + 1
+        repair_summary = self._shortcut_repair_summary()
 
         lines = ['<pre style="font-family: Consolas, Courier New, monospace; font-size: 9pt;">']
 
@@ -178,6 +231,30 @@ class DiagnosticsWindow(ThemedToolWindow):
         lines.append(f'  <span style="color: {status_colors["warn"]};">WARN   : {counts.get("warn", 0)}</span>')
         lines.append(f'  <span style="color: {status_colors["ok"]};">OK     : {counts.get("ok", 0)}</span>')
         lines.append(f'  <span style="color: {status_colors["unknown"]};">UNKNOWN: {counts.get("unknown", 0)}</span>')
+        lines.append(
+            "  "
+            + self._html_escape(
+                tr(
+                    "可修复: {fixable} 项，其中删除快捷方式: {destructive} 项",
+                    fixable=repair_summary["fixable"],
+                    destructive=repair_summary["destructive"],
+                )
+            )
+        )
+        if repair_summary["last_scan"]:
+            lines.append("  " + self._html_escape(tr("扫描时间: {time}", time=repair_summary["last_scan"])))
+        if self._last_repair_result:
+            lines.append(
+                "  "
+                + self._html_escape(
+                    tr(
+                        "上次修复: 应用 {applied} / 跳过 {skipped} / 失败 {failed}",
+                        applied=self._last_repair_result.get("applied", 0),
+                        skipped=self._last_repair_result.get("skipped", 0),
+                        failed=self._last_repair_result.get("failed", 0),
+                    )
+                )
+            )
         lines.append("")
         lines.append(tr("<b>明细</b>"))
 
@@ -202,6 +279,66 @@ class DiagnosticsWindow(ThemedToolWindow):
     def _diagnostic_sort_key(self, item):
         status_rank = {"error": 0, "warn": 1, "unknown": 2, "ok": 3}
         return (status_rank.get(str(item.status).lower(), 9), item.title)
+
+    def _scan_shortcut_issues(self):
+        try:
+            issues = check_shortcuts(self.data_manager.data)
+            self._last_scan_at = datetime.now().isoformat(timespec="seconds")
+            state_dir = getattr(self.data_manager, "config_dir", None)
+            if state_dir:
+                save_health_state(state_dir, issues)
+            return list(issues or [])
+        except Exception:
+            return []
+
+    def _shortcut_repair_summary(self) -> dict:
+        fixable = 0
+        destructive = 0
+        last_scan = self._last_scan_at
+        for item in self.items:
+            if item.title not in ("图标检查", tr("图标检查")):
+                continue
+            metadata = getattr(item, "metadata", {}) or {}
+            fixable = int(metadata.get("fixable", 0) or 0)
+            destructive = int(metadata.get("destructive_fix_count", 0) or 0)
+        for item in self.items:
+            if item.title not in ("健康检查缓存", tr("健康检查缓存")):
+                continue
+            try:
+                import json
+
+                cached = json.loads(item.details or "{}")
+                last_scan = last_scan or str(cached.get("last_scan_at") or "")
+            except Exception:
+                pass
+        return {"fixable": fixable, "destructive": destructive, "last_scan": last_scan}
+
+    def _format_fix_preview(self, destructive, safe_items) -> str:
+        lines = []
+        if destructive:
+            lines.append(tr("⚠️ 以下操作不可逆：\n"))
+            for preview in destructive[:20]:
+                lines.append(f"  • {preview.description}")
+            if len(destructive) > 20:
+                lines.append(tr("  ... 另有 {count} 项删除操作", count=len(destructive) - 20))
+            lines.append("")
+        if safe_items:
+            lines.append(tr("安全修复：\n"))
+            action_counts = {}
+            for preview in safe_items:
+                action_counts[preview.action] = action_counts.get(preview.action, 0) + 1
+            for action, count in sorted(action_counts.items()):
+                lines.append(f"  • {self._format_fix_action(action)}: {count}")
+        return "\n".join(lines)
+
+    def _format_fix_action(self, action: str) -> str:
+        labels = {
+            "clear_icon": tr("清除失效图标路径"),
+            "delete_shortcut": tr("删除该图标"),
+            "clear_working_dir": tr("清空失效工作目录"),
+            "disable_folder_sync": tr("关闭该分类自动同步"),
+        }
+        return labels.get(action, action)
 
     def closeEvent(self, event):
         if self._collect_thread and self._collect_thread.isRunning():

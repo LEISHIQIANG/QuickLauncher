@@ -271,14 +271,26 @@ def _get_external_pinyin(text: str) -> list[str]:
     return []
 
 
+def _normalize_search_text(text: str) -> str:
+    return "".join(
+        ch
+        for ch in str(text)
+        if "\u4e00" <= ch <= "\u9fff"
+        or "\u3400" <= ch <= "\u4dbf"
+        or "\uf900" <= ch <= "\ufa5f"
+        or (ch.isascii() and ch.isalnum())
+    )
+
+
 def pinyin_variants(text: str) -> list[str]:
     """Return full-pinyin and initials variants for CJK text."""
     if not text:
         return []
+    normalized = _normalize_search_text(text)
 
     # Check if there is any Chinese character (early return for non-CJK)
     has_cjk = False
-    for ch in text:
+    for ch in normalized:
         if "\u4e00" <= ch <= "\u9fff" or "\u3400" <= ch <= "\u4dbf" or "\uf900" <= ch <= "\ufa5f":
             has_cjk = True
             break
@@ -286,7 +298,7 @@ def pinyin_variants(text: str) -> list[str]:
         return []
 
     # 1. Try professional external libraries first if available
-    external = _get_external_pinyin(text)
+    external = _get_external_pinyin(normalized)
     if external:
         return external
 
@@ -294,7 +306,7 @@ def pinyin_variants(text: str) -> list[str]:
     full_parts: list[str] = []
     initials: list[str] = []
     has_cjk = False
-    for ch in str(text):
+    for ch in normalized:
         py = _PINYIN.get(ch)
         if py:
             has_cjk = True
