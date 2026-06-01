@@ -3,7 +3,6 @@
 """
 
 import logging
-import time
 
 from qt_compat import (
     QColor,
@@ -14,8 +13,8 @@ from qt_compat import (
     Qt,
     QtCompat,
     QThread,
-    QTimer,
     QWidget,
+    pyqtProperty,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,23 +46,30 @@ class IconFlashOverlay(QWidget):
         super().__init__(launcher)
         self.launcher = launcher
         self._opacity = 0.0
-        self._started_at = 0.0
-        self._duration_ms = 118
-        self._attack_ms = 18
+        self._duration_ms = 96
         self._peak_opacity = 0.38
         self._items = []
         self._dirty_rect = QRect()
-        self._timer = QTimer(self)
-        self._timer.setInterval(8)
-        try:
-            self._timer.setTimerType(Qt.PreciseTimer)
-        except Exception as exc:
-            logger.debug("设置定时器类型失败: %s", exc, exc_info=True)
-        self._timer.timeout.connect(self._tick)
+        self._animation = QtCompat.QPropertyAnimation(self, b"flashOpacity", self)
+        self._animation.setDuration(self._duration_ms)
+        self._animation.setStartValue(self._peak_opacity)
+        self._animation.setEndValue(0.0)
+        self._animation.setEasingCurve(QtCompat.OutCubic)
+        self._animation.finished.connect(self._finish)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.hide()
+
+    def _get_flash_opacity(self):
+        return self._opacity
+
+    def _set_flash_opacity(self, value):
+        self._opacity = max(0.0, min(float(value), self._peak_opacity))
+        if self.isVisible() and not self._dirty_rect.isNull():
+            self.update(self._dirty_rect)
+
+    flashOpacity = pyqtProperty(float, _get_flash_opacity, _set_flash_opacity)
 
     def start(self):
         if self.isVisible():
@@ -75,16 +81,23 @@ class IconFlashOverlay(QWidget):
             return
         self._dirty_rect = self._calculate_dirty_rect()
         self.raise_()
-        self._started_at = time.perf_counter()
-        self._opacity = 0.0
+        self._opacity = self._peak_opacity
         self.show()
-        if not self._timer.isActive():
-            self._timer.start()
         self.update(self._dirty_rect)
+        self._animation.stop()
+        self._animation.setStartValue(self._peak_opacity)
+        self._animation.setEndValue(0.0)
+        self._animation.setDuration(self._duration_ms)
+        self._animation.start()
 
     def stop(self):
-        if self._timer.isActive():
-            self._timer.stop()
+        try:
+            self._animation.stop()
+        except Exception as exc:
+            logger.debug("停止图标闪烁动画失败: %s", exc, exc_info=True)
+        self._finish()
+
+    def _finish(self):
         self._opacity = 0.0
         self._items = []
         dirty_rect = QRect(self._dirty_rect)
@@ -95,22 +108,6 @@ class IconFlashOverlay(QWidget):
                 self.launcher.update(dirty_rect)
             except Exception as exc:
                 logger.debug("更新启动器区域失败: %s", exc, exc_info=True)
-
-    def _tick(self):
-        elapsed_ms = (time.perf_counter() - self._started_at) * 1000.0
-        t = max(0.0, min(1.0, elapsed_ms / self._duration_ms))
-        if t >= 1.0:
-            self.stop()
-            return
-
-        attack = max(0.01, min(0.9, self._attack_ms / self._duration_ms))
-        if t < attack:
-            phase = t / attack
-            self._opacity = self._peak_opacity * (1.0 - (1.0 - phase) * (1.0 - phase))
-        else:
-            phase = (t - attack) / (1.0 - attack)
-            self._opacity = self._peak_opacity * (1.0 - phase) * (1.0 - phase)
-        self.update(self._dirty_rect)
 
     def _calculate_dirty_rect(self):
         dirty = QRect()

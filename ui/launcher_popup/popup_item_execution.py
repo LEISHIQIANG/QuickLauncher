@@ -31,7 +31,7 @@ class PopupItemExecutionMixin:
             return
 
         selected_files_for_item = []
-        if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN):
+        if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN, ShortcutType.URL):
             selected_files_for_item = self._take_valid_selected_files_for_click()
             if selected_files_for_item:
                 try:
@@ -70,7 +70,9 @@ class PopupItemExecutionMixin:
             try:
                 from core.command_variables import collect_input_prompts
 
-                input_prompts = collect_input_prompts(item.url)
+                input_prompts = collect_input_prompts(
+                    f"{item.url or ''} {getattr(item, 'preferred_browser_args', '') or ''}"
+                )
             except Exception as e:
                 logger.error(f"提取URL输入变量失败: {e}")
 
@@ -407,6 +409,9 @@ class PopupItemExecutionMixin:
                 or "{{selected_file" in command
                 or "{{selected_files" in command
             )
+        elif item.type == ShortcutType.URL:
+            url_text = f"{getattr(item, 'url', '') or ''} {getattr(item, 'preferred_browser_args', '') or ''}"
+            selection_sensitive = "{{selected_file" in url_text or "{{selected_files" in url_text
         elif item.type == ShortcutType.CHAIN:
             selection_sensitive = True
 

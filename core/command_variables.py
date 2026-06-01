@@ -287,7 +287,12 @@ def is_value_only_variable_command(text: str) -> bool:
         return False
     base, _ = _split_spec(match.group(1).strip())
     base_key = base.lower()
-    return base_key in _VALUE_ONLY_VARIABLES or base_key.startswith("input:")
+    return (
+        base_key in _VALUE_ONLY_VARIABLES
+        or base_key.startswith("input:")
+        or base_key.startswith("param:")
+        or base_key.startswith("chain:")
+    )
 
 
 def resolve_command_variables(

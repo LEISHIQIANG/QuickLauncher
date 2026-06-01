@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 import ui.launcher_popup.popup_search as popup_search_mod
-import ui.launcher_popup.popup_window_helpers as popup_helpers_mod
 from core.data_models import Folder, ShortcutItem
 from qt_compat import QFont, QPixmap, QWidget
 from ui.launcher_popup.popup_window import LauncherPopup
@@ -161,7 +160,7 @@ def test_popup_stop_lifecycle_timers_stops_known_timers():
     assert all(timer.stopped for timer in timers.values())
 
 
-def test_icon_flash_overlay_uses_short_dirty_pulse(qapp, monkeypatch):
+def test_icon_flash_overlay_uses_short_dirty_pulse(qapp):
     item = ShortcutItem(id="refresh", name="Refresh")
     pixmap = QPixmap(24, 24)
     pixmap.fill()
@@ -193,22 +192,18 @@ def test_icon_flash_overlay_uses_short_dirty_pulse(qapp, monkeypatch):
     launcher = _Launcher()
     overlay = IconFlashOverlay(launcher)
 
-    monkeypatch.setattr(popup_helpers_mod.time, "perf_counter", lambda: 10.0)
     overlay.start()
 
-    assert overlay._duration_ms <= 120
-    assert overlay._timer.interval() == 8
+    assert overlay._duration_ms <= 100
+    assert overlay._animation.duration() == overlay._duration_ms
+    assert overlay._opacity == overlay._peak_opacity
     assert not overlay._dirty_rect.isNull()
     assert overlay._dirty_rect.width() < overlay.width()
 
-    monkeypatch.setattr(popup_helpers_mod.time, "perf_counter", lambda: 10.009)
-    overlay._tick()
-    attack_opacity = overlay._opacity
-    assert 0.0 < attack_opacity < overlay._peak_opacity
-
-    monkeypatch.setattr(popup_helpers_mod.time, "perf_counter", lambda: 10.08)
-    overlay._tick()
-    assert 0.0 < overlay._opacity < overlay._peak_opacity
+    overlay._set_flash_opacity(0.12)
+    assert overlay._opacity == 0.12
 
     overlay.stop()
+    assert overlay._opacity == 0.0
+    assert overlay._items == []
     launcher.deleteLater()

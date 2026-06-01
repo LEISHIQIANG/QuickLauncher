@@ -54,10 +54,38 @@ def test_url_keeps_custom_deeplink_scheme():
     assert url.startswith("obsidian://")
 
 
+def test_url_rejects_unknown_custom_scheme():
+    _, error = UrlExecutionMixin._prepare_url("unknownapp://open", {})
+
+    assert "不支持的URL协议" in error
+
+
 def test_url_rejects_dangerous_scheme():
     _, error = UrlExecutionMixin._prepare_url("javascript:alert(1)", {})
 
     assert "不支持" in error
+
+
+def test_url_missing_input_variable_is_rejected():
+    _, error = UrlExecutionMixin._prepare_url("https://example.com/search?q={{input}}", {})
+
+    assert "缺少运行时输入" in error
+
+
+def test_url_resolves_app_dirs_and_selected_file_variables(monkeypatch, tmp_path):
+    monkeypatch.setattr(url_exec, "get_app_dir", lambda: str(tmp_path / "App Dir"))
+    monkeypatch.setattr(url_exec, "get_config_dir", lambda: str(tmp_path / "Config Dir"))
+
+    url, error = UrlExecutionMixin._prepare_url(
+        "https://example.com/?app={{app_dir}}&cfg={{config_dir}}&file={{selected_file_name}}",
+        {},
+        selected_files=[r"C:\Work Folder\demo file.txt"],
+    )
+
+    assert error == ""
+    assert "App%20Dir" in url
+    assert "Config%20Dir" in url
+    assert "demo%20file.txt" in url
 
 
 def test_url_uses_preferred_browser(monkeypatch, tmp_path):
@@ -121,6 +149,36 @@ def test_preferred_browser_args_resolve_ip_variables(monkeypatch, tmp_path):
     assert success
     assert error == ""
     assert "192.168.1.20" in captured["parameters"]
+
+
+def test_preferred_browser_args_use_runtime_inputs(monkeypatch, tmp_path):
+    captured = {}
+    browser = tmp_path / "browser.exe"
+    browser.write_text("", encoding="utf-8")
+
+    class FakeExecutor(UrlExecutionMixin):
+        @staticmethod
+        def _safe_split_args(args):
+            return args.split()
+
+        @staticmethod
+        def _launch_with_privilege(target, parameters=None, directory=None, show_cmd=1, run_as_admin=False):
+            captured["parameters"] = parameters
+            return True, ""
+
+    monkeypatch.setattr(url_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.URL)
+    item.url = "example.com"
+    item.preferred_browser_path = str(browser)
+    item.preferred_browser_args = "--profile {{input:Profile}} {{url}}"
+    item._runtime_input_values = {"Profile": "Work Profile"}
+
+    success, error = UrlExecutionMixin._execute_url(item)
+
+    assert success
+    assert error == ""
+    assert "Work%20Profile" in captured["parameters"]
 
 
 def test_elevated_normal_url_does_not_fallback_to_current_token(monkeypatch):

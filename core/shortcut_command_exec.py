@@ -493,7 +493,7 @@ class CommandExecutionMixin:
                     )
             except FileNotFoundError:
                 logger.debug("预检时找不到shell启动器", exc_info=True)
-        if command_type in ("cmd", "powershell", "bash"):
+        if command_type in ("cmd", "powershell", "bash") and not bool(getattr(shortcut, "raw_mode", False)):
             unsafe = find_unquoted_external_command_variables(command)
             if unsafe:
                 examples = ", ".join("{{" + name + ":q}}" for name in unsafe[:3])
@@ -508,7 +508,11 @@ class CommandExecutionMixin:
         for param in ShortcutExecutor._command_param_defs(shortcut):
             if param.get("required") and not str(param_values.get(param["name"], "")).strip():
                 items.append({"title": "命令参数", "status": "failed", "detail": f"缺少必填参数: {param['name']}"})
-        if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
+        if (
+            command_type in ("cmd", "powershell", "bash")
+            and not bool(getattr(shortcut, "raw_mode", False))
+            and is_value_only_variable_command(command)
+        ):
             items.append({"title": "命令内容", "status": "failed", "detail": "命令不能只包含一个变量占位符。"})
         if items:
             message = "\n".join(f"[{item['status'].upper()}] {item['title']}: {item['detail']}" for item in items)
@@ -962,7 +966,8 @@ class CommandExecutionMixin:
             return False, "命令内容为空"
 
         command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
-        if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
+        raw_mode = bool(getattr(shortcut, "raw_mode", False))
+        if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
             if ShortcutExecutor._should_expand_command_variables(shortcut):
                 return False, f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}"
             return (
@@ -1359,6 +1364,8 @@ class CommandExecutionMixin:
     @staticmethod
     def _should_expand_command_variables(shortcut: ShortcutItem) -> bool:
         command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
+        if bool(getattr(shortcut, "raw_mode", False)):
+            return False
         enabled = getattr(shortcut, "command_variables_enabled", None)
         if ShortcutExecutor._command_param_defs(shortcut) or ShortcutExecutor._chain_values(shortcut):
             return command_type != "builtin"
@@ -1566,7 +1573,8 @@ class CommandExecutionMixin:
             else getattr(shortcut, "command_timeout_seconds", DEFAULT_COMMAND_TIMEOUT_SECONDS)
         )
 
-        if command_type in ("cmd", "powershell", "bash") and is_value_only_variable_command(command):
+        raw_mode = bool(getattr(shortcut, "raw_mode", False))
+        if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
             if ShortcutExecutor._should_expand_command_variables(shortcut):
                 return CommandResult(
                     success=False,

@@ -242,6 +242,8 @@ def test_value_only_variable_commands_are_detected():
     assert is_value_only_variable_command("{{date}}")
     assert is_value_only_variable_command("{{clipboard:q}}")
     assert is_value_only_variable_command('"{{input:Keyword}}"')
+    assert is_value_only_variable_command("{{param:tool:q}}")
+    assert is_value_only_variable_command("{{chain:prev.stdout:q}}")
     assert not is_value_only_variable_command("echo {{date}}")
     assert not is_value_only_variable_command("{{unknown}}")
 

@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Changed
 
 - 诊断报告和导出包增加快捷方式健康修复统计，包括删除类修复数量和修复动作分布。
+- 统一并增强内置解析变量处理：URL 快捷方式补齐 `{{app_dir}}`、`{{config_dir}}`、`{{selected_file}}`、`{{selected_file_name}}`、`{{selected_file_dir}}`、`{{selected_files}}` 等变量解析，并将运行时输入传递到自定义浏览器参数。
+- 明确 `raw_mode` 行为：启用后不再展开变量，也不再执行变量引用拦截，保持高级原始命令模式语义一致。
+- 优化中键弹窗双击空白区刷新反馈，刷新图标闪烁改为短时属性动画，减少长期运行后受高频定时器抖动影响而变慢的情况。
 
 ### Fixed
 
@@ -25,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - 优化网站图标批量修复体验，使用受控多线程并发刷新 favicon，并将修复过程放到后台线程执行，避免诊断窗口卡顿。
 - 修复图标网格批量 UI 测试中的 ruff 违规，保持发布门禁静态检查可通过。
 - 清理首批生产内部死代码，包括未引用的托盘调试入口、DLL 强制卸载 helper 和图标网格备用重排/单文件添加入口。
+- 修复 URL 协议白名单未实际生效的问题，未知或危险协议会被拒绝。
+- 修复 URL 变量解析缺少输入值时静默替换为空的问题，现在会明确返回缺少运行时输入。
+- 修复纯 `{{param:*}}` / `{{chain:*}}` 变量在 CMD/PowerShell/Bash 中可能作为整条命令执行的风险。
 
 ## [1.6.1.0] - 2026-05-30
 

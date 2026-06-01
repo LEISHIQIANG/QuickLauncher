@@ -64,6 +64,18 @@ def _default_steps(python: str) -> list[GateStep]:
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
         GateStep(
+            "broad exception audit",
+            [
+                python,
+                "scripts/audit_broad_exceptions.py",
+                "--max-total",
+                "1257",
+                "--max-unlogged",
+                "333",
+            ],
+            {"PYTHONDONTWRITEBYTECODE": "1"},
+        ),
+        GateStep(
             "compileall",
             [python, "-m", "compileall", "core", "ui", "hooks", "services", "bootstrap", "plugins"],
             {"PYTHONPYCACHEPREFIX": str(COMPILE_PYCACHE_PREFIX)},

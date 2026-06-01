@@ -444,6 +444,80 @@ def test_value_only_variable_is_rejected_even_when_variables_disabled(monkeypatc
     assert "解析变量" in error
 
 
+def test_value_only_param_variable_is_not_executed(monkeypatch):
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _popen_silent(*args, **kwargs):
+            raise AssertionError("value-only param variable must not execute")
+
+        @staticmethod
+        def _launch_with_privilege(*args, **kwargs):
+            raise AssertionError("value-only param variable must not launch")
+
+        @staticmethod
+        def _command_param_defs(shortcut):
+            return [{"name": "cmd", "required": True}]
+
+        @staticmethod
+        def _command_param_values(shortcut):
+            return {"cmd": "calc.exe"}
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "{{param:cmd:q}}"
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert not success
+    assert "值占位符" in error
+
+
+def test_raw_mode_does_not_expand_or_reject_variable_text(monkeypatch):
+    captured = {}
+
+    class FakeProcess:
+        def wait(self, timeout=None):
+            return 0
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _launch_with_privilege(*args, **kwargs):
+            return False, ""
+
+        @staticmethod
+        def _cmd_launcher():
+            return "cmd.exe"
+
+        @staticmethod
+        def _popen_silent(argv, cwd=None, env=None, shell=False):
+            captured["argv"] = argv
+            return FakeProcess()
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {}
+
+        @staticmethod
+        def _safe_split_args(command):
+            return command.split()
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo {{clipboard}}"
+    item.command_variables_enabled = True
+    item.raw_mode = True
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success
+    assert error == ""
+    assert captured["argv"][-1] == "echo {{clipboard}}"
+
+
 def test_command_variable_inside_real_command_still_executes(monkeypatch):
     captured = {}
 

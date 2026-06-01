@@ -15,7 +15,13 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from .clipboard_service import clipboard_service
-from .command_variables import fetch_public_wan_ipv4, get_default_lan_ipv4
+from .command_variables import (
+    _sanitize_external_input,
+    fetch_public_wan_ipv4,
+    get_app_dir,
+    get_config_dir,
+    get_default_lan_ipv4,
+)
 from .data_models import ShortcutItem
 
 logger = logging.getLogger(__name__)
@@ -51,7 +57,11 @@ class UrlExecutionMixin:
             logger.warning("URL is empty")
             return False, "URL为空"
 
-        url, error = ShortcutExecutor._prepare_url(raw_url, getattr(shortcut, "_runtime_input_values", None))
+        url, error = ShortcutExecutor._prepare_url(
+            raw_url,
+            getattr(shortcut, "_runtime_input_values", None),
+            selected_files=getattr(shortcut, "_runtime_selected_files", None),
+        )
         if error:
             return False, error
 
@@ -64,6 +74,8 @@ class UrlExecutionMixin:
                     browser_path,
                     browser_args,
                     url,
+                    input_values=getattr(shortcut, "_runtime_input_values", None),
+                    selected_files=getattr(shortcut, "_runtime_selected_files", None),
                     run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
                 )
 
@@ -94,10 +106,19 @@ class UrlExecutionMixin:
             return False, error_msg
 
     @staticmethod
-    def _prepare_url(raw_url: str, input_values: dict | None = None) -> tuple[str, str]:
+    def _prepare_url(
+        raw_url: str,
+        input_values: dict | None = None,
+        *,
+        selected_files: list[str] | None = None,
+    ) -> tuple[str, str]:
         try:
             helper = ShortcutExecutor or UrlExecutionMixin
-            expanded = helper._resolve_url_variables(raw_url.strip(), input_values or {})
+            expanded = helper._resolve_url_variables(
+                raw_url.strip(),
+                input_values or {},
+                selected_files=selected_files,
+            )
             normalized = helper._normalize_url(expanded)
             error = helper._validate_url(normalized)
             return (normalized, error)
@@ -254,6 +275,8 @@ class UrlExecutionMixin:
             return "URL缺少协议"
         if scheme in _BLOCKED_SCHEMES:
             return f"不支持的URL协议: {scheme}"
+        if scheme not in _ALLOWED_SCHEMES:
+            return f"不支持的URL协议: {scheme}"
         if scheme in {"http", "https"} and not parsed.netloc:
             return "URL缺少域名"
         return ""
@@ -264,12 +287,14 @@ class UrlExecutionMixin:
         input_values: dict[str, str],
         *,
         allow_url_placeholder: bool = False,
+        selected_files: list[str] | None = None,
     ) -> str:
         if not text:
             return text
 
         guarded = text.replace("{{{{", _ESCAPED_LEFT).replace("}}}}", _ESCAPED_RIGHT)
         now = datetime.now()
+        files = [_sanitize_external_input(str(path or "")) for path in (selected_files or []) if str(path or "")]
 
         def repl(match: re.Match) -> str:
             spec = match.group(1).strip()
@@ -278,23 +303,42 @@ class UrlExecutionMixin:
             if allow_url_placeholder and base_key == "url":
                 return match.group(0)
             if base_key == "clipboard":
-                value = clipboard_service.read_text_win32()
+                value = _sanitize_external_input(clipboard_service.read_text_win32())
             elif base_key == "date":
                 value = now.strftime("%Y-%m-%d")
             elif base_key == "time":
                 value = now.strftime("%H:%M:%S")
+            elif base_key == "app_dir":
+                value = get_app_dir()
+            elif base_key == "config_dir":
+                value = get_config_dir()
             elif base_key == "lan_ip":
                 value = get_default_lan_ipv4()
             elif base_key == "wan_ip":
                 value = fetch_public_wan_ipv4()
+            elif base_key == "selected_file":
+                value = files[0] if files else ""
+            elif base_key == "selected_file_name":
+                value = os.path.basename(files[0]) if files else ""
+            elif base_key == "selected_file_dir":
+                value = os.path.dirname(files[0]) if files else ""
+            elif base_key == "selected_files":
+                value = "\n".join(files)
             elif base_key == "input":
-                value = input_values.get("input", input_values.get("", ""))
+                if "input" in input_values:
+                    value = input_values["input"]
+                elif "" in input_values:
+                    value = input_values[""]
+                else:
+                    raise ValueError("缺少运行时输入: 输入内容")
             elif base_key.startswith("input:"):
                 prompt = base[6:].strip()
-                value = input_values.get(prompt, "")
+                if prompt not in input_values:
+                    raise ValueError("缺少运行时输入: " + (prompt or "输入内容"))
+                value = input_values[prompt]
             else:
                 raise ValueError("未知变量: {{" + spec + "}}")
-            return quote(value or "", safe="")
+            return quote(_sanitize_external_input(value or ""), safe="")
 
         return _TOKEN_RE.sub(repl, guarded).replace(_ESCAPED_LEFT, "{{").replace(_ESCAPED_RIGHT, "}}")
 
@@ -303,6 +347,8 @@ class UrlExecutionMixin:
         browser_path: str,
         browser_args: str,
         url: str,
+        input_values: dict[str, str] | None = None,
+        selected_files: list[str] | None = None,
         run_as_admin: bool = False,
     ) -> tuple[bool, str]:
         if not os.path.exists(browser_path):
@@ -312,8 +358,9 @@ class UrlExecutionMixin:
             if browser_args:
                 browser_args = UrlExecutionMixin._resolve_url_variables(
                     browser_args,
-                    {},
+                    input_values or {},
                     allow_url_placeholder=True,
+                    selected_files=selected_files,
                 )
             args = ShortcutExecutor._safe_split_args(browser_args) if browser_args else []
             if args:
