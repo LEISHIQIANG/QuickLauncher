@@ -105,6 +105,9 @@ def test_release_gate_env_isolation_excludes_stale_vars(monkeypatch):
 
 def test_release_gate_env_isolation_preserves_essential_vars(monkeypatch):
     monkeypatch.setenv("SYSTEMROOT", r"C:\WINDOWS")
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_OS", "Windows")
     calls = []
 
     def fake_run(command, cwd, check, env):
@@ -117,6 +120,9 @@ def test_release_gate_env_isolation_preserves_essential_vars(monkeypatch):
 
     for env in calls:
         assert env.get("SYSTEMROOT") == r"C:\WINDOWS"
+        assert env.get("CI") == "true"
+        assert env.get("GITHUB_ACTIONS") == "true"
+        assert env.get("RUNNER_OS") == "Windows"
 
 
 def test_release_gate_help_exits_zero():

@@ -16,7 +16,9 @@ PYTEST_BASETEMP = ROOT / "dist" / "pytest-tmp" / "release-gate"
 
 _ESSENTIAL_ENV_KEYS = frozenset({
     "appdata",
+    "ci",
     "comspec",
+    "github_actions",
     "home",
     "homepath",
     "localappdata",
@@ -27,6 +29,8 @@ _ESSENTIAL_ENV_KEYS = frozenset({
     "processor_architecture",
     "programfiles",
     "programfiles(x86)",
+    "qt_qpa_platform",
+    "runner_os",
     "pythonhome",
     "pythonpath",
     "systemroot",
