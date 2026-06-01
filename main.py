@@ -54,7 +54,9 @@ try:
 
     ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED = 0x2
 except Exception:
-    pass
+    import logging
+
+    logging.getLogger(__name__).debug("主线程 COM STA 初始化失败", exc_info=True)
 
 _sanitize_gui_env()
 get_log_dir, setup_faulthandler, setup_logging = _load_logging_helpers()
@@ -147,7 +149,7 @@ def main():
         CommandExecutionMixin._cleanup_cmd_cache()
         logger.debug("已清理命令缓存目录")
     except Exception:
-        pass
+        logger.debug("清理命令缓存目录失败", exc_info=True)
 
     try:
         root_dir = (

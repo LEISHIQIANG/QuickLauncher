@@ -1,5 +1,5 @@
 from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
-from core.shortcut_health import apply_health_fixes, check_shortcuts
+from core.shortcut_health import apply_health_fixes, check_shortcuts, preview_health_fixes
 
 
 class Manager:
@@ -146,6 +146,61 @@ def test_apply_health_fixes_handles_mixed_one_click_repairs(tmp_path):
     assert icon_item.icon_path == ""
     assert workdir_item.working_dir == ""
     assert folder.auto_sync is False
+
+
+def test_url_missing_icon_refreshes_favicon_instead_of_clearing(tmp_path, monkeypatch):
+    item = ShortcutItem(id="site", name="Site", type=ShortcutType.URL)
+    item.url = "https://example.test"
+    item.icon_path = str(tmp_path / "missing.png")
+    data = AppData(folders=[Folder(id="f", name="Folder", items=[item])])
+    fetched_icon = tmp_path / "fetched.png"
+    fetched_icon.write_text("", encoding="utf-8")
+    calls = []
+
+    def fake_fetch_favicon(url, force_refresh=False):
+        calls.append((url, force_refresh))
+        return str(fetched_icon)
+
+    monkeypatch.setattr("core.favicon_cache.fetch_favicon", fake_fetch_favicon)
+
+    issue = next(issue for issue in check_shortcuts(data) if issue.issue_type == "missing_icon")
+    preview = preview_health_fixes(Manager(data), [issue.id])[0]
+    result = apply_health_fixes(Manager(data), [issue.id])
+
+    assert issue.fix_action == "refresh_favicon"
+    assert preview.safe is True
+    assert result == {"requested": 1, "applied": 1, "skipped": 0, "failed": 0}
+    assert item.icon_path == str(fetched_icon)
+    assert calls == [("https://example.test", True)]
+
+
+def test_url_empty_icon_is_fixable_by_refreshing_favicon(tmp_path, monkeypatch):
+    item = ShortcutItem(id="site", name="Site", type=ShortcutType.URL)
+    item.url = "https://example.test"
+    data = AppData(folders=[Folder(id="f", name="Folder", items=[item])])
+    fetched_icon = tmp_path / "fetched.png"
+    fetched_icon.write_text("", encoding="utf-8")
+    monkeypatch.setattr("core.favicon_cache.fetch_favicon", lambda url, force_refresh=False: str(fetched_icon))
+
+    issue = next(issue for issue in check_shortcuts(data) if issue.issue_type == "missing_icon")
+    result = apply_health_fixes(Manager(data), [issue.id])
+
+    assert issue.fix_action == "refresh_favicon"
+    assert result["applied"] == 1
+    assert item.icon_path == str(fetched_icon)
+
+
+def test_url_favicon_refresh_failure_is_reported(monkeypatch):
+    item = ShortcutItem(id="site", name="Site", type=ShortcutType.URL)
+    item.url = "https://example.test"
+    data = AppData(folders=[Folder(id="f", name="Folder", items=[item])])
+    monkeypatch.setattr("core.favicon_cache.fetch_favicon", lambda url, force_refresh=False: "")
+
+    issue = next(issue for issue in check_shortcuts(data) if issue.issue_type == "missing_icon")
+    result = apply_health_fixes(Manager(data), [issue.id])
+
+    assert result == {"requested": 1, "applied": 0, "skipped": 0, "failed": 1}
+    assert item.icon_path == ""
 
 
 def test_duplicate_name_is_debug_only():

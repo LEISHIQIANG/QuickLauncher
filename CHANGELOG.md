@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
+- 新增 1.6.2.0 质量审计 backlog，记录深度体检基线、清理策略和后续修复队列。
+- 诊断中心新增环境诊断，展示 Windows 版本、当前进程、管理员状态、系统 Python、`py` 启动器和 Git Bash 可用性。
 - 诊断中心升级为一站式诊断修复中心，支持汇总可修复项并批量应用快捷方式健康修复。
 - 新增本地发布门禁脚本 `scripts/release_gate.py`。
 - 新增 GitHub Actions 源码门禁，覆盖编译、ruff、测试和 release 元数据校验。
@@ -16,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Changed
 
 - 诊断报告和导出包增加快捷方式健康修复统计，包括删除类修复数量和修复动作分布。
+
+### Fixed
+
+- 优化图标检查修复逻辑，网站快捷方式图标缺失时批量重新自动获取 favicon，而不是清除图标路径。
+- 优化网站图标批量修复体验，使用受控多线程并发刷新 favicon，并将修复过程放到后台线程执行，避免诊断窗口卡顿。
+- 修复图标网格批量 UI 测试中的 ruff 违规，保持发布门禁静态检查可通过。
+- 清理首批生产内部死代码，包括未引用的托盘调试入口、DLL 强制卸载 helper 和图标网格备用重排/单文件添加入口。
 
 ## [1.6.1.0] - 2026-05-30
 

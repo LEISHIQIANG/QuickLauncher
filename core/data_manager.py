@@ -1886,7 +1886,7 @@ class DataManager:
         return self._import_shareable_config_transactional(import_path, merge, report)
 
     def redirect_missing_icon_paths(self, new_icon_path: str) -> int:
-        """Data manager."""
+        """Redirect missing icon paths to files found beside a newly fixed icon."""
         if not new_icon_path:
             return 0
 
@@ -1903,11 +1903,67 @@ class DataManager:
                         return file_part.strip(), f",{suffix}"
                 return raw, ""
 
+            def _normalize_icon_file(path: str) -> str:
+                return os.path.abspath(os.path.expanduser(os.path.expandvars(path or "")))
+
+            def _supports_icon_index(path: str) -> bool:
+                return os.path.splitext(path)[1].lower() in {".exe", ".dll", ".ico"}
+
+            def _case_insensitive_child(directory: str, filename: str) -> str:
+                try:
+                    wanted = os.path.normcase(filename)
+                    for entry in os.scandir(directory):
+                        if entry.is_file() and os.path.normcase(entry.name) == wanted:
+                            return entry.path
+                except OSError:
+                    return ""
+                direct = os.path.join(directory, filename)
+                if os.path.isfile(direct):
+                    return direct
+                return ""
+
+            def _stem_match_child(directory: str, missing_file: str) -> str:
+                missing_stem = os.path.splitext(os.path.basename(missing_file))[0]
+                if not missing_stem:
+                    return ""
+                wanted_stem = os.path.normcase(missing_stem)
+                preferred_exts = (".ico", ".png", ".jpg", ".jpeg", ".bmp", ".exe", ".dll")
+                matches = []
+                try:
+                    for entry in os.scandir(directory):
+                        if not entry.is_file():
+                            continue
+                        stem, ext = os.path.splitext(entry.name)
+                        ext = ext.lower()
+                        if ext not in preferred_exts or os.path.normcase(stem) != wanted_stem:
+                            continue
+                        matches.append(entry.path)
+                except OSError:
+                    return ""
+                if not matches:
+                    return ""
+                priority = {ext: index for index, ext in enumerate(preferred_exts)}
+                matches.sort(key=lambda path: priority.get(os.path.splitext(path)[1].lower(), 99))
+                return matches[0]
+
+            def _candidate_for_missing_icon(missing_file: str, search_dir: str) -> tuple[str, str]:
+                filename = os.path.basename(missing_file)
+                if not filename:
+                    return "", ""
+                exact = _case_insensitive_child(search_dir, filename)
+                if exact:
+                    return exact, "exact"
+                stem_match = _stem_match_child(search_dir, missing_file)
+                if stem_match:
+                    return stem_match, "stem"
+                return "", ""
+
             new_icon_file, _ = _split_icon_location(new_icon_path)
+            new_icon_file = _normalize_icon_file(new_icon_file)
             if not new_icon_file or not os.path.isfile(new_icon_file):
                 return 0
 
-            new_dir = os.path.dirname(os.path.abspath(new_icon_file))
+            new_dir = os.path.dirname(new_icon_file)
             count = 0
 
             for folder in self.data.folders:
@@ -1918,13 +1974,22 @@ class DataManager:
                     if os.path.normcase(raw_icon_path) == os.path.normcase(new_icon_path):
                         continue
                     item_icon_file, item_icon_suffix = _split_icon_location(raw_icon_path)
+                    item_icon_file = _normalize_icon_file(item_icon_file)
                     if not item_icon_file or os.path.isfile(item_icon_file):
                         continue
-                    filename = os.path.basename(item_icon_file)
-                    candidate_file = os.path.join(new_dir, filename)
-                    if os.path.isfile(candidate_file):
-                        item.icon_path = f"{candidate_file}{item_icon_suffix}"
-                        count += 1
+                    candidate_file, match_kind = _candidate_for_missing_icon(item_icon_file, new_dir)
+                    if not candidate_file:
+                        continue
+                    suffix = item_icon_suffix if _supports_icon_index(candidate_file) else ""
+                    item.icon_path = f"{candidate_file}{suffix}"
+                    count += 1
+                    logger.debug(
+                        "redirected missing icon path item=%s match=%s old=%r new=%r",
+                        item.id,
+                        match_kind,
+                        raw_icon_path,
+                        item.icon_path,
+                    )
 
             if count:
                 self.save(immediate=True)

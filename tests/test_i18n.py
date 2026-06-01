@@ -118,7 +118,7 @@ class TestUsingLanguage:
         try:
             with using_language("en_US"):
                 raise ValueError("boom")
-        except ValueError:
+        except ValueError:  # noqa: S110 - expected path for context manager restoration
             pass
         assert get_language() == original
 

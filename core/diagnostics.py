@@ -7,6 +7,9 @@ import logging
 import os
 import platform
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import zipfile
 from dataclasses import dataclass, field
@@ -94,9 +97,270 @@ class DiagnosticItem:
         }
 
 
+def _collect_environment_diagnostics() -> list[DiagnosticItem]:
+    items: list[DiagnosticItem] = []
+
+    try:
+        windows_info = _get_windows_environment_info()
+        items.append(
+            DiagnosticItem(
+                "运行环境",
+                "ok" if windows_info.get("windows_supported") else "warn",
+                windows_info.get("summary", "无法识别 Windows 版本"),
+                json.dumps(windows_info, ensure_ascii=False),
+                "建议在 Windows 10 / 11 上运行。" if not windows_info.get("windows_supported") else "",
+            )
+        )
+    except Exception as exc:
+        items.append(DiagnosticItem("运行环境", "unknown", "无法读取 Windows 运行环境", str(exc)))
+
+    try:
+        process_info = {
+            "frozen": bool(getattr(sys, "frozen", False)),
+            "executable": sys.executable,
+            "python_version": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+            "architecture": platform.architecture()[0],
+            "cwd": os.getcwd(),
+        }
+        runtime_label = "打包运行" if process_info["frozen"] else "源码运行"
+        items.append(
+            DiagnosticItem(
+                "当前进程",
+                "ok",
+                f"{runtime_label}，Python {process_info['python_version']}，{process_info['architecture']}",
+                json.dumps(process_info, ensure_ascii=False),
+            )
+        )
+    except Exception as exc:
+        items.append(DiagnosticItem("当前进程", "unknown", "无法读取当前进程信息", str(exc)))
+
+    try:
+        admin_info = _get_admin_status_info()
+        items.append(
+            DiagnosticItem(
+                "管理员状态",
+                "ok",
+                "管理员启动" if admin_info.get("is_admin") else "非管理员启动",
+                json.dumps(admin_info, ensure_ascii=False),
+                "需要跨权限窗口控制或写入受保护位置时，请以管理员身份启动。" if not admin_info.get("is_admin") else "",
+            )
+        )
+    except Exception as exc:
+        items.append(DiagnosticItem("管理员状态", "unknown", "无法读取管理员状态", str(exc)))
+
+    python_info = _probe_command_runtime(["python", "--version"], "python")
+    items.append(
+        DiagnosticItem(
+            "系统 Python",
+            "ok" if python_info.get("usable") else "warn",
+            python_info.get("summary", "未找到 python 命令"),
+            json.dumps(python_info, ensure_ascii=False),
+            "请安装系统 Python，或把 python.exe 加入 PATH。" if not python_info.get("usable") else "",
+        )
+    )
+
+    py_info = _probe_command_runtime(["py", "--version"], "py")
+    items.append(
+        DiagnosticItem(
+            "Python 启动器 py",
+            "ok" if py_info.get("usable") else "warn",
+            py_info.get("summary", "未找到 py 启动器"),
+            json.dumps(py_info, ensure_ascii=False),
+            "请安装 Python Launcher for Windows，或在 Python 安装器中勾选 py launcher。"
+            if not py_info.get("usable")
+            else "",
+        )
+    )
+
+    bash_path = _find_git_bash()
+    bash_info = _probe_command_runtime([bash_path or "bash", "--version"], "bash") if bash_path else _missing_runtime("bash")
+    if bash_path:
+        bash_info["path"] = bash_path
+    items.append(
+        DiagnosticItem(
+            "Git Bash",
+            "ok" if bash_info.get("usable") else "warn",
+            bash_info.get("summary", "未找到 Git Bash"),
+            json.dumps(bash_info, ensure_ascii=False),
+            "请安装 Git for Windows，或把 Git\\bin\\bash.exe 加入 PATH。" if not bash_info.get("usable") else "",
+        )
+    )
+
+    return items
+
+
+def _get_windows_environment_info() -> dict:
+    release = platform.release()
+    version = platform.version()
+    build = _parse_windows_build(version)
+    edition = platform.platform()
+    label = _windows_label(release, build)
+    supported = label in ("Windows 10", "Windows 11")
+    return {
+        "system": platform.system(),
+        "release": release,
+        "version": version,
+        "build": build,
+        "label": label,
+        "platform": edition,
+        "windows_supported": supported,
+        "summary": f"{label}，Build {build}" if build else label,
+    }
+
+
+def _parse_windows_build(version: str) -> int | None:
+    parts = str(version or "").split(".")
+    for part in reversed(parts):
+        try:
+            return int(part)
+        except ValueError:
+            continue
+    return None
+
+
+def _windows_label(release: str, build: int | None) -> str:
+    if platform.system().lower() != "windows":
+        return platform.system() or "未知系统"
+    if build and build >= 22000:
+        return "Windows 11"
+    if release == "10" or (build and build >= 10240):
+        return "Windows 10"
+    return f"Windows {release}" if release else "Windows"
+
+
+def _get_admin_status_info() -> dict:
+    info = {"is_admin": False, "method": "unknown"}
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            info["is_admin"] = bool(ctypes.windll.shell32.IsUserAnAdmin())
+            info["method"] = "IsUserAnAdmin"
+            return info
+        except Exception as exc:
+            info["error"] = str(exc)
+            return info
+    try:
+        info["is_admin"] = os.getuid() == 0
+        info["method"] = "geteuid"
+    except Exception as exc:
+        info["error"] = str(exc)
+    return info
+
+
+def _probe_command_runtime(argv: list[str], command_name: str, timeout: float = 3.0) -> dict:
+    path = shutil.which(argv[0]) or (argv[0] if os.path.isfile(argv[0]) else "")
+    if not path:
+        return _missing_runtime(command_name)
+    try:
+        completed = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+        output = (completed.stdout or completed.stderr or "").strip()
+        first_line = output.splitlines()[0] if output else ""
+        usable = completed.returncode == 0
+        return {
+            "command": command_name,
+            "path": _resolve_long_path(path),
+            "usable": usable,
+            "returncode": completed.returncode,
+            "version": first_line,
+            "summary": first_line if usable and first_line else f"{command_name} 可执行但返回码 {completed.returncode}",
+            "stdout": completed.stdout.strip(),
+            "stderr": completed.stderr.strip(),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "command": command_name,
+            "path": _resolve_long_path(path),
+            "usable": False,
+            "summary": f"{command_name} 启动超时",
+        }
+    except Exception as exc:
+        return {
+            "command": command_name,
+            "path": _resolve_long_path(path),
+            "usable": False,
+            "summary": f"{command_name} 启动失败: {exc}",
+            "error": str(exc),
+        }
+
+
+def _missing_runtime(command_name: str) -> dict:
+    return {
+        "command": command_name,
+        "path": "",
+        "usable": False,
+        "summary": f"未找到 {command_name} 命令",
+    }
+
+
+def _find_git_bash() -> str | None:
+    candidates = [shutil.which("bash")]
+    if os.name == "nt":
+        candidates.extend(_git_bash_registry_candidates())
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local_appdata = os.environ.get("LOCALAPPDATA", "")
+        candidates.extend(
+            [
+                os.path.join(program_files, "Git", "bin", "bash.exe"),
+                os.path.join(program_files_x86, "Git", "bin", "bash.exe"),
+            ]
+        )
+        if local_appdata:
+            candidates.append(os.path.join(local_appdata, "Programs", "Git", "bin", "bash.exe"))
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            return _resolve_long_path(os.path.abspath(candidate))
+    return None
+
+
+def _git_bash_registry_candidates() -> list[str]:
+    candidates: list[str] = []
+    try:
+        import winreg
+
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                with winreg.OpenKey(hive, r"SOFTWARE\GitForWindows") as key:
+                    install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                if install_path:
+                    candidates.append(os.path.join(install_path, "bin", "bash.exe"))
+            except OSError:
+                continue
+    except ImportError:
+        return []
+    return candidates
+
+
+def _resolve_long_path(path: str) -> str:
+    if os.name != "nt" or not path:
+        return path
+    try:
+        import ctypes
+
+        buf = ctypes.create_unicode_buffer(4096)
+        result = ctypes.windll.kernel32.GetLongPathNameW(path, buf, 4096)
+        if 0 < result < 4096:
+            return buf.value
+    except Exception:
+        logger.debug("获取长路径名失败: %s", path, exc_info=True)
+    return path
+
+
 def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
     """Collect user-facing diagnostics without mutating state."""
     items: list[DiagnosticItem] = []
+
+    items.extend(_collect_environment_diagnostics())
 
     config_status = getattr(data_manager, "get_config_status", lambda: {})()
     status = config_status.get("status", "unknown")

@@ -464,16 +464,17 @@ class ThemedMessageBox(QDialog):
         _global_mouse_hook = None
         try:
             from ui.utils.safe_file_dialog import _global_mouse_hook as _gmh
+
             _global_mouse_hook = _gmh
         except ImportError:
-            pass
+            logger.debug("safe_file_dialog 鼠标钩子未初始化", exc_info=True)
         mouse_hook_paused = False
         if _global_mouse_hook:
             try:
                 _global_mouse_hook.set_paused(True)
                 mouse_hook_paused = True
             except Exception:
-                pass
+                logger.debug("暂停鼠标钩子失败", exc_info=True)
         try:
             dialog.exec_()
         finally:
@@ -481,7 +482,7 @@ class ThemedMessageBox(QDialog):
                 try:
                     _global_mouse_hook.set_paused(False)
                 except Exception:
-                    pass
+                    logger.debug("恢复鼠标钩子失败", exc_info=True)
         return dialog.result()
 
     @staticmethod

@@ -93,6 +93,10 @@ def test_diagnostics_window_one_click_fix_smoke(qapp, tmp_path, monkeypatch):
         assert window.fix_btn.isEnabled()
 
         window.apply_all_fixes()
+        assert "正在后台修复" in window.text.toPlainText()
+        if window._fix_thread:
+            assert window._fix_thread.wait(5000)
+            qapp.processEvents()
 
         assert manager.data.folders[0].items == []
         assert infos

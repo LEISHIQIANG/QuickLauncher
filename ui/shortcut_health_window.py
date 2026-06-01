@@ -52,6 +52,21 @@ class FaviconCacheCleanThread(QThread):
             self.finished_signal.emit({}, str(exc))
 
 
+class ShortcutHealthFixThread(QThread):
+    finished_signal = pyqtSignal(dict, str)
+
+    def __init__(self, data_manager, fix_ids):
+        super().__init__()
+        self.data_manager = data_manager
+        self.fix_ids = list(fix_ids or [])
+
+    def run(self):
+        try:
+            self.finished_signal.emit(apply_health_fixes(self.data_manager, self.fix_ids), "")
+        except Exception as exc:
+            self.finished_signal.emit({}, str(exc))
+
+
 class ShortcutHealthWindow(ThemedToolWindow):
     """Read-only icon and shortcut consistency report with safe batch fixes."""
 
@@ -59,6 +74,7 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self.data_manager = data_manager
         self._scan_thread = None
         self._cache_clean_thread = None
+        self._fix_thread = None
         self.issues = []
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__(tr("图标检查"), theme=theme, parent=parent)
@@ -137,6 +153,8 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self.text.setHtml(self._format_issues())
 
     def apply_safe_fixes(self):
+        if self._fix_thread and self._fix_thread.isRunning():
+            return
         fix_ids = [issue.id for issue in self.issues if issue.fix_action]
         if not fix_ids:
             return
@@ -179,7 +197,27 @@ class ShortcutHealthWindow(ThemedToolWindow):
                 if result != ThemedMessageBox.Yes:
                     return
 
-        result = apply_health_fixes(self.data_manager, fix_ids)
+        self._set_fix_running(True)
+        self._fix_thread = ShortcutHealthFixThread(self.data_manager, fix_ids)
+        self._fix_thread.finished_signal.connect(self._on_fix_finished)
+        self._fix_thread.finished.connect(lambda: setattr(self, "_fix_thread", None))
+        self._fix_thread.finished.connect(self._fix_thread.deleteLater)
+        self._fix_thread.start()
+
+    def _set_fix_running(self, running: bool):
+        self.fix_btn.setEnabled(not running)
+        self.refresh_btn.setEnabled(not running)
+        self.clean_cache_btn.setEnabled(not running)
+        self.fix_btn.setText(tr("修复中...") if running else tr("应用修复"))
+        if running:
+            self.text.setPlainText(tr("正在后台修复，网站图标会并发重新自动获取，请稍候..."))
+
+    def _on_fix_finished(self, result: dict, error: str):
+        self._set_fix_running(False)
+        if error:
+            self.refresh()
+            ThemedMessageBox.warning(self, tr("修复失败"), tr("修复过程中发生错误:\n{error}", error=error))
+            return
         self.refresh()
         skipped = result.get("skipped", 0)
         failed = result.get("failed", 0)
@@ -307,6 +345,7 @@ class ShortcutHealthWindow(ThemedToolWindow):
     def _format_fix_action(self, action: str) -> str:
         labels = {
             "clear_icon": tr("清除失效图标路径"),
+            "refresh_favicon": tr("重新自动获取网站图标"),
             "delete_shortcut": tr("删除该图标"),
             "clear_working_dir": tr("清空失效工作目录"),
             "disable_folder_sync": tr("关闭该分类自动同步"),
@@ -321,4 +360,7 @@ class ShortcutHealthWindow(ThemedToolWindow):
         if self._cache_clean_thread and self._cache_clean_thread.isRunning():
             self._cache_clean_thread.quit()
             self._cache_clean_thread.wait(2000)
+        if self._fix_thread and self._fix_thread.isRunning():
+            self._fix_thread.quit()
+            self._fix_thread.wait(2000)
         super().closeEvent(event)

@@ -108,7 +108,7 @@ class SimpleStatusDialog(QDialog):
                         break
                     parent = parent.parent()
             except Exception:
-                pass
+                logger.debug("检测图标网格对话框主题失败", exc_info=True)
         return theme
 
     def paintEvent(self, event):
@@ -155,7 +155,7 @@ class SimpleStatusDialog(QDialog):
                             effect.set_window_region(hwnd, w, h, self.corner_radius)
                     enable_acrylic_for_config_window(self, theme, blur_amount=10)
             except Exception:
-                pass
+                logger.debug("应用图标网格对话框窗口特效失败", exc_info=True)
         self.setWindowOpacity(1.0)
 
     def update_text(self, text):
@@ -1952,9 +1952,6 @@ class IconGrid(QWidget):
         self.icon_widgets = remaining_widgets
         self._place_icons(animate=animate)
 
-    def handle_reorder(self, source_id: str, target_id: str):
-        self.handle_final_reorder()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self.icon_widgets:
@@ -1967,7 +1964,7 @@ class IconGrid(QWidget):
             try:
                 timer.stop()
             except RuntimeError:
-                pass
+                logger.debug("停止拖拽离开延迟定时器失败", exc_info=True)
 
         # 只有在有有效文件夹时才接受拖放
         if not self.current_folder_id:
@@ -2031,8 +2028,10 @@ class IconGrid(QWidget):
             if not pointer_pos:
                 try:
                     from qt_compat import QCursor
+
                     pointer_pos = QCursor.pos()
                 except Exception:
+                    logger.debug("获取全局拖拽指针位置失败", exc_info=True)
                     return
 
             # Map global position to container coordinates
@@ -2063,7 +2062,7 @@ class IconGrid(QWidget):
                     ids_data = event.mimeData().data("application/x-shortcut-ids").data().decode()
                     drag_id_set = {sid for sid in ids_data.split("\n") if sid}
                 except Exception:
-                    pass
+                    logger.debug("解析拖拽快捷方式 ID 列表失败", exc_info=True)
 
             if target_id in drag_id_set:
                 return
@@ -2078,7 +2077,7 @@ class IconGrid(QWidget):
             try:
                 timer.stop()
             except RuntimeError:
-                pass
+                logger.debug("停止拖拽离开延迟定时器失败", exc_info=True)
         self._drag_leave_timer = QTimer()
         self._drag_leave_timer.setSingleShot(True)
         self._drag_leave_timer.timeout.connect(self._on_delayed_drag_leave)
@@ -2101,7 +2100,7 @@ class IconGrid(QWidget):
             try:
                 timer.stop()
             except RuntimeError:
-                pass
+                logger.debug("停止拖拽离开延迟定时器失败", exc_info=True)
 
         theme = "dark"
         try:
@@ -2163,13 +2162,3 @@ class IconGrid(QWidget):
             except Exception as exc:
                 logger.debug("解析快捷方式文件失败: %s", exc, exc_info=True)
         return shortcut
-
-    def _add_from_file(self, file_path: str):
-        # 保持兼容性，用于单个文件添加
-        if not self.current_folder_id:
-            return
-
-        shortcut = self._create_shortcut_from_file(file_path)
-        self.data_manager.add_shortcut(self.current_folder_id, shortcut)
-        self.load_folder(self.current_folder_id)
-        self.shortcut_added.emit()

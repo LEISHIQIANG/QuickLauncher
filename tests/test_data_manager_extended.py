@@ -719,6 +719,57 @@ class TestIconPathRedirect:
         dm.add_shortcut(folder.id, s)
         assert dm.redirect_missing_icon_paths(str(real_icon)) == 0
 
+    def test_redirect_missing_icon_paths_matches_case_insensitive_filename(self, tmp_path):
+        dm = _file_backed_manager(tmp_path)
+        icon_dir = tmp_path / "new-icons"
+        icon_dir.mkdir()
+        fixed_icon = icon_dir / "fixed.png"
+        candidate = icon_dir / "App.PNG"
+        fixed_icon.write_bytes(b"fixed")
+        candidate.write_bytes(b"candidate")
+
+        folder = dm.add_folder("F")
+        missing = tmp_path / "old-icons" / "app.png"
+        s = _make_shortcut("S", icon_path=str(missing))
+        dm.add_shortcut(folder.id, s)
+
+        assert dm.redirect_missing_icon_paths(str(fixed_icon)) == 1
+        assert s.icon_path == str(candidate)
+
+    def test_redirect_missing_icon_paths_matches_same_stem_with_better_extension(self, tmp_path):
+        dm = _file_backed_manager(tmp_path)
+        icon_dir = tmp_path / "new-icons"
+        icon_dir.mkdir()
+        fixed_icon = icon_dir / "fixed.png"
+        candidate = icon_dir / "Tool.ico"
+        fixed_icon.write_bytes(b"fixed")
+        candidate.write_bytes(b"candidate")
+
+        folder = dm.add_folder("F")
+        missing = tmp_path / "old-icons" / "Tool.png"
+        s = _make_shortcut("S", icon_path=f"{missing},7")
+        dm.add_shortcut(folder.id, s)
+
+        assert dm.redirect_missing_icon_paths(str(fixed_icon)) == 1
+        assert s.icon_path == f"{candidate},7"
+
+    def test_redirect_missing_icon_paths_drops_index_for_bitmap_candidate(self, tmp_path):
+        dm = _file_backed_manager(tmp_path)
+        icon_dir = tmp_path / "new-icons"
+        icon_dir.mkdir()
+        fixed_icon = icon_dir / "fixed.png"
+        candidate = icon_dir / "Tool.png"
+        fixed_icon.write_bytes(b"fixed")
+        candidate.write_bytes(b"candidate")
+
+        folder = dm.add_folder("F")
+        missing = tmp_path / "old-icons" / "Tool.dll"
+        s = _make_shortcut("S", icon_path=f"{missing},4")
+        dm.add_shortcut(folder.id, s)
+
+        assert dm.redirect_missing_icon_paths(str(fixed_icon)) == 1
+        assert s.icon_path == str(candidate)
+
 
 # ======================================================================
 # write_icon_repo_items

@@ -556,8 +556,9 @@ def test_drag_move_triggers_swap_and_updates_highlight(qapp):
     event = FakeEvent()
     try:
         from qt_compat import QWidget
+
         parent_widget = QWidget()
-        setattr(parent_widget, "handle_realtime_swap", lambda source, target, pointer_pos=None: True)
+        parent_widget.handle_realtime_swap = lambda source, target, pointer_pos=None: True
         widget.setParent(parent_widget)
 
         assert widget._is_drop_target is False
@@ -570,7 +571,7 @@ def test_drag_move_triggers_swap_and_updates_highlight(qapp):
 
 def test_realtime_swap_redirects_system_icon_to_first_user_icon(qapp):
     """handle_realtime_swap redirects the target system icon to the first user icon in icon_repo."""
-    from core import DataManager, ShortcutItem, ShortcutType
+    from core import DataManager, ShortcutItem
     from ui.config_window.icon_grid import IconGrid
 
     manager = DataManager()
@@ -650,7 +651,7 @@ def test_handle_final_reorder_safeguards_missing_ids(qapp):
 
         # Set _initial_widgets with all 3 widgets
         grid._initial_widgets = [w1, w2, w3]
-        
+
         # Simulate active drag state where w2 (item2) is missing from current widgets
         grid.icon_widgets = [w1, w3]
 
@@ -678,10 +679,10 @@ def test_handle_final_reorder_safeguards_missing_ids(qapp):
 
 def test_icongrid_drag_move_event_empty_space_swap(qapp):
     """IconGrid.dragMoveEvent calculates closest slot and triggers swap when dragging in empty space."""
-    from core.data_manager import DataManager
-    from ui.config_window.icon_grid import IconGrid, IconWidget
-    from qt_compat import QPoint
     from core import ShortcutItem, ShortcutType
+    from core.data_manager import DataManager
+    from qt_compat import QPoint
+    from ui.config_window.icon_grid import IconGrid, IconWidget
 
     manager = DataManager()
     grid = IconGrid(manager)
@@ -721,7 +722,7 @@ def test_icongrid_drag_move_event_empty_space_swap(qapp):
     event = FakeEvent()
     try:
         # Use QPoint(120, 20) to hit col=1, row=0 -> target_idx = 1 (cell width is 103 for default width 640)
-        setattr(event, "pos", lambda: QPoint(120, 20))
+        event.pos = lambda: QPoint(120, 20)
         grid.dragMoveEvent(event)
         # Should have detected item2 as the closest target slot and attempted a swap
         assert len(swaps) > 0
@@ -730,6 +731,5 @@ def test_icongrid_drag_move_event_empty_space_swap(qapp):
         w1.deleteLater()
         w2.deleteLater()
         grid.deleteLater()
-
 
 

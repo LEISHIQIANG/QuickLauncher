@@ -54,6 +54,7 @@ from core.commands import (  # noqa: E402
     cmd_wifi,
     stop_qr_file_server,
 )
+from core.selected_text_service import SelectedTextResult  # noqa: E402
 
 # ===========================================================================
 # ── _hex_to_rgb ────────────────────────────────────────────────────────────
@@ -1162,7 +1163,10 @@ class TestCmdPathAuditEdgeCases:
 
 class TestCmdSelected:
     def test_no_selected_text(self):
-        with patch("core.commands.selected_text_service", create=True):
+        with patch(
+            "core.selected_text_service.selected_text_service.get_selected_text",
+            return_value=SelectedTextResult(text="", success=False, method="none"),
+        ):
             res = cmd_selected(CommandContext())
             assert res.success is False
             assert "未检测到" in res.message or "empty" in res.error

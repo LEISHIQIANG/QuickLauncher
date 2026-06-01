@@ -676,14 +676,6 @@ fso.DeleteFile WScript.ScriptFullName
             parent = self.config_window if self.config_window else None
             ThemedMessageBox.critical(parent, tr("重启失败"), tr("无法重新启动程序\n\n{error}", error=str(e)))
 
-    def _test_popup(self):
-        """测试弹窗（用于调试）"""
-        # 获取鼠标位置
-        from qt_compat import QCursor
-
-        pos = QCursor.pos()
-        self._on_show_popup(pos.x(), pos.y())
-
     def _on_tray_activated(self, reason):
         """托盘图标激活"""
         logger.debug(f"托盘激活: {reason}")
@@ -799,40 +791,6 @@ fso.DeleteFile WScript.ScriptFullName
         except Exception as e:
             logger.error("打开软件安装目录失败: %s", e, exc_info=True)
             return False
-
-    def _force_unload_dlls(self):
-        """强制卸载当前进程加载的 DLL，特别是 msvcp140.dll"""
-        try:
-            import ctypes
-
-            # 获取当前进程句柄
-            kernel32 = ctypes.windll.kernel32
-
-            # 需要释放的 DLL 列表
-            dlls_to_free = ["msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"]
-
-            logger.info("开始释放 DLL 引用...")
-
-            for dll_name in dlls_to_free:
-                try:
-                    # 获取 DLL 模块句柄
-                    h_module = kernel32.GetModuleHandleW(dll_name)
-                    if h_module:
-                        # 多次调用 FreeLibrary 来减少引用计数
-                        # 注意：不能完全卸载，只是减少引用计数
-                        for _ in range(10):  # 尝试多次释放
-                            result = kernel32.FreeLibrary(h_module)
-                            if not result:
-                                break
-                        logger.info(f"已释放 {dll_name} 的引用")
-                    else:
-                        logger.debug(f"{dll_name} 未加载")
-                except Exception as e:
-                    logger.debug(f"释放 {dll_name} 失败: {e}")
-
-            logger.info("DLL 引用释放完成")
-        except Exception as e:
-            logger.error(f"释放 DLL 时出错: {e}")
 
     def _quit(self):
         if self._quitting:

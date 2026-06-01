@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -16,6 +17,7 @@ from .shortcut_url_exec import UrlExecutionMixin
 logger = logging.getLogger(__name__)
 
 MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
+MAX_FAVICON_REFRESH_WORKERS = 8
 
 _WINDOWS_ENV_VAR_RE = re.compile(r"%[^%]+%")
 
@@ -250,7 +252,8 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
                     shortcut,
                 )
             elif icon_path and not os.path.exists(_expanded_path(icon_path)):
-                add("missing_icon", "warn", "Icon path does not exist", icon_path, folder, shortcut, "clear_icon")
+                fix_action = "refresh_favicon" if shortcut_type == ShortcutType.URL else "clear_icon"
+                add("missing_icon", "warn", "Icon path does not exist", icon_path, folder, shortcut, fix_action)
 
             if shortcut_type == ShortcutType.URL:
                 raw_url = str(getattr(shortcut, "url", "") or "").strip()
@@ -261,6 +264,16 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
                     parsed = urlparse(prepared_url)
                     if not parsed.scheme:
                         add("url_invalid", "error", "URL is invalid", prepared_url, folder, shortcut)
+                    elif parsed.scheme in ("http", "https") and not icon_path:
+                        add(
+                            "missing_icon",
+                            "warn",
+                            "URL icon is missing",
+                            prepared_url,
+                            folder,
+                            shortcut,
+                            "refresh_favicon",
+                        )
 
             if shortcut_type == ShortcutType.CHAIN:
                 _check_chain(shortcut, folder, shortcut_map, add)
@@ -368,10 +381,11 @@ def preview_health_fixes(data_manager, issue_ids: list[str]) -> list[HealthFixPr
     previews: list[HealthFixPreview] = []
     for issue in issues:
         action = issue.fix_action
-        safe = action in ("clear_icon", "clear_working_dir", "disable_folder_sync")
+        safe = action in ("clear_icon", "clear_working_dir", "disable_folder_sync", "refresh_favicon")
         descriptions = {
             "delete_shortcut": f"Will delete shortcut: {issue.shortcut_name}",
             "clear_icon": f"Will clear icon path for: {issue.shortcut_name}",
+            "refresh_favicon": f"Will automatically fetch website icon again for: {issue.shortcut_name}",
             "clear_working_dir": f"Will clear working directory for: {issue.shortcut_name}",
             "disable_folder_sync": f"Will disable folder sync: {issue.folder_name}",
         }
@@ -399,12 +413,15 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
     action_priority = {
         "delete_shortcut": 0,
         "clear_icon": 1,
+        "refresh_favicon": 1,
         "clear_working_dir": 1,
         "disable_folder_sync": 1,
     }
     issues.sort(key=lambda issue: action_priority.get(issue.fix_action, 9))
+    favicon_results = _refresh_url_favicons_parallel(data_manager, issues)
     applied = 0
     skipped = 0
+    failed = 0
     deleted_shortcuts: set[str] = set()
     mark_history = getattr(data_manager, "_mark_history", None)
     if callable(mark_history):
@@ -427,10 +444,12 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
 
             folder, shortcut = data_manager._find_shortcut_with_folder(issue.shortcut_id)
             if not shortcut:
+                failed += 1
                 continue
             if issue.fix_action == "delete_shortcut":
                 items = getattr(folder, "items", None)
                 if not isinstance(items, list):
+                    failed += 1
                     continue
                 original_count = len(items)
                 try:
@@ -447,6 +466,13 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
                     applied += 1
                 else:
                     skipped += 1
+            elif issue.fix_action == "refresh_favicon":
+                icon_path = favicon_results.get(issue.id, "")
+                if icon_path:
+                    shortcut.icon_path = icon_path
+                    applied += 1
+                else:
+                    failed += 1
             elif issue.fix_action == "clear_working_dir":
                 wd = str(getattr(shortcut, "working_dir", "") or "").strip()
                 if wd and not os.path.isdir(_expanded_path(wd)):
@@ -462,13 +488,87 @@ def apply_health_fixes(data_manager, issue_ids: list[str]) -> dict:
                 log_event(
                     "shortcut.health_fix",
                     f"Applied {applied} health fix(es)",
-                    {"applied": applied, "skipped": skipped, "failed": len(issues) - applied - skipped},
+                    {"applied": applied, "skipped": skipped, "failed": failed},
                 )
             except Exception as exc:
                 logger.debug("记录健康修复事件失败: %s", exc, exc_info=True)
 
-    failed = max(0, len(issues) - applied - skipped)
     return {"requested": len(issues), "applied": applied, "skipped": skipped, "failed": failed}
+
+
+def _refresh_url_favicons_parallel(data_manager, issues: list[HealthIssue]) -> dict[str, str]:
+    refresh_issues = [issue for issue in issues if issue.fix_action == "refresh_favicon"]
+    if not refresh_issues:
+        return {}
+
+    tasks = []
+    for issue in refresh_issues:
+        _folder, shortcut = data_manager._find_shortcut_with_folder(issue.shortcut_id)
+        if not shortcut:
+            continue
+        raw_url = str(getattr(shortcut, "url", "") or "").strip()
+        if raw_url:
+            tasks.append((issue.id, raw_url))
+    if not tasks:
+        return {}
+
+    worker_count = _favicon_refresh_worker_count(len(tasks))
+    if worker_count <= 1:
+        return {issue_id: path for issue_id, path in (_fetch_favicon_for_url(task) for task in tasks) if path}
+
+    results: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="FaviconRefresh") as executor:
+        future_map = {executor.submit(_fetch_favicon_for_url, task): task[0] for task in tasks}
+        for future in as_completed(future_map):
+            issue_id = future_map[future]
+            try:
+                _result_issue_id, icon_path = future.result()
+            except Exception as exc:
+                logger.debug("并发自动获取网址图标失败: %s", exc, exc_info=True)
+                continue
+            if icon_path:
+                results[issue_id] = icon_path
+    return results
+
+
+def _favicon_refresh_worker_count(task_count: int) -> int:
+    if task_count <= 1:
+        return 1
+    return min(MAX_FAVICON_REFRESH_WORKERS, max(2, task_count))
+
+
+def _fetch_favicon_for_url(task: tuple[str, str]) -> tuple[str, str]:
+    issue_id, raw_url = task
+    return issue_id, _refresh_url_favicon(raw_url)
+
+
+def _refresh_url_favicon(raw_url: str) -> str:
+    raw_url = str(raw_url or "").strip()
+    if not raw_url:
+        return ""
+    try:
+        prepared_url, error = UrlExecutionMixin._prepare_url(raw_url)
+        if error:
+            return ""
+        parsed = urlparse(prepared_url)
+        if parsed.scheme not in ("http", "https"):
+            return ""
+    except Exception as exc:
+        logger.debug("准备网址图标刷新 URL 失败: %s", exc, exc_info=True)
+        return ""
+    try:
+        from .favicon_cache import fetch_favicon
+
+        return fetch_favicon(prepared_url, force_refresh=True) or ""
+    except Exception as exc:
+        logger.debug("自动重新获取网址图标失败: %s", exc, exc_info=True)
+        return ""
+
+
+def _refresh_shortcut_favicon(shortcut: ShortcutItem) -> str:
+    if _shortcut_type(shortcut) != ShortcutType.URL:
+        return ""
+    return _refresh_url_favicon(str(getattr(shortcut, "url", "") or ""))
 
 
 def _find_folder(data: AppData, folder_id: str):

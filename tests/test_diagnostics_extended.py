@@ -18,7 +18,10 @@ from core.diagnostics import (
     DiagnosticItem,
     _build_manifest,
     _bump_redaction,
+    _collect_environment_diagnostics,
     _is_logging_disabled,
+    _parse_windows_build,
+    _probe_command_runtime,
     _read_json_file,
     _read_tail_lines,
     _read_tail_text,
@@ -57,6 +60,38 @@ class TestDiagnosticItem:
         for status in ("ok", "warn", "error", "unknown"):
             item = DiagnosticItem("T", status, "s")
             assert item.to_dict()["status"] == status
+
+
+# ======================================================================
+# Environment diagnostics
+# ======================================================================
+
+
+class TestEnvironmentDiagnostics:
+    def test_parse_windows_build(self):
+        assert _parse_windows_build("10.0.22631") == 22631
+        assert _parse_windows_build("10.0.19045") == 19045
+        assert _parse_windows_build("bad") is None
+
+    def test_probe_command_runtime_missing(self):
+        result = _probe_command_runtime(["definitely-missing-quicklauncher-command"], "missing")
+        assert result["usable"] is False
+        assert result["path"] == ""
+
+    def test_probe_command_runtime_success(self):
+        result = _probe_command_runtime([sys.executable, "--version"], "python")
+        assert result["usable"] is True
+        assert "Python" in result["summary"]
+
+    def test_collect_environment_diagnostics_core_items(self):
+        items = _collect_environment_diagnostics()
+        titles = {item.title for item in items}
+        assert "运行环境" in titles
+        assert "当前进程" in titles
+        assert "管理员状态" in titles
+        assert "系统 Python" in titles
+        assert "Python 启动器 py" in titles
+        assert "Git Bash" in titles
 
 
 # ======================================================================
