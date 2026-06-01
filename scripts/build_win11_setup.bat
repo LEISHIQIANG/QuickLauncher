@@ -567,9 +567,31 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
+REM Create portable zip package
+echo.
+echo [5/4] Creating portable zip package...
+set "PORTABLE_NAME=QuickLauncher_Portable_%APP_VERSION%"
+ren "dist\QuickLauncher" "%PORTABLE_NAME%"
+if !ERRORLEVEL! NEQ 0 (
+    echo   [!] Failed to rename dist\QuickLauncher to %PORTABLE_NAME%.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+echo   [OK] Renamed dist\QuickLauncher ^-> %PORTABLE_NAME%
+
+echo   Compressing to %PORTABLE_NAME%.zip...
+powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
+if !ERRORLEVEL! NEQ 0 (
+    echo   [!] Failed to create zip package.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+echo   [OK] Portable zip created: dist\%PORTABLE_NAME%.zip
+
 echo.
 echo ========================================
 echo   [OK] Build successful! (Win11 optimized version)
 echo   Installer: dist\QuickLauncher_Setup_%APP_VERSION%.exe
+echo   Portable:  dist\%PORTABLE_NAME%.zip
 echo ========================================
 

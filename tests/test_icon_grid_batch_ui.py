@@ -160,18 +160,21 @@ def test_realtime_swap_suppresses_boundary_jitter(monkeypatch):
     grid._get_cell_size = lambda: 60
     place_calls = []
     grid._place_icons = lambda animate=False: place_calls.append(animate)
-    times = [10.0, 10.05, 10.08, 10.10, 10.11]
+    times = [10.0, 10.05, 10.08]
     monkeypatch.setattr(grid_mod.time, "monotonic", lambda: times.pop(0))
 
+    # 1. 首次触发交换，目标为 "three"
     IconGrid.handle_realtime_swap(grid, "one", "three", pointer_pos=QPoint(100, 100))
-    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(104, 101))
-    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(122, 101))
-
     assert [widget.shortcut.id for widget in grid.icon_widgets] == ["two", "three", "one"]
     assert place_calls == [True]
 
-    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(136, 100))
+    # 2. 目标仍为 "three"，但时间较短且距离极短 (2px)，应该被抑制
+    IconGrid.handle_realtime_swap(grid, "one", "three", pointer_pos=QPoint(102, 100))
+    assert [widget.shortcut.id for widget in grid.icon_widgets] == ["two", "three", "one"]
+    assert place_calls == [True]
 
+    # 3. 目标更改为 "two" — 目标发生切换时应立即响应，不进行抖动抑制
+    IconGrid.handle_realtime_swap(grid, "one", "two", pointer_pos=QPoint(120, 100))
     assert [widget.shortcut.id for widget in grid.icon_widgets] == ["one", "two", "three"]
     assert place_calls == [True, True]
 
@@ -339,30 +342,19 @@ def test_icon_drag_starts_normally_when_custom_sort(monkeypatch, qapp):
 
 
 def test_icon_drag_enter_accepts_shortcut_drop(qapp):
-    """dragEnterEvent accepts proposed action for shortcut-id mime type."""
+    """dragEnterEvent ignores the event so it bubbles up to the parent."""
     widget = IconWidget(ShortcutItem(id="target", name="Target", type=ShortcutType.FILE))
 
     class FakeMime:
         def hasFormat(self, fmt):
             return fmt == "application/x-shortcut-id"
 
-        def data(self, fmt):
-            class _FakeBytes:
-                def data(self):
-                    return b"source"
-
-            return _FakeBytes()
-
     class FakeEvent:
         def __init__(self):
-            self.accepted = False
             self.ignored = False
 
         def mimeData(self):
             return FakeMime()
-
-        def acceptProposedAction(self):
-            self.accepted = True
 
         def ignore(self):
             self.ignored = True
@@ -370,8 +362,8 @@ def test_icon_drag_enter_accepts_shortcut_drop(qapp):
     event = FakeEvent()
     try:
         widget.dragEnterEvent(event)
-        assert event.accepted is True
-        assert widget._is_drop_target is True
+        assert event.ignored is True
+        assert widget._is_drop_target is False
     finally:
         widget.deleteLater()
 
@@ -402,7 +394,7 @@ def test_icon_container_handles_blank_area_mouse_press(qapp):
 
 
 def test_drag_enter_triggers_realtime_swap(monkeypatch, qapp):
-    """dragEnterEvent calls parent handle_realtime_swap when mime type matches."""
+    """dragEnterEvent ignores the event and bubbles up."""
     parent = grid_mod.QWidget()
     swaps = []
     parent.handle_realtime_swap = lambda source_id, target_id, pointer_pos=None: swaps.append(
@@ -415,30 +407,28 @@ def test_drag_enter_triggers_realtime_swap(monkeypatch, qapp):
         def hasFormat(self, fmt):
             return fmt == "application/x-shortcut-id"
 
-        def data(self, fmt):
-            class _FakeBytes:
-                def data(self):
-                    return b"source"
-
-            return _FakeBytes()
-
     class FakeEvent:
+        def __init__(self):
+            self.ignored = False
+
         def mimeData(self):
             return FakeMime()
 
-        def acceptProposedAction(self):
-            pass
+        def ignore(self):
+            self.ignored = True
 
+    event = FakeEvent()
     try:
-        widget.dragEnterEvent(FakeEvent())
-        assert swaps == [("source", "target", None)]
+        widget.dragEnterEvent(event)
+        assert event.ignored is True
+        assert swaps == []
     finally:
         widget.deleteLater()
         parent.deleteLater()
 
 
 def test_drop_triggers_handle_final_reorder(monkeypatch, qapp):
-    """dropEvent calls parent handle_final_reorder when mime type matches."""
+    """dropEvent ignores the event to bubble up."""
     parent = grid_mod.QWidget()
     reorders = []
     parent.handle_final_reorder = lambda: reorders.append(True)
@@ -450,15 +440,20 @@ def test_drop_triggers_handle_final_reorder(monkeypatch, qapp):
             return fmt == "application/x-shortcut-id"
 
     class FakeEvent:
+        def __init__(self):
+            self.ignored = False
+
         def mimeData(self):
             return FakeMime()
 
-        def acceptProposedAction(self):
-            pass
+        def ignore(self):
+            self.ignored = True
 
+    event = FakeEvent()
     try:
-        widget.dropEvent(FakeEvent())
-        assert reorders == [True]
+        widget.dropEvent(event)
+        assert event.ignored is True
+        assert reorders == []
         assert widget._is_drop_target is False
     finally:
         widget.deleteLater()
@@ -482,31 +477,259 @@ def test_create_drag_preview_pixmap_returns_valid_pixmap(qapp):
 
 
 def test_drag_enter_highlights_target_widget(qapp):
-    """dragEnterEvent sets _is_drop_target=True and _set_drop_target_style on the target."""
+    """dragEnterEvent ignores the event and does not set _is_drop_target=True."""
     widget = IconWidget(ShortcutItem(id="target", name="Target", type=ShortcutType.FILE))
 
     class FakeMime:
         def hasFormat(self, fmt):
             return fmt == "application/x-shortcut-id"
 
-        def data(self, fmt):
-            class _FakeBytes:
-                def data(self):
-                    return b"source"
-
-            return _FakeBytes()
-
     class FakeEvent:
+        def __init__(self):
+            self.ignored = False
+
         def mimeData(self):
             return FakeMime()
 
-        def acceptProposedAction(self):
-            pass
+        def ignore(self):
+            self.ignored = True
 
     event = FakeEvent()
     try:
         assert widget._is_drop_target is False
         widget.dragEnterEvent(event)
-        assert widget._is_drop_target is True
+        assert event.ignored is True
+        assert widget._is_drop_target is False
     finally:
         widget.deleteLater()
+
+
+def test_drag_enter_ignores_system_icon_repo_item(qapp):
+    """dragEnterEvent ignores the event for a system icon repo item."""
+    shortcut = ShortcutItem(id="target", name="Target", type=ShortcutType.FILE)
+    shortcut._icon_repo_source = "system"
+    widget = IconWidget(shortcut)
+
+    class FakeMime:
+        def hasFormat(self, fmt):
+            return fmt in ("application/x-shortcut-id", "application/x-shortcut-ids")
+
+    class FakeEvent:
+        def __init__(self):
+            self.ignored = False
+
+        def mimeData(self):
+            return FakeMime()
+
+        def ignore(self):
+            self.ignored = True
+
+    event = FakeEvent()
+    try:
+        assert widget._is_drop_target is False
+        widget.dragEnterEvent(event)
+        assert event.ignored is True
+        assert widget._is_drop_target is False
+    finally:
+        widget.deleteLater()
+
+
+def test_drag_move_triggers_swap_and_updates_highlight(qapp):
+    """dragMoveEvent ignores the event and bubbles up."""
+    shortcut = ShortcutItem(id="target", name="Target", type=ShortcutType.FILE)
+    widget = IconWidget(shortcut)
+
+    class FakeMime:
+        def hasFormat(self, fmt):
+            return fmt in ("application/x-shortcut-id", "application/x-shortcut-ids")
+
+    class FakeEvent:
+        def __init__(self):
+            self.ignored = False
+
+        def mimeData(self):
+            return FakeMime()
+
+        def ignore(self):
+            self.ignored = True
+
+    event = FakeEvent()
+    try:
+        from qt_compat import QWidget
+        parent_widget = QWidget()
+        setattr(parent_widget, "handle_realtime_swap", lambda source, target, pointer_pos=None: True)
+        widget.setParent(parent_widget)
+
+        assert widget._is_drop_target is False
+        widget.dragMoveEvent(event)
+        assert event.ignored is True
+        assert widget._is_drop_target is False
+    finally:
+        widget.deleteLater()
+
+
+def test_realtime_swap_redirects_system_icon_to_first_user_icon(qapp):
+    """handle_realtime_swap redirects the target system icon to the first user icon in icon_repo."""
+    from core import DataManager, ShortcutItem, ShortcutType
+    from ui.config_window.icon_grid import IconGrid
+
+    manager = DataManager()
+    grid = IconGrid(manager)
+    try:
+        grid.current_folder_id = "icon_repo"
+
+        # Create system and user shortcut items
+        sys_item = ShortcutItem(id="sys1", name="System1")
+        sys_item._icon_repo_source = "system"
+        user_item1 = ShortcutItem(id="user1", name="User1")
+        user_item1._icon_repo_source = "user"
+        user_item2 = ShortcutItem(id="user2", name="User2")
+        user_item2._icon_repo_source = "user"
+
+        grid._shortcut_map = {
+            "sys1": sys_item,
+            "user1": user_item1,
+            "user2": user_item2,
+        }
+
+        # Create mock widgets
+        from ui.config_window.icon_grid import IconWidget
+        w_sys = IconWidget(sys_item)
+        w_user1 = IconWidget(user_item1)
+        w_user2 = IconWidget(user_item2)
+
+        grid.icon_widgets = [w_sys, w_user1, w_user2]
+        grid._active_drag_ids = ["user2"]
+
+        # If we drag user2 and hover over sys1:
+        # It should redirect target_id from sys1 to user1 (the first user icon in the list)
+        # And then attempt to move user2 before/after user1.
+        # Let's mock _move_drag_group to verify the redirection
+        calls = []
+        original_move = grid._move_drag_group
+        grid._move_drag_group = lambda src, tgt, m_ids: (calls.append((src, tgt, m_ids)) or True)
+
+        try:
+            # Call handle_realtime_swap with target_id = "sys1" (system icon)
+            res = grid.handle_realtime_swap(source_id="user2", target_id="sys1")
+            assert res is True
+            # Verify it redirected target_id from sys1 to user1!
+            assert len(calls) == 1
+            src, tgt, m_ids = calls[0]
+            assert src == "user2"
+            assert tgt == "user1"  # Success! Redirection happened.
+        finally:
+            grid._move_drag_group = original_move
+            w_sys.deleteLater()
+            w_user1.deleteLater()
+            w_user2.deleteLater()
+    finally:
+        grid.deleteLater()
+
+
+def test_handle_final_reorder_safeguards_missing_ids(qapp):
+    """handle_final_reorder correctly sanitizes IDs and restores missing dragged items to prevent data loss or duplicates."""
+    from core import DataManager, ShortcutItem
+    from ui.config_window.icon_grid import IconGrid
+
+    manager = DataManager()
+    grid = IconGrid(manager)
+    try:
+        grid.current_folder_id = "test_folder"
+
+        # Create shortcut items
+        item1 = ShortcutItem(id="item1", name="Item1")
+        item2 = ShortcutItem(id="item2", name="Item2")
+        item3 = ShortcutItem(id="item3", name="Item3")
+
+        # Create mock widgets
+        from ui.config_window.icon_grid import IconWidget
+        w1 = IconWidget(item1)
+        w2 = IconWidget(item2)
+        w3 = IconWidget(item3)
+
+        # Set _initial_widgets with all 3 widgets
+        grid._initial_widgets = [w1, w2, w3]
+        
+        # Simulate active drag state where w2 (item2) is missing from current widgets
+        grid.icon_widgets = [w1, w3]
+
+        # Mock reorder_shortcuts on manager
+        calls = []
+        original_reorder = manager.reorder_shortcuts
+        manager.reorder_shortcuts = lambda fid, ids: calls.append((fid, ids))
+
+        try:
+            grid.handle_final_reorder()
+            assert len(calls) == 1
+            fid, ids = calls[0]
+            assert fid == "test_folder"
+            # Verify that item2 has been safely restored without duplicates!
+            assert len(ids) == 3
+            assert ids == ["item1", "item3", "item2"]  # item2 restored at the end
+        finally:
+            manager.reorder_shortcuts = original_reorder
+            w1.deleteLater()
+            w2.deleteLater()
+            w3.deleteLater()
+    finally:
+        grid.deleteLater()
+
+
+def test_icongrid_drag_move_event_empty_space_swap(qapp):
+    """IconGrid.dragMoveEvent calculates closest slot and triggers swap when dragging in empty space."""
+    from core.data_manager import DataManager
+    from ui.config_window.icon_grid import IconGrid, IconWidget
+    from qt_compat import QPoint
+    from core import ShortcutItem, ShortcutType
+
+    manager = DataManager()
+    grid = IconGrid(manager)
+    grid.current_folder_id = "test_folder"
+
+    item1 = ShortcutItem(id="item1", name="Item1", type=ShortcutType.FILE)
+    item2 = ShortcutItem(id="item2", name="Item2", type=ShortcutType.FILE)
+    w1 = IconWidget(item1)
+    w2 = IconWidget(item2)
+    w1.setParent(grid.container)
+    w2.setParent(grid.container)
+    grid.icon_widgets = [w1, w2]
+
+    # Mock coordinate mapping methods to avoid parentless widget coordinate system issues
+    grid.mapToGlobal = lambda pt: pt
+    grid.container.mapFromGlobal = lambda pt: pt
+
+    # Mock handle_realtime_swap
+    swaps = []
+    grid.handle_realtime_swap = lambda src, tgt, pointer_pos=None: swaps.append((src, tgt))
+
+    class FakeMime:
+        def hasFormat(self, fmt):
+            return fmt in ("application/x-shortcut-id", "application/x-shortcut-ids")
+        def data(self, fmt):
+            class _FakeBytes:
+                def data(self):
+                    return b"item1"
+            return _FakeBytes()
+
+    class FakeEvent:
+        def mimeData(self):
+            return FakeMime()
+        def acceptProposedAction(self):
+            pass
+
+    event = FakeEvent()
+    try:
+        # Use QPoint(120, 20) to hit col=1, row=0 -> target_idx = 1 (cell width is 103 for default width 640)
+        setattr(event, "pos", lambda: QPoint(120, 20))
+        grid.dragMoveEvent(event)
+        # Should have detected item2 as the closest target slot and attempted a swap
+        assert len(swaps) > 0
+        assert swaps[0] == ("item1", "item2")
+    finally:
+        w1.deleteLater()
+        w2.deleteLater()
+        grid.deleteLater()
+
+
+

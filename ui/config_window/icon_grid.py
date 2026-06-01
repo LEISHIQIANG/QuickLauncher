@@ -40,6 +40,7 @@ from qt_compat import (
     Qt,
     QtCompat,
     QThread,
+    QTimer,
     QVBoxLayout,
     QWidget,
     pyqtSignal,
@@ -427,7 +428,7 @@ class IconWidget(QFrame):
         self._border = "1px solid rgba(255, 255, 255, 35)" if theme == "dark" else "1px solid rgba(0, 0, 0, 12)"
 
         self._setup_ui()
-        self.setAcceptDrops(True)
+        self.setAcceptDrops(False)
         self._set_normal_style()
 
     def _setup_ui(self):
@@ -787,51 +788,16 @@ class IconWidget(QFrame):
                 parent = parent.parent()
 
     def dragEnterEvent(self, event):
-        if event.mimeData().hasFormat("application/x-shortcut-id"):
-            event.acceptProposedAction()
-            self._is_drop_target = True
-            self._set_drop_target_style()
+        event.ignore()
 
-            # Trigger real-time swap
-            source_id = event.mimeData().data("application/x-shortcut-id").data().decode()
-            target_id = self.shortcut.id
-            pointer_pos = None
-            try:
-                local_pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
-                pointer_pos = self.mapToGlobal(local_pos)
-            except Exception as exc:
-                logger.debug("获取拖拽指针位置失败: %s", exc, exc_info=True)
-
-            parent = self.parent()
-            while parent:
-                if hasattr(parent, "handle_realtime_swap"):
-                    parent.handle_realtime_swap(source_id, target_id, pointer_pos=pointer_pos)
-                    break
-                parent = parent.parent()
+    def dragMoveEvent(self, event):
+        event.ignore()
 
     def dragLeaveEvent(self, event):
-        self._is_drop_target = False
-        self._set_normal_style()
-        super().dragLeaveEvent(event)
+        event.ignore()
 
     def dropEvent(self, event):
-        try:
-            self._is_drop_target = False
-            self._set_normal_style()
-
-            if event.mimeData().hasFormat("application/x-shortcut-id"):
-                parent = self.parent()
-                while parent:
-                    if hasattr(parent, "handle_final_reorder"):
-                        parent.handle_final_reorder()
-                        break
-                    parent = parent.parent()
-
-                event.acceptProposedAction()
-        except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).error(f"放置失败: {e}")
+        event.ignore()
 
 
 class IconGrid(QWidget):
@@ -1163,13 +1129,18 @@ class IconGrid(QWidget):
                     if widget._pos_anim.endValue() == target_rect:
                         continue
                     # 否则，停止旧动画，开启新动画
+                    current_geo = widget.geometry()
                     widget._pos_anim.stop()
+                else:
+                    current_geo = widget.geometry()
 
                 anim = QPropertyAnimation(widget, b"geometry")
-                anim.setDuration(180)  # 180ms 快速且灵动的过渡
-                anim.setStartValue(widget.geometry())
+                dist = abs(current_geo.x() - target_rect.x()) + abs(current_geo.y() - target_rect.y())
+                duration = max(100, min(200, int(dist * 1.2)))
+                anim.setDuration(duration)  # 动态时长，确保跟手且灵动的过渡
+                anim.setStartValue(current_geo)
                 anim.setEndValue(target_rect)
-                anim.setEasingCurve(QEasingCurve.OutCubic)  # 优雅的减速贝塞尔曲线
+                anim.setEasingCurve(QEasingCurve.OutQuad)  # 优雅的减速贝塞尔曲线
                 widget._pos_anim = anim
                 anim.start()
             else:
@@ -1768,19 +1739,31 @@ class IconGrid(QWidget):
         target_id: str,
         drag_ids: list[str] | None = None,
         pointer_pos: QPoint | None = None,
-    ):
+    ) -> bool:
         if source_id == target_id:
-            return
+            return False
         if getattr(self.data_manager.get_settings(), "sort_mode", "custom") == "smart":
-            return
+            return False
 
         moving_ids = drag_ids or vars(self).get("_active_drag_ids") or [source_id]
+        if target_id in moving_ids:
+            return False
+
         shortcut_map = vars(self).get("_shortcut_map", {}) or {}
         if vars(self).get("current_folder_id") == "icon_repo":
             if any(self._is_system_icon_repo_item(shortcut_map.get(sid)) for sid in moving_ids):
-                return
+                return False
             if self._is_system_icon_repo_item(shortcut_map.get(target_id)):
-                return
+                first_user_id = None
+                for w in self.icon_widgets:
+                    sid = self._widget_shortcut_id(w)
+                    if sid and sid not in moving_ids and not self._is_system_icon_repo_item(shortcut_map.get(sid)):
+                        first_user_id = sid
+                        break
+                if first_user_id:
+                    target_id = first_user_id
+                else:
+                    return False
             # 用户图标不能拖到系统图标前面
             is_user_icon_moving = any(not self._is_system_icon_repo_item(shortcut_map.get(sid)) for sid in moving_ids)
             if is_user_icon_moving:
@@ -1792,21 +1775,37 @@ class IconGrid(QWidget):
                         if self._is_system_icon_repo_item(
                             shortcut_map.get(self._widget_shortcut_id(self.icon_widgets[i]))
                         ):
-                            return
+                            return False
         try:
             current_ids = {self._widget_shortcut_id(w) for w in self.icon_widgets}
             current_ids.discard(None)
         except RuntimeError:
             current_ids = set()
-        if any(sid not in current_ids for sid in moving_ids):
+
+        missing = [sid for sid in moving_ids if sid not in current_ids]
+        if missing:
             self._restore_drag_preview_order(animate=False)
+            try:
+                current_ids = {self._widget_shortcut_id(w) for w in self.icon_widgets}
+                current_ids.discard(None)
+            except RuntimeError:
+                return False
+            if any(sid not in current_ids for sid in moving_ids):
+                return False
 
         if self._should_suppress_realtime_swap(target_id, pointer_pos):
-            return
+            return False
 
         if self._move_drag_group(source_id, target_id, moving_ids):
+            # 清除所有图标的落点高亮状态，防止换位后由于控件移动导致高亮残留
+            for widget in self.icon_widgets:
+                if getattr(widget, "_is_drop_target", False):
+                    widget._is_drop_target = False
+                    widget._set_normal_style()
             self._record_realtime_swap(target_id, pointer_pos)
             self._place_icons(animate=True)
+            return True
+        return False
 
     def _should_suppress_realtime_swap(self, target_id: str, pointer_pos: QPoint | None) -> bool:
         state = vars(self)
@@ -1817,16 +1816,21 @@ class IconGrid(QWidget):
         if not last_target_id or pointer_pos is None or last_pos is None:
             return False
 
-        elapsed_ms = (time.monotonic() - last_at) * 1000.0
-        if elapsed_ms > 260:
+        # 如果切换到全新的目标图标 — 始终允许交换，不做任何冷却或距离抑制，确保新目标立即让开位置！
+        if target_id != last_target_id:
             return False
+
+        # 如果是在同一个目标图标上，开启强力防抖冷却，阻断高频来回对调和闪烁
+        elapsed_ms = (time.monotonic() - last_at) * 1000.0
+        if elapsed_ms < 150:
+            return True
 
         try:
             moved_px = (pointer_pos - last_pos).manhattanLength()
         except Exception:
             return False
 
-        return moved_px < max(16, int(self._get_cell_size() * 0.45))
+        return moved_px < max(10, int(self._get_cell_size() * 0.25))
 
     def _record_realtime_swap(self, target_id: str, pointer_pos: QPoint | None):
         self._last_realtime_swap_target_id = target_id
@@ -1861,7 +1865,30 @@ class IconGrid(QWidget):
         self._drag_completed = True
         if not self.current_folder_id:
             return
-        shortcut_ids = [w.shortcut.id for w in self.icon_widgets]
+
+        # 1. 获取当前网格中的所有唯一 ID
+        current_ids = []
+        seen = set()
+        for w in self.icon_widgets:
+            sid = self._widget_shortcut_id(w)
+            if sid and sid not in seen:
+                current_ids.append(sid)
+                seen.add(sid)
+
+        # 2. 获取初始时的所有唯一 ID，确保没有任何 ID 丢失
+        initial_ids = []
+        for w in vars(self).get("_initial_widgets", []) or []:
+            sid = self._widget_shortcut_id(w)
+            if sid and sid not in initial_ids:
+                initial_ids.append(sid)
+
+        # 3. 如果有任何初始 ID 丢失了，将其追加到当前列表的末尾，防丢失防重叠！
+        for sid in initial_ids:
+            if sid not in seen:
+                current_ids.append(sid)
+                seen.add(sid)
+
+        shortcut_ids = current_ids
         self.data_manager.reorder_shortcuts(self.current_folder_id, shortcut_ids)
 
         # 直接发送信号通知外部弹窗刷新，而无需销毁重建当前所有卡片及重新加载图标（彻底消除闪烁！）
@@ -1934,6 +1961,14 @@ class IconGrid(QWidget):
             self._place_icons()
 
     def dragEnterEvent(self, event):
+        # 取消待执行的 dragLeave 占位移除
+        timer = getattr(self, '_drag_leave_timer', None)
+        if timer:
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+
         # 只有在有有效文件夹时才接受拖放
         if not self.current_folder_id:
             event.ignore()
@@ -1976,7 +2011,81 @@ class IconGrid(QWidget):
         else:
             event.ignore()
 
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat("application/x-shortcut-id"):
+            event.acceptProposedAction()
+
+            source_id = event.mimeData().data("application/x-shortcut-id").data().decode()
+            if not self.current_folder_id or not self.icon_widgets:
+                return
+
+            # Get mouse position in container coordinates
+            pointer_pos = None
+            if hasattr(event, "position") or hasattr(event, "pos"):
+                local_pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+                try:
+                    pointer_pos = self.mapToGlobal(local_pos)
+                except Exception as exc:
+                    logger.debug("获取拖拽指针位置失败: %s", exc, exc_info=True)
+
+            if not pointer_pos:
+                try:
+                    from qt_compat import QCursor
+                    pointer_pos = QCursor.pos()
+                except Exception:
+                    return
+
+            # Map global position to container coordinates
+            pos_in_container = self.container.mapFromGlobal(pointer_pos)
+
+            # Calculate the closest grid slot
+            cell = self._get_cell_size()
+            pad_x = 10
+            pad_top = 14
+
+            col = max(0, min(5, (pos_in_container.x() - pad_x) // cell))
+            row = max(0, (pos_in_container.y() - pad_top) // cell)
+            target_idx = row * 6 + col
+
+            # Clamp index to active widgets
+            target_idx = min(target_idx, len(self.icon_widgets) - 1)
+            if target_idx < 0:
+                return
+
+            target_widget = self.icon_widgets[target_idx]
+            target_id = self._widget_shortcut_id(target_widget)
+            if not target_id or source_id == target_id:
+                return
+
+            drag_id_set = {source_id}
+            if event.mimeData().hasFormat("application/x-shortcut-ids"):
+                try:
+                    ids_data = event.mimeData().data("application/x-shortcut-ids").data().decode()
+                    drag_id_set = {sid for sid in ids_data.split("\n") if sid}
+                except Exception:
+                    pass
+
+            if target_id in drag_id_set:
+                return
+
+            # Trigger real-time swap!
+            self.handle_realtime_swap(source_id, target_id, pointer_pos=pointer_pos)
+
     def dragLeaveEvent(self, event):
+        # 延迟 50ms，给内部 widget/grid dragEnter 机会取消此操作
+        timer = getattr(self, '_drag_leave_timer', None)
+        if timer:
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+        self._drag_leave_timer = QTimer()
+        self._drag_leave_timer.setSingleShot(True)
+        self._drag_leave_timer.timeout.connect(self._on_delayed_drag_leave)
+        self._drag_leave_timer.start(50)
+        super().dragLeaveEvent(event)
+
+    def _on_delayed_drag_leave(self):
         self._remove_active_drag_placeholders(animate=True)
         theme = "dark"
         try:
@@ -1984,9 +2093,16 @@ class IconGrid(QWidget):
         except Exception as exc:
             logger.debug("获取主题设置: %s", exc, exc_info=True)
         self.apply_theme(theme)
-        super().dragLeaveEvent(event)
 
     def dropEvent(self, event):
+        # 取消可能存在的延迟 dragLeave 触发
+        timer = getattr(self, '_drag_leave_timer', None)
+        if timer:
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
