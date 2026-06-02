@@ -412,6 +412,9 @@ def test_many_actions_use_more_menu(qapp, monkeypatch):
         def add_action(self, label, callback, enabled=True):
             callbacks.append((label, callback, enabled))
 
+        def setFixedWidth(self, width):
+            pass
+
         def popup(self, pos):
             callbacks[0][1]()
 

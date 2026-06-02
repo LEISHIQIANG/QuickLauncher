@@ -2,8 +2,7 @@ import pytest
 
 from core.chain_processors import execute_chain_processor, processor_title
 from core.data_models import Folder, ShortcutItem, ShortcutType
-from qt_compat import QWidget
-from qt_compat import QCheckBox, QComboBox, QSpinBox, QTextEdit
+from qt_compat import QCheckBox, QComboBox, QSpinBox, QTextEdit, QWidget
 from ui.config_window.base_dialog import BaseDialog
 from ui.config_window.chain_canvas import compile_canvas_to_steps, node_input_ports, node_output_ports
 from ui.config_window.chain_dialog import ChainDialog
@@ -471,7 +470,6 @@ def test_property_panel_uses_processor_schema_controls(qapp):
     dialog = ChainDialog(parent)
 
     dialog._add_processor_node("sleep_node")
-    sleep_node = dialog.canvas_widget.selected_node()
     dialog._refresh_properties()
     assert isinstance(dialog.property_panel._edits["ms"], QSpinBox)
     assert dialog.property_panel._edits["ms"].value() == 1000

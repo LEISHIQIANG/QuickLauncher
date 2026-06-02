@@ -9,7 +9,13 @@ from core.data_models import (
     ShortcutType,
 )
 from core.module_registry import ACTION_CHAIN_MODULE_ID as REGISTRY_ACTION_CHAIN_ID
-from core.module_registry import MODULE_AVAILABLE, MODULE_INCOMPATIBLE, ModuleRecord, _host_version_compatible, module_registry
+from core.module_registry import (
+    MODULE_AVAILABLE,
+    MODULE_INCOMPATIBLE,
+    ModuleRecord,
+    _host_version_compatible,
+    module_registry,
+)
 from core.shortcut_chain_exec import execute_shortcut_chain
 
 

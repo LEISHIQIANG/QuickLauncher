@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 
+from core.command_action_safety import sanitize_command_actions
 from core.command_io import CommandOutputArtifact, build_output_artifact
 from core.command_registry import CommandAction, CommandResult
-from core.command_action_safety import sanitize_command_actions
 
 
 def enrich_result_actions(result: CommandResult, artifact: CommandOutputArtifact | None = None) -> CommandResult:

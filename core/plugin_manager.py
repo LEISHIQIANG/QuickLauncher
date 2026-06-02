@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .command_action_safety import sanitize_command_actions
 from .command_registry import (
     COMMAND_INTERACTION_PANEL,
     CommandAction,
@@ -31,7 +32,6 @@ from .command_registry import (
     register_search_source,
     remove_search_source,
 )
-from .command_action_safety import sanitize_command_actions
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
 logger = logging.getLogger(__name__)

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
-import copy
 
 from core.chain_contracts import (
     binding_key,
@@ -49,8 +49,8 @@ from qt_compat import (
     QPointF,
     QPushButton,
     QRectF,
-    Qt,
     QSpinBox,
+    Qt,
     QTextEdit,
     QTextOption,
     QVBoxLayout,
@@ -85,7 +85,7 @@ def canvas_from_steps(steps: list[dict], shortcuts: dict[str, ShortcutItem]) -> 
 
 
 def compile_canvas_to_steps(canvas: dict) -> list[dict]:
-    nodes = sorted(list(canvas.get("nodes") or []), key=lambda n: (int(n.get("order", 0) or 0), float(n.get("x", 0) or 0)))
+    nodes = sorted(canvas.get("nodes") or [], key=lambda n: (int(n.get("order", 0) or 0), float(n.get("x", 0) or 0)))
     index_by_node = {str(node.get("id")): index for index, node in enumerate(nodes, start=1)}
     incoming: dict[str, list[dict]] = {}
     for connection in list(canvas.get("connections") or []):

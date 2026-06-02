@@ -30,6 +30,7 @@ from .command_exec import (
     normalize_command_type,
     truncate_command_output,
 )
+from .command_param_validation import validate_param_values
 from .command_registry import (
     CommandAction,
     CommandContext,
@@ -38,7 +39,6 @@ from .command_registry import (
     set_pending_command_result,
     take_pending_command_result,
 )
-from .command_param_validation import validate_param_values
 from .command_risk import assess_command_risk
 from .command_variables import (
     CommandVariableError,

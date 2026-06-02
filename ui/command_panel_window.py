@@ -7,8 +7,8 @@ import os
 import re
 import webbrowser
 
-from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
 from core.command_action_safety import normalize_command_action
+from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
 from core.command_io import discover_input_variables, resolve_param_default
 from core.command_param_validation import validate_param_value
 from core.command_registry import CommandParam, CommandResult

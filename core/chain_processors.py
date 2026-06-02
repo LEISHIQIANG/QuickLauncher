@@ -10,8 +10,9 @@ import re
 import time
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from core.command_registry import CommandResult
 
@@ -1353,12 +1354,12 @@ def _text_split(values: dict[str, str]) -> list[str]:
     text = values.get("text", "")
     delimiter = values.get("delimiter", "")
     if delimiter:
-        return [part for part in text.split(delimiter)]
+        return list(text.split(delimiter))
     return [part for part in re.split(r"\s+", text.strip()) if part]
 
 
 def _text_lines(values: dict[str, str]) -> list[str]:
-    return [line for line in values.get("text", "").splitlines()]
+    return list(values.get("text", "").splitlines())
 
 
 # ── 图像处理逻辑（安全包装以防 Pillow 未安装） ──
@@ -1366,8 +1367,8 @@ def _text_lines(values: dict[str, str]) -> list[str]:
 def _run_img_op(op_func, values):
     try:
         import PIL  # noqa: F401 - trigger ImportError if PIL not installed
-    except ImportError:
-        raise ImportError("检测到您的系统未安装 Pillow 库。请在 cmd/terminal 中运行 'pip install Pillow' 以执行本图像处理节点。")
+    except ImportError as err:
+        raise ImportError("检测到您的系统未安装 Pillow 库。请在 cmd/terminal 中运行 'pip install Pillow' 以执行本图像处理节点。") from err
     return op_func(values)
 
 
@@ -1466,7 +1467,7 @@ def _json_get(values: dict[str, str]) -> str:
 def _json_set(values: dict[str, str]) -> str:
     raw = values.get("json", "").strip()
     data: Any = json.loads(raw) if raw else {}
-    if not isinstance(data, (dict, list)):
+    if not isinstance(data, dict | list):
         data = {}
     parts = _path_parts(values.get("path", ""))
     if not parts:
@@ -1477,11 +1478,11 @@ def _json_set(values: dict[str, str]) -> str:
             index = int(part)
             while len(current) <= index:
                 current.append({})
-            if not isinstance(current[index], (dict, list)):
+            if not isinstance(current[index], dict | list):
                 current[index] = {}
             current = current[index]
         else:
-            if part not in current or not isinstance(current.get(part), (dict, list)):
+            if part not in current or not isinstance(current.get(part), dict | list):
                 current[part] = {}
             current = current[part]
     last = parts[-1]
@@ -1635,7 +1636,7 @@ def _stringify_json_value(value: Any) -> str:
         return ""
     if isinstance(value, bool):
         return _bool_text(value)
-    if isinstance(value, (list, dict)):
+    if isinstance(value, list | dict):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     return str(value)
 
@@ -1758,7 +1759,7 @@ def _math_pow(values: dict[str, str]) -> str:
         res = base ** exp
         return str(int(res) if isinstance(res, float) and res.is_integer() else res)
     except Exception as e:
-        raise ValueError(f"幂运算失败: {e}")
+        raise ValueError(f"幂运算失败: {e}") from e
 
 
 def _math_mod(values: dict[str, str]) -> str:

@@ -19,8 +19,8 @@ from core.command_io import (
     prepare_runtime_shortcut,
     remembered_args,
 )
-from core.command_registry import CommandContext, CommandDefinition, CommandResult
 from core.command_param_validation import validate_param_values
+from core.command_registry import CommandContext, CommandDefinition, CommandResult
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem
 
