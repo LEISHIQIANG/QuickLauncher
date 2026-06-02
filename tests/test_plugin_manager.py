@@ -124,22 +124,20 @@ def test_plugin_launch_target_requires_permissions():
         api.launch_target(r"C:\Tools\App.exe", run_as_admin=True)
 
 
-def test_plugin_run_command_uses_icon_command_privilege_path(monkeypatch):
+def test_plugin_run_command_uses_icon_command_silent_path(monkeypatch):
     import core.shortcut_executor as shortcut_executor
 
     captured = {}
 
     def fake_launch(target, parameters=None, directory=None, show_cmd=1, run_as_admin=False):
-        captured.update(
-            target=target,
-            parameters=parameters,
-            directory=directory,
-            show_cmd=show_cmd,
-            run_as_admin=run_as_admin,
-        )
-        return True, ""
+        raise AssertionError("silent plugin commands must not use ShellExecute")
+
+    def fake_popen_silent(argv, cwd=None, env=None, shell=False):
+        captured.update(argv=argv, cwd=cwd, env=env, shell=shell)
 
     monkeypatch.setattr(shortcut_executor.ShortcutExecutor, "_launch_with_privilege", staticmethod(fake_launch))
+    monkeypatch.setattr(shortcut_executor.ShortcutExecutor, "_popen_silent", staticmethod(fake_popen_silent))
+    monkeypatch.setattr(shortcut_executor.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
     monkeypatch.setenv("ComSpec", r"C:\Windows\System32\cmd.exe")
 
     api = PluginAPI("tools", ".", ["process.run"], CommandRegistry())
@@ -147,12 +145,9 @@ def test_plugin_run_command_uses_icon_command_privilege_path(monkeypatch):
 
     assert ok is True
     assert error == ""
-    assert captured["target"] == r"C:\Windows\System32\cmd.exe"
-    assert "/c" in captured["parameters"]
-    assert "echo hello" in captured["parameters"]
-    assert captured["directory"] == r"C:\Temp"
-    assert captured["show_cmd"] == 0
-    assert captured["run_as_admin"] is False
+    assert captured["argv"] == [r"C:\Windows\System32\cmd.exe", "/d", "/s", "/c", "echo hello"]
+    assert captured["cwd"] == r"C:\Temp"
+    assert captured["shell"] is False
 
 
 def test_command_id_must_have_dot():

@@ -518,6 +518,17 @@ class FileExecutionMixin:
             comspec = os.path.join(system_root, "System32", "cmd.exe")
 
         parameters = subprocess.list2cmdline(["/d", "/s", "/c", command])
+        if not run_as_admin:
+            try:
+                ShortcutExecutor._popen_silent(
+                    [comspec, "/d", "/s", "/c", command],
+                    cwd=cwd,
+                    env=ShortcutExecutor._sanitized_child_env(),
+                    shell=False,
+                )
+                return True
+            except Exception as exc:
+                logger.debug("Silent cmd launch failed before ShellExecute fallback: %s", exc, exc_info=True)
         return ShortcutExecutor._shell_execute_open(
             comspec,
             parameters,
@@ -642,24 +653,11 @@ class FileExecutionMixin:
         if os.name != "nt":
             return 0
 
-        # Windows 进程创建标志
-        DETACHED_PROCESS = 0x00000008  # 脱离控制台
-        CREATE_NEW_PROCESS_GROUP = 0x00000200  # 新进程组
-        CREATE_BREAKAWAY_FROM_JOB = 0x01000000  # 脱离作业对象，完全独立
+        create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        create_new_process_group = 0x00000200
+        create_breakaway_from_job = 0x01000000
 
-        if shell:
-            # shell=True 需要 cmd.exe 控制台，用 CREATE_NO_WINDOW 隐藏
-            # 同样需要 CREATE_BREAKAWAY_FROM_JOB，确保子进程不随父进程终止
-            flags = subprocess.CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
-            return flags
-
-        # 非 shell 模式：使用多个标志确保子进程完全独立
-        # 这样可以：
-        # 1. 子进程不继承父进程的 DLL 引用
-        # 2. 安装/更新时不会被子进程占用文件
-        # 3. 退出 QuickLauncher 后子进程继续运行
-        flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
-        return flags
+        return create_no_window | create_new_process_group | create_breakaway_from_job
 
     @staticmethod
     def _popen_silent(argv, cwd=None, env=None, shell=False):

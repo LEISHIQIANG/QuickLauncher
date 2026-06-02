@@ -1024,7 +1024,7 @@ class CommandExecutionMixin:
                 if ShortcutExecutor._direct_command_line_too_long(argv):
                     return False, ShortcutExecutor._direct_command_line_length_error(command_type, argv)
                 show_cmd = 1 if show_window else 0
-                if os.name == "nt":
+                if os.name == "nt" and (show_window or run_as_admin):
                     launched, launch_error = ShortcutExecutor._launch_with_privilege(
                         argv[0],
                         subprocess.list2cmdline(argv[1:]),
@@ -1182,6 +1182,7 @@ class CommandExecutionMixin:
                                 env=env_dict,
                                 startupinfo=si,
                                 creationflags=cf,
+                                shell=False,
                             )
                             process.communicate(input=command.encode("utf-8"))
                         except OSError:
@@ -1197,6 +1198,7 @@ class CommandExecutionMixin:
                                     env=env_dict,
                                     startupinfo=si,
                                     creationflags=cf2,
+                                    shell=False,
                                 )
                                 process.communicate(input=command.encode("utf-8"))
                             else:
@@ -1262,7 +1264,7 @@ class CommandExecutionMixin:
                     exe_dir = os.path.dirname(os.path.abspath(exe_path))
                     cwd = (getattr(shortcut, "working_dir", "") or "").strip()
 
-                    if os.name == "nt":
+                    if os.name == "nt" and (show_window or run_as_admin):
                         parameters = subprocess.list2cmdline(parsed[1:]) if len(parsed) > 1 else ""
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
                             exe_path,
@@ -1291,7 +1293,7 @@ class CommandExecutionMixin:
                     if ShortcutExecutor._direct_command_line_too_long(argv):
                         return False, ShortcutExecutor._direct_command_line_length_error("cmd", argv)
 
-                    if os.name == "nt":
+                    if os.name == "nt" and (show_window or run_as_admin):
                         launched, launch_error = ShortcutExecutor._launch_with_privilege(
                             argv[0],
                             subprocess.list2cmdline(argv[1:]),

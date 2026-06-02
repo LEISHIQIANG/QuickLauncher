@@ -57,6 +57,10 @@ def test_python_visible_window_runs_python_directly(monkeypatch):
 def test_config_window_alias_saved_as_cmd_runs_as_cmd(monkeypatch):
     captured = {}
 
+    class FakeProcess:
+        def wait(self, timeout=None):
+            return 0
+
     class FakeExecutor(command_exec.CommandExecutionMixin):
         @staticmethod
         def _execute_builtin_command(command):
@@ -72,9 +76,22 @@ def test_config_window_alias_saved_as_cmd_runs_as_cmd(monkeypatch):
 
         @staticmethod
         def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, **kwargs):
-            captured["target"] = target
-            captured["parameters"] = parameters
-            return True, ""
+            raise AssertionError("silent cmd commands must not use ShellExecute")
+
+        @staticmethod
+        def _popen_silent(argv, cwd=None, env=None, shell=False):
+            captured["argv"] = argv
+            captured["cwd"] = cwd
+            captured["shell"] = shell
+            return FakeProcess()
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {}
+
+        @staticmethod
+        def restore_foreground_window():
+            pass
 
     monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
 
@@ -86,12 +103,16 @@ def test_config_window_alias_saved_as_cmd_runs_as_cmd(monkeypatch):
 
     assert success
     assert error == ""
-    assert captured["target"] == "cmd.exe"
-    assert "show_config_window" in captured["parameters"]
+    assert captured["argv"] == ["cmd.exe", "/d", "/s", "/c", "show_config_window"]
+    assert captured["shell"] is False
 
 
 def test_system_builtin_alias_saved_as_cmd_runs_as_cmd(monkeypatch):
     captured = {}
+
+    class FakeProcess:
+        def wait(self, timeout=None):
+            return 0
 
     class FakeExecutor(command_exec.CommandExecutionMixin):
         @staticmethod
@@ -108,9 +129,22 @@ def test_system_builtin_alias_saved_as_cmd_runs_as_cmd(monkeypatch):
 
         @staticmethod
         def _launch_with_privilege(target, parameters, directory, show_cmd=0, run_as_admin=False, **kwargs):
-            captured["target"] = target
-            captured["parameters"] = parameters
-            return True, ""
+            raise AssertionError("silent cmd commands must not use ShellExecute")
+
+        @staticmethod
+        def _popen_silent(argv, cwd=None, env=None, shell=False):
+            captured["argv"] = argv
+            captured["cwd"] = cwd
+            captured["shell"] = shell
+            return FakeProcess()
+
+        @staticmethod
+        def _runtime_env(shortcut):
+            return {}
+
+        @staticmethod
+        def restore_foreground_window():
+            pass
 
     monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
 
@@ -122,8 +156,8 @@ def test_system_builtin_alias_saved_as_cmd_runs_as_cmd(monkeypatch):
 
     assert success
     assert error == ""
-    assert captured["target"] == "cmd.exe"
-    assert "open_control_panel" in captured["parameters"]
+    assert captured["argv"] == ["cmd.exe", "/d", "/s", "/c", "open_control_panel"]
+    assert captured["shell"] is False
 
 
 def test_windows_system_builtin_alias_launches_task_manager(monkeypatch):

@@ -580,6 +580,20 @@ class PluginAPI:
         from .shortcut_executor import ShortcutExecutor
 
         params = self._normalize_parameters(parameters)
+        if not show_window and not run_as_admin:
+            argv = [target]
+            if params:
+                argv.extend(ShortcutExecutor._safe_split_args(params))
+            try:
+                ShortcutExecutor._popen_silent(
+                    argv,
+                    cwd=directory or None,
+                    env=ShortcutExecutor._sanitized_child_env(),
+                    shell=False,
+                )
+                return True, ""
+            except Exception as exc:
+                return False, str(exc)
         return ShortcutExecutor._launch_with_privilege(
             target,
             params or None,
@@ -609,6 +623,19 @@ class PluginAPI:
             "cmd.exe",
         )
         cmd_flag = "/k" if show_window else "/c"
+        if not show_window and not run_as_admin:
+            from .shortcut_executor import ShortcutExecutor
+
+            try:
+                ShortcutExecutor._popen_silent(
+                    [comspec, "/d", "/s", cmd_flag, command],
+                    cwd=cwd or None,
+                    env=ShortcutExecutor._sanitized_child_env(),
+                    shell=False,
+                )
+                return True, ""
+            except Exception as exc:
+                return False, str(exc)
         params = subprocess.list2cmdline(["/d", "/s", cmd_flag, command])
         return self.launch_target(
             comspec,
