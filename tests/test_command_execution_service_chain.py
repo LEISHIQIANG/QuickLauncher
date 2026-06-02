@@ -68,7 +68,7 @@ def test_chain_with_missing_step_reports_failure(monkeypatch):
     )
 
     assert result.success is False
-    assert "not found" in result.message.lower() or "nonexistent" in result.message
+    assert "不存在" in result.message or "not found" in result.message.lower() or "nonexistent" in result.message
 
 
 def test_chain_with_multiple_steps(monkeypatch):

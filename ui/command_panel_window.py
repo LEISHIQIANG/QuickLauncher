@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import webbrowser
 
 from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
+from core.command_action_safety import normalize_command_action
+from core.command_io import discover_input_variables, resolve_param_default
+from core.command_param_validation import validate_param_value
 from core.command_registry import CommandParam, CommandResult
+from core.command_result_actions import enrich_result_actions
 from core.data_models import ShortcutItem
 from core.i18n import tr
 from qt_compat import (
@@ -19,6 +24,7 @@ from qt_compat import (
     QFileDialog,  # noqa: F401
     QFont,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -32,6 +38,7 @@ from qt_compat import (
     QProgressBar,
     QPushButton,
     QSize,
+    QSizePolicy,
     Qt,
     QTableWidget,
     QTableWidgetItem,
@@ -59,6 +66,7 @@ DISPLAY_TYPE_SIZE_DEFAULTS = {
     "list": "medium",
     "table": "large",
     "log": "large",
+    "json": "large",
     "progress": "small",
     "qr": "small",
     "confirm": "small",
@@ -118,6 +126,9 @@ class CommandPanelWindow(ThemedToolWindow):
         self._current_request = None
         self._current_shortcut = None
         self._param_widgets = {}
+        self._input_param_names = {}
+        self._current_input_values = {}
+        self._last_args_for_params = {}
         self._history_expanded = False
         self._suppress_command_suggestions = False
         self._running = False
@@ -179,6 +190,11 @@ class CommandPanelWindow(ThemedToolWindow):
         self.param_container.setVisible(False)
         self.content_layout.addWidget(self.param_container)
 
+        self.param_preview_label = QLabel("")
+        self.param_preview_label.setWordWrap(True)
+        self.param_preview_label.setVisible(False)
+        self.content_layout.addWidget(self.param_preview_label)
+
         self.param_error_label = QLabel("")
         self.param_error_label.setWordWrap(True)
         self.param_error_label.setVisible(False)
@@ -231,32 +247,32 @@ class CommandPanelWindow(ThemedToolWindow):
         self.qr_label.setVisible(False)
         self.content_layout.addWidget(self.qr_label, 1)
 
+        self.footer_button_container = QWidget()
+        self.footer_button_grid = QGridLayout(self.footer_button_container)
+        self.footer_button_grid.setContentsMargins(0, 0, 0, 0)
+        self.footer_button_grid.setSpacing(8)
+        self.button_layout.addWidget(self.footer_button_container, 1)
+
         self.copy_btn = QPushButton("复制")
         self.copy_btn.clicked.connect(self.copy_result)
-        self.button_layout.addWidget(self.copy_btn)
 
         self.save_btn = QPushButton("保存")
         self.save_btn.clicked.connect(self.save_result)
-        self.button_layout.addWidget(self.save_btn)
 
         self.rerun_btn = QPushButton("重新执行")
         self.rerun_btn.clicked.connect(self.rerun_current)
         self.rerun_btn.setEnabled(False)
-        self.button_layout.addWidget(self.rerun_btn)
 
         self.action_buttons = []
         for _ in range(3):
             btn = QPushButton("")
             btn.hide()
             self.action_buttons.append(btn)
-            self.button_layout.addWidget(btn)
 
         self.more_btn = QPushButton("更多")
         self.more_btn.clicked.connect(self._show_more_actions)
         self.more_btn.hide()
-        self.button_layout.addWidget(self.more_btn)
-
-        self.button_layout.addStretch()
+        self._relayout_footer_buttons()
 
         self.close_btn = None
         self._install_input_cancel_event_filters()
@@ -298,6 +314,62 @@ class CommandPanelWindow(ThemedToolWindow):
             getattr(self, "more_btn", None),
         ]
         return [button for button in buttons if button is not None]
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout_footer_buttons()
+
+    def _relayout_footer_buttons(self):
+        grid = getattr(self, "footer_button_grid", None)
+        if grid is None:
+            return
+        buttons = [
+            getattr(self, "copy_btn", None),
+            getattr(self, "save_btn", None),
+            getattr(self, "rerun_btn", None),
+            *getattr(self, "action_buttons", []),
+            getattr(self, "more_btn", None),
+        ]
+        visible_buttons = [button for button in buttons if button is not None and not button.isHidden()]
+        for index in reversed(range(grid.count())):
+            item = grid.itemAt(index)
+            if item is not None and item.widget() is not None:
+                grid.removeWidget(item.widget())
+        if not visible_buttons:
+            return
+
+        spacing = max(0, int(grid.spacing()))
+        available = max(1, int(getattr(self, "footer_button_container", self).width() or self.width() or 1))
+        min_width = max(76, max(self._button_text_width(button) for button in visible_buttons))
+        one_row_width = len(visible_buttons) * min_width + max(0, len(visible_buttons) - 1) * spacing
+        if one_row_width <= available:
+            columns = len(visible_buttons)
+        else:
+            columns = max(1, (len(visible_buttons) + 1) // 2)
+        columns = max(1, min(columns, len(visible_buttons)))
+
+        for column in range(max(len(visible_buttons), 6)):
+            grid.setColumnStretch(column, 0)
+            grid.setColumnMinimumWidth(column, 0)
+        for index, button in enumerate(visible_buttons):
+            row = index // columns
+            column = index % columns
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setMinimumWidth(0)
+            button.setMinimumHeight(30)
+            if button.text():
+                button.setToolTip(button.text())
+            grid.addWidget(button, row, column)
+        for column in range(columns):
+            grid.setColumnStretch(column, 1)
+
+    @staticmethod
+    def _button_text_width(button) -> int:
+        text = str(button.text() or "")
+        try:
+            return int(button.fontMetrics().horizontalAdvance(text) + 28)
+        except Exception:
+            return max(76, len(text) * 9 + 28)
 
     @staticmethod
     def _neutralize_button_default(button):
@@ -652,19 +724,30 @@ class CommandPanelWindow(ThemedToolWindow):
         self._current_command_id = stored.command_id
         self._current_command_title = stored.command_title
         self._current_raw_input = stored.raw_input
+        self._current_context_meta = dict(getattr(stored, "context_meta", {}) or {})
+        self._last_args_for_params = dict(getattr(stored, "args", {}) or {})
         self._current_args_text = self._parse_args_from_raw(stored.raw_input, stored.command_id)
         self._current_definition = self._lookup_command(stored.command_id)
+        if stored.source == "shortcut":
+            self._current_shortcut = self._lookup_shortcut(stored.command_id)
+            self._current_definition = None
         self._current_request = CommandExecutionRequest(
             command_id=stored.command_id,
             args_text=self._current_args_text,
             raw_input=stored.raw_input,
+            context_meta=dict(self._current_context_meta),
             source=stored.source,
+            args=dict(self._last_args_for_params),
+            shortcut=self._current_shortcut,
             command_def=self._current_definition,
         )
         self.command_input.setText(stored.raw_input)
         self._defer_focus_command_input()
         self._hide_command_suggestions()
-        self._render_params(self._current_definition)
+        if self._current_shortcut is not None:
+            self._render_shortcut_params(self._current_shortcut)
+        else:
+            self._render_params(self._current_definition)
         self._render_result(stored.result)
         self._update_subtitle("完成")
         self._refresh_history()
@@ -678,6 +761,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self._current_args_text = args_text or ""
         self._current_raw_input = raw_input or (f"/{command_id} {args_text}".strip() if command_id else "")
         self._current_context_meta = dict(context_meta or {})
+        self._last_args_for_params = {}
         self._current_definition = self._lookup_command(command_id)
         self._current_command_title = getattr(self._current_definition, "title", command_id) or command_id
         command_def = self._current_definition
@@ -703,6 +787,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self._current_command_title = getattr(shortcut, "name", "") or self._current_command_id
         self._current_raw_input = raw_input or getattr(shortcut, "command", "") or self._current_command_title
         self._current_context_meta = dict(context_meta or {})
+        self._last_args_for_params = {}
         self.command_input.setText(self._current_raw_input)
         self._defer_focus_command_input()
         self._hide_command_suggestions()
@@ -726,11 +811,14 @@ class CommandPanelWindow(ThemedToolWindow):
         args = self._collect_param_args(command_def)
         if args is None:
             return
+        context_meta = dict(self._current_context_meta)
+        if self._current_input_values:
+            context_meta["input_values"] = dict(self._current_input_values)
         request = CommandExecutionRequest(
             command_id=self._current_command_id,
             args_text=self._current_args_text,
             raw_input=self._current_raw_input,
-            context_meta=dict(self._current_context_meta),
+            context_meta=context_meta,
             source=getattr(command_def, "source", ""),
             args=args,
             command_def=command_def,
@@ -765,14 +853,21 @@ class CommandPanelWindow(ThemedToolWindow):
             self._rendered_text = "已取消执行。"
             self._update_subtitle("已取消")
             return
+        context_meta = dict(self._current_context_meta)
+        input_values = dict(context_meta.get("input_values") or {})
+        input_values.update(getattr(self, "_current_input_values", {}) or {})
+        if input_values:
+            context_meta["input_values"] = input_values
         request = CommandExecutionRequest(
             command_id=getattr(shortcut, "id", "") or "",
             raw_input=self._current_raw_input,
-            context_meta=dict(self._current_context_meta),
+            context_meta=context_meta,
             source="shortcut",
             shortcut=shortcut,
             args=args,
         )
+        if context_meta.get("destructive_confirmed"):
+            self._current_context_meta.pop("destructive_confirmed", None)
         self._current_request = request
         self._set_running(True)
         self._show_widget("text")
@@ -800,9 +895,9 @@ class CommandPanelWindow(ThemedToolWindow):
         self._run_token = handle.request_id
         self._defer_focus_command_input()
 
-    def _rerun_with_shortcut(self, shortcut: ShortcutItem):
+    def _rerun_with_shortcut(self, shortcut: ShortcutItem, context_meta: dict | None = None):
         """Re-execute a shortcut from stored result after confirmation."""
-        self.run_shortcut(shortcut)
+        self.run_shortcut(shortcut, context_meta=context_meta)
 
     def _confirm_destructive_shortcut(self, shortcut: ShortcutItem | None) -> bool:
         if shortcut is None:
@@ -813,6 +908,7 @@ class CommandPanelWindow(ThemedToolWindow):
 
             # If already confirmed by _render_confirm dialog, skip
             if getattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False):
+                self._current_context_meta["destructive_confirmed"] = True
                 return True
 
             risks = ShortcutExecutor.command_requires_confirmation(shortcut)
@@ -835,7 +931,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 ThemedMessageBox.Yes | ThemedMessageBox.No,
             )
             if reply == ThemedMessageBox.Yes:
-                ShortcutExecutor.mark_command_confirmed(shortcut)
+                self._current_context_meta["destructive_confirmed"] = True
                 return True
             return False
         except Exception:
@@ -896,8 +992,15 @@ class CommandPanelWindow(ThemedToolWindow):
             self.param_error_label.setVisible(False)
             return
         for param in params:
-            widget = self._create_param_widget(param)
-            label = f"{param.name}{' *' if getattr(param, 'required', False) else ''}"
+            default_value = resolve_param_default(
+                param,
+                context_meta=self._current_context_meta,
+                last_args=self._last_args_for_params,
+            )
+            widget = self._create_param_widget(param, default_value)
+            self._connect_param_preview_signal(widget)
+            label_text = getattr(param, "label", "") or param.name
+            label = f"{label_text}{' *' if getattr(param, 'required', False) else ''}"
             self.param_layout.addRow(label, widget)
             self._param_widgets[param.name] = (param, widget)
         self.param_container.setVisible(True)
@@ -911,37 +1014,75 @@ class CommandPanelWindow(ThemedToolWindow):
             params.append(CommandParam(**raw))
         holder = type("ShortcutCommandDef", (), {"params": params})()
         self._render_params(holder)
+        self._render_shortcut_input_params(shortcut)
 
     def _clear_params(self):
         self._param_widgets = {}
+        self._input_param_names = {}
+        self._current_input_values = {}
         while self.param_layout.count():
             item = self.param_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
 
-    def _create_param_widget(self, param: CommandParam):
+    def _render_shortcut_input_params(self, shortcut):
+        context_values = dict((self._current_context_meta or {}).get("input_values") or {})
+        context_value = str((self._current_context_meta or {}).get("input") or "")
+        for key, prompt in discover_input_variables(getattr(shortcut, "command", "") or ""):
+            if key in context_values or (key == "input" and context_value):
+                self._current_input_values[key] = str(context_values.get(key) or context_value)
+                continue
+            name = f"__input__{key}"
+            label = prompt or "input"
+            param = CommandParam(name=name, type="textarea", required=True, label=label, multiline=True, remember=False)
+            widget = self._create_param_widget(param, "")
+            self._connect_param_preview_signal(widget)
+            self.param_layout.addRow(f"{label} *", widget)
+            self._param_widgets[name] = (param, widget)
+            self._input_param_names[name] = key
+        self.param_container.setVisible(bool(self._param_widgets))
+        self._update_param_preview()
+
+    def _create_param_widget(self, param: CommandParam, default_value: str | None = None):
         param_type = (param.type or "text").lower()
+        value = str(default_value if default_value is not None else param.default or "")
         if param_type == "choice":
             combo = QComboBox()
             combo.addItems([str(choice) for choice in (param.choices or [])])
-            if param.default:
-                idx = combo.findText(str(param.default))
+            if value:
+                idx = combo.findText(value)
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
+            if getattr(param, "help", ""):
+                combo.setToolTip(str(param.help))
             return combo
         if param_type == "bool":
             checkbox = QCheckBox("")
-            checkbox.setChecked(str(param.default).lower() in ("1", "true", "yes", "on", "是"))
+            checkbox.setChecked(value.lower() in ("1", "true", "yes", "on", "是"))
+            if getattr(param, "help", ""):
+                checkbox.setToolTip(str(param.help))
             return checkbox
+        if param_type == "textarea" or getattr(param, "multiline", False):
+            edit = QPlainTextEdit(value)
+            edit.setMinimumHeight(72)
+            if getattr(param, "placeholder", ""):
+                edit.setPlaceholderText(str(param.placeholder))
+            if getattr(param, "help", ""):
+                edit.setToolTip(str(param.help))
+            return edit
         if param_type in ("file", "folder"):
             row = QWidget()
             layout = QHBoxLayout(row)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
-            edit = QLineEdit(str(param.default or ""))
+            edit = QLineEdit(value)
             edit.setCursor(Qt.IBeamCursor)
             edit.setProperty("param_editor", True)
+            if getattr(param, "placeholder", ""):
+                edit.setPlaceholderText(str(param.placeholder))
+            if getattr(param, "help", ""):
+                row.setToolTip(str(param.help))
             button = QPushButton("选择")
             self._neutralize_button_default(button)
 
@@ -957,22 +1098,38 @@ class CommandPanelWindow(ThemedToolWindow):
             layout.addWidget(edit, 1)
             layout.addWidget(button)
             return row
-        edit = QLineEdit(str(param.default or ""))
+        edit = QLineEdit(value)
         edit.setCursor(Qt.IBeamCursor)
-        if getattr(param, "sensitive", False):
+        if getattr(param, "placeholder", ""):
+            edit.setPlaceholderText(str(param.placeholder))
+        if getattr(param, "help", ""):
+            edit.setToolTip(str(param.help))
+        if getattr(param, "sensitive", False) or param_type == "password":
             edit.setEchoMode(QLineEdit.Password)
         return edit
 
     def _collect_param_args(self, command_def) -> dict[str, str] | None:
         args = {}
-        missing = []
+        errors = []
+        input_values = dict((self._current_context_meta or {}).get("input_values") or {})
         for name, (param, widget) in self._param_widgets.items():
             value = self._param_value(widget)
-            if getattr(param, "required", False) and str(value).strip() == "":
-                missing.append(name)
+            error = validate_param_value(param, value)
+            if error:
+                errors.append(error)
+            input_key = self._input_param_names.get(name)
+            if input_key:
+                input_values[input_key] = value
+                continue
             args[name] = value
-        if missing:
-            message = f"请填写必填参数: {', '.join(missing)}"
+        if errors and self._current_shortcut is None and self._current_args_text.strip() and not any(
+            str(value).strip() for value in args.values()
+        ):
+            self.param_error_label.setVisible(False)
+            self._current_input_values = input_values
+            return {}
+        if errors:
+            message = "\n".join(errors)
             self.param_error_label.setText(message)
             self.param_error_label.setVisible(True)
             if self._current_result is None:
@@ -981,7 +1138,61 @@ class CommandPanelWindow(ThemedToolWindow):
             self._update_subtitle("参数不完整")
             return None
         self.param_error_label.setVisible(False)
+        self._current_input_values = input_values
+        self._update_param_preview(args)
         return args
+
+    def _connect_param_preview_signal(self, widget):
+        try:
+            if isinstance(widget, QComboBox):
+                widget.currentTextChanged.connect(lambda _=None: self._update_param_preview())
+            elif isinstance(widget, QCheckBox):
+                widget.stateChanged.connect(lambda _=None: self._update_param_preview())
+            elif isinstance(widget, QLineEdit):
+                widget.textChanged.connect(lambda _=None: self._update_param_preview())
+            elif isinstance(widget, QPlainTextEdit):
+                widget.textChanged.connect(self._update_param_preview)
+            else:
+                edit = widget.findChild(QLineEdit) if hasattr(widget, "findChild") else None
+                if edit is not None:
+                    edit.textChanged.connect(lambda _=None: self._update_param_preview())
+        except Exception as exc:
+            logger.debug("连接参数预览信号失败: %s", exc, exc_info=True)
+
+    def _update_param_preview(self, args: dict[str, str] | None = None):
+        if not getattr(self, "_param_widgets", None):
+            self.param_preview_label.setVisible(False)
+            self.param_preview_label.setText("")
+            return
+        values = dict(args or {})
+        input_values = {}
+        for name, (_param, widget) in self._param_widgets.items():
+            value = self._param_value(widget)
+            input_key = self._input_param_names.get(name)
+            if input_key:
+                input_values[input_key] = value
+                continue
+            values[name] = value
+        masked = {
+            name: ("******" if bool(getattr(param, "sensitive", False)) and values.get(name) else values.get(name, ""))
+            for name, (param, _widget) in self._param_widgets.items()
+            if name in values
+        }
+        if self._current_shortcut is not None:
+            command = str(getattr(self._current_shortcut, "command", "") or "")
+
+            def repl(match):
+                key = match.group(1).strip()
+                return str(masked.get(key, values.get(key, match.group(0))))
+
+            preview = re.sub(r"\{\{param:([^}:]+)(?::q)?\}\}", repl, command)
+            if input_values:
+                preview += "    " + " ".join(f"input={value}" for value in input_values.values())
+        else:
+            preview_args = " ".join(f"{key}={value}" for key, value in masked.items() if str(value))
+            preview = f"/{self._current_command_id} {preview_args}".strip()
+        self.param_preview_label.setText(f"预览: {preview}" if preview else "")
+        self.param_preview_label.setVisible(bool(preview))
 
     def _param_value(self, widget) -> str:
         if isinstance(widget, QComboBox):
@@ -990,6 +1201,8 @@ class CommandPanelWindow(ThemedToolWindow):
             return "true" if widget.isChecked() else "false"
         if isinstance(widget, QLineEdit):
             return widget.text()
+        if isinstance(widget, QPlainTextEdit):
+            return widget.toPlainText()
         edit = widget.findChild(QLineEdit) if hasattr(widget, "findChild") else None
         return edit.text() if edit is not None else ""
 
@@ -1235,10 +1448,14 @@ class CommandPanelWindow(ThemedToolWindow):
         return rest.strip() if first == command_id or first.endswith(command_id) else ""
 
     def _render_result(self, result: CommandResult):
+        result = enrich_result_actions(result)
+        self._current_result = result
         message = result.message or result.error or ("完成" if result.success else "执行失败")
         display_type = (result.display_type or "text").lower()
         if display_type in ("text", "log"):
             self._render_text_like(result, message, display_type)
+        elif display_type == "json":
+            self._render_json(result, message)
         elif display_type == "table":
             self._render_table(result, message)
         elif display_type == "kv":
@@ -1334,6 +1551,18 @@ class CommandPanelWindow(ThemedToolWindow):
         if not matrix and message:
             self._render_text_like(result, message, "text")
 
+    def _render_json(self, result: CommandResult, message: str):
+        payload = result.payload if isinstance(result.payload, dict) else {}
+        formatted = str(payload.get("formatted") or "")
+        if not formatted and "data" in payload:
+            try:
+                import json
+
+                formatted = json.dumps(payload.get("data"), ensure_ascii=False, indent=2, sort_keys=True)
+            except Exception:
+                formatted = str(payload.get("data"))
+        self._render_text_like(result, formatted or message, "log")
+
     def _render_kv(self, result: CommandResult, message: str):
         payload = result.payload if isinstance(result.payload, dict) else {}
         items = payload.get("items")
@@ -1422,17 +1651,14 @@ class CommandPanelWindow(ThemedToolWindow):
                     ThemedMessageBox.Yes | ThemedMessageBox.No,
                 )
                 if reply == ThemedMessageBox.Yes:
-                    from core import ShortcutExecutor
-
-                    ShortcutExecutor.mark_command_confirmed(shortcut)
                     if self._current_shortcut is not None:
-                        # Re-execute from UI panel (flag is set, _confirm_destructive_shortcut will skip)
+                        self._current_context_meta["destructive_confirmed"] = True
                         self._execute_current_shortcut_request()
                         return
-                    else:
-                        # Re-execute from stored result (popup path)
-                        self._rerun_with_shortcut(shortcut)
-                        return
+                    # Re-execute from stored result with confirmation scoped to
+                    # this invocation instead of mutating the shortcut object.
+                    self._rerun_with_shortcut(shortcut, context_meta={"destructive_confirmed": True})
+                    return
                 else:
                     self._rendered_text = "已取消执行。"
                     self.text.setPlainText("已取消执行。")
@@ -1455,7 +1681,9 @@ class CommandPanelWindow(ThemedToolWindow):
             self._all_actions,
             key=lambda a: (not bool(getattr(a, "primary", False)), bool(getattr(a, "danger", False))),
         )
-        for btn, action in zip(self.action_buttons, primary_actions[: len(self.action_buttons)]):
+        extra_count = len(primary_actions) - len(self.action_buttons)
+        display_count = len(primary_actions) if extra_count == 1 else len(self.action_buttons)
+        for btn, action in zip(self.action_buttons, primary_actions[:display_count]):
             btn.setText(action.label or self._action_default_label(action.type))
             btn.setEnabled(bool(getattr(action, "enabled", True)))
             btn.setProperty(
@@ -1471,9 +1699,10 @@ class CommandPanelWindow(ThemedToolWindow):
             self._neutralize_button_default(btn)
             btn.clicked.connect(lambda _checked=False, a=action: self._execute_action(a))
             btn.show()
-        self.more_btn.setVisible(len(primary_actions) > len(self.action_buttons))
+        self.more_btn.setVisible(extra_count > 1)
         self.copy_btn.setEnabled(bool(self._rendered_text))
         self.save_btn.setEnabled(bool(self._rendered_text))
+        self._relayout_footer_buttons()
 
     def _style_action_button(self, button, action):
         role = button.property("command_action_role")
@@ -1535,6 +1764,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 lambda a=action: self._execute_action(a),
                 enabled=bool(getattr(action, "enabled", True)),
             )
+        menu.setFixedWidth(self.more_btn.width())
         menu.popup(self.more_btn.mapToGlobal(self.more_btn.rect().bottomLeft()))
 
     def _update_subtitle(self, state: str):
@@ -1613,11 +1843,16 @@ class CommandPanelWindow(ThemedToolWindow):
                 logger.warning("保存命令结果失败: %s", e)
 
     def _execute_action(self, action):
+        action = normalize_command_action(action)
+        if action is None:
+            return
         if not getattr(action, "enabled", True):
             return
         if action.type == "copy" and action.value:
             QApplication.clipboard().setText(action.value)
-        elif action.type in ("open_url", "create_shortcut") and action.value:
+        elif action.type in ("copy_table", "copy_json") and action.value:
+            QApplication.clipboard().setText(action.value)
+        elif action.type == "open_url" and action.value:
             webbrowser.open(action.value)
         elif action.type in ("open_file", "open_folder") and action.value:
             try:
@@ -1629,6 +1864,18 @@ class CommandPanelWindow(ThemedToolWindow):
             if path:
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(action.value)
+        elif action.type == "save_csv" and action.value:
+            path, _ = get_save_file_name(self, "保存 CSV", "command-result.csv", "CSV 文件 (*.csv);;所有文件 (*)")
+            if path:
+                with open(path, "w", encoding="utf-8-sig", newline="") as f:
+                    f.write(action.value)
+        elif action.type == "save_json" and action.value:
+            path, _ = get_save_file_name(self, "保存 JSON", "command-result.json", "JSON 文件 (*.json);;所有文件 (*)")
+            if path:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(action.value)
+        elif action.type == "rerun":
+            self.rerun_current()
         elif action.type == "save_file" and action.value:
             default_name = os.path.basename(action.value) if os.path.isfile(action.value) else "command-result"
             path, _ = get_save_file_name(self, "保存文件", default_name, "所有文件 (*)")
@@ -1653,6 +1900,11 @@ class CommandPanelWindow(ThemedToolWindow):
             "open_folder": "打开文件夹",
             "save_text": "保存文本",
             "save_file": "保存文件",
+            "save_csv": "保存 CSV",
+            "save_json": "保存 JSON",
+            "copy_table": "复制表格",
+            "copy_json": "复制 JSON",
+            "rerun": "重试",
             "create_shortcut": "创建快捷方式",
             "close_qr_server": "关闭服务器",
         }.get(action_type or "", action_type or "操作")
@@ -1667,6 +1919,19 @@ class CommandPanelWindow(ThemedToolWindow):
                 return registry.get(command_id) or registry.get(registry.get_canonical(command_id))
         except Exception as exc:
             logger.debug("查询命令注册表: %s", exc, exc_info=True)
+        return None
+
+    def _lookup_shortcut(self, shortcut_id: str) -> ShortcutItem | None:
+        if not shortcut_id:
+            return None
+        try:
+            data = getattr(self.data_manager, "data", self.data_manager)
+            for folder in list(getattr(data, "folders", []) or []):
+                for item in list(getattr(folder, "items", []) or []):
+                    if getattr(item, "id", "") == shortcut_id:
+                        return item
+        except Exception as exc:
+            logger.debug("查询快捷方式: %s", exc, exc_info=True)
         return None
 
     def _apply_size_for_result(self, result: CommandResult, command_def=None):

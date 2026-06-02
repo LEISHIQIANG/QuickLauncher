@@ -33,10 +33,12 @@ from .command_exec import (
 from .command_registry import (
     CommandAction,
     CommandContext,
+    CommandParam,
     CommandResult,
     set_pending_command_result,
     take_pending_command_result,
 )
+from .command_param_validation import validate_param_values
 from .command_risk import assess_command_risk
 from .command_variables import (
     CommandVariableError,
@@ -505,9 +507,9 @@ class CommandExecutionMixin:
                     }
                 )
         param_values = ShortcutExecutor._command_param_values(shortcut)
-        for param in ShortcutExecutor._command_param_defs(shortcut):
-            if param.get("required") and not str(param_values.get(param["name"], "")).strip():
-                items.append({"title": "命令参数", "status": "failed", "detail": f"缺少必填参数: {param['name']}"})
+        params = [CommandParam(**param) for param in ShortcutExecutor._command_param_defs(shortcut)]
+        for error in validate_param_values(params, param_values):
+            items.append({"title": "命令参数", "status": "failed", "detail": error})
         if (
             command_type in ("cmd", "powershell", "bash")
             and not bool(getattr(shortcut, "raw_mode", False))

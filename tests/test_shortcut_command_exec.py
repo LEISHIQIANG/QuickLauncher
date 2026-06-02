@@ -2050,6 +2050,24 @@ def test_bash_capture_direct_cancel(monkeypatch):
     assert terminated
 
 
+def test_run_command_capture_validates_runtime_command_params():
+    item = ShortcutItem(
+        id="port",
+        name="Port",
+        type=ShortcutType.COMMAND,
+        command="echo ok",
+        command_type="cmd",
+        capture_output=True,
+        command_params=[{"name": "port", "validator": "port", "default": "0"}],
+    )
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert result.display_type == "list"
+    assert "端口范围" in result.message
+
+
 # ── Python capture via stdin (no temp file) ─────────────────
 
 

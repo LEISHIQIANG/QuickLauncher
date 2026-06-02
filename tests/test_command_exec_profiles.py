@@ -18,24 +18,15 @@ def test_command_param_defs_and_values_normalize_runtime_overrides():
     ]
     shortcut._runtime_param_values = {"count": 5, "extra": True}
 
-    assert command_param_defs(shortcut) == [
-        {
-            "name": "host",
-            "type": "choice",
-            "required": True,
-            "default": "prod",
-            "choices": ["prod", "stage"],
-            "sensitive": False,
-        },
-        {
-            "name": "count",
-            "type": "text",
-            "required": False,
-            "default": "3",
-            "choices": [],
-            "sensitive": False,
-        },
+    defs = command_param_defs(shortcut)
+    assert [
+        (param["name"], param["type"], param["required"], param["default"], param["choices"], param["sensitive"])
+        for param in defs
+    ] == [
+        ("host", "choice", True, "prod", ["prod", "stage"], False),
+        ("count", "text", False, "3", [], False),
     ]
+    assert defs[0]["remember"] is True
     assert command_param_values(shortcut) == {"host": "prod", "count": "5", "extra": "True"}
 
 

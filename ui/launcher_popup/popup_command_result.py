@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from core.command_action_safety import normalize_command_action, sanitize_command_actions
 from core.command_registry import MAX_COMMAND_RESULT_ACTIONS
 from qt_compat import (
     QApplication,
@@ -318,6 +319,10 @@ class PopupCommandResultMixin:
             return
 
         had_result = self.__dict__.get("_command_result") is not None
+        try:
+            result.actions = sanitize_command_actions(getattr(result, "actions", []))
+        except Exception:
+            logger.debug("sanitize command result actions failed", exc_info=True)
         self._command_result = result
         self._command_id = command_id
 
@@ -599,6 +604,9 @@ class PopupCommandResultMixin:
             logger.warning("切换收藏失败: %s", e)
 
     def _execute_action(self, action):
+        action = normalize_command_action(action)
+        if action is None:
+            return
         if action.type == "copy" and action.value:
             QApplication.clipboard().setText(action.value)
             # Keep the panel open after copying — don't call clear_command_result()

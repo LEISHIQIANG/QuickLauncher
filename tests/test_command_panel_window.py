@@ -279,6 +279,30 @@ def test_copy_and_copy_action(qapp):
     assert qapp.clipboard().text() == "action text"
 
 
+def test_shortcut_destructive_confirmation_is_scoped_to_next_invocation(qapp, monkeypatch):
+    win = _window(qapp)
+    shortcut = ShortcutItem(id="s1", name="Danger", type=ShortcutType.COMMAND, command="del file.txt")
+    captured = {}
+
+    class FakeService:
+        def run_shortcut_command(self, request, **_kwargs):
+            captured["context_meta"] = dict(request.context_meta)
+            return SimpleNamespace(request_id="run-1")
+
+    win.execution_service = FakeService()
+    win._current_shortcut = shortcut
+    win._current_command_id = shortcut.id
+    win._current_command_title = shortcut.name
+    win._current_raw_input = shortcut.command
+    win._current_context_meta = {"destructive_confirmed": True}
+    monkeypatch.setattr(win, "_confirm_destructive_shortcut", lambda _shortcut: True)
+
+    win._execute_current_shortcut_request()
+
+    assert captured["context_meta"]["destructive_confirmed"] is True
+    assert "destructive_confirmed" not in win._current_context_meta
+
+
 def test_confirm_render_keeps_action_states(qapp):
     win = _window(qapp)
 
@@ -549,6 +573,18 @@ def test_history_latest_first_and_click_shows_result(qapp):
 
     win._on_history_item_clicked(win.history_list.item(1))
     assert win.text.toPlainText() == "old"
+
+
+def test_rendering_history_result_does_not_mutate_store(qapp):
+    store = CommandResultStore()
+    result = CommandResult(message="stored text")
+    result_id = store.add(result, command_id="cmd", command_title="Cmd", raw_input="/cmd")
+    win = CommandPanelWindow(FakeDataManager(), store)
+
+    win.show_result(result_id)
+
+    assert store.get(result_id).result.actions == []
+    assert any(action.label == "复制全部" for action in win._current_result.actions)
 
 
 def test_history_dropdown_uses_input_width_and_shows_recent_commands(qapp, monkeypatch):

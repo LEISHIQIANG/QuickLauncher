@@ -192,7 +192,24 @@ class ShortcutExecutor(
             elif shortcut.type == ShortcutType.CHAIN:
                 from core.shortcut_chain_exec import execute_shortcut_chain
 
-                result = execute_shortcut_chain(shortcut)
+                try:
+                    from core import data_manager as global_data_manager
+                except Exception:
+                    global_data_manager = None
+                try:
+                    result = execute_shortcut_chain(shortcut, global_data_manager)
+                except TypeError:
+                    result = execute_shortcut_chain(shortcut)
+                return bool(result.success), result.error or ""
+
+            elif shortcut.type == ShortcutType.BATCH_LAUNCH:
+                from core.batch_launch_exec import execute_batch_launch
+
+                try:
+                    from core import data_manager as global_data_manager
+                except Exception:
+                    global_data_manager = None
+                result = execute_batch_launch(shortcut, global_data_manager)
                 return bool(result.success), result.error or ""
 
             else:

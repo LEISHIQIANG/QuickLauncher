@@ -1,5 +1,7 @@
 """Helpers for command profile text fields."""
 
+import json
+
 from core import ShortcutItem
 
 
@@ -9,6 +11,14 @@ def parse_command_params_text(text: str) -> list[dict]:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith("{"):
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(raw, dict):
+                params.append(raw)
+            continue
         parts = [part.strip() for part in line.split(",", 4)]
         while len(parts) < 5:
             parts.append("")
@@ -16,7 +26,7 @@ def parse_command_params_text(text: str) -> list[dict]:
         if not name:
             continue
         param_type = (param_type or "text").lower()
-        if param_type not in ("text", "choice", "bool", "file", "folder"):
+        if param_type not in ("text", "choice", "bool", "file", "folder", "number", "password", "textarea"):
             param_type = "text"
         params.append(
             {
@@ -34,6 +44,17 @@ def parse_command_params_text(text: str) -> list[dict]:
 def format_command_params(params) -> str:
     lines = []
     for param in ShortcutItem._normalize_command_params(params):
+        has_extra = (
+            any(param.get(key) for key in ("label", "placeholder", "help", "source", "validator", "pattern", "min_value", "max_value"))
+            or bool(param.get("multiline"))
+            or bool(param.get("advanced"))
+            or bool(param.get("sensitive"))
+            or param.get("remember") is False
+            or param.get("type") in ("number", "password", "textarea")
+        )
+        if has_extra:
+            lines.append(json.dumps(param, ensure_ascii=False, sort_keys=True))
+            continue
         choices = "|".join(str(choice) for choice in param.get("choices", []))
         lines.append(
             ",".join(

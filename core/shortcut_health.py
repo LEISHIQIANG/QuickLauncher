@@ -277,6 +277,8 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
 
             if shortcut_type == ShortcutType.CHAIN:
                 _check_chain(shortcut, folder, shortcut_map, add)
+            elif shortcut_type == ShortcutType.BATCH_LAUNCH:
+                _check_batch_launch(shortcut, folder, shortcut_map, add)
 
             if shortcut_type == ShortcutType.COMMAND:
                 for risk in assess_command_risk(shortcut):
@@ -324,6 +326,10 @@ def _check_chain(shortcut: ShortcutItem, folder, shortcut_map: dict[str, Shortcu
         )
 
     for step in steps:
+        if isinstance(step, dict) and str(step.get("node_type") or "shortcut").strip().lower() == "processor":
+            if not str(step.get("processor_id") or "").strip():
+                add("chain_processor_missing_id", "error", "Chain processor is missing", "CHAIN processor step is missing an id.", folder, shortcut)
+            continue
         step_id = str(step.get("shortcut_id") or "").strip() if isinstance(step, dict) else ""
         if not step_id:
             add(
@@ -343,6 +349,46 @@ def _check_chain(shortcut: ShortcutItem, folder, shortcut_map: dict[str, Shortcu
             add("chain_self_reference", "error", "Chain references itself", step_id, folder, shortcut)
         elif _shortcut_type(target) == ShortcutType.CHAIN:
             add("chain_nested", "error", "Nested chains are not supported", step_id, folder, shortcut)
+        elif _shortcut_type(target) == ShortcutType.BATCH_LAUNCH:
+            add("chain_nested", "error", "Nested batch launches are not supported", step_id, folder, shortcut)
+
+
+def _check_batch_launch(shortcut: ShortcutItem, folder, shortcut_map: dict[str, ShortcutItem], add) -> None:
+    steps = list(getattr(shortcut, "batch_launch_steps", []) or [])
+    if not steps:
+        add("batch_launch_empty", "warn", "Batch launch has no items", "Batch launch shortcut has no items.", folder, shortcut)
+        return
+
+    if len(steps) > MAX_CHAIN_STEPS:
+        add(
+            "batch_launch_too_long",
+            "warn",
+            "Batch launch has too many items",
+            f"Batch launch shortcut has more than {MAX_CHAIN_STEPS} items.",
+            folder,
+            shortcut,
+        )
+
+    for step in steps:
+        step_id = str(step.get("shortcut_id") or "").strip() if isinstance(step, dict) else ""
+        if not step_id:
+            add(
+                "batch_launch_step_missing_id",
+                "error",
+                "Batch launch item has no shortcut",
+                "Batch launch item is missing a shortcut id.",
+                folder,
+                shortcut,
+            )
+            continue
+        target = shortcut_map.get(step_id)
+        if target is None:
+            add("batch_launch_missing_reference", "error", "Batch launch item target is missing", step_id, folder, shortcut)
+            continue
+        if getattr(target, "id", "") == getattr(shortcut, "id", ""):
+            add("batch_launch_self_reference", "error", "Batch launch references itself", step_id, folder, shortcut)
+        elif _shortcut_type(target) in (ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH):
+            add("batch_launch_nested", "error", "Nested chains or batch launches are not supported", step_id, folder, shortcut)
 
 
 def _extract_command_executable(command: str) -> str:

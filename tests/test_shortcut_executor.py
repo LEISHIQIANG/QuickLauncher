@@ -125,6 +125,21 @@ def test_execute_chain_type(monkeypatch):
     assert error == ""
 
 
+def test_execute_batch_launch_type(monkeypatch):
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.error = None
+    import core.batch_launch_exec
+
+    monkeypatch.setattr(core.batch_launch_exec, "execute_batch_launch", lambda shortcut, data_manager: mock_result)
+    shortcut = MagicMock(spec=ShortcutItem)
+    shortcut.type = ShortcutType.BATCH_LAUNCH
+    shortcut.run_as_admin = False
+    success, error = ShortcutExecutor.execute(shortcut)
+    assert success is True
+    assert error == ""
+
+
 def test_execute_with_files_empty():
     shortcut = MagicMock(spec=ShortcutItem)
     result = ShortcutExecutor.execute_with_files(shortcut, [])

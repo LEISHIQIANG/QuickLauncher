@@ -31,10 +31,11 @@ def test_shortcut_type_values():
     assert ShortcutType.HOTKEY.value == "hotkey"
     assert ShortcutType.COMMAND.value == "command"
     assert ShortcutType.CHAIN.value == "chain"
+    assert ShortcutType.BATCH_LAUNCH.value == "batch_launch"
 
 
 def test_shortcut_type_has_all_members():
-    assert len(ShortcutType) == 6
+    assert len(ShortcutType) == 7
 
 
 def test_shortcut_type_from_string():
@@ -181,6 +182,23 @@ def test_shortcut_item_to_dict_type_is_string():
     assert isinstance(data["type"], str)
 
 
+def test_batch_launch_steps_round_trip():
+    item = ShortcutItem(
+        id="batch",
+        name="Batch",
+        type=ShortcutType.BATCH_LAUNCH,
+        batch_launch_steps=[{"shortcut_id": "one", "delay_ms": 250}],
+    )
+
+    restored = ShortcutItem.from_dict(item.to_dict())
+
+    assert restored.type == ShortcutType.BATCH_LAUNCH
+    assert restored.module_id == "quicklauncher.batch_launch"
+    assert restored.batch_launch_steps[0]["shortcut_id"] == "one"
+    assert restored.batch_launch_steps[0]["delay_ms"] == 250
+    assert restored.chain_steps == []
+
+
 # ---------------------------------------------------------------------------
 # 4. _normalize_tags
 # ---------------------------------------------------------------------------
@@ -286,6 +304,43 @@ def test_normalize_command_params_sensitive():
     params = [{"name": "secret", "sensitive": True}]
     result = ShortcutItem._normalize_command_params(params)
     assert result[0]["sensitive"] is True
+    assert result[0]["remember"] is False
+
+
+def test_normalize_command_params_new_fields_and_whitelists():
+    params = [
+        {
+            "name": "body",
+            "type": "textarea",
+            "label": "Body",
+            "placeholder": "JSON",
+            "help": "Paste JSON",
+            "multiline": True,
+            "remember": True,
+            "source": "clipboard",
+            "validator": "json",
+            "pattern": ".*",
+            "min_value": "1",
+            "max_value": "5",
+            "advanced": True,
+        },
+        {"name": "bad", "source": "bad", "validator": "bad"},
+    ]
+    result = ShortcutItem._normalize_command_params(params)
+    assert result[0]["type"] == "textarea"
+    assert result[0]["label"] == "Body"
+    assert result[0]["placeholder"] == "JSON"
+    assert result[0]["help"] == "Paste JSON"
+    assert result[0]["multiline"] is True
+    assert result[0]["remember"] is True
+    assert result[0]["source"] == "clipboard"
+    assert result[0]["validator"] == "json"
+    assert result[0]["pattern"] == ".*"
+    assert result[0]["min_value"] == "1"
+    assert result[0]["max_value"] == "5"
+    assert result[0]["advanced"] is True
+    assert result[1]["source"] == ""
+    assert result[1]["validator"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +428,24 @@ def test_normalize_chain_steps_basic():
     assert result[0]["stop_on_error"] is False
     assert result[0]["enabled"] is True
     assert result[0]["use_previous_output"] is False
+    assert result[0]["input_binding"] == ""
+    assert result[0]["param_bindings"] == {}
+    assert result[0]["args"] == {}
+
+
+def test_normalize_chain_steps_bindings_and_args():
+    steps = [
+        {
+            "shortcut_id": "s1",
+            "input_binding": "prev.stdout",
+            "param_bindings": {"host": "prev.outputs.host", "empty": ""},
+            "args": {"port": 443, "": "ignored"},
+        }
+    ]
+    result = ShortcutItem._normalize_chain_steps(steps)
+    assert result[0]["input_binding"] == "prev.stdout"
+    assert result[0]["param_bindings"] == {"host": "prev.outputs.host"}
+    assert result[0]["args"] == {"port": "443"}
 
 
 def test_normalize_chain_steps_preserves_id():
@@ -398,6 +471,46 @@ def test_normalize_chain_steps_delay_clamped():
     steps = [{"shortcut_id": "s1", "delay_ms": 999999999}]
     result = ShortcutItem._normalize_chain_steps(steps)
     assert result[0]["delay_ms"] == normalize_chain_step_delay_ms(999999999)
+
+
+def test_chain_canvas_roundtrip():
+    item = ShortcutItem(type=ShortcutType.CHAIN, name="Canvas")
+    item.chain_canvas = {
+        "version": 1,
+        "nodes": [
+            {"id": "n1", "node_type": "shortcut", "shortcut_id": "a", "x": 10, "y": 20, "order": 1},
+            {"id": "n2", "node_type": "processor", "processor_id": "text_template", "x": 240, "y": 20, "order": 2},
+        ],
+        "connections": [
+            {"id": "c1", "source_node": "n1", "source_port": "stdout", "target_node": "n2", "target_port": "input"}
+        ],
+    }
+
+    loaded = ShortcutItem.from_dict(item.to_dict())
+
+    assert loaded.chain_canvas["nodes"][0]["shortcut_id"] == "a"
+    assert loaded.chain_canvas["nodes"][1]["processor_id"] == "text_template"
+    assert loaded.chain_canvas["connections"][0]["source_port"] == "stdout"
+
+
+def test_old_chain_steps_generate_canvas_connections():
+    loaded = ShortcutItem.from_dict(
+        {
+            "type": "chain",
+            "chain_steps": [
+                {"id": "s1", "shortcut_id": "first"},
+                {
+                    "id": "s2",
+                    "shortcut_id": "second",
+                    "input_binding": "1.stdout",
+                    "param_bindings": {"host": "1.output"},
+                },
+            ],
+        }
+    )
+
+    assert len(loaded.chain_canvas["nodes"]) == 2
+    assert {c["target_port"] for c in loaded.chain_canvas["connections"]} == {"input", "host"}
 
 
 # ---------------------------------------------------------------------------

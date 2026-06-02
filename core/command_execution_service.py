@@ -10,7 +10,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.command_io import (
+    CommandInvocationSnapshot,
+    build_invocation_snapshot,
+    build_output_artifact,
+    command_params_from_shortcut,
+    has_sensitive_args,
+    prepare_runtime_shortcut,
+    remembered_args,
+)
 from core.command_registry import CommandContext, CommandDefinition, CommandResult
+from core.command_param_validation import validate_param_values
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem
 
@@ -27,6 +37,7 @@ class CommandExecutionRequest:
     shortcut: ShortcutItem | None = None
     args: dict[str, str] = field(default_factory=dict)
     command_def: CommandDefinition | None = None
+    invocation: CommandInvocationSnapshot | None = None
 
 
 class CommandExecutionHandle:
@@ -63,6 +74,7 @@ class CommandExecutionService:
     ) -> CommandExecutionHandle:
         handle = CommandExecutionHandle()
         command_def = request.command_def or self._lookup_command(request.command_id)
+        invocation = build_invocation_snapshot(request, command_def, request.shortcut)
 
         def _worker() -> None:
             started = time.perf_counter()
@@ -74,15 +86,25 @@ class CommandExecutionService:
                     if not handle.cancelled and on_update is not None:
                         on_update(handle.request_id, result, command_def)
 
-                ctx = CommandContext(
-                    raw_input=request.raw_input,
-                    args_text=request.args_text,
-                    args=dict(request.args or {}),
-                    clipboard_text=str((request.context_meta or {}).get("clipboard_text") or ""),
-                    selected_files=list((request.context_meta or {}).get("selected_files") or []),
-                    update_callback=_update,
-                )
-                result = command_def.handler(ctx)
+                validation = self._validate_command_params(command_def, invocation.args)
+                if validation is not None:
+                    result = validation
+                else:
+                    ctx = CommandContext(
+                        raw_input=invocation.raw_input,
+                        args_text=invocation.args_text,
+                        args=dict(invocation.args or {}),
+                        clipboard_text=invocation.clipboard_text,
+                        clipboard_kind=invocation.clipboard_kind,
+                        clipboard_files=list(invocation.clipboard_files or []),
+                        clipboard_html=invocation.clipboard_html,
+                        selected_text=invocation.selected_text,
+                        selected_text_method=invocation.selected_text_method,
+                        selected_files=list(invocation.selected_files or []),
+                        context_meta=dict(invocation.context_meta or {}),
+                        update_callback=_update,
+                    )
+                    result = command_def.handler(ctx)
                 if not isinstance(result, CommandResult):
                     result = CommandResult(
                         success=False, message="Command returned an invalid result.", error="类型错误"
@@ -164,14 +186,16 @@ class CommandExecutionService:
         """Run a captured shortcut in the caller's thread and store the result."""
         handle = handle or CommandExecutionHandle()
         started = time.perf_counter()
+        invocation = build_invocation_snapshot(request, None, request.shortcut)
+        runtime_shortcut = prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
         try:
             from core import ShortcutExecutor
 
-            result = ShortcutExecutor.run_command_capture(request.shortcut, cancel_event=handle.cancel_event)
+            result = ShortcutExecutor.run_command_capture(runtime_shortcut, cancel_event=handle.cancel_event)
         except TypeError:
             from core import ShortcutExecutor
 
-            result = ShortcutExecutor.run_command_capture(request.shortcut)
+            result = ShortcutExecutor.run_command_capture(runtime_shortcut)
         except Exception as e:
             logger.exception("Captured shortcut execution failed: %s", e)
             result = CommandResult(
@@ -189,12 +213,12 @@ class CommandExecutionService:
     ) -> tuple[CommandResult, float, str]:
         handle = handle or CommandExecutionHandle()
         started = time.perf_counter()
+        invocation = build_invocation_snapshot(request, None, request.shortcut)
+        runtime_shortcut = prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
         try:
             from core import ShortcutExecutor
 
-            shortcut = request.shortcut
-            if shortcut is not None and request.args:
-                shortcut._runtime_param_values = dict(request.args)
+            shortcut = runtime_shortcut
             if (
                 shortcut is not None
                 and getattr(shortcut, "command_type", "cmd") in ("cmd", "python", "powershell", "bash")
@@ -234,11 +258,13 @@ class CommandExecutionService:
         """Run an action chain in the caller's thread and store the result."""
         handle = handle or CommandExecutionHandle()
         started = time.perf_counter()
+        invocation = build_invocation_snapshot(request, None, request.shortcut)
+        runtime_shortcut = prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
         try:
             from core.shortcut_chain_exec import execute_shortcut_chain
 
             result = execute_shortcut_chain(
-                request.shortcut,
+                runtime_shortcut,
                 request.context_meta.get("data_manager"),
                 cancel_event=handle.cancel_event,
             )
@@ -260,6 +286,11 @@ class CommandExecutionService:
     ) -> str:
         if self.result_store is None:
             return ""
+        invocation = build_invocation_snapshot(request, command_def, request.shortcut)
+        params = list(getattr(command_def, "params", []) or [])
+        if not params and request.shortcut is not None:
+            params = command_params_from_shortcut(request.shortcut)
+        artifact = build_output_artifact(result)
         return self.result_store.add(
             result,
             command_id=getattr(command_def, "id", request.command_id),
@@ -269,6 +300,11 @@ class CommandExecutionService:
             raw_input=request.raw_input,
             source=getattr(command_def, "source", request.source or ""),
             duration=float(duration or 0.0),
+            args=remembered_args(invocation.args, params),
+            masked_args=invocation.masked_args,
+            has_sensitive_args=has_sensitive_args(invocation.args, params),
+            context_meta=invocation.context_meta,
+            outputs=artifact.outputs,
         )
 
     @staticmethod
@@ -288,3 +324,17 @@ class CommandExecutionService:
         except Exception:
             logger.debug("Command lookup failed: %s", command_id, exc_info=True)
         return None
+
+    @staticmethod
+    def _validate_command_params(command_def: CommandDefinition, args: dict[str, str]) -> CommandResult | None:
+        errors = validate_param_values(list(getattr(command_def, "params", []) or []), dict(args or {}))
+        if not errors:
+            return None
+        items = [{"title": "命令参数", "status": "failed", "detail": error} for error in errors]
+        return CommandResult(
+            success=False,
+            message="\n".join(errors),
+            display_type="list",
+            payload={"items": items},
+            error="参数校验失败",
+        )

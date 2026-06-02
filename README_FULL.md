@@ -272,12 +272,12 @@ QuickLauncher 拥有统一的命令注册系统 `CommandRegistry`：
 | `/color` | — | HEX 转 RGB/RGBA 颜色值 |
 | `/ip` | — | 查看本机 IP（`local`/`public` 模式） |
 | `/copy-path` | — | 从资源管理器复制选中文件路径（`name`/`dir`/完整路径） |
-| `/hash` | — | 文件哈希计算（MD5/SHA1/SHA256） |
+| `/hash` | — | 文件哈希计算（MD5/SHA1/SHA256/SHA512，支持结构化参数） |
 | `/uuid` | — | 生成 UUID v4 |
 | `/timestamp` | — | 当前 Unix 时间戳 / 时间戳转日期 |
 | `/base64` | — | Base64 编码/解码（256KB 限制） |
 | `/qr` | — | 生成二维码（智能检测剪贴板：URL→打开链接、文件→HTTP 文件服务器） |
-| `/json` | — | JSON 美化/压缩/验证（`pretty`/`min`/`validate`） |
+| `/json` | — | JSON 美化/压缩/验证（`format`/`minify`/`validate`，支持剪贴板默认值） |
 | `/jwt` | — | 解码 JWT Token（Header + Payload） |
 | `/netdiag` | — | 网络诊断（DNS 解析、TCP 端口连通性、Ping） |
 | `/cidr` | — | CIDR 子网计算器（网络/掩码/广播/主机范围，IPv4 & IPv6） |
@@ -434,11 +434,15 @@ echo {{{{clipboard:q}}}}    → 输出: {{clipboard:q}}（不展开）
 | `stop_on_error` | 失败时是否中断链（默认 `True`） |
 | `delay_ms` | 执行前延迟（0-60000ms） |
 | `use_previous_output` | 将上一步输出作为当前步骤的 `{{input}}` |
+| `input_binding` | 从链变量读取输入，例如 `prev.stdout` |
+| `param_bindings` | 参数绑定表，例如 `{"host": "prev.outputs.host"}` |
+| `args` | 步骤静态参数，例如 `{"port": "443"}` |
 
 ### 7.2 执行机制
 
 - 最多 **50 个步骤**，防循环引用（拒绝嵌套链和自引用）
-- 每步执行后收集链变量：`{{N.success}}`、`{{N.exit_code}}`、`{{N.stdout}}`、`{{N.stderr}}`、`{{N.output}}`，以及 `prev.*` 快捷方式
+- 每步执行后收集链变量：`N.success`、`N.exit_code`、`N.stdout`、`N.stderr`、`N.output`、`N.outputs.<name>`，以及 `prev.*` 快捷方式
+- `payload["outputs"]` 会归一化为字符串字典，供后续步骤通过 `prev.outputs.<name>` 显式读取
 - 支持**取消执行**（`threading.Event`）
 - 步骤间延迟支持取消感知的 sleep
 - 返回列表型 `CommandResult`，展示所有步骤状态和耗时

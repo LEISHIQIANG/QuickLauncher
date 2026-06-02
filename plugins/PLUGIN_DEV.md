@@ -182,6 +182,8 @@ def handle_hello(context):
 | 方法 / 属性 | 说明 | 所需权限 |
 |---|---|---|
 | `register_command(...)` | 注册命令；支持 `icon_path`、`search_terms` | 无 |
+| `register_module(module_id, manifest_path="module.json")` | 注册插件内的主程序模块 manifest，用于动作链这类可独立化模块 | 无 |
+| `register_chain_processor(definition, handler)` | 注册动作链电池，使用与内置电池一致的 schema | 无 |
 | `read_clipboard()` | 读取剪贴板文本 | `clipboard.read` |
 | `write_clipboard(text)` | 写入剪贴板 | `clipboard.write` |
 | `get_selected_files()` | 获取资源管理器选中文件 | `file.read` |
@@ -190,6 +192,75 @@ def handle_hello(context):
 | `check_data_path(path)` | 确认路径在插件 `data/` 下 | 无 |
 | `launch_target(target, parameters="", directory="", show_window=True, run_as_admin=False)` | 通过与图标执行相同的通道启动程序或文件 | `process.run`；`run_as_admin=True` 还需要 `admin.required` |
 | `run_command(command, cwd="", show_window=False, run_as_admin=False)` | 通过与命令图标相同的通道执行命令 | `process.run`；`run_as_admin=True` 还需要 `admin.required` |
+
+## 模块型插件
+
+普通插件注册命令；模块型插件注册一个主程序可调用的模块 API。动作链未来独立发布时就走这条路径。
+
+模块型插件最小结构：
+
+```text
+plugins/action_chain/
+  plugin.json
+  main.py
+  module.json
+  action_chain_entry.py
+```
+
+`main.py` 只负责把模块 manifest 交给主程序：
+
+```python
+def register(api):
+    api.register_module("quicklauncher.action_chain", "module.json")
+```
+
+`module.json` 使用模块契约字段：
+
+```json
+{
+  "id": "quicklauncher.action_chain",
+  "name": "Action Chain",
+  "display_name": "动作链",
+  "module_version": "0.2.0",
+  "schema_version": 1,
+  "api_version": "1.0",
+  "min_host_version": "1.6.3.0",
+  "max_host_version": "",
+  "entry": "action_chain_entry:ActionChainModule",
+  "license_mode": "plugin",
+  "capabilities": ["chain.editor", "chain.runtime", "chain.processors"]
+}
+```
+
+启用插件后，主程序通过 `core.module_registry` 加载 `module.json` 的 `entry`。禁用插件时，模块 manifest 会被反注册；主程序会回退到内置动作链模块，或在没有内置模块时返回清晰的“模块不可用”结果。
+
+## 动作链电池插件
+
+插件也可以只注册一个或多个动作链电池，不必注册命令。电池会出现在动作链节点库中，执行时走 `core.chain_processors.execute_chain_processor()`，禁用插件后自动从节点库和执行入口移除。
+
+```python
+def reverse_text(args):
+    text = str(args.get("text", ""))
+    return {"outputs": {"output": text[::-1], "length": str(len(text))}}
+
+def register(api):
+    api.register_chain_processor(
+        {
+            "id": "reverse_text",
+            "title": "反转文本",
+            "category": "插件电池",
+            "description": "反转输入文本。",
+            "inputs": [{"id": "text", "kind": "text", "required": True}],
+            "outputs": [{"id": "output", "kind": "text"}, {"id": "length", "kind": "number"}],
+            "params": [{"id": "text", "kind": "text", "required": True}],
+            "safety": {"level": "safe", "capability": "chain.processor.reverse_text"},
+            "examples": [{"title": "反转文本示例", "args": {"text": "abc"}}],
+        },
+        reverse_text,
+    )
+```
+
+如果 `id` 没有点号，主程序会自动按插件 ID 命名空间化，例如插件 `chain_tools` 的 `reverse_text` 会注册为 `chain_tools_reverse_text`，避免和内置电池或其他插件冲突。handler 可以返回 `CommandResult`、字符串，或包含 `outputs`/`payload` 的 dict。
 
 ### 提权 / 降权启动
 
@@ -231,6 +302,27 @@ ok, error = api.run_command(
 | `icon_path` | 命令图标，相对于插件目录或绝对路径 |
 | `search_terms` | 额外搜索词 |
 
+`params=[...]` 支持的字段：
+
+| 字段 | 说明 |
+|---|---|
+| `name` | 参数名，用于 `context.args["name"]` 与 `{{param:name}}` |
+| `type` | `text`、`textarea`、`password`、`choice`、`bool`、`number`、`file`、`folder` |
+| `required` | 是否必填 |
+| `default` | 默认值 |
+| `choices` | `choice` 可选项 |
+| `sensitive` | 敏感参数；不会写入历史，展示为 `******` |
+| `label` | 面板表单标签 |
+| `placeholder` | 输入提示 |
+| `help` | 控件 tooltip |
+| `multiline` | 使用多行输入 |
+| `remember` | 是否允许写入历史重试；敏感参数会强制为 `False` |
+| `source` | 默认值来源：`clipboard`、`selected_text`、`selected_file`、`selected_file_dir`、`last` |
+| `validator` | 校验器：`path`、`file`、`folder`、`url`、`domain`、`ip`、`port`、`json`、`regex`、`number` |
+| `pattern` | `regex` 校验使用的正则 |
+| `min_value` / `max_value` | `number` 校验范围 |
+| `advanced` | 高级参数标记，供 UI 分组使用 |
+
 ## CommandContext
 
 handler 会收到 `CommandContext`：
@@ -239,8 +331,11 @@ handler 会收到 `CommandContext`：
 |---|---|---|
 | `raw_input` | `str` | 原始输入 |
 | `args_text` | `str` | 命令后的参数文本 |
+| `args` | `dict[str, str]` | 命令面板结构化参数 |
 | `clipboard_text` | `str` | 剪贴板文本快照 |
+| `selected_text` | `str` | 选中文本快照 |
 | `selected_files` | `list[str]` | 资源管理器选中文件 |
+| `context_meta` | `dict` | 可记录的上下文摘要 |
 | `update_callback` | callable | 可选，用于异步/阶段性结果 |
 
 建议优先使用显式参数和选中文件；剪贴板可以作为补充输入，但不要让大量插件都只依赖剪贴板。
@@ -253,6 +348,7 @@ handler 可以返回 `CommandResult`，也可以返回 dict。
 CommandResult(
     success=True,
     message="结果文本",
+    payload={"outputs": {"name": "结果文本"}},
     actions=[
         CommandAction(type="copy", label="复制结果", value="结果文本"),
         CommandAction(type="open_folder", label="打开目录", value="C:/Temp"),
@@ -282,8 +378,27 @@ CommandResult(
 | `list` | 检查报告、动作链步骤 | `{"items": [{"title": ..., "status": ..., "detail": ...}]}` |
 | `progress` | 长任务阶段进度 | `{"current": ..., "total": ..., "detail": ...}` |
 | `qr` | 二维码结果 | `{"image_path": ...}` |
+| `json` | JSON 对象或格式化 JSON | `{"data": {...}, "formatted": "...", "compact": "..."}` |
 
 `payload["window_size"]` 可以是 `small`、`medium`、`large` 或 `auto`。固定模板用于稳定布局，`auto` 才允许根据内容动态调整。
+
+### 输出契约
+
+插件建议把机器可读产物写入 `payload["outputs"]`：
+
+```python
+CommandResult(
+    success=True,
+    message="Host: example.com",
+    display_type="kv",
+    payload={
+        "items": [["Host", "example.com"]],
+        "outputs": {"host": "example.com", "port": "443"},
+    },
+)
+```
+
+`outputs` 会被命令面板历史和动作链使用，并归一化为 `dict[str, str]`。不要把 token、密码、私钥、cookie 等敏感值放入 `outputs`。
 
 ### 结果按钮
 
@@ -295,6 +410,12 @@ CommandResult(
 | `open_url` | 打开 URL |
 | `open_file` | 打开文件 |
 | `open_folder` | 打开文件夹 |
+| `save_text` | 保存文本 |
+| `save_csv` | 保存 CSV |
+| `save_json` | 保存 JSON |
+| `copy_table` | 复制表格文本 |
+| `copy_json` | 复制 JSON 文本 |
+| `rerun` | 重新执行当前命令 |
 
 独立命令面板会保留完整 `actions`。旧中键弹窗结果面板只作为兼容回退，空间有限时只显示前两个动作。
 

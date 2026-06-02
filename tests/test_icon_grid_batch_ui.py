@@ -33,6 +33,17 @@ def _grid_with_widgets():
     return grid
 
 
+def _shortcut(shortcut_id, name, stype=ShortcutType.FILE):
+    return ShortcutItem(id=shortcut_id, name=name, type=stype)
+
+
+def _data_with_folders(folders):
+    return SimpleNamespace(
+        folders=folders,
+        get_folder_by_id=lambda folder_id: next((folder for folder in folders if folder.id == folder_id), None),
+    )
+
+
 def test_ctrl_and_shift_click_update_selection(monkeypatch):
     grid = _grid_with_widgets()
 
@@ -52,6 +63,280 @@ def test_ctrl_and_shift_click_update_selection(monkeypatch):
 
     assert grid.selected_shortcut_ids == {"one", "two", "three"}
     assert all(widget.selected for widget in grid.icon_widgets)
+
+
+def test_batch_launch_search_reflows_visible_icons(qapp):
+    from ui.config_window.batch_launch_dialog import IconSelectorWidget
+
+    selector = IconSelectorWidget()
+    try:
+        selector.show()
+        qapp.processEvents()
+        selector.set_shortcuts(
+            [
+                _shortcut("alpha", "Alpha"),
+                _shortcut("bravo", "Bravo"),
+                _shortcut("charlie", "Charlie"),
+                _shortcut("delta", "Delta"),
+            ]
+        )
+
+        selector.search_box.setText("charlie")
+        selector._place_icons()
+        qapp.processEvents()
+
+        visible_widgets = [widget for widget in selector.icon_widgets.values() if widget.isVisible()]
+        assert [widget.shortcut.id for widget in visible_widgets] == ["charlie"]
+        assert selector.icon_widgets["charlie"].pos().x() >= 0
+        assert selector.icon_widgets["charlie"].pos().y() == 0
+        assert selector.icon_widgets["alpha"].isVisible() is False
+
+        selector.search_box.clear()
+        selector._place_icons()
+        qapp.processEvents()
+        assert all(widget.isVisible() for widget in selector.icon_widgets.values())
+    finally:
+        selector.deleteLater()
+
+
+def test_batch_launch_checked_icon_creates_and_removes_card(qapp, monkeypatch):
+    from core import Folder
+    from ui.config_window.batch_launch_dialog import BatchLaunchCard, BatchLaunchDialog
+
+    file_item = _shortcut("file", "File")
+    url_item = _shortcut("url", "URL", ShortcutType.URL)
+    repo_item = _shortcut("repo", "Repo")
+    other_item = _shortcut("other", "Other")
+    folder = Folder(id="default", name="Default", items=[file_item, url_item])
+    other_folder = Folder(id="other_folder", name="Other", items=[other_item])
+    icon_repo = Folder(id="icon_repo", name="图标仓库", is_icon_repo=True, items=[repo_item])
+    shortcuts = {item.id: item for item in [file_item, url_item, repo_item, other_item]}
+    manager = SimpleNamespace(
+        data=_data_with_folders([folder, other_folder, icon_repo]),
+        get_settings=lambda: SimpleNamespace(theme="dark"),
+        get_shortcut_by_id=lambda shortcut_id: shortcuts.get(shortcut_id),
+        add_shortcut=lambda folder_id, shortcut: True,
+    )
+    parent = grid_mod.QWidget()
+    parent.data_manager = manager
+    monkeypatch.setattr(
+        "ui.config_window.batch_launch_dialog._load_shortcut_icon", lambda _shortcut, size: grid_mod.QPixmap(size, size)
+    )
+
+    dialog = BatchLaunchDialog(manager, "default", parent)
+    try:
+        dialog._load_shortcuts()
+        assert set(dialog.icon_selector.icon_widgets) == {"file", "url", "other"}
+
+        dialog.icon_selector.icon_widgets["file"].checkbox.setChecked(True)
+
+        assert dialog.selected_order == ["file"]
+        assert len(dialog.launch_cards) == 1
+        assert dialog.launch_cards[0].shortcut.id == "file"
+        assert dialog.launch_cards[0].icon_label.width() == BatchLaunchCard.ICON_LABEL_SIZE
+        assert dialog.launch_cards[0].icon_label.pixmap().width() == BatchLaunchCard.ICON_PIXMAP_SIZE
+
+        dialog._on_card_remove_requested("file")
+
+        assert dialog.selected_order == []
+        assert dialog.launch_cards == []
+        assert dialog.icon_selector.icon_widgets["file"].checkbox.isChecked() is False
+    finally:
+        dialog.deleteLater()
+        parent.deleteLater()
+
+
+def test_batch_launch_cards_reorder_updates_execution_order(qapp, monkeypatch):
+    from core import Folder
+    from ui.config_window.batch_launch_dialog import BatchLaunchDialog
+
+    items = [_shortcut("one", "One"), _shortcut("two", "Two"), _shortcut("three", "Three")]
+    folder = Folder(id="default", name="Default", items=items)
+    shortcuts = {item.id: item for item in items}
+    manager = SimpleNamespace(
+        data=_data_with_folders([folder]),
+        get_settings=lambda: SimpleNamespace(theme="dark"),
+        get_shortcut_by_id=lambda shortcut_id: shortcuts.get(shortcut_id),
+        add_shortcut=lambda folder_id, shortcut: True,
+    )
+    parent = grid_mod.QWidget()
+    parent.data_manager = manager
+    monkeypatch.setattr(
+        "ui.config_window.batch_launch_dialog._load_shortcut_icon", lambda _shortcut, size: grid_mod.QPixmap(size, size)
+    )
+
+    dialog = BatchLaunchDialog(manager, "default", parent)
+    try:
+        dialog._load_shortcuts()
+        for shortcut_id in ["one", "two", "three"]:
+            dialog.icon_selector.icon_widgets[shortcut_id].checkbox.setChecked(True)
+
+        assert dialog.selected_order == ["one", "two", "three"]
+
+        moved = dialog._move_launch_card("one", 2)
+
+        assert moved is True
+        assert dialog.selected_order == ["two", "three", "one"]
+        assert [card.shortcut.id for card in dialog.launch_cards] == ["two", "three", "one"]
+        assert [dialog.cards_layout.itemAt(i).widget().shortcut.id for i in range(3)] == ["two", "three", "one"]
+    finally:
+        dialog.deleteLater()
+        parent.deleteLater()
+
+
+def test_batch_launch_save_creates_batch_launch_shortcut(qapp, monkeypatch):
+    from core import Folder
+    from ui.config_window.batch_launch_dialog import BatchLaunchDialog
+
+    items = [_shortcut("one", "One"), _shortcut("two", "Two")]
+    folder = Folder(id="default", name="Default", items=items)
+    shortcuts = {item.id: item for item in items}
+    added = []
+
+    def add_shortcut(folder_id, shortcut):
+        added.append((folder_id, shortcut))
+        return True
+
+    manager = SimpleNamespace(
+        data=_data_with_folders([folder]),
+        get_settings=lambda: SimpleNamespace(theme="dark"),
+        get_shortcut_by_id=lambda shortcut_id: shortcuts.get(shortcut_id),
+        add_shortcut=add_shortcut,
+    )
+    parent = grid_mod.QWidget()
+    parent.data_manager = manager
+    monkeypatch.setattr(
+        "ui.config_window.batch_launch_dialog._load_shortcut_icon", lambda _shortcut, size: grid_mod.QPixmap(size, size)
+    )
+
+    dialog = BatchLaunchDialog(manager, "default", parent)
+    try:
+        dialog._load_shortcuts()
+        for shortcut_id in ["one", "two"]:
+            dialog.icon_selector.icon_widgets[shortcut_id].checkbox.setChecked(True)
+        dialog.batch_name_edit.setText("Batch")
+        dialog._custom_icon_path = "C:/icons/batch.png"
+        dialog.batch_invert_theme_cb.setChecked(True)
+        dialog.batch_invert_current_cb.setChecked(True)
+        dialog.launch_cards[0].delay_input.setText("1.25")
+        dialog.launch_cards[0].pause_checkbox.setChecked(True)
+
+        dialog._save_batch_launch()
+
+        assert len(added) == 1
+        folder_id, shortcut = added[0]
+        assert folder_id == "default"
+        assert shortcut.type == ShortcutType.BATCH_LAUNCH
+        assert shortcut.name == "Batch"
+        assert shortcut.icon_path == "C:/icons/batch.png"
+        assert shortcut.icon_invert_with_theme is True
+        assert shortcut.icon_invert_current is True
+        assert shortcut.icon_invert_theme_when_set == "dark"
+        assert shortcut.chain_result_window == "none"
+        assert shortcut.chain_steps == []
+        assert [step["shortcut_id"] for step in shortcut.batch_launch_steps] == ["one", "two"]
+        assert shortcut.batch_launch_steps[0]["delay_ms"] == 1250
+        assert shortcut.batch_launch_steps[0]["stop_on_error"] is True
+        assert dialog.saved_shortcut is shortcut
+    finally:
+        dialog.deleteLater()
+        parent.deleteLater()
+
+
+def test_batch_launch_edit_restores_settings_and_cards(qapp, monkeypatch):
+    from core import Folder
+    from ui.config_window.batch_launch_dialog import BatchLaunchDialog
+
+    items = [_shortcut("one", "One"), _shortcut("two", "Two")]
+    folder = Folder(id="default", name="Default", items=items)
+    shortcuts = {item.id: item for item in items}
+    existing = ShortcutItem(
+        id="batch",
+        name="RunAll",
+        type=ShortcutType.BATCH_LAUNCH,
+        icon_path="C:/icons/batch.png",
+        icon_invert_with_theme=True,
+        icon_invert_current=True,
+        batch_launch_steps=[
+            {"shortcut_id": "two", "delay_ms": 500, "stop_on_error": False},
+            {"shortcut_id": "one", "delay_ms": 0, "stop_on_error": True},
+        ],
+    )
+
+    manager = SimpleNamespace(
+        data=_data_with_folders([folder]),
+        get_settings=lambda: SimpleNamespace(theme="dark"),
+        get_shortcut_by_id=lambda shortcut_id: shortcuts.get(shortcut_id),
+        add_shortcut=lambda _folder_id, _shortcut: pytest.fail("edit mode must not add a new shortcut"),
+    )
+    parent = grid_mod.QWidget()
+    parent.data_manager = manager
+    monkeypatch.setattr(
+        "ui.config_window.batch_launch_dialog._load_shortcut_icon", lambda _shortcut, size: grid_mod.QPixmap(size, size)
+    )
+
+    dialog = BatchLaunchDialog(manager, "default", parent, existing)
+    try:
+        dialog._load_shortcuts()
+
+        assert dialog.batch_name_edit.text() == "RunAll"
+        assert dialog.batch_icon_edit.text() == "C:/icons/batch.png"
+        assert dialog.batch_invert_theme_cb.isChecked() is True
+        assert dialog.batch_invert_current_cb.isChecked() is True
+        assert dialog.selected_order == ["two", "one"]
+        assert dialog.launch_cards[0].delay_input.text() == "0.5"
+        assert dialog.launch_cards[0].pause_checkbox.isChecked() is False
+
+        dialog.batch_name_edit.setText("New")
+        dialog._save_batch_launch()
+        updated = dialog.saved_shortcut
+
+        assert updated.id == "batch"
+        assert updated.type == ShortcutType.BATCH_LAUNCH
+        assert updated.name == "New"
+        assert [step["shortcut_id"] for step in updated.batch_launch_steps] == ["two", "one"]
+    finally:
+        dialog.deleteLater()
+        parent.deleteLater()
+
+
+def test_batch_launch_edit_reuses_config_window_icon_grid_pixmaps(qapp):
+    from core import Folder
+    from ui.config_window.batch_launch_dialog import BatchLaunchDialog
+
+    target = _shortcut("one", "One")
+    existing = ShortcutItem(
+        id="batch",
+        name="Batch",
+        type=ShortcutType.BATCH_LAUNCH,
+        batch_launch_steps=[{"shortcut_id": "one"}],
+    )
+    folder = Folder(id="default", name="Default", items=[target, existing])
+    manager = SimpleNamespace(
+        data=_data_with_folders([folder]),
+        get_settings=lambda: SimpleNamespace(theme="dark"),
+        get_shortcut_by_id=lambda shortcut_id: target if shortcut_id == "one" else None,
+    )
+
+    pixmap = grid_mod.QPixmap(24, 24)
+    pixmap.fill(grid_mod.QColor(255, 0, 0))
+    icon_label = SimpleNamespace(pixmap=lambda: pixmap)
+    icon_widget = SimpleNamespace(shortcut=target, icon_label=icon_label)
+    parent = grid_mod.QWidget()
+    parent.icon_grid = SimpleNamespace(icon_widgets=[icon_widget])
+
+    dialog = BatchLaunchDialog(manager, "default", parent, existing)
+    try:
+        assert dialog._icon_pixmap_cache["one"].cacheKey() == pixmap.cacheKey()
+        dialog._load_shortcuts()
+        shown = dialog.launch_cards[0].icon_label.pixmap().toImage()
+        color = shown.pixelColor(shown.width() // 2, shown.height() // 2)
+        assert color.red() > 200
+        assert color.green() < 80
+        assert color.blue() < 80
+    finally:
+        dialog.deleteLater()
+        parent.deleteLater()
 
 
 def test_batch_actions_refresh_folder_and_emit_signal():
@@ -595,6 +880,7 @@ def test_realtime_swap_redirects_system_icon_to_first_user_icon(qapp):
 
         # Create mock widgets
         from ui.config_window.icon_grid import IconWidget
+
         w_sys = IconWidget(sys_item)
         w_user1 = IconWidget(user_item1)
         w_user2 = IconWidget(user_item2)
@@ -645,6 +931,7 @@ def test_handle_final_reorder_safeguards_missing_ids(qapp):
 
         # Create mock widgets
         from ui.config_window.icon_grid import IconWidget
+
         w1 = IconWidget(item1)
         w2 = IconWidget(item2)
         w3 = IconWidget(item3)
@@ -707,15 +994,18 @@ def test_icongrid_drag_move_event_empty_space_swap(qapp):
     class FakeMime:
         def hasFormat(self, fmt):
             return fmt in ("application/x-shortcut-id", "application/x-shortcut-ids")
+
         def data(self, fmt):
             class _FakeBytes:
                 def data(self):
                     return b"item1"
+
             return _FakeBytes()
 
     class FakeEvent:
         def mimeData(self):
             return FakeMime()
+
         def acceptProposedAction(self):
             pass
 
@@ -731,5 +1021,3 @@ def test_icongrid_drag_move_event_empty_space_swap(qapp):
         w1.deleteLater()
         w2.deleteLater()
         grid.deleteLater()
-
-

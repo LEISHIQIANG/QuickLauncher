@@ -1,0 +1,19 @@
+{
+  "id": "quicklauncher.action_chain",
+  "name": "Action Chain",
+  "display_name": "动作链",
+  "module_version": "0.1.0",
+  "schema_version": 1,
+  "api_version": "1.0",
+  "min_host_version": "1.6.2.0",
+  "max_host_version": "",
+  "entry": "modules.action_chain.entry:ActionChainModule",
+  "license_mode": "builtin",
+  "capabilities": [
+    "chain.editor",
+    "chain.runtime",
+    "chain.processors",
+    "shortcut.chain_type"
+  ]
+}
+

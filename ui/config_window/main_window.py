@@ -990,6 +990,10 @@ class ConfigWindow(QMainWindow):
             from .command_dialog import CommandDialog
 
             dialog = CommandDialog(self, shortcut)
+        elif shortcut.type == ShortcutType.BATCH_LAUNCH:
+            from .batch_launch_dialog import BatchLaunchDialog
+
+            dialog = BatchLaunchDialog(self.data_manager, folder_id, self, shortcut)
         elif shortcut.type == ShortcutType.CHAIN:
             from .chain_dialog import ChainDialog
 

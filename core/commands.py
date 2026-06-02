@@ -331,18 +331,19 @@ def _hash_file(filepath: str, algo: str) -> str:
 
 
 def cmd_hash(context: CommandContext) -> CommandResult:
+    structured_args = dict(context.args or {})
     args = context.args_text.strip()
-    algo = "md5"
-    file_path = None
+    algo = str(structured_args.get("algorithm") or ("sha256" if structured_args else "md5")).lower()
+    file_path = str(structured_args.get("file") or "").strip() or None
 
     if args:
         first_word = args.split(None, 1)[0].lower() if args.split(None, 1) else ""
-        if first_word in ("md5", "sha1", "sha256"):
+        if first_word in ("md5", "sha1", "sha256", "sha512"):
             algo = first_word
             file_path = args[len(first_word) :].strip()
         else:
             last_word = args.rsplit(None, 1)[-1].lower() if args.rsplit(None, 1) else ""
-            if last_word in ("md5", "sha1", "sha256"):
+            if last_word in ("md5", "sha1", "sha256", "sha512"):
                 algo = last_word
                 file_path = args[: -len(last_word)].strip()
             else:
@@ -363,6 +364,7 @@ def cmd_hash(context: CommandContext) -> CommandResult:
         return CommandResult(
             success=True,
             message=f"{algo.upper()}: {digest}",
+            payload={"outputs": {"file": file_path, "algorithm": algo, "hash": digest}, "files": [file_path]},
             actions=[CommandAction(type="copy", label="复制哈希", value=digest)],
         )
     except (OSError, PermissionError) as e:
@@ -628,8 +630,9 @@ def _text_from_args_or_clipboard(context: CommandContext, args_text: str | None 
 
 
 def cmd_json(context: CommandContext) -> CommandResult:
-    raw = context.args_text.strip()
-    mode = "pretty"
+    structured_args = dict(context.args or {})
+    raw = str(structured_args.get("text") or "").strip() or context.args_text.strip()
+    mode = str(structured_args.get("mode") or "format").lower()
     if raw:
         first, _, rest = raw.partition(" ")
         first_lower = first.lower()
@@ -657,16 +660,37 @@ def cmd_json(context: CommandContext) -> CommandResult:
             summary = f"数组，{len(parsed)} 项"
         else:
             summary = type(parsed).__name__
-        return CommandResult(success=True, message=f"JSON 有效: {summary}")
+        formatted = json.dumps(parsed, ensure_ascii=False, indent=2)
+        compact = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+        return CommandResult(
+            success=True,
+            message=f"JSON 有效: {summary}",
+            display_type="json",
+            payload={
+                "data": parsed,
+                "formatted": formatted,
+                "compact": compact,
+                "outputs": {"json": formatted, "json.compact": compact},
+            },
+        )
 
     if mode in ("min", "minify", "compact"):
         result = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
     else:
         result = json.dumps(parsed, ensure_ascii=False, indent=2)
+    compact = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    formatted = json.dumps(parsed, ensure_ascii=False, indent=2)
 
     return CommandResult(
         success=True,
         message=result,
+        display_type="json",
+        payload={
+            "data": parsed,
+            "formatted": formatted,
+            "compact": compact,
+            "outputs": {"json": formatted, "json.compact": compact},
+        },
         actions=[CommandAction(type="copy", label="复制 JSON", value=result)],
     )
 
@@ -681,7 +705,7 @@ def _decode_base64url_json(part: str) -> dict:
 
 
 def cmd_jwt(context: CommandContext) -> CommandResult:
-    token = _text_from_args_or_clipboard(context)
+    token = str((context.args or {}).get("token") or "").strip() or _text_from_args_or_clipboard(context)
     if not token:
         return CommandResult(success=False, message="请输入 JWT 或确保剪贴板有 JWT", error="缺少输入")
 
@@ -702,7 +726,14 @@ def cmd_jwt(context: CommandContext) -> CommandResult:
     return CommandResult(
         success=True,
         message=message,
-        payload={"header": header, "payload": payload},
+        display_type="json",
+        payload={
+            "header": header,
+            "payload": payload,
+            "data": {"header": header, "payload": payload},
+            "formatted": message,
+            "outputs": {"jwt.header": header_text, "jwt.payload": payload_text},
+        },
         actions=[
             CommandAction(type="copy", label="复制 Payload", value=payload_text),
             CommandAction(type="copy", label="复制完整解码", value=message),
@@ -877,7 +908,19 @@ def _format_cert_subject(value) -> str:
 
 
 def cmd_tls(context: CommandContext) -> CommandResult:
-    host, port, display_host = _normalize_tls_target(context.args_text or context.clipboard_text)
+    structured_args = dict(context.args or {})
+    if structured_args:
+        raw_host = str(structured_args.get("host") or "").strip()
+        raw_port = str(structured_args.get("port") or "").strip()
+        host, parsed_port, display_host = _normalize_tls_target(raw_host)
+        if raw_port:
+            try:
+                parsed_port = int(raw_port)
+            except ValueError:
+                parsed_port = 443
+        port = parsed_port
+    else:
+        host, port, display_host = _normalize_tls_target(context.args_text or context.clipboard_text)
     if not host:
         return CommandResult(success=False, message="请输入域名，例如 /tls example.com", error="缺少目标")
     if any(ch.isspace() for ch in host):
@@ -943,7 +986,18 @@ def cmd_tls(context: CommandContext) -> CommandResult:
     return CommandResult(
         success=True,
         message=message,
-        payload={"host": host, "display_host": display_host or host, "port": port, "san": san_entries},
+        payload={
+            "host": host,
+            "display_host": display_host or host,
+            "port": port,
+            "san": san_entries,
+            "outputs": {
+                "host": host,
+                "port": str(port),
+                "expires_at": not_after_raw,
+                "issuer": _format_cert_subject(cert.get("issuer")),
+            },
+        },
         actions=[CommandAction(type="copy", label="复制报告", value=message)],
     )
 
@@ -1175,7 +1229,14 @@ def cmd_hosts(context: CommandContext) -> CommandResult:
 def cmd_port(context: CommandContext) -> CommandResult:
     import psutil
 
-    args = context.args_text.strip().split()
+    structured_args = dict(context.args or {})
+    if structured_args:
+        args = [str(structured_args.get("port") or "").strip()]
+        action = str(structured_args.get("action") or "query").lower()
+        if action == "kill":
+            args.append("kill")
+    else:
+        args = context.args_text.strip().split()
     if not args:
         return CommandResult(success=False, message="请输入要查询的端口号，如: /port 8080", error="缺少参数")
 
@@ -1288,6 +1349,13 @@ def cmd_port(context: CommandContext) -> CommandResult:
     return CommandResult(
         success=True,
         message=msg,
+        payload={
+            "outputs": {
+                "port": str(port_number),
+                "pid": first_pid,
+                "process": str(process_details[0]["name"]) if process_details else "",
+            }
+        },
         actions=[
             CommandAction(type="copy", label="复制第一个PID", value=first_pid),
             CommandAction(type="copy", label="复制终止命令", value=f"/port {port_number} kill"),

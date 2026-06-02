@@ -53,6 +53,7 @@ from ui.utils.smooth_scroll import SmoothScrollArea
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
+from .batch_launch_dialog import BatchLaunchDialog
 from .icon_grid_ordering import move_drag_group_order
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ class SimpleStatusDialog(QDialog):
         self.setWindowOpacity(0)
 
         from ui.utils.window_effect import is_win11
+
         self.corner_radius = 8 if is_win11() else 12
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
@@ -113,6 +115,7 @@ class SimpleStatusDialog(QDialog):
 
     def paintEvent(self, event):
         from ui.utils.window_effect import is_win10
+
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.Antialiasing)
         if is_win10():
@@ -120,7 +123,9 @@ class SimpleStatusDialog(QDialog):
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
         inset = 1.0 if is_win10() else 0.5
         path = QPainterPath()
-        path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius)
+        path.addRoundedRect(
+            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+        )
         tint_color = QColor(self.bg_color)
         if is_win10():
             tint_color.setAlpha(min(tint_color.alpha(), 150))
@@ -136,6 +141,7 @@ class SimpleStatusDialog(QDialog):
     def showEvent(self, event):
         from ui.utils.dialog_helper import center_dialog_on_main_window
         from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
+
         self._dialog_finished = False
         self.adjustSize()
         center_dialog_on_main_window(self)
@@ -489,6 +495,8 @@ class IconWidget(QFrame):
             pixmap = self._create_url_icon()
         elif self.shortcut.type == ShortcutType.COMMAND:
             pixmap = self._create_command_icon()
+        elif self.shortcut.type == ShortcutType.BATCH_LAUNCH:
+            pixmap = self._create_batch_launch_icon()
         elif self.shortcut.type == ShortcutType.CHAIN:
             pixmap = self._create_chain_icon()
         else:
@@ -603,6 +611,27 @@ class IconWidget(QFrame):
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⛓")
+
+        painter.end()
+        return pixmap
+
+    def _create_batch_launch_icon(self) -> QPixmap:
+        size = self.icon_size
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QtCompat.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QtCompat.Antialiasing)
+
+        painter.setBrush(QColor(130, 95, 200))
+        painter.setPen(QtCompat.NoPen)
+        margin = size // 8
+        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+
+        painter.setPen(QColor(255, 255, 255))
+        font = QFont("Segoe UI Symbol", size // 3)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "▶")
 
         painter.end()
         return pixmap
@@ -1513,9 +1542,7 @@ class IconGrid(QWidget):
         url_shortcuts = [
             shortcut_map.get(sid)
             for sid in ids
-            if shortcut_map.get(sid)
-            and shortcut_map.get(sid).type == ShortcutType.URL
-            and shortcut_map.get(sid).url
+            if shortcut_map.get(sid) and shortcut_map.get(sid).type == ShortcutType.URL and shortcut_map.get(sid).url
         ]
         if not url_shortcuts:
             ThemedMessageBox.warning(self, tr("批量获取图标"), tr("所选快捷方式中没有有效的网站地址"))
@@ -1536,6 +1563,7 @@ class IconGrid(QWidget):
         def fetch_one(shortcut):
             try:
                 from core.favicon_cache import fetch_favicon
+
                 icon_path = fetch_favicon(shortcut.url, force_refresh=True)
                 return (shortcut, icon_path, None)
             except Exception as e:
@@ -1560,9 +1588,7 @@ class IconGrid(QWidget):
         self.shortcut_added.emit()
 
         ThemedMessageBox.information(
-            self,
-            tr("批量获取图标"),
-            tr("成功获取 {success}/{total} 个图标", success=success_count, total=total)
+            self, tr("批量获取图标"), tr("成功获取 {success}/{total} 个图标", success=success_count, total=total)
         )
 
     def _show_context_menu(self, pos: QPoint, shortcut: ShortcutItem):
@@ -1619,11 +1645,25 @@ class IconGrid(QWidget):
         menu.add_action(tr("快捷键"), lambda: self.add_hotkey_requested.emit(), enabled=True)
         menu.add_action(tr("打开网址"), lambda: self.add_url_requested.emit(), enabled=True)
         menu.add_action(tr("运行命令"), lambda: self.add_command_requested.emit(), enabled=True)
+        menu.add_separator()
+        menu.add_action(tr("批量启动"), lambda: self._show_batch_launch_dialog(), enabled=True)
         menu.add_action(tr("新建动作链"), lambda: self.add_chain_requested.emit(), enabled=True)
         if self._batch_undo_snapshot:
             menu.add_separator()
             menu.add_action(tr("撤销上次批量操作"), self._restore_batch_snapshot, enabled=True)
         menu.popup(pos)
+
+    def _show_batch_launch_dialog(self):
+        """显示批量启动对话框"""
+        if not self.current_folder_id:
+            return
+        try:
+            dialog = BatchLaunchDialog(self.data_manager, self.current_folder_id, self)
+            if dialog.exec() == QDialog.Accepted:
+                self.load_folder(self.current_folder_id)
+                self.shortcut_added.emit()
+        except Exception as exc:
+            logger.exception("显示批量启动对话框失败: %s", exc)
 
     def _apply_menu_mask(self, menu: QMenu):
         try:
@@ -1959,7 +1999,7 @@ class IconGrid(QWidget):
 
     def dragEnterEvent(self, event):
         # 取消待执行的 dragLeave 占位移除
-        timer = getattr(self, '_drag_leave_timer', None)
+        timer = getattr(self, "_drag_leave_timer", None)
         if timer:
             try:
                 timer.stop()
@@ -2072,7 +2112,7 @@ class IconGrid(QWidget):
 
     def dragLeaveEvent(self, event):
         # 延迟 50ms，给内部 widget/grid dragEnter 机会取消此操作
-        timer = getattr(self, '_drag_leave_timer', None)
+        timer = getattr(self, "_drag_leave_timer", None)
         if timer:
             try:
                 timer.stop()
@@ -2095,7 +2135,7 @@ class IconGrid(QWidget):
 
     def dropEvent(self, event):
         # 取消可能存在的延迟 dragLeave 触发
-        timer = getattr(self, '_drag_leave_timer', None)
+        timer = getattr(self, "_drag_leave_timer", None)
         if timer:
             try:
                 timer.stop()

@@ -31,13 +31,8 @@ class PopupItemExecutionMixin:
             return
 
         selected_files_for_item = []
-        if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN, ShortcutType.URL):
+        if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH, ShortcutType.URL):
             selected_files_for_item = self._take_valid_selected_files_for_click()
-            if selected_files_for_item:
-                try:
-                    item._runtime_selected_files = list(selected_files_for_item)
-                except Exception as exc:
-                    logger.debug("设置运行时选中文件失败: %s", exc, exc_info=True)
 
         # 检查是否有选中文件需要打开
         files_to_use = []
@@ -100,11 +95,11 @@ class PopupItemExecutionMixin:
             except Exception as exc:
                 logger.debug("检查命令交互模式失败: %s", exc, exc_info=True)
 
+        runtime_inputs = {}
         if input_prompts:
             try:
                 from ui.styles.themed_messagebox import ThemedInputDialog
 
-                runtime_inputs = {}
                 for prompt in input_prompts:
                     label = prompt or "输入内容"
                     val, ok = ThemedInputDialog.getText(self, "运行参数", label)
@@ -114,12 +109,12 @@ class PopupItemExecutionMixin:
                     runtime_inputs[prompt] = val
                     if not prompt:
                         runtime_inputs["input"] = val
-                item._runtime_input_values = runtime_inputs
             except Exception as e:
                 logger.error(f"交互式参数收集失败: {e}")
 
         execute_item = item
         force_close_builtin_direct = False
+        destructive_confirmed = False
 
         # Phase 2: route builtin slash commands by explicit interaction metadata.
         cmd_text = (item.command or "").strip()
@@ -216,6 +211,7 @@ class PopupItemExecutionMixin:
                                     context_meta={
                                         "clipboard_text": clipboard_text,
                                         "selected_files": selected_files,
+                                        "input_values": dict(runtime_inputs),
                                     },
                                 )
                                 return
@@ -228,6 +224,7 @@ class PopupItemExecutionMixin:
                                 args_text=args_text,
                                 clipboard_text=clipboard_text,
                                 selected_files=selected_files,
+                                context_meta={"input_values": dict(runtime_inputs)} if runtime_inputs else {},
                                 update_callback=_on_update,
                             )
                             result = cmd_def.handler(ctx)
@@ -256,11 +253,13 @@ class PopupItemExecutionMixin:
             and bool(getattr(item, "command_params", []))
         )
         force_close_chain = item.type == ShortcutType.CHAIN
+        force_close_batch = item.type == ShortcutType.BATCH_LAUNCH
         should_close = (
             force_close_builtin_direct
             or force_close_capture_command
             or force_close_param_command
             or force_close_chain
+            or force_close_batch
             or not self.is_pinned
         )
 
@@ -271,7 +270,12 @@ class PopupItemExecutionMixin:
             tray_app = getattr(self, "tray_app", None)
             if tray_app is not None and hasattr(tray_app, "show_command_panel"):
                 try:
-                    if tray_app.show_command_panel(shortcut=item, raw_input=item.command or ""):
+                    context_meta = {}
+                    if runtime_inputs:
+                        context_meta["input_values"] = dict(runtime_inputs)
+                    if selected_files_for_item:
+                        context_meta["selected_files"] = list(selected_files_for_item)
+                    if tray_app.show_command_panel(shortcut=item, raw_input=item.command or "", context_meta=context_meta):
                         self._executing = False
                         return
                 except Exception:
@@ -303,7 +307,7 @@ class PopupItemExecutionMixin:
                     if reply != ThemedMessageBox.Yes:
                         self._executing = False
                         return
-                    ShortcutExecutor.mark_command_confirmed(item)
+                    destructive_confirmed = True
             except Exception:
                 logger.debug("破坏性命令预检查失败", exc_info=True)
 
@@ -329,7 +333,10 @@ class PopupItemExecutionMixin:
                                 raw_input=item.name or item.id,
                                 source="shortcut_chain",
                                 shortcut=item,
-                                context_meta={"data_manager": getattr(self, "data_manager", None)},
+                                context_meta={
+                                    "data_manager": getattr(self, "data_manager", None),
+                                    "selected_files": list(selected_files_for_item or []),
+                                },
                             )
                             pending, _duration, result_id = service.execute_shortcut_chain_sync(request)
                             if isinstance(getattr(pending, "payload", None), dict):
@@ -341,6 +348,21 @@ class PopupItemExecutionMixin:
                             return
                         except Exception:
                             logger.exception("Action chain service execution failed")
+                    if force_close_batch:
+                        try:
+                            from core.batch_launch_exec import execute_batch_launch
+
+                            pending = execute_batch_launch(
+                                item,
+                                getattr(self, "data_manager", None),
+                            )
+                            if not getattr(pending, "success", False):
+                                self.execution_error.emit(item.name, pending.error or pending.message)
+                            return
+                        except Exception as exc:
+                            logger.exception("Batch launch execution failed")
+                            self.execution_error.emit(item.name, str(exc))
+                            return
                     if force_close_capture_command:
                         try:
                             from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
@@ -359,6 +381,10 @@ class PopupItemExecutionMixin:
                                 raw_input=item.command or "",
                                 source="shortcut",
                                 shortcut=item,
+                                context_meta={
+                                    "input_values": dict(runtime_inputs),
+                                    "selected_files": list(selected_files_for_item or []),
+                                },
                             )
                             pending, _duration, result_id = service.execute_shortcut_capture_sync(request)
                             if isinstance(getattr(pending, "payload", None), dict):
@@ -368,7 +394,24 @@ class PopupItemExecutionMixin:
                             return
                         except Exception:
                             logger.exception("命令捕获服务执行失败")
-                    success, error_msg = ShortcutExecutor.execute(execute_item, force_new)
+                    runtime_execute_item = execute_item
+                    if runtime_inputs or selected_files_for_item or destructive_confirmed:
+                        try:
+                            from core.command_io import CommandInvocationSnapshot, prepare_runtime_shortcut
+
+                            runtime_execute_item = prepare_runtime_shortcut(
+                                execute_item,
+                                CommandInvocationSnapshot(
+                                    command_id=getattr(execute_item, "id", ""),
+                                    command_title=getattr(execute_item, "name", ""),
+                                    input_values=dict(runtime_inputs),
+                                    selected_files=list(selected_files_for_item or []),
+                                    context_meta={"destructive_confirmed": destructive_confirmed},
+                                ),
+                            )
+                        except Exception:
+                            logger.debug("构建运行时快捷方式副本失败", exc_info=True)
+                    success, error_msg = ShortcutExecutor.execute(runtime_execute_item, force_new)
                     had_pending_result = False
                     try:
                         from core.command_registry import take_pending_command_result
@@ -413,6 +456,8 @@ class PopupItemExecutionMixin:
             url_text = f"{getattr(item, 'url', '') or ''} {getattr(item, 'preferred_browser_args', '') or ''}"
             selection_sensitive = "{{selected_file" in url_text or "{{selected_files" in url_text
         elif item.type == ShortcutType.CHAIN:
+            selection_sensitive = True
+        elif item.type == ShortcutType.BATCH_LAUNCH:
             selection_sensitive = True
 
         if not selection_sensitive:

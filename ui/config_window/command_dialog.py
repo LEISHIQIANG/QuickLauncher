@@ -41,6 +41,7 @@ from ui.tooltip_helper import install_tooltip
 from ui.utils.safe_file_dialog import get_existing_directory
 
 from .base_dialog import BaseDialog
+from .command_param_dialog import CommandParamDialog
 from .command_profile_helpers import (
     format_command_env,
     format_command_params,
@@ -816,7 +817,7 @@ class CommandDialog(BaseDialog):
         self.command_params_edit = QPlainTextEdit()
         self.command_params_edit.setFixedHeight(72)
         self.command_params_edit.setPlaceholderText(
-            "每行一个参数: name,type,required,default,choice1|choice2\n例如: host,text,true,,"
+            "每行一个参数: name,type,required,default,choice1|choice2，或 JSON 参数行"
         )
         params_btn_row = QHBoxLayout()
         add_param_btn = QPushButton("新增参数")
@@ -1147,19 +1148,36 @@ class CommandDialog(BaseDialog):
             self.variable_expansion_cb.setChecked(True)
 
     def _add_param_template_line(self):
-        text = self.command_params_edit.toPlainText().rstrip()
-        line = "name,text,true,,"
-        self.command_params_edit.setPlainText((text + "\n" + line).strip())
+        dialog = CommandParamDialog(parent=self)
+        if dialog.exec_() != dialog.Accepted:
+            return
+        param = dialog.param()
+        if not param:
+            return
+        params = self._parse_command_params_text()
+        params.append(param)
+        self.command_params_edit.setPlainText(self._format_command_params(params))
 
     def _insert_selected_param_placeholder(self):
         params = self._parse_command_params_text()
         if not params:
-            self._add_param_template_line()
+            self.command_params_edit.setPlainText("name,text,true,,")
             params = self._parse_command_params_text()
         if not params:
             return
-        name = params[0]["name"]
-        self._insert_command_text(f"{{{{param:{name}:q}}}}")
+        menu = PopupMenu(theme=self.theme, radius=8, parent=None)
+        quote_by_default = self.type_combo.currentIndex() in (0, 1, 3)
+        for param in params:
+            name = str(param.get("name") or "").strip()
+            if not name:
+                continue
+            preferred = f"{{{{param:{name}:q}}}}" if quote_by_default else f"{{{{param:{name}}}}}"
+            plain = f"{{{{param:{name}}}}}"
+            quoted = f"{{{{param:{name}:q}}}}"
+            menu.add_action(preferred, lambda text=preferred: self._insert_command_text(text), enabled=True)
+            alternate = plain if preferred == quoted else quoted
+            menu.add_action(alternate, lambda text=alternate: self._insert_command_text(text), enabled=True)
+        menu.popup(self._insert_param_btn.mapToGlobal(self._insert_param_btn.rect().bottomLeft()))
 
     def _parse_command_params_text(self):
         return parse_command_params_text(self.command_params_edit.toPlainText())
@@ -1324,7 +1342,16 @@ class CommandDialog(BaseDialog):
             self.test_output.setPlainText("测试运行已取消。")
             return
         if inputs:
-            shortcut._runtime_input_values = inputs
+            from core.command_io import CommandInvocationSnapshot, prepare_runtime_shortcut
+
+            shortcut = prepare_runtime_shortcut(
+                shortcut,
+                CommandInvocationSnapshot(
+                    command_id=getattr(shortcut, "id", ""),
+                    command_title=getattr(shortcut, "name", ""),
+                    input_values=dict(inputs),
+                ),
+            )
 
         self._test_btn.setEnabled(False)
         self.test_output.setPlainText("正在测试...")

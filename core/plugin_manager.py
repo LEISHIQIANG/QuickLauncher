@@ -7,6 +7,7 @@ import importlib.util
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -30,6 +31,7 @@ from .command_registry import (
     register_search_source,
     remove_search_source,
 )
+from .command_action_safety import sanitize_command_actions
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
 logger = logging.getLogger(__name__)
@@ -129,6 +131,8 @@ class PluginInfo:
     error: str = ""
     registered_commands: list[str] = field(default_factory=list)
     registered_search_sources: list[str] = field(default_factory=list)
+    registered_modules: dict[str, str] = field(default_factory=dict)
+    registered_chain_processors: list[str] = field(default_factory=list)
     enabled_at: float = 0.0
     last_error_at: float = 0.0
     last_run_at: float = 0.0
@@ -164,6 +168,8 @@ class PluginAPI:
         self._staged_commands: list[CommandDefinition] = []
         self._staged_search_sources: list[str] = []
         self._staged_search_handlers: dict[str, Callable[[str], list[dict]] | None] = {}
+        self._registered_modules: dict[str, str] = {}
+        self._registered_chain_processors: list[str] = []
         self._committed = False
 
     def _check_permission(self, perm: str) -> None:
@@ -203,6 +209,56 @@ class PluginAPI:
         self._staged_search_sources.append(id)
         self._staged_search_handlers[id] = handler
 
+    def register_module(self, module_id: str, manifest_path: str = "module.json") -> bool:
+        """Register a host module manifest from this plugin package.
+
+        This is the bridge for future standalone module plugins such as
+        ``quicklauncher.action_chain``. The manifest path is relative to the
+        plugin directory and is validated before the host registry sees it.
+        """
+
+        safe_path = _safe_relative_plugin_path(manifest_path)
+        if safe_path is None:
+            return False
+        module_manifest = self._plugin_dir / safe_path
+        if not module_manifest.is_file():
+            return False
+        try:
+            from core.module_registry import module_registry
+
+            ok = module_registry.register_external_manifest(module_id, module_manifest)
+        except Exception:
+            logger.debug("插件模块注册失败: %s -> %s", module_id, module_manifest, exc_info=True)
+            return False
+        if ok:
+            self._registered_modules[str(module_id or "")] = str(module_manifest)
+        return ok
+
+    def register_chain_processor(self, definition: dict, handler: Callable[[dict], CommandResult | dict | str]) -> bool:
+        """Register an action-chain processor supplied by this plugin.
+
+        The processor uses the same schema as built-in action-chain batteries.
+        IDs are automatically namespaced with the plugin id when no dotted id is
+        provided, so ``{"id": "slug"}`` becomes ``my_plugin_slug``.
+        """
+
+        try:
+            from core.chain_processors import register_external_processor
+
+            ok = register_external_processor(definition, handler, owner=self._plugin_id)
+        except Exception:
+            logger.debug("插件动作链电池注册失败: %s", definition, exc_info=True)
+            return False
+        if ok:
+            processor_id = str(definition.get("id") or "")
+            if "." not in processor_id:
+                safe_owner = re.sub(r"[^a-zA-Z0-9_]+", "_", self._plugin_id).strip("_")
+                safe_id = re.sub(r"[^a-zA-Z0-9_\\.]+", "_", processor_id).strip("_")
+                if safe_owner and safe_id and not safe_id.startswith(f"{safe_owner}_"):
+                    processor_id = f"{safe_owner}_{safe_id}"
+            self._registered_chain_processors.append(processor_id)
+        return ok
+
     def register_command(
         self,
         id: str,
@@ -240,10 +296,29 @@ class PluginAPI:
             if isinstance(param, CommandParam):
                 normalized_params.append(param)
             elif isinstance(param, dict):
+                valid_param_keys = {
+                    "name",
+                    "type",
+                    "required",
+                    "default",
+                    "choices",
+                    "sensitive",
+                    "label",
+                    "placeholder",
+                    "help",
+                    "multiline",
+                    "remember",
+                    "source",
+                    "validator",
+                    "pattern",
+                    "min_value",
+                    "max_value",
+                    "advanced",
+                }
                 allowed = {
                     key: value
                     for key, value in param.items()
-                    if key in {"name", "type", "required", "default", "choices", "sensitive"}
+                    if key in valid_param_keys
                 }
                 if "name" in allowed:
                     normalized_params.append(CommandParam(**allowed))
@@ -276,10 +351,20 @@ class PluginAPI:
         """Atomically register all staged commands and search sources. Rollback on any failure."""
         if self._committed:
             return True
+        def rollback_chain_processors():
+            try:
+                from core.chain_processors import unregister_external_processors
+
+                unregister_external_processors(self._plugin_id)
+            except Exception:
+                logger.debug("插件动作链电池回滚失败: %s", self._plugin_id, exc_info=True)
+            self._registered_chain_processors.clear()
+
         staged_source_ids: set[str] = set()
         for sid in self._staged_search_sources:
             if sid in staged_source_ids:
                 logger.error("插件 %s 重复注册搜索源: %s", self._plugin_id, sid)
+                rollback_chain_processors()
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
                 self._staged_search_handlers.clear()
@@ -300,6 +385,7 @@ class PluginAPI:
             if not ok:
                 for written_sid in written_sources:
                     remove_search_source(written_sid, plugin_id=self._plugin_id)
+                rollback_chain_processors()
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
                 self._staged_search_handlers.clear()
@@ -328,6 +414,7 @@ class PluginAPI:
                     cmd.id,
                     available_ids,
                 )
+                rollback_chain_processors()
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
                 self._staged_search_handlers.clear()
@@ -381,19 +468,7 @@ class PluginAPI:
     ) -> Callable[[CommandContext], CommandResult]:
         def _validate(result: Any) -> CommandResult:
             def _normalize_actions(actions: Any) -> list[CommandAction]:
-                normalized: list[CommandAction] = []
-                if not actions:
-                    return normalized
-                if not isinstance(actions, list):
-                    return normalized
-                valid_action_keys = {"type", "label", "value", "enabled", "danger", "primary", "payload"}
-                for action in actions:
-                    if isinstance(action, CommandAction):
-                        normalized.append(action)
-                    elif isinstance(action, dict):
-                        allowed = {key: value for key, value in action.items() if key in valid_action_keys}
-                        normalized.append(CommandAction(**allowed))
-                return normalized
+                return sanitize_command_actions(actions)
 
             if result is None:
                 return CommandResult(success=False, message="插件未返回结果", error="返回值无效")
@@ -936,6 +1011,8 @@ class PluginManager:
             raise RuntimeError(f"插件 {m.id} 命令注册事务失败，已回滚所有已注册命令和搜索源")
         info.registered_commands = list(api._registered_ids)
         info.registered_search_sources = pending_search_sources
+        info.registered_modules = dict(getattr(api, "_registered_modules", {}) or {})
+        info.registered_chain_processors = list(getattr(api, "_registered_chain_processors", []) or [])
         self._loaded_modules[m.id] = loader
         self._active_apis[m.id] = api
 
@@ -986,6 +1063,21 @@ class PluginManager:
         owner_id = f"plugin:{plugin_id}"
         self._registry.remove_by_owner(owner_id)
         info.registered_commands.clear()
+        for module_id, manifest_path in dict(getattr(info, "registered_modules", {}) or {}).items():
+            try:
+                from core.module_registry import module_registry
+
+                module_registry.unregister_external_manifest(module_id, manifest_path)
+            except Exception:
+                logger.debug("插件模块反注册失败: %s", module_id, exc_info=True)
+        info.registered_modules.clear()
+        try:
+            from core.chain_processors import unregister_external_processors
+
+            unregister_external_processors(plugin_id)
+        except Exception:
+            logger.debug("插件动作链电池反注册失败: %s", plugin_id, exc_info=True)
+        info.registered_chain_processors.clear()
         # Clean up search sources
         for sid in info.registered_search_sources:
             remove_search_source(sid, plugin_id=plugin_id)
@@ -1031,6 +1123,7 @@ class PluginManager:
                 )
                 failed_info.registered_commands.clear()
                 failed_info.registered_search_sources.clear()
+                failed_info.registered_chain_processors.clear()
             self._save_enabled()
             logger.info("Plugin reload failed and plugin was left in error state: %s", plugin_id)
         return ok

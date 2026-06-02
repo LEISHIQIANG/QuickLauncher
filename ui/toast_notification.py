@@ -89,7 +89,11 @@ class ToastNotification(QWidget):
         path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
 
         # 磨砂玻璃背景
-        if self._theme == "dark":
+        if self._theme == "error":
+            # 草蜢样式红底，非常醒目
+            bg_color = QColor(229, 57, 53, 210)
+            border_color = QColor(255, 205, 210, 180)
+        elif self._theme == "dark":
             bg_color = QColor(28, 28, 30, 180)
             border_color = QColor(190, 190, 197, 60)
         else:
@@ -113,13 +117,14 @@ class ToastNotification(QWidget):
         painter.drawPath(path)
         painter.end()
 
-    def show_toast(self, text: str, theme: str = "dark", duration_ms: int = 1500):
+    def show_toast(self, text: str, theme: str = "dark", duration_ms: int = 1500, target_widget=None):
         """显示 Toast 通知
 
         Args:
             text: 显示文字
-            theme: 主题 ("dark" / "light")
+            theme: 主题 ("dark" / "light" / "error")
             duration_ms: 显示时长(毫秒)
+            target_widget: 目标定位挂接控件，若传入则定位至该控件所在主窗口的右下角
         """
         # 关闭已有的 toast
         if ToastNotification._current_instance and ToastNotification._current_instance is not self:
@@ -140,7 +145,7 @@ class ToastNotification(QWidget):
         self.setWindowOpacity(1.0)
 
         # 配置文字样式
-        if theme == "dark":
+        if theme in ("dark", "error"):
             color = "#FFFFFF"
         else:
             color = "#1c1c1e"
@@ -162,17 +167,31 @@ class ToastNotification(QWidget):
         text_width = fm.horizontalAdvance(text) if hasattr(fm, "horizontalAdvance") else fm.width(text)
         self.setFixedWidth(max(text_width + 60, 180))
 
-        # 居中定位
-        screen = None
-        try:
-            screen = QApplication.primaryScreen()
-        except Exception as exc:
-            logger.debug("获取主屏幕失败: %s", exc, exc_info=True)
-        if screen:
-            geo = screen.availableGeometry()
-            x = geo.left() + (geo.width() - self.width()) // 2
-            y = geo.top() + (geo.height() - self.height()) // 2
-            self.move(x, y)
+        # 定位逻辑：有挂接控件定位右下角，无则居中
+        positioned = False
+        if target_widget is not None:
+            try:
+                target_window = target_widget.window()
+                geo = target_window.geometry()
+                # 动作链窗口右下角弹窗提示，保留一些边距（24px）
+                x = geo.right() - self.width() - 24
+                y = geo.bottom() - self.height() - 24
+                self.move(x, y)
+                positioned = True
+            except Exception as exc:
+                logger.debug("根据目标窗口定位失败: %s", exc, exc_info=True)
+
+        if not positioned:
+            screen = None
+            try:
+                screen = QApplication.primaryScreen()
+            except Exception as exc:
+                logger.debug("获取主屏幕失败: %s", exc, exc_info=True)
+            if screen:
+                geo = screen.availableGeometry()
+                x = geo.left() + (geo.width() - self.width()) // 2
+                y = geo.top() + (geo.height() - self.height()) // 2
+                self.move(x, y)
 
         self.show()
         self.raise_()

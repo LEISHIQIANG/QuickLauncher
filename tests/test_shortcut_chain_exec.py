@@ -175,31 +175,314 @@ def test_chain_passes_previous_output_to_later_step(monkeypatch):
     assert seen[1][2]["prev.stdout"] == "hello"
 
 
+def test_chain_param_and_input_bindings_use_chain_values(monkeypatch):
+    first = ShortcutItem(
+        id="first",
+        name="First",
+        type=ShortcutType.COMMAND,
+        command_type="cmd",
+        capture_output=True,
+    )
+    second = ShortcutItem(
+        id="second",
+        name="Second",
+        type=ShortcutType.COMMAND,
+        command_type="cmd",
+        capture_output=True,
+    )
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {"shortcut_id": "first"},
+            {
+                "shortcut_id": "second",
+                "args": {"port": "443"},
+                "param_bindings": {"host": "prev.outputs.host"},
+                "input_binding": "prev.stdout",
+            },
+        ],
+    )
+    seen = []
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            seen.append(
+                (
+                    shortcut.id,
+                    getattr(shortcut, "_runtime_param_values", {}),
+                    getattr(shortcut, "_runtime_input_values", {}),
+                )
+            )
+            if shortcut.id == "first":
+                return CommandResult(
+                    success=True,
+                    message="done",
+                    display_type="log",
+                    payload={"stdout": "raw", "outputs": {"host": "example.com"}},
+                )
+            return CommandResult(success=True, message="ok", display_type="log", payload={"stdout": "ok"})
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([first, second]))
+
+    assert result.success is True
+    assert seen[1][1] == {"port": "443", "host": "example.com"}
+    assert seen[1][2] == {"input": "raw"}
+
+
+def test_chain_bound_params_are_validated_by_command_runtime(monkeypatch):
+    import core.shortcut_command_exec as command_exec
+
+    target = ShortcutItem(
+        id="target",
+        name="Target",
+        type=ShortcutType.COMMAND,
+        command="echo ok",
+        command_type="cmd",
+        capture_output=True,
+        command_params=[{"name": "port", "validator": "port", "default": "443"}],
+    )
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[{"shortcut_id": "target", "args": {"port": "0"}}],
+    )
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            return command_exec.CommandExecutionMixin.run_command_capture(shortcut, cancel_event=cancel_event)
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([target]))
+
+    assert result.success is False
+    assert "端口范围" in result.payload["items"][0]["detail"]
+
+
+def test_chain_missing_binding_fails_step(monkeypatch):
+    target = ShortcutItem(id="target", name="Target", type=ShortcutType.FILE)
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[{"shortcut_id": "target", "param_bindings": {"host": "prev.outputs.host"}}],
+    )
+
+    class Executor:
+        @staticmethod
+        def execute(shortcut, force_new=False):
+            raise AssertionError("missing bindings must stop before executing the shortcut")
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([target]))
+
+    assert result.success is False
+    assert "绑定不存在" in result.payload["items"][0]["detail"]
+
+
+def test_chain_rejects_future_step_binding(monkeypatch):
+    first = ShortcutItem(id="first", name="First", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    second = ShortcutItem(id="second", name="Second", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {"shortcut_id": "first", "input_binding": "2.stdout"},
+            {"shortcut_id": "second"},
+        ],
+    )
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            raise AssertionError("future bindings must stop before execution")
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([first, second]))
+
+    assert result.success is False
+    assert "更早的步骤" in result.payload["items"][0]["detail"]
+
+
+def test_chain_processor_node_passes_output_to_later_step(monkeypatch):
+    target = ShortcutItem(id="target", name="Target", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "text_template",
+                "args": {"template": "hello {a}", "a": "world"},
+            },
+            {"shortcut_id": "target", "input_binding": "1.stdout"},
+        ],
+    )
+    seen = []
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            seen.append(getattr(shortcut, "_runtime_input_values", {}))
+            return CommandResult(success=True, message="ok", display_type="log", payload={"stdout": "done"})
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([target]))
+
+    assert result.success is True
+    assert seen == [{"input": "hello world"}]
+
+
+def test_chain_runtime_records_node_snapshots(monkeypatch):
+    target = ShortcutItem(id="target", name="Target", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "id": "node-template",
+                "node_type": "processor",
+                "processor_id": "text_template",
+                "args": {"template": "hello {a}", "a": "world"},
+            },
+            {"id": "node-target", "shortcut_id": "target", "input_binding": "1.stdout"},
+        ],
+    )
+
+    class Executor:
+        @staticmethod
+        def run_command_capture(shortcut, cancel_event=None):
+            return CommandResult(success=True, message="ok", display_type="log", payload={"stdout": "done"})
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([target]))
+    snapshots = result.payload["node_snapshots"]
+
+    assert result.payload["items"][0]["node_id"] == "node-template"
+    assert snapshots["node-template"]["status"] == "ok"
+    assert snapshots["node-template"]["inputs"]["template"] == "hello {a}"
+    assert snapshots["node-template"]["outputs"]["output"] == "hello world"
+    assert snapshots["node-target"]["inputs"]["input"] == "hello world"
+    assert snapshots["node-target"]["outputs"]["stdout"] == "done"
+
+
+def test_file_shortcut_input_opens_bound_files(monkeypatch):
+    target = ShortcutItem(id="target", name="Target", type=ShortcutType.FILE, target_path="app.exe")
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "text_input",
+                "args": {"text": "C:\\Logs\\a.txt\nC:\\Logs\\b.txt"},
+            },
+            {"shortcut_id": "target", "param_bindings": {"open_file": "1.stdout"}},
+        ],
+    )
+    seen = []
+
+    class Executor:
+        @staticmethod
+        def execute_with_files(shortcut, files):
+            seen.append((shortcut.id, files))
+            return True
+
+        @staticmethod
+        def execute(shortcut, force_new=False):
+            raise AssertionError("file input should use execute_with_files")
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([target]))
+
+    assert result.success is True
+    assert seen == [("target", ["C:\\Logs\\a.txt", "C:\\Logs\\b.txt"])]
+    assert "输入文件打开" in result.payload["items"][1]["detail"]
+
+
+def test_chain_processor_assert_failure_respects_stop_on_error(monkeypatch):
+    target = ShortcutItem(id="target", name="Target", type=ShortcutType.FILE)
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {"node_type": "processor", "processor_id": "assert_not_empty", "args": {"text": ""}},
+            {"shortcut_id": "target"},
+        ],
+    )
+
+    class Executor:
+        @staticmethod
+        def execute(shortcut, force_new=False):
+            raise AssertionError("stop_on_error should prevent target execution")
+
+    monkeypatch.setattr("core.ShortcutExecutor", Executor)
+
+    result = execute_shortcut_chain(chain, _Data([target]))
+
+    assert result.success is False
+    assert len(result.payload["items"]) == 1
+
+
+def test_python_processor_custom_output_and_multi_input_bindings():
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "python_cell",
+                "source": 'INPUTS=[]\nOUTPUTS=["foo"]\ndef process(inputs):\n    return {"foo": "A"}\n',
+            },
+            {
+                "node_type": "processor",
+                "processor_id": "python_cell",
+                "source": 'INPUTS=[]\nOUTPUTS=["bar"]\ndef process(inputs):\n    return {"bar": "B"}\n',
+            },
+            {
+                "node_type": "processor",
+                "processor_id": "python_cell",
+                "input_binding": ["1.outputs.foo", "2.outputs.bar"],
+                "source": (
+                    'INPUTS=["input"]\nOUTPUTS=["joined"]\n'
+                    'def process(inputs):\n'
+                    '    return {"joined": ",".join(inputs["input"])}\n'
+                ),
+            },
+        ],
+    )
+
+    result = execute_shortcut_chain(chain, _Data([]))
+
+    assert result.success is True
+    assert "A,B" in result.payload["items"][2]["detail"]
+
+
 def test_chain_guards_nested_missing_max_and_cancel(monkeypatch):
     nested = ShortcutItem(id="nested", name="Nested", type=ShortcutType.CHAIN)
     chain = ShortcutItem(type=ShortcutType.CHAIN)
     chain.chain_steps = [{"shortcut_id": "nested"}]
     result = execute_shortcut_chain(chain, _Data([nested]))
     assert result.success is False
-    assert "Nested" in result.payload["items"][0]["detail"]
+    assert "嵌套" in result.payload["items"][0]["detail"]
 
     missing = ShortcutItem(type=ShortcutType.CHAIN, chain_steps=[{"shortcut_id": "missing"}])
     result = execute_shortcut_chain(missing, _Data([]))
     assert result.success is False
-    assert "not found" in result.payload["items"][0]["detail"]
+    assert "不存在" in result.payload["items"][0]["detail"]
 
     too_many = ShortcutItem(type=ShortcutType.CHAIN)
     too_many.chain_steps = [{"shortcut_id": "missing", "stop_on_error": False} for _ in range(51)]
     result = execute_shortcut_chain(too_many, _Data([]), max_steps=50)
     assert result.success is False
-    assert "more than 50" in result.payload["items"][0]["detail"]
+    assert "超过 50" in result.payload["items"][0]["detail"]
 
     event = threading.Event()
     event.set()
     cancelled = ShortcutItem(type=ShortcutType.CHAIN, chain_steps=[{"shortcut_id": "missing"}])
     result = execute_shortcut_chain(cancelled, _Data([]), cancel_event=event)
     assert result.success is False
-    assert result.error == "Cancelled"
+    assert result.error == "已取消"
 
 
 def test_empty_chain_returns_failure():
@@ -242,7 +525,16 @@ def test_chain_to_dict_from_dict_roundtrip():
     """复杂动作链的序列化往返应保持一致。"""
     item = ShortcutItem(type=ShortcutType.CHAIN, name="Test Chain")
     item.chain_steps = [
-        {"id": "s1", "shortcut_id": "aaa", "enabled": True, "stop_on_error": True, "delay_ms": 100},
+        {
+            "id": "s1",
+            "shortcut_id": "aaa",
+            "enabled": True,
+            "stop_on_error": True,
+            "delay_ms": 100,
+            "input_binding": "prev.output",
+            "param_bindings": {"host": "prev.outputs.host"},
+            "args": {"port": "443"},
+        },
         {"id": "s2", "shortcut_id": "bbb", "enabled": False, "stop_on_error": False, "delay_ms": 0},
         {"id": "s3", "shortcut_id": "ccc", "enabled": True, "stop_on_error": True, "delay_ms": 500},
     ]
@@ -252,6 +544,9 @@ def test_chain_to_dict_from_dict_roundtrip():
     assert len(loaded.chain_steps) == 3
     assert loaded.chain_steps[0]["shortcut_id"] == "aaa"
     assert loaded.chain_steps[0]["delay_ms"] == 100
+    assert loaded.chain_steps[0]["input_binding"] == "prev.output"
+    assert loaded.chain_steps[0]["param_bindings"] == {"host": "prev.outputs.host"}
+    assert loaded.chain_steps[0]["args"] == {"port": "443"}
     assert loaded.chain_steps[1]["enabled"] is False
     assert loaded.chain_steps[1]["stop_on_error"] is False
     assert loaded.chain_steps[2]["delay_ms"] == 500

@@ -15,39 +15,11 @@ def test_parse_command_params_text_normalizes_rows():
         path,unknown,false,,
         """)
 
-    assert params == [
-        {
-            "name": "host",
-            "type": "choice",
-            "required": True,
-            "default": "prod",
-            "choices": ["prod", "stage"],
-            "sensitive": False,
-        },
-        {
-            "name": "flag",
-            "type": "bool",
-            "required": True,
-            "default": "true",
-            "choices": [],
-            "sensitive": False,
-        },
-        {
-            "name": "ignored",
-            "type": "text",
-            "required": False,
-            "default": "",
-            "choices": [],
-            "sensitive": False,
-        },
-        {
-            "name": "path",
-            "type": "text",
-            "required": False,
-            "default": "",
-            "choices": [],
-            "sensitive": False,
-        },
+    assert [(param["name"], param["type"], param["required"], param["default"], param["choices"]) for param in params] == [
+        ("host", "choice", True, "prod", ["prod", "stage"]),
+        ("flag", "bool", True, "true", []),
+        ("ignored", "text", False, "", []),
+        ("path", "text", False, "", []),
     ]
 
 
@@ -57,15 +29,8 @@ def test_parse_command_params_text_skips_empty_names_and_supports_chinese_requir
         user,text,必填,guest,
         """)
 
-    assert params == [
-        {
-            "name": "user",
-            "type": "text",
-            "required": True,
-            "default": "guest",
-            "choices": [],
-            "sensitive": False,
-        }
+    assert [(param["name"], param["type"], param["required"], param["default"]) for param in params] == [
+        ("user", "text", True, "guest")
     ]
 
 
@@ -95,6 +60,30 @@ def test_parse_and_format_command_env_text():
         """) == {"API_KEY": "secret", "EMPTY": ""}
     assert format_command_env({"A": 1, " B ": "two", "": "skip", "C": None}) == "A=1\n B =two\nC=None"
     assert format_command_env(["not", "dict"]) == ""
+
+
+def test_parse_and_format_command_params_json_lines():
+    text = format_command_params(
+        [
+            {
+                "name": "body",
+                "type": "textarea",
+                "label": "Body",
+                "source": "clipboard",
+                "validator": "json",
+                "multiline": True,
+            }
+        ]
+    )
+
+    assert text.startswith("{")
+    parsed = parse_command_params_text(text)
+    assert parsed[0]["name"] == "body"
+    assert parsed[0]["type"] == "textarea"
+    assert parsed[0]["label"] == "Body"
+    assert parsed[0]["source"] == "clipboard"
+    assert parsed[0]["validator"] == "json"
+    assert parsed[0]["multiline"] is True
 
 
 def test_command_dialog_static_helpers_delegate_to_profile_helpers():

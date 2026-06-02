@@ -42,6 +42,17 @@ class CommandParam:
     default: str = ""
     choices: list[str] = field(default_factory=list)
     sensitive: bool = False
+    label: str = ""
+    placeholder: str = ""
+    help: str = ""
+    multiline: bool = False
+    remember: bool = True
+    source: str = ""
+    validator: str = ""
+    pattern: str = ""
+    min_value: str = ""
+    max_value: str = ""
+    advanced: bool = False
 
 
 @dataclass

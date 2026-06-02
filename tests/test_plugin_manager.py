@@ -335,6 +335,28 @@ def register(api):
     api.register_search_source("search_plugin_search", search)
 """
 
+_SAMPLE_MAIN_CHAIN_PROCESSOR = """\
+def reverse_text(args):
+    text = str(args.get("text", ""))
+    return {"outputs": {"output": text[::-1], "length": str(len(text))}}
+
+def register(api):
+    assert api.register_chain_processor(
+        {
+            "id": "reverse_text",
+            "title": "反转文本",
+            "category": "插件电池",
+            "description": "反转输入文本。",
+            "inputs": [{"id": "text", "kind": "text", "required": True}],
+            "outputs": [{"id": "output", "kind": "text"}, {"id": "length", "kind": "number"}],
+            "params": [{"id": "text", "kind": "text", "required": True}],
+            "safety": {"level": "safe", "capability": "chain.processor.chain_tools_reverse_text"},
+            "examples": [{"title": "反转文本示例", "args": {"text": "abc"}}],
+        },
+        reverse_text,
+    )
+"""
+
 
 class TestPluginManagerLoad:
     def test_load_and_enable_plugin(self):
@@ -364,6 +386,32 @@ class TestPluginManagerLoad:
             assert reg.get("sample.hello") is None
             info = pm.get_plugin("sample")
             assert info.status == "disabled"
+
+    def test_plugin_can_register_and_cleanup_chain_processor(self):
+        from core.chain_processors import execute_chain_processor, processor_definition
+
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "chain_tools", main_py=_SAMPLE_MAIN_CHAIN_PROCESSOR)
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.enable_plugin("chain_tools")
+            info = pm.get_plugin("chain_tools")
+            assert "chain_tools_reverse_text" in info.registered_chain_processors
+            definition = processor_definition("chain_tools_reverse_text")
+            assert definition is not None
+            assert definition.title == "反转文本"
+            result = execute_chain_processor("chain_tools_reverse_text", {"text": "abc"})
+            assert result.success is True
+            assert result.message == "cba"
+            assert result.payload["outputs"]["length"] == "3"
+
+            assert pm.disable_plugin("chain_tools")
+            assert processor_definition("chain_tools_reverse_text") is None
+            result = execute_chain_processor("chain_tools_reverse_text", {"text": "abc"})
+            assert result.success is False
+            assert result.error == "Unknown processor"
 
     def test_load_error_plugin(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -694,6 +742,39 @@ class TestPluginAPI:
         assert [p.name for p in cmd.params] == ["name", "mode"]
         assert cmd.params[1].choices == ["a", "b"]
 
+    def test_register_chain_processor_api(self):
+        from core.chain_processors import (
+            execute_chain_processor,
+            processor_definition,
+            unregister_external_processors,
+        )
+
+        unregister_external_processors("my_plugin")
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+        ok = api.register_chain_processor(
+            {
+                "id": "slugify",
+                "title": "Slugify",
+                "category": "插件电池",
+                "inputs": [{"id": "text", "kind": "text"}],
+                "outputs": [{"id": "output", "kind": "text"}],
+                "params": [{"id": "text", "kind": "text"}],
+                "safety": {"level": "safe", "capability": "chain.processor.my_plugin_slugify"},
+                "examples": [{"title": "Slugify 示例", "args": {"text": "Hello World"}}],
+            },
+            lambda args: {"outputs": {"output": str(args.get("text", "")).lower().replace(" ", "-")}},
+        )
+
+        assert ok is True
+        assert processor_definition("my_plugin_slugify") is not None
+        result = execute_chain_processor("my_plugin_slugify", {"text": "Hello World"})
+        assert result.success is True
+        assert result.message == "hello-world"
+        assert result.payload["outputs"]["output"] == "hello-world"
+        unregister_external_processors("my_plugin")
+        assert processor_definition("my_plugin_slugify") is None
+
     def test_permission_check(self):
         api = PluginAPI("test", os.getcwd(), ["clipboard.read"], CommandRegistry())
         api._check_permission("clipboard.read")
@@ -937,6 +1018,31 @@ class TestPluginAPI:
         assert result.actions[0].danger is True
         assert result.actions[0].primary is True
         assert result.actions[0].payload == {"source": "test"}
+
+    def test_wrap_handler_filters_unsafe_actions_and_truncates_labels(self):
+        reg = CommandRegistry()
+        api = PluginAPI("test", os.getcwd(), [], reg)
+        ok = api.register_command(
+            id="test.unsafe_actions",
+            title="Actions",
+            aliases=["actions"],
+            description="",
+            category="test",
+            handler=lambda ctx: {
+                "success": True,
+                "actions": [
+                    {"type": "open_url", "label": "Bad", "value": "javascript:alert(1)"},
+                    {"type": "copy", "label": "L" * 200, "value": "ok"},
+                    {"type": "unknown", "label": "Unknown", "value": "x"},
+                ],
+            },
+        )
+        assert ok is True
+        assert api.commit_staged() is True
+        result = reg.get("test.unsafe_actions").handler(CommandContext())
+        assert len(result.actions) == 1
+        assert result.actions[0].type == "copy"
+        assert len(result.actions[0].label) == 80
 
     def test_wrap_handler_none_return(self):
         """Plugin handlers returning None should produce error result."""

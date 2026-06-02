@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .command_registry import CommandDefinition
+from .command_registry import CommandDefinition, CommandParam
 from .commands import (
     cmd_base64,
     cmd_cidr,
@@ -134,6 +134,23 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             description="计算文本哈希",
             category="developer",
             handler=cmd_hash,
+            params=[
+                CommandParam(
+                    name="file",
+                    type="file",
+                    required=True,
+                    source="selected_file",
+                    label="文件",
+                    validator="file",
+                ),
+                CommandParam(
+                    name="algorithm",
+                    type="choice",
+                    default="sha256",
+                    choices=["md5", "sha1", "sha256", "sha512"],
+                    label="算法",
+                ),
+            ],
         ),
         CommandDefinition(
             id="qr",
@@ -150,6 +167,16 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             description="JSON 格式化、压缩与校验",
             category="developer",
             handler=cmd_json,
+            params=[
+                CommandParam(name="text", type="textarea", source="clipboard", label="JSON", multiline=True),
+                CommandParam(
+                    name="mode",
+                    type="choice",
+                    default="format",
+                    choices=["format", "minify", "validate"],
+                    label="模式",
+                ),
+            ],
         ),
         CommandDefinition(
             id="jwt",
@@ -158,6 +185,7 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             description="解码 JWT Header 与 Payload（不验证签名）",
             category="developer",
             handler=cmd_jwt,
+            params=[CommandParam(name="token", type="textarea", source="clipboard", label="Token", multiline=True)],
         ),
         CommandDefinition(
             id="netdiag",
@@ -182,6 +210,10 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             description="检查域名 TLS 协议、证书颁发者与到期时间",
             category="network",
             handler=cmd_tls,
+            params=[
+                CommandParam(name="host", type="text", required=True, label="域名", validator="domain"),
+                CommandParam(name="port", type="number", default="443", label="端口", validator="port"),
+            ],
         ),
         CommandDefinition(
             id="path-audit",
@@ -263,6 +295,10 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             description="查询端口占用情况",
             category="developer",
             handler=cmd_port,
+            params=[
+                CommandParam(name="port", type="number", required=True, label="端口", validator="port"),
+                CommandParam(name="action", type="choice", default="query", choices=["query", "kill"], label="动作"),
+            ],
         ),
         CommandDefinition(
             id="dns",

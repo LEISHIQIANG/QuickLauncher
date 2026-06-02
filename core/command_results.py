@@ -20,6 +20,11 @@ class StoredCommandResult:
     created_at: float = 0.0
     duration: float = 0.0
     result: CommandResult = field(default_factory=CommandResult)
+    args: dict[str, str] = field(default_factory=dict)
+    masked_args: dict[str, str] = field(default_factory=dict)
+    has_sensitive_args: bool = False
+    context_meta: dict = field(default_factory=dict)
+    outputs: dict[str, str] = field(default_factory=dict)
 
 
 class CommandResultStore:
@@ -41,6 +46,11 @@ class CommandResultStore:
             created_at=float(meta.get("created_at") or time.time()),
             duration=float(meta.get("duration") or 0.0),
             result=result,
+            args={str(k): str(v) for k, v in dict(meta.get("args") or {}).items()},
+            masked_args={str(k): str(v) for k, v in dict(meta.get("masked_args") or {}).items()},
+            has_sensitive_args=bool(meta.get("has_sensitive_args", False)),
+            context_meta=dict(meta.get("context_meta") or {}),
+            outputs={str(k): str(v) for k, v in dict(meta.get("outputs") or {}).items()},
         )
         with self._lock:
             self._items.insert(0, item)

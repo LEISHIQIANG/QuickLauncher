@@ -2,7 +2,7 @@ import threading
 import time
 
 from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
-from core.command_registry import CommandDefinition, CommandResult
+from core.command_registry import CommandDefinition, CommandParam, CommandResult
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem, ShortcutType
 
@@ -186,3 +186,69 @@ def test_shortcut_command_routes_bash_capture_to_capture_runner(monkeypatch):
     assert done.wait(2)
     assert seen == [("bash", True)]
     assert results[0].message == "bash done"
+
+
+def test_registry_command_runtime_param_validation_blocks_handler():
+    called = []
+    done = threading.Event()
+    results = []
+    cmd = CommandDefinition(
+        id="net.port",
+        title="Port",
+        aliases=[],
+        description="",
+        category="",
+        handler=lambda ctx: (called.append(True), CommandResult(message="bad"))[1],
+        params=[CommandParam(name="port", validator="port", required=True)],
+    )
+    service = CommandExecutionService(CommandResultStore())
+
+    service.run_registry_command(
+        CommandExecutionRequest(command_id="net.port", command_def=cmd, args={"port": "0"}),
+        on_finished=lambda token, result, command_def, duration, result_id: (results.append(result), done.set()),
+    )
+
+    assert done.wait(2)
+    assert called == []
+    assert results[0].success is False
+    assert results[0].display_type == "list"
+    assert "端口范围" in results[0].message
+
+
+def test_registry_command_receives_full_invocation_context():
+    done = threading.Event()
+    seen = {}
+
+    def handler(ctx):
+        seen.update(
+            {
+                "clipboard_kind": ctx.clipboard_kind,
+                "clipboard_files": ctx.clipboard_files,
+                "clipboard_html": ctx.clipboard_html,
+                "selected_text_method": ctx.selected_text_method,
+            }
+        )
+        return CommandResult(message="ok")
+
+    service = CommandExecutionService(CommandResultStore())
+    service.run_registry_command(
+        CommandExecutionRequest(
+            command_id="ctx",
+            command_def=_cmd("ctx", handler),
+            context_meta={
+                "clipboard_kind": "file_list",
+                "clipboard_files": ["C:/a.txt"],
+                "clipboard_html": "<b>x</b>",
+                "selected_text_method": "uia",
+            },
+        ),
+        on_finished=lambda *args: done.set(),
+    )
+
+    assert done.wait(2)
+    assert seen == {
+        "clipboard_kind": "file_list",
+        "clipboard_files": ["C:/a.txt"],
+        "clipboard_html": "<b>x</b>",
+        "selected_text_method": "uia",
+    }

@@ -5,19 +5,23 @@ from __future__ import annotations
 import copy
 import logging
 import os
-import uuid
 
 from core import ShortcutItem, ShortcutType
+from core.chain_processors import processor_definition
 from core.i18n import tr
 from qt_compat import (
     QCheckBox,
     QColor,
+    QEvent,
     QFont,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPainter,
     QPixmap,
     QPlainTextEdit,
@@ -25,6 +29,7 @@ from qt_compat import (
     QScrollArea,
     QSpinBox,
     Qt,
+    QTabWidget,
     QtCompat,
     QThread,
     QTimer,
@@ -35,6 +40,7 @@ from qt_compat import (
 from ui.styles.style import Colors, Glassmorphism, PopupMenu
 
 from .base_dialog import BaseDialog
+from .chain_canvas import ChainCanvasWidget, NodePropertyPanel, canvas_from_steps, processor_library_items
 from .icon_browse_helper import choose_custom_icon
 from .theme_helper import get_small_checkbox_stylesheet
 
@@ -238,6 +244,71 @@ class StepCardWidget(QFrame):
             parent._show_step_context_menu(self.step_index, event.globalPos())
 
 
+class GrasshopperGroupWidget(QWidget):
+    """Grasshopper 风格的二级属性/电池组团控件，支持 2 行紧凑排布和底部微型标签。"""
+    def __init__(self, title: str, theme: str = "dark", parent=None):
+        super().__init__(parent)
+        self.setObjectName("GrasshopperGroup")
+
+        # 布局：垂直紧凑
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 4, 6, 2)
+        layout.setSpacing(2)
+
+        # 2行格栅布局放置电池按钮
+        self.grid_layout = QGridLayout()
+        self.grid_layout.setContentsMargins(0, 0, 0, 0)
+        self.grid_layout.setSpacing(4)
+        layout.addLayout(self.grid_layout)
+
+        # 底部小文字标题标签
+        self.label = QLabel(title)
+        self.label.setAlignment(Qt.AlignCenter)
+
+        # 配色与分割线样式
+        if theme == "dark":
+            border_color = "rgba(255, 255, 255, 15)"
+            bg_color = "rgba(255, 255, 255, 4)"
+            label_color = "rgba(255, 255, 255, 120)"
+            line_color = "rgba(255, 255, 255, 20)"
+        else:
+            border_color = "rgba(0, 0, 0, 15)"
+            bg_color = "rgba(0, 0, 0, 3)"
+            label_color = "rgba(0, 0, 0, 130)"
+            line_color = "rgba(0, 0, 0, 15)"
+
+        self.label.setStyleSheet(f"""
+            QLabel {{
+                color: {label_color};
+                font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+                font-size: 9px;
+                font-weight: bold;
+                background: transparent;
+                padding-top: 2px;
+                border-top: 1px solid {line_color};
+            }}
+        """)
+        layout.addWidget(self.label)
+
+        self.setStyleSheet(f"""
+            QWidget#GrasshopperGroup {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 4px;
+            }}
+        """)
+        self.setFixedHeight(102)
+
+        self._button_count = 0
+
+    def add_button(self, button: QPushButton):
+        # 采用上下三排的形式摆放 (row=0, row=1, row=2)
+        row = self._button_count % 3
+        col = self._button_count // 3
+        self.grid_layout.addWidget(button, row, col)
+        self._button_count += 1
+
+
 class ChainDialog(BaseDialog):
     """动作链编辑对话框 — 左右两栏布局。"""
 
@@ -246,7 +317,9 @@ class ChainDialog(BaseDialog):
         self.shortcut = shortcut or ShortcutItem(type=ShortcutType.CHAIN, name=tr("动作链"))
         self._steps = copy.deepcopy(list(getattr(self.shortcut, "chain_steps", []) or []))
         self._available = self._collect_available_shortcuts()
+        self._canvas_data = copy.deepcopy(getattr(self.shortcut, "chain_canvas", {}) or {})
         self._selected_index = -1
+        self._binding_loading = False
         self._test_thread = None
         self._last_test_result = None
         self._closing_with_animation = False
@@ -260,6 +333,30 @@ class ChainDialog(BaseDialog):
         self._apply_theme()
         self._load_data()
         self._refresh_risk_analysis()
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Wheel:
+            # 获取当前活动的 Tab 页面
+            active_page = self.module_tabs.currentWidget()
+            if active_page:
+                scroll_area = active_page.findChild(QScrollArea)
+                if scroll_area:
+                    hbar = scroll_area.horizontalScrollBar()
+                    if hbar and hbar.isEnabled():
+                        # 获取滚轮滚动的垂直 delta (大多数鼠标垂直滚动)
+                        delta = event.angleDelta().y()
+                        if delta == 0:
+                            # 兼容某些水平滚动的触控板
+                            delta = event.angleDelta().x()
+
+                        # 换算为滚动步长并进行横向滚动
+                        num_steps = delta / 120.0
+                        # 每次滚动 4 个单步，横向滚动极其顺滑
+                        scroll_amount = hbar.singleStep() * 4
+                        hbar.setValue(int(hbar.value() - num_steps * scroll_amount))
+                        event.accept()
+                        return True
+        return super().eventFilter(watched, event)
 
     def done(self, result):
         if getattr(self, "_closing_with_animation", False):
@@ -315,43 +412,44 @@ class ChainDialog(BaseDialog):
         root.setContentsMargins(8, 8, 8, 8)
 
         # 顶部标题
-        title_label = QLabel(tr("编辑动作链") if self.shortcut.name else tr("新建动作链"))
-        title_label.setStyleSheet(
+        self.title_label = QLabel(tr("编辑动作链") if self.shortcut.name else tr("新建动作链"))
+        self.title_label.setStyleSheet(
             "font-size: 12px; font-weight: 400; color: gray; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
         )
-        root.addWidget(title_label)
+        root.addWidget(self.title_label)
 
-        # 左右分栏
+        self.module_tabs = self._build_module_bar()
+        root.addWidget(self.module_tabs)
+        root.addLayout(self._build_quick_add_bar())
+
+        # 安装事件过滤器，使用滚轮在标题栏和标签栏上滚动时进行横向滚动
+        self.title_label.installEventFilter(self)
+        self.module_tabs.installEventFilter(self)
+        if self.module_tabs.tabBar():
+            self.module_tabs.tabBar().installEventFilter(self)
+
+        # 节点画布两栏：画布 / 属性与结果
         body = QHBoxLayout()
         body.setSpacing(8)
-        body.addLayout(self._build_left_panel(), 3)
+        body.addLayout(self._build_canvas_panel(), 6)
         body.addLayout(self._build_right_panel(), 2)
         root.addLayout(body, 1)
 
-        # 底部按钮行 — 与 body 同比例 (3:2)，5 按钮总宽 = 左栏宽
         from qt_compat import QSizePolicy
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        # 左侧：5 个类型快捷添加按钮 + 测试运行，stretch 3
+        # 左侧测试运行
         ops_layout = QHBoxLayout()
         ops_layout.setSpacing(4)
         ops_layout.setContentsMargins(0, 0, 0, 0)
-        self.file_btn = QPushButton(tr("快捷应用"))
-        self.file_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.FILE))
-        self.cmd_btn = QPushButton(tr("代码命令"))
-        self.cmd_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.COMMAND))
-        self.hotkey_btn = QPushButton(tr("快捷键"))
-        self.hotkey_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.HOTKEY))
-        self.url_btn = QPushButton(tr("打开网站"))
-        self.url_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.URL))
         self.test_btn = QPushButton(tr("测试运行"))
         self.test_btn.clicked.connect(self._run_test)
-        for b in (self.file_btn, self.cmd_btn, self.hotkey_btn, self.url_btn, self.test_btn):
+        for b in (self.test_btn,):
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             ops_layout.addWidget(b, 1)
-        btn_row.addLayout(ops_layout, 3)
+        btn_row.addLayout(ops_layout, 6)
 
         # 右侧：取消/保存，stretch 2
         right_btn_layout = QHBoxLayout()
@@ -366,6 +464,336 @@ class ChainDialog(BaseDialog):
         btn_row.addLayout(right_btn_layout, 2)
 
         root.addLayout(btn_row)
+
+    def _build_quick_add_bar(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(tr("搜索添加:"))
+        self.quick_add_edit = QLineEdit()
+        self.quick_add_edit.setPlaceholderText(tr("输入电池、快捷方式、命令或网址名称"))
+        self.quick_add_edit.textChanged.connect(self._refresh_quick_add_hint)
+        self.quick_add_edit.returnPressed.connect(self._quick_add_first_match)
+        self.quick_add_hint = QLabel("")
+        self.quick_add_hint.setMinimumWidth(180)
+        self.quick_add_hint.setStyleSheet("color: rgba(128,128,128,180); font-size: 11px;")
+        self.quick_add_btn = QPushButton(tr("添加"))
+        self.quick_add_btn.clicked.connect(self._quick_add_first_match)
+        row.addWidget(label)
+        row.addWidget(self.quick_add_edit, 1)
+        row.addWidget(self.quick_add_hint)
+        row.addWidget(self.quick_add_btn)
+        return row
+
+    def _build_module_bar(self) -> QTabWidget:
+        tabs = QTabWidget()
+        # 三排 Grasshopper 图标菜单高度设为 138px，比例极其精致
+        tabs.setFixedHeight(138)
+        self._module_buttons = []
+
+        # 获取当前主题，以完美适配明暗主题配色
+        theme = "dark"
+        try:
+            parent = self.parent()
+            data_manager = getattr(parent, "data_manager", None)
+            if data_manager is not None:
+                settings = data_manager.get_settings()
+                if settings is not None:
+                    theme = settings.theme
+        except Exception:
+            pass
+
+        # 初始化这些按钮属性以保证完美的向后兼容（防止 AttributeError）
+        self.file_btn = QPushButton()
+        self.folder_btn = QPushButton()
+        self.url_btn = QPushButton()
+        self.hotkey_btn = QPushButton()
+        self.cmd_btn = QPushButton()
+        self.processor_btn = QPushButton()
+
+        # 1. QL图标 Tab
+        tabs.addTab(self._ql_icons_page(theme), tr("QL图标"))
+
+        # 2. 输入与调试 Tab
+        tabs.addTab(
+            self._processor_page(
+                tr("输入与调试"),
+                ["panel_node", "text_input", "num_input", "bool_value", "python_cell", "logger_node", "sleep_node"],
+                theme,
+            ),
+            tr("输入调试"),
+        )
+
+        # 3. 逻辑 Tab
+        tabs.addTab(
+            self._processor_page(
+                tr("判断与逻辑"),
+                [
+                    "assert_not_empty",
+                    "coalesce_value",
+                    "type_convert",
+                    "conditional_branch",
+                    "compare_value",
+                    "if_else",
+                    "bool_not",
+                    "bool_and",
+                    "bool_or",
+                    "bool_xor",
+                ],
+                theme,
+            ),
+            tr("逻辑"),
+        )
+
+        # 4. 文本处理 Tab
+        tabs.addTab(
+            self._processor_page(
+                tr("文本"),
+                [
+                    "text_template",
+                    "text_replace",
+                    "text_slice",
+                    "regex_extract",
+                    "text_case",
+                    "text_join",
+                    "text_len",
+                    "text_split",
+                    "text_lines",
+                ],
+                theme,
+            ),
+            tr("文本"),
+        )
+
+        # 5. 列表与数学 Tab
+        tabs.addTab(self._math_page(theme), tr("列表数学"))
+
+        # 6. 结构化文本 Tab
+        tabs.addTab(
+            self._processor_page(
+                tr("结构化文本"),
+                ["json_get", "json_set", "json_parse", "url_encode", "http_get", "http_post", "http_download"],
+                theme,
+            ),
+            tr("结构化"),
+        )
+
+        # 7. 文件路径 Tab
+        tabs.addTab(
+            self._processor_page(
+                tr("文件路径"),
+                [
+                    "file_path_input",
+                    "folder_path_input",
+                    "path_join",
+                    "path_split",
+                    "path_exists",
+                    "folder_create",
+                    "file_read_text",
+                    "file_write_text",
+                ],
+                theme,
+            ),
+            tr("文件路径"),
+        )
+
+        # 8. 图像处理 Tab
+        tabs.addTab(self._processor_page(tr("图像"), ["img_resize", "img_convert", "img_watermark", "img_crop", "img_rotate"], theme), tr("图像处理"))
+
+        return tabs
+
+    def _ql_icons_page(self, theme: str) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        bar = QWidget()
+        bar.setFixedHeight(102)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(18)  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
+
+        # 分组组团数据提取
+        urls = [it for it in self._available if it.type == ShortcutType.URL]
+        commands = [it for it in self._available if it.type == ShortcutType.COMMAND]
+        apps = [it for it in self._available if it.type in (ShortcutType.FILE, ShortcutType.FOLDER, ShortcutType.HOTKEY)]
+
+        def create_sep():
+            sep = QFrame()
+            sep.setFrameShape(QFrame.VLine)
+            if theme == "dark":
+                sep.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+            else:
+                sep.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+            return sep
+
+        # 1. 网址组团
+        url_group = GrasshopperGroupWidget(tr("网址"), theme)
+        for item in urls:
+            btn = self._make_module_button(item.name or item.id, lambda _=False, it=item: self._add_step(it))
+            url_group.add_button(btn)
+        if not urls:
+            lbl = QLabel(tr("暂无网址"))
+            lbl.setStyleSheet("color: #888; font-size: 10px; padding: 4px;")
+            url_group.grid_layout.addWidget(lbl, 0, 0)
+        layout.addWidget(url_group)
+
+        layout.addWidget(create_sep())
+
+        # 2. 命令组团
+        cmd_group = GrasshopperGroupWidget(tr("命令"), theme)
+        for item in commands:
+            btn = self._make_module_button(item.name or item.id, lambda _=False, it=item: self._add_step(it))
+            cmd_group.add_button(btn)
+        if not commands:
+            lbl = QLabel(tr("暂无命令"))
+            lbl.setStyleSheet("color: #888; font-size: 10px; padding: 4px;")
+            cmd_group.grid_layout.addWidget(lbl, 0, 0)
+        layout.addWidget(cmd_group)
+
+        layout.addWidget(create_sep())
+
+        # 3. 快捷方式组团
+        app_group = GrasshopperGroupWidget(tr("快捷方式"), theme)
+        for item in apps:
+            btn = self._make_module_button(item.name or item.id, lambda _=False, it=item: self._add_step(it))
+            app_group.add_button(btn)
+        if not apps:
+            lbl = QLabel(tr("暂无快捷方式"))
+            lbl.setStyleSheet("color: #888; font-size: 10px; padding: 4px;")
+            app_group.grid_layout.addWidget(lbl, 0, 0)
+        layout.addWidget(app_group)
+
+        layout.addStretch()
+        scroll.setWidget(bar)
+        outer.addWidget(scroll)
+        return page
+
+    def _processor_page(self, title: str, processor_ids: list[str], theme: str) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        bar = QWidget()
+        bar.setFixedHeight(102)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(18)  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
+
+        if not processor_ids:
+            # 提示无电池，契合后期补齐的设计
+            lbl = QLabel(tr("暂无可添加处理器电池"))
+            lbl.setStyleSheet("color: #888; font-size: 11px; padding: 12px; font-style: italic;")
+            layout.addWidget(lbl)
+        else:
+            group = GrasshopperGroupWidget(title, theme)
+            for pid in processor_ids:
+                from core.chain_processors import processor_title
+                p_title = processor_title(pid)
+                btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+                group.add_button(btn)
+            layout.addWidget(group)
+
+        layout.addStretch()
+        scroll.setWidget(bar)
+        outer.addWidget(scroll)
+        return page
+
+    def _math_page(self, theme: str) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        bar = QWidget()
+        bar.setFixedHeight(102)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(18)  # 组团之间采用 18px 优雅间距区分
+
+        def create_sep():
+            sep = QFrame()
+            sep.setFrameShape(QFrame.VLine)
+            if theme == "dark":
+                sep.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+            else:
+                sep.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+            return sep
+
+        from core.chain_processors import processor_title
+
+        # 1. 数字与运算组团
+        math_group = GrasshopperGroupWidget(tr("数字与运算"), theme)
+        math_pids = ["num_input", "math_add", "math_sub", "math_mul", "math_div", "math_pow", "math_mod"]
+        for pid in math_pids:
+            p_title = processor_title(pid)
+            btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+            math_group.add_button(btn)
+        layout.addWidget(math_group)
+
+        layout.addWidget(create_sep())
+
+        # 2. 数列与列表组团
+        list_group = GrasshopperGroupWidget(tr("数列与列表"), theme)
+        list_pids = [
+            "series_arith",
+            "series_geom",
+            "list_create",
+            "list_item",
+            "list_len",
+            "list_rev",
+            "list_unique",
+            "list_sort",
+            "list_filter",
+            "list_contains",
+            "list_template",
+        ]
+        for pid in list_pids:
+            p_title = processor_title(pid)
+            btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+            list_group.add_button(btn)
+        layout.addWidget(list_group)
+
+        layout.addWidget(create_sep())
+
+        # 3. 进制转换组团
+        base_group = GrasshopperGroupWidget(tr("进制转换"), theme)
+        base_pids = ["base_convert", "dec_to_hex", "hex_to_dec"]
+        for pid in base_pids:
+            p_title = processor_title(pid)
+            btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+            base_group.add_button(btn)
+        layout.addWidget(base_group)
+
+        layout.addStretch()
+        scroll.setWidget(bar)
+        outer.addWidget(scroll)
+        return page
+
+    def _make_module_button(self, title: str, callback) -> QPushButton:
+        btn = QPushButton(title)
+        # 草蜢式的精美小电池按纽 (固定为宽 76px，高 24px)
+        btn.setFixedSize(76, 24)
+        btn.clicked.connect(callback)
+        self._module_buttons.append(btn)
+        return btn
 
     def _build_left_panel(self) -> QVBoxLayout:
         left = QVBoxLayout()
@@ -456,34 +884,67 @@ class ChainDialog(BaseDialog):
 
         left.addWidget(icon_group)
 
-        # 步骤列表
-        steps_group = QGroupBox(tr("步骤列表"))
-        steps_layout = QVBoxLayout(steps_group)
-        steps_layout.setContentsMargins(4, 4, 4, 4)
+        # 节点库
+        library_group = QGroupBox(tr("节点库"))
+        library_layout = QVBoxLayout(library_group)
+        library_layout.setContentsMargins(6, 4, 6, 6)
+        type_row = QHBoxLayout()
+        self.file_btn = QPushButton(tr("应用"))
+        self.file_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.FILE))
+        self.cmd_btn = QPushButton(tr("命令"))
+        self.cmd_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.COMMAND))
+        self.hotkey_btn = QPushButton(tr("热键"))
+        self.hotkey_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.HOTKEY))
+        self.url_btn = QPushButton(tr("网址"))
+        self.url_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.URL))
+        for btn in (self.file_btn, self.cmd_btn, self.hotkey_btn, self.url_btn):
+            type_row.addWidget(btn)
+        library_layout.addLayout(type_row)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setFrameShape(QFrame.NoFrame)
+        self.processor_list = QListWidget()
+        for processor_id, title in processor_library_items():
+            item = QListWidgetItem(title)
+            item.setData(Qt.UserRole, processor_id)
+            self.processor_list.addItem(item)
+        self.processor_list.itemDoubleClicked.connect(self._add_processor_from_item)
+        library_layout.addWidget(QLabel(tr("处理节点")))
+        library_layout.addWidget(self.processor_list, 1)
+        add_processor_btn = QPushButton(tr("添加处理节点"))
+        add_processor_btn.clicked.connect(self._add_selected_processor)
+        library_layout.addWidget(add_processor_btn)
+        self.processor_btn = add_processor_btn
 
-        self._cards_container = QWidget()
-        self._cards_layout = QVBoxLayout(self._cards_container)
-        self._cards_layout.setContentsMargins(4, 4, 4, 4)
-        self._cards_layout.setSpacing(4)
-        self._cards_layout.addStretch()
-        scroll.setWidget(self._cards_container)
-        steps_layout.addWidget(scroll)
-        self._scroll_area = scroll
-
-        left.addWidget(steps_group, 1)
+        left.addWidget(library_group, 1)
 
         return left
+
+    def _build_canvas_panel(self) -> QVBoxLayout:
+        center = QVBoxLayout()
+        center.setSpacing(4)
+        canvas_group = QGroupBox(tr("节点画布"))
+        canvas_layout = QVBoxLayout(canvas_group)
+        canvas_layout.setContentsMargins(4, 4, 4, 4)
+        self.canvas_widget = ChainCanvasWidget(self._shortcut_map(), self)
+        self.canvas_widget.canvas_changed.connect(self._on_canvas_changed)
+        self.canvas_widget.selection_changed.connect(self._on_canvas_selection_changed)
+        canvas_layout.addWidget(self.canvas_widget)
+        center.addWidget(canvas_group, 1)
+        return center
 
     def _build_right_panel(self) -> QVBoxLayout:
         right = QVBoxLayout()
         right.setSpacing(4)
 
-        # 用 QGroupBox 与左侧"基本设置"对齐
+        self.property_tabs = QTabWidget()
+        self.property_panel = NodePropertyPanel(self)
+        self.property_panel.args_changed.connect(self._on_property_args_changed)
+        self.property_panel.disconnect_requested.connect(self._on_disconnect_requested)
+        self.property_panel.delete_requested.connect(self._remove_step)
+        self.property_panel.edit_source_requested.connect(self._edit_selected_node_source)
+        self.property_tabs.addTab(self.property_panel, tr("节点属性"))
+        self.property_tabs.addTab(self._build_chain_property_panel(), tr("动作链属性"))
+        right.addWidget(self.property_tabs, 1)
+
         result_group = QGroupBox(tr("执行结果"))
         result_layout = QVBoxLayout(result_group)
         result_layout.setContentsMargins(6, 4, 6, 6)
@@ -495,6 +956,79 @@ class ChainDialog(BaseDialog):
 
         right.addWidget(result_group)
         return right
+
+    def _build_chain_property_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+
+        basic = QGroupBox(tr("基本设置"))
+        form = QVBoxLayout(basic)
+        form.setSpacing(4)
+        form.setContentsMargins(8, 4, 8, 6)
+
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel(tr("名称:")))
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText(tr("动作链名称"))
+        name_row.addWidget(self.name_edit, 1)
+        form.addLayout(name_row)
+
+        result_row = QHBoxLayout()
+        result_row.addWidget(QLabel(tr("结果显示:")))
+        self._result_checks: dict[str, QCheckBox] = {}
+        for key in ("none", "small", "medium", "large"):
+            label_map = {"none": tr("无"), "small": tr("小"), "medium": tr("中"), "large": tr("大")}
+            cb = QCheckBox(label_map[key])
+            cb.toggled.connect(lambda checked, k=key: self._on_result_check(k, checked))
+            result_row.addWidget(cb)
+            self._result_checks[key] = cb
+        self._result_checks["medium"].setChecked(True)
+        result_row.addStretch()
+        form.addLayout(result_row)
+        layout.addWidget(basic)
+
+        self._custom_icon_path = getattr(self.shortcut, "icon_path", "") or ""
+        icon_group = QGroupBox(tr("图标"))
+        icon_layout = QVBoxLayout(icon_group)
+        icon_layout.setSpacing(6)
+        icon_layout.setContentsMargins(6, 4, 6, 6)
+
+        preview_row = QHBoxLayout()
+        self.icon_preview = QLabel()
+        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setAlignment(QtCompat.AlignCenter)
+        self.icon_preview.setStyleSheet(
+            "QLabel { background-color: rgba(255, 255, 255, 0.1); "
+            "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
+        )
+        preview_row.addWidget(self.icon_preview)
+        self.icon_edit = QLineEdit()
+        self.icon_edit.setPlaceholderText(tr("留空则使用默认图标"))
+        self.icon_edit.setReadOnly(True)
+        preview_row.addWidget(self.icon_edit, 1)
+        icon_layout.addLayout(preview_row)
+
+        icon_btn_layout = QHBoxLayout()
+        self._browse_icon_btn = QPushButton(tr("选择图标..."))
+        self._browse_icon_btn.clicked.connect(self._browse_icon)
+        self._clear_icon_btn = QPushButton(tr("清除"))
+        self._clear_icon_btn.clicked.connect(self._clear_icon)
+        icon_btn_layout.addWidget(self._browse_icon_btn)
+        icon_btn_layout.addWidget(self._clear_icon_btn)
+        icon_layout.addLayout(icon_btn_layout)
+
+        self.invert_theme_cb = QCheckBox(tr("随主题反转"))
+        self.invert_current_cb = QCheckBox(tr("当前反转"))
+        self.invert_current_cb.setEnabled(False)
+        self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
+        icon_layout.addWidget(self.invert_theme_cb)
+        icon_layout.addWidget(self.invert_current_cb)
+        layout.addWidget(icon_group)
+
+        layout.addStretch()
+        return panel
 
     # ── 主题 ────────────────────────────────────────────────
 
@@ -515,7 +1049,7 @@ class ChainDialog(BaseDialog):
 
         custom = base_style + f"""
             QDialog {{ background: transparent; border: none; }}
-            QLabel, QCheckBox, QGroupBox, QLineEdit, QSpinBox, QPushButton {{
+            QLabel, QCheckBox, QGroupBox, QLineEdit, QSpinBox, QPushButton, QTabWidget {{
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-weight: 400;
             }}
@@ -566,6 +1100,21 @@ class ChainDialog(BaseDialog):
                 font-size: 12px;
                 padding: 2px 4px;
             }}
+            QTabWidget::pane {{
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                top: -1px;
+            }}
+            QTabBar::tab {{
+                color: {text_primary};
+                padding: 5px 10px;
+                margin-right: 2px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {input_bg};
+            }}
         """
         self._tip_stylesheet = f"QToolTip {{ background: {tip_bg}; color: {tip_fg}; border: 1px solid {tip_border}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 400; }}"
         self.setStyleSheet(custom)
@@ -582,16 +1131,35 @@ class ChainDialog(BaseDialog):
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + refined_button_font
         for btn in (
             self.file_btn,
+            self.folder_btn,
             self.cmd_btn,
             self.hotkey_btn,
             self.url_btn,
+            self.processor_btn,
             self.test_btn,
+            self.quick_add_btn,
             self._browse_icon_btn,
             self._clear_icon_btn,
             self._cancel_btn,
             self._save_btn,
         ):
             btn.setStyleSheet(flat_btn_style)
+
+        # 菜单栏按钮使用更小且更精致的文字大小以防文本截断，契合 Grasshopper 风格
+        module_button_font = """
+            QPushButton {
+                font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+                font-size: 10px;
+                font-weight: 400;
+                min-height: 18px;
+                padding: 1px 2px;
+                margin: 0px;
+            }
+        """
+        module_btn_style = Glassmorphism.get_flat_action_button_style(theme) + module_button_font
+        for btn in getattr(self, "_module_buttons", []):
+            btn.setStyleSheet(module_btn_style)
+            btn.raise_()  # 确保文字和按钮图层始终处于最前方，防止被其他容器或背景遮挡
         # 测试按钮用强调色
         # 所有复选框统一使用 get_small_checkbox_stylesheet
         cb_style = get_small_checkbox_stylesheet(theme)
@@ -651,7 +1219,12 @@ class ChainDialog(BaseDialog):
         self.invert_current_cb.setChecked(getattr(self.shortcut, "icon_invert_current", False))
         self.invert_current_cb.setEnabled(self.invert_theme_cb.isChecked())
         self._update_icon_preview()
-        self._refresh_cards()
+        canvas = copy.deepcopy(getattr(self.shortcut, "chain_canvas", {}) or {})
+        if not canvas:
+            canvas = canvas_from_steps(self._steps, self._shortcut_map())
+        self.canvas_widget.set_canvas(canvas)
+        self._sync_steps_from_canvas()
+        self._refresh_properties()
 
     # ── 图标操作 ─────────────────────────────────────────────
 
@@ -723,7 +1296,7 @@ class ChainDialog(BaseDialog):
         result = []
         for folder in list(getattr(data, "folders", []) or []):
             for item in list(getattr(folder, "items", []) or []):
-                if item.id == self.shortcut.id or item.type == ShortcutType.CHAIN:
+                if item.id == self.shortcut.id or item.type in (ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH):
                     continue
                 result.append(item)
         return result
@@ -770,6 +1343,10 @@ class ChainDialog(BaseDialog):
     # ── 卡片刷新 ─────────────────────────────────────────────
 
     def _refresh_cards(self):
+        if hasattr(self, "canvas_widget"):
+            self._sync_steps_from_canvas()
+            self._refresh_properties()
+            return
         # 清除旧卡片（保留 stretch）
         while self._cards_layout.count() > 1:
             item = self._cards_layout.takeAt(0)
@@ -796,6 +1373,7 @@ class ChainDialog(BaseDialog):
 
         # 选中状态
         self._update_selection()
+        self._load_selected_binding_fields()
 
     def _on_step_changed(self, index: int):
         """卡片内联控件变更 → 同步到 _steps 数据。"""
@@ -811,6 +1389,8 @@ class ChainDialog(BaseDialog):
         self._refresh_risk_analysis()
 
     def _find_card(self, index: int) -> StepCardWidget | None:
+        if not hasattr(self, "_cards_layout"):
+            return None
         for i in range(self._cards_layout.count()):
             item = self._cards_layout.itemAt(i)
             w = item.widget() if item else None
@@ -828,6 +1408,56 @@ class ChainDialog(BaseDialog):
     def _on_card_clicked(self, index: int):
         self._selected_index = index
         self._update_selection()
+        self._load_selected_binding_fields()
+
+    def _on_canvas_changed(self):
+        self._sync_steps_from_canvas()
+        self._refresh_risk_analysis()
+        self._refresh_properties()
+
+    def _on_canvas_selection_changed(self, node_id: str):
+        nodes = sorted(self.canvas_widget.get_canvas().get("nodes", []), key=lambda n: int(n.get("order", 0) or 0))
+        self._selected_index = next((i for i, node in enumerate(nodes) if str(node.get("id") or "") == node_id), -1)
+        self._refresh_properties()
+
+    def _sync_steps_from_canvas(self):
+        if hasattr(self, "canvas_widget"):
+            self._steps = self.canvas_widget.compile_steps()
+
+    def _refresh_properties(self):
+        if not hasattr(self, "property_panel") or not hasattr(self, "canvas_widget"):
+            return
+        node = self.canvas_widget.selected_node()
+        if node is None:
+            self.property_panel.load_node(None, [], {})
+            return
+        input_ports = self.canvas_widget.input_ports_for_node(node)
+        node_id = str(node.get("id") or "")
+        connections = {}
+        for port in input_ports:
+            port_connections = self.canvas_widget.incoming_connections(node_id, port)
+            if port_connections:
+                connections[port] = "\n".join(
+                    self.canvas_widget.connection_source_label(connection) for connection in port_connections
+                )
+        self.property_panel.load_node(node, input_ports, connections)
+
+    def _on_property_args_changed(self, args: dict):
+        self.canvas_widget.update_selected_args(args)
+        self._sync_steps_from_canvas()
+        self._refresh_risk_analysis()
+
+    def _on_disconnect_requested(self, node_id: str, port_id: str):
+        self.canvas_widget.disconnect_input(node_id, port_id)
+        self._sync_steps_from_canvas()
+        self._refresh_properties()
+        self._refresh_risk_analysis()
+
+    def _edit_selected_node_source(self):
+        self.canvas_widget.edit_selected_source()
+        self._sync_steps_from_canvas()
+        self._refresh_properties()
+        self._refresh_risk_analysis()
 
     # ── 步骤操作 ─────────────────────────────────────────────
 
@@ -849,37 +1479,135 @@ class ChainDialog(BaseDialog):
         btn = btn_map.get(stype, self.file_btn)
         menu.popup(btn.mapToGlobal(btn.rect().bottomLeft()))
 
+    def _quick_add_candidates(self) -> list[dict]:
+        candidates = []
+        try:
+            from core.chain_processors import processor_definitions
+
+            for definition in processor_definitions():
+                candidates.append(
+                    {
+                        "kind": "processor",
+                        "id": definition.id,
+                        "title": definition.title,
+                        "subtitle": definition.category,
+                        "search": " ".join(
+                            [
+                                definition.id,
+                                definition.title,
+                                definition.category,
+                                definition.description,
+                            ]
+                        ).lower(),
+                    }
+                )
+        except Exception:
+            logger.debug("加载动作链电池搜索候选失败", exc_info=True)
+        for item in self._available:
+            type_label = getattr(getattr(item, "type", ""), "value", str(getattr(item, "type", "")))
+            candidates.append(
+                {
+                    "kind": "shortcut",
+                    "id": getattr(item, "id", ""),
+                    "title": getattr(item, "name", "") or getattr(item, "id", ""),
+                    "subtitle": type_label,
+                    "item": item,
+                    "search": " ".join(
+                        [
+                            str(getattr(item, "id", "")),
+                            str(getattr(item, "name", "")),
+                            str(getattr(item, "alias", "")),
+                            str(type_label),
+                        ]
+                    ).lower(),
+                }
+            )
+        return candidates
+
+    def _quick_add_matches(self, query: str) -> list[dict]:
+        query = str(query or "").strip().lower()
+        if not query:
+            return []
+        tokens = [part for part in query.split() if part]
+        matches = []
+        for candidate in self._quick_add_candidates():
+            haystack = str(candidate.get("search") or "")
+            title = str(candidate.get("title") or "").lower()
+            item_id = str(candidate.get("id") or "").lower()
+            if all(token in haystack for token in tokens):
+                score = 20
+                if title.startswith(query):
+                    score += 30
+                if item_id.startswith(query):
+                    score += 20
+                if candidate.get("kind") == "processor":
+                    score += 5
+                matches.append((score, candidate))
+        matches.sort(key=lambda pair: (-pair[0], str(pair[1].get("title") or "")))
+        return [candidate for _, candidate in matches]
+
+    def _refresh_quick_add_hint(self):
+        matches = self._quick_add_matches(self.quick_add_edit.text())
+        if not matches:
+            self.quick_add_hint.setText(tr("无匹配"))
+            self.quick_add_btn.setEnabled(False)
+            return
+        first = matches[0]
+        label = tr("电池") if first.get("kind") == "processor" else tr("快捷方式")
+        self.quick_add_hint.setText(f"{label}: {first.get('title', '')}")
+        self.quick_add_btn.setEnabled(True)
+
+    def _quick_add_first_match(self):
+        matches = self._quick_add_matches(self.quick_add_edit.text())
+        if not matches:
+            return
+        first = matches[0]
+        if first.get("kind") == "processor":
+            self._add_processor_node(str(first.get("id") or ""))
+        else:
+            item = first.get("item")
+            if isinstance(item, ShortcutItem):
+                self._add_step(item)
+        self.quick_add_edit.clear()
+        self.quick_add_hint.setText("")
+
     def _add_step(self, target: ShortcutItem):
-        self._steps.append(
-            {
-                "id": str(uuid.uuid4()),
-                "shortcut_id": target.id,
-                "enabled": True,
-                "stop_on_error": True,
-                "delay_ms": 0,
-            }
-        )
+        self.canvas_widget.add_shortcut_node(target)
+        self._sync_steps_from_canvas()
         self._selected_index = len(self._steps) - 1
-        self._refresh_cards()
         self._refresh_risk_analysis()
 
-    def _remove_step(self):
-        if 0 <= self._selected_index < len(self._steps):
-            del self._steps[self._selected_index]
-            self._selected_index = min(self._selected_index, len(self._steps) - 1)
-            self._refresh_cards()
+    def _add_processor_node(self, processor_id: str):
+        if processor_id:
+            self.canvas_widget.add_processor_node(processor_id)
+            self._sync_steps_from_canvas()
             self._refresh_risk_analysis()
 
+    def _add_selected_processor(self):
+        self._add_processor_node("text_template")
+
+    def _remove_step(self):
+        self.canvas_widget.remove_selected_node()
+        self._sync_steps_from_canvas()
+        self._selected_index = min(self._selected_index, len(self._steps) - 1)
+        self._refresh_risk_analysis()
+        self._refresh_properties()
+
     def _move_step(self, delta: int):
+        canvas = self.canvas_widget.get_canvas()
+        nodes = sorted(canvas.get("nodes", []), key=lambda n: int(n.get("order", 0) or 0))
         new_idx = self._selected_index + delta
-        if not (0 <= self._selected_index < len(self._steps) and 0 <= new_idx < len(self._steps)):
+        if not (0 <= self._selected_index < len(nodes) and 0 <= new_idx < len(nodes)):
             return
-        self._steps[self._selected_index], self._steps[new_idx] = (
-            self._steps[new_idx],
-            self._steps[self._selected_index],
-        )
+        nodes[self._selected_index], nodes[new_idx] = nodes[new_idx], nodes[self._selected_index]
+        for index, node in enumerate(nodes, start=1):
+            node["order"] = index
+            node["x"] = float((index - 1) * 220)
         self._selected_index = new_idx
-        self._refresh_cards()
+        canvas["nodes"] = nodes
+        self.canvas_widget.set_canvas(canvas)
+        self._sync_steps_from_canvas()
+        self._refresh_risk_analysis()
 
     def _show_step_context_menu(self, index: int, global_pos):
         if not (0 <= index < len(self._steps)):
@@ -908,6 +1636,63 @@ class ChainDialog(BaseDialog):
         self._selected_index = index
         self._remove_step()
 
+    def _load_selected_binding_fields(self):
+        if not all(
+            hasattr(self, name)
+            for name in ("input_binding_edit", "param_bindings_edit", "step_args_edit")
+        ):
+            return
+        self._binding_loading = True
+        try:
+            if not (0 <= self._selected_index < len(self._steps)):
+                self.input_binding_edit.setText("")
+                self.param_bindings_edit.setPlainText("")
+                self.step_args_edit.setPlainText("")
+                self.input_binding_edit.setEnabled(False)
+                self.param_bindings_edit.setEnabled(False)
+                self.step_args_edit.setEnabled(False)
+                return
+            step = self._steps[self._selected_index]
+            self.input_binding_edit.setEnabled(True)
+            self.param_bindings_edit.setEnabled(True)
+            self.step_args_edit.setEnabled(True)
+            self.input_binding_edit.setText(str(step.get("input_binding") or ""))
+            self.param_bindings_edit.setPlainText(self._format_mapping(step.get("param_bindings") or {}))
+            self.step_args_edit.setPlainText(self._format_mapping(step.get("args") or {}))
+        finally:
+            self._binding_loading = False
+
+    def _sync_selected_binding_fields(self):
+        if self._binding_loading or not (0 <= self._selected_index < len(self._steps)):
+            return
+        step = self._steps[self._selected_index]
+        step["input_binding"] = self.input_binding_edit.text().strip()
+        step["param_bindings"] = self._parse_mapping(self.param_bindings_edit.toPlainText())
+        step["args"] = self._parse_mapping(self.step_args_edit.toPlainText())
+        self._refresh_risk_analysis()
+
+    @staticmethod
+    def _parse_mapping(text: str) -> dict[str, str]:
+        values = {}
+        for line in str(text or "").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if key and value:
+                values[key] = value
+        return values
+
+    @staticmethod
+    def _format_mapping(values: dict) -> str:
+        if not isinstance(values, dict):
+            return ""
+        return "\n".join(
+            f"{key}={value}" for key, value in values.items() if str(key).strip() and str(value).strip()
+        )
+
     # ── 风险分析 ─────────────────────────────────────────────
 
     def _refresh_risk_analysis(self):
@@ -927,6 +1712,9 @@ class ChainDialog(BaseDialog):
         smap = self._shortcut_map()
         risks = []
         for i, step in enumerate(self._steps):
+            if str(step.get("node_type") or "shortcut") == "processor":
+                risks.extend(self._processor_risks(i + 1, str(step.get("processor_id") or "")))
+                continue
             sid = step.get("shortcut_id", "")
             target = smap.get(sid)
             num = i + 1
@@ -941,6 +1729,32 @@ class ChainDialog(BaseDialog):
                 risks.append(tr("  步骤 {n}: 将执行命令", n=num))
         return risks
 
+    def _processor_risks(self, step_num: int, processor_id: str) -> list[str]:
+        legacy_processor_ids = {
+            "file_write": "file_write_text",
+        }
+        processor_id = legacy_processor_ids.get(str(processor_id or ""), str(processor_id or ""))
+        definition = processor_definition(processor_id)
+        if definition is None:
+            return [tr("  步骤 {n}: 处理节点定义不存在", n=step_num)]
+        safety = definition.safety
+        risks = []
+        if safety.level == "dangerous":
+            risks.append(tr("  步骤 {n}: 高风险处理节点 - {name}", n=step_num, name=definition.title))
+        elif safety.level == "caution":
+            risks.append(tr("  步骤 {n}: 需要注意的处理节点 - {name}", n=step_num, name=definition.title))
+        if safety.executes_code:
+            risks.append(tr("  步骤 {n}: 将执行脚本代码", n=step_num))
+        if safety.network:
+            risks.append(tr("  步骤 {n}: 将访问网络", n=step_num))
+        if safety.reads_files:
+            risks.append(tr("  步骤 {n}: 将读取本地文件", n=step_num))
+        if safety.writes_files:
+            risks.append(tr("  步骤 {n}: 将写入本地文件", n=step_num))
+        if safety.requires_confirmation:
+            risks.append(tr("  步骤 {n}: 建议运行前二次确认", n=step_num))
+        return risks
+
     # ── 测试运行 ─────────────────────────────────────────────
 
     def _run_test(self):
@@ -952,6 +1766,8 @@ class ChainDialog(BaseDialog):
             return
         self.test_btn.setEnabled(False)
         self.result_view.setPlainText(tr("正在执行..."))
+        if hasattr(self, "canvas_widget"):
+            self.canvas_widget.set_run_status([])
         self._test_thread = _ChainTestThread(chain, data_manager, self)
         self._test_thread.result_ready.connect(self._on_test_result)
         self._test_thread.start()
@@ -965,6 +1781,8 @@ class ChainDialog(BaseDialog):
         lines.append("")
         payload = getattr(result, "payload", None) or {}
         items = payload.get("items", [])
+        if hasattr(self, "canvas_widget"):
+            self.canvas_widget.set_run_status(items, payload.get("node_snapshots", {}))
         for item in items:
             status = item.get("status", "")
             icon = {"ok": "✓", "failed": "✗", "skipped": "○"}.get(status, "?")
@@ -993,7 +1811,19 @@ class ChainDialog(BaseDialog):
         shortcut = copy.deepcopy(self.shortcut)
         shortcut.type = ShortcutType.CHAIN
         shortcut.name = self.name_edit.text().strip() or tr("动作链")
-        shortcut.chain_steps = ShortcutItem._normalize_chain_steps(copy.deepcopy(self._steps))
+        if hasattr(self, "canvas_widget"):
+            canvas = self.canvas_widget.get_canvas()
+            if not canvas.get("nodes") and self._steps:
+                shortcut.chain_steps = ShortcutItem._normalize_chain_steps(copy.deepcopy(self._steps))
+                shortcut.chain_canvas = ShortcutItem._chain_canvas_from_steps(shortcut.chain_steps)
+            else:
+                self._apply_step_overrides_to_canvas(canvas)
+                self.canvas_widget.set_canvas(canvas)
+                shortcut.chain_canvas = self.canvas_widget.get_canvas()
+                shortcut.chain_steps = ShortcutItem._normalize_chain_steps(self.canvas_widget.compile_steps())
+        else:
+            shortcut.chain_steps = ShortcutItem._normalize_chain_steps(copy.deepcopy(self._steps))
+            shortcut.chain_canvas = ShortcutItem._chain_canvas_from_steps(shortcut.chain_steps)
         shortcut.chain_result_window = self._get_result_window_value()
         shortcut.icon_path = self._custom_icon_path
         shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
@@ -1001,3 +1831,17 @@ class ChainDialog(BaseDialog):
         if self.invert_theme_cb.isChecked():
             shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
         return shortcut
+
+    def _apply_step_overrides_to_canvas(self, canvas: dict):
+        """Keep old tests and direct internal mutations coherent with the canvas."""
+        nodes = sorted(canvas.get("nodes", []), key=lambda n: int(n.get("order", 0) or 0))
+        if len(nodes) != len(self._steps):
+            return
+        for node, step in zip(nodes, self._steps, strict=False):
+            if str(node.get("node_type") or "shortcut") != str(step.get("node_type") or "shortcut"):
+                continue
+            if node.get("shortcut_id") and node.get("shortcut_id") != step.get("shortcut_id"):
+                continue
+            node["enabled"] = bool(step.get("enabled", node.get("enabled", True)))
+            node["stop_on_error"] = bool(step.get("stop_on_error", node.get("stop_on_error", True)))
+            node["delay_ms"] = int(step.get("delay_ms", node.get("delay_ms", 0)) or 0)

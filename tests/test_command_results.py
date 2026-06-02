@@ -25,6 +25,11 @@ def test_command_result_store_preserves_metadata_and_clears():
         source="builtin",
         duration=0.25,
         created_at=123.0,
+        args={"host": "example.com"},
+        masked_args={"token": "******", "host": "example.com"},
+        has_sensitive_args=True,
+        context_meta={"selected_files": ["C:/a.txt"]},
+        outputs={"host": "example.com"},
     )
 
     stored = store.get(result_id)
@@ -34,6 +39,11 @@ def test_command_result_store_preserves_metadata_and_clears():
     assert stored.source == "builtin"
     assert stored.duration == 0.25
     assert stored.created_at == 123.0
+    assert stored.args == {"host": "example.com"}
+    assert stored.masked_args == {"token": "******", "host": "example.com"}
+    assert stored.has_sensitive_args is True
+    assert stored.context_meta == {"selected_files": ["C:/a.txt"]}
+    assert stored.outputs == {"host": "example.com"}
 
     store.clear()
     assert store.list() == []
