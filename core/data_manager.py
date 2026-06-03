@@ -254,7 +254,7 @@ class DataManager:
                 is_icon_repo=True,
                 items=[ShortcutItem.from_dict(item) for item in items if isinstance(item, dict)],
             )
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
             logger.warning("load icon repository failed: %s", exc)
             return None
 
@@ -279,7 +279,7 @@ class DataManager:
                     item_copy["icon_path"] = str(seed_dir / icon_path)
                 result.append(ShortcutItem.from_dict(item_copy))
             return result
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
             logger.warning("load system icons failed: %s", exc)
             return []
 
@@ -308,7 +308,7 @@ class DataManager:
     def _strip_icon_repo_runtime_source(item: ShortcutItem) -> ShortcutItem:
         try:
             delattr(item, "_icon_repo_source")
-        except Exception as exc:
+        except AttributeError as exc:
             logger.debug("删除运行时属性失败: %s", exc, exc_info=True)
         return item
 
@@ -325,12 +325,12 @@ class DataManager:
             icon_repo_store = ConfigDataStore(self.icon_repo_file)
             icon_repo_store.replace_data_file(temp_file)
             return True
-        except Exception as exc:
+        except (OSError, TypeError, ValueError) as exc:
             logger.error("save icon repository failed: %s", exc)
             try:
                 if temp_file.exists():
                     temp_file.unlink()
-            except Exception as exc:
+            except OSError as exc:
                 logger.debug("清理临时文件失败: %s", exc, exc_info=True)
             return False
 
@@ -518,7 +518,7 @@ class DataManager:
                 suppress_history = bool(getattr(self, "_suppress_next_history", False))
                 history_action = getattr(self, "_pending_history_action", "\u914d\u7f6e\u53d8\u66f4")
                 history_summary = getattr(self, "_pending_history_summary", "")
-            except Exception as e:
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
                 logger.error("serialize data failed: %s", e)
                 return False
 
@@ -534,12 +534,12 @@ class DataManager:
                 self._replace_data_file(temp_file)
                 write_success = True
 
-            except Exception as e:
+            except OSError as e:
                 logger.error("save data failed: %s", e)
                 if os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)
-                    except Exception as cleanup_error:
+                    except OSError as cleanup_error:
                         logger.debug("cleanup temp file failed: %s", cleanup_error)
 
         if write_success:
@@ -1190,7 +1190,7 @@ class DataManager:
             try:
                 file_size = file_path.stat().st_size
                 file_size_mb = file_size / (1024 * 1024)
-            except Exception:
+            except OSError:
                 continue
 
             is_in_use = file_path_normalized in used_icons
@@ -1234,7 +1234,7 @@ class DataManager:
                             seen_hashes[file_hash] = file_path_str
                     else:
                         seen_hashes[file_hash] = file_path_str
-                except Exception as exc:
+                except OSError as exc:
                     logger.debug("计算文件哈希失败: %s", exc, exc_info=True)
 
             if should_delete:
@@ -1245,7 +1245,7 @@ class DataManager:
                     try:
                         os.remove(file_path)
                         logger.info("removed icon cache file: %s (%s, %.2f MB)", file_path.name, reason, file_size_mb)
-                    except Exception as e:
+                    except OSError as e:
                         logger.warning("failed to remove icon cache file %s: %s", file_path, e)
                         stats["total_removed"] -= 1
                         stats["total_size_freed_mb"] -= file_size_mb
@@ -1272,7 +1272,7 @@ class DataManager:
             try:
                 file_size = file_path.stat().st_size
                 file_size_mb = file_size / (1024 * 1024)
-            except Exception:
+            except OSError:
                 continue
 
             ext = file_path.suffix.lower() or ".unknown"

@@ -21,7 +21,7 @@ def normalize_command_timeout_seconds(value, default: float = DEFAULT_COMMAND_TI
     """Return a positive command timeout aligned with the data-model default."""
     try:
         return max(MIN_COMMAND_TIMEOUT_SECONDS, float(value or default))
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 
@@ -29,7 +29,7 @@ def normalize_command_output_max_chars(value, default: int = DEFAULT_COMMAND_OUT
     """Return a bounded output limit aligned with command capture truncation."""
     try:
         return max(MIN_COMMAND_OUTPUT_MAX_CHARS, int(value if value is not None else default))
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 
@@ -37,5 +37,5 @@ def normalize_chain_step_delay_ms(value) -> int:
     """Clamp chain step delays to the same range used by health and execution."""
     try:
         return max(0, min(COMMAND_CHAIN_MAX_STEP_DELAY_MS, int(value or 0)))
-    except Exception:
+    except (TypeError, ValueError):
         return 0

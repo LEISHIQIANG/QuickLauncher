@@ -64,7 +64,7 @@ def _iter_values(value):
     if hasattr(value, "to_dict"):
         try:
             value = value.to_dict()
-        except Exception:
+        except (TypeError, ValueError):
             logger.debug("转换值为字典失败", exc_info=True)
     if isinstance(value, dict):
         for item in value.values():
@@ -143,7 +143,7 @@ def _iter_files(root: Path):
             dirs[:] = [d for d in dirs if d not in {".git"}]
             for name in files:
                 yield Path(current) / name
-    except Exception:
+    except OSError:
         return
 
 
@@ -153,7 +153,7 @@ def _iter_dirs(root: Path):
             dirs[:] = [d for d in dirs if d not in {".git"}]
             for name in list(dirs):
                 yield Path(current) / name
-    except Exception:
+    except OSError:
         return
 
 
@@ -166,12 +166,12 @@ def _remove_file(path: Path, area: str, dry_run: bool, stats: dict):
         return
     try:
         size = path.stat().st_size
-    except Exception:
+    except OSError:
         size = 0
     if not dry_run:
         try:
             path.unlink()
-        except Exception:
+        except OSError:
             stats["failed"] += 1
             return
     _add_removed(stats, area, 1, size)
@@ -190,7 +190,7 @@ def _remove_dir_tree(path: Path, area: str, dry_run: bool, stats: dict):
     if not dry_run:
         try:
             safe_rmtree_child(root, path)
-        except Exception:
+        except (OSError, UnsafePathError):
             stats["failed"] += 1
             return
     _add_removed(stats, area, count, size)
@@ -208,7 +208,7 @@ def _remove_empty_dirs(root: Path, stop_at: Path, dry_run: bool, stats: dict):
         if not dry_run:
             try:
                 current_path.rmdir()
-            except Exception:
+            except OSError:
                 continue
         _add_removed(stats, "empty_dirs", 1, 0)
 
@@ -226,7 +226,7 @@ def _add_removed(stats: dict, area: str, count: int, size: int):
 def _safe_size(path: Path) -> int:
     try:
         return path.stat().st_size
-    except Exception:
+    except OSError:
         return 0
 
 

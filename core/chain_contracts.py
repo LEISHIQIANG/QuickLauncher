@@ -304,7 +304,7 @@ def _parse_binding(binding: str, current_index: int) -> tuple[int, str, bool]:
         raw_index, port = binding.split(".", 1)
         try:
             source_index = int(raw_index)
-        except Exception:
+        except (TypeError, ValueError):
             return 0, "", False
     else:
         return 0, "", False
@@ -339,7 +339,7 @@ def _node_type(node: dict) -> str:
 def _order(node: dict) -> int:
     try:
         return int(node.get("order", 0) or 0)
-    except Exception:
+    except (TypeError, ValueError):
         return 0
 
 

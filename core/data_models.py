@@ -230,7 +230,7 @@ class ShortcutItem:
             item.module_version = item.module_version or BATCH_LAUNCH_MODULE_VERSION
         try:
             schema_version = int(data.get("chain_schema_version", data.get("schema_version", ACTION_CHAIN_SCHEMA_VERSION)))
-        except Exception:
+        except (TypeError, ValueError):
             schema_version = ACTION_CHAIN_SCHEMA_VERSION
         item.chain_schema_version = max(1, schema_version)
         item.chain_ref = str(data.get("chain_ref") or "")
@@ -402,15 +402,15 @@ class ShortcutItem:
                 node_type = "shortcut"
             try:
                 x = float(raw.get("x", index * 240))
-            except Exception:
+            except (TypeError, ValueError):
                 x = float(index * 240)
             try:
                 y = float(raw.get("y", 80))
-            except Exception:
+            except (TypeError, ValueError):
                 y = 80.0
             try:
                 order = int(raw.get("order", index + 1))
-            except Exception:
+            except (TypeError, ValueError):
                 order = index + 1
             args = raw.get("args", {})
             if not isinstance(args, dict):
@@ -526,7 +526,7 @@ class ShortcutItem:
             raw_index, port = binding.split(".", 1)
             try:
                 source_index = int(raw_index)
-            except Exception:
+            except (TypeError, ValueError):
                 return None
         else:
             return None
@@ -542,11 +542,11 @@ class ShortcutItem:
     def mark_used(self, timestamp: float | None = None):
         try:
             self.last_used_at = float(timestamp if timestamp is not None else time.time())
-        except Exception:
+        except (TypeError, ValueError):
             self.last_used_at = time.time()
         try:
             self.use_count = max(0, int(self.use_count)) + 1
-        except Exception:
+        except (TypeError, ValueError):
             self.use_count = 1
 
     def is_enabled(self) -> bool:

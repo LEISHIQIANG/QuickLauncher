@@ -19,7 +19,7 @@ def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_b
 
                 if hasattr(builtins, "__compiled__"):
                     is_compiled = True
-            except Exception:
+            except (ImportError, AttributeError):
                 logger.debug("检测编译状态失败", exc_info=True)
 
         if is_compiled:
@@ -31,7 +31,7 @@ def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_b
         for pkg, name in [("psutil", "psutil"), ("pynput", "pynput"), ("win32api", "pywin32"), ("PIL", "Pillow")]:
             try:
                 __import__(pkg)
-            except Exception:
+            except ImportError:
                 missing.append(name)
         if not missing:
             return

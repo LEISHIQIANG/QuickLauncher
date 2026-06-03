@@ -788,7 +788,7 @@ def python_cell_metadata(source: str) -> dict[str, Any]:
                 inputs = _clean_ports(value) or inputs
             elif "OUTPUTS" in names and isinstance(value, list):
                 outputs = _clean_ports(value) or outputs
-    except Exception:
+    except (SyntaxError, ValueError):
         pass
     return {"title": title, "inputs": inputs, "outputs": outputs}
 

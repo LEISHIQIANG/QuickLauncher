@@ -329,11 +329,11 @@ def _shortcut_score(shortcut, query: str) -> tuple[float | None, list[str]]:
 def _usage_bonus(shortcut) -> float:
     try:
         use_count = max(0, int(getattr(shortcut, "use_count", 0) or 0))
-    except Exception:
+    except (TypeError, ValueError):
         use_count = 0
     try:
         last_used_at = max(0.0, float(getattr(shortcut, "last_used_at", 0.0) or 0.0))
-    except Exception:
+    except (TypeError, ValueError):
         last_used_at = 0.0
     return min(35.0, use_count * 1.8) + min(20.0, last_used_at / 100000000.0)
 
@@ -344,11 +344,11 @@ def _order_value(shortcut, sort_mode: str, original_index: int) -> int:
         if smart_order is not None:
             try:
                 return int(smart_order)
-            except Exception:
+            except (TypeError, ValueError):
                 logger.debug("解析smart_order值失败", exc_info=True)
     try:
         return int(getattr(shortcut, "order", original_index))
-    except Exception:
+    except (TypeError, ValueError):
         return int(original_index)
 
 

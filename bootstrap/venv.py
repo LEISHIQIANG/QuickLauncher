@@ -19,7 +19,7 @@ def _is_working_python(exe_path: str) -> bool:
             errors="replace",
         )
         return p.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -36,7 +36,7 @@ def maybe_reexec_in_venv(root_dir: str):
 
                 if hasattr(builtins, "__compiled__"):
                     is_compiled = True
-            except Exception:
+            except (ImportError, AttributeError):
                 logger.debug("检测编译状态失败", exc_info=True)
 
         if is_compiled:
@@ -52,5 +52,5 @@ def maybe_reexec_in_venv(root_dir: str):
             return
         os.environ["QL_REEXECED"] = "1"
         sys.exit(subprocess.call([venv_py] + sys.argv))
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return

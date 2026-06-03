@@ -111,7 +111,7 @@ def _collect_environment_diagnostics() -> list[DiagnosticItem]:
                 "建议在 Windows 10 / 11 上运行。" if not windows_info.get("windows_supported") else "",
             )
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("运行环境", "unknown", "无法读取 Windows 运行环境", str(exc)))
 
     try:
@@ -132,7 +132,7 @@ def _collect_environment_diagnostics() -> list[DiagnosticItem]:
                 json.dumps(process_info, ensure_ascii=False),
             )
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("当前进程", "unknown", "无法读取当前进程信息", str(exc)))
 
     try:
@@ -146,7 +146,7 @@ def _collect_environment_diagnostics() -> list[DiagnosticItem]:
                 "需要跨权限窗口控制或写入受保护位置时，请以管理员身份启动。" if not admin_info.get("is_admin") else "",
             )
         )
-    except Exception as exc:
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("管理员状态", "unknown", "无法读取管理员状态", str(exc)))
 
     python_info = _probe_command_runtime(["python", "--version"], "python")
@@ -238,13 +238,13 @@ def _get_admin_status_info() -> dict:
             info["is_admin"] = bool(ctypes.windll.shell32.IsUserAnAdmin())
             info["method"] = "IsUserAnAdmin"
             return info
-        except Exception as exc:
+        except (AttributeError, OSError, TypeError, ValueError) as exc:
             info["error"] = str(exc)
             return info
     try:
         info["is_admin"] = os.getuid() == 0
         info["method"] = "geteuid"
-    except Exception as exc:
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
         info["error"] = str(exc)
     return info
 
@@ -283,7 +283,7 @@ def _probe_command_runtime(argv: list[str], command_name: str, timeout: float = 
             "usable": False,
             "summary": f"{command_name} 启动超时",
         }
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         return {
             "command": command_name,
             "path": _resolve_long_path(path),
@@ -351,7 +351,7 @@ def _resolve_long_path(path: str) -> str:
         result = ctypes.windll.kernel32.GetLongPathNameW(path, buf, 4096)
         if 0 < result < 4096:
             return buf.value
-    except Exception:
+    except (AttributeError, OSError, TypeError, ValueError):
         logger.debug("获取长路径名失败: %s", path, exc_info=True)
     return path
 
@@ -409,7 +409,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 "; ".join(schema_issues),
             )
         )
-    except Exception as exc:
+    except (AttributeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("配置结构", "error", "结构校验失败", str(exc)))
 
     try:
@@ -427,7 +427,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 "如不兼容，请重新构建 hooks.dll。",
             )
         )
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("Hook DLL", "error", "无法检测 hooks.dll", str(exc)))
 
     try:
@@ -469,7 +469,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 "可在热键对话框中修改冲突的热键" if conflicts else "",
             )
         )
-    except Exception as exc:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("快捷方式热键", "unknown", "无法检测热键冲突", str(exc)))
 
     try:
@@ -485,7 +485,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 json.dumps(elevation, ensure_ascii=False),
             )
         )
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("权限状态", "unknown", "无法读取权限状态", str(exc)))
 
     try:
@@ -496,7 +496,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
         configured = bool(getattr(settings, "auto_start", False)) if settings else False
         state = "ok" if enabled == configured else "warn"
         items.append(DiagnosticItem("开机启动", state, f"配置={configured}, 任务={enabled}", reason))
-    except Exception as exc:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("开机启动", "unknown", "无法检测开机启动", str(exc)))
 
     try:
@@ -512,7 +512,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 json.dumps(icon_stats, ensure_ascii=False),
             )
         )
-    except Exception as exc:
+    except (AttributeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("图标缓存", "unknown", "无法读取图标缓存", str(exc)))
 
     try:
@@ -544,7 +544,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 health_summary,
             )
         )
-    except Exception as exc:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("图标检查", "unknown", "无法执行图标检查", str(exc)))
 
     try:
@@ -561,7 +561,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 "新增命令执行入口必须补充审计记录、输入来源和保留 shell 的原因。",
             )
         )
-    except Exception as exc:
+    except (ImportError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("命令执行审计", "unknown", "无法读取命令执行审计表", str(exc)))
 
     # Cached health state from shortcut_health_window scans
@@ -588,7 +588,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                         "可在图标检查窗口中重新扫描。",
                     )
                 )
-    except Exception:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
         logger.debug("收集图标缓存诊断信息失败", exc_info=True)
 
     try:
@@ -608,7 +608,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
             )
         else:
             items.append(DiagnosticItem("内存状态", "unknown", "内存监控未启用", "memory_guard 未初始化"))
-    except Exception as exc:
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("内存状态", "unknown", "无法读取内存状态", str(exc)))
 
     try:
@@ -619,7 +619,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
             count = len(history.list_snapshots())
             status = "warn" if count == 0 else "ok"
             items.append(DiagnosticItem("配置历史", status, f"已保存 {count} 个快照"))
-    except Exception as exc:
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("配置历史", "unknown", "无法读取配置历史", str(exc)))
 
     try:
@@ -635,7 +635,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 json.dumps(sync_status, ensure_ascii=False),
             )
         )
-    except Exception as exc:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("文件夹同步", "unknown", "无法读取同步状态", str(exc)))
 
     try:
@@ -650,7 +650,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 str(log_file),
             )
         )
-    except Exception as exc:
+    except (OSError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("最近错误", "unknown", "无法读取错误日志", str(exc)))
 
     # Update system status
@@ -711,7 +711,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                     json.dumps(update_state, ensure_ascii=False) if update_state else check_error,
                 )
             )
-    except Exception as exc:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("更新系统", "unknown", "无法读取更新状态", str(exc)))
 
     return items
@@ -828,7 +828,7 @@ def _recent_error_lines(log_file: Path) -> list[str]:
         text = log_file.read_text(encoding="utf-8", errors="replace")
         lines = [line for line in text.splitlines() if " - ERROR - " in line or " - CRITICAL - " in line]
         return lines[-200:]
-    except Exception:
+    except OSError:
         return []
 
 
@@ -851,7 +851,7 @@ def _read_json_file(path: Path) -> object | None:
         if not path.exists() or not path.is_file():
             return None
         return json.loads(_read_tail_text(path))
-    except Exception:
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         return None
 
 
@@ -861,7 +861,7 @@ def _read_latest_update_session(log_dir: Path) -> object | None:
 
         state = latest_session_state(log_dir / "downloads" / "updates")
         return state or None
-    except Exception:
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError):
         return None
 
 
@@ -878,7 +878,7 @@ def _sanitize_jsonl_lines(lines: list[str]) -> list[str]:
         try:
             payload = json.loads(line)
             sanitized.append(json.dumps(_sanitize_dict(payload), ensure_ascii=False, separators=(",", ":")))
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError):
             sanitized.append(_sanitize_text(line))
     return sanitized
 
@@ -892,7 +892,7 @@ def _build_shortcut_health_summary(data_manager) -> dict | None:
         summary["issues"] = [issue.to_dict() for issue in issues[:MAX_SHORTCUT_ISSUES]]
         summary["truncated"] = len(issues) > MAX_SHORTCUT_ISSUES
         return summary
-    except Exception as exc:
+    except (AttributeError, ImportError, RuntimeError, TypeError, ValueError) as exc:
         return {"error": str(exc)}
 
 
@@ -937,7 +937,7 @@ def _read_tail_text(path: Path, max_bytes: int = MAX_DIAGNOSTIC_TEXT_BYTES) -> s
             else:
                 prefix = ""
             return prefix + handle.read(max_bytes).decode("utf-8", errors="replace")
-    except Exception:
+    except OSError:
         return ""
 
 
