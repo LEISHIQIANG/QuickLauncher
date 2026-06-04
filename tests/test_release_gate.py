@@ -14,7 +14,7 @@ def test_release_gate_dry_run_skips_execution(capsys):
     assert release_gate.main(["--python", "py-test", "--dry-run"]) == 0
 
     output = capsys.readouterr().out
-    assert "ruff: py-test -m ruff check --no-cache core ui hooks services plugins tests" in output
+    assert "ruff: py-test -m ruff check --no-cache core ui hooks services tests" in output
     assert f"pytest: py-test -m pytest --basetemp {release_gate.PYTEST_BASETEMP}" in output
     assert "compileall: py-test -m compileall core ui hooks services bootstrap plugins" in output
     assert "py-test scripts/check_release_artifacts.py --source-only" in output
