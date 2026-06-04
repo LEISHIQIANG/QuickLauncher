@@ -1,5 +1,7 @@
 """输入触发录制组件 - 支持键盘和鼠标"""
 
+import logging
+
 from core.i18n import tr
 from qt_compat import (
     QEvent,
@@ -10,6 +12,8 @@ from qt_compat import (
     QtCompat,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class InputTriggerRecorderWidget(QWidget):
@@ -31,6 +35,7 @@ class InputTriggerRecorderWidget(QWidget):
         self.modifiers = []
         self.recording = False
         self.mouse_hook = None
+        self._previous_mouse_paused = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -65,9 +70,14 @@ class InputTriggerRecorderWidget(QWidget):
 
             if self.mouse_hook:
                 try:
+                    self._previous_mouse_paused = bool(self.mouse_hook.is_paused())
+                except Exception as exc:
+                    self._previous_mouse_paused = None
+                    logger.debug("读取鼠标钩子暂停状态失败: %s", exc, exc_info=True)
+                try:
                     self.mouse_hook.set_paused(True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("录制触发按键时暂停鼠标钩子失败: %s", exc, exc_info=True)
             self.display.setPlaceholderText(tr("录制中，按键盘或鼠标..."))
             self.display.setStyleSheet("border: 2px solid #4A9EFF; background: rgba(74, 158, 255, 0.1);")
             self.record_btn.setText(tr("停止"))
@@ -79,9 +89,12 @@ class InputTriggerRecorderWidget(QWidget):
         self.recording = False
         if self.mouse_hook:
             try:
-                self.mouse_hook.set_paused(False)
-            except Exception:
-                pass
+                if self._previous_mouse_paused is not None:
+                    self.mouse_hook.set_paused(bool(self._previous_mouse_paused))
+            except Exception as exc:
+                logger.debug("结束触发录制时恢复鼠标钩子状态失败: %s", exc, exc_info=True)
+            finally:
+                self._previous_mouse_paused = None
         self.display.setPlaceholderText(tr("点击开始录制"))
         self.display.setStyleSheet("")
         self.record_btn.setText(tr("录制"))
@@ -145,8 +158,22 @@ class InputTriggerRecorderWidget(QWidget):
         key_map = {
             Qt.Key_Space: "space",
             Qt.Key_Return: "enter",
+            Qt.Key_Enter: "enter",
             Qt.Key_Tab: "tab",
             Qt.Key_Backspace: "backspace",
+            Qt.Key_Escape: "esc",
+            Qt.Key_Delete: "delete",
+            Qt.Key_Insert: "insert",
+            Qt.Key_Home: "home",
+            Qt.Key_End: "end",
+            Qt.Key_PageUp: "pageup",
+            Qt.Key_PageDown: "pagedown",
+            Qt.Key_Left: "left",
+            Qt.Key_Right: "right",
+            Qt.Key_Up: "up",
+            Qt.Key_Down: "down",
+            Qt.Key_Pause: "pause",
+            Qt.Key_Print: "printscreen",
         }
         return key_map.get(key_code, "")
 

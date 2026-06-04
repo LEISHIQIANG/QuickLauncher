@@ -327,15 +327,22 @@ class HooksDLL:
                            special_button: str, special_modifiers: list[str]):
         """设置触发按键配置"""
         if not self._ready() or not self._has_trigger_config:
+            logger.warning("hooks.dll 不支持基础触发配置或尚未就绪")
             return
 
+        from core.trigger_config import normalize_trigger_config
+
+        normal = normalize_trigger_config("mouse", [], normal_button, normal_modifiers, fill_defaults=True)
+        special = normalize_trigger_config(
+            "mouse", [], special_button, special_modifiers, fill_defaults=True, default_modifiers=["ctrl"]
+        )
         btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
         mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
 
-        normal_btn = btn_map.get(normal_button, 4)
-        normal_mod = sum(mod_map.get(m, 0) for m in normal_modifiers)
-        special_btn = btn_map.get(special_button, 4)
-        special_mod = sum(mod_map.get(m, 0) for m in special_modifiers)
+        normal_btn = btn_map.get(normal.button, 4)
+        normal_mod = sum(mod_map.get(m, 0) for m in normal.modifiers)
+        special_btn = btn_map.get(special.button, 4)
+        special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
 
         self.dll.SetTriggerConfig(normal_btn, normal_mod, special_btn, special_mod)
 
@@ -344,21 +351,32 @@ class HooksDLL:
                               special_keys: list[str], special_modifiers: list[str]):
         """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
         if not self._ready() or not self._has_trigger_config_ex:
+            logger.warning("hooks.dll 不支持扩展触发配置或尚未就绪")
             return
 
+        from core.trigger_config import normalize_trigger_config
+
+        normal = normalize_trigger_config(
+            normal_mode, normal_keys, normal_button, normal_modifiers, fill_defaults=True
+        )
+        special = normalize_trigger_config(
+            special_mode, special_keys, special_button, special_modifiers, fill_defaults=True, default_modifiers=["ctrl"]
+        )
         mode_map = {"keyboard": 1, "mouse": 0, "hybrid": 2}
         btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
         mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
 
-        normal_mode_int = mode_map.get(normal_mode, 0)
-        normal_btn = btn_map.get(normal_button, 4)
-        normal_keys_vk = ",".join(str(self._key_to_vk(k)) for k in normal_keys) if normal_keys else ""
-        normal_mod = sum(mod_map.get(m, 0) for m in normal_modifiers)
+        normal_mode_int = mode_map.get(normal.mode, 0)
+        normal_btn = btn_map.get(normal.button, 4)
+        normal_vks = [self._key_to_vk(k) for k in normal.keys]
+        normal_keys_vk = ",".join(str(vk) for vk in normal_vks if vk)
+        normal_mod = sum(mod_map.get(m, 0) for m in normal.modifiers)
 
-        special_mode_int = mode_map.get(special_mode, 0)
-        special_btn = btn_map.get(special_button, 4)
-        special_keys_vk = ",".join(str(self._key_to_vk(k)) for k in special_keys) if special_keys else ""
-        special_mod = sum(mod_map.get(m, 0) for m in special_modifiers)
+        special_mode_int = mode_map.get(special.mode, 0)
+        special_btn = btn_map.get(special.button, 4)
+        special_vks = [self._key_to_vk(k) for k in special.keys]
+        special_keys_vk = ",".join(str(vk) for vk in special_vks if vk)
+        special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
 
         self.dll.SetTriggerConfigEx(
             normal_mode_int, normal_btn, normal_keys_vk.encode("utf-8"), normal_mod,
@@ -393,6 +411,20 @@ class HooksDLL:
             "enter": 0x0D,
             "tab": 0x09,
             "backspace": 0x08,
+            "esc": 0x1B,
+            "escape": 0x1B,
+            "delete": 0x2E,
+            "insert": 0x2D,
+            "home": 0x24,
+            "end": 0x23,
+            "pageup": 0x21,
+            "pagedown": 0x22,
+            "left": 0x25,
+            "up": 0x26,
+            "right": 0x27,
+            "down": 0x28,
+            "pause": 0x13,
+            "printscreen": 0x2C,
         }
         return special_keys.get(key_lower, 0)
 

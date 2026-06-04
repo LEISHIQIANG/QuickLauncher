@@ -1,8 +1,12 @@
 """触发按键冲突检测"""
 
+from .hotkey_conflict_checker import check_conflict, normalize_hotkey
+from .trigger_config import normalize_trigger_config, trigger_config_to_hotkey
+
 
 def check_trigger_conflict(button: str = "", modifiers: list[str] = None,
-                          mode: str = "mouse", keys: list[str] = None) -> tuple[bool, str]:
+                          mode: str = "mouse", keys: list[str] = None,
+                          shortcuts: list | None = None) -> tuple[bool, str]:
     """
     检查触发按键配置是否有冲突
 
@@ -15,10 +19,11 @@ def check_trigger_conflict(button: str = "", modifiers: list[str] = None,
     Returns:
         (is_conflict: bool, conflict_desc: str)
     """
-    if modifiers is None:
-        modifiers = []
-    if keys is None:
-        keys = []
+    config = normalize_trigger_config(mode, keys or [], button, modifiers or [])
+    mode = config.mode
+    keys = config.keys
+    button = config.button
+    modifiers = config.modifiers
 
     # keyboard 模式验证
     if mode == "keyboard":
@@ -30,11 +35,13 @@ def check_trigger_conflict(button: str = "", modifiers: list[str] = None,
             return True, "键盘触发必须配合修饰键（Ctrl/Shift/Win）\n否则可能影响正常输入"
 
         # 检查系统热键冲突
-        from .hotkey_conflict_checker import check_conflict
-        hotkey_str = '+'.join(modifiers + keys)
+        hotkey_str = trigger_config_to_hotkey(mode, keys, modifiers)
         is_conflict, msg = check_conflict(hotkey_str)
         if is_conflict:
             return True, f"键盘触发冲突：{msg}"
+        duplicate = _find_shortcut_hotkey_duplicate(hotkey_str, shortcuts or [])
+        if duplicate:
+            return True, f"键盘触发与快捷方式「{duplicate}」的快捷键重复"
 
     # hybrid 模式验证
     elif mode == "hybrid":
@@ -70,3 +77,18 @@ def _button_name(button: str) -> str:
     """按键显示名称"""
     mapping = {"left": "左键", "right": "右键", "middle": "中键", "x1": "侧键后", "x2": "侧键前"}
     return mapping.get(button, button)
+
+
+def _find_shortcut_hotkey_duplicate(hotkey_str: str, shortcuts: list) -> str:
+    target = normalize_hotkey(hotkey_str)
+    if not target:
+        return ""
+    for shortcut in shortcuts:
+        raw_hotkey = getattr(shortcut, "hotkey", "") or ""
+        if not raw_hotkey:
+            mods = getattr(shortcut, "hotkey_modifiers", []) or []
+            key = getattr(shortcut, "hotkey_key", "") or ""
+            raw_hotkey = "+".join([*mods, key]) if key else ""
+        if raw_hotkey and normalize_hotkey(raw_hotkey) == target:
+            return str(getattr(shortcut, "name", "") or getattr(shortcut, "id", "") or raw_hotkey)
+    return ""

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -475,6 +476,9 @@ static bool IsSpecialApp() {
 
 // 检查所有指定的键盘按键是否都按下
 static bool CheckKeysPressed(const std::vector<int>& vkCodes) {
+    if (vkCodes.empty()) {
+        return false;
+    }
     for (int vk : vkCodes) {
         if (!(GetAsyncKeyState(vk) & 0x8000)) {
             return false;
@@ -1065,6 +1069,45 @@ static bool ParseGlobalHotkey(const std::string& hotkeyStr, int* modifiers, int*
             } else if (token == "esc" || token == "escape") {
                 if (*vk != 0) return false;
                 *vk = VK_ESCAPE;
+            } else if (token == "backspace" || token == "back") {
+                if (*vk != 0) return false;
+                *vk = VK_BACK;
+            } else if (token == "delete" || token == "del") {
+                if (*vk != 0) return false;
+                *vk = VK_DELETE;
+            } else if (token == "insert" || token == "ins") {
+                if (*vk != 0) return false;
+                *vk = VK_INSERT;
+            } else if (token == "home") {
+                if (*vk != 0) return false;
+                *vk = VK_HOME;
+            } else if (token == "end") {
+                if (*vk != 0) return false;
+                *vk = VK_END;
+            } else if (token == "pageup" || token == "pgup") {
+                if (*vk != 0) return false;
+                *vk = VK_PRIOR;
+            } else if (token == "pagedown" || token == "pgdn") {
+                if (*vk != 0) return false;
+                *vk = VK_NEXT;
+            } else if (token == "left") {
+                if (*vk != 0) return false;
+                *vk = VK_LEFT;
+            } else if (token == "up") {
+                if (*vk != 0) return false;
+                *vk = VK_UP;
+            } else if (token == "right") {
+                if (*vk != 0) return false;
+                *vk = VK_RIGHT;
+            } else if (token == "down") {
+                if (*vk != 0) return false;
+                *vk = VK_DOWN;
+            } else if (token == "pause") {
+                if (*vk != 0) return false;
+                *vk = VK_PAUSE;
+            } else if (token == "printscreen" || token == "prtscr") {
+                if (*vk != 0) return false;
+                *vk = VK_SNAPSHOT;
             } else if (token.length() >= 2 && token[0] == 'f') {
                 int n = atoi(token.substr(1).c_str());
                 if (n < 1 || n > 24 || *vk != 0) return false;
@@ -1147,6 +1190,38 @@ HOOKS_API void SetTriggerConfig(int normalButton, int normalModifiers, int speci
     g_specialTriggerModifiers = specialModifiers;
 }
 
+static std::vector<int> ParseVkList(const char* rawKeys) {
+    std::vector<int> parsed;
+    if (!rawKeys || strlen(rawKeys) == 0) {
+        return parsed;
+    }
+
+    std::string keys(rawKeys);
+    size_t start = 0;
+    while (start <= keys.length()) {
+        size_t end = keys.find(',', start);
+        std::string token = keys.substr(
+            start,
+            end == std::string::npos ? std::string::npos : end - start
+        );
+
+        try {
+            if (!token.empty()) {
+                int vk = std::stoi(token);
+                if (vk > 0 && vk <= 0xFF) {
+                    parsed.push_back(vk);
+                }
+            }
+        } catch (...) {
+            g_lastHookError = ERROR_INVALID_PARAMETER;
+        }
+
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return parsed;
+}
+
 HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* normalKeys, int normalModifiers,
                                    int specialMode, int specialButton, const char* specialKeys, int specialModifiers) {
     std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
@@ -1158,30 +1233,8 @@ HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* 
     g_specialTriggerButton = specialButton;
     g_specialTriggerModifiers = specialModifiers;
 
-    // 解析键盘按键字符串（逗号分隔），转换为VK码
-    g_normalTriggerKeys.clear();
-    if (normalKeys && strlen(normalKeys) > 0) {
-        std::string keys(normalKeys);
-        size_t pos = 0;
-        while ((pos = keys.find(',')) != std::string::npos) {
-            std::string key = keys.substr(0, pos);
-            if (!key.empty()) g_normalTriggerKeys.push_back(std::stoi(key));
-            keys.erase(0, pos + 1);
-        }
-        if (!keys.empty()) g_normalTriggerKeys.push_back(std::stoi(keys));
-    }
-
-    g_specialTriggerKeys.clear();
-    if (specialKeys && strlen(specialKeys) > 0) {
-        std::string keys(specialKeys);
-        size_t pos = 0;
-        while ((pos = keys.find(',')) != std::string::npos) {
-            std::string key = keys.substr(0, pos);
-            if (!key.empty()) g_specialTriggerKeys.push_back(std::stoi(key));
-            keys.erase(0, pos + 1);
-        }
-        if (!keys.empty()) g_specialTriggerKeys.push_back(std::stoi(keys));
-    }
+    g_normalTriggerKeys = ParseVkList(normalKeys);
+    g_specialTriggerKeys = ParseVkList(specialKeys);
 }
 
 HOOKS_API int GetHooksVersion() {

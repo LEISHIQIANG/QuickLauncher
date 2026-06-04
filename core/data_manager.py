@@ -49,6 +49,7 @@ from .import_security import (
     skip_file,
 )
 from .path_security import resolve_under, safe_rmtree_child
+from .trigger_config import normalize_trigger_settings
 
 logger = logging.getLogger(__name__)
 
@@ -1105,6 +1106,13 @@ class DataManager:
         """update_settings"""
         with self._save_lock:
             changed = False
+
+            if any(key.startswith("popup_trigger_") or key.startswith("popup_special_trigger_") for key in kwargs):
+                preview = copy.copy(self.data.settings)
+                for key, value in kwargs.items():
+                    if hasattr(preview, key):
+                        setattr(preview, key, value)
+                kwargs = {**kwargs, **normalize_trigger_settings(preview)}
 
             for key, value in kwargs.items():
                 if hasattr(self.data.settings, key):

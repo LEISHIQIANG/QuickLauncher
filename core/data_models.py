@@ -15,6 +15,7 @@ from .runtime_constants import (
     normalize_command_output_max_chars,
     normalize_command_timeout_seconds,
 )
+from .trigger_config import normalize_trigger_settings
 
 
 def _normalize_binding_value(value):
@@ -848,6 +849,9 @@ class AppSettings:
             settings.popup_special_trigger_mode = "mouse"
         if not hasattr(settings, 'popup_special_trigger_keys'):
             settings.popup_special_trigger_keys = []
+
+        for key, value in normalize_trigger_settings(settings).items():
+            setattr(settings, key, value)
 
         return settings
 

@@ -7,9 +7,11 @@ import logging
 import re
 from collections.abc import Iterable
 from pathlib import Path
+from types import SimpleNamespace
 
 from .data_models import AppData, AppSettings, ShortcutType
 from .import_security import skip_setting
+from .trigger_config import normalize_trigger_settings
 
 logger = logging.getLogger(__name__)
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -159,6 +161,7 @@ def sanitize_settings_dict(settings: object, report: dict | None = None) -> dict
                 skip_setting(report, key, "invalid color")
                 continue
             sanitized[key] = text
+    sanitized.update(normalize_trigger_settings(SimpleNamespace(**sanitized)))
     return sanitized
 
 

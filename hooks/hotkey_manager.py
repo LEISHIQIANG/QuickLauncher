@@ -130,6 +130,30 @@ class HotkeyManager(QObject):
             if core in ("esc", "escape"):
                 normalized_parts.append("<esc>")
                 continue
+            special_keys = {
+                "backspace": "backspace",
+                "back": "backspace",
+                "delete": "delete",
+                "del": "delete",
+                "insert": "insert",
+                "ins": "insert",
+                "home": "home",
+                "end": "end",
+                "pageup": "pageup",
+                "pgup": "pageup",
+                "pagedown": "pagedown",
+                "pgdn": "pagedown",
+                "left": "left",
+                "up": "up",
+                "right": "right",
+                "down": "down",
+                "pause": "pause",
+                "printscreen": "printscreen",
+                "prtscr": "printscreen",
+            }
+            if core in special_keys:
+                normalized_parts.append(f"<{special_keys[core]}>")
+                continue
 
             if len(core) == 1:
                 normalized_parts.append(core)
@@ -189,6 +213,7 @@ class HotkeyManager(QObject):
         # 拒绝带有左右区分的修饰键
         if self._has_side_specific_modifier(normalized):
             logger.warning("不支持区分左右的修饰键用于全局热键: %s", normalized)
+            self._current_hotkey = None
             return False
 
         # 使用DLL钩子设置热键

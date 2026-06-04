@@ -4,6 +4,7 @@ import logging
 
 from core import DEFAULT_SPECIAL_APPS
 from core.i18n import tr
+from core.trigger_config import normalize_trigger_config
 from core.trigger_conflict_checker import check_trigger_conflict
 from qt_compat import (
     QButtonGroup,
@@ -306,14 +307,31 @@ class SettingsPopupPageMixin:
         special_btn = self.special_trigger_recorder.get_button()
         special_mods = self.special_trigger_recorder.get_modifiers()
 
-        logger.info(f"准备保存配置: 普通={normal_mode}({normal_keys})+{normal_btn}+{normal_mods}, 特殊={special_mode}({special_keys})+{special_btn}+{special_mods}")
+        normal = normalize_trigger_config(normal_mode, normal_keys, normal_btn, normal_mods)
+        special = normalize_trigger_config(special_mode, special_keys, special_btn, special_mods)
+        normal_mode, normal_keys, normal_btn, normal_mods = normal.mode, normal.keys, normal.button, normal.modifiers
+        special_mode, special_keys, special_btn, special_mods = special.mode, special.keys, special.button, special.modifiers
+        shortcuts = self._shortcut_conflict_candidates()
+
+        logger.info(
+            "准备保存配置: 普通=%s(%s)+%s+%s, 特殊=%s(%s)+%s+%s",
+            normal_mode,
+            normal_keys,
+            normal_btn,
+            normal_mods,
+            special_mode,
+            special_keys,
+            special_btn,
+            special_mods,
+        )
 
         # 使用扩展的冲突检测（支持keyboard/hybrid模式）
         is_conflict, msg = check_trigger_conflict(
             button=normal_btn,
             modifiers=normal_mods,
             mode=normal_mode,
-            keys=normal_keys
+            keys=normal_keys,
+            shortcuts=shortcuts,
         )
         if is_conflict:
             from ui.styles.themed_messagebox import ThemedMessageBox
@@ -324,7 +342,8 @@ class SettingsPopupPageMixin:
             button=special_btn,
             modifiers=special_mods,
             mode=special_mode,
-            keys=special_keys
+            keys=special_keys,
+            shortcuts=shortcuts,
         )
         if is_conflict:
             from ui.styles.themed_messagebox import ThemedMessageBox
@@ -342,10 +361,21 @@ class SettingsPopupPageMixin:
             popup_special_trigger_button=special_btn,
             popup_special_trigger_modifiers=special_mods
         )
+        self.normal_trigger_recorder.set_trigger(normal_mode, normal_keys, normal_btn, normal_mods)
+        self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)
         logger.info("配置已保存到数据模型，准备发射信号")
         self.trigger_config_changed.emit()
         logger.info("trigger_config_changed 信号已发射")
         return True
+
+    def _shortcut_conflict_candidates(self) -> list:
+        try:
+            data = getattr(self.data_manager, "data", None)
+            folders = getattr(data, "folders", []) or []
+            return [item for folder in folders for item in (getattr(folder, "items", []) or [])]
+        except Exception as exc:
+            logger.debug("收集快捷方式热键用于冲突检测失败: %s", exc, exc_info=True)
+            return []
 
     def _on_trigger_config_changed(self):
         """应用触发配置变更"""

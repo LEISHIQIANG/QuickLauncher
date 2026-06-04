@@ -1,5 +1,7 @@
 """鼠标按键录制组件"""
 
+import logging
+
 from core.i18n import tr
 from qt_compat import (
     QEvent,
@@ -10,6 +12,8 @@ from qt_compat import (
     QtCompat,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MouseKeyRecorderWidget(QWidget):
@@ -38,6 +42,7 @@ class MouseKeyRecorderWidget(QWidget):
         self.modifiers = []
         self.recording = False  # 录制状态
         self.mouse_hook = None  # 鼠标钩子引用
+        self._previous_mouse_paused = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -69,9 +74,14 @@ class MouseKeyRecorderWidget(QWidget):
             # 录制开始，暂停鼠标钩子
             if self.mouse_hook:
                 try:
+                    self._previous_mouse_paused = bool(self.mouse_hook.is_paused())
+                except Exception as exc:
+                    self._previous_mouse_paused = None
+                    logger.debug("读取鼠标钩子暂停状态失败: %s", exc, exc_info=True)
+                try:
                     self.mouse_hook.set_paused(True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("录制鼠标按键时暂停鼠标钩子失败: %s", exc, exc_info=True)
             self.display.setPlaceholderText(tr("录制中，请按下鼠标按键..."))
             self.display.setStyleSheet("border: 2px solid #4A9EFF; background: rgba(74, 158, 255, 0.1);")
             self.record_btn.setText(tr("停止"))
@@ -85,9 +95,12 @@ class MouseKeyRecorderWidget(QWidget):
         # 恢复鼠标钩子
         if self.mouse_hook:
             try:
-                self.mouse_hook.set_paused(False)
-            except Exception:
-                pass
+                if self._previous_mouse_paused is not None:
+                    self.mouse_hook.set_paused(bool(self._previous_mouse_paused))
+            except Exception as exc:
+                logger.debug("结束鼠标按键录制时恢复鼠标钩子状态失败: %s", exc, exc_info=True)
+            finally:
+                self._previous_mouse_paused = None
         self.display.setPlaceholderText(tr("点击开始录制"))
         self.display.setStyleSheet("")
         self.record_btn.setText(tr("录制"))
@@ -168,4 +181,3 @@ class MouseKeyRecorderWidget(QWidget):
     def set_mouse_hook(self, mouse_hook):
         """设置鼠标钩子引用"""
         self.mouse_hook = mouse_hook
-

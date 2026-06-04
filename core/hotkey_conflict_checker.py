@@ -50,7 +50,7 @@ SYSTEM_HOTKEYS = {
 
 def normalize_hotkey(hotkey_str: str) -> str:
     """标准化快捷键字符串"""
-    parts = [p.strip().lower() for p in hotkey_str.replace("+", " ").split()]
+    parts = [p.strip().lower().replace("<", "").replace(">", "") for p in hotkey_str.replace("+", " ").split()]
 
     # 排序修饰键
     modifiers = []
@@ -63,10 +63,19 @@ def normalize_hotkey(hotkey_str: str) -> str:
             modifiers.append("alt")
         elif part in ["shift"]:
             modifiers.append("shift")
-        elif part in ["win", "windows", "super"]:
+        elif part in ["win", "windows", "cmd", "meta", "super"]:
             modifiers.append("win")
         else:
-            key = part
+            aliases = {
+                "return": "enter",
+                "escape": "esc",
+                "del": "delete",
+                "ins": "insert",
+                "pgup": "pageup",
+                "pgdn": "pagedown",
+                "prtscr": "printscreen",
+            }
+            key = aliases.get(part, part)
 
     # 按固定顺序排列
     order = {"ctrl": 0, "alt": 1, "shift": 2, "win": 3}
@@ -76,7 +85,15 @@ def normalize_hotkey(hotkey_str: str) -> str:
     if key:
         result = result + "+" + key if result else key
 
-    return result.title()
+    titled = []
+    for part in result.split("+"):
+        if len(part) > 1 and part.startswith("f") and part[1:].isdigit():
+            titled.append(part.upper())
+        elif part == "esc":
+            titled.append("Esc")
+        else:
+            titled.append(part.title())
+    return "+".join(titled)
 
 
 # 新增：在模块加载时一次性计算出规范化后的哈希字典，将冲突判断优化至 O(1)
@@ -182,35 +199,40 @@ def _get_vk_code(key: str) -> int:
         if "0" <= key_upper <= "9":
             return ord(key_upper)
 
+    if key_upper.startswith("F"):
+        try:
+            fn_num = int(key_upper[1:])
+            if 1 <= fn_num <= 24:
+                return 0x70 + fn_num - 1
+        except ValueError:
+            pass
+
     # 功能键
     vk_map = {
-        "F1": 0x70,
-        "F2": 0x71,
-        "F3": 0x72,
-        "F4": 0x73,
-        "F5": 0x74,
-        "F6": 0x75,
-        "F7": 0x76,
-        "F8": 0x77,
-        "F9": 0x78,
-        "F10": 0x79,
-        "F11": 0x7A,
-        "F12": 0x7B,
         "SPACE": 0x20,
         "ENTER": 0x0D,
         "ESC": 0x1B,
+        "ESCAPE": 0x1B,
         "TAB": 0x09,
         "BACKSPACE": 0x08,
+        "BACK": 0x08,
         "DELETE": 0x2E,
+        "DEL": 0x2E,
         "INSERT": 0x2D,
+        "INS": 0x2D,
         "HOME": 0x24,
         "END": 0x23,
         "PAGEUP": 0x21,
+        "PGUP": 0x21,
         "PAGEDOWN": 0x22,
+        "PGDN": 0x22,
         "LEFT": 0x25,
         "UP": 0x26,
         "RIGHT": 0x27,
         "DOWN": 0x28,
+        "PAUSE": 0x13,
+        "PRINTSCREEN": 0x2C,
+        "PRTSCR": 0x2C,
         # 媒体键
         "VOLUMEUP": 0xAF,
         "VOLUMEDOWN": 0xAE,

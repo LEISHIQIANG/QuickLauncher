@@ -264,26 +264,49 @@ class HooksMixin:
         # 应用触发配置
         try:
             settings = self.data_manager.get_settings()
+            from core.trigger_config import normalize_trigger_settings
+
+            trigger_settings = normalize_trigger_settings(settings)
             # 优先使用扩展接口
             if hasattr(self.mouse_hook, 'set_trigger_config_ex'):
-                normal_mode = getattr(settings, 'popup_trigger_mode', 'mouse')
-                normal_keys = getattr(settings, 'popup_trigger_keys', [])
-                special_mode = getattr(settings, 'popup_special_trigger_mode', 'mouse')
-                special_keys = getattr(settings, 'popup_special_trigger_keys', [])
+                normal_mode = trigger_settings["popup_trigger_mode"]
+                normal_keys = trigger_settings["popup_trigger_keys"]
+                normal_button = trigger_settings["popup_trigger_button"]
+                normal_modifiers = trigger_settings["popup_trigger_modifiers"]
+                special_mode = trigger_settings["popup_special_trigger_mode"]
+                special_keys = trigger_settings["popup_special_trigger_keys"]
+                special_button = trigger_settings["popup_special_trigger_button"]
+                special_modifiers = trigger_settings["popup_special_trigger_modifiers"]
 
                 self.mouse_hook.set_trigger_config_ex(
-                    normal_mode, settings.popup_trigger_button, normal_keys, settings.popup_trigger_modifiers,
-                    special_mode, settings.popup_special_trigger_button, special_keys, settings.popup_special_trigger_modifiers
+                    normal_mode, normal_button, normal_keys, normal_modifiers,
+                    special_mode, special_button, special_keys, special_modifiers
                 )
-                logger.info(f"已应用扩展触发配置: 普通={normal_mode}({normal_keys})+{settings.popup_trigger_button}+{settings.popup_trigger_modifiers}, 特殊={special_mode}({special_keys})+{settings.popup_special_trigger_button}+{settings.popup_special_trigger_modifiers}")
+                logger.info(
+                    "已应用扩展触发配置: 普通=%s(%s)+%s+%s, 特殊=%s(%s)+%s+%s",
+                    normal_mode,
+                    normal_keys,
+                    normal_button,
+                    normal_modifiers,
+                    special_mode,
+                    special_keys,
+                    special_button,
+                    special_modifiers,
+                )
             elif hasattr(self.mouse_hook, 'set_trigger_config'):
                 self.mouse_hook.set_trigger_config(
-                    settings.popup_trigger_button,
-                    settings.popup_trigger_modifiers,
-                    settings.popup_special_trigger_button,
-                    settings.popup_special_trigger_modifiers
+                    trigger_settings["popup_trigger_button"],
+                    trigger_settings["popup_trigger_modifiers"],
+                    trigger_settings["popup_special_trigger_button"],
+                    trigger_settings["popup_special_trigger_modifiers"],
                 )
-                logger.info(f"已应用触发配置: 普通={settings.popup_trigger_button}+{settings.popup_trigger_modifiers}, 特殊={settings.popup_special_trigger_button}+{settings.popup_special_trigger_modifiers}")
+                logger.info(
+                    "已应用触发配置: 普通=%s+%s, 特殊=%s+%s",
+                    trigger_settings["popup_trigger_button"],
+                    trigger_settings["popup_trigger_modifiers"],
+                    trigger_settings["popup_special_trigger_button"],
+                    trigger_settings["popup_special_trigger_modifiers"],
+                )
             else:
                 logger.warning("鼠标钩子不支持触发配置方法，可能是旧版DLL")
         except Exception as e:

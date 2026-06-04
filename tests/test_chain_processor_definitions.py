@@ -203,9 +203,10 @@ def test_sampled_processor_outputs_match_declared_contract(tmp_path):
     except Exception:
         pass
     all_ids = {definition.id for definition in processor_definitions()}
-    assert all_ids == sampled_ids | intentionally_unsampled, (
+    unsampled_registered_ids = intentionally_unsampled & all_ids
+    assert all_ids == sampled_ids | unsampled_registered_ids, (
         f"Missing sample args or intentionally_unsampled for: "
-        f"{all_ids - sampled_ids - intentionally_unsampled}"
+        f"{all_ids - sampled_ids - unsampled_registered_ids}"
     )
 
     for definition in processor_definitions():

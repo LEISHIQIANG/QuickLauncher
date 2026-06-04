@@ -75,6 +75,7 @@ def test_side_specific_hotkey_rejected():
     # 不需要FakeDll，因为侧边修饰键应在DLL调用之前就被拒绝
     assert not manager.set_hotkey("LCtrl+P")
     assert not manager._is_running
+    assert manager._current_hotkey is None
 
 
 def test_hotkey_manager_stop_resets_state(monkeypatch):

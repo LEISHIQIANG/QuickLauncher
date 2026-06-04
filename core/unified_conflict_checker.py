@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from .hotkey_conflict_checker import check_conflict, normalize_hotkey
+from .trigger_config import normalize_trigger_config, trigger_config_to_hotkey
 
 
 @dataclass
@@ -109,11 +110,15 @@ class UnifiedConflictChecker:
         normalized = normalize_hotkey(hotkey_str)
 
         # 检查普通触发（keyboard模式）
-        if getattr(settings, 'popup_trigger_mode', 'mouse') == 'keyboard':
-            trigger_keys = getattr(settings, 'popup_trigger_keys', [])
-            trigger_mods = getattr(settings, 'popup_trigger_modifiers', [])
-            if trigger_keys:
-                trigger_str = self._build_trigger_string(trigger_keys, trigger_mods)
+        normal = normalize_trigger_config(
+            getattr(settings, 'popup_trigger_mode', 'mouse'),
+            getattr(settings, 'popup_trigger_keys', []),
+            getattr(settings, 'popup_trigger_button', ''),
+            getattr(settings, 'popup_trigger_modifiers', []),
+        )
+        if normal.mode == 'keyboard':
+            trigger_str = trigger_config_to_hotkey(normal.mode, normal.keys, normal.modifiers)
+            if trigger_str:
                 if normalize_hotkey(trigger_str) == normalized:
                     conflicts.append(Conflict(
                         type="internal",
@@ -122,11 +127,15 @@ class UnifiedConflictChecker:
                     ))
 
         # 检查特殊触发（keyboard模式）
-        if getattr(settings, 'popup_special_trigger_mode', 'mouse') == 'keyboard':
-            trigger_keys = getattr(settings, 'popup_special_trigger_keys', [])
-            trigger_mods = getattr(settings, 'popup_special_trigger_modifiers', [])
-            if trigger_keys:
-                trigger_str = self._build_trigger_string(trigger_keys, trigger_mods)
+        special = normalize_trigger_config(
+            getattr(settings, 'popup_special_trigger_mode', 'mouse'),
+            getattr(settings, 'popup_special_trigger_keys', []),
+            getattr(settings, 'popup_special_trigger_button', ''),
+            getattr(settings, 'popup_special_trigger_modifiers', []),
+        )
+        if special.mode == 'keyboard':
+            trigger_str = trigger_config_to_hotkey(special.mode, special.keys, special.modifiers)
+            if trigger_str:
                 if normalize_hotkey(trigger_str) == normalized:
                     conflicts.append(Conflict(
                         type="internal",
@@ -156,6 +165,8 @@ class UnifiedConflictChecker:
             ConflictReport: 冲突检测报告
         """
         conflicts = []
+        config = normalize_trigger_config(mode, keys, button, modifiers)
+        mode, keys, button, modifiers = config.mode, config.keys, config.button, config.modifiers
 
         # keyboard 模式验证
         if mode == "keyboard":
@@ -167,7 +178,7 @@ class UnifiedConflictChecker:
                 ))
             else:
                 # 检查系统热键冲突
-                hotkey_str = self._build_trigger_string(keys, modifiers)
+                hotkey_str = trigger_config_to_hotkey(mode, keys, modifiers)
                 system_conflict = self._check_system_conflict(hotkey_str)
                 if system_conflict:
                     conflicts.append(system_conflict)

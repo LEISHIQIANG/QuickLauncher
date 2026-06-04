@@ -273,6 +273,16 @@ class TestGetVkCode:
     def test_function_keys_case_insensitive(self, key, expected):
         assert _get_vk_code(key) == expected
 
+    @pytest.mark.parametrize(
+        "key,expected",
+        [
+            ("F13", 0x7C),
+            ("f24", 0x87),
+        ],
+    )
+    def test_extended_function_keys(self, key, expected):
+        assert _get_vk_code(key) == expected
+
     # ---- 特殊按键 ----
 
     @pytest.mark.parametrize(
@@ -322,7 +332,6 @@ class TestGetVkCode:
             "XXX",
             "MEDIA_PLAY",
             "",
-            "PAUSE",
         ],
     )
     def test_unknown_keys_return_zero(self, key):
@@ -379,7 +388,7 @@ class TestCheckConflictMoreNonConflicting:
             "Ctrl+Shift+Z",
             "Ctrl+Alt+G",
             "Shift+F10",
-            "Ctrl+Shift+N",
+            "Ctrl+Shift+F6",
             "Ctrl+Alt+T",
             "F8",
         ],
