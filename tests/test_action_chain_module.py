@@ -8,10 +8,14 @@ from core.data_models import (
     ShortcutItem,
     ShortcutType,
 )
-from core.module_registry import ACTION_CHAIN_MODULE_ID as REGISTRY_ACTION_CHAIN_ID
 from core.module_registry import (
+    ACTION_CHAIN_MODULE_ID as REGISTRY_ACTION_CHAIN_ID,
     MODULE_AVAILABLE,
+    MODULE_BROKEN,
+    MODULE_DISABLED,
     MODULE_INCOMPATIBLE,
+    MODULE_MISSING,
+    MODULE_UNLICENSED,
     ModuleRecord,
     _host_version_compatible,
     module_registry,
@@ -64,6 +68,232 @@ def test_action_chain_unavailable_status_result_is_clear():
     assert result.success is False
     assert "不兼容" in result.message
     assert result.payload["items"][0]["error"] == MODULE_INCOMPATIBLE
+
+
+def test_action_chain_module_denies_processor_capability():
+    from modules.action_chain.entry import ActionChainModule
+
+    class Host:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return capability != "chain.script_cell"
+
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[{"id": "script", "node_type": "processor", "processor_id": "python_cell"}],
+    )
+
+    result = ActionChainModule(Host()).execute_chain(chain, {})
+
+    assert result.success is False
+    assert "未授权" in result.message
+    assert result.payload["items"][0]["node_id"] == "script"
+    assert result.payload["node_snapshots"]["script"]["error"] == "permission_denied"
+
+
+def test_action_chain_module_denies_canvas_only_processor_capability():
+    from modules.action_chain.entry import ActionChainModule
+
+    class Host:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return capability != "chain.script_cell"
+
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[],
+        chain_canvas={
+            "nodes": [
+                {
+                    "id": "script",
+                    "node_type": "processor",
+                    "processor_id": "python_cell",
+                    "order": 1,
+                }
+            ],
+            "connections": [],
+        },
+    )
+
+    result = ActionChainModule(Host()).execute_chain(chain, {})
+
+    assert result.success is False
+    assert "未授权" in result.message
+    assert result.payload["items"][0]["node_id"] == "script"
+
+
+def test_action_chain_module_executes_canvas_only_processor_chain():
+    from modules.action_chain.entry import ActionChainModule
+
+    class Host:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return True
+
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[],
+        chain_canvas={
+            "nodes": [
+                {
+                    "id": "input",
+                    "node_type": "processor",
+                    "processor_id": "text_input",
+                    "args": {"text": "Hello"},
+                    "order": 1,
+                },
+                {
+                    "id": "panel",
+                    "node_type": "processor",
+                    "processor_id": "panel_node",
+                    "order": 2,
+                },
+            ],
+            "connections": [
+                {
+                    "id": "conn",
+                    "source_node": "input",
+                    "source_port": "output",
+                    "target_node": "panel",
+                    "target_port": "input",
+                }
+            ],
+        },
+    )
+
+    result = ActionChainModule(Host()).execute_chain(chain, {})
+
+    assert result.success is True
+    assert result.payload["items"][-1]["node_id"] == "panel"
+    assert result.payload["node_snapshots"]["panel"]["outputs"]["output"] == "Hello"
+    assert chain.chain_steps == []
+
+
+def test_action_chain_module_validate_reports_missing_shortcut_and_bindings():
+    from core.action_chain_host import DefaultActionChainHostAPI
+    from modules.action_chain.entry import ActionChainModule
+
+    existing = ShortcutItem(id="existing", name="Existing", type=ShortcutType.FILE)
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {"id": "missing", "shortcut_id": "missing"},
+            {"id": "bad-binding", "shortcut_id": "existing", "input_binding": "3.output"},
+        ],
+    )
+
+    issues = ActionChainModule(DefaultActionChainHostAPI(_Data([existing]))).validate_chain(chain)
+    codes = [item["code"] for item in issues]
+
+    assert "chain.step.missing_shortcut" in codes
+    assert "chain.binding" in codes
+
+
+def test_action_chain_module_validate_accepts_canvas_only_processor_chain():
+    from core.action_chain_host import DefaultActionChainHostAPI
+    from modules.action_chain.entry import ActionChainModule
+
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[],
+        chain_canvas={
+            "version": 1,
+            "nodes": [
+                {
+                    "id": "input",
+                    "node_type": "processor",
+                    "processor_id": "text_input",
+                    "args": {"text": "Hello"},
+                    "order": 1,
+                },
+                {
+                    "id": "panel",
+                    "node_type": "processor",
+                    "processor_id": "panel_node",
+                    "order": 2,
+                },
+            ],
+            "connections": [
+                {
+                    "id": "conn",
+                    "source_node": "input",
+                    "source_port": "output",
+                    "target_node": "panel",
+                    "target_port": "input",
+                }
+            ],
+        },
+    )
+
+    issues = ActionChainModule(DefaultActionChainHostAPI(_Data([]))).validate_chain(chain)
+
+    assert [item["code"] for item in issues] == []
+
+
+def test_action_chain_module_validate_accepts_legacy_canvas_connection_keys():
+    from core.action_chain_host import DefaultActionChainHostAPI
+    from modules.action_chain.entry import ActionChainModule
+
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[],
+        chain_canvas={
+            "nodes": [
+                {"id": "input", "type": "text_input", "params": {"text": "Hello"}, "order": 1},
+                {"id": "panel", "type": "panel_node", "order": 2},
+            ],
+            "connections": [
+                {
+                    "id": "conn",
+                    "source": "input",
+                    "sourcePort": "output",
+                    "target": "panel",
+                    "targetPort": "input",
+                }
+            ],
+        },
+    )
+
+    issues = ActionChainModule(DefaultActionChainHostAPI(_Data([]))).validate_chain(chain)
+
+    assert [item["code"] for item in issues] == []
+
+
+def test_action_chain_module_validate_canvas_only_missing_shortcut():
+    from core.action_chain_host import DefaultActionChainHostAPI
+    from modules.action_chain.entry import ActionChainModule
+
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[],
+        chain_canvas={
+            "nodes": [
+                {
+                    "id": "missing",
+                    "node_type": "shortcut",
+                    "shortcut_id": "missing-shortcut",
+                    "order": 1,
+                }
+            ],
+            "connections": [],
+        },
+    )
+
+    issues = ActionChainModule(DefaultActionChainHostAPI(_Data([]))).validate_chain(chain)
+    codes = [item["code"] for item in issues]
+
+    assert "chain.empty" not in codes
+    assert "chain.step.missing_shortcut" in codes
 
 
 def test_module_record_requires_api_availability():
@@ -185,3 +415,101 @@ def test_action_chain_can_be_registered_from_plugin_manifest(tmp_path):
         assert record.provider == "builtin"
     finally:
         module_registry.unregister_external_manifest(REGISTRY_ACTION_CHAIN_ID)
+
+
+def test_action_chain_unavailable_statuses():
+    """Test that all 5 unavailable statuses produce clear error messages."""
+    from modules.action_chain.entry import unavailable_result
+
+    statuses = [
+        (MODULE_DISABLED, "禁用"),
+        (MODULE_UNLICENSED, "未授权"),
+        (MODULE_MISSING, "缺失"),
+        (MODULE_INCOMPATIBLE, "不兼容"),
+        (MODULE_BROKEN, "加载失败"),
+    ]
+
+    for status, expected_keyword in statuses:
+        result = unavailable_result(status)
+        assert result.success is False, f"Status {status} should return success=False"
+        assert expected_keyword in result.message, f"Status {status} message should contain '{expected_keyword}'"
+        assert result.payload["items"][0]["error"] == status
+
+
+def test_action_chain_disabled_state_blocks_execution():
+    """Test that disabled module blocks chain execution."""
+    from modules.action_chain.entry import ActionChainModule
+
+    class Host:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return True
+
+    module = ActionChainModule(Host())
+    module._available = False
+    module._status = "disabled"
+
+    chain = ShortcutItem(id="chain", type=ShortcutType.CHAIN, chain_steps=[{"shortcut_id": "step"}])
+    result = module.execute_chain(chain, {})
+
+    assert result.success is False
+    assert "禁用" in result.message
+
+
+def test_action_chain_unlicensed_state_blocks_execution():
+    """Test that unlicensed module blocks chain execution."""
+    from modules.action_chain.entry import ActionChainModule
+
+    class Host:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return capability != "chain.runtime"
+
+    module = ActionChainModule(Host())
+
+    chain = ShortcutItem(id="chain", type=ShortcutType.CHAIN, chain_steps=[{"shortcut_id": "step"}])
+    result = module.execute_chain(chain, {})
+
+    assert result.success is False
+    assert "未授权" in result.message
+
+
+def test_action_chain_editor_permission_check():
+    """Test that editor permission is checked before opening editor."""
+    from modules.action_chain.entry import ActionChainModule
+
+    class Host:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return capability != "chain.editor"
+
+    module = ActionChainModule(Host())
+
+    result = module.open_editor(None, {"chain_steps": []})
+    assert result is None
+
+
+def test_action_chain_availability_status_reflects_permission():
+    """Test that availability_status reflects permission state."""
+    from modules.action_chain.entry import ActionChainModule
+
+    class AllowedHost:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return True
+
+    class DeniedHost:
+        data_manager = None
+
+        def check_permission(self, capability):
+            return capability != "chain.runtime"
+
+    module_allowed = ActionChainModule(AllowedHost())
+    module_denied = ActionChainModule(DeniedHost())
+
+    assert module_allowed.availability_status() == "available"
+    assert module_denied.availability_status() == "unlicensed"

@@ -8,7 +8,13 @@ from datetime import datetime
 
 from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, QTimer
 from ui.utils.dialog_helper import center_dialog_on_main_window
-from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
+from ui.utils.window_effect import (
+    enable_acrylic_for_config_window,
+    get_window_effect,
+    is_win10,
+    is_win11,
+    paint_win10_rounded_surface,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +55,7 @@ class BaseDialog(QDialog):
         self.setAttribute(QtCompat.WA_TranslucentBackground, True)
         self.setWindowOpacity(0)
 
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self.theme = "dark"
         self._shadow_applied = False
         self._dialog_finished = False
@@ -90,8 +96,10 @@ class BaseDialog(QDialog):
             painter.setRenderHint(QtCompat.Antialiasing)
 
             if is_win10():
-                painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-                painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+                paint_win10_rounded_surface(
+                    painter, self, self.bg_color, self.border_color, self.corner_radius
+                )
+                return
 
             inset = 1.0 if is_win10() else 0.5
 
@@ -107,7 +115,7 @@ class BaseDialog(QDialog):
 
             tint_color = QColor(self.bg_color)
             if is_win10():
-                tint_color.setAlpha(min(tint_color.alpha(), 150))
+                tint_color.setAlpha(min(tint_color.alpha(), 220))
             else:
                 tint_color.setAlpha(min(tint_color.alpha(), 100))
             painter.fillPath(path, tint_color)

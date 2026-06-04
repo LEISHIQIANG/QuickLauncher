@@ -201,7 +201,7 @@ class UpdateDialog:
         from ui.styles.style import get_dialog_stylesheet
         from ui.utils.dialog_helper import center_dialog_on_main_window
         from ui.utils.font_manager import get_qfont, tune_font_rendering
-        from ui.utils.window_effect import get_window_effect, is_win10, is_win11
+        from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
         theme = "dark"
         if parent and hasattr(parent, "_theme"):
@@ -221,7 +221,7 @@ class UpdateDialog:
         dialog.setFont(get_qfont(12))
         dialog.setWindowOpacity(0)
 
-        corner_radius = 8 if is_win11() else 12
+        corner_radius = 8 if is_win11() else 8
         if theme == "dark":
             bg_color = QColor(28, 28, 30, 180)
             border_color = QColor(190, 190, 197, 60)
@@ -330,30 +330,30 @@ class UpdateDialog:
         # Paint background
         def paint_event(event):
             painter = QPainter(dialog)
-            painter.setRenderHint(QtCompat.Antialiasing)
-            if is_win10():
-                painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-                painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
-            inset = 1.0 if is_win10() else 0.5
-            path = QPainterPath()
-            path.addRoundedRect(
-                inset,
-                inset,
-                dialog.width() - inset * 2,
-                dialog.height() - inset * 2,
-                corner_radius,
-                corner_radius,
-            )
-            tint = QColor(bg_color)
-            if is_win10():
-                tint.setAlpha(min(tint.alpha(), 150))
-            else:
+            try:
+                painter.setRenderHint(QtCompat.Antialiasing)
+                if is_win10():
+                    paint_win10_rounded_surface(painter, dialog, bg_color, border_color, corner_radius)
+                    return
+                inset = 0.5
+                path = QPainterPath()
+                path.addRoundedRect(
+                    inset,
+                    inset,
+                    dialog.width() - inset * 2,
+                    dialog.height() - inset * 2,
+                    corner_radius,
+                    corner_radius,
+                )
+                tint = QColor(bg_color)
                 tint.setAlpha(min(tint.alpha(), 100))
-            painter.fillPath(path, tint)
-            pen_c = QColor(border_color)
-            pen_c.setAlpha(min(pen_c.alpha(), 120))
-            painter.setPen(QPen(pen_c, 1))
-            painter.drawPath(path)
+                painter.fillPath(path, tint)
+                pen_c = QColor(border_color)
+                pen_c.setAlpha(min(pen_c.alpha(), 120))
+                painter.setPen(QPen(pen_c, 1))
+                painter.drawPath(path)
+            finally:
+                painter.end()
 
         dialog.paintEvent = paint_event
 

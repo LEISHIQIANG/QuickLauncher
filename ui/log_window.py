@@ -30,7 +30,12 @@ from qt_compat import (
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_qfont, tune_font_rendering
-from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
+from ui.utils.window_effect import (
+    enable_acrylic_for_config_window,
+    get_window_effect,
+    is_win11,
+    paint_win10_rounded_surface,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +336,7 @@ class LogWindow(QDialog):
                 return
 
             effect = get_window_effect()
-            radius = 8 if is_win11() else 12
+            radius = 8 if is_win11() else 8
 
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
@@ -355,7 +360,7 @@ class LogWindow(QDialog):
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
 
-        radius = 8 if is_win11() else 12
+        radius = 8 if is_win11() else 8
         inset = 1.0 if is_win10() else 0.5
 
         if self._theme == "dark":
@@ -365,12 +370,16 @@ class LogWindow(QDialog):
             bg = QColor(242, 242, 247, 160)
             border = QColor(229, 229, 234, 150)
 
+        if is_win10():
+            paint_win10_rounded_surface(painter, self, bg, border, radius)
+            return
+
         path = QPainterPath()
         path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
 
         tint_color = QColor(bg)
         if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
+            tint_color.setAlpha(min(tint_color.alpha(), 220))
         else:
             tint_color.setAlpha(min(tint_color.alpha(), 100))
         painter.fillPath(path, tint_color)
@@ -393,7 +402,7 @@ class LogWindow(QDialog):
                     radius = 12
                     if w > 0 and h > 0:
                         effect.set_window_region(hwnd, w, h, radius)
-                        effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
+                        effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
         except Exception as exc:
             logger.debug("更新窗口区域失败: %s", exc, exc_info=True)
 

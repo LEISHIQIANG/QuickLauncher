@@ -697,6 +697,16 @@ class AppSettings:
     popup_multi_open_when_pinned: bool = False  # 固定时再次中键是否新开弹窗
     double_click_interval: int = 300  # 双击间隔 (ms)
 
+    # 弹窗触发按键配置
+    popup_trigger_mode: str = "mouse"  # 触发模式: keyboard, mouse, hybrid
+    popup_trigger_keys: list[str] = field(default_factory=list)  # 键盘按键列表
+    popup_trigger_button: str = "middle"  # 鼠标按键: left, right, middle, x1, x2
+    popup_trigger_modifiers: list[str] = field(default_factory=list)  # 修饰键
+    popup_special_trigger_mode: str = "mouse"  # 特殊触发模式
+    popup_special_trigger_keys: list[str] = field(default_factory=list)  # 特殊键盘按键
+    popup_special_trigger_button: str = "middle"  # 特殊鼠标按键
+    popup_special_trigger_modifiers: list[str] = field(default_factory=lambda: ["ctrl"])  # 特殊修饰键
+
     # 弹窗背景与视觉
     bg_mode: str = "theme"  # theme, image, color
     bg_solid_color: str = "#2b2b2b"
@@ -769,6 +779,14 @@ class AppSettings:
             "popup_multi_open_when_pinned": self.popup_multi_open_when_pinned,
             "hover_leave_delay": self.hover_leave_delay,
             "double_click_interval": self.double_click_interval,
+            "popup_trigger_mode": self.popup_trigger_mode,
+            "popup_trigger_keys": self.popup_trigger_keys,
+            "popup_trigger_button": self.popup_trigger_button,
+            "popup_trigger_modifiers": self.popup_trigger_modifiers,
+            "popup_special_trigger_mode": self.popup_special_trigger_mode,
+            "popup_special_trigger_keys": self.popup_special_trigger_keys,
+            "popup_special_trigger_button": self.popup_special_trigger_button,
+            "popup_special_trigger_modifiers": self.popup_special_trigger_modifiers,
             "bg_mode": self.bg_mode,
             "bg_solid_color": self.bg_solid_color,
             "bg_blur_radius": self.bg_blur_radius,
@@ -810,6 +828,27 @@ class AppSettings:
         # 如果没有特殊应用设置，使用默认值
         if not settings.special_apps:
             settings.special_apps = DEFAULT_SPECIAL_APPS.copy()
+
+        # 确保触发配置有默认值（向后兼容）
+        if not hasattr(settings, 'popup_trigger_button'):
+            settings.popup_trigger_button = "middle"
+        if not hasattr(settings, 'popup_trigger_modifiers'):
+            settings.popup_trigger_modifiers = []
+        if not hasattr(settings, 'popup_special_trigger_button'):
+            settings.popup_special_trigger_button = "middle"
+        if not hasattr(settings, 'popup_special_trigger_modifiers'):
+            settings.popup_special_trigger_modifiers = ["ctrl"]
+
+        # 向后兼容：确保新触发模式字段有默认值
+        if not hasattr(settings, 'popup_trigger_mode'):
+            settings.popup_trigger_mode = "mouse"
+        if not hasattr(settings, 'popup_trigger_keys'):
+            settings.popup_trigger_keys = []
+        if not hasattr(settings, 'popup_special_trigger_mode'):
+            settings.popup_special_trigger_mode = "mouse"
+        if not hasattr(settings, 'popup_special_trigger_keys'):
+            settings.popup_special_trigger_keys = []
+
         return settings
 
 

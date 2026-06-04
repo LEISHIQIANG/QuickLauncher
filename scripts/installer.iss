@@ -65,6 +65,7 @@ Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recurs
 ; Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Dirs]
+Name: "{app}\config"; Permissions: users-modify
 Name: "{app}\temp_icons"; Permissions: users-modify
 Name: "{app}\temp_icons\favicons"; Permissions: users-modify
 

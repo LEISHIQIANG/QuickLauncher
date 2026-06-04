@@ -4,7 +4,13 @@ from core.chain_processors import execute_chain_processor, processor_title
 from core.data_models import Folder, ShortcutItem, ShortcutType
 from qt_compat import QCheckBox, QComboBox, QSpinBox, QTextEdit, QWidget
 from ui.config_window.base_dialog import BaseDialog
-from ui.config_window.chain_canvas import compile_canvas_to_steps, node_input_ports, node_output_ports
+from ui.config_window.chain_canvas import (
+    _node_port_tooltip,
+    compile_canvas_to_steps,
+    node_input_ports,
+    node_output_labels,
+    node_output_ports,
+)
 from ui.config_window.chain_dialog import ChainDialog
 
 pytestmark = pytest.mark.ui
@@ -214,6 +220,49 @@ def test_shortcut_nodes_expose_standard_outputs_in_canvas():
     assert node_output_ports({"node_type": "processor", "processor_id": "text_template"}) == ["output", "length", "empty"]
 
 
+def test_shortcut_standard_output_labels_are_data_oriented():
+    item = ShortcutItem(id="a", name="A", type=ShortcutType.COMMAND, capture_output=True)
+    labels = node_output_labels({"node_type": "shortcut", "shortcut_id": "a"}, {"a": item})
+
+    assert labels["success"] == "成功状态"
+    assert labels["output"] == "主输出"
+    assert labels["error"] == "错误信息"
+    assert labels["stdout"] == "标准输出"
+    assert labels["stderr"] == "标准错误"
+    assert labels["files.0"] == "结果文件[0]"
+    assert labels["folders.0"] == "结果文件夹[0]"
+    assert labels["urls.0"] == "结果 URL[0]"
+
+
+def test_standard_output_tooltip_includes_type_role_and_description():
+    node = {"node_type": "processor", "processor_id": "list_join"}
+
+    tooltip = _node_port_tooltip(node, "output", "output")
+
+    assert "数据类型: 字符串" in tooltip
+    assert "端口角色: 主数据" in tooltip
+    assert "主输出" in tooltip
+
+
+def test_http_processors_expose_status_and_headers_outputs():
+    ports = node_output_ports({"node_type": "processor", "processor_id": "http_get"})
+
+    assert "output" in ports
+    assert "status_code" in ports
+    assert "headers" in ports
+
+
+def test_processor_canvas_ports_read_definition_schema():
+    from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node
+
+    inputs = {spec.id: spec for spec in input_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})}
+    outputs = {spec.id: spec for spec in output_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})}
+
+    assert inputs["ms"].kind == "number"
+    assert inputs["ms"].label == "毫秒"
+    assert outputs["ms"].kind == "number"
+
+
 def test_file_shortcut_exposes_normal_input_and_open_file_port():
     item = ShortcutItem(id="app", name="App", type=ShortcutType.FILE)
     ports = node_input_ports({"node_type": "shortcut", "shortcut_id": "app"}, {"app": item})
@@ -279,6 +328,23 @@ def test_canvas_compiles_custom_output_and_multi_input_bindings():
     assert steps[2]["input_binding"] == ["1.outputs.foo", "2.outputs.bar"]
 
 
+def test_canvas_compile_ignores_backward_connections():
+    canvas = {
+        "nodes": [
+            {"id": "n1", "node_type": "processor", "processor_id": "text_input", "order": 1, "x": 0, "y": 0},
+            {"id": "n2", "node_type": "processor", "processor_id": "text_template", "order": 2, "x": 220, "y": 0},
+        ],
+        "connections": [
+            {"source_node": "n2", "source_port": "output", "target_node": "n1", "target_port": "text"},
+        ],
+    }
+
+    steps = compile_canvas_to_steps(canvas)
+
+    assert steps[0]["input_binding"] == ""
+    assert steps[0]["param_bindings"] == {}
+
+
 def test_canvas_rejects_invalid_connections(qapp):
     parent = _Parent([])
     dialog = ChainDialog(parent)
@@ -297,6 +363,51 @@ def test_canvas_rejects_invalid_connections(qapp):
 
     widget._connect("n1", "output", "n2", "a")
     assert widget.canvas["connections"] == []
+
+
+def test_canvas_rejects_implicit_text_to_number_connection(qapp):
+    parent = _Parent([])
+    dialog = ChainDialog(parent)
+    widget = dialog.canvas_widget
+    widget.canvas = {
+        "nodes": [
+            {"id": "n1", "node_type": "processor", "processor_id": "text_input", "order": 1, "x": 0, "y": 0},
+            {"id": "n2", "node_type": "processor", "processor_id": "math_add", "order": 2, "x": 220, "y": 0},
+        ],
+        "connections": [],
+    }
+    widget._render()
+
+    widget._connect("n1", "output", "n2", "a")
+
+    assert widget.canvas["connections"] == []
+
+
+def test_canvas_accepts_explicit_number_and_list_typed_connections(qapp):
+    parent = _Parent([])
+    dialog = ChainDialog(parent)
+    widget = dialog.canvas_widget
+    widget.canvas = {
+        "nodes": [
+            {"id": "len", "node_type": "processor", "processor_id": "text_len", "order": 1, "x": 0, "y": 0},
+            {"id": "add", "node_type": "processor", "processor_id": "math_add", "order": 2, "x": 220, "y": 0},
+            {"id": "counter", "node_type": "processor", "processor_id": "loop_counter", "order": 3, "x": 440, "y": 0},
+            {"id": "join", "node_type": "processor", "processor_id": "list_join", "order": 4, "x": 660, "y": 0},
+        ],
+        "connections": [],
+    }
+    widget._render()
+
+    widget._connect("len", "output", "add", "a")
+    widget._connect("counter", "output", "join", "list")
+
+    assert [
+        (connection["source_node"], connection["source_port"], connection["target_node"], connection["target_port"])
+        for connection in widget.canvas["connections"]
+    ] == [
+        ("len", "output", "add", "a"),
+        ("counter", "output", "join", "list"),
+    ]
 
 
 def test_double_click_non_script_processor_does_not_change_processor_id(qapp):
@@ -463,6 +574,56 @@ def test_chain_canvas_run_status_prefers_node_snapshots(qapp):
     dialog._refresh_properties()
     assert "alpha" in dialog.property_panel.run_text.toPlainText()
     assert "beta" in dialog.property_panel.run_text.toPlainText()
+
+
+def test_chain_connection_tooltip_shows_last_value(qapp):
+    parent = _Parent([])
+    dialog = ChainDialog(parent)
+    dialog._add_processor_node("text_input")
+    dialog._add_processor_node("text_template")
+    nodes = sorted(dialog.canvas_widget.canvas["nodes"], key=lambda n: int(n.get("order", 0) or 0))
+    first_id = nodes[0]["id"]
+    second_id = nodes[1]["id"]
+    dialog.canvas_widget.canvas["connections"] = [
+        {
+            "id": "c1",
+            "source_node": first_id,
+            "source_port": "output",
+            "target_node": second_id,
+            "target_port": "input",
+        }
+    ]
+
+    dialog.canvas_widget.set_run_status(
+        [],
+        {
+            first_id: {
+                "node_id": first_id,
+                "status": "ok",
+                "duration": 0.01,
+                "message": "ok",
+                "inputs": {},
+                "outputs": {"output": "beta"},
+                "typed_outputs": {"output": {"kind": "text", "value": "beta", "text": "beta", "preview": "beta"}},
+                "error": "",
+            },
+            second_id: {
+                "node_id": second_id,
+                "status": "ok",
+                "duration": 0.01,
+                "message": "ok",
+                "inputs": {"input": "beta"},
+                "outputs": {"output": "beta!"},
+                "error": "",
+            },
+        },
+    )
+
+    assert dialog.canvas_widget.connection_items
+    tooltip = dialog.canvas_widget.connection_items[0].toolTip()
+    assert "output ->" in tooltip
+    assert "beta" in tooltip
+    assert "字符串" in tooltip
 
 
 def test_property_panel_uses_processor_schema_controls(qapp):

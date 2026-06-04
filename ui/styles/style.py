@@ -21,6 +21,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.utils.window_effect import paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +344,7 @@ class PopupMenu(QWidget):
     def _apply_blur_effect(self):
         """应用磨砂玻璃模糊效果 + 圆角裁剪（与主配置窗口风格一致）"""
         try:
-            from ui.utils.window_effect import get_window_effect, is_win11
+            from ui.utils.window_effect import get_window_effect, is_win10, is_win11
 
             hwnd = int(self.winId())
             if not hwnd:
@@ -365,16 +366,19 @@ class PopupMenu(QWidget):
                     gradient_color = "c8f2f2f7"  # alpha=200, 浅灰
                 effect.set_acrylic(hwnd, gradient_color, enable=True, blur=True)
             else:
-                # Win10: 使用窗口区域裁剪 + DWM Blur Behind
+                # Win10: 使用窗口区域裁剪，背景由 Qt 自绘
                 if w > 0 and h > 0:
                     effect.set_window_region(hwnd, w, h, r)
-                    effect.set_dwm_blur_behind(hwnd, w, h, r, enable=True)
-                # 应用半透明着色层
-                if self._theme == "dark":
-                    gradient_color = "c81c1c1e"
+                if is_win10():
+                    effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
                 else:
-                    gradient_color = "c8f2f2f7"
-                effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
+                    effect.set_dwm_blur_behind(hwnd, w, h, r, enable=True)
+                    # 应用半透明着色层
+                    if self._theme == "dark":
+                        gradient_color = "c81c1c1e"
+                    else:
+                        gradient_color = "c8f2f2f7"
+                    effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
 
             self._blur_applied = True
         except Exception as e:
@@ -401,12 +405,20 @@ class PopupMenu(QWidget):
             painter.setCompositionMode(cm_over)
 
         # 主题颜色：当模糊效果生效时降低不透明度以显示模糊
+        win10_qt_fallback = False
+        try:
+            from ui.utils.window_effect import is_win10
+
+            win10_qt_fallback = is_win10()
+        except Exception as exc:
+            logger.debug("检测Win10菜单绘制模式失败: %s", exc, exc_info=True)
+
         if self._blur_applied:
             if self._theme == "dark":
-                bg = QColor(30, 30, 30, 120)
+                bg = QColor(30, 30, 30, 220 if win10_qt_fallback else 120)
                 border = QColor(255, 255, 255, 38)
             else:
-                bg = QColor(255, 255, 255, 120)
+                bg = QColor(255, 255, 255, 235 if win10_qt_fallback else 120)
                 border = QColor(0, 0, 0, 20)
         else:
             if self._theme == "dark":
@@ -415,6 +427,11 @@ class PopupMenu(QWidget):
             else:
                 bg = QColor(255, 255, 255, 220)
                 border = QColor(0, 0, 0, int(0.08 * 255))
+
+        if win10_qt_fallback:
+            paint_win10_rounded_surface(painter, self, bg, border, self._radius)
+            painter.end()
+            return
 
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = QPainterPath()

@@ -28,7 +28,13 @@ from qt_compat import (
 from ui.styles.style import Glassmorphism
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
-from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
+from ui.utils.window_effect import (
+    enable_acrylic_for_config_window,
+    get_window_effect,
+    is_win10,
+    is_win11,
+    paint_win10_rounded_surface,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +47,7 @@ class WelcomeGuide(QDialog):
         self.setWindowTitle(tr("欢迎使用 QuickLauncher"))
         self.setModal(True)
         self._theme = theme
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self.current_step = 0
         self._shadow_applied = False
 
@@ -224,10 +230,10 @@ class WelcomeGuide(QDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
 
         if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+            return
 
-        inset = 1.0 if is_win10() else 0.5
+        inset = 0.5
 
         path = QPainterPath()
         path.addRoundedRect(
@@ -237,7 +243,7 @@ class WelcomeGuide(QDialog):
         # 磨砂玻璃模式 - 与主配置窗口一致的 alpha 处理
         tint_color = QColor(self.bg_color)
         if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
+            tint_color.setAlpha(min(tint_color.alpha(), 220))
         else:
             tint_color.setAlpha(min(tint_color.alpha(), 100))
         painter.fillPath(path, tint_color)

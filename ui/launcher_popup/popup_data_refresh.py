@@ -19,7 +19,7 @@ from qt_compat import (
 )
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker
-from ui.utils.window_effect import is_win10, is_win11
+from ui.utils.window_effect import is_win11
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +81,6 @@ class PopupDataRefreshMixin:
 
         def calc_paint_radius(desired_radius: int, mode: str, blur: int) -> int:
             desired = max(0, int(desired_radius))
-            if mode == "acrylic" and is_win10():
-                # Win10 Acrylic allows DWM Blur rounding now
-                pass
             effect_enabled = (mode == "acrylic") or (mode == "theme" and int(blur or 0) > 0)
             if is_win11() and effect_enabled:
                 return self._get_win11_effective_radius(desired)

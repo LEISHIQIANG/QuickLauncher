@@ -510,6 +510,9 @@ class DataManager:
 
     def _do_save(self) -> bool:
         """Save data to disk atomically with lock splitting."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         with self._save_lock:
             try:
                 payload = self._serialize_data()
@@ -1102,6 +1105,7 @@ class DataManager:
         """update_settings"""
         with self._save_lock:
             changed = False
+
             for key, value in kwargs.items():
                 if hasattr(self.data.settings, key):
                     current_value = getattr(self.data.settings, key)
@@ -1119,7 +1123,7 @@ class DataManager:
 
             if changed:
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
-                self.save()
+                self.save(immediate=True)
 
     def get_settings(self) -> AppSettings:
         """get_settings"""

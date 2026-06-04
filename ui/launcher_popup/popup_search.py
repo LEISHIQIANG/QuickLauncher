@@ -23,6 +23,7 @@ from qt_compat import (
     QTimer,
 )
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
+from ui.utils.window_effect import is_win10
 
 logger = logging.getLogger(__name__)
 
@@ -721,7 +722,7 @@ class PopupSearchMixin:
             logger.debug(f"[ANCHOR] 使用已有基准点: y={old_anchor}")
 
     def _set_fixed_geometry_atomically(self, left: int, top: int, width: int, height: int):
-        """原子级设置窗口尺寸与位置，防止 DWM 多重绘制闪烁"""
+        """原子级设置窗口尺寸与位置，减少透明窗口重绘闪烁"""
         self.setGeometry(left, top, width, height)
         try:
             self._update_window_effect()
@@ -792,6 +793,10 @@ class PopupSearchMixin:
 
     def _apply_search_mask(self, force: bool = False):
         """采用遮罩掩码裁剪顶部搜索区域"""
+        if is_win10():
+            self.clearMask()
+            return
+
         if not self._is_search_layout_visible() and not force:
             logger.debug(f"[SEARCH_MASK] 清除搜索遮罩: window={self.width()}x{self.height()}")
             self.clearMask()

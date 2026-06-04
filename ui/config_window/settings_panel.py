@@ -40,7 +40,7 @@ from qt_compat import (
 )
 from ui.styles.style import StyleSheet
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
-from ui.utils.window_effect import get_window_effect
+from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 from .settings_about_page import SettingsAboutPageMixin
 from .settings_appearance_page import SettingsAppearancePageMixin
@@ -73,7 +73,7 @@ class CompactProgressDialog(QDialog):
 
         from ui.utils.window_effect import is_win11
 
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self._acrylic_applied = False
         self._dialog_finished = False
         self._detect_theme()
@@ -155,8 +155,8 @@ class CompactProgressDialog(QDialog):
         from ui.utils.window_effect import is_win10
 
         if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+            return
 
         inset = 1.0 if is_win10() else 0.5
 
@@ -168,7 +168,7 @@ class CompactProgressDialog(QDialog):
         # 磨砂玻璃模式：与ThemedMessageBox完全一致
         tint_color = QColor(self.bg_color)
         if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
+            tint_color.setAlpha(min(tint_color.alpha(), 220))
         else:
             tint_color.setAlpha(min(tint_color.alpha(), 100))
         painter.fillPath(path, tint_color)
@@ -929,6 +929,7 @@ class SettingsPanel(
     back_requested = pyqtSignal()
     hotkey_recording_changed = pyqtSignal(bool)
     special_apps_changed = pyqtSignal()
+    trigger_config_changed = pyqtSignal()
 
     def __init__(self, data_manager: DataManager, tray_app=None):
         super().__init__()

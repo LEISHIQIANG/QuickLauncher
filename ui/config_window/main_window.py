@@ -36,7 +36,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11
+from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11, paint_win10_rounded_surface
 
 from .theme_helper import get_radio_stylesheet, get_switch_stylesheet
 from .window_lifecycle import WindowLifecycleController
@@ -357,7 +357,7 @@ class RoundedWindow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self.bg_color = QColor(43, 43, 43, 200)  # 默认半透明
         self.border_color = QColor(85, 85, 85, 150)
         self.use_acrylic = True  # 是否使用磨砂玻璃模式
@@ -401,8 +401,10 @@ class RoundedWindow(QWidget):
                 from ui.utils.window_effect import is_win10
 
                 if is_win10():
-                    painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-                    painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+                    paint_win10_rounded_surface(
+                        painter, self, self.bg_color, self.border_color, self.corner_radius
+                    )
+                    return
             except Exception as exc:
                 logger.debug("设置渲染提示失败: %s", exc, exc_info=True)
 
@@ -430,7 +432,7 @@ class RoundedWindow(QWidget):
                     from ui.utils.window_effect import is_win10
 
                     if is_win10():
-                        tint_color.setAlpha(min(tint_color.alpha(), 150))
+                        tint_color.setAlpha(min(tint_color.alpha(), 220))
                     else:
                         tint_color.setAlpha(min(tint_color.alpha(), 100))
                 except Exception as exc:
@@ -680,6 +682,9 @@ class ConfigWindow(QMainWindow):
             self.settings_panel.settings_changed.connect(self._on_settings_panel_changed)
             self.settings_panel.command_settings_changed.connect(self.settings_changed.emit)
             self.settings_panel.import_completed.connect(self._on_import_completed)
+            # 连接触发配置变更信号
+            if self.tray_app and hasattr(self.tray_app, '_apply_mouse_hook_settings'):
+                self.settings_panel.trigger_config_changed.connect(self.tray_app._apply_mouse_hook_settings)
 
             # 替换占位符
             idx = self.stack.indexOf(self._settings_placeholder)
@@ -1328,14 +1333,14 @@ class ConfigWindow(QMainWindow):
         self.move(self._anim_target_pos.x(), current_y)
 
     def _apply_window_shadow(self):
-        """应用窗口阴影、圆角和磨砂玻璃效果"""
+        """应用窗口圆角和平台相关视觉效果"""
         try:
             hwnd = int(self.winId())
             if not hwnd:
                 return
 
             effect = get_window_effect()
-            radius = 8 if is_win11() else 12
+            radius = 8 if is_win11() else 8
             theme = self.data_manager.get_settings().theme
 
             # 强制刷新效果状态
@@ -1348,11 +1353,7 @@ class ConfigWindow(QMainWindow):
                 # 启用磨砂玻璃效果 - 使用更低的 alpha (10) 获得极度透明的模糊
                 enable_acrylic_for_config_window(self, theme, blur_amount=10)
             else:
-                # Win10: 使用新的优化方案 (在 enable_acrylic_for_config_window 中实现)
-                # 不再手动设置 SetWindowRgn (会导致直角残留)
-                # 也不再分别调用 set_window_region
-
-                # 尝试启用模糊效果 (内部会处理 Win10 的圆角区域和不透明度)
+                # Win10: 只做区域裁剪，背景由 Qt 自绘，避免 DWM/Acrylic 黑色遮罩。
                 enable_acrylic_for_config_window(self, theme, blur_amount=8, radius=radius)
         except Exception as exc:
             logger.debug("应用窗口阴影失败: %s", exc, exc_info=True)
@@ -1372,6 +1373,6 @@ class ConfigWindow(QMainWindow):
                         # Win10 Resize 时需要同时更新两个区域以保持一致
                         # 使用与初始化时相同的逻辑
                         effect.set_window_region(hwnd, w, h, radius)
-                        effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
+                        effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
         except Exception as exc:
             logger.debug("调整窗口大小时更新圆角失败: %s", exc, exc_info=True)

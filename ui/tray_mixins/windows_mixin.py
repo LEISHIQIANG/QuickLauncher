@@ -38,9 +38,13 @@ class WindowsMixin:
                     panel = getattr(self.config_window, "settings_panel", None)
                     if panel and hasattr(panel, "special_apps_changed"):
                         panel.special_apps_changed.connect(self._sync_special_apps_to_hook)
-                        self._special_apps_signal_connected = True
+                        logger.info("已连接 special_apps_changed 信号")
+                    if panel and hasattr(panel, "trigger_config_changed"):
+                        panel.trigger_config_changed.connect(self._apply_mouse_hook_settings)
+                        logger.info("已连接 trigger_config_changed 信号")
+                    self._special_apps_signal_connected = True
                 except Exception as exc:
-                    logger.debug("连接特殊应用信号失败: %s", exc, exc_info=True)
+                    logger.error("连接信号失败: %s", exc, exc_info=True)
 
             self.config_window.show()
 

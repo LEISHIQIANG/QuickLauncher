@@ -6,7 +6,9 @@ import json
 import time
 from typing import Any
 
-from core.chain_contracts import validate_step_bindings
+from core.chain_canvas_adapter import runtime_steps
+from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node, validate_step_bindings
+from core.chain_values import ChainValue, ChainValueKind, make_chain_value, raw_value, typed_mapping
 from core.command_io import (
     CommandInvocationSnapshot,
     build_output_artifact,
@@ -64,10 +66,11 @@ def _execute_shortcut_chain_runtime(
 
     started = time.perf_counter()
     items: list[dict[str, Any]] = []
-    steps = list(getattr(chain, "chain_steps", []) or [])
+    steps = runtime_steps(chain)
     success = True
     error = ""
     chain_values: dict[str, str] = {}
+    typed_chain_values: dict[str, ChainValue] = {}
     previous_output = ""
     node_snapshots: dict[str, dict[str, Any]] = {}
 
@@ -155,9 +158,11 @@ def _execute_shortcut_chain_runtime(
         node_type = str(step.get("node_type") or "shortcut").strip().lower()
         target = shortcut_map.get(str(step.get("shortcut_id") or "")) if node_type != "processor" else None
         item_started = time.perf_counter()
+        wall_started = time.time()
         step_result = None
         resolved_args: dict[str, Any] = {}
         resolved_inputs: dict[str, Any] = {}
+        step_warnings: list[str] = []
         if node_type == "processor":
             contract_error = validate_step_bindings(steps, index, step, None, shortcut_map)
             if contract_error:
@@ -165,8 +170,11 @@ def _execute_shortcut_chain_runtime(
                 detail = contract_error
                 step_error = contract_error
             else:
+                # Get timeout from step definition (default 0 = no timeout)
+                timeout_ms = int(step.get("timeout_ms", 0) or 0)
                 step_success, detail, step_error, step_result, resolved_args, resolved_inputs = _execute_processor_step(
-                    step, chain_values, previous_output
+                    step, chain_values, typed_chain_values, previous_output,
+                    cancel_event=cancel_event, timeout_ms=timeout_ms,
                 )
         elif target is None:
             step_success = False
@@ -213,7 +221,7 @@ def _execute_shortcut_chain_runtime(
                 if step.get("stop_on_error", True):
                     break
                 continue
-            args, input_values, prepare_error = _prepare_step_values(step, chain_values, previous_output)
+            args, input_values, prepare_error = _prepare_step_values(step, chain_values, typed_chain_values, previous_output)
             resolved_args = dict(args)
             resolved_inputs = dict(input_values)
             if prepare_error:
@@ -247,17 +255,25 @@ def _execute_shortcut_chain_runtime(
         output = artifact.output
         previous_output = output
         chain_values.update(chain_values_from_artifact(index, artifact))
-        outputs = _artifact_outputs(artifact)
+        raw_outputs = dict(step_payload.get("raw_outputs") or {}) if isinstance(step_payload.get("raw_outputs"), dict) else {}
+        output_kinds = _step_output_kinds(step, shortcut_map)
+        typed_chain_values.update(_typed_values_from_artifact(index, artifact, raw_outputs, output_kinds))
+        outputs = _artifact_outputs(artifact, raw_outputs)
+        snapshot_inputs = _snapshot_inputs(resolved_args, resolved_inputs)
         snapshot = _node_snapshot(
             step,
             index,
             getattr(target, "name", "") if target is not None else step_title,
             status,
             duration,
-            _snapshot_inputs(resolved_args, resolved_inputs),
+            snapshot_inputs,
             outputs,
             detail or step_error,
             step_error,
+            started_at=wall_started,
+            typed_inputs=typed_mapping(snapshot_inputs, _step_input_kinds(step, shortcut_map, target)),
+            typed_outputs=typed_mapping(outputs, _snapshot_output_kinds(output_kinds)),
+            warnings=step_warnings,
         )
         node_snapshots[node_id] = snapshot
         items.append(
@@ -341,7 +357,7 @@ def _prepare_step_shortcut(
     chain_values: dict[str, str],
     previous_output: str,
 ) -> tuple[ShortcutItem, str]:
-    args, input_values, binding_error = _prepare_step_values(step, chain_values, previous_output)
+    args, input_values, binding_error = _prepare_step_values(step, chain_values, {}, previous_output)
     if binding_error:
         return target, binding_error
     return _prepare_runtime_step_shortcut(target, args, input_values, chain_values), ""
@@ -367,15 +383,17 @@ def _prepare_runtime_step_shortcut(
 def _prepare_step_values(
     step: dict[str, Any],
     chain_values: dict[str, str],
+    typed_chain_values: dict[str, ChainValue] | None,
     previous_output: str,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
     args: dict[str, Any] = {str(k): str(v) for k, v in dict(step.get("args") or {}).items() if str(k)}
     for param_name, binding_key in dict(step.get("param_bindings") or {}).items():
         bindings = _binding_items(binding_key)
-        missing = [binding for binding in bindings if binding not in chain_values]
+        typed_values = dict(typed_chain_values or {})
+        missing = [binding for binding in bindings if binding not in chain_values and binding not in typed_values]
         if missing:
-            return args, {}, f"绑定不存在: {missing[0]}"
-        values = [chain_values[binding] for binding in bindings]
+            return args, {}, f"绑定不存在: {missing[0]} (目标端口: {param_name})"
+        values = [_resolve_bound_value(binding, chain_values, typed_values) for binding in bindings]
         args[str(param_name)] = values if len(values) > 1 else (values[0] if values else "")
 
     input_values: dict[str, Any] = {}
@@ -384,14 +402,22 @@ def _prepare_step_values(
         input_binding = "prev.output"
     if input_binding:
         bindings = _binding_items(input_binding)
-        missing = [binding for binding in bindings if binding not in chain_values]
+        typed_values = dict(typed_chain_values or {})
+        missing = [binding for binding in bindings if binding not in chain_values and binding not in typed_values]
         if missing:
-            return args, input_values, f"绑定不存在: {missing[0]}"
-        values = [chain_values[binding] for binding in bindings]
+            return args, input_values, f"绑定不存在: {missing[0]} (目标端口: input)"
+        values = [_resolve_bound_value(binding, chain_values, typed_values) for binding in bindings]
         input_values["input"] = values if len(values) > 1 else (values[0] if values else "")
     elif step.get("use_previous_output", False):
         input_values["input"] = previous_output
     return args, input_values, ""
+
+
+def _resolve_bound_value(binding: str, chain_values: dict[str, str], typed_chain_values: dict[str, ChainValue]) -> Any:
+    typed = typed_chain_values.get(str(binding or ""))
+    if typed is not None:
+        return raw_value(typed)
+    return chain_values.get(str(binding or ""), "")
 
 
 def _binding_items(value: Any) -> list[str]:
@@ -441,16 +467,42 @@ def _runtime_input_files(target: ShortcutItem) -> list[str]:
 def _execute_processor_step(
     step: dict[str, Any],
     chain_values: dict[str, str],
+    typed_chain_values: dict[str, ChainValue],
     previous_output: str,
+    cancel_event=None,
+    timeout_ms: int = 0,
 ) -> tuple[bool, str, str, CommandResult | None, dict[str, Any], dict[str, Any]]:
     from core.chain_processors import execute_chain_processor
 
-    args, input_values, binding_error = _prepare_step_values(step, chain_values, previous_output)
+    args, input_values, binding_error = _prepare_step_values(step, chain_values, typed_chain_values, previous_output)
     if binding_error:
         return False, binding_error, binding_error, None, args, input_values
     processor_args = dict(args)
     processor_args.update(input_values)
-    result = execute_chain_processor(str(step.get("processor_id") or ""), processor_args, str(step.get("source") or ""))
+
+    # Check for cancellation before execution
+    if _is_cancelled(cancel_event):
+        return False, "已取消", "已取消", None, args, input_values
+
+    # Execute with timeout if specified
+    if timeout_ms > 0:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                execute_chain_processor,
+                str(step.get("processor_id") or ""),
+                processor_args,
+                str(step.get("source") or ""),
+            )
+            try:
+                result = future.result(timeout=timeout_ms / 1000.0)
+            except concurrent.futures.TimeoutError:
+                return False, f"执行超时（{timeout_ms}ms）", "timeout", None, args, input_values
+            except Exception as exc:
+                return False, str(exc), str(exc), None, args, input_values
+    else:
+        result = execute_chain_processor(str(step.get("processor_id") or ""), processor_args, str(step.get("source") or ""))
+
     return bool(result.success), _capture_summary(result), result.error or "", result, args, input_values
 
 
@@ -478,6 +530,11 @@ def _node_snapshot(
     outputs: dict[str, Any],
     message: str,
     error: str,
+    *,
+    started_at: float = 0.0,
+    typed_inputs: dict[str, Any] | None = None,
+    typed_outputs: dict[str, Any] | None = None,
+    warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     node_id = str(step.get("id") or f"step-{order}")
     return {
@@ -485,13 +542,15 @@ def _node_snapshot(
         "order": order,
         "title": str(title or _step_title(step, {})),
         "status": str(status or ""),
-        "started_at": 0.0,
+        "started_at": float(started_at or 0.0),
         "duration": float(duration or 0.0),
         "inputs": _safe_snapshot_mapping(inputs),
         "outputs": _safe_snapshot_mapping(outputs),
+        "typed_inputs": dict(typed_inputs or {}),
+        "typed_outputs": dict(typed_outputs or {}),
         "message": str(message or ""),
         "error": str(error or ""),
-        "warnings": [],
+        "warnings": [str(item) for item in list(warnings or []) if str(item)],
     }
 
 
@@ -504,17 +563,18 @@ def _snapshot_inputs(args: dict[str, Any], input_values: dict[str, Any]) -> dict
     return values
 
 
-def _artifact_outputs(artifact) -> dict[str, Any]:
+def _artifact_outputs(artifact, raw_outputs: dict[str, Any] | None = None) -> dict[str, Any]:
+    raw_outputs = dict(raw_outputs or {})
     outputs: dict[str, Any] = {
-        "success": "true" if artifact.success else "false",
-        "output": artifact.output,
+        "success": bool(artifact.success),
+        "output": raw_outputs.get("output", artifact.output),
         "stdout": artifact.stdout,
         "stderr": artifact.stderr,
         "exit_code": artifact.exit_code,
         "error": artifact.error,
     }
     for key, value in dict(getattr(artifact, "outputs", {}) or {}).items():
-        outputs[str(key)] = value
+        outputs[str(key)] = raw_outputs.get(str(key), value)
     if getattr(artifact, "files", None):
         outputs["files"] = list(artifact.files)
     if getattr(artifact, "folders", None):
@@ -522,6 +582,97 @@ def _artifact_outputs(artifact) -> dict[str, Any]:
     if getattr(artifact, "urls", None):
         outputs["urls"] = list(artifact.urls)
     return outputs
+
+
+def _typed_values_from_artifact(
+    index: int,
+    artifact,
+    raw_outputs: dict[str, Any],
+    output_kinds: dict[str, str],
+) -> dict[str, ChainValue]:
+    raw_outputs = dict(raw_outputs or {})
+    values: dict[str, ChainValue] = {}
+    standard_values = {
+        "success": bool(artifact.success),
+        "exit_code": artifact.exit_code,
+        "stdout": artifact.stdout,
+        "stderr": artifact.stderr,
+        "output": raw_outputs.get("output", artifact.output),
+        "text": artifact.text,
+        "error": artifact.error,
+    }
+    standard_kinds = {
+        "success": ChainValueKind.BOOL,
+        "exit_code": ChainValueKind.NUMBER,
+        "stdout": ChainValueKind.TEXT,
+        "stderr": ChainValueKind.TEXT,
+        "output": output_kinds.get("output", ChainValueKind.TEXT),
+        "text": ChainValueKind.TEXT,
+        "error": ChainValueKind.TEXT,
+    }
+    if getattr(artifact, "json_text", ""):
+        standard_values["json"] = artifact.json_text
+        standard_kinds["json"] = ChainValueKind.JSON
+    if getattr(artifact, "table_tsv", ""):
+        standard_values["table.tsv"] = artifact.table_tsv
+        standard_kinds["table.tsv"] = ChainValueKind.TEXT
+
+    for prefix in (f"{index}", "prev"):
+        for name, value in standard_values.items():
+            values[f"{prefix}.{name}"] = make_chain_value(value, standard_kinds.get(name, ChainValueKind.TEXT))
+        for name, value in dict(getattr(artifact, "outputs", {}) or {}).items():
+            raw = raw_outputs.get(str(name), value)
+            values[f"{prefix}.outputs.{name}"] = make_chain_value(raw, output_kinds.get(str(name), ChainValueKind.ANY))
+        _expand_typed_list(values, prefix, "files", list(getattr(artifact, "files", []) or []), ChainValueKind.FILE)
+        _expand_typed_list(values, prefix, "folders", list(getattr(artifact, "folders", []) or []), ChainValueKind.FOLDER)
+        _expand_typed_list(values, prefix, "urls", list(getattr(artifact, "urls", []) or []), ChainValueKind.URL)
+    return values
+
+
+def _expand_typed_list(values: dict[str, ChainValue], prefix: str, name: str, items: list[str], item_kind: str) -> None:
+    values[f"{prefix}.{name}.count"] = make_chain_value(len(items), ChainValueKind.NUMBER)
+    values[f"{prefix}.{name}"] = make_chain_value(list(items), ChainValueKind.LIST)
+    for idx, item in enumerate(items):
+        values[f"{prefix}.{name}.{idx}"] = make_chain_value(item, item_kind)
+
+
+def _step_input_kinds(
+    step: dict[str, Any],
+    shortcut_map: dict[str, ShortcutItem],
+    target: ShortcutItem | None = None,
+) -> dict[str, str]:
+    if str(step.get("node_type") or "shortcut").strip().lower() == "processor":
+        node = step
+        shortcuts = shortcut_map
+    elif target is not None:
+        node = {"node_type": "shortcut", "shortcut_id": target.id}
+        shortcuts = {target.id: target}
+    else:
+        node = step
+        shortcuts = shortcut_map
+    return {spec.id: spec.kind for spec in input_port_specs_for_node(node, shortcuts)}
+
+
+def _step_output_kinds(step: dict[str, Any], shortcut_map: dict[str, ShortcutItem]) -> dict[str, str]:
+    return {spec.id: spec.kind for spec in output_port_specs_for_node(step, shortcut_map)}
+
+
+def _snapshot_output_kinds(output_kinds: dict[str, str]) -> dict[str, str]:
+    kinds = dict(output_kinds or {})
+    kinds.update(
+        {
+            "success": ChainValueKind.BOOL,
+            "stdout": ChainValueKind.TEXT,
+            "stderr": ChainValueKind.TEXT,
+            "exit_code": ChainValueKind.NUMBER,
+            "error": ChainValueKind.TEXT,
+            "files": ChainValueKind.LIST,
+            "folders": ChainValueKind.LIST,
+            "urls": ChainValueKind.LIST,
+        }
+    )
+    kinds.setdefault("output", ChainValueKind.TEXT)
+    return kinds
 
 
 def _safe_snapshot_mapping(values: dict[str, Any], *, max_chars: int = 4000) -> dict[str, Any]:

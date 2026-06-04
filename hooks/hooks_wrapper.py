@@ -159,6 +159,25 @@ class HooksDLL:
         except AttributeError:
             self._has_last_error = False
 
+        # 触发配置支持（可选）
+        try:
+            self.dll.SetTriggerConfig.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+            self.dll.SetTriggerConfig.restype = None
+            self._has_trigger_config = True
+        except AttributeError:
+            self._has_trigger_config = False
+
+        # 扩展触发配置支持（可选）
+        try:
+            self.dll.SetTriggerConfigEx.argtypes = [
+                ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int
+            ]
+            self.dll.SetTriggerConfigEx.restype = None
+            self._has_trigger_config_ex = True
+        except AttributeError:
+            self._has_trigger_config_ex = False
+
     def get_last_hook_error(self) -> int:
         if self.dll is None or not getattr(self, "_has_last_error", False):
             return 0
@@ -303,6 +322,79 @@ class HooksDLL:
         """清除特殊应用列表"""
         if self._ready() and self._has_special_apps:
             self.dll.ClearSpecialApps()
+
+    def set_trigger_config(self, normal_button: str, normal_modifiers: list[str],
+                           special_button: str, special_modifiers: list[str]):
+        """设置触发按键配置"""
+        if not self._ready() or not self._has_trigger_config:
+            return
+
+        btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
+        mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
+
+        normal_btn = btn_map.get(normal_button, 4)
+        normal_mod = sum(mod_map.get(m, 0) for m in normal_modifiers)
+        special_btn = btn_map.get(special_button, 4)
+        special_mod = sum(mod_map.get(m, 0) for m in special_modifiers)
+
+        self.dll.SetTriggerConfig(normal_btn, normal_mod, special_btn, special_mod)
+
+    def set_trigger_config_ex(self, normal_mode: str, normal_button: str, normal_keys: list[str],
+                              normal_modifiers: list[str], special_mode: str, special_button: str,
+                              special_keys: list[str], special_modifiers: list[str]):
+        """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
+        if not self._ready() or not self._has_trigger_config_ex:
+            return
+
+        mode_map = {"keyboard": 1, "mouse": 0, "hybrid": 2}
+        btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
+        mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
+
+        normal_mode_int = mode_map.get(normal_mode, 0)
+        normal_btn = btn_map.get(normal_button, 4)
+        normal_keys_vk = ",".join(str(self._key_to_vk(k)) for k in normal_keys) if normal_keys else ""
+        normal_mod = sum(mod_map.get(m, 0) for m in normal_modifiers)
+
+        special_mode_int = mode_map.get(special_mode, 0)
+        special_btn = btn_map.get(special_button, 4)
+        special_keys_vk = ",".join(str(self._key_to_vk(k)) for k in special_keys) if special_keys else ""
+        special_mod = sum(mod_map.get(m, 0) for m in special_modifiers)
+
+        self.dll.SetTriggerConfigEx(
+            normal_mode_int, normal_btn, normal_keys_vk.encode("utf-8"), normal_mod,
+            special_mode_int, special_btn, special_keys_vk.encode("utf-8"), special_mod
+        )
+
+    @staticmethod
+    def _key_to_vk(key: str) -> int:
+        """将按键字符串转换为VK码"""
+        key_lower = key.lower()
+
+        # A-Z
+        if len(key_lower) == 1 and 'a' <= key_lower <= 'z':
+            return ord(key_lower.upper())
+
+        # 0-9
+        if len(key) == 1 and '0' <= key <= '9':
+            return ord(key)
+
+        # F1-F24
+        if key_lower.startswith('f') and len(key_lower) > 1:
+            try:
+                fn_num = int(key_lower[1:])
+                if 1 <= fn_num <= 24:
+                    return 0x70 + fn_num - 1
+            except ValueError:
+                pass
+
+        # 特殊键
+        special_keys = {
+            "space": 0x20,
+            "enter": 0x0D,
+            "tab": 0x09,
+            "backspace": 0x08,
+        }
+        return special_keys.get(key_lower, 0)
 
 
 def _dll_file_info(path: str) -> dict:

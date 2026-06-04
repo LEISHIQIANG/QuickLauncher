@@ -30,6 +30,11 @@ extern "C" {
     HOOKS_API void SetSpecialApps(const char** apps, int count);
     HOOKS_API void ClearSpecialApps();
 
+    // 触发配置
+    HOOKS_API void SetTriggerConfig(int normalButton, int normalModifiers, int specialButton, int specialModifiers);
+    HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* normalKeys, int normalModifiers,
+                                       int specialMode, int specialButton, const char* specialKeys, int specialModifiers);
+
     // 工具函数
     HOOKS_API void ReleaseAllModifierKeys();
     HOOKS_API int GetHooksVersion();

@@ -8,10 +8,14 @@ is the stable shape the host can call while the code is gradually moved under
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from core.chain_canvas_adapter import canonical_canvas, chain_data_field, runtime_chain_data, validation_steps
 from core.command_registry import CommandResult
+
+logger = logging.getLogger(__name__)
 
 MODULE_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = MODULE_DIR / "module.json"
@@ -43,15 +47,39 @@ class ActionChainModule:
         return self._status if self._available else "disabled"
 
     def open_editor(self, parent, chain_data: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Open the action-chain editor dialog.
+
+        Args:
+            parent: Parent widget for the dialog
+            chain_data: Existing chain data to edit, or None for new chain
+
+        Returns:
+            Updated chain data if saved, or None if cancelled
+        """
         if self.host_api is not None and not self.host_api.check_permission("chain.editor"):
             return None
-        return chain_data
+
+        try:
+            from ui.config_window.chain_dialog import ChainDialog
+
+            dialog = ChainDialog(parent, chain_data=chain_data, host_api=self.host_api)
+            result = dialog.exec_()
+            if result == dialog.Accepted:
+                return dialog.get_shortcut()
+            return None
+        except Exception as exc:
+            logger.error("Failed to open action-chain editor: %s", exc, exc_info=True)
+            return chain_data
 
     def execute_chain(self, chain_data: Any, context: dict[str, Any], cancel_event=None) -> CommandResult:
         if not self.is_available():
             return unavailable_result(self.availability_status())
+        permission_result = self._check_processor_permissions(chain_data)
+        if permission_result is not None:
+            return permission_result
         from core.shortcut_chain_exec import _execute_shortcut_chain_runtime
 
+        runtime_chain = runtime_chain_data(chain_data)
         data_manager = dict(context or {}).get("data_manager")
         if data_manager is None and self.host_api is not None:
             data_manager = getattr(self.host_api, "data_manager", None)
@@ -59,13 +87,49 @@ class ActionChainModule:
         kwargs: dict[str, Any] = {"cancel_event": cancel_event}
         if max_steps is not None:
             kwargs["max_steps"] = max_steps
-        return _execute_shortcut_chain_runtime(chain_data, data_manager, **kwargs)
+        return _execute_shortcut_chain_runtime(runtime_chain, data_manager, **kwargs)
 
     def validate_chain(self, chain_data: Any) -> list[dict[str, Any]]:
         issues: list[dict[str, Any]] = []
-        steps = list(getattr(chain_data, "chain_steps", []) or [])
-        if not steps:
+        shortcut_map = self._shortcut_map()
+        canvas = canonical_canvas(chain_data_field(chain_data, "chain_canvas", {}) or {})
+        steps = validation_steps(chain_data, canvas)
+        has_canvas_nodes = bool(canvas.get("nodes"))
+        if not steps and not has_canvas_nodes:
             issues.append({"level": "error", "code": "chain.empty", "message": "动作链没有步骤。"})
+            return issues
+
+        for index, step in enumerate(steps, start=1):
+            node_type = str(step.get("node_type") or "shortcut").strip().lower()
+            if node_type == "processor":
+                error = _validate_processor_step_bindings(steps, index, step, shortcut_map)
+                if error:
+                    issues.append(_issue("error", "chain.binding", f"步骤 {index}: {error}", step))
+                continue
+            shortcut_id = str(step.get("shortcut_id") or "")
+            target = shortcut_map.get(shortcut_id)
+            if target is None:
+                issues.append(_issue("error", "chain.step.missing_shortcut", f"步骤 {index}: 引用的快捷方式不存在。", step))
+                continue
+            error = _validate_shortcut_step_bindings(steps, index, step, target, shortcut_map)
+            if error:
+                issues.append(_issue("error", "chain.binding", f"步骤 {index}: {error}", step))
+
+        if isinstance(canvas, dict) and (canvas.get("nodes") or canvas.get("connections")):
+            try:
+                from core.chain_contracts import validate_canvas
+
+                for item in validate_canvas(canvas, shortcut_map):
+                    issues.append(
+                        {
+                            "level": "error",
+                            "code": f"chain.canvas.{item.code}",
+                            "message": item.message,
+                            "connection_id": item.connection_id,
+                        }
+                    )
+            except Exception as exc:
+                issues.append({"level": "error", "code": "chain.canvas.validation_failed", "message": str(exc)})
         return issues
 
     def migrate_chain_data(self, chain_data: dict[str, Any], from_schema: int) -> dict[str, Any]:
@@ -93,6 +157,107 @@ class ActionChainModule:
             }
             for item in processor_definitions()
         ]
+
+    def _check_processor_permissions(self, chain_data: Any) -> CommandResult | None:
+        if self.host_api is None:
+            return None
+        from core.chain_processors import processor_definition, processor_title
+
+        canvas = canonical_canvas(chain_data_field(chain_data, "chain_canvas", {}) or {})
+        for index, step in enumerate(validation_steps(chain_data, canvas), start=1):
+            if str(step.get("node_type") or "shortcut").strip().lower() != "processor":
+                continue
+            processor_id = str(step.get("processor_id") or "")
+            definition = processor_definition(processor_id)
+            capability = str(getattr(getattr(definition, "safety", None), "capability", "") or "")
+            if not capability:
+                continue
+            if _host_allows(self.host_api, capability):
+                continue
+            title = getattr(definition, "title", "") if definition is not None else processor_title(processor_id)
+            detail = f"步骤 {index} 的处理节点未授权: {title} ({capability})"
+            return CommandResult(
+                success=False,
+                message=detail,
+                display_type="list",
+                payload={
+                    "items": [
+                        {
+                            "title": f"{index}. {title}",
+                            "status": "failed",
+                            "detail": detail,
+                            "duration": 0.0,
+                            "node_id": str(step.get("id") or f"step-{index}"),
+                            "error": "permission_denied",
+                        }
+                    ],
+                    "node_snapshots": {
+                        str(step.get("id") or f"step-{index}"): {
+                            "node_id": str(step.get("id") or f"step-{index}"),
+                            "order": index,
+                            "title": title,
+                            "status": "failed",
+                            "duration": 0.0,
+                            "inputs": {},
+                            "outputs": {},
+                            "typed_inputs": {},
+                            "typed_outputs": {},
+                            "message": detail,
+                            "error": "permission_denied",
+                            "warnings": [],
+                        }
+                    },
+                },
+                error=detail,
+            )
+        return None
+
+    def _shortcut_map(self) -> dict[str, Any]:
+        data_manager = getattr(self.host_api, "data_manager", None)
+        data = getattr(data_manager, "data", data_manager)
+        folders = list(getattr(data, "folders", []) or [])
+        mapping: dict[str, Any] = {}
+        for folder in folders:
+            for item in list(getattr(folder, "items", []) or []):
+                if getattr(item, "id", ""):
+                    mapping[item.id] = item
+        return mapping
+
+
+def _host_allows(host_api, capability: str) -> bool:
+    try:
+        return bool(host_api.check_permission(capability))
+    except Exception:
+        return False
+
+
+def _validate_processor_step_bindings(steps: list[dict], index: int, step: dict, shortcut_map: dict[str, Any]) -> str:
+    from core.chain_contracts import validate_step_bindings
+
+    return validate_step_bindings(steps, index, step, None, shortcut_map)
+
+
+def _validate_shortcut_step_bindings(
+    steps: list[dict],
+    index: int,
+    step: dict,
+    target: Any,
+    shortcut_map: dict[str, Any],
+) -> str:
+    from core.chain_contracts import validate_step_bindings
+
+    return validate_step_bindings(steps, index, step, target, shortcut_map)
+
+
+def _issue(level: str, code: str, message: str, step: dict) -> dict[str, Any]:
+    return {
+        "level": level,
+        "code": code,
+        "message": message,
+        "node_id": str(step.get("id") or ""),
+        "shortcut_id": str(step.get("shortcut_id") or ""),
+        "processor_id": str(step.get("processor_id") or ""),
+    }
 
 
 def unavailable_result(status: str) -> CommandResult:

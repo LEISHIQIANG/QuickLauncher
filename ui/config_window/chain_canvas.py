@@ -119,6 +119,8 @@ def compile_canvas_to_steps(canvas: dict) -> list[dict]:
             target_port = str(connection.get("target_port") or "").strip()
             if not source_index or not source_port or not target_port:
                 continue
+            if source_index >= index:
+                continue
             binding = binding_key(source_index, source_port)
             if target_port == "input":
                 existing = step.get("input_binding")
@@ -361,6 +363,7 @@ class NodeItem(QGraphicsRectItem):
         for i, port in enumerate(self.input_ports):
             y = self.HEADER + i * self.ROW + 12
             self.port_items[("input", port)] = PortItem(self.node_id, port, "input", 0, y, self)
+            self.port_items[("input", port)].setToolTip(_node_port_tooltip(self.node, "input", port))
             label = QGraphicsSimpleTextItem(self.input_labels.get(port) or _port_label(port), self)
             label.setFont(QFont("Microsoft YaHei UI", 8))
             label.setPos(10, y - 8)
@@ -371,6 +374,7 @@ class NodeItem(QGraphicsRectItem):
         for i, port in enumerate(self.output_ports):
             y = self.HEADER + i * self.ROW + 12
             self.port_items[("output", port)] = PortItem(self.node_id, port, "output", self.node_width, y, self)
+            self.port_items[("output", port)].setToolTip(_node_port_tooltip(self.node, "output", port))
             label = QGraphicsSimpleTextItem(self.output_labels.get(port) or _port_label(port), self)
             label.setFont(QFont("Microsoft YaHei UI", 8))
             label_rect = label.boundingRect()
@@ -484,6 +488,7 @@ class ConnectionItem(QGraphicsPathItem):
         self.source_node_item = None
         self.target_node_item = None
         self.setZValue(-1)
+        self.setAcceptHoverEvents(True)
 
     def update_path(self, start: QPointF, end: QPointF):
         path = QPainterPath(start)
@@ -595,11 +600,24 @@ class ChainCanvasScene(QGraphicsScene):
                 dy = scene_pos.y() - port_pos.y()
                 dist = (dx * dx + dy * dy) ** 0.5
 
-                if dist < min_dist:
+                if dist < min_dist and self._snap_port_is_connectable(item):
                     min_dist = dist
                     closest_port = item
 
         return closest_port
+
+    def _snap_port_is_connectable(self, candidate: PortItem) -> bool:
+        parent = self.parent()
+        can_connect = getattr(parent, "can_connect_ports", None)
+        if not callable(can_connect):
+            return True
+        try:
+            if self._drag_source_port.direction == "output":
+                return bool(can_connect(self._drag_source_port, candidate))
+            return bool(can_connect(candidate, self._drag_source_port))
+        except Exception:
+            logger.debug("端口吸附校验失败", exc_info=True)
+            return False
 
     def mousePressEvent(self, event):
         item = self.itemAt(event.scenePos(), self.views()[0].transform() if self.views() else None)
@@ -1217,6 +1235,24 @@ class ChainCanvasWidget(QWidget):
                 return connection
         return None
 
+    def can_connect_ports(self, source_port: PortItem, target_port: PortItem) -> bool:
+        if source_port is None or target_port is None:
+            return False
+        if source_port.direction != "output" or target_port.direction != "input":
+            return False
+        if source_port.node_id == target_port.node_id:
+            return False
+        issue = validate_canvas_connection(
+            self.canvas,
+            self.shortcuts,
+            source_port.node_id,
+            source_port.port_id,
+            target_port.node_id,
+            target_port.port_id,
+            multi=False,
+        )
+        return issue is None
+
     def incoming_connections(self, node_id: str, port_id: str) -> list[dict]:
         return [
             connection
@@ -1290,11 +1326,40 @@ class ChainCanvasWidget(QWidget):
                 self.node_items[item.node_id] = item
             for connection in self.canvas.get("connections", []):
                 item = ConnectionItem(connection)
+                item.setToolTip(self._connection_tooltip(connection))
                 self.scene.addItem(item)
                 self.connection_items.append(item)
             self._refresh_connection_paths()
         finally:
             self._is_selecting = False
+
+    def _connection_tooltip(self, connection: dict) -> str:
+        source = self._node_by_id(str(connection.get("source_node") or ""))
+        target = self._node_by_id(str(connection.get("target_node") or ""))
+        source_port = str(connection.get("source_port") or "")
+        target_port = str(connection.get("target_port") or "")
+        source_title = str((source or {}).get("title") or (source or {}).get("processor_id") or (source or {}).get("shortcut_id") or "来源")
+        target_title = str((target or {}).get("title") or (target or {}).get("processor_id") or (target or {}).get("shortcut_id") or "目标")
+        lines = [f"{source_title}.{source_port} -> {target_title}.{target_port}"]
+        snapshot = dict((source or {}).get("last_run_snapshot") or {})
+        if not snapshot:
+            lines.append("暂无运行数据。")
+            return "\n".join(lines)
+        value = _snapshot_port_value(snapshot, source_port)
+        if value is None:
+            lines.append("上次运行未产生该端口的值。")
+        else:
+            lines.append(_format_debug_value(value))
+        error = str(snapshot.get("error") or "")
+        if error:
+            lines.append(f"错误: {_clip_debug_text(error, 240)}")
+        return "\n".join(lines)
+
+    def _node_by_id(self, node_id: str) -> dict | None:
+        for node in self.canvas.get("nodes", []):
+            if str(node.get("id") or "") == node_id:
+                return node
+        return None
 
     def _on_port_clicked(self, port: PortItem):
         if self._pending_port is None:
@@ -2110,8 +2175,8 @@ class NodePropertyPanel(QWidget):
             lines.append("")
             lines.append("错误:")
             lines.append(_clip_debug_text(error))
-        inputs = dict(snapshot.get("inputs") or {})
-        outputs = dict(snapshot.get("outputs") or {})
+        inputs = dict(snapshot.get("typed_inputs") or snapshot.get("inputs") or {})
+        outputs = dict(snapshot.get("typed_outputs") or snapshot.get("outputs") or {})
         if inputs:
             lines.append("")
             lines.append("输入:")
@@ -2129,24 +2194,24 @@ def processor_library_items() -> list[tuple[str, str]]:
 
 def _port_label(port: str) -> str:
     labels = {
-        "input": "输入",
-        "open_file": "打开文件",
-        "success": "成功",
-        "output": "文本",
+        "input": "输入值",
+        "open_file": "待打开文件",
+        "success": "成功状态",
+        "output": "主输出",
         "stdout": "标准输出",
-        "stderr": "错误输出",
+        "stderr": "标准错误",
         "exit_code": "退出码",
-        "error": "错误",
-        "files.0": "第一个文件",
-        "folders.0": "第一个文件夹",
-        "urls.0": "第一个网址",
+        "error": "错误信息",
+        "files.0": "结果文件[0]",
+        "folders.0": "结果文件夹[0]",
+        "urls.0": "结果 URL[0]",
         "template": "模板",
-        "text": "文本",
+        "text": "字符串值",
         "find": "查找",
         "replace": "替换为",
         "start": "开始",
         "end": "结束",
-        "json": "结构化文本",
+        "json": "JSON 数据",
         "path": "路径",
         "folder": "文件夹",
         "filename": "文件名",
@@ -2186,10 +2251,10 @@ def _port_label(port: str) -> str:
         "format": "格式",
         "position": "位置",
         "angle": "角度",
-        "url": "网址",
+        "url": "URL",
         "headers": "请求头",
         "data": "数据",
-        "json_str": "结构化文本",
+        "json_str": "JSON 字符串",
         "mode": "模式",
         "save_dir": "保存目录",
         "fallback": "兜底值",
@@ -2197,9 +2262,9 @@ def _port_label(port: str) -> str:
         "exists": "是否存在",
         "not": "取反",
         "length": "长度",
-        "items_json": "列表文本",
-        "first": "第一个",
-        "last": "最后一个",
+        "items_json": "列表数据",
+        "first": "首项",
+        "last": "末项",
         "contains": "包含",
         "exclude": "排除",
         "encoding": "编码",
@@ -2257,7 +2322,7 @@ def _snapshot_preview_text(snapshot: dict) -> str:
 def _format_debug_mapping(values: dict) -> list[str]:
     lines = []
     for key, value in dict(values or {}).items():
-        text = _clip_debug_text(value)
+        text = _clip_debug_text(_format_debug_value(value))
         if "\n" in text:
             lines.append(f"- {key}:")
             for line in text.splitlines():
@@ -2265,6 +2330,145 @@ def _format_debug_mapping(values: dict) -> list[str]:
         else:
             lines.append(f"- {key}: {text}")
     return lines
+
+
+def _snapshot_port_value(snapshot: dict, port: str):
+    return _snapshot_debug_port_value(snapshot, "output", port)
+
+
+def _snapshot_debug_port_value(snapshot: dict, direction: str, port: str):
+    typed_key = "typed_inputs" if str(direction or "") == "input" else "typed_outputs"
+    plain_key = "inputs" if str(direction or "") == "input" else "outputs"
+    typed_outputs = dict(snapshot.get(typed_key) or {})
+    outputs = dict(snapshot.get(plain_key) or {})
+    port = str(port or "")
+    if port in typed_outputs:
+        return typed_outputs[port]
+    if port in outputs:
+        return outputs[port]
+    if "." in port:
+        group, _, index_text = port.partition(".")
+        try:
+            index = int(index_text)
+        except (TypeError, ValueError):
+            return None
+        typed_group = typed_outputs.get(group)
+        if isinstance(typed_group, dict):
+            values = typed_group.get("value")
+            if isinstance(values, list) and 0 <= index < len(values):
+                return values[index]
+        raw_group = outputs.get(group)
+        if isinstance(raw_group, list) and 0 <= index < len(raw_group):
+            return raw_group[index]
+    return None
+
+
+def _node_port_tooltip(node: dict, direction: str, port: str) -> str:
+    label = _port_label(port)
+    direction_label = "输入" if str(direction or "") == "input" else "输出"
+    kind = _port_kind_for_node(node, direction, port)
+    lines = [f"{direction_label}端口: {label} ({port})"]
+    if kind:
+        lines.append(f"数据类型: {_debug_kind_label(kind)}")
+    role = _port_role_for_node(node, direction, port)
+    if role:
+        lines.append(f"端口角色: {_debug_role_label(role)}")
+    description = _port_description_for_node(node, direction, port)
+    if description:
+        lines.append(description)
+    snapshot = dict(node.get("last_run_snapshot") or {})
+    if not snapshot:
+        lines.append("暂无运行数据。")
+        return "\n".join(lines)
+    value = _snapshot_debug_port_value(snapshot, direction, port)
+    if value is None:
+        lines.append("上次运行未记录该端口的值。")
+    else:
+        lines.append(_format_debug_value(value))
+    error = str(snapshot.get("error") or "")
+    if error:
+        lines.append(f"错误: {_clip_debug_text(error, 240)}")
+    return "\n".join(lines)
+
+
+def _format_debug_value(value) -> str:
+    if isinstance(value, dict) and "kind" in value:
+        kind = str(value.get("kind") or "")
+        preview = str(value.get("preview") or value.get("text") or value.get("value") or "")
+        return f"[{_debug_kind_label(kind)}] {preview}" if kind else preview
+    return "" if value is None else str(value)
+
+
+def _debug_kind_label(kind: str) -> str:
+    labels = {
+        "any": "任意",
+        "text": "字符串",
+        "json": "JSON/结构化",
+        "file": "文件",
+        "folder": "文件夹",
+        "url": "URL",
+        "list": "列表",
+        "number": "数字",
+        "bool": "布尔(1/0)",
+    }
+    return labels.get(str(kind or ""), str(kind or ""))
+
+
+def _port_kind_for_node(node: dict, direction: str, port: str) -> str:
+    spec = _port_spec_for_node(node, direction, port)
+    return str(getattr(spec, "kind", "") or "")
+
+
+def _port_role_for_node(node: dict, direction: str, port: str) -> str:
+    spec = _port_spec_for_node(node, direction, port)
+    return str(getattr(spec, "role", "") or "")
+
+
+def _port_description_for_node(node: dict, direction: str, port: str) -> str:
+    spec = _port_spec_for_node(node, direction, port)
+    description = str(getattr(spec, "description", "") or "")
+    if description:
+        return description
+    fallback = {
+        "success": "布尔状态。成功为 1/true，失败为 0/false。",
+        "output": "主输出值；具体含义由电池或快捷方式决定。",
+        "error": "失败时的错误说明；成功时通常为空。",
+        "stdout": "命令进程写入 stdout 的字符串。",
+        "stderr": "命令进程写入 stderr 的字符串。",
+        "exit_code": "命令进程退出码，通常 0 表示成功。",
+        "files.0": "结果文件集合的第 0 项。来自执行结果或从输出文本中识别出的文件路径。",
+        "folders.0": "结果文件夹集合的第 0 项。来自执行结果或从输出文本中识别出的文件夹路径。",
+        "urls.0": "结果 URL 集合的第 0 项。来自快捷方式目标或从输出文本中识别出的 URL。",
+    }
+    return fallback.get(str(port or ""), "")
+
+
+def _port_spec_for_node(node: dict, direction: str, port: str):
+    try:
+        shortcuts = {}
+        specs = (
+            input_port_specs_for_node(node, shortcuts)
+            if str(direction or "") == "input"
+            else output_port_specs_for_node(node, shortcuts)
+        )
+        return next((spec for spec in specs if spec.id == port), None)
+    except Exception:
+        return None
+
+
+def _debug_role_label(role: str) -> str:
+    labels = {
+        "primary": "主数据",
+        "data": "数据",
+        "status": "状态",
+        "diagnostic": "诊断",
+        "collection": "集合项",
+        "metadata": "元数据",
+        "stream": "流输出",
+        "control": "控制参数",
+        "parameter": "参数",
+    }
+    return labels.get(str(role or ""), str(role or ""))
 
 
 def _clip_debug_text(value, limit: int = 800) -> str:

@@ -74,48 +74,44 @@ class ToastNotification(QWidget):
 
     def paintEvent(self, event):
         """绘制圆角矩形背景 - 与主配置窗口完全一致"""
-        from ui.utils.window_effect import is_win10, is_win11
+        from ui.utils.window_effect import is_win10, is_win11, paint_win10_rounded_surface
 
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
 
-        radius = 8 if is_win11() else 12
-        inset = 1.0 if is_win10() else 0.5
+            radius = 8 if is_win11() else 8
 
-        path = QPainterPath()
-        path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
+            if self._theme == "error":
+                bg_color = QColor(229, 57, 53, 210)
+                border_color = QColor(255, 205, 210, 180)
+            elif self._theme == "dark":
+                bg_color = QColor(28, 28, 30, 180)
+                border_color = QColor(190, 190, 197, 60)
+            else:
+                bg_color = QColor(242, 242, 247, 160)
+                border_color = QColor(229, 229, 234, 150)
 
-        # 磨砂玻璃背景
-        if self._theme == "error":
-            # 草蜢样式红底，非常醒目
-            bg_color = QColor(229, 57, 53, 210)
-            border_color = QColor(255, 205, 210, 180)
-        elif self._theme == "dark":
-            bg_color = QColor(28, 28, 30, 180)
-            border_color = QColor(190, 190, 197, 60)
-        else:
-            bg_color = QColor(242, 242, 247, 160)
-            border_color = QColor(229, 229, 234, 150)
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, bg_color, border_color, radius, max_border_alpha=80)
+                return
 
-        # 磨砂玻璃模式
-        tint_color = QColor(bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
-        else:
+            inset = 0.5
+            path = QPainterPath()
+            path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
+
+            tint_color = QColor(bg_color)
             tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            painter.fillPath(path, tint_color)
 
-        # 边框
-        pen_color = QColor(border_color)
-        pen_color.setAlpha(40)
-        from qt_compat import QPen
+            pen_color = QColor(border_color)
+            pen_color.setAlpha(40)
+            from qt_compat import QPen
 
-        painter.setPen(QPen(pen_color, 0.3))
-        painter.drawPath(path)
-        painter.end()
+            painter.setPen(QPen(pen_color, 0.3))
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def show_toast(self, text: str, theme: str = "dark", duration_ms: int = 1500, target_widget=None):
         """显示 Toast 通知
@@ -229,7 +225,7 @@ class ToastNotification(QWidget):
             if not hwnd:
                 return
             effect = get_window_effect()
-            radius = 8 if is_win11() else 12
+            radius = 8 if is_win11() else 8
 
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)

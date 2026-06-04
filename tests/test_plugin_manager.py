@@ -770,6 +770,56 @@ class TestPluginAPI:
         unregister_external_processors("my_plugin")
         assert processor_definition("my_plugin_slugify") is None
 
+    def test_register_chain_processor_rejects_invalid_schema(self):
+        from core.chain_processors import processor_definition, unregister_external_processors
+
+        unregister_external_processors("my_plugin")
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+
+        invalid_definitions = [
+            {
+                "id": "bad_port",
+                "title": "Bad Port",
+                "inputs": [{"id": "text", "kind": "mystery"}],
+                "outputs": [{"id": "output", "kind": "text"}],
+                "params": [{"id": "text", "kind": "text"}],
+                "safety": {"level": "safe", "capability": "chain.processor.bad_port"},
+            },
+            {
+                "id": "bad_safety",
+                "title": "Bad Safety",
+                "inputs": [{"id": "text", "kind": "text"}],
+                "outputs": [{"id": "output", "kind": "text"}],
+                "params": [{"id": "text", "kind": "text"}],
+                "safety": {"level": "unknown", "capability": "chain.processor.bad_safety"},
+            },
+            {
+                "id": "bad_param",
+                "title": "Bad Param",
+                "inputs": [{"id": "text", "kind": "text"}],
+                "outputs": [{"id": "output", "kind": "text"}],
+                "params": [{"id": "missing", "kind": "text"}],
+                "safety": {"level": "safe", "capability": "chain.processor.bad_param"},
+            },
+            {
+                "id": "bad_role",
+                "title": "Bad Role",
+                "inputs": [{"id": "text", "kind": "text", "role": "weird"}],
+                "outputs": [{"id": "output", "kind": "text"}],
+                "params": [{"id": "text", "kind": "text"}],
+                "safety": {"level": "safe", "capability": "chain.processor.bad_role"},
+            },
+        ]
+
+        for definition in invalid_definitions:
+            assert api.register_chain_processor(definition, lambda args: "ok") is False
+
+        assert processor_definition("my_plugin_bad_port") is None
+        assert processor_definition("my_plugin_bad_safety") is None
+        assert processor_definition("my_plugin_bad_param") is None
+        assert processor_definition("my_plugin_bad_role") is None
+
     def test_permission_check(self):
         api = PluginAPI("test", os.getcwd(), ["clipboard.read"], CommandRegistry())
         api._check_permission("clipboard.read")

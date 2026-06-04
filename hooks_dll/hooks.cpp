@@ -72,6 +72,18 @@ static double g_lastHotkeyTime = 0.0;
 // 特殊应用列表
 static std::vector<std::string> g_specialApps;
 static std::mutex g_specialAppsMutex;
+
+// 触发配置
+static int g_normalTriggerMode = 0;        // 0=mouse, 1=keyboard, 2=hybrid
+static int g_normalTriggerButton = 4;      // 默认中键
+static std::vector<int> g_normalTriggerKeys;  // 键盘按键VK码
+static int g_normalTriggerModifiers = 0;   // 默认无修饰键
+static int g_specialTriggerMode = 0;
+static int g_specialTriggerButton = 4;     // 默认中键
+static std::vector<int> g_specialTriggerKeys;
+static int g_specialTriggerModifiers = 2;  // 默认Ctrl
+static std::mutex g_triggerConfigMutex;
+
 static std::mutex g_debugLogMutex;
 static HANDLE g_debugLogThread = NULL;
 static HANDLE g_debugLogEvent = NULL;
@@ -461,6 +473,16 @@ static bool IsSpecialApp() {
     return false;
 }
 
+// 检查所有指定的键盘按键是否都按下
+static bool CheckKeysPressed(const std::vector<int>& vkCodes) {
+    for (int vk : vkCodes) {
+        if (!(GetAsyncKeyState(vk) & 0x8000)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // ============================================================
 // 鼠标钩子回调
 // ============================================================
@@ -493,8 +515,20 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
     }
 
-    // 中键处理
-    if (wParam != WM_MBUTTONDOWN && wParam != WM_MBUTTONUP) {
+    // 检测按键类型
+    int currentButton = 0;
+    WPARAM downMsg = 0, upMsg = 0;
+    if (wParam == WM_LBUTTONDOWN || wParam == WM_LBUTTONUP) {
+        currentButton = 1; downMsg = WM_LBUTTONDOWN; upMsg = WM_LBUTTONUP;
+    } else if (wParam == WM_RBUTTONDOWN || wParam == WM_RBUTTONUP) {
+        currentButton = 2; downMsg = WM_RBUTTONDOWN; upMsg = WM_RBUTTONUP;
+    } else if (wParam == WM_MBUTTONDOWN || wParam == WM_MBUTTONUP) {
+        currentButton = 4; downMsg = WM_MBUTTONDOWN; upMsg = WM_MBUTTONUP;
+    } else if (wParam == WM_XBUTTONDOWN || wParam == WM_XBUTTONUP) {
+        int xbutton = HIWORD(pMouse->mouseData);
+        currentButton = (xbutton == XBUTTON1) ? 8 : 16;
+        downMsg = WM_XBUTTONDOWN; upMsg = WM_XBUTTONUP;
+    } else {
         return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
     }
 
@@ -502,17 +536,54 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
     }
 
-    if (wParam == WM_MBUTTONDOWN) {
+    if (wParam == downMsg) {
         if (now - g_lastBlockTime < MIN_BLOCK_INTERVAL) {
             LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_debounce");
             return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
         }
 
-        // 特殊应用检测：需要 Ctrl+中键
+        // 读取触发配置
+        int normalBtn, normalMod, normalMode, specialBtn, specialMod, specialMode;
+        std::vector<int> normalKeys, specialKeys;
+        {
+            std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+            normalMode = g_normalTriggerMode;
+            normalBtn = g_normalTriggerButton;
+            normalKeys = g_normalTriggerKeys;
+            normalMod = g_normalTriggerModifiers;
+            specialMode = g_specialTriggerMode;
+            specialBtn = g_specialTriggerButton;
+            specialKeys = g_specialTriggerKeys;
+            specialMod = g_specialTriggerModifiers;
+        }
+
+        // 获取当前修饰键状态
+        int currentMod = 0;
+        if (IsCtrlPressedNow()) currentMod |= 2;
+        if (IsAltPressedNow()) currentMod |= 1;
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) currentMod |= 4;
+        if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) currentMod |= 8;
+
+        // 判断是否匹配触发条件
         bool isSpecial = IsSpecialApp();
-        bool ctrlHeldNow = g_ctrlHeld || IsCtrlPressedNow();
-        if (isSpecial && !ctrlHeldNow) {
-            LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_special_requires_ctrl");
+        int targetMode = isSpecial ? specialMode : normalMode;
+        int targetBtn = isSpecial ? specialBtn : normalBtn;
+        int targetMod = isSpecial ? specialMod : normalMod;
+        const std::vector<int>& targetKeys = isSpecial ? specialKeys : normalKeys;
+
+        bool shouldTrigger = false;
+        if (targetMode == 0 || targetMode == 2) {  // mouse或hybrid模式
+            bool mouseMatch = (currentButton == targetBtn);
+            bool modMatch = (currentMod == targetMod);
+            if (targetMode == 2) {  // hybrid模式需要检查键盘按键
+                shouldTrigger = mouseMatch && modMatch && CheckKeysPressed(targetKeys);
+            } else {  // 纯mouse模式
+                shouldTrigger = mouseMatch && modMatch;
+            }
+        }
+
+        if (!shouldTrigger) {
+            LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_no_match");
             return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
         }
 
@@ -524,7 +595,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
             return 1;
         }
         LogMiddleMouseEvent("mouse", wParam, pMouse, "pass_no_callback");
-    } else if (wParam == WM_MBUTTONUP) {
+    } else if (wParam == upMsg) {
         if (g_blockedDown) {
             LogMiddleMouseEvent("mouse", wParam, pMouse, "block_matching_up");
             g_blockedDown = false;
@@ -615,6 +686,66 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     InvokeKeyboardCallbackAsync(g_hotkeyCallback);
                     // 拦截热键事件，不传递给系统和其它程序
                     return 1;
+                }
+            }
+
+            // keyboard模式触发检测
+            int normalMode, specialMode;
+            std::vector<int> normalKeys, specialKeys;
+            int normalMod, specialMod;
+            {
+                std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+                normalMode = g_normalTriggerMode;
+                normalKeys = g_normalTriggerKeys;
+                normalMod = g_normalTriggerModifiers;
+                specialMode = g_specialTriggerMode;
+                specialKeys = g_specialTriggerKeys;
+                specialMod = g_specialTriggerModifiers;
+            }
+
+            bool isSpecial = IsSpecialApp();
+            int targetMode = isSpecial ? specialMode : normalMode;
+            const std::vector<int>& targetKeys = isSpecial ? specialKeys : normalKeys;
+            int targetMod = isSpecial ? specialMod : normalMod;
+
+            if (targetMode == 1 && !targetKeys.empty()) {  // 纯keyboard模式
+                // 检查当前按键是否在目标按键列表中
+                bool isTargetKey = false;
+                for (int targetVk : targetKeys) {
+                    if (vk == targetVk) {
+                        isTargetKey = true;
+                        break;
+                    }
+                }
+
+                if (isTargetKey) {
+                    // 检查所有目标按键是否都被按下
+                    // 对于当前按键，我们知道它肯定被按下了（KEYDOWN事件）
+                    bool allKeysPressed = true;
+                    for (int targetVk : targetKeys) {
+                        if (targetVk != vk) {  // 跳过当前按键
+                            if (!(GetAsyncKeyState(targetVk) & 0x8000)) {
+                                allKeysPressed = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 检查修饰键
+                    int currentMod = 0;
+                    if (IsCtrlPressedNow()) currentMod |= 2;
+                    if (IsAltPressedNow()) currentMod |= 1;
+                    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) currentMod |= 4;
+                    if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) currentMod |= 8;
+
+                    if (allKeysPressed && currentMod == targetMod) {
+                        // 触发弹窗
+                        if (g_mouseCallback) {
+                            POINT pt;
+                            GetCursorPos(&pt);
+                            g_mouseCallback(pt.x, pt.y);
+                        }
+                    }
                 }
             }
         }
@@ -1006,6 +1137,51 @@ HOOKS_API void SetSpecialApps(const char** apps, int count) {
 HOOKS_API void ClearSpecialApps() {
     std::lock_guard<std::mutex> lock(g_specialAppsMutex);
     g_specialApps.clear();
+}
+
+HOOKS_API void SetTriggerConfig(int normalButton, int normalModifiers, int specialButton, int specialModifiers) {
+    std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+    g_normalTriggerButton = normalButton;
+    g_normalTriggerModifiers = normalModifiers;
+    g_specialTriggerButton = specialButton;
+    g_specialTriggerModifiers = specialModifiers;
+}
+
+HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* normalKeys, int normalModifiers,
+                                   int specialMode, int specialButton, const char* specialKeys, int specialModifiers) {
+    std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+
+    g_normalTriggerMode = normalMode;
+    g_normalTriggerButton = normalButton;
+    g_normalTriggerModifiers = normalModifiers;
+    g_specialTriggerMode = specialMode;
+    g_specialTriggerButton = specialButton;
+    g_specialTriggerModifiers = specialModifiers;
+
+    // 解析键盘按键字符串（逗号分隔），转换为VK码
+    g_normalTriggerKeys.clear();
+    if (normalKeys && strlen(normalKeys) > 0) {
+        std::string keys(normalKeys);
+        size_t pos = 0;
+        while ((pos = keys.find(',')) != std::string::npos) {
+            std::string key = keys.substr(0, pos);
+            if (!key.empty()) g_normalTriggerKeys.push_back(std::stoi(key));
+            keys.erase(0, pos + 1);
+        }
+        if (!keys.empty()) g_normalTriggerKeys.push_back(std::stoi(keys));
+    }
+
+    g_specialTriggerKeys.clear();
+    if (specialKeys && strlen(specialKeys) > 0) {
+        std::string keys(specialKeys);
+        size_t pos = 0;
+        while ((pos = keys.find(',')) != std::string::npos) {
+            std::string key = keys.substr(0, pos);
+            if (!key.empty()) g_specialTriggerKeys.push_back(std::stoi(key));
+            keys.erase(0, pos + 1);
+        }
+        if (!keys.empty()) g_specialTriggerKeys.push_back(std::stoi(keys));
+    }
 }
 
 HOOKS_API int GetHooksVersion() {

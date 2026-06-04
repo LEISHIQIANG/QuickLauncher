@@ -27,7 +27,7 @@ from qt_compat import (
     pyqtProperty,
     pyqtSignal,
 )
-from ui.utils.window_effect import get_window_effect
+from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +185,7 @@ class ProgressDialog(QDialog):
 
         from ui.utils.window_effect import is_win11
 
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self._acrylic_applied = False
         self._dialog_finished = False
         self._detect_theme()
@@ -237,8 +237,8 @@ class ProgressDialog(QDialog):
         from ui.utils.window_effect import is_win10
 
         if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+            return
 
         inset = 1.0 if is_win10() else 0.5
 
@@ -250,7 +250,7 @@ class ProgressDialog(QDialog):
         # 磨砂玻璃模式：与ThemedMessageBox完全一致
         tint_color = QColor(self.bg_color)
         if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
+            tint_color.setAlpha(min(tint_color.alpha(), 220))
         else:
             tint_color.setAlpha(min(tint_color.alpha(), 100))
         painter.fillPath(path, tint_color)

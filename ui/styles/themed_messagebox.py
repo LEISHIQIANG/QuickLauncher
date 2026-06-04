@@ -27,7 +27,7 @@ from qt_compat import (
 )
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
-from ui.utils.window_effect import get_window_effect, is_win10, is_win11
+from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
 from .style import get_dialog_stylesheet
 
@@ -140,7 +140,7 @@ class ThemedMessageBox(QDialog):
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)  # 初始透明度为 0
 
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self.result_value = 0
@@ -359,8 +359,8 @@ class ThemedMessageBox(QDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
 
         if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+            return
 
         inset = 1.0 if is_win10() else 0.5
 
@@ -372,7 +372,7 @@ class ThemedMessageBox(QDialog):
         # 磨砂玻璃模式：与RoundedWindow完全一致
         tint_color = QColor(self.bg_color)
         if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
+            tint_color.setAlpha(min(tint_color.alpha(), 220))
         else:
             tint_color.setAlpha(min(tint_color.alpha(), 100))
         painter.fillPath(path, tint_color)
@@ -538,7 +538,7 @@ class ThemedInputDialog(QDialog):
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)
 
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self.input_text = text
@@ -635,8 +635,8 @@ class ThemedInputDialog(QDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
 
         if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+            return
 
         inset = 1.0 if is_win10() else 0.5
 
@@ -648,7 +648,7 @@ class ThemedInputDialog(QDialog):
         # 磨砂玻璃模式：与RoundedWindow完全一致
         tint_color = QColor(self.bg_color)
         if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
+            tint_color.setAlpha(min(tint_color.alpha(), 220))
         else:
             tint_color.setAlpha(min(tint_color.alpha(), 100))
         painter.fillPath(path, tint_color)

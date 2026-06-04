@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
+- 弹窗触发支持自定义触发按键和特殊触发按键，可选键盘模式、鼠标模式或混合模式。
 - 命令面板新增参数 invocation 快照、runtime shortcut 副本、非敏感参数历史恢复和 `{{input}}` 统一传递。
 - 新增命令输出 artifact 与 `payload["outputs"]` 契约，支持输出归一化、截断、动作链命名输出传递和默认结果动作补全。
 - 动作链步骤新增 `input_binding`、`param_bindings` 和静态 `args`，编辑器提供最小配置入口。
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
+- 修复 Windows 10 系统 UI 显示异常问题。
 - shortcut 命令执行不再把运行时参数、输入值、动作链值或危险命令确认状态写回原始配置对象，避免连续执行串值。
 - 破坏性命令确认状态只作用于当前 invocation，不进入结果历史，避免历史重试或连续执行继承确认。
 - 表格结果保存 CSV 改为标准 CSV 转义，避免逗号、引号等内容导出损坏。

@@ -73,7 +73,7 @@ class SimpleStatusDialog(QDialog):
 
         from ui.utils.window_effect import is_win11
 
-        self.corner_radius = 8 if is_win11() else 12
+        self.corner_radius = 8 if is_win11() else 8
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self._acrylic_applied = False
@@ -114,29 +114,33 @@ class SimpleStatusDialog(QDialog):
         return theme
 
     def paintEvent(self, event):
-        from ui.utils.window_effect import is_win10
+        from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
 
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
-        inset = 1.0 if is_win10() else 0.5
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
-        )
-        tint_color = QColor(self.bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 150))
-        else:
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+                return
+            inset = 0.5
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
+            )
+            tint_color = QColor(self.bg_color)
             tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
-        pen_color = QColor(self.border_color)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1))
-        painter.drawPath(path)
-        painter.end()
+            painter.fillPath(path, tint_color)
+            pen_color = QColor(self.border_color)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            painter.setPen(QPen(pen_color, 1))
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def showEvent(self, event):
         from ui.utils.dialog_helper import center_dialog_on_main_window

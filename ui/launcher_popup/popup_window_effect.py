@@ -12,7 +12,7 @@ from qt_compat import (
     QtCompat,
     QTimer,
 )
-from ui.utils.window_effect import is_win11
+from ui.utils.window_effect import is_win10, is_win11
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,10 @@ class PopupWindowEffectMixin:
         logger.info(
             f"[MASK] 设置Win10遮罩: clip={clip_w}x{clip_h}, window={self.width()}x{self.height()}, margin={margin}, radius={radius}"
         )
+        if is_win10():
+            self.clearMask()
+            self.update()
+            return
         r = max(0, int(radius))
         if r <= 0:
             self.clearMask()
@@ -112,17 +116,20 @@ class PopupWindowEffectMixin:
                     self.window_effect.clear_window_region(hwnd)
                     self.clearMask()
                 else:
-                    # Win10: 着色层 alpha 范围 20~240
-                    dwm_alpha = max(20, min(240, int(bg_alpha * 2.2)))
-                    gradient_color = f"{dwm_alpha:02x}{r_c:02x}{g_c:02x}{b_c:02x}"
+                    # Win10: 只使用窗口区域裁剪，背景由 Qt 自绘。
                     w = self.width()
                     h = self.height()
                     logger.info(f"[REGION] Win10亚克力模式: window={w}x{h}, radius={radius}")
                     if w > 0 and h > 0:
                         self.window_effect.set_window_region(hwnd, w, h, radius)
                         logger.info("[REGION] 窗口区域已设置")
+                    if is_win10():
+                        self.window_effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
+                    else:
+                        dwm_alpha = max(20, min(240, int(bg_alpha * 2.2)))
+                        gradient_color = f"{dwm_alpha:02x}{r_c:02x}{g_c:02x}{b_c:02x}"
                         self.window_effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
-                    self.window_effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
+                        self.window_effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
 
             else:
                 # 其他模式禁用特效 (Theme / Image 模式)

@@ -83,3 +83,15 @@ class MouseHook:
     def alt_held(self) -> bool:
         """Alt键是否按住"""
         return self._dll.is_alt_held()
+
+    def set_trigger_config(self, normal_button: str, normal_modifiers: list[str],
+                           special_button: str, special_modifiers: list[str]):
+        """设置触发按键配置"""
+        self._dll.set_trigger_config(normal_button, normal_modifiers, special_button, special_modifiers)
+
+    def set_trigger_config_ex(self, normal_mode: str, normal_button: str, normal_keys: list[str],
+                              normal_modifiers: list[str], special_mode: str, special_button: str,
+                              special_keys: list[str], special_modifiers: list[str]):
+        """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
+        self._dll.set_trigger_config_ex(normal_mode, normal_button, normal_keys, normal_modifiers,
+                                        special_mode, special_button, special_keys, special_modifiers)

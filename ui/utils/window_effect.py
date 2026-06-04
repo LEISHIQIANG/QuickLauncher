@@ -45,6 +45,79 @@ def is_win10():
     return get_windows_version() == "win10"
 
 
+def _qpaint_composition_mode(name: str):
+    try:
+        from qt_compat import QPainter
+
+        enum = getattr(QPainter, "CompositionMode", None)
+        if enum is not None:
+            value = getattr(enum, name, None)
+            if value is not None:
+                return value
+            value = getattr(enum, f"CompositionMode_{name}", None)
+            if value is not None:
+                return value
+        return getattr(QPainter, f"CompositionMode_{name}", None)
+    except Exception:
+        return None
+
+
+def paint_win10_rounded_surface(
+    painter,
+    widget,
+    bg_color,
+    border_color,
+    radius: int,
+    *,
+    inset: float = 1.0,
+    min_bg_alpha: int = 248,
+    max_border_alpha: int = 220,
+):
+    """Paint a Win10-friendly opaque rounded surface with antialiased edges.
+
+    Win10 does not have Win11's DWM-rounded frameless windows. The cleanest
+    result for Qt transparent windows is per-pixel alpha painting: clear the
+    backing store, draw an almost opaque rounded path, and avoid 1-bit masks
+    or GDI window regions.
+    """
+    try:
+        from qt_compat import QColor, QPainter, QPainterPath, QPen, QRectF, QtCompat
+
+        painter.setRenderHint(QtCompat.Antialiasing, True)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
+        painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+
+        source_mode = _qpaint_composition_mode("Source")
+        source_over_mode = _qpaint_composition_mode("SourceOver")
+        if source_mode is not None:
+            painter.setCompositionMode(source_mode)
+        painter.fillRect(widget.rect(), QColor(0, 0, 0, 0))
+        if source_over_mode is not None:
+            painter.setCompositionMode(source_over_mode)
+
+        rect = QRectF(widget.rect()).adjusted(inset, inset, -inset, -inset)
+        r = max(0.0, float(radius))
+        path = QPainterPath()
+        path.addRoundedRect(rect, r, r)
+
+        fill = QColor(bg_color)
+        fill.setAlpha(max(0, min(255, max(int(fill.alpha()), int(min_bg_alpha)))))
+        painter.fillPath(path, fill)
+
+        border = QColor(border_color)
+        border.setAlpha(max(0, min(int(border.alpha()), int(max_border_alpha))))
+        pen = QPen(border, 1.0)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(QtCompat.NoBrush)
+        painter.drawPath(path)
+        return True
+    except Exception as exc:
+        logger.debug("绘制 Win10 圆角背景失败: %s", exc, exc_info=True)
+        return False
+
+
 class WindowCompositionAttributeData(Structure):
     _fields_ = [
         ("Attribute", DWORD),
@@ -186,6 +259,12 @@ class WindowEffect:
         :param enable: 是否启用
         :param blur: 是否启用模糊 (True=Acrylic, False=Transparent)
         """
+        if is_win10() and enable:
+            # Win10 的 AccentPolicy/Acrylic 在 Qt 透明无边框窗口上容易和
+            # 高 DPI 缩放、窗口区域裁剪叠加出黑色背景或错位遮罩。
+            # 该平台改由 Qt paintEvent 绘制半透明背景，Win11 保留原生效果。
+            return
+
         policy = AccentPolicy()
 
         if not enable:
@@ -269,7 +348,11 @@ class WindowEffect:
             logger.debug("设置窗口圆角偏好失败: %s", exc, exc_info=True)
 
     def set_window_region(self, hwnd: int, w: int, h: int, r: int, x: int = 0, y: int = 0):
-        """设置窗口圆角裁剪区域 (Win10/Win7) - 增强版，彻底消除直角残留
+        """设置窗口圆角裁剪区域 (Win7/legacy)。
+
+        Win10 的 layered/transparent Qt 窗口支持逐像素 alpha。继续叠加
+        SetWindowRgn 会把圆角降级为 1-bit GDI 裁剪，边缘必然有锯齿。
+        因此 Win10 只用 Qt paintEvent 自绘抗锯齿圆角，Win11 仍走 DWM。
 
         优化策略：
         1. 使用浮点数精确计算，减少舍入误差
@@ -278,22 +361,24 @@ class WindowEffect:
         4. 使用更大的椭圆直径以获得更平滑的圆角
         """
         try:
+            if is_win10():
+                return
             if not self._is_window(hwnd):
                 return
-            scale = self._get_dpi_scale(hwnd)
 
-            # 使用浮点数精确计算坐标，然后四舍五入
-            # 右边和底边额外添加 2 像素补偿，确保完全覆盖窗口边缘
-            x1 = int(round(x * scale))
-            y1 = int(round(y * scale))
-            x2 = int(round((x + w) * scale)) + 2  # +2 确保完全覆盖
-            y2 = int(round((y + h) * scale)) + 2  # +2 确保完全覆盖
+            # SetWindowRgn 使用窗口客户区坐标。Qt 高 DPI 已经把 QWidget 的
+            # width()/height() 映射到该坐标系，不能再次乘显示器 DPI；
+            # Win10 上重复缩放会导致实际内容在左上角、外圈出现黑色遮罩。
+            x1 = int(round(x))
+            y1 = int(round(y))
+            x2 = int(round(x + w)) + 1
+            y2 = int(round(y + h)) + 1
 
             # 圆角半径优化：
             # 1. 使用 round 而非 int 截断，保持精度
             # 2. 适当放大圆角半径（+1），使圆角更平滑
             # 3. 确保是偶数，GDI 渲染偶数圆角更平滑
-            rr = max(4, int(round(r * scale)) + 1)  # 最小为 4，并额外 +1
+            rr = max(4, int(round(r)) + 1)  # 最小为 4，并额外 +1
             if rr % 2 != 0:
                 rr += 1  # 强制偶数
 
@@ -327,6 +412,9 @@ class WindowEffect:
 
     def set_aero_blur(self, hwnd: int, enable: bool = True):
         """设置传统 Aero 模糊 (Win7/Win10 早期风格)"""
+        if is_win10() and enable:
+            return
+
         policy = AccentPolicy()
         if enable:
             policy.AccentState = self.ACCENT_ENABLE_BLURBEHIND
@@ -344,7 +432,8 @@ class WindowEffect:
 
     def set_dwm_blur_behind(self, hwnd: int, w: int, h: int, r: int, enable: bool = True, x: int = 0, y: int = 0):
         """
-        设置 DWM Blur Behind (Win10/Win7) - 增强版，与 set_window_region 使用完全相同的计算逻辑
+        设置 DWM Blur Behind（Win11/旧系统兼容路径）。
+        Win10 上 enable=True 会被降级为关闭，避免 Qt 透明窗口黑色遮罩。
         注意：这与 SetWindowCompositionAttribute 不同，是另一种模糊机制
 
         优化策略：确保与 set_window_region 创建的区域完全一致，避免边缘不对齐
@@ -363,18 +452,24 @@ class WindowEffect:
             bb.fEnable = enable
             bb.hRgnBlur = None
 
+            if is_win10() and enable:
+                # DwmEnableBlurBehindWindow 在 Win10 的透明 Qt 窗口上会把未绘制区域
+                # 合成为黑色。这里显式关闭该效果，背景由 Qt 自绘保证兼容性。
+                bb.fEnable = False
+                dwmapi.DwmEnableBlurBehindWindow(HWND(int(hwnd)), byref(bb))
+                return
+
             if enable and r >= 0:
                 bb.dwFlags |= DWM_BB_BLURREGION
-                scale = self._get_dpi_scale(hwnd)
 
-                # 使用与 set_window_region 完全相同的坐标计算逻辑
-                x1 = int(round(x * scale))
-                y1 = int(round(y * scale))
-                x2 = int(round((x + w) * scale)) + 2  # +2 补偿
-                y2 = int(round((y + h) * scale)) + 2  # +2 补偿
+                # 使用与 set_window_region 完全相同的坐标计算逻辑。
+                x1 = int(round(x))
+                y1 = int(round(y))
+                x2 = int(round(x + w)) + 1
+                y2 = int(round(y + h)) + 1
 
                 # 圆角半径：与 set_window_region 保持一致
-                rr = max(4, int(round(r * scale)) + 1)
+                rr = max(4, int(round(r)) + 1)
                 if rr % 2 != 0:
                     rr += 1
 
@@ -417,7 +512,7 @@ class WindowEffect:
         应用统一的模糊效果（自动适配 Win10/Win11）
 
         Win11: 使用 Acrylic 效果
-        Win10: 使用 Aero Blur 效果
+        Win10: 关闭原生 Blur，交给 Qt 自绘背景
 
         Args:
             hwnd: 窗口句柄
@@ -428,11 +523,9 @@ class WindowEffect:
             # Win11 优先使用 Acrylic
             self.set_acrylic(hwnd, gradient_color, enable, blur=True)
         else:
-            # Win10 使用传统 Aero Blur
-            self.set_aero_blur(hwnd, enable)
-            if enable and gradient_color:
-                # 额外设置透明渐变
-                self.set_acrylic(hwnd, gradient_color, enable, blur=False)
+            # Win10 的原生 blur/accent 与 Qt 透明窗口组合不稳定。
+            # 由各窗口 paintEvent 自绘底色，避免黑色遮罩和 DPI 错位。
+            self.set_aero_blur(hwnd, False)
 
     def enable_window_shadow(self, hwnd: int, radius: int = 12):
         """
@@ -446,6 +539,8 @@ class WindowEffect:
         """
         try:
             if not self._is_window(hwnd):
+                return False
+            if is_win10():
                 return False
 
             dwmapi = windll.dwmapi
@@ -493,6 +588,8 @@ class WindowEffect:
         """
         try:
             if not self._is_window(hwnd):
+                return False
+            if is_win10():
                 return False
 
             dwmapi = windll.dwmapi
@@ -587,20 +684,15 @@ def enable_window_shadow_and_round_corners(widget, radius: int = 12, force_regio
                 return True
 
             try:
-                # 尝试启用阴影 (DWM extension)
-                effect.enable_shadow_for_dialog(hwnd, radius)
-
                 w = widget.width()
                 h = widget.height()
                 if w > 0 and h > 0:
-                    # Win10 优化方案：同时使用 SetWindowRgn 和 DWM Blur Behind
-                    # 1. SetWindowRgn 负责精确裁剪窗口形状
+                    # Win10 仅使用 SetWindowRgn 裁剪形状，背景由 Qt 自绘。
                     effect.set_window_region(hwnd, w, h, radius)
-                    # 2. DWM Blur Behind 负责模糊效果（使用相同的区域）
-                    effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
+                    effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=False)
                     return True
             except Exception as exc:
-                logger.debug("应用Win10模糊效果失败: %s", exc, exc_info=True)
+                logger.debug("应用Win10窗口区域裁剪失败: %s", exc, exc_info=True)
             return False
     except Exception:
         return False
@@ -611,6 +703,7 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
     为配置窗口启用磨砂玻璃 Acrylic 效果
 
     此函数专门为配置窗口优化，提供适合 UI 的模糊效果参数。
+    Win10 下只做窗口区域裁剪，不启用 DWM/Acrylic。
 
     Args:
         widget: Qt 窗口对象
@@ -645,29 +738,17 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
             # Application unified blur (Acrylic)
             effect.apply_unified_blur_effect(hwnd, gradient_color, enable=True)
         else:
-            # Win10: 全面优化方案，彻底解决"太透明"和"直角残留"问题
-            #
-            # 修复策略：
-            # 1. 提高背景不透明度（alpha=200），使窗口更实，避免过度透明
-            # 2. 同时使用 SetWindowRgn + DWM Blur Behind 双重圆角
-            # 3. 使用 Acrylic 半透明着色层提供玻璃质感
-            # 4. 确保所有区域计算完全一致，避免边缘错位
-
-            alpha = 200  # 显著提高不透明度（范围 0-255），使背景更实
-            gradient_color = f"{alpha:02x}{r:02x}{g:02x}{b:02x}"
-
+            # Win10: 只保留窗口区域裁剪。原生 DWM blur/accent 会在 Qt 透明
+            # 无边框窗口上产生黑色遮罩或 DPI 错位，底色交给 paintEvent 自绘。
             w = widget.width()
             h = widget.height()
             if w > 0 and h > 0:
-                # 步骤1: 设置窗口裁剪区域（硬性圆角边界）
                 effect.set_window_region(hwnd, w, h, radius)
-
-                # 步骤2: 设置 DWM 模糊区域（与裁剪区域完全一致）
-                effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=True)
-
-            # 步骤3: 应用 Acrylic 半透明着色（无额外模糊，避免冲突）
-            # blur=False 表示只着色不模糊，模糊效果由 DWM Blur Behind 提供
-            effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
+            effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
+            try:
+                widget.update()
+            except Exception:
+                pass
 
         return True
     except Exception:

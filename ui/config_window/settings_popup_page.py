@@ -4,6 +4,7 @@ import logging
 
 from core import DEFAULT_SPECIAL_APPS
 from core.i18n import tr
+from core.trigger_conflict_checker import check_trigger_conflict
 from qt_compat import (
     QButtonGroup,
     QHBoxLayout,
@@ -17,6 +18,8 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.config_window.mouse_key_recorder import MouseKeyRecorderWidget
+from ui.config_window.input_trigger_recorder import InputTriggerRecorderWidget
 from ui.config_window.settings_helpers import NumberedListDelegate
 from ui.tooltip_helper import install_tooltip
 
@@ -105,8 +108,40 @@ class SettingsPopupPageMixin:
         double_click_row.addWidget(self.double_click_label)
         layout.addWidget(double_click_widget)
 
+        # 触发按键配置
+        layout, group = page.add_group("触发按键设置")
+
+        normal_row = QHBoxLayout()
+        normal_row.addWidget(self._create_label("普通触发"))
+        self.normal_trigger_recorder = InputTriggerRecorderWidget()
+        install_tooltip(self.normal_trigger_recorder, tr("点击录制框后按下鼠标按键或键盘按键（可同时按住修饰键）"))
+        normal_row.addWidget(self.normal_trigger_recorder, 1)
+        layout.addLayout(normal_row)
+
+        special_row = QHBoxLayout()
+        special_row.addWidget(self._create_label("特殊触发"))
+        self.special_trigger_recorder = InputTriggerRecorderWidget()
+        install_tooltip(self.special_trigger_recorder, tr("特殊应用（如专业软件）使用此触发方式"))
+        special_row.addWidget(self.special_trigger_recorder, 1)
+        layout.addLayout(special_row)
+
+        # 传递钩子引用，录制时暂停钩子
+        if hasattr(self, 'tray_app') and self.tray_app and hasattr(self.tray_app, 'mouse_hook'):
+            self.normal_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
+            self.special_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
+
+        # 重新连接清空按钮，让其自动应用配置
+        self.normal_trigger_recorder.clear_btn.clicked.disconnect()
+        self.normal_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger('normal'))
+        self.special_trigger_recorder.clear_btn.clicked.disconnect()
+        self.special_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger('special'))
+
+        apply_btn = QPushButton(tr("应用触发设置"))
+        apply_btn.clicked.connect(self._on_trigger_config_changed)
+        layout.addWidget(apply_btn)
+
         # 特殊触发应用
-        layout, group = page.add_group("特殊触发 (Ctrl+中键)")
+        layout, group = page.add_group("特殊触发应用列表")
 
         # 让此分组占据页面剩余空间
         page.layout.setStretchFactor(group, 1)
@@ -135,14 +170,14 @@ class SettingsPopupPageMixin:
 
         # 列表区域
         self.special_apps_list = QListWidget()
-        self.special_apps_list.setMinimumHeight(120)
         self.special_apps_list.setDragDropMode(QListWidget.NoDragDrop)
         self.special_apps_list.setDragEnabled(False)
         self.special_apps_list.setAcceptDrops(False)
         self.special_apps_list.setDropIndicatorShown(False)
         self.special_apps_list.setSelectionMode(QtCompat.SingleSelection)
-        # 开启滚动条，确保列表内容滚动时按钮保持可见
-        self.special_apps_list.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)
+        # 禁用列表自己的滚动条，使用窗口滚动条
+        self.special_apps_list.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
+        self.special_apps_list.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.special_apps_list.setItemDelegate(NumberedListDelegate(self.special_apps_list))
         self.special_apps_list.setStyleSheet(
             "QListWidget { background: transparent; outline: none; border: none; } QListWidget::item { border: none; background: transparent; min-height: 24px; margin: 1px 0px; padding: 2px 6px; }"
@@ -179,6 +214,20 @@ class SettingsPopupPageMixin:
         double_click_interval = getattr(settings, "double_click_interval", 300)
         self.double_click_slider.setValue(double_click_interval)
         self.double_click_label.setText(f"{double_click_interval}ms")
+
+        # 加载触发配置
+        self.normal_trigger_recorder.set_trigger(
+            getattr(settings, "popup_trigger_mode", "mouse"),
+            getattr(settings, "popup_trigger_keys", []),
+            getattr(settings, "popup_trigger_button", "middle"),
+            getattr(settings, "popup_trigger_modifiers", [])
+        )
+        self.special_trigger_recorder.set_trigger(
+            getattr(settings, "popup_special_trigger_mode", "mouse"),
+            getattr(settings, "popup_special_trigger_keys", []),
+            getattr(settings, "popup_special_trigger_button", "middle"),
+            getattr(settings, "popup_special_trigger_modifiers", ["ctrl"])
+        )
 
         self.special_apps_list.clear()
         for app in settings.special_apps:
@@ -219,6 +268,90 @@ class SettingsPopupPageMixin:
         if self._updating:
             return
         self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
+
+    def _on_clear_trigger(self, trigger_type: str):
+        """清空触发配置并自动应用"""
+        # 保存当前配置作为备份
+        if trigger_type == 'normal':
+            recorder = self.normal_trigger_recorder
+        else:
+            recorder = self.special_trigger_recorder
+
+        backup_mode = recorder.get_mode()
+        backup_keys = recorder.get_keys()
+        backup_button = recorder.get_button()
+        backup_mods = recorder.get_modifiers()
+
+        # 清空UI
+        recorder.clear()
+
+        # 尝试应用配置
+        result = self._try_apply_trigger_config()
+
+        # 如果验证失败，回退UI到之前的状态
+        if not result:
+            recorder.set_trigger(backup_mode, backup_keys, backup_button, backup_mods)
+
+    def _try_apply_trigger_config(self) -> bool:
+        """尝试应用触发配置，返回是否成功"""
+        if self._updating:
+            logger.warning("当前正在更新中，跳过配置应用")
+            return False
+
+        normal_mode = self.normal_trigger_recorder.get_mode()
+        normal_keys = self.normal_trigger_recorder.get_keys()
+        normal_btn = self.normal_trigger_recorder.get_button()
+        normal_mods = self.normal_trigger_recorder.get_modifiers()
+        special_mode = self.special_trigger_recorder.get_mode()
+        special_keys = self.special_trigger_recorder.get_keys()
+        special_btn = self.special_trigger_recorder.get_button()
+        special_mods = self.special_trigger_recorder.get_modifiers()
+
+        logger.info(f"准备保存配置: 普通={normal_mode}({normal_keys})+{normal_btn}+{normal_mods}, 特殊={special_mode}({special_keys})+{special_btn}+{special_mods}")
+
+        # 使用扩展的冲突检测（支持keyboard/hybrid模式）
+        is_conflict, msg = check_trigger_conflict(
+            button=normal_btn,
+            modifiers=normal_mods,
+            mode=normal_mode,
+            keys=normal_keys
+        )
+        if is_conflict:
+            from ui.styles.themed_messagebox import ThemedMessageBox
+            ThemedMessageBox.warning(self, "配置冲突", msg)
+            return False
+
+        is_conflict, msg = check_trigger_conflict(
+            button=special_btn,
+            modifiers=special_mods,
+            mode=special_mode,
+            keys=special_keys
+        )
+        if is_conflict:
+            from ui.styles.themed_messagebox import ThemedMessageBox
+            ThemedMessageBox.warning(self, "配置冲突", f"特殊触发：{msg}")
+            return False
+
+        # 保存配置
+        self.data_manager.update_settings(
+            popup_trigger_mode=normal_mode,
+            popup_trigger_keys=normal_keys,
+            popup_trigger_button=normal_btn,
+            popup_trigger_modifiers=normal_mods,
+            popup_special_trigger_mode=special_mode,
+            popup_special_trigger_keys=special_keys,
+            popup_special_trigger_button=special_btn,
+            popup_special_trigger_modifiers=special_mods
+        )
+        logger.info("配置已保存到数据模型，准备发射信号")
+        self.trigger_config_changed.emit()
+        logger.info("trigger_config_changed 信号已发射")
+        return True
+
+    def _on_trigger_config_changed(self):
+        """应用触发配置变更"""
+        logger.info("触发配置变更按钮被点击")
+        self._try_apply_trigger_config()
 
     # === Special Apps ===
 

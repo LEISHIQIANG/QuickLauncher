@@ -2,7 +2,7 @@ import threading
 
 from core.command_registry import CommandResult
 from core.data_models import Folder, ShortcutItem, ShortcutType
-from core.shortcut_chain_exec import execute_shortcut_chain
+from core.shortcut_chain_exec import _execute_shortcut_chain_runtime, execute_shortcut_chain
 
 
 class _Data:
@@ -21,6 +21,47 @@ def test_shortcut_item_serializes_chain_steps():
     assert loaded.chain_steps[0]["enabled"] is False
     assert loaded.chain_steps[0]["stop_on_error"] is False
     assert loaded.chain_steps[0]["delay_ms"] == 5
+
+
+def test_runtime_executes_canvas_only_processor_chain_without_mutating_steps():
+    chain = ShortcutItem(
+        id="chain",
+        type=ShortcutType.CHAIN,
+        chain_steps=[],
+        chain_canvas={
+            "nodes": [
+                {
+                    "id": "input",
+                    "node_type": "processor",
+                    "processor_id": "text_input",
+                    "args": {"text": "Hello"},
+                    "order": 1,
+                },
+                {
+                    "id": "panel",
+                    "node_type": "processor",
+                    "processor_id": "panel_node",
+                    "order": 2,
+                },
+            ],
+            "connections": [
+                {
+                    "id": "conn",
+                    "source_node": "input",
+                    "source_port": "output",
+                    "target_node": "panel",
+                    "target_port": "input",
+                }
+            ],
+        },
+    )
+
+    result = _execute_shortcut_chain_runtime(chain)
+
+    assert result.success is True
+    assert result.payload["items"][-1]["node_id"] == "panel"
+    assert result.payload["node_snapshots"]["panel"]["outputs"]["output"] == "Hello"
+    assert chain.chain_steps == []
 
 
 def test_chain_executes_steps_skips_disabled_and_stops_on_error(monkeypatch):
@@ -280,6 +321,7 @@ def test_chain_missing_binding_fails_step(monkeypatch):
 
     assert result.success is False
     assert "绑定不存在" in result.payload["items"][0]["detail"]
+    assert "目标端口" in result.payload["items"][0]["detail"]
 
 
 def test_chain_rejects_future_step_binding(monkeypatch):
@@ -366,6 +408,70 @@ def test_chain_runtime_records_node_snapshots(monkeypatch):
     assert snapshots["node-template"]["outputs"]["output"] == "hello world"
     assert snapshots["node-target"]["inputs"]["input"] == "hello world"
     assert snapshots["node-target"]["outputs"]["stdout"] == "done"
+    assert snapshots["node-template"]["started_at"] > 0
+    assert snapshots["node-template"]["typed_outputs"]["output"]["kind"] == "text"
+    assert snapshots["node-target"]["typed_inputs"]["input"]["text"] == "hello world"
+
+
+def test_chain_preserves_typed_list_between_processors():
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "id": "split",
+                "node_type": "processor",
+                "processor_id": "text_split",
+                "args": {"text": "甲,乙,丙", "delimiter": ","},
+            },
+            {
+                "id": "join",
+                "node_type": "processor",
+                "processor_id": "list_join",
+                "param_bindings": {"list": "1.output"},
+                "args": {"delimiter": "|"},
+            },
+        ],
+    )
+
+    result = execute_shortcut_chain(chain, _Data([]))
+    snapshots = result.payload["node_snapshots"]
+
+    assert result.success is True
+    assert snapshots["split"]["typed_outputs"]["output"]["kind"] == "list"
+    assert snapshots["split"]["typed_outputs"]["output"]["value"] == ["甲", "乙", "丙"]
+    assert snapshots["join"]["typed_inputs"]["list"]["kind"] == "list"
+    assert snapshots["join"]["typed_inputs"]["list"]["value"] == ["甲", "乙", "丙"]
+    assert snapshots["join"]["outputs"]["output"] == "甲|乙|丙"
+
+
+def test_chain_preserves_loop_counter_list_output_between_processors():
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "id": "counter",
+                "node_type": "processor",
+                "processor_id": "loop_counter",
+                "args": {"start": "1", "end": "3", "step": "1"},
+            },
+            {
+                "id": "join",
+                "node_type": "processor",
+                "processor_id": "list_join",
+                "param_bindings": {"list": "1.output"},
+                "args": {"delimiter": ","},
+            },
+        ],
+    )
+
+    result = execute_shortcut_chain(chain, _Data([]))
+    snapshots = result.payload["node_snapshots"]
+
+    assert result.success is True
+    assert snapshots["counter"]["typed_outputs"]["output"]["kind"] == "list"
+    assert snapshots["counter"]["typed_outputs"]["output"]["value"] == ["1", "2", "3"]
+    assert snapshots["join"]["typed_inputs"]["list"]["value"] == ["1", "2", "3"]
+    assert snapshots["join"]["outputs"]["output"] == "1,2,3"
 
 
 def test_file_shortcut_input_opens_bound_files(monkeypatch):
@@ -375,10 +481,10 @@ def test_file_shortcut_input_opens_bound_files(monkeypatch):
         chain_steps=[
             {
                 "node_type": "processor",
-                "processor_id": "text_input",
-                "args": {"text": "C:\\Logs\\a.txt\nC:\\Logs\\b.txt"},
+                "processor_id": "file_path_input",
+                "args": {"path": "C:\\Logs\\a.txt\nC:\\Logs\\b.txt"},
             },
-            {"shortcut_id": "target", "param_bindings": {"open_file": "1.stdout"}},
+            {"shortcut_id": "target", "param_bindings": {"open_file": "1.outputs.path"}},
         ],
     )
     seen = []

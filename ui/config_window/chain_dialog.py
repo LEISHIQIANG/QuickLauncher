@@ -446,7 +446,9 @@ class ChainDialog(BaseDialog):
         ops_layout.setContentsMargins(0, 0, 0, 0)
         self.test_btn = QPushButton(tr("测试运行"))
         self.test_btn.clicked.connect(self._run_test)
-        for b in (self.test_btn,):
+        self.clear_run_btn = QPushButton(tr("清除结果"))
+        self.clear_run_btn.clicked.connect(self._clear_run_results)
+        for b in (self.test_btn, self.clear_run_btn):
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             ops_layout.addWidget(b, 1)
         btn_row.addLayout(ops_layout, 6)
@@ -487,11 +489,9 @@ class ChainDialog(BaseDialog):
 
     def _build_module_bar(self) -> QTabWidget:
         tabs = QTabWidget()
-        # 三排 Grasshopper 图标菜单高度设为 138px，比例极其精致
         tabs.setFixedHeight(138)
         self._module_buttons = []
 
-        # 获取当前主题，以完美适配明暗主题配色
         theme = "dark"
         try:
             parent = self.parent()
@@ -503,7 +503,6 @@ class ChainDialog(BaseDialog):
         except Exception:
             pass
 
-        # 初始化这些按钮属性以保证完美的向后兼容（防止 AttributeError）
         self.file_btn = QPushButton()
         self.folder_btn = QPushButton()
         self.url_btn = QPushButton()
@@ -511,94 +510,76 @@ class ChainDialog(BaseDialog):
         self.cmd_btn = QPushButton()
         self.processor_btn = QPushButton()
 
-        # 1. QL图标 Tab
+        # QL图标 Tab（始终排在首位）
         tabs.addTab(self._ql_icons_page(theme), tr("QL图标"))
 
-        # 2. 输入与调试 Tab
-        tabs.addTab(
-            self._processor_page(
-                tr("输入与调试"),
-                ["panel_node", "text_input", "num_input", "bool_value", "python_cell", "logger_node", "sleep_node"],
-                theme,
-            ),
-            tr("输入调试"),
-        )
+        # ── 从 processor_definitions() 按 category 自动生成标签页 ──
+        from core.chain_processors import processor_definitions as _all_defs
 
-        # 3. 逻辑 Tab
-        tabs.addTab(
-            self._processor_page(
-                tr("判断与逻辑"),
-                [
-                    "assert_not_empty",
-                    "coalesce_value",
-                    "type_convert",
-                    "conditional_branch",
-                    "compare_value",
-                    "if_else",
-                    "bool_not",
-                    "bool_and",
-                    "bool_or",
-                    "bool_xor",
-                ],
-                theme,
-            ),
-            tr("逻辑"),
-        )
+        _CATEGORY_TAB_ORDER = [
+            "输入与调试", "逻辑", "文本", "数学与列表", "数学扩展",
+            "网络与结构化", "文件与路径", "图像", "日期时间",
+            "编码解码", "数据验证", "加密哈希", "颜色处理",
+            "集合操作", "字典操作", "字符串格式化", "数据压缩",
+            "环境变量", "系统信息", "网络工具",
+        ]
 
-        # 4. 文本处理 Tab
-        tabs.addTab(
-            self._processor_page(
-                tr("文本"),
-                [
-                    "text_template",
-                    "text_replace",
-                    "text_slice",
-                    "regex_extract",
-                    "text_case",
-                    "text_join",
-                    "text_len",
-                    "text_split",
-                    "text_lines",
-                ],
-                theme,
-            ),
-            tr("文本"),
-        )
+        _CATEGORY_TAB_LABEL = {
+            "输入与调试": "输入调试",
+            "数学与列表": "列表数学",
+            "数学扩展": "数学扩展",
+            "网络与结构化": "结构化",
+            "文件与路径": "文件路径",
+            "编码解码": "编码解码",
+            "数据验证": "数据验证",
+            "加密哈希": "加密哈希",
+            "颜色处理": "颜色",
+            "集合操作": "集合",
+            "字典操作": "字典",
+            "字符串格式化": "格式化",
+            "数据压缩": "压缩",
+            "环境变量": "环境变量",
+            "系统信息": "系统",
+            "网络工具": "网络",
+        }
 
-        # 5. 列表与数学 Tab
-        tabs.addTab(self._math_page(theme), tr("列表数学"))
+        by_category: dict[str, list[str]] = {}
+        for d in _all_defs():
+            by_category.setdefault(d.category, []).append(d.id)
 
-        # 6. 结构化文本 Tab
-        tabs.addTab(
-            self._processor_page(
-                tr("结构化文本"),
-                ["json_get", "json_set", "json_parse", "url_encode", "http_get", "http_post", "http_download"],
-                theme,
-            ),
-            tr("结构化"),
-        )
+        seen: set[str] = set()
+        for cat in _CATEGORY_TAB_ORDER:
+            if cat not in by_category:
+                continue
+            pids = by_category[cat]
+            label = _CATEGORY_TAB_LABEL.get(cat, cat)
+            if len(pids) <= 12:
+                tabs.addTab(
+                    self._processor_page(tr(cat), pids, theme),
+                    tr(label),
+                )
+            else:
+                tabs.addTab(
+                    self._grouped_processor_page(tr(cat), pids, theme),
+                    tr(label),
+                )
+            seen.add(cat)
 
-        # 7. 文件路径 Tab
-        tabs.addTab(
-            self._processor_page(
-                tr("文件路径"),
-                [
-                    "file_path_input",
-                    "folder_path_input",
-                    "path_join",
-                    "path_split",
-                    "path_exists",
-                    "folder_create",
-                    "file_read_text",
-                    "file_write_text",
-                ],
-                theme,
-            ),
-            tr("文件路径"),
-        )
-
-        # 8. 图像处理 Tab
-        tabs.addTab(self._processor_page(tr("图像"), ["img_resize", "img_convert", "img_watermark", "img_crop", "img_rotate"], theme), tr("图像处理"))
+        for cat in sorted(by_category):
+            if cat in seen:
+                continue
+            pids = by_category[cat]
+            label = _CATEGORY_TAB_LABEL.get(cat, cat)
+            if len(pids) <= 12:
+                tabs.addTab(
+                    self._processor_page(tr(cat), pids, theme),
+                    tr(label),
+                )
+            else:
+                tabs.addTab(
+                    self._grouped_processor_page(tr(cat), pids, theme),
+                    tr(label),
+                )
 
         return tabs
 
@@ -711,7 +692,7 @@ class ChainDialog(BaseDialog):
         outer.addWidget(scroll)
         return page
 
-    def _math_page(self, theme: str) -> QWidget:
+    def _grouped_processor_page(self, title: str, processor_ids: list[str], theme: str, group_size: int = 8) -> QWidget:
         page = QWidget()
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -726,7 +707,7 @@ class ChainDialog(BaseDialog):
         bar.setFixedHeight(102)
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(18)  # 组团之间采用 18px 优雅间距区分
+        layout.setSpacing(18)
 
         def create_sep():
             sep = QFrame()
@@ -739,48 +720,16 @@ class ChainDialog(BaseDialog):
 
         from core.chain_processors import processor_title
 
-        # 1. 数字与运算组团
-        math_group = GrasshopperGroupWidget(tr("数字与运算"), theme)
-        math_pids = ["num_input", "math_add", "math_sub", "math_mul", "math_div", "math_pow", "math_mod"]
-        for pid in math_pids:
-            p_title = processor_title(pid)
-            btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
-            math_group.add_button(btn)
-        layout.addWidget(math_group)
-
-        layout.addWidget(create_sep())
-
-        # 2. 数列与列表组团
-        list_group = GrasshopperGroupWidget(tr("数列与列表"), theme)
-        list_pids = [
-            "series_arith",
-            "series_geom",
-            "list_create",
-            "list_item",
-            "list_len",
-            "list_rev",
-            "list_unique",
-            "list_sort",
-            "list_filter",
-            "list_contains",
-            "list_template",
-        ]
-        for pid in list_pids:
-            p_title = processor_title(pid)
-            btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
-            list_group.add_button(btn)
-        layout.addWidget(list_group)
-
-        layout.addWidget(create_sep())
-
-        # 3. 进制转换组团
-        base_group = GrasshopperGroupWidget(tr("进制转换"), theme)
-        base_pids = ["base_convert", "dec_to_hex", "hex_to_dec"]
-        for pid in base_pids:
-            p_title = processor_title(pid)
-            btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
-            base_group.add_button(btn)
-        layout.addWidget(base_group)
+        for i in range(0, len(processor_ids), group_size):
+            chunk = processor_ids[i:i + group_size]
+            if i > 0:
+                layout.addWidget(create_sep())
+            group = GrasshopperGroupWidget(title, theme)
+            for pid in chunk:
+                p_title = processor_title(pid)
+                btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+                group.add_button(btn)
+            layout.addWidget(group)
 
         layout.addStretch()
         scroll.setWidget(bar)
@@ -1137,6 +1086,7 @@ class ChainDialog(BaseDialog):
             self.url_btn,
             self.processor_btn,
             self.test_btn,
+            self.clear_run_btn,
             self.quick_add_btn,
             self._browse_icon_btn,
             self._clear_icon_btn,
@@ -1804,6 +1754,13 @@ class ChainDialog(BaseDialog):
         if error:
             lines.append(tr("错误: {e}", e=error))
         self.result_view.setPlainText("\n".join(lines))
+
+    def _clear_run_results(self):
+        self._last_test_result = None
+        if hasattr(self, "canvas_widget"):
+            self.canvas_widget.set_run_status([])
+        self._refresh_properties()
+        self._refresh_risk_analysis()
 
     # ── get_shortcut 契约 ────────────────────────────────────
 

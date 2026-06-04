@@ -8,17 +8,19 @@ from typing import Any
 
 from core.chain_processors import (
     DEFAULT_PYTHON_CELL_SOURCE,
+    processor_definition,
     processor_input_ports,
     processor_output_ports,
     python_cell_metadata,
 )
+from core.chain_values import ChainValueKind
 from core.command_io import discover_input_variables
 from core.data_models import ShortcutItem, ShortcutType
 
 STANDARD_OUTPUT_PORTS = ["success", "output", "stdout", "stderr", "exit_code", "error", "files.0", "folders.0", "urls.0"]
 DIRECT_OUTPUT_PORTS = set(STANDARD_OUTPUT_PORTS)
 
-TEXTUAL_KINDS = {"any", "text", "json", "file", "folder", "url", "list", "number", "bool"}
+TEXT_TARGET_COMPATIBLE_KINDS = {"any", "text", "json", "file", "folder", "url", "list", "number", "bool"}
 PARAM_TOKEN_RE = re.compile(r"\{\{param:([^}:]+)(?::q)?\}\}", re.IGNORECASE)
 
 
@@ -29,6 +31,8 @@ class ChainPortSpec:
     kind: str = "text"
     multiple: bool = False
     label: str = ""
+    description: str = ""
+    role: str = "data"
 
 
 @dataclass(frozen=True)
@@ -41,22 +45,29 @@ class ChainConnectionIssue:
 def input_port_specs_for_node(node: dict, shortcuts: dict[str, ShortcutItem]) -> list[ChainPortSpec]:
     if _node_type(node) == "processor":
         processor_id = str(node.get("processor_id") or "")
-        ports = (
-            python_cell_metadata(str(node.get("source") or DEFAULT_PYTHON_CELL_SOURCE))["inputs"]
-            if processor_id == "python_cell"
-            else processor_input_ports(processor_id)
-        )
+        if processor_id == "python_cell":
+            ports = python_cell_metadata(str(node.get("source") or DEFAULT_PYTHON_CELL_SOURCE))["inputs"]
+            return [ChainPortSpec(port, "input", ChainValueKind.ANY, _allows_multiple(port), port, "脚本电池自定义输入。", "data") for port in ports]
+        definition = processor_definition(processor_id)
+        if definition is not None:
+            return [
+                ChainPortSpec(port.id, "input", port.kind, port.multiple, port.label or port.id, port.description, port.role)
+                for port in definition.inputs
+            ]
+        ports = processor_input_ports(processor_id)
         return [ChainPortSpec(port, "input", _processor_input_kind(processor_id, port), _allows_multiple(port)) for port in ports]
 
     shortcut = shortcuts.get(str(node.get("shortcut_id") or ""))
-    ports: list[ChainPortSpec] = [ChainPortSpec("input", "input", "text", True, "输入")]
+    ports: list[ChainPortSpec] = [
+        ChainPortSpec("input", "input", "text", True, "输入值", "传给快捷方式的主输入值，通常是字符串。", "primary")
+    ]
     if shortcut is None:
         return ports
 
     if shortcut.type == ShortcutType.FILE:
-        ports.append(ChainPortSpec("open_file", "input", "file", True, "打开文件"))
+        ports.append(ChainPortSpec("open_file", "input", "file", True, "待打开文件", "传入一个或多个文件路径，由文件快捷方式打开。", "collection"))
     elif shortcut.type == ShortcutType.FOLDER:
-        ports.append(ChainPortSpec("open_file", "input", "file", True, "传入文件"))
+        ports.append(ChainPortSpec("open_file", "input", "file", True, "传入文件", "传入一个或多个文件路径，由文件夹快捷方式处理。", "collection"))
 
     existing = {"input", "open_file"}
     for param in ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", []) or []):
@@ -64,7 +75,7 @@ def input_port_specs_for_node(node: dict, shortcuts: dict[str, ShortcutItem]) ->
         if not name or name in existing:
             continue
         existing.add(name)
-        ports.append(ChainPortSpec(name, "input", _param_kind(param), False, str(param.get("label") or "")))
+        ports.append(ChainPortSpec(name, "input", _param_kind(param), False, str(param.get("label") or ""), "命令参数输入。", "parameter"))
 
     command_text = " ".join(
         str(value or "")
@@ -79,51 +90,56 @@ def input_port_specs_for_node(node: dict, shortcuts: dict[str, ShortcutItem]) ->
         if port in existing:
             continue
         existing.add(port)
-        ports.append(ChainPortSpec(port, "input", "text", port == "input", prompt))
+        ports.append(ChainPortSpec(port, "input", "text", port == "input", prompt, "从命令模板变量生成的字符串输入。", "parameter"))
     for match in PARAM_TOKEN_RE.finditer(command_text):
         port = str(match.group(1) or "").strip()
         if not port or port in existing:
             continue
         existing.add(port)
-        ports.append(ChainPortSpec(port, "input", "text"))
+        ports.append(ChainPortSpec(port, "input", "text", False, port, "从 {{param:name}} 变量生成的字符串输入。", "parameter"))
     return ports
 
 
 def output_port_specs_for_node(node: dict, shortcuts: dict[str, ShortcutItem] | None = None) -> list[ChainPortSpec]:
     if _node_type(node) == "processor":
         processor_id = str(node.get("processor_id") or "")
-        ports = (
-            python_cell_metadata(str(node.get("source") or DEFAULT_PYTHON_CELL_SOURCE))["outputs"]
-            if processor_id == "python_cell"
-            else processor_output_ports(processor_id)
-        )
+        if processor_id == "python_cell":
+            ports = python_cell_metadata(str(node.get("source") or DEFAULT_PYTHON_CELL_SOURCE))["outputs"]
+            return [ChainPortSpec(port, "output", ChainValueKind.ANY, False, port, "脚本电池自定义输出。", "data") for port in ports]
+        definition = processor_definition(processor_id)
+        if definition is not None:
+            return [
+                ChainPortSpec(port.id, "output", port.kind, port.multiple, port.label or port.id, port.description, port.role)
+                for port in definition.outputs
+            ]
+        ports = processor_output_ports(processor_id)
         return [ChainPortSpec(port, "output", _processor_output_kind(processor_id, port)) for port in ports]
 
     shortcut = (shortcuts or {}).get(str(node.get("shortcut_id") or ""))
     if shortcut is None:
         return []
     base = [
-        ChainPortSpec("success", "output", "bool"),
-        ChainPortSpec("output", "output", "text"),
-        ChainPortSpec("error", "output", "text"),
+        ChainPortSpec("success", "output", "bool", False, "成功状态", "布尔状态。成功为 1/true，失败为 0/false。", "status"),
+        ChainPortSpec("output", "output", "text", False, "主输出", "该快捷方式的主结果字符串。", "primary"),
+        ChainPortSpec("error", "output", "text", False, "错误信息", "失败时的错误说明；成功时通常为空。", "diagnostic"),
     ]
     if shortcut.type == ShortcutType.COMMAND and bool(getattr(shortcut, "capture_output", False)):
         base.extend(
             [
-                ChainPortSpec("stdout", "output", "text"),
-                ChainPortSpec("stderr", "output", "text"),
-                ChainPortSpec("exit_code", "output", "number"),
-                ChainPortSpec("files.0", "output", "file"),
-                ChainPortSpec("folders.0", "output", "folder"),
-                ChainPortSpec("urls.0", "output", "url"),
+                ChainPortSpec("stdout", "output", "text", False, "标准输出", "命令进程 stdout 字符串。", "stream"),
+                ChainPortSpec("stderr", "output", "text", False, "标准错误", "命令进程 stderr 字符串。", "diagnostic"),
+                ChainPortSpec("exit_code", "output", "number", False, "退出码", "命令进程退出码，通常 0 表示成功。", "status"),
+                ChainPortSpec("files.0", "output", "file", False, "结果文件[0]", "执行结果文件集合的第 0 项。", "collection"),
+                ChainPortSpec("folders.0", "output", "folder", False, "结果文件夹[0]", "执行结果文件夹集合的第 0 项。", "collection"),
+                ChainPortSpec("urls.0", "output", "url", False, "结果 URL[0]", "执行结果 URL 集合的第 0 项。", "collection"),
             ]
         )
     elif shortcut.type == ShortcutType.FILE:
-        base.append(ChainPortSpec("files.0", "output", "file"))
+        base.append(ChainPortSpec("files.0", "output", "file", False, "结果文件[0]", "文件快捷方式目标路径。", "collection"))
     elif shortcut.type == ShortcutType.FOLDER:
-        base.append(ChainPortSpec("folders.0", "output", "folder"))
+        base.append(ChainPortSpec("folders.0", "output", "folder", False, "结果文件夹[0]", "文件夹快捷方式目标路径。", "collection"))
     elif shortcut.type == ShortcutType.URL:
-        base.append(ChainPortSpec("urls.0", "output", "url"))
+        base.append(ChainPortSpec("urls.0", "output", "url", False, "结果 URL[0]", "URL 快捷方式目标地址。", "collection"))
     return _dedupe_specs(base)
 
 
@@ -404,10 +420,12 @@ def _processor_input_kind(processor_id: str, port: str) -> str:
 def _processor_output_kind(processor_id: str, port: str) -> str:
     processor_id = str(processor_id or "")
     port = str(port or "").lower().strip()
-    if port in {"length", "count", "ms"}:
+    if port in {"length", "count", "ms", "status_code"}:
         return "number"
     if port in {"empty", "not", "exists"}:
         return "bool"
+    if port == "headers" and processor_id.startswith("http_"):
+        return "json"
     if port == "folder":
         return "folder"
     if port in {"path", "output"} and processor_id in {"folder_path_input", "folder_create"}:
@@ -489,13 +507,13 @@ def _kinds_compatible(source: str, target: str) -> bool:
     target = str(target or "text").lower()
     if source == target or source == "any" or target == "any":
         return True
-    if target == "text" and source in TEXTUAL_KINDS:
-        return True
-    if source == "text" and target in {"number", "bool", "json", "file", "folder", "url", "list"}:
+    if target == "text" and source in TEXT_TARGET_COMPATIBLE_KINDS:
         return True
     if source in {"file", "folder", "url"} and target == "text":
         return True
-    if source == "number" and target in {"text", "bool"}:
+    if source == "number" and target == "text":
+        return True
+    if source == "bool" and target == "text":
         return True
     return False
 
@@ -503,11 +521,11 @@ def _kinds_compatible(source: str, target: str) -> bool:
 def _kind_label(kind: str) -> str:
     labels = {
         "any": "任意",
-        "text": "文本",
-        "json": "结构化文本",
+        "text": "字符串",
+        "json": "JSON/结构化",
         "file": "文件",
         "folder": "文件夹",
-        "url": "网址",
+        "url": "URL",
         "list": "列表",
         "number": "数字",
         "bool": "布尔",

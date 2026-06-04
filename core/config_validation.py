@@ -49,13 +49,19 @@ _STRING_CHOICES = {
     "popup_align_mode": {"mouse_center", "mouse_top_left", "screen_center", "bottom_right"},
     "bg_mode": {"theme", "image", "color", "acrylic"},
     "language": {"zh_CN", "en_US"},
+    "popup_trigger_mode": {"keyboard", "mouse", "hybrid"},
+    "popup_special_trigger_mode": {"keyboard", "mouse", "hybrid"},
 }
-_STRING_FIELDS = {"last_version", "custom_bg_path", "bg_solid_color", "edge_highlight_color"}
+_STRING_FIELDS = {"last_version", "custom_bg_path", "bg_solid_color", "edge_highlight_color", "popup_trigger_button", "popup_special_trigger_button"}
 _LIST_STRING_FIELDS = {
     "special_apps",
     "enabled_plugins",
     "favorite_commands",
     "disabled_builtin_commands",
+    "popup_trigger_keys",
+    "popup_trigger_modifiers",
+    "popup_special_trigger_keys",
+    "popup_special_trigger_modifiers",
 }
 
 

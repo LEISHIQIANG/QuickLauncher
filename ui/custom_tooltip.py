@@ -29,19 +29,28 @@ class CustomToolTip(QWidget):
         self._text = ""
 
     def paintEvent(self, event):
+        from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self._theme == "dark":
+            bg = QColor(44, 44, 48, 240)
+            border = QColor(255, 255, 255, 38)
+        else:
+            bg = QColor(255, 255, 255, 240)
+            border = QColor(0, 0, 0, 25)
+
+        if is_win10():
+            paint_win10_rounded_surface(painter, self, bg, border, 6, inset=0.5, max_border_alpha=80)
+            return
 
         rect = self.rect()
         path = QPainterPath()
         path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), 6, 6)
 
-        if self._theme == "dark":
-            painter.fillPath(path, QColor(44, 44, 48, 240))
-            painter.setPen(QColor(255, 255, 255, 38))
-        else:
-            painter.fillPath(path, QColor(255, 255, 255, 240))
-            painter.setPen(QColor(0, 0, 0, 25))
+        painter.fillPath(path, bg)
+        painter.setPen(border)
 
         painter.drawPath(path)
 

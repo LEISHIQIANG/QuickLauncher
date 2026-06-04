@@ -9,7 +9,7 @@
 - 有执行器：`core/shortcut_chain_exec.py` 可以按步骤执行动作链，支持取消、延迟、失败中断、输出产物传递、快捷方式执行、处理器节点执行。
 - 有数据模型：`core/data_models.py` 保存 `chain_steps` 和 `chain_canvas`，支持旧步骤到画布的兼容转换。
 - 有端口契约：`core/chain_contracts.py` 能根据节点类型生成输入/输出端口，并做连接方向、顺序、端口存在性、基础类型兼容校验。
-- 有电池库：`core/chain_processors.py` 已有文本、逻辑、列表、数学、JSON、HTTP、文件路径、图像等一批处理器电池。
+- 有电池库：`core/chain_processors.py` 已有文本、逻辑、列表、数学、JSON、HTTP、文件路径、图像等一批处理器电池，并提供端口 kind、role、说明、参数控件、安全级别和示例。
 - 有画布 UI：`ui/config_window/chain_canvas.py` 已经支持节点、端口、连线、拖拽、吸附、选择、删除、属性面板、脚本电池源码编辑、运行状态渲染。
 - 有编辑对话框：`ui/config_window/chain_dialog.py` 已有 Grasshopper 风格分组按钮、动作链属性、测试运行、风险提示、保存回写。
 - 有测试：`tests/test_shortcut_chain_exec.py`、`tests/test_chain_dialog.py`、`tests/test_math_processors.py` 已覆盖基础执行、绑定、画布编译、处理器结果等。
@@ -17,10 +17,10 @@
 但它距离“成熟的模块化编程系统”还差几个核心层：
 
 - 图模型还不是执行模型的第一公民，当前仍然是“画布编译成线性步骤，再执行步骤”。
-- 电池定义、端口类型、参数 UI、运行实现混在一起，扩展成本会越来越高。
-- 数据值目前主要以字符串流转，类型系统还比较弱，列表、文件、JSON、布尔、数字只是端口层面的轻类型。
-- 调试能力不足，无法稳定查看每个端口的实际值、耗时、错误原因、输入快照和输出快照。
-- 电池库数量虽多，但质量不均，缺少统一规格、参数 schema、示例、测试矩阵和安全分级。
+- 电池注册、端口类型、参数 UI 和运行实现仍在同一大文件附近组织，后续应继续拆成 manifest/schema/handler 模块。
+- 数据值已经有 `ChainValue`、`typed_chain_values`、`typed_inputs` / `typed_outputs`，但执行入口仍是线性步骤，不是完整图运行时。
+- 调试能力已能查看节点输入/输出快照、端口 tooltip 和连线值预览，但还缺少单节点运行、局部运行、时间线和导出诊断包。
+- 电池库已有统一 schema、安全分级和契约测试，仍需要为图片、HTTP、文件下载等外部环境电池补更细的 mock/边界测试。
 - 缺少动作链模板、子链复用、版本迁移、导入导出、插件扩展电池等成熟能力。
 
 ## 2. 成熟形态
@@ -82,7 +82,7 @@
 
 不足：
 
-- 执行结果只以列表项返回，缺少节点级运行快照。
+- 执行结果已经包含节点级 `node_snapshots`，并记录 `typed_inputs` / `typed_outputs`、耗时、状态和错误。
 - 运行时没有明确的 `ChainRunContext`、`NodeRunContext`、`PortValueStore`。
 - `previous_output` 与 `chain_values` 并存，概念容易重复。
 - 对 processor 的输入准备和 shortcut 的输入准备混在执行器里。
@@ -104,10 +104,10 @@
 不足：
 
 - `PROCESSOR_DEFINITIONS`、端口元数据、执行分发、具体实现全在一个文件里，后续会膨胀。
-- 电池只有 `id/title/inputs/outputs/source`，缺少参数类型、默认值、选择项、说明、示例、安全级别、是否会写文件/发网络请求。
+- 电池定义已经包含参数类型、默认值、选择项、说明、示例、安全级别和 capability；下一步应从单文件注册表拆成更清晰的 schema/handler 目录。
 - 电池输出类型依赖 `core/chain_contracts.py` 的推断规则，容易出现定义和实现不一致。
 - 部分电池名称和行为不够清晰，例如 JSON、列表、图像、HTTP 电池需要明确边界和失败语义。
-- 网络、文件、脚本类电池缺少风险标记和运行限制。
+- 网络、文件、脚本类电池已有风险标记；运行限制还需要继续完善，例如超时、授权禁用、覆盖确认和更细的沙箱边界。
 - 脚本电池的 `exec` 沙箱非常轻，适合本地高级用户，但不能当作强安全边界。
 
 ### 3.3 端口契约
@@ -123,8 +123,8 @@
 
 不足：
 
-- 类型系统仍是字符串枚举，缺少结构化 value 类型。
-- 兼容规则偏宽，比如 text 可以接到 number/bool/json/file/folder/url/list，运行时才可能失败。
+- 端口类型仍是字符串枚举，但运行时已经通过 `ChainValue` 保留结构化值、预览文本和原始值。
+- 兼容规则已收紧：普通 `text` 不再自动接到 number/bool/json/file/folder/url/list；只有目标端是字符串时允许安全展示型转换。
 - 没有端口多输入的合并策略定义，例如 join、list、first、last。
 - 没有端口是否必填、默认值、帮助文案、示例值、敏感值标记。
 - 没有连接级 warning，例如“文本转文件路径可能不存在”“HTTP 输出是文本不一定是 JSON”。
@@ -144,7 +144,7 @@
 不足：
 
 - 画布是视觉编辑器，还不是完整调试器。
-- 不能查看任意端口值、连接值、运行输入快照。
+- 已能通过节点属性和 tooltip 查看端口值、连接来源值和运行输入/输出快照；还需要更完整的数据检查器面板。
 - 没有节点搜索、快速添加、收藏、最近使用、模板。
 - 没有撤销/重做。
 - 没有框选后的批量设置、复制粘贴、复制子图、自动排版。
@@ -1711,7 +1711,7 @@ def migrate_chain_data(chain_data: dict, from_schema: int, to_schema: int) -> di
 
 因为动作链可能成为独立模块，近期优先级需要调整。
 
-### 第 1 周：模块边界先行
+### 第 1 周：模块边界先行（已部分完成）
 
 任务：
 
@@ -1725,6 +1725,11 @@ def migrate_chain_data(chain_data: dict, from_schema: int, to_schema: int) -> di
 
 - 动作链模块被模拟禁用时，主程序仍正常启动和执行其他快捷方式。
 - 执行动作链返回清晰“模块不可用”错误。
+
+当前状态：
+
+- 已新增 `modules/action_chain/entry.py`，提供模块 manifest/API、权限声明、可用性检查和不可用降级结果。
+- 仍需补独立模块目录布局、迁移目录和真实 Host API 边界。
 
 ### 第 2 周：数据版本和迁移入口
 
@@ -1741,7 +1746,7 @@ def migrate_chain_data(chain_data: dict, from_schema: int, to_schema: int) -> di
 - 新动作链数据能 round-trip。
 - 未知字段不会被静默删除。
 
-### 第 3 周：电池 schema 和安全能力点
+### 第 3 周：电池 schema 和安全能力点（已大部分完成）
 
 任务：
 
@@ -1755,7 +1760,13 @@ def migrate_chain_data(chain_data: dict, from_schema: int, to_schema: int) -> di
 - 文件写入、HTTP、脚本电池能显示风险。
 - 禁用某个 capability 时，对应电池不可执行或有明确提示。
 
-### 第 4 周：运行快照和调试
+当前状态：
+
+- 内置电池已经有端口 kind/role、参数控件、说明、示例、安全级别和 capability。
+- 外部电池注册已经增加 schema 质量门槛：未知端口类型、未知 role、重复端口、参数不属于输入端口、非法安全级别和非法 capability 都会被拒绝。
+- 风险显示已有基础接入；capability 禁用后的执行阻断仍需继续补全。
+
+### 第 4 周：运行快照和调试（已部分完成）
 
 任务：
 
@@ -1768,3 +1779,9 @@ def migrate_chain_data(chain_data: dict, from_schema: int, to_schema: int) -> di
 
 - 独立模块边界没有阻碍调试体验。
 - 后续无论内置还是插件化，运行结果格式都稳定。
+
+当前状态：
+
+- 运行结果已经记录节点快照、typed 输入/输出、耗时和错误。
+- 画布端口和连线 tooltip 已显示数据类型、端口角色、说明和上次运行值。
+- 仍需补单节点运行、局部运行、端口数据检查器和诊断包导出。

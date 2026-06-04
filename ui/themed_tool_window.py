@@ -27,7 +27,13 @@ from qt_compat import (
 )
 from ui.styles.style import Colors, StyleSheet
 from ui.utils.font_manager import get_qfont, tune_font_rendering
-from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win10, is_win11
+from ui.utils.window_effect import (
+    enable_acrylic_for_config_window,
+    get_window_effect,
+    is_win10,
+    is_win11,
+    paint_win10_rounded_surface,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +313,7 @@ class ThemedToolWindow(QDialog):
             if not hwnd:
                 return
             effect = get_window_effect()
-            radius = 8 if is_win11() else 12
+            radius = 8 if is_win11() else 8
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
                 effect.enable_window_shadow(hwnd, radius)
@@ -320,37 +326,41 @@ class ThemedToolWindow(QDialog):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
 
-        radius = 8 if is_win11() else 12
-        inset = 1.0 if is_win10() else 0.5
-        if self._theme == "dark":
-            bg = QColor(28, 28, 30, 180)
-            border = QColor(190, 190, 197, 60)
-        else:
-            bg = QColor(242, 242, 247, 160)
-            border = QColor(229, 229, 234, 150)
+            radius = 8 if is_win11() else 8
+            if self._theme == "dark":
+                bg = QColor(28, 28, 30, 180)
+                border = QColor(190, 190, 197, 60)
+            else:
+                bg = QColor(242, 242, 247, 160)
+                border = QColor(229, 229, 234, 150)
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset,
-            inset,
-            self.width() - inset * 2,
-            self.height() - inset * 2,
-            radius,
-            radius,
-        )
-        tint_color = QColor(bg)
-        tint_color.setAlpha(min(tint_color.alpha(), 150 if is_win10() else 100))
-        painter.fillPath(path, tint_color)
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, bg, border, radius)
+                return
 
-        pen_color = QColor(border)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1.0))
-        painter.drawPath(path)
+            inset = 0.5
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                radius,
+                radius,
+            )
+            tint_color = QColor(bg)
+            tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
+
+            pen_color = QColor(border)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            painter.setPen(QPen(pen_color, 1.0))
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -360,7 +370,7 @@ class ThemedToolWindow(QDialog):
                 if hwnd:
                     effect = get_window_effect()
                     effect.set_window_region(hwnd, self.width(), self.height(), 12)
-                    effect.set_dwm_blur_behind(hwnd, self.width(), self.height(), 12, enable=True)
+                    effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
         except Exception as exc:
             logger.debug("调整窗口区域失败: %s", exc, exc_info=True)
 

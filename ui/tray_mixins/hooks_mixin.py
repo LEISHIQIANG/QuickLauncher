@@ -254,11 +254,40 @@ class HooksMixin:
     def _apply_mouse_hook_settings(self):
         """将特殊应用配置同步到 DLL 鼠标钩子"""
         if not self.mouse_hook:
+            logger.warning("鼠标钩子未初始化，无法应用配置")
             return
 
         special_apps = self._get_special_apps_for_hook()
         self.mouse_hook.set_special_apps(special_apps)
         logger.info(f"已同步特殊应用列表[dll_hook]，共 {len(special_apps)} 个")
+
+        # 应用触发配置
+        try:
+            settings = self.data_manager.get_settings()
+            # 优先使用扩展接口
+            if hasattr(self.mouse_hook, 'set_trigger_config_ex'):
+                normal_mode = getattr(settings, 'popup_trigger_mode', 'mouse')
+                normal_keys = getattr(settings, 'popup_trigger_keys', [])
+                special_mode = getattr(settings, 'popup_special_trigger_mode', 'mouse')
+                special_keys = getattr(settings, 'popup_special_trigger_keys', [])
+
+                self.mouse_hook.set_trigger_config_ex(
+                    normal_mode, settings.popup_trigger_button, normal_keys, settings.popup_trigger_modifiers,
+                    special_mode, settings.popup_special_trigger_button, special_keys, settings.popup_special_trigger_modifiers
+                )
+                logger.info(f"已应用扩展触发配置: 普通={normal_mode}({normal_keys})+{settings.popup_trigger_button}+{settings.popup_trigger_modifiers}, 特殊={special_mode}({special_keys})+{settings.popup_special_trigger_button}+{settings.popup_special_trigger_modifiers}")
+            elif hasattr(self.mouse_hook, 'set_trigger_config'):
+                self.mouse_hook.set_trigger_config(
+                    settings.popup_trigger_button,
+                    settings.popup_trigger_modifiers,
+                    settings.popup_special_trigger_button,
+                    settings.popup_special_trigger_modifiers
+                )
+                logger.info(f"已应用触发配置: 普通={settings.popup_trigger_button}+{settings.popup_trigger_modifiers}, 特殊={settings.popup_special_trigger_button}+{settings.popup_special_trigger_modifiers}")
+            else:
+                logger.warning("鼠标钩子不支持触发配置方法，可能是旧版DLL")
+        except Exception as e:
+            logger.error(f"应用触发配置失败: {e}", exc_info=True)
 
     def _sync_special_apps_to_hook(self):
         """同步特殊应用设置到鼠标钩子"""

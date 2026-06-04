@@ -120,7 +120,21 @@ class PopupRendererMixin:
                 mode = getattr(enum, "Clear", None) or getattr(enum, "CompositionMode_Clear", None) if enum else None
             PopupRendererMixin._clear_composition_mode = mode
 
-        if radius > 0:
+        if is_win10() and radius > 0:
+            painter.save()
+            source_mode = getattr(QPainter, "CompositionMode_Source", None)
+            source_over_mode = getattr(QPainter, "CompositionMode_SourceOver", None)
+            enum = getattr(QPainter, "CompositionMode", None)
+            if enum is not None:
+                source_mode = getattr(enum, "Source", source_mode)
+                source_over_mode = getattr(enum, "SourceOver", source_over_mode)
+            if source_mode is not None:
+                painter.setCompositionMode(source_mode)
+            painter.fillRect(self.rect(), QtCompat.transparent)
+            if source_over_mode is not None:
+                painter.setCompositionMode(source_over_mode)
+            painter.restore()
+        elif radius > 0:
             # Cache outside path (full rect minus rounded rect)
             if getattr(self, "_cached_outside_path", None) is None:
                 full = QPainterPath()
@@ -140,6 +154,8 @@ class PopupRendererMixin:
                 painter.save()
                 # 图片模式下的透明度 (0=透明, 100=不透明)
                 paint_alpha = self.settings.bg_alpha / 100.0
+                if is_win10():
+                    paint_alpha = max(0.97, paint_alpha)
                 painter.setOpacity(max(0.0, min(1.0, paint_alpha)))
                 # 绘制到 path 区域
                 # 需要设置 Clip Path，因为图片本身可能比内容区域大 (或者我们调整绘制位置)
@@ -165,8 +181,8 @@ class PopupRendererMixin:
 
             tint_color = QColor(theme_bg)
             if is_win10():
-                # Win10: paintEvent tint alpha 范围 0~220 (bg_alpha 0~100 线性映射)
-                paint_alpha = max(0, min(220, int(user_alpha * 2.2)))
+                # Win10 不启用原生毛玻璃；用近似不透明底色保证圆角边缘干净。
+                paint_alpha = max(248, min(255, int(user_alpha * 2.55)))
             else:
                 # Win11: paintEvent tint alpha 范围 0~200 (DWM 已提供主要磨砂效果，Qt层做补充)
                 paint_alpha = max(0, min(200, int(user_alpha * 2.0)))
@@ -182,26 +198,12 @@ class PopupRendererMixin:
             painter.setBrush(QtCompat.NoBrush)
             painter.drawPath(path)
 
-            # Win10 多层抗锯齿柔化（与 RoundedWindow 一致）
-            if is_win10():
-                soften_color = QColor(theme_bg)
-                soften_color.setAlpha(int(soften_color.alpha() * 0.6))
-                painter.setPen(QPen(soften_color, 0.5))
-                inner_path = QPainterPath()
-                inner_path.addRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), radius, radius)
-                painter.drawPath(inner_path)
-
-                soften_color2 = QColor(theme_bg)
-                soften_color2.setAlpha(int(soften_color2.alpha() * 0.3))
-                painter.setPen(QPen(soften_color2, 0.5))
-                outer_path = QPainterPath()
-                outer_path.addRoundedRect(rect.adjusted(0.25, 0.25, -0.25, -0.25), radius + 0.5, radius + 0.5)
-                painter.drawPath(outer_path)
-
         else:  # theme mode
             c = QColor(theme_bg)
             # 计算透明度 (0=透明/0, 100=不透明/255)
             alpha_val = int(255 * (self.settings.bg_alpha / 100.0))
+            if is_win10():
+                alpha_val = max(248, alpha_val)
             c.setAlpha(max(0, min(255, alpha_val)))
             painter.fillPath(path, QBrush(c))
 
