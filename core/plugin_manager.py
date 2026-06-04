@@ -50,6 +50,7 @@ PERMISSIONS_KNOWN = frozenset(
         "open.file",
         "process.run",
         "network.request",
+        "builtin.command",
         "admin.required",
     }
 )
@@ -68,9 +69,11 @@ PLUGIN_PACKAGE_EXTENSION = ".qlzip"
 PLUGIN_STATE_SCHEMA = 1
 PLUGIN_FAILURE_WINDOW_SECONDS = 10 * 60
 PLUGIN_FAILURE_THRESHOLD = 3
-PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS = 10
+PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS = 30
 PLUGIN_ERROR_LOG_MAX_BYTES = 1024 * 1024
 PLUGIN_ERROR_LOG_BACKUPS = 3
+PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES = 150 * 1024 * 1024
+PLUGIN_PACKAGE_MAX_FILES = 1000
 
 
 def is_plugin_package_path(path: str | os.PathLike[str]) -> bool:
@@ -278,17 +281,104 @@ class PluginAPI:
         modifies_system: bool = False,
         requires_confirmation: bool = False,
     ) -> bool:
+        return self._stage_command(
+            id=id,
+            title=title,
+            handler=handler,
+            aliases=aliases,
+            description=description,
+            category=category,
+            interaction_mode=interaction_mode,
+            icon_path=icon_path,
+            search_terms=search_terms,
+            result_window_size=result_window_size,
+            params=params,
+            risk_level=risk_level,
+            requires_admin=requires_admin,
+            uses_network=uses_network,
+            modifies_system=modifies_system,
+            requires_confirmation=requires_confirmation,
+            source=f"plugin:{self._plugin_id}",
+            require_plugin_namespace=True,
+        )
+
+    def register_builtin_command(
+        self,
+        id: str,
+        title: str,
+        handler: Callable[[CommandContext], CommandResult],
+        aliases: list[str] | None = None,
+        description: str = "",
+        category: str = "system",
+        interaction_mode: str = COMMAND_INTERACTION_PANEL,
+        icon_path: str = "",
+        search_terms: list[str] | None = None,
+        result_window_size: str = "",
+        params: list[CommandParam | dict] | None = None,
+        risk_level: str = "low",
+        requires_admin: bool = False,
+        uses_network: bool = False,
+        modifies_system: bool = False,
+        requires_confirmation: bool = False,
+    ) -> bool:
+        """Register a plugin-provided command into the host built-in command surface."""
+
+        self._check_permission("builtin.command")
+        return self._stage_command(
+            id=id,
+            title=title,
+            handler=handler,
+            aliases=aliases,
+            description=description,
+            category=category,
+            interaction_mode=interaction_mode,
+            icon_path=icon_path,
+            search_terms=search_terms,
+            result_window_size=result_window_size,
+            params=params,
+            risk_level=risk_level,
+            requires_admin=requires_admin,
+            uses_network=uses_network,
+            modifies_system=modifies_system,
+            requires_confirmation=requires_confirmation,
+            source=f"plugin-builtin:{self._plugin_id}",
+            require_plugin_namespace=False,
+        )
+
+    def _stage_command(
+        self,
+        id: str,
+        title: str,
+        handler: Callable[[CommandContext], CommandResult],
+        aliases: list[str] | None = None,
+        description: str = "",
+        category: str = "",
+        interaction_mode: str = COMMAND_INTERACTION_PANEL,
+        icon_path: str = "",
+        search_terms: list[str] | None = None,
+        result_window_size: str = "",
+        params: list[CommandParam | dict] | None = None,
+        risk_level: str = "low",
+        requires_admin: bool = False,
+        uses_network: bool = False,
+        modifies_system: bool = False,
+        requires_confirmation: bool = False,
+        source: str = "",
+        require_plugin_namespace: bool = True,
+    ) -> bool:
         if "." not in id:
-            self.logger.warning("插件命令 ID 必须包含点号: %s", id)
-            return False
-        prefix = id.split(".")[0]
-        expected_prefixes = {
-            self._plugin_id,
-            self._plugin_id.replace("-", "_").replace(" ", "_"),
-        }
-        if prefix not in expected_prefixes:
-            self.logger.warning("命令 ID 命名空间不匹配: %s (期望 %s)", id, self._plugin_id)
-            return False
+            if require_plugin_namespace:
+                self.logger.warning("插件命令 ID 必须包含点号: %s", id)
+                return False
+        if require_plugin_namespace:
+            prefix = id.split(".")[0]
+            expected_prefixes = {
+                self._plugin_id,
+                self._plugin_id.replace("-", "_").replace(" ", "_"),
+            }
+            if prefix not in expected_prefixes:
+                self.logger.warning("命令 ID 命名空间不匹配: %s (期望 %s)", id, self._plugin_id)
+                return False
         resolved_icon = self._resolve_icon_path(icon_path or (self._manifest.icon if self._manifest else ""))
         plugin_terms = self._plugin_search_terms()
         normalized_params = []
@@ -330,7 +420,7 @@ class PluginAPI:
             category=category,
             handler=self._wrap_handler(handler, id),
             icon_path=resolved_icon,
-            source=f"plugin:{self._plugin_id}",
+            source=source or f"plugin:{self._plugin_id}",
             interaction_mode=interaction_mode,
             search_terms=plugin_terms + list(search_terms or []),
             result_window_size=result_window_size,
@@ -1088,7 +1178,10 @@ class PluginManager:
 
         # Remove registered commands via owner index for consistency
         owner_id = f"plugin:{plugin_id}"
+        registered_command_ids = list(info.registered_commands)
         self._registry.remove_by_owner(owner_id)
+        for command_id in registered_command_ids:
+            self._registry.remove(command_id)
         info.registered_commands.clear()
         for module_id, manifest_path in dict(getattr(info, "registered_modules", {}) or {}).items():
             try:
@@ -1280,16 +1373,23 @@ class PluginManager:
                             raise ValueError("plugin archive contains encrypted files, which are not supported")
                         file_count += 1
                         total_size += max(0, int(member.file_size))
-                        if total_size > 50 * 1024 * 1024:
+                        if total_size > PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES:
                             raise ValueError(
-                                f"plugin archive uncompressed size exceeds limit ({total_size / 1024 / 1024:.1f} MB)"
+                                "plugin archive uncompressed size exceeds limit "
+                                f"({total_size / 1024 / 1024:.1f} MB > "
+                                f"{PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES / 1024 / 1024:.0f} MB)"
                             )
                 if file_count == 0:
                     raise ValueError("压缩包为空，没有可安装的文件")
-                if file_count > 500:
-                    raise ValueError(f"插件文件过多 ({file_count} 个)，最大值限制为 500 个")
-                if total_size > 50 * 1024 * 1024:
-                    raise ValueError(f"插件总大小 ({total_size / 1024 / 1024:.1f} MB) 超过限制 (50 MB)")
+                if file_count > PLUGIN_PACKAGE_MAX_FILES:
+                    raise ValueError(
+                        f"插件文件过多 ({file_count} 个)，最大值限制为 {PLUGIN_PACKAGE_MAX_FILES} 个"
+                    )
+                if total_size > PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES:
+                    raise ValueError(
+                        f"插件总大小 ({total_size / 1024 / 1024:.1f} MB) 超过限制 "
+                        f"({PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES / 1024 / 1024:.0f} MB)"
+                    )
 
                 target_dir = resolve_under(plugins_dir, plugins_dir / plugin_id)
                 if target_dir.exists():
