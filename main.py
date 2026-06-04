@@ -371,6 +371,67 @@ def _parse_autostart_cli_args(start_index: int = 3):
     return _get(HELPER_TARGET_ARG), _get(HELPER_TARGET_ARGS_ARG), _get(HELPER_TARGET_CWD_ARG)
 
 
+def _run_plugin_helper_from_argv(argv: list[str]) -> int:
+    """Run a plugin helper script in a clean child QuickLauncher process."""
+
+    import runpy
+
+    if len(argv) < 3:
+        print("missing plugin helper script", file=sys.stderr)
+        return 2
+
+    script_path = os.path.abspath(argv[2])
+    site_paths: list[str] = []
+    helper_args: list[str] = []
+    i = 3
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--":
+            helper_args = argv[i + 1 :]
+            break
+        if arg == "--plugin-site" and i + 1 < len(argv):
+            site_paths.append(os.path.abspath(argv[i + 1]))
+            i += 2
+            continue
+        print(f"unknown plugin helper argument: {arg}", file=sys.stderr)
+        return 2
+
+    if not os.path.isfile(script_path):
+        print(f"plugin helper script not found: {script_path}", file=sys.stderr)
+        return 2
+
+    script_dir = os.path.dirname(script_path)
+    search_paths = [script_dir, *site_paths]
+    for path in reversed(search_paths):
+        if os.path.isdir(path) and path not in sys.path:
+            sys.path.insert(0, path)
+
+    dll_dirs = [script_dir]
+    for site_path in site_paths:
+        dll_dirs.extend([site_path, os.path.join(site_path, "wx")])
+    for dll_dir in dll_dirs:
+        if not os.path.isdir(dll_dir):
+            continue
+        os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+        add_dll_directory = getattr(os, "add_dll_directory", None)
+        if add_dll_directory:
+            try:
+                add_dll_directory(dll_dir)
+            except OSError:
+                pass
+
+    sys.argv = [script_path, *helper_args]
+    try:
+        runpy.run_path(script_path, run_name="__main__")
+        return 0
+    except SystemExit as exc:
+        code = exc.code
+        return int(code) if isinstance(code, int) else 0
+    except Exception:
+        traceback.print_exc()
+        return 1
+
+
 if __name__ == "__main__":
     # --safe-mode: disable plugins, hooks, update checks, custom background
     if "--safe-mode" in sys.argv:
@@ -391,6 +452,8 @@ if __name__ == "__main__":
 
                 print(json.dumps({"error": str(e)}))
             sys.exit(0)
+        elif sys.argv[1] == "--plugin-helper":
+            sys.exit(_run_plugin_helper_from_argv(sys.argv))
         elif sys.argv[1] == "--install-service":
             from core.service_manager import enable_service_autostart
 
