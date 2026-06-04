@@ -115,8 +115,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         if plugin_manager is not None:
 
             def _save_enabled_plugins(enabled_ids: list[str]):
-                self.data_manager.get_settings().enabled_plugins = enabled_ids
-                self.data_manager.save(immediate=True)
+                self.data_manager.update_settings(enabled_plugins=list(enabled_ids or []))
 
             plugin_manager.set_save_callback(_save_enabled_plugins)
 

@@ -211,6 +211,27 @@ class CommandDialog(BaseDialog):
         "错误日志": "open_error_log",
     }
 
+    @classmethod
+    def _builtin_command_options(cls):
+        options = list(cls.BUILTIN_COMMANDS)
+        seen = {command for _name, command in options}
+        try:
+            from core import ensure_plugin_manager_initialized, ensure_registry_initialized, registry
+
+            ensure_registry_initialized()
+            ensure_plugin_manager_initialized()
+            if registry is not None:
+                for cmd in registry.list():
+                    source = getattr(cmd, "source", "")
+                    if not source.startswith("plugin-builtin:") or cmd.id in seen:
+                        continue
+                    title = getattr(cmd, "title", "") or cmd.id
+                    options.append((title, cmd.id))
+                    seen.add(cmd.id)
+        except Exception:
+            pass
+        return options
+
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
         # 清理已完成的孤儿线程
         self._cleanup_finished_orphans()
@@ -693,7 +714,7 @@ class CommandDialog(BaseDialog):
         # 2. 内置命令下拉框
         self.builtin_combo = QComboBox()
         self.builtin_combo.setFixedHeight(48)  # 同步高度
-        for name, cmd in self.BUILTIN_COMMANDS:
+        for name, cmd in self._builtin_command_options():
             self.builtin_combo.addItem(name, cmd)
         self.builtin_combo.currentIndexChanged.connect(self._on_builtin_changed)
         self.builtin_combo.showPopup = lambda: self._show_builtin_popup()
@@ -942,10 +963,6 @@ class CommandDialog(BaseDialog):
             self.hint_label.setText(tr("选择内置命令:"))
             self.input_stack.setCurrentIndex(1)
             self.input_stack.setFixedHeight(48)
-            self.show_window_cb.setChecked(False)
-            self.show_window_cb.setEnabled(False)
-            self.capture_output_cb.setChecked(False)
-            self._update_capture_controls()
             self.insert_var_btn.setEnabled(False)
             self._test_btn.setEnabled(False)
             self.variable_expansion_cb.setChecked(False)
@@ -960,6 +977,9 @@ class CommandDialog(BaseDialog):
         if not hasattr(self, "capture_output_cb"):
             return
         is_builtin = getattr(self, "type_combo", None) is not None and self.type_combo.currentIndex() == 4
+        if is_builtin:
+            command = self.builtin_combo.itemData(self.builtin_combo.currentIndex())
+            is_builtin = not self._is_plugin_builtin_command(command or "")
         blocked = is_builtin or self.show_window_cb.isChecked() or self.run_as_admin_cb.isChecked()
         if blocked:
             self.capture_output_cb.setChecked(False)
@@ -970,6 +990,49 @@ class CommandDialog(BaseDialog):
             button.setEnabled(enabled)
         self.capture_timeout_label.setEnabled(enabled)
         self.capture_timeout_spin.setEnabled(enabled)
+
+    def _is_plugin_builtin_command(self, command_id: str) -> bool:
+        try:
+            from core import registry
+            if registry is None:
+                return False
+            cmd = registry.get(command_id)
+            return cmd is not None and getattr(cmd, "source", "").startswith("plugin-builtin:")
+        except Exception:
+            return False
+
+    def _update_builtin_advanced_options(self):
+        """根据当前选中的 builtin 命令是否来自插件，启用或禁用高级选项。"""
+        command = self.builtin_combo.itemData(self.builtin_combo.currentIndex())
+        is_plugin = self._is_plugin_builtin_command(command or "")
+        self.show_window_cb.setEnabled(is_plugin)
+        if not getattr(self, "_loading_data", False):
+            if not is_plugin:
+                self.show_window_cb.setChecked(False)
+                self.capture_output_cb.setChecked(False)
+            else:
+                self._apply_plugin_builtin_defaults(command)
+        self._update_capture_controls()
+
+    def _apply_plugin_builtin_defaults(self, command_id: str) -> None:
+        """将 plugin-builtin 命令的 param 默认值填入高级选项 checkbox。"""
+        try:
+            from core import registry
+            if registry is None:
+                return
+            cmd = registry.get(command_id)
+            if cmd is None or not getattr(cmd, "params", None):
+                return
+            for param in cmd.params:
+                name = getattr(param, "name", "")
+                default = str(getattr(param, "default", "") or "").lower()
+                val = default == "true"
+                if name == "show_window":
+                    self.show_window_cb.setChecked(val)
+                elif name == "capture_output":
+                    self.capture_output_cb.setChecked(val)
+        except Exception:
+            pass
 
     def _on_builtin_changed(self, index):
         """内置命令改变"""
@@ -1030,6 +1093,7 @@ class CommandDialog(BaseDialog):
                 self._custom_icon_path = ""
                 self.icon_path_edit.clear()
         self._update_icon_preview()
+        self._update_builtin_advanced_options()
 
     def _selected_popup_button_qss(self) -> str:
         bg = Colors.get_selection_bg(self.theme)
