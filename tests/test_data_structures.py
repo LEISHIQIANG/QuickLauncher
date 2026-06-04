@@ -3,25 +3,24 @@
 import pytest
 
 from core.chain.data_structures import (
+    AlignmentStrategy,
+    DataType,
     Item,
     List,
     Tree,
-    Path,
-    DataType,
-    AlignmentStrategy,
     align_data,
-    graft_tree,
-    flatten_tree,
-    simplify_tree,
-    cross_reference_trees,
-    zip_trees,
-    longest_list_operation,
-    shortest_list_operation,
-    cycle_list_operation,
     cross_reference_operation,
+    cross_reference_trees,
+    cycle_list_operation,
     ensure_list,
     ensure_tree,
+    flatten_tree,
     get_data_type,
+    graft_tree,
+    longest_list_operation,
+    shortest_list_operation,
+    simplify_tree,
+    zip_trees,
 )
 
 

@@ -13,8 +13,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .definitions import ChainPortDefinition, ChainProcessorDefinition
-from .processor_registry import get_registry, ProcessorRegistry
 from .values import ChainValueKind
 
 __all__ = [
@@ -79,29 +77,29 @@ class ChainConnectionIssue:
 
 def input_port_specs_for_node(node: dict, shortcuts: dict[str, Any]) -> list[ChainPortSpec]:
     """Get input port specifications for a node.
-    
+
     Args:
         node: Node data dictionary
         shortcuts: Dictionary of shortcut items by ID
-        
+
     Returns:
         List of input port specifications
     """
-    from .registry import processor_definition, processor_input_ports, python_cell_metadata, DEFAULT_PYTHON_CELL_SOURCE
+    from .registry import DEFAULT_PYTHON_CELL_SOURCE, processor_definition, processor_input_ports, python_cell_metadata
 
     if _node_type(node) == "processor":
         processor_id = str(node.get("processor_id") or "")
         if processor_id == "python_cell":
             ports = python_cell_metadata(str(node.get("source") or DEFAULT_PYTHON_CELL_SOURCE))["inputs"]
             return [ChainPortSpec(port, "input", ChainValueKind.ANY, _allows_multiple(port), port, "脚本电池自定义输入。", "data") for port in ports]
-        
+
         definition = processor_definition(processor_id)
         if definition is not None:
             return [
                 ChainPortSpec(port.id, "input", port.kind, port.multiple, port.label or port.id, port.description, port.role)
                 for port in definition.inputs
             ]
-        
+
         ports = processor_input_ports(processor_id)
         return [ChainPortSpec(port, "input", _processor_input_kind(processor_id, port), _allows_multiple(port)) for port in ports]
 
@@ -110,7 +108,7 @@ def input_port_specs_for_node(node: dict, shortcuts: dict[str, Any]) -> list[Cha
     ports: list[ChainPortSpec] = [
         ChainPortSpec("input", "input", "text", True, "输入值", "传给快捷方式的主输入值，通常是字符串。", "primary")
     ]
-    
+
     if shortcut is None:
         return ports
 
@@ -147,42 +145,42 @@ def input_port_specs_for_node(node: dict, shortcuts: dict[str, Any]) -> list[Cha
             continue
         existing.add(port)
         ports.append(ChainPortSpec(port, "input", "text", port == "input", prompt, "从命令模板变量生成的字符串输入。", "parameter"))
-    
+
     for match in PARAM_TOKEN_RE.finditer(command_text):
         port = str(match.group(1) or "").strip()
         if not port or port in existing:
             continue
         existing.add(port)
         ports.append(ChainPortSpec(port, "input", "text", False, port, "从 {{param:name}} 变量生成的字符串输入。", "parameter"))
-    
+
     return ports
 
 
 def output_port_specs_for_node(node: dict, shortcuts: dict[str, Any] | None = None) -> list[ChainPortSpec]:
     """Get output port specifications for a node.
-    
+
     Args:
         node: Node data dictionary
         shortcuts: Dictionary of shortcut items by ID
-        
+
     Returns:
         List of output port specifications
     """
-    from .registry import processor_definition, processor_output_ports, python_cell_metadata, DEFAULT_PYTHON_CELL_SOURCE
+    from .registry import DEFAULT_PYTHON_CELL_SOURCE, processor_definition, processor_output_ports, python_cell_metadata
 
     if _node_type(node) == "processor":
         processor_id = str(node.get("processor_id") or "")
         if processor_id == "python_cell":
             ports = python_cell_metadata(str(node.get("source") or DEFAULT_PYTHON_CELL_SOURCE))["outputs"]
             return [ChainPortSpec(port, "output", ChainValueKind.ANY, False, port, "脚本电池自定义输出。", "data") for port in ports]
-        
+
         definition = processor_definition(processor_id)
         if definition is not None:
             return [
                 ChainPortSpec(port.id, "output", port.kind, port.multiple, port.label or port.id, port.description, port.role)
                 for port in definition.outputs
             ]
-        
+
         ports = processor_output_ports(processor_id)
         return [ChainPortSpec(port, "output", _processor_output_kind(processor_id, port)) for port in ports]
 
@@ -190,14 +188,14 @@ def output_port_specs_for_node(node: dict, shortcuts: dict[str, Any] | None = No
     shortcut = (shortcuts or {}).get(str(node.get("shortcut_id") or ""))
     if shortcut is None:
         return []
-    
+
     from core.data_models import ShortcutType
     base = [
         ChainPortSpec("success", "output", "bool", False, "成功状态", "布尔状态。成功为 1/true，失败为 0/false。", "status"),
         ChainPortSpec("output", "output", "text", False, "主输出", "该快捷方式的主结果字符串。", "primary"),
         ChainPortSpec("error", "output", "text", False, "错误信息", "失败时的错误说明；成功时通常为空。", "diagnostic"),
     ]
-    
+
     if shortcut.type == ShortcutType.COMMAND and bool(getattr(shortcut, "capture_output", False)):
         base.extend([
             ChainPortSpec("stdout", "output", "text", False, "标准输出", "命令进程 stdout 字符串。", "stream"),
@@ -213,7 +211,7 @@ def output_port_specs_for_node(node: dict, shortcuts: dict[str, Any] | None = No
         base.append(ChainPortSpec("folders.0", "output", "folder", False, "结果文件夹[0]", "文件夹快捷方式目标路径。", "collection"))
     elif shortcut.type == ShortcutType.URL:
         base.append(ChainPortSpec("urls.0", "output", "url", False, "结果 URL[0]", "URL 快捷方式目标地址。", "collection"))
-    
+
     return _dedupe_specs(base)
 
 
@@ -236,7 +234,7 @@ def validate_canvas_connection(
     multi: bool = False,
 ) -> ChainConnectionIssue | None:
     """Validate a single canvas connection.
-    
+
     Args:
         canvas: Canvas data dictionary
         shortcuts: Dictionary of shortcut items
@@ -245,14 +243,14 @@ def validate_canvas_connection(
         target_node: Target node ID
         target_port: Target port ID
         multi: Whether multiple connections to target are allowed
-        
+
     Returns:
         ChainConnectionIssue if invalid, None if valid
     """
     nodes = {str(node.get("id") or ""): node for node in list(canvas.get("nodes") or []) if isinstance(node, dict)}
     source = nodes.get(str(source_node or ""))
     target = nodes.get(str(target_node or ""))
-    
+
     if source is None or target is None:
         return ChainConnectionIssue("missing_node", "连接端点不存在。")
     if source is target:
@@ -267,7 +265,7 @@ def validate_canvas_connection(
     target_specs = {spec.id: spec for spec in input_port_specs_for_node(target, shortcuts)}
     source_spec = source_specs.get(str(source_port or ""))
     target_spec = target_specs.get(str(target_port or ""))
-    
+
     if source_spec is None:
         return ChainConnectionIssue("missing_source_port", f"来源端口不可用: {source_port}")
     if target_spec is None:
@@ -279,38 +277,38 @@ def validate_canvas_connection(
             "type_mismatch",
             f"{source_port}({_kind_label(source_spec.kind)}) 不能连接到 {target_port}({_kind_label(target_spec.kind)})。",
         )
-    
+
     return None
 
 
 def validate_canvas(canvas: dict, shortcuts: dict[str, Any]) -> list[ChainConnectionIssue]:
     """Validate all connections in a canvas.
-    
+
     Args:
         canvas: Canvas data dictionary
         shortcuts: Dictionary of shortcut items
-        
+
     Returns:
         List of validation issues
     """
     issues: list[ChainConnectionIssue] = []
     seen = set()
-    
+
     for connection in list(canvas.get("connections") or []):
         if not isinstance(connection, dict):
             continue
-        
+
         key = (
             str(connection.get("source_node") or ""),
             str(connection.get("source_port") or ""),
             str(connection.get("target_node") or ""),
             str(connection.get("target_port") or ""),
         )
-        
+
         if key in seen:
             issues.append(ChainConnectionIssue("duplicate", "重复连接。", str(connection.get("id") or "")))
             continue
-        
+
         seen.add(key)
         issue = validate_canvas_connection(
             canvas,
@@ -321,10 +319,10 @@ def validate_canvas(canvas: dict, shortcuts: dict[str, Any]) -> list[ChainConnec
             key[3],
             multi=_target_has_other_incoming(canvas, key[2], key[3], str(connection.get("id") or "")),
         )
-        
+
         if issue is not None:
             issues.append(ChainConnectionIssue(issue.code, issue.message, str(connection.get("id") or "")))
-    
+
     return issues
 
 
@@ -336,19 +334,19 @@ def validate_step_bindings(
     shortcut_map: dict[str, Any],
 ) -> str:
     """Validate step bindings in a chain.
-    
+
     Args:
         steps: List of step dictionaries
         index: Current step index (1-based)
         step: Current step dictionary
         target: Target shortcut item (if applicable)
         shortcut_map: Dictionary of shortcut items
-        
+
     Returns:
         Error message if invalid, empty string if valid
     """
     target_ports = {spec.id: spec for spec in _step_input_specs(step, target, shortcut_map)}
-    
+
     for port, binding in dict(step.get("param_bindings") or {}).items():
         target_spec = target_ports.get(str(port or ""))
         if target_spec is None:
@@ -356,7 +354,7 @@ def validate_step_bindings(
                 target_spec = ChainPortSpec(str(port or ""), "input", "text")
             else:
                 return f"目标端口不可用: {port}"
-        
+
         for source_ref in _binding_items(binding):
             error = _validate_binding_source(steps, index, source_ref, target_spec, shortcut_map)
             if error:
@@ -371,7 +369,7 @@ def validate_step_bindings(
             error = _validate_binding_source(steps, index, source_ref, target_spec, shortcut_map)
             if error:
                 return error
-    
+
     return ""
 
 
@@ -401,7 +399,7 @@ def _param_kind(param: dict) -> str:
     """Get the kind of a parameter."""
     param_type = str(param.get("type") or "text").lower().strip()
     validator = str(param.get("validator") or "").lower().strip()
-    
+
     if validator in {"file", "path"} or param_type == "file":
         return "file"
     if validator == "folder" or param_type == "folder":
@@ -421,7 +419,7 @@ def _processor_input_kind(processor_id: str, port: str) -> str:
     """Get the kind of a processor input port."""
     processor_id = str(processor_id or "")
     port = str(port or "").lower().strip()
-    
+
     if processor_id in {"folder_path_input", "folder_create"} and port == "path":
         return "folder"
     if port in {"filepath", "path"}:
@@ -455,7 +453,7 @@ def _processor_output_kind(processor_id: str, port: str) -> str:
     """Get the kind of a processor output port."""
     processor_id = str(processor_id or "")
     port = str(port or "").lower().strip()
-    
+
     if port in {"length", "count", "ms", "status_code"}:
         return "number"
     if port in {"empty", "not", "exists"}:
@@ -538,7 +536,7 @@ def _kinds_compatible(source: str, target: str) -> bool:
     """Check if two kinds are compatible."""
     source = str(source or "text").lower()
     target = str(target or "text").lower()
-    
+
     if source == target or source == "any" or target == "any":
         return True
     if target == "text" and source in TEXT_TARGET_COMPATIBLE_KINDS:
@@ -602,14 +600,14 @@ def _step_output_specs(step: dict, shortcut_map: dict[str, Any]) -> list[ChainPo
         ChainPortSpec("folders.0", "output", "folder"),
         ChainPortSpec("urls.0", "output", "url"),
     ]
-    
+
     if _node_type(step) == "processor":
         return _dedupe_specs(output_port_specs_for_node(step, shortcut_map) + standard)
-    
+
     target = shortcut_map.get(str(step.get("shortcut_id") or ""))
     if target is None:
         return standard
-    
+
     return _dedupe_specs(output_port_specs_for_node({"node_type": "shortcut", "shortcut_id": target.id}, {target.id: target}) + standard)
 
 

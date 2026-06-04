@@ -20,12 +20,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
-import json
 import os
 import platform
 import re
 import socket
-import struct
 import subprocess
 import sys
 import time
@@ -46,7 +44,7 @@ __all__ = [
     "timestamp_now",
     "timestamp_to_datetime",
     "datetime_to_timestamp",
-    
+
     # Encoding/Decoding processors
     "base64_encode",
     "base64_decode",
@@ -58,7 +56,7 @@ __all__ = [
     "unicode_decode",
     "hex_encode",
     "hex_decode",
-    
+
     # System info processors
     "sys_platform",
     "sys_version",
@@ -72,7 +70,7 @@ __all__ = [
     "sys_home_dir",
     "sys_temp_dir",
     "sys_env_vars",
-    
+
     # Network processors
     "net_hostname",
     "net_ip_address",
@@ -81,7 +79,7 @@ __all__ = [
     "net_url_parse",
     "net_url_build",
     "net_mac_address",
-    
+
     # Validation processors
     "validate_email",
     "validate_url",
@@ -92,7 +90,7 @@ __all__ = [
     "validate_regex",
     "validate_range",
     "validate_length",
-    
+
     # Hash processors
     "hash_md5",
     "hash_sha1",
@@ -102,7 +100,7 @@ __all__ = [
     "hash_hmac",
     "hash_uuid",
     "hash_uuid5",
-    
+
     # Color processors
     "color_hex_to_rgb",
     "color_rgb_to_hex",
@@ -112,7 +110,7 @@ __all__ = [
     "color_contrast",
     "color_complementary",
     "color_random",
-    
+
     # Set operations
     "set_union",
     "set_intersection",
@@ -121,7 +119,7 @@ __all__ = [
     "set_is_subset",
     "set_is_superset",
     "set_unique",
-    
+
     # Dictionary operations
     "dict_keys",
     "dict_values",
@@ -132,7 +130,7 @@ __all__ = [
     "dict_delete",
     "dict_filter",
     "dict_map",
-    
+
     # String formatting
     "str_format",
     "str_template",
@@ -142,7 +140,7 @@ __all__ = [
     "str_truncate",
     "str_repeat",
     "str_replace_multiple",
-    
+
     # Compression processors
     "compress_gzip",
     "decompress_gzip",
@@ -150,14 +148,14 @@ __all__ = [
     "decompress_zlib",
     "compress_deflate",
     "decompress_deflate",
-    
+
     # Environment processors
     "env_get",
     "env_set",
     "env_list",
     "env_path",
     "env_expand",
-    
+
     # Math extended
     "math_sin",
     "math_cos",
@@ -194,7 +192,7 @@ def datetime_format(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
                 return dt.strftime(format_str)
             except ValueError:
                 continue
-        raise ValueError(f"无法解析日期时间: {dt_str}")
+        raise ValueError from None(f"无法解析日期时间: {dt_str}")
 
 
 def datetime_parse(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> dict[str, Any]:
@@ -203,7 +201,7 @@ def datetime_parse(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> dict[s
         dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
-    
+
     return {
         "year": dt.year,
         "month": dt.month,
@@ -219,14 +217,14 @@ def datetime_parse(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> dict[s
     }
 
 
-def datetime_add(dt_str: str, days: int = 0, hours: int = 0, minutes: int = 0, 
+def datetime_add(dt_str: str, days: int = 0, hours: int = 0, minutes: int = 0,
                  seconds: int = 0, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Add time to datetime."""
     try:
         dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
-    
+
     dt += timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
     return dt.strftime(format_str)
 
@@ -237,15 +235,15 @@ def datetime_diff(dt1_str: str, dt2_str: str, unit: str = "seconds") -> float:
         dt1 = datetime.fromisoformat(dt1_str.replace('Z', '+00:00'))
     except ValueError:
         dt1 = datetime.strptime(dt1_str, "%Y-%m-%d %H:%M:%S")
-    
+
     try:
         dt2 = datetime.fromisoformat(dt2_str.replace('Z', '+00:00'))
     except ValueError:
         dt2 = datetime.strptime(dt2_str, "%Y-%m-%d %H:%M:%S")
-    
+
     diff = dt1 - dt2
     total_seconds = diff.total_seconds()
-    
+
     unit = unit.lower()
     if unit == "seconds":
         return total_seconds
@@ -267,7 +265,7 @@ def datetime_part(dt_str: str, part: str, format_str: str = "%Y-%m-%d %H:%M:%S")
         dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
-    
+
     part = part.lower()
     part_map = {
         "year": dt.year,
@@ -280,7 +278,7 @@ def datetime_part(dt_str: str, part: str, format_str: str = "%Y-%m-%d %H:%M:%S")
         "yearday": dt.timetuple().tm_yday,
         "week": dt.isocalendar()[1],
     }
-    
+
     return part_map.get(part, 0)
 
 
@@ -449,7 +447,6 @@ def net_ip_address(hostname: str = "") -> str:
 
 def net_ping(host: str, timeout: float = 3.0) -> bool:
     """Ping a host."""
-    import subprocess
     try:
         if sys.platform == "win32":
             result = subprocess.run(
@@ -474,7 +471,7 @@ def net_port_check(host: str, port: int, timeout: float = 3.0) -> bool:
         result = sock.connect_ex((host, port))
         sock.close()
         return result == 0
-    except socket.error:
+    except OSError:
         return False
 
 
@@ -497,17 +494,17 @@ def net_url_parse(url: str) -> dict[str, str]:
     }
 
 
-def net_url_build(scheme: str = "https", host: str = "", path: str = "", 
+def net_url_build(scheme: str = "https", host: str = "", path: str = "",
                   params: dict = None, port: int = 0) -> str:
     """Build a URL from components."""
     netloc = host
     if port:
         netloc = f"{host}:{port}"
-    
+
     query = ""
     if params:
         query = urllib.parse.urlencode(params)
-    
+
     return urllib.parse.urlunparse((scheme, netloc, path, "", query, ""))
 
 
@@ -539,11 +536,11 @@ def validate_ip(ip: str) -> bool:
     try:
         socket.inet_pton(socket.AF_INET, ip)
         return True
-    except socket.error:
+    except OSError:
         try:
             socket.inet_pton(socket.AF_INET6, ip)
             return True
-        except socket.error:
+        except OSError:
             return False
 
 
@@ -551,7 +548,7 @@ def validate_phone(phone: str, country: str = "CN") -> bool:
     """Validate phone number."""
     # Remove spaces and dashes
     phone = re.sub(r'[\s-]', '', phone)
-    
+
     if country == "CN":
         # Chinese phone numbers
         pattern = r'^(\+86)?1[3-9]\d{9}$'
@@ -561,7 +558,7 @@ def validate_phone(phone: str, country: str = "CN") -> bool:
     else:
         # Generic pattern
         pattern = r'^\+?[\d\s-]{7,15}$'
-    
+
     return bool(re.match(pattern, phone))
 
 
@@ -587,7 +584,7 @@ def validate_credit_card(number: str) -> bool:
     number = number.replace(' ', '').replace('-', '')
     if not number.isdigit():
         return False
-    
+
     total = 0
     for i, digit in enumerate(reversed(number)):
         n = int(digit)
@@ -596,7 +593,7 @@ def validate_credit_card(number: str) -> bool:
             if n > 9:
                 n -= 9
         total += n
-    
+
     return total % 10 == 0
 
 
@@ -690,29 +687,34 @@ def color_rgb_to_hex(r: int, g: int, b: int) -> str:
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
-def color_hsl_to_rgb(h: float, s: float, l: float) -> tuple[int, int, int]:
+def color_hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[int, int, int]:
     """Convert HSL to RGB."""
     h = h / 360
     s = s / 100
-    l = l / 100
-    
+    lightness = lightness / 100
+
     if s == 0:
-        r = g = b = l
+        r = g = b = lightness
     else:
         def hue2rgb(p, q, t):
-            if t < 0: t += 1
-            if t > 1: t -= 1
-            if t < 1/6: return p + (q - p) * 6 * t
-            if t < 1/2: return q
-            if t < 2/3: return p + (q - p) * (2/3 - t) * 6
+            if t < 0:
+                t += 1
+            if t > 1:
+                t -= 1
+            if t < 1/6:
+                return p + (q - p) * 6 * t
+            if t < 1/2:
+                return q
+            if t < 2/3:
+                return p + (q - p) * (2/3 - t) * 6
             return p
-        
-        q = l * (1 + s) if l < 0.5 else l + s - l * s
-        p = 2 * l - q
+
+        q = lightness * (1 + s) if lightness < 0.5 else lightness + s - lightness * s
+        p = 2 * lightness - q
         r = hue2rgb(p, q, h + 1/3)
         g = hue2rgb(p, q, h)
         b = hue2rgb(p, q, h - 1/3)
-    
+
     return (int(r * 255), int(g * 255), int(b * 255))
 
 
@@ -721,13 +723,13 @@ def color_rgb_to_hsl(r: int, g: int, b: int) -> tuple[float, float, float]:
     r, g, b = r / 255, g / 255, b / 255
     max_val = max(r, g, b)
     min_val = min(r, g, b)
-    h = s = l = (max_val + min_val) / 2
-    
+    h = s = lightness = (max_val + min_val) / 2
+
     if max_val == min_val:
         h = s = 0
     else:
         d = max_val - min_val
-        s = d / (2 - max_val - min_val) if l > 0.5 else d / (max_val + min_val)
+        s = d / (2 - max_val - min_val) if lightness > 0.5 else d / (max_val + min_val)
         if max_val == r:
             h = (g - b) / d + (6 if g < b else 0)
         elif max_val == g:
@@ -735,8 +737,8 @@ def color_rgb_to_hsl(r: int, g: int, b: int) -> tuple[float, float, float]:
         else:
             h = (r - g) / d + 4
         h /= 6
-    
-    return (h * 360, s * 100, l * 100)
+
+    return (h * 360, s * 100, lightness * 100)
 
 
 def color_brightness(hex_color: str) -> float:
@@ -1049,7 +1051,7 @@ def math_fibonacci(n: int) -> list[int]:
         return []
     if n == 1:
         return [0]
-    
+
     fib = [0, 1]
     for i in range(2, n):
         fib.append(fib[i-1] + fib[i-2])

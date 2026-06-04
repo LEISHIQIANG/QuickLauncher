@@ -11,19 +11,16 @@ data structure handling. It supports:
 
 from __future__ import annotations
 
-import json
 import math
-from typing import Any, Callable, Union
+from collections.abc import Callable
+from typing import Any
 
 from .data_structures import (
+    AlignmentStrategy,
     Item,
     List,
     Tree,
-    DataType,
-    get_data_type,
-    ensure_list,
     align_data,
-    AlignmentStrategy,
 )
 
 __all__ = [
@@ -34,7 +31,7 @@ __all__ = [
     "div_lists",
     "mod_lists",
     "pow_lists",
-    
+
     # Comparison operations
     "eq_lists",
     "ne_lists",
@@ -42,13 +39,13 @@ __all__ = [
     "lt_lists",
     "ge_lists",
     "le_lists",
-    
+
     # Logical operations
     "and_lists",
     "or_lists",
     "xor_lists",
     "not_list",
-    
+
     # Broadcasting (list + scalar)
     "add_scalar",
     "sub_scalar",
@@ -56,7 +53,7 @@ __all__ = [
     "div_scalar",
     "mod_scalar",
     "pow_scalar",
-    
+
     # Aggregation
     "sum_list",
     "min_list",
@@ -66,7 +63,7 @@ __all__ = [
     "std_list",
     "count_list",
     "join_list",
-    
+
     # Transformations
     "reverse_list",
     "sort_list",
@@ -77,7 +74,7 @@ __all__ = [
     "map_list",
     "filter_list",
     "reduce_list",
-    
+
     # List combinations
     "zip_lists",
     "cross_lists",
@@ -85,7 +82,7 @@ __all__ = [
     "interleave_lists",
     "difference_lists",
     "intersection_lists",
-    
+
     # List slicing
     "slice_list",
     "take_list",
@@ -94,12 +91,12 @@ __all__ = [
     "last_list",
     "rest_list",
     "init_list",
-    
+
     # List generation
     "range_list",
     "repeat_list",
     "generate_list",
-    
+
     # Utility
     "is_empty",
     "contains",
@@ -351,7 +348,8 @@ def reverse_list(lst: List) -> List:
 def sort_list(lst: List, key: Callable = None, reverse: bool = False) -> List:
     """Sort list: [3,1,2] -> [1,2,3]"""
     if key is None:
-        key = lambda x: x.value
+        def key(x):
+            return x.value
     sorted_items = sorted(lst.items, key=key, reverse=reverse)
     return List(items=sorted_items)
 
@@ -608,12 +606,12 @@ def _tree_operation(tree1: Tree, tree2: Tree, op: Callable) -> Tree:
     """Apply operation between two trees"""
     new_branches = {}
     common_paths = set(tree1.paths) & set(tree2.paths)
-    
+
     for path in sorted(common_paths):
         branch1 = tree1[path]
         branch2 = tree2[path]
         new_branches[path] = op(branch1, branch2)
-    
+
     return Tree(branches=new_branches)
 
 

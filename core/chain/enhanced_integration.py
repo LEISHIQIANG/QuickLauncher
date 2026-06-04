@@ -8,64 +8,51 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .definitions import ChainProcessorDefinition
+from core.command_registry import CommandResult
+
 from .enhanced_definitions import get_enhanced_definitions
 from .enhanced_processors import (
-    # Text processors
-    text_trim,
-    text_contains,
-    text_startswith,
-    text_endswith,
-    text_regex_replace,
-    text_count,
-    text_reverse,
-    text_center,
-    text_ljust,
-    text_rjust,
-    
-    # Logic processors
-    switch_case,
-    try_catch,
-    assert_type,
+    file_copy,
+    file_delete,
+    file_list_dir,
+    file_modified,
+    file_move,
+    file_size,
     is_empty,
-    is_numeric,
     is_json,
-    
+    is_numeric,
+    json_flatten,
+    json_keys,
+    json_length,
+    # JSON processors
+    json_merge,
+    json_to_csv,
+    json_values,
+    list_avg,
+    # List processors
+    list_count,
+    list_find,
+    list_max,
+    list_min,
+    list_remove,
+    list_sum,
     # Math processors
     math_abs,
     math_ceil,
+    math_clamp,
     math_floor,
     math_round,
-    math_clamp,
-    math_random,
-    
-    # List processors
-    list_count,
-    list_sum,
-    list_min,
-    list_max,
-    list_avg,
-    list_find,
-    list_remove,
-    
-    # File processors
-    file_copy,
-    file_move,
-    file_delete,
-    file_size,
-    file_modified,
-    file_list_dir,
-    
-    # JSON processors
-    json_merge,
-    json_flatten,
-    json_keys,
-    json_values,
-    json_length,
-    json_to_csv,
+    # Logic processors
+    switch_case,
+    text_contains,
+    text_count,
+    text_endswith,
+    text_regex_replace,
+    text_reverse,
+    text_startswith,
+    # Text processors
+    text_trim,
 )
-
-from core.command_registry import CommandResult
 
 __all__ = [
     "register_enhanced_processors",
@@ -250,9 +237,9 @@ def _to_num(value: Any, default: float = 0.0) -> float:
 
 def _parse_list(value: Any) -> list[str]:
     """Parse value to list of strings."""
-    import json
     import ast
-    
+    import json
+
     if isinstance(value, list):
         return [str(item) for item in value]
     if not value:
@@ -280,7 +267,7 @@ def _parse_list(value: Any) -> list[str]:
 def register_enhanced_processors(registry) -> None:
     """Register enhanced processors with the registry."""
     definitions = get_enhanced_definitions()
-    
+
     for proc_id, definition in definitions.items():
         handler = _get_handler(proc_id)
         if handler:
@@ -322,7 +309,7 @@ def _get_handler(processor_id: str):
             _to_bool(args.get("case_sensitive", True)),
         )),
         "text_reverse": lambda args: _ok(text_reverse(str(args.get("text", "")))),
-        
+
         # Logic processors
         "switch_case": lambda args: _ok(switch_case(
             str(args.get("value", "")),
@@ -332,7 +319,7 @@ def _get_handler(processor_id: str):
         "is_empty": lambda args: _ok_bool(is_empty(args.get("value"))),
         "is_numeric": lambda args: _ok_bool(is_numeric(str(args.get("text", "")))),
         "is_json": lambda args: _ok_bool(is_json(str(args.get("text", "")))),
-        
+
         # Math processors
         "math_abs": lambda args: _ok_number(math_abs(_to_num(args.get("number", 0)))),
         "math_ceil": lambda args: _ok_number(math_ceil(_to_num(args.get("number", 0)))),
@@ -346,7 +333,7 @@ def _get_handler(processor_id: str):
             _to_num(args.get("min", 0)),
             _to_num(args.get("max", 100)),
         )),
-        
+
         # List processors
         "list_count": lambda args: _ok_number(list_count(
             _parse_list(args.get("list", "")),
@@ -364,7 +351,7 @@ def _get_handler(processor_id: str):
             _parse_list(args.get("list", "")),
             args.get("value", ""),
         )),
-        
+
         # File processors
         "file_copy": lambda args: _ok_file(file_copy(
             str(args.get("src", "")),
@@ -387,7 +374,7 @@ def _get_handler(processor_id: str):
             str(args.get("pattern", "*")),
             _to_bool(args.get("recursive", False)),
         )),
-        
+
         # JSON processors
         "json_merge": lambda args: _ok_json(json_merge(
             args.get("a", {}),
@@ -406,7 +393,7 @@ def _get_handler(processor_id: str):
             str(args.get("delimiter", ",")),
         )),
     }
-    
+
     return handlers.get(processor_id)
 
 

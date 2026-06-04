@@ -1,8 +1,8 @@
 import json
 
 from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node
-from core.data_models import ShortcutItem, ShortcutType
 from core.chain_processors import execute_chain_processor, processor_definition, processor_definitions
+from core.data_models import ShortcutItem, ShortcutType
 
 
 def test_legacy_processor_module_is_registry_facade():

@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 __all__ = [
     "SmartType",
@@ -743,16 +744,16 @@ class TypeConverter:
         """Convert value to string."""
         if isinstance(value, bool):
             return "true" if value else "false"
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return str(value)
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             return json.dumps(value, ensure_ascii=False)
         return "" if value is None else str(value)
 
     @staticmethod
     def to_json(value: Any) -> Any:
         """Convert value to JSON-compatible object."""
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             return value
         text = str(value).strip()
         try:

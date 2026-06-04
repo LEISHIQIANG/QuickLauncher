@@ -24,303 +24,271 @@ This package contains the core components of the action chain system:
 
 from __future__ import annotations
 
-# Import key classes and functions for easy access
-from .definitions import (
-    ChainPortDefinition,
-    ChainParamDefinition,
-    ChainProcessorSafety,
-    ChainProcessorExample,
-    ChainProcessorDefinition,
-    KNOWN_PROCESSOR_PORT_KINDS,
-    KNOWN_PROCESSOR_PARAM_KINDS,
-    KNOWN_PROCESSOR_SAFETY_LEVELS,
-    KNOWN_PROCESSOR_PORT_ROLES,
-)
-
-from .values import (
-    ChainValueKind,
-    ChainValue,
-    make_chain_value,
-    chain_value_to_dict,
-    typed_mapping,
-    value_to_text,
-    preview_text,
-    infer_kind,
-    raw_value,
-)
-
 from .contracts import (
-    ChainPortSpec,
     ChainConnectionIssue,
+    ChainPortSpec,
+    binding_key,
     input_port_specs_for_node,
     output_port_specs_for_node,
-    validate_canvas_connection,
     validate_canvas,
+    validate_canvas_connection,
     validate_step_bindings,
-    binding_key,
 )
 
-from .runtime import (
-    ChainRunContext,
-    ChainNodeRunSnapshot,
-    CancelledError,
+# Import key classes and functions for easy access
+from .definitions import (
+    KNOWN_PROCESSOR_PARAM_KINDS,
+    KNOWN_PROCESSOR_PORT_KINDS,
+    KNOWN_PROCESSOR_PORT_ROLES,
+    KNOWN_PROCESSOR_SAFETY_LEVELS,
+    ChainParamDefinition,
+    ChainPortDefinition,
+    ChainProcessorDefinition,
+    ChainProcessorExample,
+    ChainProcessorSafety,
 )
-
-from .graph_models import (
-    NodeStatus,
-    PortDirection,
-    ChainPort,
-    ChainNode,
-    ChainConnection,
-    ChainGraph,
-    GraphValidationError,
-    CyclicGraphError,
-)
-
-from .graph_runtime import (
-    GraphRuntime,
-    GraphExecutionContext,
-    ExecutionResult,
-    NodeExecutionResult,
-    execute_graph,
-)
-
-from .processor_registry import (
-    ProcessorRegistry,
-    ProcessorCategory,
-    get_registry,
-    register_processor,
-    get_processor,
-    list_processors,
-    get_processors_by_category,
-    search_processors,
-)
-
-from .templates import (
-    ChainTemplate,
-    SubChainDefinition,
-    TemplateLibrary,
-    get_template_library,
-    register_template,
-    get_template,
-    list_templates,
-    search_templates,
-    register_sub_chain,
-    get_sub_chain,
-    list_sub_chains,
-    create_sub_chain_processor,
-)
-
-from .undo_manager import (
-    Command,
-    UndoManager,
-    AddNodeCommand,
-    RemoveNodeCommand,
-    MoveNodeCommand,
-    AddConnectionCommand,
-    RemoveConnectionCommand,
-    UpdateNodeParamCommand,
-    BatchCommand,
-)
-
-from .unified_registry import (
-    get_all_processors,
-    get_processor_full,
-    search_all_processors,
-    execute_processor,
-    validate_processor_definition,
-    get_processor_documentation,
-    get_registry_statistics,
-    sync_builtin_processors,
-)
-
-from .parallel_runtime import (
-    ParallelGraphRuntime,
-    ExecutionPlan,
-    ParallelExecutionResult,
-    execute_graph_parallel,
-)
-
-from .enhanced_processors import (
-    # Text processors
-    text_trim,
-    text_contains,
-    text_startswith,
-    text_endswith,
-    text_regex_replace,
-    text_count,
-    text_reverse,
-    text_center,
-    text_ljust,
-    text_rjust,
-    
-    # Logic processors
-    switch_case,
-    try_catch,
-    assert_type,
-    is_empty,
-    is_numeric,
-    is_json,
-    
-    # Math processors
-    math_abs,
-    math_ceil,
-    math_floor,
-    math_round,
-    math_clamp,
-    math_random,
-    
-    # List processors
-    list_count,
-    list_sum,
-    list_min,
-    list_max,
-    list_avg,
-    list_find,
-    list_remove,
-    
-    # File processors
-    file_copy,
-    file_move,
-    file_delete,
-    file_size,
-    file_modified,
-    file_list_dir,
-    
-    # JSON processors
-    json_merge,
-    json_flatten,
-    json_keys,
-    json_values,
-    json_length,
-    json_to_csv,
-)
-
 from .enhanced_definitions import (
     ENHANCED_PROCESSOR_DEFINITIONS,
     get_enhanced_definitions,
 )
-
 from .enhanced_integration import (
-    register_enhanced_processors,
     execute_enhanced_processor,
+    register_enhanced_processors,
 )
-
+from .enhanced_processors import (
+    assert_type,
+    # File processors
+    file_copy,
+    file_delete,
+    file_list_dir,
+    file_modified,
+    file_move,
+    file_size,
+    is_empty,
+    is_json,
+    is_numeric,
+    json_flatten,
+    json_keys,
+    json_length,
+    # JSON processors
+    json_merge,
+    json_to_csv,
+    json_values,
+    list_avg,
+    # List processors
+    list_count,
+    list_find,
+    list_max,
+    list_min,
+    list_remove,
+    list_sum,
+    # Math processors
+    math_abs,
+    math_ceil,
+    math_clamp,
+    math_floor,
+    math_random,
+    math_round,
+    # Logic processors
+    switch_case,
+    text_center,
+    text_contains,
+    text_count,
+    text_endswith,
+    text_ljust,
+    text_regex_replace,
+    text_reverse,
+    text_rjust,
+    text_startswith,
+    # Text processors
+    text_trim,
+    try_catch,
+)
+from .extended_definitions import (
+    EXTENDED_PROCESSOR_DEFINITIONS,
+    get_extended_definitions,
+)
+from .extended_integration import (
+    execute_extended_processor,
+    register_extended_processors,
+)
 from .extended_processors import (
-    # Date/Time
-    datetime_now,
-    datetime_format,
-    datetime_parse,
-    datetime_add,
-    datetime_diff,
-    datetime_part,
-    timestamp_now,
-    timestamp_to_datetime,
-    datetime_to_timestamp,
-    
+    base64_decode,
     # Encoding/Decoding
     base64_encode,
-    base64_decode,
-    url_encode,
-    url_decode,
-    html_encode,
-    html_decode,
-    hex_encode,
-    hex_decode,
-    
-    # System info
-    sys_platform,
-    sys_version,
-    sys_hostname,
-    sys_username,
-    sys_cpu_count,
-    sys_current_dir,
-    sys_home_dir,
-    sys_temp_dir,
-    
-    # Network
-    net_ip_address,
-    net_ping,
-    net_port_check,
-    net_url_parse,
-    
-    # Validation
-    validate_email,
-    validate_url,
-    validate_ip,
-    validate_phone,
-    validate_regex,
-    validate_range,
-    validate_length,
-    
+    color_brightness,
+    color_complementary,
+    # Color
+    color_hex_to_rgb,
+    color_random,
+    color_rgb_to_hex,
+    # Compression
+    compress_gzip,
+    compress_zlib,
+    datetime_add,
+    datetime_diff,
+    datetime_format,
+    # Date/Time
+    datetime_now,
+    datetime_parse,
+    datetime_part,
+    datetime_to_timestamp,
+    decompress_gzip,
+    decompress_zlib,
+    dict_filter,
+    dict_get,
+    # Dict operations
+    dict_keys,
+    dict_merge,
+    dict_set,
+    dict_values,
+    env_expand,
+    # Environment
+    env_get,
+    env_list,
+    env_set,
+    hash_crc32,
     # Hash
     hash_md5,
     hash_sha1,
     hash_sha256,
     hash_sha512,
-    hash_crc32,
     hash_uuid,
-    
-    # Color
-    color_hex_to_rgb,
-    color_rgb_to_hex,
-    color_brightness,
-    color_complementary,
-    color_random,
-    
+    hex_decode,
+    hex_encode,
+    html_decode,
+    html_encode,
+    math_cos,
+    math_factorial,
+    math_fibonacci,
+    math_gcd,
+    math_lcm,
+    math_log,
+    # Math extended
+    math_sin,
+    math_sqrt,
+    math_tan,
+    # Network
+    net_ip_address,
+    net_ping,
+    net_port_check,
+    net_url_parse,
+    set_difference,
+    set_intersection,
     # Set operations
     set_union,
-    set_intersection,
-    set_difference,
     set_unique,
-    
-    # Dict operations
-    dict_keys,
-    dict_values,
-    dict_merge,
-    dict_get,
-    dict_set,
-    dict_filter,
-    
     # String formatting
     str_format,
     str_pad_left,
     str_pad_right,
-    str_truncate,
     str_repeat,
-    
-    # Compression
-    compress_gzip,
-    decompress_gzip,
-    compress_zlib,
-    decompress_zlib,
-    
-    # Environment
-    env_get,
-    env_set,
-    env_list,
-    env_expand,
-    
-    # Math extended
-    math_sin,
-    math_cos,
-    math_tan,
-    math_sqrt,
-    math_log,
-    math_factorial,
-    math_gcd,
-    math_lcm,
-    math_fibonacci,
+    str_truncate,
+    sys_cpu_count,
+    sys_current_dir,
+    sys_home_dir,
+    sys_hostname,
+    # System info
+    sys_platform,
+    sys_temp_dir,
+    sys_username,
+    sys_version,
+    timestamp_now,
+    timestamp_to_datetime,
+    url_decode,
+    url_encode,
+    # Validation
+    validate_email,
+    validate_ip,
+    validate_length,
+    validate_phone,
+    validate_range,
+    validate_regex,
+    validate_url,
 )
-
-from .extended_definitions import (
-    EXTENDED_PROCESSOR_DEFINITIONS,
-    get_extended_definitions,
+from .graph_models import (
+    ChainConnection,
+    ChainGraph,
+    ChainNode,
+    ChainPort,
+    CyclicGraphError,
+    GraphValidationError,
+    NodeStatus,
+    PortDirection,
 )
-
-from .extended_integration import (
-    register_extended_processors,
-    execute_extended_processor,
+from .graph_runtime import (
+    ExecutionResult,
+    GraphExecutionContext,
+    GraphRuntime,
+    NodeExecutionResult,
+    execute_graph,
+)
+from .parallel_runtime import (
+    ExecutionPlan,
+    ParallelExecutionResult,
+    ParallelGraphRuntime,
+    execute_graph_parallel,
+)
+from .processor_registry import (
+    ProcessorCategory,
+    ProcessorRegistry,
+    get_processor,
+    get_processors_by_category,
+    get_registry,
+    list_processors,
+    register_processor,
+    search_processors,
+)
+from .runtime import (
+    CancelledError,
+    ChainNodeRunSnapshot,
+    ChainRunContext,
+)
+from .templates import (
+    ChainTemplate,
+    SubChainDefinition,
+    TemplateLibrary,
+    create_sub_chain_processor,
+    get_sub_chain,
+    get_template,
+    get_template_library,
+    list_sub_chains,
+    list_templates,
+    register_sub_chain,
+    register_template,
+    search_templates,
+)
+from .undo_manager import (
+    AddConnectionCommand,
+    AddNodeCommand,
+    BatchCommand,
+    Command,
+    MoveNodeCommand,
+    RemoveConnectionCommand,
+    RemoveNodeCommand,
+    UndoManager,
+    UpdateNodeParamCommand,
+)
+from .unified_registry import (
+    execute_processor,
+    get_all_processors,
+    get_processor_documentation,
+    get_processor_full,
+    get_registry_statistics,
+    search_all_processors,
+    sync_builtin_processors,
+    validate_processor_definition,
+)
+from .values import (
+    ChainValue,
+    ChainValueKind,
+    chain_value_to_dict,
+    infer_kind,
+    make_chain_value,
+    preview_text,
+    raw_value,
+    typed_mapping,
+    value_to_text,
 )
 
 __all__ = [
@@ -334,7 +302,7 @@ __all__ = [
     "KNOWN_PROCESSOR_PARAM_KINDS",
     "KNOWN_PROCESSOR_SAFETY_LEVELS",
     "KNOWN_PROCESSOR_PORT_ROLES",
-    
+
     # Values
     "ChainValueKind",
     "ChainValue",
@@ -345,7 +313,7 @@ __all__ = [
     "preview_text",
     "infer_kind",
     "raw_value",
-    
+
     # Contracts
     "ChainPortSpec",
     "ChainConnectionIssue",
@@ -355,12 +323,12 @@ __all__ = [
     "validate_canvas",
     "validate_step_bindings",
     "binding_key",
-    
+
     # Runtime
     "ChainRunContext",
     "ChainNodeRunSnapshot",
     "CancelledError",
-    
+
     # Graph Models
     "NodeStatus",
     "PortDirection",
@@ -370,14 +338,14 @@ __all__ = [
     "ChainGraph",
     "GraphValidationError",
     "CyclicGraphError",
-    
+
     # Graph Runtime
     "GraphRuntime",
     "GraphExecutionContext",
     "ExecutionResult",
     "NodeExecutionResult",
     "execute_graph",
-    
+
     # Processor Registry
     "ProcessorRegistry",
     "ProcessorCategory",
@@ -387,7 +355,7 @@ __all__ = [
     "list_processors",
     "get_processors_by_category",
     "search_processors",
-    
+
     # Templates
     "ChainTemplate",
     "SubChainDefinition",
@@ -401,7 +369,7 @@ __all__ = [
     "get_sub_chain",
     "list_sub_chains",
     "create_sub_chain_processor",
-    
+
     # Undo Manager
     "Command",
     "UndoManager",
@@ -412,7 +380,7 @@ __all__ = [
     "RemoveConnectionCommand",
     "UpdateNodeParamCommand",
     "BatchCommand",
-    
+
     # Unified Registry
     "get_all_processors",
     "get_processor_full",
@@ -422,13 +390,13 @@ __all__ = [
     "get_processor_documentation",
     "get_registry_statistics",
     "sync_builtin_processors",
-    
+
     # Parallel Runtime
     "ParallelGraphRuntime",
     "ExecutionPlan",
     "ParallelExecutionResult",
     "execute_graph_parallel",
-    
+
     # Enhanced Processors
     "text_trim",
     "text_contains",
@@ -471,13 +439,13 @@ __all__ = [
     "json_values",
     "json_length",
     "json_to_csv",
-    
+
     # Enhanced Definitions & Integration
     "ENHANCED_PROCESSOR_DEFINITIONS",
     "get_enhanced_definitions",
     "register_enhanced_processors",
     "execute_enhanced_processor",
-    
+
     # Submodules (for direct import)
     "definitions",
     "registry",
@@ -503,4 +471,218 @@ __all__ = [
     "enhanced_processors",
     "enhanced_definitions",
     "enhanced_integration",
+]
+
+__all__ = [
+    "ChainConnectionIssue",
+    "ChainPortSpec",
+    "binding_key",
+    "input_port_specs_for_node",
+    "output_port_specs_for_node",
+    "validate_canvas",
+    "validate_canvas_connection",
+    "validate_step_bindings",
+    "KNOWN_PROCESSOR_PARAM_KINDS",
+    "KNOWN_PROCESSOR_PORT_KINDS",
+    "KNOWN_PROCESSOR_PORT_ROLES",
+    "KNOWN_PROCESSOR_SAFETY_LEVELS",
+    "ChainParamDefinition",
+    "ChainPortDefinition",
+    "ChainProcessorDefinition",
+    "ChainProcessorExample",
+    "ChainProcessorSafety",
+    "ENHANCED_PROCESSOR_DEFINITIONS",
+    "get_enhanced_definitions",
+    "execute_enhanced_processor",
+    "register_enhanced_processors",
+    "assert_type",
+    "file_copy",
+    "file_delete",
+    "file_list_dir",
+    "file_modified",
+    "file_move",
+    "file_size",
+    "is_empty",
+    "is_json",
+    "is_numeric",
+    "json_flatten",
+    "json_keys",
+    "json_length",
+    "json_merge",
+    "json_to_csv",
+    "json_values",
+    "list_avg",
+    "list_count",
+    "list_find",
+    "list_max",
+    "list_min",
+    "list_remove",
+    "list_sum",
+    "math_abs",
+    "math_ceil",
+    "math_clamp",
+    "math_floor",
+    "math_random",
+    "math_round",
+    "switch_case",
+    "text_center",
+    "text_contains",
+    "text_count",
+    "text_endswith",
+    "text_ljust",
+    "text_regex_replace",
+    "text_reverse",
+    "text_rjust",
+    "text_startswith",
+    "text_trim",
+    "try_catch",
+    "EXTENDED_PROCESSOR_DEFINITIONS",
+    "get_extended_definitions",
+    "execute_extended_processor",
+    "register_extended_processors",
+    "base64_decode",
+    "base64_encode",
+    "color_brightness",
+    "color_complementary",
+    "color_hex_to_rgb",
+    "color_random",
+    "color_rgb_to_hex",
+    "compress_gzip",
+    "compress_zlib",
+    "datetime_add",
+    "datetime_diff",
+    "datetime_format",
+    "datetime_now",
+    "datetime_parse",
+    "datetime_part",
+    "datetime_to_timestamp",
+    "decompress_gzip",
+    "decompress_zlib",
+    "dict_filter",
+    "dict_get",
+    "dict_keys",
+    "dict_merge",
+    "dict_set",
+    "dict_values",
+    "env_expand",
+    "env_get",
+    "env_list",
+    "env_set",
+    "hash_crc32",
+    "hash_md5",
+    "hash_sha1",
+    "hash_sha256",
+    "hash_sha512",
+    "hash_uuid",
+    "hex_decode",
+    "hex_encode",
+    "html_decode",
+    "html_encode",
+    "math_cos",
+    "math_factorial",
+    "math_fibonacci",
+    "math_gcd",
+    "math_lcm",
+    "math_log",
+    "math_sin",
+    "math_sqrt",
+    "math_tan",
+    "net_ip_address",
+    "net_ping",
+    "net_port_check",
+    "net_url_parse",
+    "set_difference",
+    "set_intersection",
+    "set_union",
+    "set_unique",
+    "str_format",
+    "str_pad_left",
+    "str_pad_right",
+    "str_repeat",
+    "str_truncate",
+    "sys_cpu_count",
+    "sys_current_dir",
+    "sys_home_dir",
+    "sys_hostname",
+    "sys_platform",
+    "sys_temp_dir",
+    "sys_username",
+    "sys_version",
+    "timestamp_now",
+    "timestamp_to_datetime",
+    "url_decode",
+    "url_encode",
+    "validate_email",
+    "validate_ip",
+    "validate_length",
+    "validate_phone",
+    "validate_range",
+    "validate_regex",
+    "validate_url",
+    "ChainConnection",
+    "ChainGraph",
+    "ChainNode",
+    "ChainPort",
+    "CyclicGraphError",
+    "GraphValidationError",
+    "NodeStatus",
+    "PortDirection",
+    "ExecutionResult",
+    "GraphExecutionContext",
+    "GraphRuntime",
+    "NodeExecutionResult",
+    "execute_graph",
+    "ExecutionPlan",
+    "ParallelExecutionResult",
+    "ParallelGraphRuntime",
+    "execute_graph_parallel",
+    "ProcessorCategory",
+    "ProcessorRegistry",
+    "get_processor",
+    "get_processors_by_category",
+    "get_registry",
+    "list_processors",
+    "register_processor",
+    "search_processors",
+    "CancelledError",
+    "ChainNodeRunSnapshot",
+    "ChainRunContext",
+    "ChainTemplate",
+    "SubChainDefinition",
+    "TemplateLibrary",
+    "create_sub_chain_processor",
+    "get_sub_chain",
+    "get_template",
+    "get_template_library",
+    "list_sub_chains",
+    "list_templates",
+    "register_sub_chain",
+    "register_template",
+    "search_templates",
+    "AddConnectionCommand",
+    "AddNodeCommand",
+    "BatchCommand",
+    "Command",
+    "MoveNodeCommand",
+    "RemoveConnectionCommand",
+    "RemoveNodeCommand",
+    "UndoManager",
+    "UpdateNodeParamCommand",
+    "execute_processor",
+    "get_all_processors",
+    "get_processor_documentation",
+    "get_processor_full",
+    "get_registry_statistics",
+    "search_all_processors",
+    "sync_builtin_processors",
+    "validate_processor_definition",
+    "ChainValue",
+    "ChainValueKind",
+    "chain_value_to_dict",
+    "infer_kind",
+    "make_chain_value",
+    "preview_text",
+    "raw_value",
+    "typed_mapping",
+    "value_to_text",
 ]

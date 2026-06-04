@@ -15,7 +15,6 @@ import json
 import os
 import re
 import shutil
-import time
 from typing import Any
 
 __all__ = [
@@ -30,7 +29,7 @@ __all__ = [
     "text_center",
     "text_ljust",
     "text_rjust",
-    
+
     # Logic processors
     "switch_case",
     "try_catch",
@@ -38,7 +37,7 @@ __all__ = [
     "is_empty",
     "is_numeric",
     "is_json",
-    
+
     # Math processors
     "math_abs",
     "math_ceil",
@@ -48,7 +47,7 @@ __all__ = [
     "math_max",
     "math_clamp",
     "math_random",
-    
+
     # List processors
     "list_count",
     "list_sum",
@@ -58,7 +57,7 @@ __all__ = [
     "list_group_by",
     "list_find",
     "list_remove",
-    
+
     # File processors
     "file_copy",
     "file_move",
@@ -66,7 +65,7 @@ __all__ = [
     "file_size",
     "file_modified",
     "file_list_dir",
-    
+
     # JSON processors
     "json_merge",
     "json_flatten",
@@ -178,11 +177,11 @@ def assert_type(value: Any, expected_type: str) -> bool:
         "object": dict,
         "json": (dict, list),
     }
-    
+
     expected = type_map.get(expected_type.lower())
     if expected is None:
         raise ValueError(f"未知类型: {expected_type}")
-    
+
     return isinstance(value, expected)
 
 
@@ -192,7 +191,7 @@ def is_empty(value: Any) -> bool:
         return True
     if isinstance(value, str):
         return len(value.strip()) == 0
-    if isinstance(value, (list, dict)):
+    if isinstance(value, list | dict):
         return len(value) == 0
     return False
 
@@ -341,11 +340,11 @@ def file_copy(src: str, dst: str, overwrite: bool = False) -> str:
         raise FileNotFoundError(f"源文件不存在: {src}")
     if os.path.exists(dst) and not overwrite:
         raise FileExistsError(f"目标文件已存在: {dst}")
-    
+
     dst_dir = os.path.dirname(dst)
     if dst_dir:
         os.makedirs(dst_dir, exist_ok=True)
-    
+
     shutil.copy2(src, dst)
     return dst
 
@@ -356,11 +355,11 @@ def file_move(src: str, dst: str, overwrite: bool = False) -> str:
         raise FileNotFoundError(f"源文件不存在: {src}")
     if os.path.exists(dst) and not overwrite:
         raise FileExistsError(f"目标文件已存在: {dst}")
-    
+
     dst_dir = os.path.dirname(dst)
     if dst_dir:
         os.makedirs(dst_dir, exist_ok=True)
-    
+
     shutil.move(src, dst)
     return dst
 
@@ -369,7 +368,7 @@ def file_delete(path: str, to_trash: bool = True) -> bool:
     """Delete file (optionally to trash)."""
     if not os.path.exists(path):
         return False
-    
+
     if to_trash:
         try:
             from send2trash import send2trash
@@ -377,7 +376,7 @@ def file_delete(path: str, to_trash: bool = True) -> bool:
             return True
         except ImportError:
             pass
-    
+
     if os.path.isfile(path):
         os.remove(path)
     elif os.path.isdir(path):
@@ -393,7 +392,7 @@ def file_size(path: str) -> int:
         return os.path.getsize(path)
     elif os.path.isdir(path):
         total = 0
-        for dirpath, dirnames, filenames in os.walk(path):
+        for dirpath, _dirnames, filenames in os.walk(path):
             for f in filenames:
                 fp = os.path.join(dirpath, f)
                 if os.path.exists(fp):
@@ -412,10 +411,10 @@ def file_modified(path: str) -> float:
 def file_list_dir(path: str, pattern: str = "*", recursive: bool = False) -> list[str]:
     """List files in directory."""
     import glob
-    
+
     if not os.path.exists(path):
         raise FileNotFoundError(f"路径不存在: {path}")
-    
+
     if recursive:
         pattern_path = os.path.join(path, "**", pattern)
         return glob.glob(pattern_path, recursive=True)
@@ -438,7 +437,7 @@ def json_merge(*args: dict) -> dict:
 def json_flatten(data: dict, prefix: str = "", separator: str = ".") -> dict:
     """Flatten nested JSON object."""
     result = {}
-    
+
     def _flatten(obj, current_prefix):
         if isinstance(obj, dict):
             for key, value in obj.items():
@@ -450,7 +449,7 @@ def json_flatten(data: dict, prefix: str = "", separator: str = ".") -> dict:
                 _flatten(value, new_key)
         else:
             result[current_prefix] = obj
-    
+
     _flatten(data, prefix)
     return result
 
@@ -471,7 +470,7 @@ def json_values(data: dict) -> list:
 
 def json_length(data: Any) -> int:
     """Get length of JSON object/array."""
-    if isinstance(data, (dict, list)):
+    if isinstance(data, dict | list):
         return len(data)
     return 0
 
@@ -480,7 +479,7 @@ def json_to_csv(data: list[dict], delimiter: str = ",") -> str:
     """Convert list of dicts to CSV string."""
     if not data:
         return ""
-    
+
     # Get all unique keys
     keys = []
     seen = set()
@@ -489,13 +488,13 @@ def json_to_csv(data: list[dict], delimiter: str = ",") -> str:
             if key not in seen:
                 keys.append(key)
                 seen.add(key)
-    
+
     # Build CSV
     lines = [delimiter.join(keys)]
     for item in data:
         row = [str(item.get(key, "")) for key in keys]
         lines.append(delimiter.join(row))
-    
+
     return "\n".join(lines)
 
 

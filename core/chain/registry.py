@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import socket
 import sys
 import time
@@ -27,15 +26,15 @@ from typing import Any
 from core.command_registry import CommandResult
 
 from .definitions import (
+    KNOWN_PROCESSOR_PARAM_KINDS,
+    KNOWN_PROCESSOR_PORT_KINDS,
+    KNOWN_PROCESSOR_PORT_ROLES,
+    KNOWN_PROCESSOR_SAFETY_LEVELS,
     ChainParamDefinition,
     ChainPortDefinition,
     ChainProcessorDefinition,
     ChainProcessorExample,
     ChainProcessorSafety,
-    KNOWN_PROCESSOR_PARAM_KINDS,
-    KNOWN_PROCESSOR_PORT_KINDS,
-    KNOWN_PROCESSOR_PORT_ROLES,
-    KNOWN_PROCESSOR_SAFETY_LEVELS,
 )
 
 logger = logging.getLogger(__name__)
@@ -1134,7 +1133,8 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         if os.path.exists(dst) and not overwrite:
             raise FileExistsError(f"目标文件已存在: {dst}")
         dst_dir = os.path.dirname(dst)
-        if dst_dir: os.makedirs(dst_dir, exist_ok=True)
+        if dst_dir:
+            os.makedirs(dst_dir, exist_ok=True)
         import shutil as _sh
         _sh.copy2(src, dst)
         return _ok_file(dst)
@@ -1147,7 +1147,8 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         if os.path.exists(dst) and not overwrite:
             raise FileExistsError(f"目标文件已存在: {dst}")
         dst_dir = os.path.dirname(dst)
-        if dst_dir: os.makedirs(dst_dir, exist_ok=True)
+        if dst_dir:
+            os.makedirs(dst_dir, exist_ok=True)
         import shutil as _sh
         _sh.move(src, dst)
         return _ok_file(dst)
@@ -1348,11 +1349,13 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
     if processor_id == "validate_ip":
         ip = text_values.get("ip", "")
         try:
-            socket.inet_pton(socket.AF_INET, ip); return _ok_bool(True)
-        except socket.error:
+            socket.inet_pton(socket.AF_INET, ip)
+            return _ok_bool(True)
+        except OSError:
             try:
-                socket.inet_pton(socket.AF_INET6, ip); return _ok_bool(True)
-            except socket.error:
+                socket.inet_pton(socket.AF_INET6, ip)
+                return _ok_bool(True)
+            except OSError:
                 return _ok_bool(False)
     if processor_id == "validate_phone":
         phone = re.sub(r"[\s-]", "", text_values.get("phone", ""))
@@ -1372,8 +1375,10 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         lo = int(text_values.get("min", "0") or "0")
         hi = int(text_values.get("max", "0") or "0")
         ok = True
-        if lo > 0 and len(t) < lo: ok = False
-        if hi > 0 and len(t) > hi: ok = False
+        if lo > 0 and len(t) < lo:
+            ok = False
+        if hi > 0 and len(t) > hi:
+            ok = False
         return _ok_bool(ok)
 
     # ── 扩展: 加密哈希 ──
@@ -1395,7 +1400,8 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
     # ── 扩展: 颜色处理 ──
     if processor_id == "color_hex_to_rgb":
         h = text_values.get("hex", "#000000").lstrip("#")
-        if len(h) == 3: h = "".join(c * 2 for c in h)
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return _ok(f"({r}, {g}, {b})")
     if processor_id == "color_rgb_to_hex":
@@ -1405,12 +1411,14 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         return _ok(f"#{r:02x}{g:02x}{b:02x}")
     if processor_id == "color_brightness":
         h = text_values.get("hex", "#000000").lstrip("#")
-        if len(h) == 3: h = "".join(c * 2 for c in h)
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return _ok(str((r * 299 + g * 587 + b * 114) / 1000 / 255 * 100))
     if processor_id == "color_complementary":
         h = text_values.get("hex", "#000000").lstrip("#")
-        if len(h) == 3: h = "".join(c * 2 for c in h)
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return _ok(f"#{255 - r:02x}{255 - g:02x}{255 - b:02x}")
     if processor_id == "color_random":
@@ -1448,7 +1456,8 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         a = _try_json_parse(values.get("a", "{}"))
         b = _try_json_parse(values.get("b", "{}"))
         result = dict(a) if isinstance(a, dict) else {}
-        if isinstance(b, dict): result.update(b)
+        if isinstance(b, dict):
+            result.update(b)
         return _ok(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     if processor_id == "dict_get":
         d = _try_json_parse(values.get("json", "{}"))
@@ -1520,7 +1529,8 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         return _ok(str(abs(a * b) // _m.gcd(a, b)))
     if processor_id == "math_fibonacci":
         n = int(_to_num(values.get("count", 10)))
-        if n <= 0: return _ok_list([])
+        if n <= 0:
+            return _ok_list([])
         fib = [0, 1]
         for _ in range(2, n):
             fib.append(fib[-1] + fib[-2])
@@ -1543,7 +1553,7 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
 
 def _try_json_parse(value: Any) -> Any:
     """尝试将值解析为 JSON，失败返回原值。"""
-    if isinstance(value, (dict, list)):
+    if isinstance(value, dict | list):
         return value
     if not value or str(value).strip() == "":
         return {}
@@ -2697,7 +2707,6 @@ def _file_write_text(values: dict[str, str]) -> CommandResult:
 
 def _load_extra_processors() -> None:
     """Merge enhanced and extended processors into the main registry."""
-    import copy as _copy
     try:
         from .enhanced_definitions import get_enhanced_definitions as _ged
         _enhanced = _ged()

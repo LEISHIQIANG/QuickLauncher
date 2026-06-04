@@ -10,6 +10,8 @@ from core.data_models import (
 )
 from core.module_registry import (
     ACTION_CHAIN_MODULE_ID as REGISTRY_ACTION_CHAIN_ID,
+)
+from core.module_registry import (
     MODULE_AVAILABLE,
     MODULE_BROKEN,
     MODULE_DISABLED,

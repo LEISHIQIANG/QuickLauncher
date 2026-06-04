@@ -10,7 +10,6 @@ internal data structures.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from core.command_registry import CommandResult

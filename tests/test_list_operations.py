@@ -2,16 +2,33 @@
 
 import pytest
 
-from core.chain.data_structures import Item, List, Tree
+from core.chain.data_structures import List
 from core.chain.list_operations import (
-    add_lists, sub_lists, mul_lists, div_lists,
-    eq_lists, ne_lists, gt_lists, lt_lists,
-    add_scalar, sub_scalar, mul_scalar, div_scalar,
-    sum_list, min_list, max_list, average_list,
-    reverse_list, sort_list, unique_list,
-    zip_lists, cross_lists, concat_lists,
-    range_list, repeat_list,
-    contains, index_of,
+    add_lists,
+    add_scalar,
+    average_list,
+    concat_lists,
+    contains,
+    cross_lists,
+    div_lists,
+    div_scalar,
+    eq_lists,
+    gt_lists,
+    index_of,
+    lt_lists,
+    max_list,
+    min_list,
+    mul_lists,
+    mul_scalar,
+    range_list,
+    repeat_list,
+    reverse_list,
+    sort_list,
+    sub_lists,
+    sub_scalar,
+    sum_list,
+    unique_list,
+    zip_lists,
 )
 
 

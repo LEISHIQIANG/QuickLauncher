@@ -36,7 +36,12 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.window_effect import enable_acrylic_for_config_window, get_window_effect, is_win11, paint_win10_rounded_surface
+from ui.utils.window_effect import (
+    enable_acrylic_for_config_window,
+    get_window_effect,
+    is_win11,
+    paint_win10_rounded_surface,
+)
 
 from .theme_helper import get_radio_stylesheet, get_switch_stylesheet
 from .window_lifecycle import WindowLifecycleController

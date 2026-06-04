@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from .hotkey_conflict_checker import normalize_hotkey, check_conflict
+from .hotkey_conflict_checker import check_conflict, normalize_hotkey
 
 
 @dataclass

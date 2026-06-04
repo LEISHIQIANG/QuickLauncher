@@ -1,20 +1,17 @@
 """Tests for smart type recognition and validation system."""
 
-import json
 import pytest
 
 from core.chain.smart_types import (
     SmartType,
-    TypeHint,
-    SmartTypeRecognizer,
-    TypeValidator,
     TypeConverter,
-    recognize_type,
-    validate_value,
+    TypeValidator,
     convert_value,
-    get_type_hint,
     get_type_description,
     get_type_examples,
+    get_type_hint,
+    recognize_type,
+    validate_value,
 )
 
 

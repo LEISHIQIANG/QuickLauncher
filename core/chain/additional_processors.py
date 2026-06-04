@@ -9,19 +9,9 @@ This module provides additional processors for:
 
 from __future__ import annotations
 
-import json
-import os
-import re
-import time
-from datetime import datetime
-from typing import Any
-
 from .definitions import (
     ChainProcessorDefinition,
-    ChainPortDefinition,
-    ChainParamDefinition,
     ChainProcessorSafety,
-    ChainProcessorExample,
 )
 
 __all__ = [
@@ -33,22 +23,22 @@ __all__ = [
 def get_additional_processors() -> dict[str, ChainProcessorDefinition]:
     """Get all additional processor definitions."""
     processors = {}
-    
+
     # Control flow processors
     processors.update(_get_control_flow_processors())
-    
+
     # Data conversion processors
     processors.update(_get_data_conversion_processors())
-    
+
     # System operation processors
     processors.update(_get_system_processors())
-    
+
     # String operation processors
     processors.update(_get_string_processors())
-    
+
     # Math processors
     processors.update(_get_math_processors())
-    
+
     return processors
 
 
@@ -435,18 +425,18 @@ def _get_math_processors() -> dict[str, ChainProcessorDefinition]:
 
 def register_additional_processors(registry) -> int:
     """Register all additional processors with the registry.
-    
+
     Args:
         registry: ProcessorRegistry instance
-        
+
     Returns:
         Number of processors registered
     """
     processors = get_additional_processors()
-    
+
     count = 0
-    for processor_id, definition in processors.items():
+    for _processor_id, definition in processors.items():
         if registry.register(definition):
             count += 1
-    
+
     return count

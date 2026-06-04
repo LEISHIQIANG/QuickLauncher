@@ -81,7 +81,7 @@ def paint_win10_rounded_surface(
     or GDI window regions.
     """
     try:
-        from qt_compat import QColor, QPainter, QPainterPath, QPen, QRectF, QtCompat
+        from qt_compat import QColor, QPainterPath, QPen, QRectF, QtCompat
 
         painter.setRenderHint(QtCompat.Antialiasing, True)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)

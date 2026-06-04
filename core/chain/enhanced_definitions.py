@@ -7,10 +7,7 @@ from __future__ import annotations
 
 from .definitions import (
     ChainProcessorDefinition,
-    ChainPortDefinition,
-    ChainParamDefinition,
     ChainProcessorSafety,
-    ChainProcessorExample,
 )
 
 __all__ = [
@@ -41,7 +38,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="移除文本两端的空白字符或指定字符。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "text_contains": ChainProcessorDefinition(
         "text_contains",
         "文本包含",
@@ -51,7 +48,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="检查文本是否包含指定子串。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "text_startswith": ChainProcessorDefinition(
         "text_startswith",
         "文本开头",
@@ -61,7 +58,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="检查文本是否以指定前缀开头。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "text_endswith": ChainProcessorDefinition(
         "text_endswith",
         "文本结尾",
@@ -71,7 +68,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="检查文本是否以指定后缀结尾。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "text_regex_replace": ChainProcessorDefinition(
         "text_regex_replace",
         "正则替换",
@@ -81,7 +78,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="使用正则表达式替换文本。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "text_count": ChainProcessorDefinition(
         "text_count",
         "文本计数",
@@ -91,7 +88,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="计算子串在文本中出现的次数。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "text_reverse": ChainProcessorDefinition(
         "text_reverse",
         "文本反转",
@@ -101,7 +98,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="反转文本内容。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     # ── Logic Control (Extended) ──
     "switch_case": ChainProcessorDefinition(
         "switch_case",
@@ -112,7 +109,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="根据值选择不同的输出。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "try_catch": ChainProcessorDefinition(
         "try_catch",
         "错误捕获",
@@ -122,7 +119,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="捕获执行错误并返回默认值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "assert_type": ChainProcessorDefinition(
         "assert_type",
         "类型断言",
@@ -132,7 +129,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="断言值是否为指定类型。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "is_empty": ChainProcessorDefinition(
         "is_empty",
         "检查空值",
@@ -142,7 +139,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="检查值是否为空。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "is_numeric": ChainProcessorDefinition(
         "is_numeric",
         "检查数字",
@@ -152,7 +149,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="检查文本是否为数字。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "is_json": ChainProcessorDefinition(
         "is_json",
         "检查JSON",
@@ -162,7 +159,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="检查文本是否为有效的JSON。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     # ── Math (Extended) ──
     "math_abs": ChainProcessorDefinition(
         "math_abs",
@@ -173,7 +170,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="计算数字的绝对值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "math_ceil": ChainProcessorDefinition(
         "math_ceil",
         "向上取整",
@@ -183,7 +180,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="向上取整到最接近的整数。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "math_floor": ChainProcessorDefinition(
         "math_floor",
         "向下取整",
@@ -193,7 +190,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="向下取整到最接近的整数。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "math_round": ChainProcessorDefinition(
         "math_round",
         "四舍五入",
@@ -203,7 +200,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="四舍五入到指定小数位。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "math_clamp": ChainProcessorDefinition(
         "math_clamp",
         "数值限制",
@@ -213,7 +210,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="将数值限制在指定范围内。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     # ── List (Extended) ──
     "list_count": ChainProcessorDefinition(
         "list_count",
@@ -224,7 +221,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="计算值在列表中出现的次数。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "list_sum": ChainProcessorDefinition(
         "list_sum",
         "列表求和",
@@ -234,7 +231,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="计算列表中所有数值的和。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "list_min": ChainProcessorDefinition(
         "list_min",
         "列表最小值",
@@ -244,7 +241,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="找到列表中的最小值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "list_max": ChainProcessorDefinition(
         "list_max",
         "列表最大值",
@@ -254,7 +251,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="找到列表中的最大值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "list_avg": ChainProcessorDefinition(
         "list_avg",
         "列表平均值",
@@ -264,7 +261,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="计算列表中数值的平均值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "list_find": ChainProcessorDefinition(
         "list_find",
         "列表查找",
@@ -274,7 +271,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="在列表中查找指定值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "list_remove": ChainProcessorDefinition(
         "list_remove",
         "列表移除",
@@ -284,7 +281,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="从列表中移除指定值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     # ── File Operations (Extended) ──
     "file_copy": ChainProcessorDefinition(
         "file_copy",
@@ -295,7 +292,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="复制文件到目标位置。",
         safety=ChainProcessorSafety("caution", reads_files=True, writes_files=True),
     ),
-    
+
     "file_move": ChainProcessorDefinition(
         "file_move",
         "文件移动",
@@ -305,7 +302,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="移动文件到目标位置。",
         safety=ChainProcessorSafety("dangerous", reads_files=True, writes_files=True, requires_confirmation=True),
     ),
-    
+
     "file_delete": ChainProcessorDefinition(
         "file_delete",
         "文件删除",
@@ -315,7 +312,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="删除文件（可选择移到回收站）。",
         safety=ChainProcessorSafety("dangerous", writes_files=True, requires_confirmation=True),
     ),
-    
+
     "file_size": ChainProcessorDefinition(
         "file_size",
         "文件大小",
@@ -325,7 +322,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="获取文件大小（字节）。",
         safety=ChainProcessorSafety("safe", reads_files=True),
     ),
-    
+
     "file_modified": ChainProcessorDefinition(
         "file_modified",
         "修改时间",
@@ -335,7 +332,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="获取文件最后修改时间。",
         safety=ChainProcessorSafety("safe", reads_files=True),
     ),
-    
+
     "file_list_dir": ChainProcessorDefinition(
         "file_list_dir",
         "目录列表",
@@ -345,7 +342,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="列出目录中的文件。",
         safety=ChainProcessorSafety("safe", reads_files=True),
     ),
-    
+
     # ── JSON Operations (Extended) ──
     "json_merge": ChainProcessorDefinition(
         "json_merge",
@@ -356,7 +353,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="合并多个JSON对象。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "json_flatten": ChainProcessorDefinition(
         "json_flatten",
         "JSON扁平化",
@@ -366,7 +363,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="将嵌套的JSON对象扁平化。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "json_keys": ChainProcessorDefinition(
         "json_keys",
         "JSON键列表",
@@ -376,7 +373,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="获取JSON对象的所有键。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "json_values": ChainProcessorDefinition(
         "json_values",
         "JSON值列表",
@@ -386,7 +383,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="获取JSON对象的所有值。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "json_length": ChainProcessorDefinition(
         "json_length",
         "JSON长度",
@@ -396,7 +393,7 @@ ENHANCED_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
         description="获取JSON对象/数组的长度。",
         safety=ChainProcessorSafety("safe"),
     ),
-    
+
     "json_to_csv": ChainProcessorDefinition(
         "json_to_csv",
         "JSON转CSV",

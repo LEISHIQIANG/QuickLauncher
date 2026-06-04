@@ -11,48 +11,47 @@ It serves as the primary API for processor operations.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from .definitions import (
-    ChainProcessorDefinition,
-    ChainPortDefinition,
-    ChainParamDefinition,
-    ChainProcessorSafety,
-    ChainProcessorExample,
-    KNOWN_PROCESSOR_PORT_KINDS,
     KNOWN_PROCESSOR_PARAM_KINDS,
-    KNOWN_PROCESSOR_SAFETY_LEVELS,
+    KNOWN_PROCESSOR_PORT_KINDS,
     KNOWN_PROCESSOR_PORT_ROLES,
+    KNOWN_PROCESSOR_SAFETY_LEVELS,
+    ChainParamDefinition,
+    ChainPortDefinition,
+    ChainProcessorDefinition,
+    ChainProcessorExample,
+    ChainProcessorSafety,
 )
-
 from .processor_registry import (
-    ProcessorRegistry,
     ProcessorCategory,
-    get_registry,
-    register_processor,
+    ProcessorRegistry,
     get_processor,
-    list_processors,
     get_processors_by_category,
+    get_registry,
+    list_processors,
+    register_processor,
     search_processors,
 )
 
 # Import from registry.py for backward compatibility
 from .registry import (
-    PROCESSOR_DEFINITIONS,
+    DEFAULT_PYTHON_CELL_SOURCE,
     EXTERNAL_PROCESSOR_DEFINITIONS,
     EXTERNAL_PROCESSOR_HANDLERS,
     EXTERNAL_PROCESSOR_OWNERS,
+    PROCESSOR_DEFINITIONS,
     ChainProcessorHandler,
-    DEFAULT_PYTHON_CELL_SOURCE,
-    processor_definitions,
+    execute_chain_processor,
     processor_definition,
+    processor_definitions,
     processor_input_ports,
     processor_output_ports,
     processor_title,
+    python_cell_metadata,
     register_external_processor,
     unregister_external_processors,
-    python_cell_metadata,
-    execute_chain_processor,
 )
 
 __all__ = [
@@ -66,7 +65,7 @@ __all__ = [
     "KNOWN_PROCESSOR_PARAM_KINDS",
     "KNOWN_PROCESSOR_SAFETY_LEVELS",
     "KNOWN_PROCESSOR_PORT_ROLES",
-    
+
     # From processor_registry
     "ProcessorRegistry",
     "ProcessorCategory",
@@ -76,7 +75,7 @@ __all__ = [
     "list_processors",
     "get_processors_by_category",
     "search_processors",
-    
+
     # From registry (backward compatibility)
     "PROCESSOR_DEFINITIONS",
     "EXTERNAL_PROCESSOR_DEFINITIONS",
@@ -93,7 +92,7 @@ __all__ = [
     "unregister_external_processors",
     "python_cell_metadata",
     "execute_chain_processor",
-    
+
     # Unified API
     "get_all_processors",
     "get_processor_full",
@@ -109,7 +108,7 @@ logger = logging.getLogger(__name__)
 
 def get_all_processors() -> list[ChainProcessorDefinition]:
     """Get all registered processors (built-in + external).
-    
+
     Returns:
         List of all processor definitions
     """
@@ -118,10 +117,10 @@ def get_all_processors() -> list[ChainProcessorDefinition]:
 
 def get_processor_full(processor_id: str) -> ChainProcessorDefinition | None:
     """Get a processor definition by ID.
-    
+
     Args:
         processor_id: The processor ID
-        
+
     Returns:
         Processor definition or None
     """
@@ -130,16 +129,16 @@ def get_processor_full(processor_id: str) -> ChainProcessorDefinition | None:
 
 def search_all_processors(query: str) -> list[ChainProcessorDefinition]:
     """Search processors by query string.
-    
+
     Searches in:
     - Processor ID
     - Title
     - Description
     - Category
-    
+
     Args:
         query: Search query string
-        
+
     Returns:
         List of matching processor definitions
     """
@@ -161,12 +160,12 @@ def search_all_processors(query: str) -> list[ChainProcessorDefinition]:
 
 def execute_processor(processor_id: str, args: dict[str, Any], source: str = "") -> Any:
     """Execute a processor with the given arguments.
-    
+
     Args:
         processor_id: The processor ID
         args: Input arguments
         source: Source code (for python_cell)
-        
+
     Returns:
         CommandResult with execution results
     """
@@ -175,72 +174,72 @@ def execute_processor(processor_id: str, args: dict[str, Any], source: str = "")
 
 def validate_processor_definition(definition: ChainProcessorDefinition) -> list[str]:
     """Validate a processor definition.
-    
+
     Args:
         definition: The processor definition to validate
-        
+
     Returns:
         List of validation error messages (empty if valid)
     """
     errors = []
-    
+
     if not definition.id:
         errors.append("Processor ID is required")
-    
+
     if not definition.title:
         errors.append("Processor title is required")
-    
+
     if not definition.outputs:
         errors.append("Processor must have at least one output")
-    
+
     # Validate ports
     input_ids = set()
     for port in definition.inputs:
         if port.id in input_ids:
             errors.append(f"Duplicate input port: {port.id}")
         input_ids.add(port.id)
-        
+
         if port.kind not in KNOWN_PROCESSOR_PORT_KINDS:
             errors.append(f"Unknown port kind: {port.kind}")
-        
+
         if port.role not in KNOWN_PROCESSOR_PORT_ROLES:
             errors.append(f"Unknown port role: {port.role}")
-    
+
     output_ids = set()
     for port in definition.outputs:
         if port.id in output_ids:
             errors.append(f"Duplicate output port: {port.id}")
         output_ids.add(port.id)
-        
+
         if port.kind not in KNOWN_PROCESSOR_PORT_KINDS:
             errors.append(f"Unknown port kind: {port.kind}")
-        
+
         if port.role not in KNOWN_PROCESSOR_PORT_ROLES:
             errors.append(f"Unknown port role: {port.role}")
-    
+
     # Validate params
     param_ids = set()
     for param in definition.params:
         if param.id in param_ids:
             errors.append(f"Duplicate param: {param.id}")
         param_ids.add(param.id)
-        
+
         if param.kind not in KNOWN_PROCESSOR_PARAM_KINDS:
             errors.append(f"Unknown param kind: {param.kind}")
-    
+
     # Validate safety
     if definition.safety.level not in KNOWN_PROCESSOR_SAFETY_LEVELS:
         errors.append(f"Unknown safety level: {definition.safety.level}")
-    
+
     return errors
 
 
 def get_processor_documentation(processor_id: str) -> str:
     """Generate documentation for a processor.
-    
+
     Args:
         processor_id: The processor ID
-        
+
     Returns:
         Markdown documentation string
     """
@@ -325,7 +324,7 @@ def get_processor_documentation(processor_id: str) -> str:
 
 def get_registry_statistics() -> dict[str, Any]:
     """Get registry statistics.
-    
+
     Returns:
         Dictionary with registry statistics
     """
@@ -346,18 +345,18 @@ def get_registry_statistics() -> dict[str, Any]:
 
 def sync_builtin_processors() -> None:
     """Synchronize built-in processors with the registry.
-    
+
     This ensures all built-in processors from registry.py are registered
     in the enhanced processor_registry.py system.
     """
     registry = get_registry()
-    
+
     for proc_id, definition in PROCESSOR_DEFINITIONS.items():
         if not registry.has_processor(proc_id):
             # Get handler from registry.py
             handler = EXTERNAL_PROCESSOR_HANDLERS.get(proc_id)
             registry.register(definition, handler, owner="builtin")
-    
+
     for proc_id, definition in EXTERNAL_PROCESSOR_DEFINITIONS.items():
         if not registry.has_processor(proc_id):
             handler = EXTERNAL_PROCESSOR_HANDLERS.get(proc_id)

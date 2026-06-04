@@ -5,120 +5,108 @@ This module integrates the extended processors into the existing registry system
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from typing import Any
 
-from .definitions import ChainProcessorDefinition
+from core.command_registry import CommandResult
+
 from .extended_definitions import get_extended_definitions
 from .extended_processors import (
-    # Date/Time
-    datetime_now,
-    datetime_format,
-    datetime_parse,
-    datetime_add,
-    datetime_diff,
-    datetime_part,
-    timestamp_now,
-    timestamp_to_datetime,
-    datetime_to_timestamp,
-    
+    base64_decode,
     # Encoding/Decoding
     base64_encode,
-    base64_decode,
-    url_encode,
-    url_decode,
-    html_encode,
-    html_decode,
-    hex_encode,
-    hex_decode,
-    
-    # System info
-    sys_platform,
-    sys_version,
-    sys_hostname,
-    sys_username,
-    sys_cpu_count,
-    sys_current_dir,
-    sys_home_dir,
-    sys_temp_dir,
-    
-    # Network
-    net_ip_address,
-    net_ping,
-    net_port_check,
-    net_url_parse,
-    
-    # Validation
-    validate_email,
-    validate_url,
-    validate_ip,
-    validate_phone,
-    validate_regex,
-    validate_range,
-    validate_length,
-    
+    color_brightness,
+    color_complementary,
+    # Color
+    color_hex_to_rgb,
+    color_random,
+    color_rgb_to_hex,
+    # Compression
+    compress_gzip,
+    compress_zlib,
+    datetime_add,
+    datetime_diff,
+    datetime_format,
+    # Date/Time
+    datetime_now,
+    datetime_parse,
+    datetime_part,
+    datetime_to_timestamp,
+    decompress_gzip,
+    decompress_zlib,
+    dict_filter,
+    dict_get,
+    # Dict operations
+    dict_keys,
+    dict_merge,
+    dict_set,
+    dict_values,
+    env_expand,
+    # Environment
+    env_get,
+    env_list,
+    env_set,
+    hash_crc32,
     # Hash
     hash_md5,
     hash_sha1,
     hash_sha256,
     hash_sha512,
-    hash_crc32,
     hash_uuid,
-    
-    # Color
-    color_hex_to_rgb,
-    color_rgb_to_hex,
-    color_brightness,
-    color_complementary,
-    color_random,
-    
+    hex_decode,
+    hex_encode,
+    html_decode,
+    html_encode,
+    math_cos,
+    math_factorial,
+    math_fibonacci,
+    math_gcd,
+    math_lcm,
+    math_log,
+    # Math extended
+    math_sin,
+    math_sqrt,
+    math_tan,
+    # Network
+    net_ip_address,
+    net_ping,
+    net_port_check,
+    net_url_parse,
+    set_difference,
+    set_intersection,
     # Set operations
     set_union,
-    set_intersection,
-    set_difference,
     set_unique,
-    
-    # Dict operations
-    dict_keys,
-    dict_values,
-    dict_merge,
-    dict_get,
-    dict_set,
-    dict_filter,
-    
     # String formatting
     str_format,
     str_pad_left,
     str_pad_right,
-    str_truncate,
     str_repeat,
-    
-    # Compression
-    compress_gzip,
-    decompress_gzip,
-    compress_zlib,
-    decompress_zlib,
-    
-    # Environment
-    env_get,
-    env_set,
-    env_list,
-    env_expand,
-    
-    # Math extended
-    math_sin,
-    math_cos,
-    math_tan,
-    math_sqrt,
-    math_log,
-    math_factorial,
-    math_gcd,
-    math_lcm,
-    math_fibonacci,
+    str_truncate,
+    sys_cpu_count,
+    sys_current_dir,
+    sys_home_dir,
+    sys_hostname,
+    # System info
+    sys_platform,
+    sys_temp_dir,
+    sys_username,
+    sys_version,
+    timestamp_now,
+    timestamp_to_datetime,
+    url_decode,
+    url_encode,
+    # Validation
+    validate_email,
+    validate_ip,
+    validate_length,
+    validate_phone,
+    validate_range,
+    validate_regex,
+    validate_url,
 )
-
-from core.command_registry import CommandResult
 
 __all__ = [
     "register_extended_processors",
@@ -302,7 +290,7 @@ def _parse_list(value: Any) -> list[str]:
 
 def _parse_json(value: Any) -> Any:
     """Parse value to JSON."""
-    if isinstance(value, (dict, list)):
+    if isinstance(value, dict | list):
         return value
     if not value:
         return {}
@@ -315,7 +303,7 @@ def _parse_json(value: Any) -> Any:
 def register_extended_processors(registry) -> None:
     """Register extended processors with the registry."""
     definitions = get_extended_definitions()
-    
+
     for proc_id, definition in definitions.items():
         handler = _get_handler(proc_id)
         if handler:
@@ -356,7 +344,7 @@ def _get_handler(processor_id: str):
             str(args.get("datetime", "")),
             str(args.get("format", "%Y-%m-%d %H:%M:%S")),
         )),
-        
+
         # Encoding/Decoding processors
         "base64_encode": lambda args: _ok(base64_encode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "base64_decode": lambda args: _ok(base64_decode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
@@ -366,7 +354,7 @@ def _get_handler(processor_id: str):
         "html_decode": lambda args: _ok(html_decode(str(args.get("text", "")))),
         "hex_encode": lambda args: _ok(hex_encode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hex_decode": lambda args: _ok(hex_decode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
-        
+
         # System info processors
         "sys_platform": lambda args: _ok(sys_platform()),
         "sys_version": lambda args: _ok(sys_version()),
@@ -376,7 +364,7 @@ def _get_handler(processor_id: str):
         "sys_current_dir": lambda args: _ok(sys_current_dir()),
         "sys_home_dir": lambda args: _ok(sys_home_dir()),
         "sys_temp_dir": lambda args: _ok(sys_temp_dir()),
-        
+
         # Network processors
         "net_ip_address": lambda args: _ok(net_ip_address(str(args.get("hostname", "")))),
         "net_ping": lambda args: _ok_bool(net_ping(str(args.get("host", "")), _to_num(args.get("timeout", 3.0)))),
@@ -386,7 +374,7 @@ def _get_handler(processor_id: str):
             _to_num(args.get("timeout", 3.0)),
         )),
         "net_url_parse": lambda args: _ok_json(net_url_parse(str(args.get("url", "")))),
-        
+
         # Validation processors
         "validate_email": lambda args: _ok_bool(validate_email(str(args.get("email", "")))),
         "validate_url": lambda args: _ok_bool(validate_url(str(args.get("url", "")))),
@@ -403,7 +391,7 @@ def _get_handler(processor_id: str):
             _to_int(args.get("min", 0)),
             _to_int(args.get("max", 0)),
         )),
-        
+
         # Hash processors
         "hash_md5": lambda args: _ok(hash_md5(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hash_sha1": lambda args: _ok(hash_sha1(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
@@ -411,7 +399,7 @@ def _get_handler(processor_id: str):
         "hash_sha512": lambda args: _ok(hash_sha512(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hash_crc32": lambda args: _ok(hash_crc32(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hash_uuid": lambda args: _ok(hash_uuid()),
-        
+
         # Color processors
         "color_hex_to_rgb": lambda args: _ok(str(color_hex_to_rgb(str(args.get("hex", "#000000"))))),
         "color_rgb_to_hex": lambda args: _ok(color_rgb_to_hex(
@@ -422,13 +410,13 @@ def _get_handler(processor_id: str):
         "color_brightness": lambda args: _ok_number(color_brightness(str(args.get("hex", "#000000")))),
         "color_complementary": lambda args: _ok(color_complementary(str(args.get("hex", "#000000")))),
         "color_random": lambda args: _ok(color_random()),
-        
+
         # Set operations
         "set_union": lambda args: _ok_list(set_union(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))),
         "set_intersection": lambda args: _ok_list(set_intersection(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))),
         "set_difference": lambda args: _ok_list(set_difference(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))),
         "set_unique": lambda args: _ok_list(set_unique(_parse_list(args.get("list", "")))),
-        
+
         # Dictionary operations
         "dict_keys": lambda args: _ok_list(dict_keys(_parse_json(args.get("json", {})))),
         "dict_values": lambda args: _ok_list(dict_values(_parse_json(args.get("json", {})))),
@@ -451,7 +439,7 @@ def _get_handler(processor_id: str):
             _parse_json(args.get("json", {})),
             _parse_list(args.get("keys", "")),
         )),
-        
+
         # String formatting
         "str_format": lambda args: _ok(str_format(str(args.get("template", "")), **_parse_json(args.get("args", {})))),
         "str_pad_left": lambda args: _ok(str_pad_left(
@@ -473,7 +461,7 @@ def _get_handler(processor_id: str):
             str(args.get("text", "")),
             _to_int(args.get("count", 1)),
         )),
-        
+
         # Compression processors
         "compress_gzip": lambda args: _ok(base64.b64encode(compress_gzip(
             str(args.get("text", "")),
@@ -491,13 +479,13 @@ def _get_handler(processor_id: str):
             base64.b64decode(str(args.get("text", ""))),
             str(args.get("encoding", "utf-8")),
         )),
-        
+
         # Environment processors
         "env_get": lambda args: _ok(env_get(str(args.get("key", "")), str(args.get("default", "")))),
         "env_set": lambda args: _ok(env_set(str(args.get("key", "")), str(args.get("value", "")))),
         "env_list": lambda args: _ok_json(env_list()),
         "env_expand": lambda args: _ok(env_expand(str(args.get("text", "")))),
-        
+
         # Math extended processors
         "math_sin": lambda args: _ok_number(math_sin(_to_num(args.get("angle", 0)))),
         "math_cos": lambda args: _ok_number(math_cos(_to_num(args.get("angle", 0)))),
@@ -509,7 +497,7 @@ def _get_handler(processor_id: str):
         "math_lcm": lambda args: _ok_number(math_lcm(_to_int(args.get("a", 0)), _to_int(args.get("b", 0)))),
         "math_fibonacci": lambda args: _ok_list(math_fibonacci(_to_int(args.get("count", 10)))),
     }
-    
+
     return handlers.get(processor_id)
 
 

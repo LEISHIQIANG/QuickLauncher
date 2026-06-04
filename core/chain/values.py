@@ -30,7 +30,7 @@ __all__ = [
 
 class ChainValueKind:
     """Constants for chain value types."""
-    
+
     ANY = "any"
     TEXT = "text"
     JSON = "json"
@@ -51,7 +51,7 @@ KNOWN_KINDS = ChainValueKind.ALL
 @dataclass(frozen=True)
 class ChainValue:
     """A typed value in the action chain.
-    
+
     Attributes:
         kind: The type kind (text, number, bool, json, list, file, folder, url)
         value: The actual value (may be coerced to the appropriate type)
@@ -59,7 +59,7 @@ class ChainValue:
         preview: Short preview text for display
         metadata: Additional metadata about the value
     """
-    
+
     kind: str
     value: Any
     text: str
@@ -90,22 +90,22 @@ class ChainValue:
 
 def make_chain_value(value: Any, kind: str = ChainValueKind.ANY, *, metadata: dict[str, Any] | None = None) -> ChainValue:
     """Create a ChainValue from a raw value.
-    
+
     Args:
         value: The raw value
         kind: The target kind (default: ANY for auto-detection)
         metadata: Optional metadata
-        
+
     Returns:
         ChainValue instance
     """
     normalized_kind = _normalize_kind(kind)
     coerced = _coerce_value(value, normalized_kind)
     text = value_to_text(coerced)
-    
+
     if normalized_kind == ChainValueKind.ANY:
         normalized_kind = infer_kind(coerced)
-    
+
     return ChainValue(
         kind=normalized_kind,
         value=coerced,
@@ -117,11 +117,11 @@ def make_chain_value(value: Any, kind: str = ChainValueKind.ANY, *, metadata: di
 
 def chain_value_to_dict(value: Any, kind: str = ChainValueKind.ANY) -> dict[str, Any]:
     """Convert a value to a ChainValue dictionary.
-    
+
     Args:
         value: The value to convert
         kind: The target kind
-        
+
     Returns:
         ChainValue dictionary
     """
@@ -134,11 +134,11 @@ def chain_value_to_dict(value: Any, kind: str = ChainValueKind.ANY) -> dict[str,
 
 def typed_mapping(values: dict[str, Any], port_kinds: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
     """Create typed mappings for a dictionary of values.
-    
+
     Args:
         values: Dictionary of values
         port_kinds: Optional dictionary mapping port IDs to kinds
-        
+
     Returns:
         Dictionary of ChainValue dictionaries
     """
@@ -151,10 +151,10 @@ def typed_mapping(values: dict[str, Any], port_kinds: dict[str, str] | None = No
 
 def value_to_text(value: Any) -> str:
     """Convert a value to text representation.
-    
+
     Args:
         value: The value to convert
-        
+
     Returns:
         Text representation
     """
@@ -171,12 +171,12 @@ def value_to_text(value: Any) -> str:
 
 def preview_text(value: Any, kind: str = ChainValueKind.ANY, *, limit: int = 800) -> str:
     """Generate preview text for a value.
-    
+
     Args:
         value: The value
         kind: The value kind
         limit: Maximum preview length
-        
+
     Returns:
         Preview text
     """
@@ -190,7 +190,7 @@ def preview_text(value: Any, kind: str = ChainValueKind.ANY, *, limit: int = 800
         text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     else:
         text = value_to_text(value)
-    
+
     text = text.replace("\r\n", "\n")
     if len(text) > limit:
         return text[:limit] + f"... ({len(text)} chars)"
@@ -199,10 +199,10 @@ def preview_text(value: Any, kind: str = ChainValueKind.ANY, *, limit: int = 800
 
 def infer_kind(value: Any) -> str:
     """Infer the kind of a value.
-    
+
     Args:
         value: The value to infer
-        
+
     Returns:
         Inferred kind string
     """
@@ -221,10 +221,10 @@ def infer_kind(value: Any) -> str:
 
 def raw_value(value: Any) -> Any:
     """Extract the raw value from a ChainValue or dict.
-    
+
     Args:
         value: The value to extract from
-        
+
     Returns:
         Raw value
     """
@@ -247,13 +247,13 @@ def _coerce_value(value: Any, kind: str) -> Any:
     """Coerce a value to the specified kind."""
     if isinstance(value, ChainValue):
         value = value.value
-    
+
     if kind == ChainValueKind.BOOL:
         if isinstance(value, bool):
             return value
         text = str(value or "").strip().lower()
         return text in {"1", "true", "yes", "on", "y", "t", "是", "真"}
-    
+
     if kind == ChainValueKind.NUMBER:
         if isinstance(value, int | float) and not isinstance(value, bool):
             return value
@@ -263,7 +263,7 @@ def _coerce_value(value: Any, kind: str) -> Any:
         except (TypeError, ValueError):
             return text
         return int(number) if number.is_integer() else number
-    
+
     if kind == ChainValueKind.JSON:
         if isinstance(value, dict | list):
             return value
@@ -274,7 +274,7 @@ def _coerce_value(value: Any, kind: str) -> Any:
             return json.loads(text)
         except Exception:
             return text
-    
+
     if kind == ChainValueKind.LIST:
         if isinstance(value, list):
             return value
@@ -291,23 +291,23 @@ def _coerce_value(value: Any, kind: str) -> Any:
             except Exception:
                 pass
         return [line for line in text.splitlines() if line]
-    
+
     if kind == ChainValueKind.FILE:
         return _coerce_to_path(value)
-    
+
     if kind == ChainValueKind.FOLDER:
         return _coerce_to_path(value)
-    
+
     if kind == ChainValueKind.URL:
         return _coerce_to_url(value)
-    
+
     return "" if value is None else value
 
 
 def _coerce_to_path(value: Any) -> str:
     """Coerce a value to a file/folder path string."""
     import os
-    
+
     if isinstance(value, ChainValue):
         value = value.value
     if isinstance(value, str):

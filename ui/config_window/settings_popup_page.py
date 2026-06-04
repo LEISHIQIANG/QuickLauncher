@@ -18,7 +18,6 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
-from ui.config_window.mouse_key_recorder import MouseKeyRecorderWidget
 from ui.config_window.input_trigger_recorder import InputTriggerRecorderWidget
 from ui.config_window.settings_helpers import NumberedListDelegate
 from ui.tooltip_helper import install_tooltip

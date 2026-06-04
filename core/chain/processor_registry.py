@@ -11,20 +11,16 @@ This module provides a comprehensive processor registry system with:
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from .definitions import (
-    ChainProcessorDefinition,
-    ChainPortDefinition,
-    ChainParamDefinition,
-    ChainProcessorSafety,
-    ChainProcessorExample,
-    KNOWN_PROCESSOR_PORT_KINDS,
     KNOWN_PROCESSOR_PARAM_KINDS,
-    KNOWN_PROCESSOR_SAFETY_LEVELS,
+    KNOWN_PROCESSOR_PORT_KINDS,
     KNOWN_PROCESSOR_PORT_ROLES,
+    KNOWN_PROCESSOR_SAFETY_LEVELS,
+    ChainProcessorDefinition,
 )
 
 __all__ = [
@@ -43,14 +39,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProcessorCategory:
     """A category of processors."""
-    
+
     id: str
     name: str
     description: str = ""
     icon: str = ""
     order: int = 0
     processors: list[str] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -65,23 +61,23 @@ class ProcessorCategory:
 
 class ProcessorRegistry:
     """Central registry for action chain processors.
-    
+
     This class manages:
     - Processor definitions
     - Processor handlers
     - Categories
     - Validation
     """
-    
+
     def __init__(self):
         self._definitions: dict[str, ChainProcessorDefinition] = {}
         self._handlers: dict[str, Callable] = {}
         self._categories: dict[str, ProcessorCategory] = {}
         self._owners: dict[str, str] = {}  # processor_id -> owner
-        
+
         # Initialize default categories
         self._init_default_categories()
-    
+
     def _init_default_categories(self) -> None:
         """Initialize default processor categories."""
         default_categories = [
@@ -142,77 +138,77 @@ class ProcessorRegistry:
                 order=100,
             ),
         ]
-        
+
         for category in default_categories:
             self._categories[category.id] = category
-    
+
     # ── Registration ───────────────────────────────────────────────────────
-    
+
     def register(self, definition: ChainProcessorDefinition,
                  handler: Callable | None = None,
                  owner: str = "") -> bool:
         """Register a processor.
-        
+
         Args:
             definition: Processor definition
             handler: Processor handler function
             owner: Owner identifier (for external processors)
-            
+
         Returns:
             True if registration was successful
         """
         try:
             # Validate definition
             self._validate_definition(definition)
-            
+
             processor_id = definition.id
-            
+
             # Check for conflicts
             if processor_id in self._definitions:
                 existing_owner = self._owners.get(processor_id)
                 if existing_owner and existing_owner != owner:
                     logger.warning("Processor %s already registered by %s", processor_id, existing_owner)
                     return False
-            
+
             # Register
             self._definitions[processor_id] = definition
             if handler:
                 self._handlers[processor_id] = handler
             if owner:
                 self._owners[processor_id] = owner
-            
+
             # Add to category
             category_id = self._get_category_id(definition.category)
             if category_id in self._categories:
                 if processor_id not in self._categories[category_id].processors:
                     self._categories[category_id].processors.append(processor_id)
-            
+
             return True
-            
+
         except Exception as e:
             logger.error("Failed to register processor %s: %s", definition.id, e)
             return False
-    
+
     def unregister(self, processor_id: str) -> bool:
         """Unregister a processor."""
         if processor_id not in self._definitions:
             return False
-        
+
         definition = self._definitions[processor_id]
-        
+
         # Remove from category
         category_id = self._get_category_id(definition.category)
         if category_id in self._categories:
             if processor_id in self._categories[category_id].processors:
                 self._categories[category_id].processors.remove(processor_id)
-        
+
         # Remove
         del self._definitions[processor_id]
         self._handlers.pop(processor_id, None)
         self._owners.pop(processor_id, None)
-        
+
         return True
-    
+
     def unregister_owner(self, owner: str) -> list[str]:
         """Unregister all processors from an owner."""
         removed = []
@@ -221,64 +217,64 @@ class ProcessorRegistry:
                 if self.unregister(processor_id):
                     removed.append(processor_id)
         return removed
-    
+
     # ── Lookup ─────────────────────────────────────────────────────────────
-    
+
     def get_definition(self, processor_id: str) -> ChainProcessorDefinition | None:
         """Get a processor definition by ID."""
         return self._definitions.get(processor_id)
-    
+
     def get_handler(self, processor_id: str) -> Callable | None:
         """Get a processor handler by ID."""
         return self._handlers.get(processor_id)
-    
+
     def has_processor(self, processor_id: str) -> bool:
         """Check if a processor is registered."""
         return processor_id in self._definitions
-    
+
     def list_all(self) -> list[ChainProcessorDefinition]:
         """List all registered processors."""
         return list(self._definitions.values())
-    
+
     def list_ids(self) -> list[str]:
         """List all registered processor IDs."""
         return list(self._definitions.keys())
-    
+
     def iter_definitions(self) -> Iterator[ChainProcessorDefinition]:
         """Iterate over all processor definitions."""
         return iter(self._definitions.values())
-    
+
     # ── Category Operations ────────────────────────────────────────────────
-    
+
     def get_category(self, category_id: str) -> ProcessorCategory | None:
         """Get a category by ID."""
         return self._categories.get(category_id)
-    
+
     def list_categories(self) -> list[ProcessorCategory]:
         """List all categories."""
         return sorted(self._categories.values(), key=lambda c: c.order)
-    
+
     def get_processors_by_category(self, category_id: str) -> list[ChainProcessorDefinition]:
         """Get all processors in a category."""
         category = self._categories.get(category_id)
         if not category:
             return []
-        
+
         return [
             self._definitions[pid]
             for pid in category.processors
             if pid in self._definitions
         ]
-    
+
     def get_category_for_processor(self, processor_id: str) -> ProcessorCategory | None:
         """Get the category for a processor."""
         definition = self._definitions.get(processor_id)
         if not definition:
             return None
-        
+
         category_id = self._get_category_id(definition.category)
         return self._categories.get(category_id)
-    
+
     def _get_category_id(self, category_name: str) -> str:
         """Get category ID from name."""
         # Map category names to IDs
@@ -294,12 +290,12 @@ class ProcessorRegistry:
             "通用": "plugin",
         }
         return name_to_id.get(category_name, "plugin")
-    
+
     # ── Search ─────────────────────────────────────────────────────────────
-    
+
     def search(self, query: str) -> list[ChainProcessorDefinition]:
         """Search processors by query string.
-        
+
         Searches in:
         - Processor ID
         - Title
@@ -309,7 +305,7 @@ class ProcessorRegistry:
         query = query.lower().strip()
         if not query:
             return self.list_all()
-        
+
         results = []
         for definition in self._definitions.values():
             if (query in definition.id.lower() or
@@ -317,69 +313,69 @@ class ProcessorRegistry:
                 query in definition.description.lower() or
                 query in definition.category.lower()):
                 results.append(definition)
-        
+
         return results
-    
+
     # ── Validation ─────────────────────────────────────────────────────────
-    
+
     def _validate_definition(self, definition: ChainProcessorDefinition) -> None:
         """Validate a processor definition."""
         if not definition.id:
             raise ValueError("Processor ID is required")
-        
+
         if not definition.title:
             raise ValueError("Processor title is required")
-        
+
         if not definition.outputs:
             raise ValueError("Processor must have at least one output")
-        
+
         # Validate ports
         input_ids = set()
         for port in definition.inputs:
             if port.id in input_ids:
                 raise ValueError(f"Duplicate input port: {port.id}")
             input_ids.add(port.id)
-            
+
             if port.kind not in KNOWN_PROCESSOR_PORT_KINDS:
                 raise ValueError(f"Unknown port kind: {port.kind}")
-            
+
             if port.role not in KNOWN_PROCESSOR_PORT_ROLES:
                 raise ValueError(f"Unknown port role: {port.role}")
-        
+
         output_ids = set()
         for port in definition.outputs:
             if port.id in output_ids:
                 raise ValueError(f"Duplicate output port: {port.id}")
             output_ids.add(port.id)
-            
+
             if port.kind not in KNOWN_PROCESSOR_PORT_KINDS:
                 raise ValueError(f"Unknown port kind: {port.kind}")
-            
+
             if port.role not in KNOWN_PROCESSOR_PORT_ROLES:
                 raise ValueError(f"Unknown port role: {port.role}")
-        
+
         # Validate params
         param_ids = set()
         for param in definition.params:
             if param.id in param_ids:
                 raise ValueError(f"Duplicate param: {param.id}")
             param_ids.add(param.id)
-            
+
             if param.kind not in KNOWN_PROCESSOR_PARAM_KINDS:
                 raise ValueError(f"Unknown param kind: {param.kind}")
-        
+
         # Validate safety
         if definition.safety.level not in KNOWN_PROCESSOR_SAFETY_LEVELS:
             raise ValueError(f"Unknown safety level: {definition.safety.level}")
-    
+
     # ── Documentation ──────────────────────────────────────────────────────
-    
+
     def generate_documentation(self, processor_id: str) -> str:
         """Generate documentation for a processor."""
         definition = self._definitions.get(processor_id)
         if not definition:
             return ""
-        
+
         lines = []
         lines.append(f"# {definition.title}")
         lines.append("")
@@ -391,7 +387,7 @@ class ProcessorRegistry:
         lines.append("")
         lines.append(definition.description)
         lines.append("")
-        
+
         # Inputs
         if definition.inputs:
             lines.append("## Inputs")
@@ -402,7 +398,7 @@ class ProcessorRegistry:
                 required = "Yes" if port.required else "No"
                 lines.append(f"| `{port.id}` | {port.label} | {port.kind} | {required} | {port.description} |")
             lines.append("")
-        
+
         # Outputs
         if definition.outputs:
             lines.append("## Outputs")
@@ -412,7 +408,7 @@ class ProcessorRegistry:
             for port in definition.outputs:
                 lines.append(f"| `{port.id}` | {port.label} | {port.kind} | {port.description} |")
             lines.append("")
-        
+
         # Parameters
         if definition.params:
             lines.append("## Parameters")
@@ -423,7 +419,7 @@ class ProcessorRegistry:
                 default = param.default if param.default else "-"
                 lines.append(f"| `{param.id}` | {param.label} | {param.kind} | {default} | {param.description} |")
             lines.append("")
-        
+
         # Examples
         if definition.examples:
             lines.append("## Examples")
@@ -443,7 +439,7 @@ class ProcessorRegistry:
                     lines.append(json.dumps(example.expected, indent=2, ensure_ascii=False))
                     lines.append("```")
                 lines.append("")
-        
+
         # Safety
         lines.append("## Safety")
         lines.append("")
@@ -459,36 +455,36 @@ class ProcessorRegistry:
         if definition.safety.requires_confirmation:
             lines.append("- Requires confirmation")
         lines.append("")
-        
+
         return "\n".join(lines)
-    
+
     def generate_index(self) -> str:
         """Generate an index of all processors."""
         lines = []
         lines.append("# Action Chain Processors")
         lines.append("")
-        
+
         for category in self.list_categories():
             processors = self.get_processors_by_category(category.id)
             if not processors:
                 continue
-            
+
             lines.append(f"## {category.name}")
             lines.append("")
             if category.description:
                 lines.append(category.description)
                 lines.append("")
-            
+
             lines.append("| ID | Title | Description |")
             lines.append("|-----|-------|-------------|")
             for proc in processors:
                 lines.append(f"| `{proc.id}` | {proc.title} | {proc.description} |")
             lines.append("")
-        
+
         return "\n".join(lines)
-    
+
     # ── Statistics ─────────────────────────────────────────────────────────
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get registry statistics."""
         return {
