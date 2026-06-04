@@ -154,8 +154,7 @@ class PopupRendererMixin:
                 painter.save()
                 # 图片模式下的透明度 (0=透明, 100=不透明)
                 paint_alpha = self.settings.bg_alpha / 100.0
-                if is_win10():
-                    paint_alpha = max(0.97, paint_alpha)
+                # Win10 图片模式允许完整的透明度控制
                 painter.setOpacity(max(0.0, min(1.0, paint_alpha)))
                 # 绘制到 path 区域
                 # 需要设置 Clip Path，因为图片本身可能比内容区域大 (或者我们调整绘制位置)

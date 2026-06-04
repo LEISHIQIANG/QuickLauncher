@@ -261,6 +261,15 @@ class PopupBackgroundMixin:
                 self._bg_load_timer.start(120)
         except Exception as exc:
             logger.debug("调度背景加载失败: %s", exc, exc_info=True)
+
+        # Win10: 在加载新背景时使用回退背景，避免闪烁到纯色
+        try:
+            from ui.utils.window_effect import is_win10
+            if is_win10() and hasattr(self, '_win10_fallback_bg') and self._win10_fallback_bg:
+                return self._win10_fallback_bg
+        except Exception:
+            pass
+
         return None
 
     def _schedule_bg_load(self):
@@ -321,5 +330,13 @@ class PopupBackgroundMixin:
 
     def _release_background_cache(self):
         """Release instance background pixmaps when the popup is hidden."""
+        # Win10: 保留最后一个有效的背景作为回退，避免重新显示时闪烁
+        if self._bg_cache:
+            try:
+                from ui.utils.window_effect import is_win10
+                if is_win10():
+                    self._win10_fallback_bg = self._bg_cache
+            except Exception:
+                pass
         self._bg_cache = None
         self._last_bg_params = None

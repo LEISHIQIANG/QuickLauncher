@@ -240,6 +240,7 @@ class LauncherPopup(
         self._bg_cache = None
         self._last_bg_params = None
         self._cached_bg_path = None
+        self._win10_fallback_bg = None  # Win10回退背景，避免重新显示时闪烁
 
         # 布局参数
         self.padding = 8
