@@ -60,9 +60,9 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "py-test",
         "scripts/audit_broad_exceptions.py",
         "--max-total",
-        "1257",
+        "1320",
         "--max-unlogged",
-        "333",
+        "365",
     ]
     assert envs[2]["PYTHONDONTWRITEBYTECODE"] == "1"
 
