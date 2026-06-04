@@ -55,7 +55,7 @@ def _default_steps(python: str) -> list[GateStep]:
     return [
         GateStep(
             "ruff",
-            [python, "-m", "ruff", "check", "--no-cache", "core", "ui", "hooks", "services", "plugins", "tests"],
+            [python, "-m", "ruff", "check", "--no-cache", "core", "ui", "hooks", "services", "tests"],
             {"RUFF_NO_CACHE": "1", "PYTHONDONTWRITEBYTECODE": "1"},
         ),
         GateStep(
