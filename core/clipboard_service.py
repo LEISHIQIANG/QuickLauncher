@@ -374,7 +374,11 @@ class Win32ClipboardImpl:
             import win32clipboard
 
             return win32clipboard.IsClipboardFormatAvailable(format_id)
-        except Exception:
+        except ImportError as exc:
+            logger.debug("win32clipboard不可用，无法检测剪贴板格式: %s", exc, exc_info=True)
+            return False
+        except win32clipboard.error as exc:
+            logger.debug("检测剪贴板格式可用性失败: %s", exc, exc_info=True)
             return False
 
     @staticmethod
@@ -483,7 +487,8 @@ class Win32ClipboardImpl:
                 if fmt in {win32con.CF_UNICODETEXT, win32con.CF_TEXT, CF_HDROP}:
                     snapshot.formats[fmt] = data
 
-        except Exception as e:
+        except (win32clipboard.error, ClipboardError, OSError, RuntimeError, TypeError, ValueError) as e:
+            logger.debug("读取剪贴板快照失败: %s", e, exc_info=True)
             snapshot.error = str(e)
         finally:
             try:
@@ -608,7 +613,8 @@ class QtClipboardImpl:
 
             cb = QApplication.clipboard()
             return cb.text() or ""
-        except Exception:
+        except (ImportError, RuntimeError, AttributeError) as exc:
+            logger.debug("读取Qt剪贴板文本失败: %s", exc, exc_info=True)
             return ""
 
     @staticmethod
@@ -618,7 +624,8 @@ class QtClipboardImpl:
 
             QApplication.clipboard().setText(text)
             return True
-        except Exception:
+        except (ImportError, RuntimeError, AttributeError) as exc:
+            logger.debug("写入Qt剪贴板文本失败: %s", exc, exc_info=True)
             return False
 
 
