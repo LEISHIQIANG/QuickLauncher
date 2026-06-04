@@ -2244,7 +2244,9 @@ class CommandExecutionMixin:
                         update_callback=lambda r: set_pending_command_result(r),
                     )
                     result = cmd_def.handler(ctx)
-                    set_pending_command_result(result)
+                    payload = result.payload if isinstance(getattr(result, "payload", {}), dict) else {}
+                    if not payload.get("_suppress_result_panel"):
+                        set_pending_command_result(result)
                     return result.success
         except Exception as exc:
             logger.debug("执行内置命令失败: %s", exc, exc_info=True)

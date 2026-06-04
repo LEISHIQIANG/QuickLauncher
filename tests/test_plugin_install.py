@@ -13,7 +13,7 @@ import pytest
 
 from core.command_registry import CommandRegistry
 from core.path_security import UnsafePathError
-from core.plugin_manager import PluginManager
+from core.plugin_manager import PLUGIN_PACKAGE_MAX_FILES, PluginManager
 
 pytestmark = pytest.mark.ui
 
@@ -296,11 +296,11 @@ class TestInstallFromZipValidation:
             zip_path = os.path.join(tmp, "too_many.qlzip")
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("plugin.json", json.dumps({"id": "big", "name": "Big", "version": "1", "entry": "main.py"}))
-                for i in range(501):
+                for i in range(PLUGIN_PACKAGE_MAX_FILES + 1):
                     zf.writestr(f"file_{i}.txt", "x")
 
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
-            with pytest.raises(ValueError, match="文件过多|500"):
+            with pytest.raises(ValueError, match=rf"文件过多|{PLUGIN_PACKAGE_MAX_FILES}"):
                 pm.install_from_package(zip_path)
 
     def test_rejects_encrypted_archive_entries(self, monkeypatch):

@@ -192,7 +192,7 @@ def datetime_format(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
                 return dt.strftime(format_str)
             except ValueError:
                 continue
-        raise ValueError from None(f"无法解析日期时间: {dt_str}")
+        raise ValueError(f"无法解析日期时间: {dt_str}") from None
 
 
 def datetime_parse(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> dict[str, Any]:

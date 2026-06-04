@@ -41,13 +41,23 @@ def test_manifest_version_matches_core_version():
     assert identity.attrib["version"] == APP_VERSION
 
 
-def test_win11_build_defaults_to_performance_profile_and_includes_plugins():
+def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     script = (ROOT / "scripts" / "build_win11_setup.bat").read_text(encoding="utf-8")
 
     assert 'if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=smooth"' in script
-    assert "--include-data-dir=plugins=plugins" in script
+    assert '--min 3.12 --max 3.12 --prefer "3.12"' in script
+    assert "plugin-bundled wxPython is cp312" in script
+    assert "--include-data-dir=plugins=plugins" not in script
     assert "--include-data-files=plugins\\PLUGIN_DEV.md=PLUGIN_DEV.md" in script
-    assert 'xcopy "plugins" "dist\\QuickLauncher\\plugins\\" /E /I /Y' in script
+    assert "wxPython==" not in script
+    assert "--include-module=wx" not in script
+    assert "--include-package=wx" not in script
+    assert "wechat-ocr" not in script
+    assert "wechat_ocr" not in script
+    assert "google.protobuf" not in script
+    assert 'xcopy "plugins" "dist\\QuickLauncher\\plugins\\" /E /I /Y' not in script
+    assert 'mkdir "dist\\QuickLauncher\\plugins"' in script
+    assert 'dist\\QuickLauncher\\.plugins' not in script
     assert 'copy /Y "plugins\\PLUGIN_DEV.md" "dist\\QuickLauncher\\"' in script
     assert "Failed to remove old dist\\QuickLauncher" in script
     assert 'robocopy "dist\\main.dist" "dist\\QuickLauncher" /MIR' in script
@@ -77,12 +87,10 @@ def test_release_artifact_checker_validates_dist_tree(tmp_path):
     dist = tmp_path / "QuickLauncher"
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
-    (dist / "plugins" / "sample").mkdir(parents=True)
+    (dist / "plugins").mkdir()
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "plugins" / "sample" / "plugin.json").write_text("{}", encoding="utf-8")
-    (dist / "plugins" / "sample" / "main.py").write_text("pass\n", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -116,8 +124,6 @@ def test_release_artifact_checker_rejects_pycache(tmp_path):
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "plugins" / "sample" / "plugin.json").write_text("{}", encoding="utf-8")
-    (dist / "plugins" / "sample" / "main.py").write_text("pass\n", encoding="utf-8")
     # Simulate __pycache__ debris that should be caught
     pycache = dist / "plugins" / "sample" / "__pycache__"
     pycache.mkdir()

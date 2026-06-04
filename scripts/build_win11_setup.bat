@@ -106,21 +106,21 @@ if not defined SELECTOR_PY (
 
 if not defined SELECTOR_PY (
     echo   [X] No Python found to run the build interpreter selector.
-    echo   Please install Python 3.11 or 3.12 and ensure python.exe or py.exe is available.
+    echo   Please install Python 3.12 and ensure python.exe or py.exe is available.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
 
-!SELECTOR_PY! scripts\select_build_python.py --min 3.11 --max 3.12 --prefer "3.12,3.11" --explain
+!SELECTOR_PY! scripts\select_build_python.py --min 3.12 --max 3.12 --prefer "3.12" --explain
 if !ERRORLEVEL! NEQ 0 (
     echo.
-    echo   [ERROR] Nuitka build requires 64-bit CPython 3.9-3.12.
-    echo   Python 3.13 is detected but intentionally skipped for this build.
+    echo   [ERROR] Nuitka build requires 64-bit CPython 3.12.
+    echo   Python 3.11/3.13 are intentionally skipped because plugin-bundled wxPython is cp312.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
 
-for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.11 --max 3.12 --prefer "3.12,3.11" --cmd') do set "PYTHON_CMD=%%p"
+for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.12 --max 3.12 --prefer "3.12" --cmd') do set "PYTHON_CMD=%%p"
 if not defined PYTHON_CMD (
     echo   [X] Failed to select Python interpreter.
     if "%QL_NO_PAUSE%"=="" pause
@@ -226,7 +226,6 @@ REM no-UPX default and explicit manifest embedding below.
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
-    --include-data-dir=plugins=plugins ^
     --include-data-files=plugins\PLUGIN_DEV.md=PLUGIN_DEV.md ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
@@ -499,25 +498,17 @@ if exist "assets\support.jpg" (
     echo   [Warning] assets\support.jpg not found, support dialog will use fallback placeholder.
 )
 
-REM Nuitka treats Python files as code, so include-data-dir is not enough for
-REM local plugin source files. Copy plugins explicitly to guarantee every
-REM packaged plugin keeps plugin.json, main.py and README.md.
-echo   Copying bundled plugins...
-if exist "plugins" (
-    if exist "dist\QuickLauncher\plugins" rmdir /s /q "dist\QuickLauncher\plugins" >nul 2>&1
-    xcopy "plugins" "dist\QuickLauncher\plugins\" /E /I /Y >nul
-    if !ERRORLEVEL! GEQ 4 (
-        echo   [X] Failed to copy bundled plugins.
-        if "%QL_NO_PAUSE%"=="" pause
-        exit /b 1
-    )
-    REM Clean __pycache__ and .pyc from staged plugins to keep release clean
-    for /r "dist\QuickLauncher\plugins" %%d in (__pycache__) do if exist "%%d" rmdir /s /q "%%d" >nul 2>&1
-    for /r "dist\QuickLauncher\plugins" %%f in (*.pyc) do if exist "%%f" del /q "%%f" >nul 2>&1
-    echo   [OK] Plugins copied and cleaned of __pycache__ / .pyc.
-) else (
-    echo   [Warning] plugins directory not found, skipping bundled plugins.
+REM Runtime plugins are installed by users from .qlzip packages. The packaged
+REM app ships only an empty plugins directory as the installation target.
+echo   Creating empty plugin installation directory...
+if exist "dist\QuickLauncher\plugins" rmdir /s /q "dist\QuickLauncher\plugins" >nul 2>&1
+mkdir "dist\QuickLauncher\plugins" >nul 2>&1
+if not exist "dist\QuickLauncher\plugins" (
+    echo   [X] Failed to create plugin installation directory.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
 )
+echo   [OK] Plugin installation directory ready.
 
 if exist "plugins\PLUGIN_DEV.md" (
     copy /Y "plugins\PLUGIN_DEV.md" "dist\QuickLauncher\" >nul

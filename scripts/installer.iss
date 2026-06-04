@@ -175,7 +175,8 @@ begin
       repeat
         if (FindRec.Name <> '.') and (FindRec.Name <> '..') and
            (FindRec.Name <> 'config') and (FindRec.Name <> 'assets') and (FindRec.Name <> 'icons') and
-           (FindRec.Name <> 'temp_icons') and (FindRec.Name <> 'plugins') then
+           (FindRec.Name <> 'temp_icons') and (FindRec.Name <> 'plugins') and
+           (FindRec.Name <> '.plugins') then
         begin
           FilePath := InstallDir + '\' + FindRec.Name;
 

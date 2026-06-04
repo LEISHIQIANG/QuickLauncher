@@ -1,23 +1,53 @@
 from __future__ import annotations
 
+import importlib.util
+import subprocess
+import sys
+import zipfile
 from pathlib import Path
 
 from core.command_registry import CommandContext, CommandRegistry
 from core.plugin_manager import PluginManager
 
 
-def _load_registry() -> CommandRegistry:
-    plugins_dir = Path(__file__).resolve().parents[1] / "plugins"
+ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_PACKAGE_DIR = ROOT / ".plugins"
+
+
+def _load_module(plugin_dir: Path, plugin_id: str):
+    module_path = plugin_dir / plugin_id / "main.py"
+    spec = importlib.util.spec_from_file_location(f"sample_plugin_{plugin_id}", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _install_sample_packages(tmp_path: Path, plugin_ids: tuple[str, ...]) -> tuple[CommandRegistry, PluginManager]:
+    install_dir = tmp_path / "plugins"
+    install_dir.mkdir()
     registry = CommandRegistry()
-    manager = PluginManager(registry, plugins_dir=str(plugins_dir))
+    manager = PluginManager(registry, plugins_dir=str(install_dir))
+    for plugin_id in plugin_ids:
+        package_path = PLUGIN_PACKAGE_DIR / f"{plugin_id}.qlzip"
+        assert package_path.is_file()
+        assert manager.install_from_package(str(package_path)) == plugin_id
     manager.scan_plugins()
-    for plugin_id in ("file_tools", "process_tools", "startup_tools", "network_tools", "api_tester"):
+    for plugin_id in plugin_ids:
         assert manager.load_plugin(plugin_id) is True
+    return registry, manager
+
+
+def _load_registry(tmp_path: Path) -> CommandRegistry:
+    registry, _manager = _install_sample_packages(
+        tmp_path,
+        ("file_tools", "process_tools", "startup_tools", "network_tools", "api_tester"),
+    )
     return registry
 
 
-def test_sample_plugins_load_and_register_commands():
-    registry = _load_registry()
+def test_sample_plugins_load_and_register_commands(tmp_path):
+    registry = _load_registry(tmp_path)
 
     for command_id in (
         "file_tools.copy_path",
@@ -34,13 +64,8 @@ def test_sample_plugins_load_and_register_commands():
         assert registry.get(command_id) is not None
 
 
-def test_plugin_commands_are_discoverable_by_plugin_name():
-    plugins_dir = Path(__file__).resolve().parents[1] / "plugins"
-    registry = CommandRegistry()
-    manager = PluginManager(registry, plugins_dir=str(plugins_dir))
-    manager.scan_plugins()
-
-    assert manager.load_plugin("text_tools") is True
+def test_plugin_commands_are_discoverable_by_plugin_name(tmp_path):
+    registry, _manager = _install_sample_packages(tmp_path, ("text_tools",))
 
     results = registry.find("text")
     result_ids = {cmd.id for cmd in results}
@@ -49,8 +74,59 @@ def test_plugin_commands_are_discoverable_by_plugin_name():
     assert "text_tools.case" in result_ids
 
 
-def test_disk_cleaner_uses_plugin_api_for_elevation():
-    import plugins.disk_cleaner.main as disk_cleaner
+def test_screenshot_ocr_package_bundles_wx_library_without_python_runtime():
+    package_path = PLUGIN_PACKAGE_DIR / "screenshot_ocr.qlzip"
+    assert package_path.is_file()
+
+    with zipfile.ZipFile(package_path) as archive:
+        names = set(archive.namelist())
+
+    assert "screenshot_ocr/runtime/site-packages/wx/__init__.py" in names
+    assert not any(name.lower().endswith("python.exe") for name in names)
+    assert not any(name.lower().endswith("python312.dll") for name in names)
+
+
+def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
+    _registry, manager = _install_sample_packages(tmp_path, ("screenshot_ocr",))
+    plugin_dir = Path(manager.plugins_dir) / "screenshot_ocr"
+    site_packages = plugin_dir / "runtime" / "site-packages"
+    helper = tmp_path / "helper_import_wx.py"
+    helper.write_text(
+        "import sys\n"
+        "import wx\n"
+        "print('WX_OK=' + wx.version())\n"
+        "print('ARGS=' + ','.join(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "main.py"),
+            "--plugin-helper",
+            str(helper),
+            "--plugin-site",
+            str(site_packages),
+            "--",
+            "a",
+            "b",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "WX_OK=" in completed.stdout
+    assert "ARGS=a,b" in completed.stdout
+
+
+def test_disk_cleaner_uses_plugin_api_for_elevation(tmp_path):
+    _registry, manager = _install_sample_packages(tmp_path, ("disk_cleaner",))
+    disk_cleaner = _load_module(Path(manager.plugins_dir), "disk_cleaner")
 
     class FakeAPI:
         def __init__(self):
@@ -73,8 +149,8 @@ def test_disk_cleaner_uses_plugin_api_for_elevation():
     assert api.calls == [("cmd.exe", "/c echo ok", "", False, True)]
 
 
-def test_process_and_startup_plugin_handlers():
-    registry = _load_registry()
+def test_process_and_startup_plugin_handlers(tmp_path):
+    registry = _load_registry(tmp_path)
 
     find_result = registry.get("process_tools.find").handler(CommandContext())
     assert find_result.success is False
@@ -93,8 +169,9 @@ def test_process_and_startup_plugin_handlers():
     assert path_result.payload["items"][0]["title"] == "PATH 条目数"
 
 
-def test_network_plugin_returns_log_payload(monkeypatch):
-    import plugins.network_tools.main as network_tools
+def test_network_plugin_returns_log_payload(tmp_path, monkeypatch):
+    _registry, manager = _install_sample_packages(tmp_path, ("network_tools",))
+    network_tools = _load_module(Path(manager.plugins_dir), "network_tools")
 
     monkeypatch.setattr(network_tools, "_run_cmd", lambda args, timeout=10: (True, "network output"))
 
@@ -111,7 +188,8 @@ def test_network_plugin_returns_log_payload(monkeypatch):
 
 
 def test_api_tester_request_returns_log_metadata(tmp_path, monkeypatch):
-    import plugins.api_tester.main as api_tester
+    _registry, manager = _install_sample_packages(tmp_path, ("api_tester",))
+    api_tester = _load_module(Path(manager.plugins_dir), "api_tester")
 
     class FakeHeaders:
         def get(self, key, default=""):
@@ -148,7 +226,7 @@ def test_api_tester_request_returns_log_metadata(tmp_path, monkeypatch):
 
 
 def test_file_plugin_handlers(tmp_path):
-    registry = _load_registry()
+    registry = _load_registry(tmp_path)
     sample = tmp_path / "sample.txt"
     sample.write_text("hello", encoding="utf-8")
 

@@ -11,6 +11,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+OFFICIAL_PLUGIN_PACKAGE_IDS = (
+    "api_tester",
+    "disk_cleaner",
+    "event_inspector",
+    "file_tools",
+    "network_tools",
+    "process_tools",
+    "screenshot_ocr",
+    "startup_tools",
+    "text_tools",
+)
 
 
 @dataclass
@@ -92,11 +103,15 @@ def check_source_metadata(root: Path = ROOT, version: str | None = None) -> Rele
     _require_dir(errors, plugins_dir)
     if plugins_dir.is_dir():
         plugin_dirs = [p for p in plugins_dir.iterdir() if p.is_dir()]
-        if not plugin_dirs:
-            errors.append("plugins directory has no bundled plugins")
         for plugin_dir in plugin_dirs:
-            _require_file(errors, plugin_dir / "plugin.json")
-            _require_file(errors, plugin_dir / "main.py")
+            if (plugin_dir / "plugin.json").is_file():
+                errors.append(f"source plugins directory must not bundle runtime plugin: {plugin_dir}")
+
+    plugin_package_dir = root / ".plugins"
+    _require_dir(errors, plugin_package_dir)
+    if plugin_package_dir.is_dir():
+        for plugin_id in OFFICIAL_PLUGIN_PACKAGE_IDS:
+            _require_file(errors, plugin_package_dir / f"{plugin_id}.qlzip")
 
     return ReleaseCheckResult(ok=not errors, errors=errors, manifest=manifest)
 
@@ -169,7 +184,7 @@ def check_release_artifacts(
 
     if (dist_dir / "plugins").is_dir():
         for plugin_json in sorted((dist_dir / "plugins").glob("*/plugin.json")):
-            _require_file(errors, plugin_json.parent / "main.py")
+            errors.append(f"release must not contain bundled plugin source: {plugin_json.parent}")
 
     for key, path in {
         "exe": dist_dir / "QuickLauncher.exe",

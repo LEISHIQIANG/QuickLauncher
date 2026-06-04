@@ -6,6 +6,7 @@ import types
 import pytest
 
 import core.shortcut_command_exec as command_exec
+from core.command_registry import CommandDefinition, CommandResult, take_pending_command_result
 from core.data_models import ShortcutItem, ShortcutType
 
 pytestmark = pytest.mark.ui
@@ -354,6 +355,36 @@ def test_ui_builtin_defers_callback_outside_qt_main_thread(monkeypatch):
 
     assert command_exec.CommandExecutionMixin._execute_builtin_command("show_help")
     assert called == {}
+
+
+def test_builtin_command_can_suppress_result_panel(monkeypatch):
+    import core
+
+    take_pending_command_result()
+
+    cmd = CommandDefinition(
+        id="suppress",
+        title="Suppress",
+        aliases=[],
+        description="",
+        category="",
+        handler=lambda ctx: CommandResult(success=True, message="cancelled", payload={"_suppress_result_panel": True}),
+    )
+
+    class FakeRegistry:
+        def count(self):
+            return 1
+
+        def get(self, command_id):
+            return cmd if command_id == "suppress" else None
+
+        def get_canonical(self, command_id):
+            return ""
+
+    monkeypatch.setattr(core, "registry", FakeRegistry())
+
+    assert command_exec.CommandExecutionMixin._execute_builtin_command("suppress") is True
+    assert take_pending_command_result() is None
 
 
 def test_python_variables_are_disabled_by_default(monkeypatch):

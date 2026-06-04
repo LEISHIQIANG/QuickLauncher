@@ -69,6 +69,7 @@ def test_unknown_permission():
 def test_known_permissions():
     assert "clipboard.read" in PERMISSIONS_KNOWN
     assert "process.run" in PERMISSIONS_KNOWN
+    assert "builtin.command" in PERMISSIONS_KNOWN
     assert "network.request" in PERMISSIONS_KNOWN
 
 
@@ -381,6 +382,30 @@ class TestPluginManagerLoad:
             assert reg.get("sample.hello") is None
             info = pm.get_plugin("sample")
             assert info.status == "disabled"
+
+    def test_disable_plugin_removes_builtin_commands_registered_by_plugin(self):
+        main_py = """
+from core.command_registry import CommandResult
+
+def register(api):
+    api.register_builtin_command(
+        id="screenshot-ocr",
+        title="截图OCR",
+        aliases=["截图ocr"],
+        handler=lambda ctx: CommandResult(success=True, message="ok"),
+    )
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(tmp, "screenshot_ocr", permissions=["builtin.command"], main_py=main_py)
+            reg = CommandRegistry()
+            pm = PluginManager(reg, plugins_dir=tmp)
+            pm.scan_plugins()
+            assert pm.load_plugin("screenshot_ocr") is True
+            assert reg.get("screenshot-ocr") is not None
+            assert reg.get("screenshot-ocr").source == "plugin-builtin:screenshot_ocr"
+            assert pm.disable_plugin("screenshot_ocr") is True
+            assert reg.get("screenshot-ocr") is None
+            assert reg.get_canonical("截图ocr") == ""
 
     def test_plugin_can_register_and_cleanup_chain_processor(self):
         from core.chain_processors import execute_chain_processor, processor_definition
@@ -736,6 +761,32 @@ class TestPluginAPI:
         cmd = reg.get("my_plugin.params")
         assert [p.name for p in cmd.params] == ["name", "mode"]
         assert cmd.params[1].choices == ["a", "b"]
+
+    def test_register_builtin_command_requires_permission(self):
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
+        with pytest.raises(PermissionError):
+            api.register_builtin_command(
+                id="my-builtin",
+                title="Builtin",
+                handler=lambda ctx: CommandResult(success=True),
+            )
+
+    def test_register_builtin_command_source_and_plain_id(self):
+        reg = CommandRegistry()
+        api = PluginAPI("my_plugin", os.getcwd(), ["builtin.command"], reg)
+        ok = api.register_builtin_command(
+            id="my-builtin",
+            title="Builtin",
+            aliases=["builtin-test"],
+            handler=lambda ctx: CommandResult(success=True),
+        )
+        assert ok is True
+        assert api.commit_staged() is True
+        cmd = reg.get("my-builtin")
+        assert cmd is not None
+        assert cmd.source == "plugin-builtin:my_plugin"
+        assert reg.get_canonical("builtin-test") == "my-builtin"
 
     def test_register_chain_processor_api(self):
         from core.chain_processors import (

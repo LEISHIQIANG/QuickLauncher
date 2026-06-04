@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
+- 新增独立 `.qlzip` 形式的“截图OCR”插件包，通过插件 API 注册为内置命令，点击后进入截图框选并将 OCR 结果显示到命令面板。
+- `main.py` 新增 `--plugin-helper` 子进程入口，支持插件包自带 Python 库并由主程序运行时加载。
+- 官方插件从运行时 `plugins/` 目录剥离为 `.plugins/*.qlzip` 安装包，主程序打包后只保留空插件安装目录。
 - 弹窗触发支持自定义触发按键和特殊触发按键，可选键盘模式、鼠标模式或混合模式。
 - 命令面板新增参数 invocation 快照、runtime shortcut 副本、非敏感参数历史恢复和 `{{input}}` 统一传递。
 - 新增命令输出 artifact 与 `payload["outputs"]` 契约，支持输出归一化、截断、动作链命名输出传递和默认结果动作补全。
@@ -31,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Changed
 
+- `core/plugin_manager.py`：将插件命令软超时从 10 秒调整为 30 秒。
+- `core/plugin_manager.py`：新增受 `builtin.command` 权限保护的插件内置命令注册接口。
+- `core/plugin_manager.py`：`.qlzip` 安装限制调整为解压后 150 MB / 1000 文件，支持 OCR 资源类大型插件。
+- `scripts/build_win11_setup.bat`：不再把插件源码复制进发布包，只创建空 `plugins` 安装目录。
+- `ui/config_window/command_dialog.py`：内置命令下拉支持显示插件注册的内置命令。
+- `requirements.txt`：截图 OCR 专用依赖从主程序依赖中剥离，改由独立插件包说明运行要求。
+- `.plugins/screenshot_ocr.qlzip`：内置 `wxPython` 运行库但不内置 `python.exe`，用户电脑无需额外安装 Python。
 - 命令面板底部按钮改为自适应网格布局，按钮等宽铺满，宽度不足时自动换成两行。
 - `hash`、`tls`、`json`、`jwt`、`port` 内置命令补齐结构化参数和标准 outputs。
 - 插件命令参数白名单与开发文档同步支持新参数字段和 outputs 契约。
@@ -109,7 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Added
 
 - 插件系统 v2：PluginAPI、权限声明、命令注册
-- 8 个内置插件：api_tester / disk_cleaner / event_inspector / file_tools / network_tools / process_tools / startup_tools / text_tools
+- 8 个官方插件：api_tester / disk_cleaner / event_inspector / file_tools / network_tools / process_tools / startup_tools / text_tools
 - 独立进程插件隔离计划（架构准备）
 
 ## [1.5.6.8] - 2026-04-20
