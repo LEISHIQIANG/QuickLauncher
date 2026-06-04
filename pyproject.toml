@@ -11,6 +11,7 @@ exclude = [
     "dist",
     "build",
     "temp_icons",
+    "plugins",
 ]
 
 [tool.ruff.lint]
