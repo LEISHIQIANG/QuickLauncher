@@ -153,21 +153,20 @@ def _payload_to_result(payload: dict) -> CommandResult:
             success=False,
             message=message or "OCR 识别失败",
             error="识别失败",
-            payload={"window_size": "medium", "outputs": {"text": ""}},
+            payload={"outputs": {"text": ""}},
         )
     if not text:
         return CommandResult(
             success=True,
             message="未识别到文字。",
             display_type="text",
-            payload={"window_size": "medium", "line_count": 0, "outputs": {"text": ""}},
+            payload={"line_count": 0, "outputs": {"text": ""}},
         )
     return CommandResult(
         success=True,
         message=text,
         display_type="text",
         payload={
-            "window_size": "medium",
             "line_count": line_count,
             "outputs": {"text": text, "line_count": str(line_count)},
         },
