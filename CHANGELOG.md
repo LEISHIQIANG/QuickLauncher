@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Fixed
 
 - 修复 Windows 10 系统 UI 显示异常问题。
+- 修复在win10上的兼容性，修复win10安装报错。
 - shortcut 命令执行不再把运行时参数、输入值、动作链值或危险命令确认状态写回原始配置对象，避免连续执行串值。
 - 破坏性命令确认状态只作用于当前 invocation，不进入结果历史，避免历史重试或连续执行继承确认。
 - 表格结果保存 CSV 改为标准 CSV 转义，避免逗号、引号等内容导出损坏。

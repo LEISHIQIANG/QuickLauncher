@@ -66,26 +66,27 @@ Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recurs
 
 [Dirs]
 Name: "{app}\config"; Permissions: users-modify
+Name: "{app}\icons"; Permissions: users-modify
 Name: "{app}\temp_icons"; Permissions: users-modify
 Name: "{app}\temp_icons\favicons"; Permissions: users-modify
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Registry]
 ; 不再使用注册表方式，改用 helper + Task Scheduler
 
 [Run]
 ; 配置开机自启（如果勾选了开机自启）
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--configure-autostart enable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; StatusMsg: "Configuring startup task..."; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: startupicon
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Parameters: "--configure-autostart enable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; StatusMsg: "Configuring startup task..."; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: startupicon
 
 ; Launch application after install
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Launch QuickLauncher"; Flags: runasoriginaluser nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--autostart-helper disable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallAutoStart"
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Parameters: "--autostart-helper disable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallAutoStart"
 
 [Code]
 procedure StopServiceIfRunning();
