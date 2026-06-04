@@ -9,7 +9,6 @@ from pathlib import Path
 from core.command_registry import CommandContext, CommandRegistry
 from core.plugin_manager import PluginManager
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_PACKAGE_DIR = ROOT / ".plugins"
 
