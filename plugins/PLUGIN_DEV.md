@@ -33,14 +33,20 @@ plugins/my_plugin/
 - 长时间后台联网、自动下载或自动修改系统状态的插件。
 - 默认需要管理员权限或执行任意命令的插件。
 
-## 当前插件
+## 官方插件包
+
+QuickLauncher 本体不再预装这些插件源码。官方插件以 `.qlzip` 包放在项目根目录 `.plugins/` 下，安装后才会解包到运行时 `plugins/` 目录。
 
 | 插件 | 重点能力 | 适合场景 |
 |---|---|---|
+| `api_tester` | HTTP 请求、请求历史 | 接口调试、快速验证 API |
+| `disk_cleaner` | 目录大小分析、可清理项扫描 | 排查磁盘占用、清理前评估 |
+| `event_inspector` | 最近错误、事件搜索 | 排查 Windows 事件日志 |
 | `file_tools` | 复制路径、文件哈希 | 校验文件、排查路径、复制选中文件信息 |
-| `process_tools` | 进程资源排行、查找进程 | 找高占用进程、确认某个程序是否在运行 |
-| `startup_tools` | 启动项审计、PATH 检查 | 排查开机慢、环境变量污染、命令找不到 |
 | `network_tools` | Ping、DNS 查询 | 基础网络连通性诊断 |
+| `process_tools` | 进程资源排行、查找进程 | 找高占用进程、确认某个程序是否在运行 |
+| `screenshot_ocr` | 截图 OCR 内置命令 | 框选屏幕区域并识别文字 |
+| `startup_tools` | 启动项审计、PATH 检查 | 排查开机慢、环境变量污染、命令找不到 |
 | `text_tools` | 文本反转、统计、大小写 | 少量通用文本处理 |
 
 ## plugin.json
@@ -182,6 +188,7 @@ def handle_hello(context):
 | 方法 / 属性 | 说明 | 所需权限 |
 |---|---|---|
 | `register_command(...)` | 注册命令；支持 `icon_path`、`search_terms` | 无 |
+| `register_builtin_command(...)` | 注册到“内置命令”下拉；仅适合主程序级入口 | `builtin.command` |
 | `register_module(module_id, manifest_path="module.json")` | 注册插件内的主程序模块 manifest，用于动作链这类可独立化模块 | 无 |
 | `register_chain_processor(definition, handler)` | 注册动作链电池，使用与内置电池一致的 schema | 无 |
 | `read_clipboard()` | 读取剪贴板文本 | `clipboard.read` |
@@ -192,6 +199,28 @@ def handle_hello(context):
 | `check_data_path(path)` | 确认路径在插件 `data/` 下 | 无 |
 | `launch_target(target, parameters="", directory="", show_window=True, run_as_admin=False)` | 通过与图标执行相同的通道启动程序或文件 | `process.run`；`run_as_admin=True` 还需要 `admin.required` |
 | `run_command(command, cwd="", show_window=False, run_as_admin=False)` | 通过与命令图标相同的通道执行命令 | `process.run`；`run_as_admin=True` 还需要 `admin.required` |
+
+### 注册为内置命令
+
+普通插件命令使用 `register_command(...)`，会出现在插件命令和命令搜索里。
+
+只有同时满足以下条件的命令，才会进入快捷方式配置里的“内置命令”下拉列表：
+
+- `plugin.json` 声明 `builtin.command` 权限。
+- `main.py` 调用 `api.register_builtin_command(...)`。
+
+`register_builtin_command(...)` 的参数与 `register_command(...)` 基本一致，但命令会以 `plugin-builtin:<plugin_id>` 作为来源注册。下拉列表只读取这个来源，不会把所有插件命令混入内置命令。
+
+内置命令 ID 仍建议使用小写字母、数字和短横线，例如 `screenshot-ocr`。如果插件目录必须使用下划线，例如 `screenshot_ocr`，`plugin.json` 的 `id` 仍要与目录名保持一致；命令 ID 可以独立使用短横线。
+
+当插件需要在用户取消选择时不弹出结果面板，可以返回：
+
+```python
+CommandResult(
+    success=True,
+    payload={"_suppress_result_panel": True, "outputs": {"text": ""}},
+)
+```
 
 ## 模块型插件
 
@@ -441,16 +470,58 @@ CommandResult(
 | `open.file` | 打开文件 | 中 |
 | `process.run` | 执行系统命令 | 高 |
 | `network.request` | 网络请求 | 中 |
+| `builtin.command` | 注册到“内置命令”下拉 | 中 |
 | `admin.required` | 管理员权限 | 高 |
 
 声明高风险权限时，请在插件 README 写清楚为什么需要、会读取或修改什么。
 
+## .qlzip 打包安装
+
+`.qlzip` 本质是 ZIP 包，支持两种结构：
+
+```text
+plugin.json
+main.py
+...
+```
+
+或：
+
+```text
+my_plugin/
+  plugin.json
+  main.py
+  ...
+```
+
+推荐使用第二种结构，目录名与 `plugin.json` 的 `id` 保持一致。安装时会校验清单、路径穿越、加密条目、文件数量和解压后总大小。
+
+当前安装限制：
+
+| 限制项 | 默认值 |
+|---|---|
+| 解压后总大小 | 150 MB |
+| 文件数量 | 1000 个 |
+
+插件应做成独立 `.qlzip`，不要直接放入本体源码 `plugins/` 目录参与主程序打包。这样可以先打包安装本体，再通过设置页安装 `.plugins/` 下的插件包做验证。
+
+需要 GUI 库、OCR 库等大依赖时，优先把依赖放在插件包内，例如：
+
+```text
+my_plugin/
+  runtime/
+    site-packages/
+      wx/
+```
+
+主程序提供 `--plugin-helper <script.py> --plugin-site <site-packages> -- ...` 子进程入口，插件可以让编译后的 QuickLauncher 加载这些库并运行 helper 脚本。这样用户电脑不需要额外安装 Python；主程序本体也不需要把只服务单个插件的库打进核心依赖。
+
 ## 超时控制
 
-从 v1.5.6.8 起，QuickLauncher **不再对插件命令设置全局超时限制**。插件 handler 在独立线程中运行，不会阻塞 UI，但运行时长为插件自身控制。
+插件 handler 在独立线程中运行，不会阻塞 UI。QuickLauncher 会等待插件命令最多 30 秒；超过后返回软超时错误，后台线程仍可能继续运行到自身完成或抛出异常。
 
-- 插件应自行管理长时间操作：对大文件、网络请求、批量 I/O 等任务，建议内部设置合理的截止时间，避免无限阻塞。
-- 如果 handler 长时间不返回，用户仍可关闭弹窗，但插件线程会继续在后台运行直至完成或抛出异常。
+- 插件应自行管理长时间操作：对大文件、网络请求、批量 I/O 等任务，建议内部设置比 30 秒更明确的截止时间，避免无限阻塞。
+- 如果 handler 超过 30 秒，用户会看到软超时提示；插件内部任务可能仍在后台运行。
 - 建议策略：
   - 对可能耗时的操作，分批次执行或使用内部 `timeout` 保护。
   - 捕获超时后返回带错误提示的 `CommandResult`，而不是让线程悬空。
@@ -501,15 +572,6 @@ CommandResult(
 | `/plugin reload <id>` | 重载插件 |
 | `/plugin new <id>` | 创建插件模板 |
 
-## 内置示例
+## 插件安装包
 
-可以参考：
-
-- `plugins/file_tools/`
-- `plugins/process_tools/`
-- `plugins/startup_tools/`
-- `plugins/network_tools/`
-- `plugins/api_tester/`
-- `plugins/disk_cleaner/`
-- `plugins/event_inspector/`
-- `plugins/text_tools/`
+可以参考项目根目录 `.plugins/` 下的官方 `.qlzip` 包。需要修改插件时，先解包对应 `.qlzip`，修改后重新压回标准包结构。
