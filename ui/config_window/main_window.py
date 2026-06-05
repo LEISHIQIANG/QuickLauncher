@@ -1383,6 +1383,8 @@ class ConfigWindow(QMainWindow):
         if not is_win11():
             return
         try:
+            from ui.styles.color_filter_overlay import compute_graded_tint
+
             settings = self.data_manager.get_settings()
             theme = settings.theme or "dark"
 
@@ -1392,65 +1394,7 @@ class ConfigWindow(QMainWindow):
             tp = getattr(settings, f"{theme}_temperature", 50)
             acrylic_alpha = getattr(settings, f"{theme}_acrylic", 30)
 
-            # 基础底色
-            if theme == "dark":
-                r, g, b = 0x1C, 0x1C, 0x1E
-            else:
-                r, g, b = 0xF2, 0xF2, 0xF7
-
-            # 黑场调节
-            offset = bp - 50
-            if offset != 0:
-                factor = abs(offset) / 50.0
-                if offset > 0:
-                    r = max(0, int(r * (1 - factor * 0.35)))
-                    g = max(0, int(g * (1 - factor * 0.35)))
-                    b = max(0, int(b * (1 - factor * 0.35)))
-                else:
-                    r = min(255, int(r + (255 - r) * factor * 0.18))
-                    g = min(255, int(g + (255 - g) * factor * 0.18))
-                    b = min(255, int(b + (255 - b) * factor * 0.18))
-
-            # 白场调节
-            offset = wp - 50
-            if offset != 0:
-                factor = abs(offset) / 50.0
-                if offset > 0:
-                    r = min(255, int(r + (255 - r) * factor * 0.22))
-                    g = min(255, int(g + (255 - g) * factor * 0.22))
-                    b = min(255, int(b + (255 - b) * factor * 0.22))
-                else:
-                    r = max(0, int(r * (1 - factor * 0.20)))
-                    g = max(0, int(g * (1 - factor * 0.20)))
-                    b = max(0, int(b * (1 - factor * 0.20)))
-
-            # 中间调节节
-            offset = mg - 50
-            if offset != 0:
-                factor = abs(offset) / 50.0
-                if offset < 0:
-                    r = max(0, int(r * (1 - factor * 0.25)))
-                    g = max(0, int(g * (1 - factor * 0.25)))
-                    b = max(0, int(b * (1 - factor * 0.25)))
-                else:
-                    r = min(255, int(r + (255 - r) * factor * 0.12))
-                    g = min(255, int(g + (255 - g) * factor * 0.12))
-                    b = min(255, int(b + (255 - b) * factor * 0.12))
-
-            # 色温调节
-            offset = tp - 50
-            if offset != 0:
-                factor = abs(offset) / 50.0
-                if offset < 0:
-                    b = min(255, int(b + (255 - b) * factor * 0.12))
-                else:
-                    r = min(255, int(r + (255 - r) * factor * 0.08))
-                    g = min(255, int(g + (255 - g) * factor * 0.04))
-
-            r = max(0, min(255, r))
-            g = max(0, min(255, g))
-            b = max(0, min(255, b))
-
+            r, g, b = compute_graded_tint(theme, bp, wp, mg, tp)
             alpha = max(10, min(int(acrylic_alpha), 80))
             gradient_color = f"{alpha:02x}{r:02x}{g:02x}{b:02x}"
 

@@ -1,4 +1,4 @@
-"""Color filter overlay widget for window color grading (Win11 advanced mode).
+"""Color filter overlay widget and tint computation for window color grading (Win11).
 
 Adapted from config_window_experiment/window_shell.py
 """
@@ -16,6 +16,82 @@ from qt_compat import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def compute_graded_tint(
+    theme: str,
+    black_point: int = 50,
+    white_point: int = 50,
+    mid_gamma: int = 50,
+    temperature: int = 50,
+) -> tuple:
+    """根据主题和颜色滤镜参数计算 Acrylic 底色 RGB。
+
+    返回 (r, g, b) 元组，每个值 0-255。
+    """
+    if theme == "dark":
+        r, g, b = 0x1C, 0x1C, 0x1E
+    else:
+        r, g, b = 0xF2, 0xF2, 0xF7
+
+    def _clamp(v):
+        return max(0, min(255, int(v)))
+
+    # 黑场
+    offset = black_point - 50
+    if offset != 0:
+        f = abs(offset) / 50.0
+        if offset > 0:
+            r = _clamp(r * (1 - f * 0.35))
+            g = _clamp(g * (1 - f * 0.35))
+            b = _clamp(b * (1 - f * 0.35))
+        else:
+            r = _clamp(r + (255 - r) * f * 0.18)
+            g = _clamp(g + (255 - g) * f * 0.18)
+            b = _clamp(b + (255 - b) * f * 0.18)
+
+    # 白场
+    offset = white_point - 50
+    if offset != 0:
+        f = abs(offset) / 50.0
+        if offset > 0:
+            r = _clamp(r + (255 - r) * f * 0.22)
+            g = _clamp(g + (255 - g) * f * 0.22)
+            b = _clamp(b + (255 - b) * f * 0.22)
+        else:
+            r = _clamp(r * (1 - f * 0.20))
+            g = _clamp(g * (1 - f * 0.20))
+            b = _clamp(b * (1 - f * 0.20))
+
+    # 中间调
+    offset = mid_gamma - 50
+    if offset != 0:
+        f = abs(offset) / 50.0
+        if offset < 0:
+            r = _clamp(r * (1 - f * 0.25))
+            g = _clamp(g * (1 - f * 0.25))
+            b = _clamp(b * (1 - f * 0.25))
+        else:
+            r = _clamp(r + (255 - r) * f * 0.12)
+            g = _clamp(g + (255 - g) * f * 0.12)
+            b = _clamp(b + (255 - b) * f * 0.12)
+
+    # 色温
+    offset = temperature - 50
+    if offset != 0:
+        f = abs(offset) / 50.0
+        if offset < 0:
+            # 冷色: 增加蓝色, 减少红绿
+            b = _clamp(b + (255 - b) * f * 0.15)
+            r = _clamp(r * (1 - f * 0.06))
+            g = _clamp(g * (1 - f * 0.03))
+        else:
+            # 暖色: 增加红色, 减少蓝色, 微增绿
+            r = _clamp(r + (255 - r) * f * 0.10)
+            g = _clamp(g + (255 - g) * f * 0.04)
+            b = _clamp(b * (1 - f * 0.12))
+
+    return (_clamp(r), _clamp(g), _clamp(b))
 
 
 class ColorFilterOverlay(QWidget):

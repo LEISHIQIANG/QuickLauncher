@@ -125,11 +125,6 @@ class PopupDataRefreshMixin:
         if bg_mode == "acrylic" or prev_bg_mode == "acrylic" or radius_changed:
             self._update_window_effect()
 
-        # 刷新颜色滤镜 (始终同步)
-        bg_mode_now = getattr(self.settings, "bg_mode", "theme")
-        if hasattr(self, "_apply_popup_color_filter"):
-            self._apply_popup_color_filter(bg_mode_now)
-
         # 重绘
         self.update()
 
