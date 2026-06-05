@@ -33,6 +33,7 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
+from ui.styles.color_filter_overlay import ColorFilterOverlay
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -705,6 +706,14 @@ class ConfigWindow(QMainWindow):
         main_layout.addWidget(self.status_bar)
         self.status_bar.showMessage(tr("就绪"))
 
+        # 高级颜色滤镜覆盖层 (仅Win11)
+        from ui.utils.window_effect import is_win11 as _is_win11
+        self._color_filter_overlay = None
+        if _is_win11():
+            self._color_filter_overlay = ColorFilterOverlay(self)
+            self._color_filter_overlay.raise_()
+            self._apply_color_filter()
+
     def _ensure_settings_panel(self):
         """确保设置面板已创建（延迟初始化）"""
         if self.settings_panel is not None:
@@ -941,6 +950,9 @@ class ConfigWindow(QMainWindow):
 
         # 切换主题时立即刷新 acrylic/DWM 磨砂玻璃底色，避免新旧主题颜色混合
         self._apply_window_shadow()
+
+        # 刷新颜色滤镜
+        self._apply_color_filter()
 
     def _on_folder_selected(self, folder_id: str):
         """选中文件夹"""
@@ -1300,6 +1312,9 @@ class ConfigWindow(QMainWindow):
 
         self.settings_changed.emit()
 
+        # 更新颜色滤镜
+        self._apply_color_filter()
+
     def _on_import_completed(self, count: int):
         """导入完成处理"""
         # 刷新UI
@@ -1371,6 +1386,30 @@ class ConfigWindow(QMainWindow):
         current_y = int(target_y + (1.0 - eased) * 16)
         self.move(self._anim_target_pos.x(), current_y)
 
+    def _apply_color_filter(self):
+        """读取设置并应用高级颜色滤镜参数到覆盖层"""
+        overlay = getattr(self, "_color_filter_overlay", None)
+        if overlay is None:
+            return
+        try:
+            settings = self.data_manager.get_settings()
+            theme = settings.theme or "dark"
+            prefix = theme  # "dark" or "light"
+
+            bp = getattr(settings, f"{prefix}_black_point", 50)
+            wp = getattr(settings, f"{prefix}_white_point", 50)
+            mg = getattr(settings, f"{prefix}_mid_gamma", 50)
+            tp = getattr(settings, f"{prefix}_temperature", 50)
+
+            overlay.set_params(bp, wp, mg, tp)
+            overlay.setVisible(not overlay.is_neutral)
+
+            # 同步 overlay 尺寸到窗口大小
+            overlay.setGeometry(self.rect())
+            overlay.raise_()
+        except Exception as exc:
+            logger.debug("应用颜色滤镜失败: %s", exc, exc_info=True)
+
     def _apply_window_shadow(self):
         """应用窗口圆角和平台相关视觉效果"""
         try:
@@ -1400,6 +1439,10 @@ class ConfigWindow(QMainWindow):
     def resizeEvent(self, event):
         """窗口大小变化时更新圆角区域（仅 Win10 需要）"""
         super().resizeEvent(event)
+        # 同步颜色滤镜覆盖层尺寸
+        overlay = getattr(self, "_color_filter_overlay", None)
+        if overlay is not None:
+            overlay.setGeometry(self.rect())
         try:
             if not is_win11():
                 hwnd = int(self.winId())

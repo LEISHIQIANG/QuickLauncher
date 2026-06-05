@@ -37,7 +37,7 @@ from ui.launcher_popup.popup_renderer import PopupRendererMixin
 from ui.launcher_popup.popup_search import PopupSearchMixin
 from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowEffectMixin
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
-from ui.utils.window_effect import WindowEffect
+from ui.utils.window_effect import WindowEffect, is_win11
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +271,13 @@ class LauncherPopup(
         self._setup_window()
         calculated_width, calculated_height = self._calculate_fixed_size()
         self._center_to(x, y, calculated_width, calculated_height)
+
+        # 高级颜色滤镜覆盖层 (仅Win11)
+        self._color_filter_overlay = None
+        if is_win11():
+            from ui.styles.color_filter_overlay import ColorFilterOverlay
+            self._color_filter_overlay = ColorFilterOverlay(self)
+            self._color_filter_overlay.raise_()
 
         self.setMouseTracking(True)
         self.settings_updated.connect(self._on_settings_updated)

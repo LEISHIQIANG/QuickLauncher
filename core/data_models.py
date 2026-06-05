@@ -736,6 +736,20 @@ class AppSettings:
 
     special_apps: list[str] = field(default_factory=lambda: DEFAULT_SPECIAL_APPS.copy())
 
+    # 高级颜色滤镜参数 (仅 Win11)
+    dark_black_point: int = 50
+    dark_white_point: int = 50
+    dark_mid_gamma: int = 50
+    dark_temperature: int = 50
+    dark_acrylic: int = 30
+    dark_bg_alpha_filter: int = 100
+    light_black_point: int = 50
+    light_white_point: int = 50
+    light_mid_gamma: int = 50
+    light_temperature: int = 50
+    light_acrylic: int = 30
+    light_bg_alpha_filter: int = 100
+
     @property
     def bg_alpha_255(self) -> int:
         """将 0-100 的透明度转换为 0-255"""

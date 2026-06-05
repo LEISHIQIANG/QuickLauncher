@@ -142,8 +142,35 @@ class PopupWindowEffectMixin:
                 if hasattr(self, "_apply_search_mask"):
                     self._apply_search_mask()
 
+            # 更新颜色滤镜覆盖层 (仅亚克力模式下可见)
+            self._apply_popup_color_filter(bg_mode)
+
         except Exception as e:
             logger.error(f"更新窗口特效失败: {e}")
+
+    def _apply_popup_color_filter(self, bg_mode: str):
+        """仅在亚克力模式下应用颜色滤镜"""
+        overlay = getattr(self, "_color_filter_overlay", None)
+        if overlay is None:
+            return
+        if bg_mode != "acrylic":
+            overlay.setVisible(False)
+            return
+        try:
+            theme = getattr(self.settings, "theme", "dark")
+            prefix = theme
+
+            bp = getattr(self.settings, f"{prefix}_black_point", 50)
+            wp = getattr(self.settings, f"{prefix}_white_point", 50)
+            mg = getattr(self.settings, f"{prefix}_mid_gamma", 50)
+            tp = getattr(self.settings, f"{prefix}_temperature", 50)
+
+            overlay.set_params(bp, wp, mg, tp)
+            overlay.setGeometry(self.rect())
+            overlay.setVisible(not overlay.is_neutral)
+            overlay.raise_()
+        except Exception as exc:
+            logger.debug("应用弹窗颜色滤镜失败: %s", exc, exc_info=True)
 
 
 class PopupLayoutMixin:
@@ -252,6 +279,9 @@ class PopupLayoutMixin:
         overlay = getattr(self, "_icon_flash_overlay", None)
         if overlay is not None:
             overlay.setGeometry(self.rect())
+        cf_overlay = getattr(self, "_color_filter_overlay", None)
+        if cf_overlay is not None:
+            cf_overlay.setGeometry(self.rect())
         QTimer.singleShot(0, self._update_window_effect)
         super().resizeEvent(event)
 

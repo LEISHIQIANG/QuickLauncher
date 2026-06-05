@@ -9,18 +9,25 @@ import tempfile
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
+    QCheckBox,
     QEasingCurve,
     QGraphicsOpacityEffect,
+    QGridLayout,
     QHBoxLayout,
+    QLabel,
     QParallelAnimationGroup,
     QPropertyAnimation,
     QPushButton,
     QRadioButton,
+    QSlider,
     QtCompat,
     QTimer,
+    QVBoxLayout,
+    QWidget,
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
+from ui.utils.window_effect import is_win11
 
 from .settings_helpers import SwitchButton
 
@@ -104,6 +111,19 @@ class SettingsSystemPageMixin:
         theme_layout.addWidget(self.light_radio)
         theme_layout.addStretch()
         layout.addLayout(theme_layout)
+
+        # 高级颜色滤镜 (仅Win11)
+        self.advanced_mode_cb = QCheckBox(tr("高级模式"))
+        self.advanced_mode_cb.setToolTip(tr("调节窗口颜色滤镜效果 (黑场/白场/中间调/色温/Acrylic/底色α)"))
+        self.advanced_mode_cb.stateChanged.connect(self._on_advanced_mode_changed)
+        if not is_win11():
+            self.advanced_mode_cb.setEnabled(False)
+            self.advanced_mode_cb.setToolTip(tr("高级模式仅支持 Windows 11"))
+        layout.addWidget(self.advanced_mode_cb)
+
+        self.color_filter_panel = self._create_color_filter_panel()
+        self.color_filter_panel.setVisible(False)
+        layout.addWidget(self.color_filter_panel)
 
         # 语言
         layout, group = page.add_group("语言")
@@ -263,6 +283,12 @@ class SettingsSystemPageMixin:
             self.english_radio.setChecked(True)
         else:
             self.chinese_radio.setChecked(True)
+
+        # 高级颜色滤镜 - 每次打开重置为取消勾选
+        self.advanced_mode_cb.setChecked(False)
+        self.color_filter_panel.setVisible(False)
+        # 加载滑块默认值 (下次勾选时显示)
+        self._load_color_filter_sliders_from_settings()
 
     # === Event Handlers ===
 
@@ -516,6 +542,192 @@ fso.DeleteFile WScript.ScriptFullName
         except Exception as e:
             logger.debug("Failed to detect system theme: %s", e)
             return "dark"
+
+    # === 高级颜色滤镜 ===
+
+    def _create_color_filter_panel(self):
+        """创建高级颜色滤镜滑块面板 (深色 + 浅色两组)"""
+        panel = QWidget()
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(0, 4, 0, 0)
+        panel_layout.setSpacing(8)
+
+        # 深色组
+        dark_widget, self._dark_sliders = self._create_filter_slider_group(tr("深色参数"), "dark")
+        panel_layout.addWidget(dark_widget)
+
+        # 浅色组
+        light_widget, self._light_sliders = self._create_filter_slider_group(tr("浅色参数"), "light")
+        panel_layout.addWidget(light_widget)
+
+        return panel
+
+    def _create_filter_slider_group(self, title: str, prefix: str):
+        """创建一组6个滑块 (黑场/白场/中间调/色温/Acrylic/底色α)"""
+        from ui.utils.font_manager import get_qfont
+
+        group_widget = QWidget()
+        layout = QGridLayout(group_widget)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setVerticalSpacing(4)
+        layout.setHorizontalSpacing(6)
+
+        # 标题标签
+        title_label = QLabel(title)
+        title_label.setFont(get_qfont(11))
+        title_label.setStyleSheet("color: #888; padding-bottom: 2px;")
+        layout.addWidget(title_label, 0, 0, 1, 4)
+
+        slider_defs = [
+            ("黑场",  "black_point",      0, 100, 50,   ("中性", "压暗", "提亮")),
+            ("白场",  "white_point",      0, 100, 50,   ("中性", "加亮", "压暗")),
+            ("中间调","mid_gamma",        0, 100, 50,   ("中性", "变暗", "变亮")),
+            ("色温",  "temperature",      0, 100, 50,   ("中性", "暖", "冷")),
+            ("Acrylic","acrylic",         1, 255, 30,   ("极模糊","强模糊","中模糊","弱模糊","近实色")),
+            ("底色α", "bg_alpha_filter",  1, 255, 100,  ("极透","高透","半透","低透","实色")),
+        ]
+
+        sliders = {}
+        for row, (label_text, key, min_val, max_val, default, descs) in enumerate(slider_defs, start=1):
+            attr_name = f"_{prefix}_{key}_slider"
+            val_attr = f"_{prefix}_{key}_label"
+
+            lbl = QLabel(tr(label_text))
+            lbl.setFixedWidth(36)
+            lbl.setAlignment(QtCompat.AlignRight | QtCompat.AlignVCenter)
+            lbl.setStyleSheet("font-size: 11px;")
+            layout.addWidget(lbl, row, 0)
+
+            slider = QSlider(QtCompat.Horizontal)
+            slider.setRange(min_val, max_val)
+            slider.setValue(default)
+            slider.valueChanged.connect(self._on_color_filter_slider_changed)
+            layout.addWidget(slider, row, 1)
+
+            val_label = QLabel(self._desc_text(key, default, descs))
+            val_label.setFixedWidth(48)
+            val_label.setAlignment(QtCompat.AlignCenter)
+            val_label.setStyleSheet("font-size: 10px; color: #999;")
+            layout.addWidget(val_label, row, 2)
+
+            setattr(self, attr_name, slider)
+            setattr(self, val_attr, val_label)
+            sliders[key] = (slider, val_label, min_val, max_val, descs)
+
+        return group_widget, sliders
+
+    def _desc_text(self, key: str, value: int, descs: tuple) -> str:
+        """根据滑块值返回描述性文本"""
+        if key == "acrylic":
+            if value <= 5:
+                return descs[0]
+            if value <= 50:
+                return descs[1]
+            if value <= 120:
+                return descs[2]
+            if value <= 200:
+                return descs[3]
+            return descs[4]
+        if key == "bg_alpha_filter":
+            if value <= 10:
+                return descs[0]
+            if value <= 60:
+                return descs[1]
+            if value <= 140:
+                return descs[2]
+            if value <= 210:
+                return descs[3]
+            return descs[4]
+        # black_point, white_point, mid_gamma, temperature
+        if value == 50:
+            return descs[0]
+        if value > 50:
+            return descs[1]
+        return descs[2]
+
+    def _on_advanced_mode_changed(self, state):
+        """高级模式复选框切换"""
+        checked = state == 2  # Qt.Checked
+        self.color_filter_panel.setVisible(checked)
+        if not checked:
+            return
+        # 加载当前设置到滑块
+        self._load_color_filter_sliders_from_settings()
+
+    def _on_color_filter_slider_changed(self):
+        """任意颜色滤镜滑块变化时保存"""
+        if self._updating:
+            return
+
+        updates = {}
+        for prefix in ("dark", "light"):
+            for key in ("black_point", "white_point", "mid_gamma", "temperature", "acrylic", "bg_alpha_filter"):
+                attr_name = f"_{prefix}_{key}_slider"
+                slider = getattr(self, attr_name, None)
+                if slider is None:
+                    continue
+
+                value = slider.value()
+                updates[f"{prefix}_{key}"] = value
+
+                # 更新描述标签
+                _, descs = self._get_slider_meta(key)
+                val_attr = f"_{prefix}_{key}_label"
+                val_label = getattr(self, val_attr, None)
+                if val_label and descs:
+                    val_label.setText(self._desc_text(key, value, descs))
+
+        self.data_manager.update_settings(**updates)
+        self.settings_changed.emit()
+
+    def _get_slider_meta(self, key: str):
+        """返回 (min, max, default, descs)"""
+        meta = {
+            "black_point":    (0, 100, 50,  ("中性", "压暗", "提亮")),
+            "white_point":    (0, 100, 50,  ("中性", "加亮", "压暗")),
+            "mid_gamma":      (0, 100, 50,  ("中性", "变暗", "变亮")),
+            "temperature":    (0, 100, 50,  ("中性", "暖", "冷")),
+            "acrylic":        (1, 255, 30,  ("极模糊","强模糊","中模糊","弱模糊","近实色")),
+            "bg_alpha_filter":(1, 255, 100, ("极透","高透","半透","低透","实色")),
+        }
+        return meta.get(key, (0, 100, 50, ("", "", "")))
+
+    def _load_color_filter_sliders_from_settings(self):
+        """从 settings 加载颜色滤镜参数到滑块"""
+        self._updating = True
+        try:
+            settings = self.data_manager.get_settings()
+            for prefix in ("dark", "light"):
+                for key in ("black_point", "white_point", "mid_gamma", "temperature", "acrylic", "bg_alpha_filter"):
+                    setting_key = f"{prefix}_{key}"
+                    default_val = 50
+                    if key == "acrylic":
+                        default_val = 30
+                    elif key == "bg_alpha_filter":
+                        default_val = 100
+
+                    value = getattr(settings, setting_key, default_val)
+
+                    slider_attr = f"_{prefix}_{key}_slider"
+                    slider = getattr(self, slider_attr, None)
+                    if slider is not None:
+                        slider.blockSignals(True)
+                        slider.setValue(value)
+                        slider.blockSignals(False)
+
+                    _, descs = self._get_slider_meta(key)
+                    label_attr = f"_{prefix}_{key}_label"
+                    label = getattr(self, label_attr, None)
+                    if label and descs:
+                        label.setText(self._desc_text(key, value, descs))
+        finally:
+            self._updating = False
+
+    def _load_system_color_filter_settings(self, settings):
+        """在 _load_system_settings 中调用 - 仅更新已可见的滑块"""
+        if not self.color_filter_panel.isVisible():
+            return
+        self._load_color_filter_sliders_from_settings()
 
     # === Language Animation ===
 
