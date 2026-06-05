@@ -1392,11 +1392,17 @@ class ConfigWindow(QMainWindow):
             wp = getattr(settings, f"{theme}_white_point", 50)
             mg = getattr(settings, f"{theme}_mid_gamma", 50)
             tp = getattr(settings, f"{theme}_temperature", 50)
-            acrylic_alpha = getattr(settings, f"{theme}_acrylic", 30)
+            acrylic_val = getattr(settings, f"{theme}_acrylic", 30)
+            bg_alpha_val = getattr(settings, f"{theme}_bg_alpha_filter", 100)
 
             r, g, b = compute_graded_tint(theme, bp, wp, mg, tp)
-            alpha = max(10, min(int(acrylic_alpha), 80))
-            gradient_color = f"{alpha:02x}{r:02x}{g:02x}{b:02x}"
+
+            # Acrylic 滑块 (1-255): 控制磨砂强度
+            # 底色α 滑块 (1-255): 作为整体透明度的缩放系数
+            base_alpha = max(5, min(int(acrylic_val), 250))
+            scale = max(0.05, min(int(bg_alpha_val) / 100.0, 2.55))
+            gradient_alpha = max(5, min(int(base_alpha * scale), 250))
+            gradient_color = f"{gradient_alpha:02x}{r:02x}{g:02x}{b:02x}"
 
             hwnd = int(self.winId())
             if hwnd:

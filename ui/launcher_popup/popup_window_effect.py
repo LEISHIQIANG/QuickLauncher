@@ -109,9 +109,16 @@ class PopupWindowEffectMixin:
                 tp = getattr(self.settings, f"{theme}_temperature", 50)
                 r_c, g_c, b_c = compute_graded_tint(theme, bp, wp, mg, tp)
 
+                # 颜色滤镜的 Acrylic 和底色α 滑块
+                cf_acrylic = getattr(self.settings, f"{theme}_acrylic", 30)
+                cf_bg_alpha = getattr(self.settings, f"{theme}_bg_alpha_filter", 100)
+
                 if is_win11():
-                    # Win11: DWM Acrylic tint alpha 0~180
-                    dwm_alpha = max(0, min(180, int(bg_alpha * 1.75)))
+                    # Win11: 结合 popup bg_alpha 和颜色滤镜滑块
+                    base_from_bg = max(0, min(180, int(bg_alpha * 1.75)))
+                    cf_alpha = max(5, min(int(cf_acrylic), 250))
+                    cf_scale = max(0.05, min(int(cf_bg_alpha) / 100.0, 2.55))
+                    dwm_alpha = max(5, min(int((base_from_bg + cf_alpha) / 2 * cf_scale), 250))
                     gradient_color = f"{dwm_alpha:02x}{r_c:02x}{g_c:02x}{b_c:02x}"
                     self.window_effect.set_acrylic(hwnd, gradient_color=gradient_color, enable=True, blur=True)
                     self.window_effect.set_round_corners(
