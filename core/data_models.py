@@ -827,6 +827,18 @@ class AppSettings:
             "enable_context_detection": self.enable_context_detection,
             "enable_plugins": self.enable_plugins,
             "language": self.language,
+            "dark_black_point": self.dark_black_point,
+            "dark_white_point": self.dark_white_point,
+            "dark_mid_gamma": self.dark_mid_gamma,
+            "dark_temperature": self.dark_temperature,
+            "dark_acrylic": self.dark_acrylic,
+            "dark_bg_alpha_filter": self.dark_bg_alpha_filter,
+            "light_black_point": self.light_black_point,
+            "light_white_point": self.light_white_point,
+            "light_mid_gamma": self.light_mid_gamma,
+            "light_temperature": self.light_temperature,
+            "light_acrylic": self.light_acrylic,
+            "light_bg_alpha_filter": self.light_bg_alpha_filter,
         }
 
     @classmethod
