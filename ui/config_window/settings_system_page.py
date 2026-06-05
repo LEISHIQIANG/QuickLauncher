@@ -515,6 +515,9 @@ fso.DeleteFile WScript.ScriptFullName
         self.setUpdatesEnabled(True)
         self.update()
 
+        # 切换主题时更新滑块组可见性
+        self._update_slider_group_visibility()
+
         self.settings_changed.emit()
 
     def _on_language_changed(self, button):
@@ -553,12 +556,15 @@ fso.DeleteFile WScript.ScriptFullName
         panel_layout.setSpacing(8)
 
         # 深色组
-        dark_widget, self._dark_sliders = self._create_filter_slider_group(tr("深色参数"), "dark")
-        panel_layout.addWidget(dark_widget)
+        self._dark_group_widget, self._dark_sliders = self._create_filter_slider_group(tr("深色参数"), "dark")
+        panel_layout.addWidget(self._dark_group_widget)
 
         # 浅色组
-        light_widget, self._light_sliders = self._create_filter_slider_group(tr("浅色参数"), "light")
-        panel_layout.addWidget(light_widget)
+        self._light_group_widget, self._light_sliders = self._create_filter_slider_group(tr("浅色参数"), "light")
+        panel_layout.addWidget(self._light_group_widget)
+
+        # 根据当前主题初始化可见性
+        self._update_slider_group_visibility()
 
         return panel
 
@@ -651,8 +657,25 @@ fso.DeleteFile WScript.ScriptFullName
         self.color_filter_panel.setVisible(checked)
         if not checked:
             return
+        # 根据当前主题显示对应的滑块组
+        self._update_slider_group_visibility()
         # 加载当前设置到滑块
         self._load_color_filter_sliders_from_settings()
+
+    def _update_slider_group_visibility(self):
+        """根据当前主题只显示对应的滑块组"""
+        try:
+            settings = self.data_manager.get_settings()
+            theme = settings.theme or "dark"
+        except Exception:
+            theme = "dark"
+
+        dark_w = getattr(self, "_dark_group_widget", None)
+        light_w = getattr(self, "_light_group_widget", None)
+        if dark_w is not None:
+            dark_w.setVisible(theme == "dark")
+        if light_w is not None:
+            light_w.setVisible(theme == "light")
 
     def _on_color_filter_slider_changed(self):
         """任意颜色滤镜滑块变化时保存"""
