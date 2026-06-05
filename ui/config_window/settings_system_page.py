@@ -671,7 +671,7 @@ fso.DeleteFile WScript.ScriptFullName
                 updates[f"{prefix}_{key}"] = value
 
                 # 更新描述标签
-                _, descs = self._get_slider_meta(key)
+                _, _, _, descs = self._get_slider_meta(key)
                 val_attr = f"_{prefix}_{key}_label"
                 val_label = getattr(self, val_attr, None)
                 if val_label and descs:
@@ -715,7 +715,7 @@ fso.DeleteFile WScript.ScriptFullName
                         slider.setValue(value)
                         slider.blockSignals(False)
 
-                    _, descs = self._get_slider_meta(key)
+                    _, _, _, descs = self._get_slider_meta(key)
                     label_attr = f"_{prefix}_{key}_label"
                     label = getattr(self, label_attr, None)
                     if label and descs:
