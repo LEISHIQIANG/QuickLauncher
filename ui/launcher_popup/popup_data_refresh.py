@@ -464,6 +464,7 @@ class PopupDataRefreshMixin:
                 force=True,
                 reposition=False,
                 preserve_search_state=True,
+                skip_effect=True,
             )
             if self.tray_app and getattr(self.tray_app, "config_window", None):
                 if hasattr(self.tray_app.config_window, "_on_settings_panel_changed"):

@@ -588,6 +588,7 @@ class LauncherPopup(
         preserve_search_state: bool = False,
         selection_trigger_pos=None,
         trigger_method: str = "mouse",
+        skip_effect: bool = False,
     ):
         """刷新数据并重置位置"""
         preserved_search_state = None
@@ -782,7 +783,8 @@ class LauncherPopup(
         calculated_width, calculated_height = self._calculate_fixed_size()
 
         # 强制更新窗口特效，确保在新屏幕上正确显示
-        self._update_window_effect()
+        if not skip_effect:
+            self._update_window_effect()
 
         # 最后精确居中显示
         if reposition:
