@@ -199,6 +199,49 @@ class TestUpdateChecker:
         assert state["last_check_status"] == "failed"
         assert "network down" in state["last_check_error"]
 
+    @patch("services.update.checker.ApiClient.get")
+    def test_check_network_error_has_specific_event(self, mock_get):
+        from services.api.base_client import ApiError
+
+        mock_get.side_effect = ApiError("Network error: offline")
+        events = []
+        checker = UpdateChecker(UpdateConfig(update_source="api", check_url="http://localhost"))
+        checker.add_listener(lambda event, data: events.append((event, data)))
+
+        assert checker.check_now() is None
+
+        event_names = [event for event, _ in events]
+        assert "check_network_error" in event_names
+        assert "check_failed" in event_names
+
+    @patch("services.update.checker.ApiClient.get")
+    def test_check_parse_error_has_specific_event(self, mock_get):
+        mock_get.return_value = {"has_update": True, "version": "9.9.9.9", "changelog": []}
+        events = []
+        checker = UpdateChecker(UpdateConfig(update_source="api", check_url="http://localhost"))
+        checker.add_listener(lambda event, data: events.append((event, data)))
+
+        assert checker.check_now() is None
+
+        assert any(event == "check_parse_error" for event, _ in events)
+
+    @patch("services.update.checker.ApiClient.get")
+    def test_check_validation_error_has_specific_event(self, mock_get):
+        mock_get.return_value = {
+            "has_update": True,
+            "version": "9.9.9.9",
+            "download_url": "https://evil.example/update.exe",
+            "file_hash": "sha256:" + "a" * 64,
+            "file_size": 1000000,
+        }
+        events = []
+        checker = UpdateChecker(UpdateConfig(update_source="api", check_url="http://localhost"))
+        checker.add_listener(lambda event, data: events.append((event, data)))
+
+        assert checker.check_now() is None
+
+        assert any(event == "check_validation_error" for event, _ in events)
+
     def test_state_file_uses_config_root_and_reads_legacy_path(self, tmp_path):
         fake_manager = MagicMock()
         fake_manager.app_dir = tmp_path / "config"

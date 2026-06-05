@@ -20,13 +20,19 @@ def _make_unverified_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
+def _make_verified_ssl_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    ctx.load_default_certs(ssl.Purpose.SERVER_AUTH)
+    return ctx
+
+
 class ApiClient:
     """Minimal urllib-based JSON client with no third-party dependency."""
 
     def __init__(self, base_url: str, timeout: int = 10, verify_ssl: bool = True):
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
-        self._ssl_context = None if verify_ssl else _make_unverified_ssl_context()
+        self._ssl_context = _make_verified_ssl_context() if verify_ssl else _make_unverified_ssl_context()
         self._headers = {
             "User-Agent": f"QuickLauncher/{APP_VERSION}",
             "Content-Type": "application/json",

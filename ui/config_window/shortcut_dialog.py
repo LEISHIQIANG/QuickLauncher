@@ -343,8 +343,7 @@ class ShortcutDialog(BaseDialog):
                 logger.debug("断开图标线程信号失败", exc_info=True)
             thread.wait(500)
             if thread.isRunning():
-                thread.terminate()
-                thread.wait(200)
+                thread.wait(1000)  # 延长等待替代 terminate
             thread.deleteLater()
             self._icon_thread = None
 
@@ -492,9 +491,12 @@ class ShortcutDialog(BaseDialog):
                 thread.finished.disconnect(self._on_icon_loaded)
             except Exception as exc:
                 logger.debug("断开图标线程信号失败: %s", exc, exc_info=True)
+            if hasattr(thread, "request_stop"):
+                thread.request_stop()
             if thread.isRunning():
-                thread.terminate()
-                thread.wait(200)
+                thread.wait(500)
+            if thread.isRunning():
+                thread.wait(1000)  # 延长等待替代 terminate
             thread.deleteLater()
             self._icon_thread = None
         super().done(result)

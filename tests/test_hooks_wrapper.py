@@ -1,7 +1,11 @@
 import ctypes
 import hashlib
+import os
+
+import pytest
 
 from hooks import hooks_wrapper
+from hooks.key_map import KEY_TO_VK
 
 
 class _FakeFunc:
@@ -99,3 +103,28 @@ def test_hooks_wrapper_reports_file_metadata(monkeypatch, tmp_path):
     assert diagnostics["size_bytes"] == len(content)
     assert diagnostics["sha256"] == hashlib.sha256(content).hexdigest()
     assert diagnostics["path_resolved"].endswith("hooks.dll")
+
+
+def test_hooks_wrapper_uses_shared_key_map():
+    assert hooks_wrapper.HooksDLL._key_to_vk("VolumeUp") == 0xAF
+    assert hooks_wrapper.HooksDLL._key_to_vk("PgDn") == 0x22
+
+
+def test_dll_global_hotkey_parser_accepts_shared_key_map():
+    dll_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "hooks.dll"))
+    if not os.path.exists(dll_path):
+        pytest.skip("hooks.dll is not available")
+
+    dll = hooks_wrapper.HooksDLL(dll_path)
+    if not dll.loaded or not dll.compatible:
+        pytest.skip(f"hooks.dll unavailable: {dll.load_error or dll.missing_exports}")
+
+    callback = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
+    rejected = [
+        key
+        for key in sorted(KEY_TO_VK)
+        if not dll.dll.SetGlobalHotkey(f"ctrl+{key}".encode(), callback)
+    ]
+    dll.dll.ClearGlobalHotkey()
+
+    assert rejected == []

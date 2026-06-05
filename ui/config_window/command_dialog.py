@@ -1470,11 +1470,7 @@ class CommandDialog(BaseDialog):
         if thread.isRunning():
             thread.wait(500)
         if thread.isRunning():
-            try:
-                thread.terminate()
-                thread.wait(200)
-            except Exception as exc:
-                logger.debug("终止线程失败: %s", exc, exc_info=True)
+            thread.wait(2000)  # 延长等待替代 terminate，让线程自然完成
         if thread.isRunning():
             try:
                 thread.setParent(None)

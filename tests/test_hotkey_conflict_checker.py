@@ -436,3 +436,8 @@ class TestSystemHotkeysIntegrity:
             parts = key.split("+")
             for part in parts:
                 assert part == part.title(), f"'{key}' part '{part}' is not title case"
+
+
+def test_vk_code_uses_shared_key_map_aliases():
+    assert _get_vk_code("PgDn") == 0x22
+    assert _get_vk_code("VolumeUp") == 0xAF

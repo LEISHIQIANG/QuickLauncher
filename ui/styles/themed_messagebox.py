@@ -8,6 +8,7 @@ import os
 import sys
 
 from core.i18n import tr
+from hooks.hook_pause import mouse_hook_paused
 from qt_compat import (
     QColor,
     QDialog,
@@ -48,50 +49,26 @@ def _execute_native_message_box(parent, title, text, icon_type, buttons) -> int:
     except ImportError:
         _global_mouse_hook = None
 
-    mouse_hook_paused = False
-
-    if _global_mouse_hook:
-        try:
-            # logger.debug("[消息框追踪] 步骤 1: 尝试原子暂停 DLL 鼠标钩子")
-            _global_mouse_hook.set_paused(True)
-            mouse_hook_paused = True
-            # logger.debug("[消息框追踪] 步骤 1: 鼠标钩子已成功暂停")
-        except Exception as he:
-            logger.warning(f"[消息框追踪] 步骤 1 异常: 暂停鼠标钩子失败: {he}")
-    else:
-        pass
-        # logger.debug("[消息框追踪] 步骤 1: _global_mouse_hook 为空，跳过暂停")
-
     res = 1024  # Default/None
-    try:
-        # 映射图标
-        if icon_type == "info":
-            icon = ThemedMessageBox.Information
-        elif icon_type == "question":
-            icon = ThemedMessageBox.Question
-        elif icon_type == "warning":
-            icon = ThemedMessageBox.Warning
-        elif icon_type == "critical":
-            icon = ThemedMessageBox.Critical
-        else:
-            icon = ThemedMessageBox.Information
+    with mouse_hook_paused(_global_mouse_hook, log_label="消息框鼠标钩子"):
+        try:
+            # 映射图标
+            if icon_type == "info":
+                icon = ThemedMessageBox.Information
+            elif icon_type == "question":
+                icon = ThemedMessageBox.Question
+            elif icon_type == "warning":
+                icon = ThemedMessageBox.Warning
+            elif icon_type == "critical":
+                icon = ThemedMessageBox.Critical
+            else:
+                icon = ThemedMessageBox.Information
 
-        dialog = ThemedMessageBox(parent, icon, title or "提示", text, buttons)
-        dialog.exec_()
-        res = dialog.result()
-    except Exception as e:
-        logger.error(f"[消息框追踪] 步骤 2 异常: {e}", exc_info=True)
-    finally:
-        if _global_mouse_hook and mouse_hook_paused:
-            try:
-                # logger.debug("[消息框追踪] 步骤 3: 尝试解除暂停并恢复鼠标钩子")
-                _global_mouse_hook.set_paused(False)
-                # logger.debug("[消息框追踪] 步骤 3: 鼠标钩子恢复成功")
-            except Exception as he:
-                logger.warning(f"[消息框追踪] 步骤 3 异常: {he}")
-        else:
-            pass
-            # logger.debug("[消息框追踪] 步骤 3: 无需恢复鼠标钩子")
+            dialog = ThemedMessageBox(parent, icon, title or "提示", text, buttons)
+            dialog.exec_()
+            res = dialog.result()
+        except Exception as e:
+            logger.error(f"[消息框追踪] 步骤 2 异常: {e}", exc_info=True)
 
     # logger.debug("[消息框追踪] ================= 安全消息框流程执行完毕 ================= ")
     return res
@@ -132,7 +109,7 @@ class ThemedMessageBox(QDialog):
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)  # 初始透明度为 0
 
-        self.corner_radius = 8 if is_win11() else 8
+        self.corner_radius = 8
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self.result_value = 0
@@ -460,21 +437,8 @@ class ThemedMessageBox(QDialog):
             _global_mouse_hook = _gmh
         except ImportError:
             logger.debug("safe_file_dialog 鼠标钩子未初始化", exc_info=True)
-        mouse_hook_paused = False
-        if _global_mouse_hook:
-            try:
-                _global_mouse_hook.set_paused(True)
-                mouse_hook_paused = True
-            except Exception:
-                logger.debug("暂停鼠标钩子失败", exc_info=True)
-        try:
+        with mouse_hook_paused(_global_mouse_hook, log_label="消息框鼠标钩子"):
             dialog.exec_()
-        finally:
-            if _global_mouse_hook and mouse_hook_paused:
-                try:
-                    _global_mouse_hook.set_paused(False)
-                except Exception:
-                    logger.debug("恢复鼠标钩子失败", exc_info=True)
         return dialog.result()
 
     @staticmethod
@@ -529,7 +493,7 @@ class ThemedInputDialog(QDialog):
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)
 
-        self.corner_radius = 8 if is_win11() else 8
+        self.corner_radius = 8
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self.input_text = text

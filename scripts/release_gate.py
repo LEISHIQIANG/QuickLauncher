@@ -60,7 +60,12 @@ def _default_steps(python: str) -> list[GateStep]:
         ),
         GateStep(
             "pytest",
-            [python, "-m", "pytest", "--basetemp", str(PYTEST_BASETEMP)],
+            [
+                python, "-m", "pytest", "--basetemp", str(PYTEST_BASETEMP),
+                "--cov=core", "--cov=services", "--cov=hooks",
+                "--cov-report=term-missing",
+                "--cov-fail-under=70",
+            ],
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
         GateStep(

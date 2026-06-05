@@ -465,7 +465,6 @@ class PopupDataRefreshMixin:
                 reposition=False,
                 preserve_search_state=True,
             )
-            self._flash_icons()
             if self.tray_app and getattr(self.tray_app, "config_window", None):
                 if hasattr(self.tray_app.config_window, "_on_settings_panel_changed"):
                     self.tray_app.config_window._on_settings_panel_changed()
@@ -486,7 +485,14 @@ class PopupDataRefreshMixin:
             # 立即提供无延迟的视觉反馈
             self._flash_icons()
 
-            # 启动后台同步工作线程
+            QTimer.singleShot(150, self._start_folder_sync_worker)
+        except Exception as e:
+            logger.error(f"启动同步线程失败: {e}")
+            self._blank_refresh_in_progress = False
+
+    def _start_folder_sync_worker(self):
+        """延迟启动文件夹同步，避免与闪烁动画竞争 UI 线程。"""
+        try:
             self._sync_worker = FolderSyncWorker(self)
             self._sync_worker.finished.connect(self.folder_sync_finished.emit)
             self._sync_worker.finished.connect(self._sync_worker.deleteLater)

@@ -1,4 +1,5 @@
 import json
+import ssl
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
@@ -56,6 +57,23 @@ class TestApiClient:
 
         with pytest.raises(ApiError, match="Network error"):
             self.client.get("/fail")
+
+    @patch("services.api.base_client.urlopen")
+    def test_ssl_error_is_wrapped(self, mock_urlopen):
+        mock_urlopen.side_effect = URLError(ssl.SSLError(1, "CERTIFICATE_VERIFY_FAILED"))
+
+        with pytest.raises(ApiError, match="SSL connection error"):
+            self.client.get("/fail")
+
+    @patch("services.api.base_client.ssl.create_default_context")
+    def test_verified_ssl_context_loads_default_certs(self, mock_create_context):
+        ctx = MagicMock()
+        mock_create_context.return_value = ctx
+
+        client = ApiClient("https://example.com/api", verify_ssl=True)
+
+        assert client._ssl_context is ctx
+        ctx.load_default_certs.assert_called_once_with(ssl.Purpose.SERVER_AUTH)
 
     def test_user_agent(self):
         from core.version import APP_VERSION

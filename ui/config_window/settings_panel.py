@@ -71,9 +71,7 @@ class CompactProgressDialog(QDialog):
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
-        from ui.utils.window_effect import is_win11
-
-        self.corner_radius = 8 if is_win11() else 8
+        self.corner_radius = 8
         self._acrylic_applied = False
         self._dialog_finished = False
         self._detect_theme()

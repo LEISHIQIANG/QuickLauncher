@@ -771,9 +771,6 @@ class PopupSearchMixin:
                 else:
                     self._set_fixed_geometry_atomically(x, target_y, calc_w, target_h)
 
-                # 同步几何信息
-                QApplication.processEvents()
-
                 # 更新窗口效果（只更新一次）
                 if not skip_effect_update:
                     try:

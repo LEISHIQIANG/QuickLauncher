@@ -10,8 +10,9 @@ def create_ipc_server(app, server_name: str, on_show_config):
     _pending = {"show_config": False}
 
     def _on_new_connection():
-        try:
-            while server.hasPendingConnections():
+        handled = 0
+        while server.hasPendingConnections():
+            try:
                 conn = server.nextPendingConnection()
                 if not conn:
                     break
@@ -34,8 +35,9 @@ def create_ipc_server(app, server_name: str, on_show_config):
                         QTimer.singleShot(0, cb)
                     else:
                         _pending["show_config"] = True
-        except Exception:
-            logger.exception("IPC处理失败")
+                handled += 1
+            except Exception:
+                logger.exception("IPC单连接处理失败，已处理连接数: %s", handled)
 
     server = QLocalServer()
     server.removeServer(server_name)

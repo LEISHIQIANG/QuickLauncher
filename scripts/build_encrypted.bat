@@ -15,7 +15,7 @@ echo.
 
 REM === Version Information ===
 set "APP_PUBLISHER=Layton"
-set "DEFAULT_APP_VERSION=1.6.1.0"
+set "DEFAULT_APP_VERSION=1.6.3.0"
 for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
 for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
 set "APP_VERSION=%~1"

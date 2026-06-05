@@ -32,6 +32,10 @@ class KeyboardHook:
         self._dll.uninstall_keyboard_hook()
         logger.info("键盘钩子已卸载")
 
+    def is_installed(self) -> bool:
+        """Return whether the DLL reports the keyboard hook as installed."""
+        return self._dll.is_keyboard_hook_installed()
+
     def set_hotkey(self, hotkey_str: str, callback: Callable[[], None] | None = None):
         """设置热键"""
         self._on_hotkey = callback

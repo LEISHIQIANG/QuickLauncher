@@ -80,6 +80,10 @@ class FolderWatcherManager:
 
         if WATCHDOG_AVAILABLE:
             self.observer = Observer()
+            try:
+                self.observer.daemon = True
+            except Exception as exc:
+                logger.debug("设置文件夹监听器 daemon 失败: %s", exc, exc_info=True)
             self.observer.start()
 
     def start_watch(self, folder_id: str, folder_path: str, callback: Callable):
@@ -135,9 +139,17 @@ class FolderWatcherManager:
         if observer:
             try:
                 observer.stop()
-                observer.join(timeout=1.5)
+                observer.join(timeout=5.0)
+                if observer.is_alive():
+                    try:
+                        observer.unschedule_all()
+                    except Exception:
+                        logger.debug("强制清理文件夹监听计划失败", exc_info=True)
+                    observer.join(timeout=2.0)
+                    if observer.is_alive():
+                        logger.warning("文件夹监听器停止超时")
             except Exception:
-                logger.debug("停止文件夹监听器失败", exc_info=True)
+                logger.warning("停止文件夹监听器失败", exc_info=True)
         self.watches.clear()
 
 

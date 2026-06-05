@@ -3,6 +3,7 @@
 import logging
 
 from core.i18n import tr
+from hooks.hook_pause import mouse_hook_paused
 from qt_compat import (
     QEvent,
     QHBoxLayout,
@@ -36,6 +37,7 @@ class InputTriggerRecorderWidget(QWidget):
         self.recording = False
         self.mouse_hook = None
         self._previous_mouse_paused = None
+        self._mouse_hook_pause_scope = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -69,15 +71,12 @@ class InputTriggerRecorderWidget(QWidget):
             self.modifiers = []
 
             if self.mouse_hook:
-                try:
-                    self._previous_mouse_paused = bool(self.mouse_hook.is_paused())
-                except Exception as exc:
-                    self._previous_mouse_paused = None
-                    logger.debug("读取鼠标钩子暂停状态失败: %s", exc, exc_info=True)
-                try:
-                    self.mouse_hook.set_paused(True)
-                except Exception as exc:
-                    logger.debug("录制触发按键时暂停鼠标钩子失败: %s", exc, exc_info=True)
+                self._mouse_hook_pause_scope = mouse_hook_paused(
+                    self.mouse_hook,
+                    restore_previous=True,
+                    log_label="录制触发按键时的鼠标钩子",
+                )
+                self._mouse_hook_pause_scope.__enter__()
             self.display.setPlaceholderText(tr("录制中，按键盘或鼠标..."))
             self.display.setStyleSheet("border: 2px solid #4A9EFF; background: rgba(74, 158, 255, 0.1);")
             self.record_btn.setText(tr("停止"))
@@ -87,13 +86,13 @@ class InputTriggerRecorderWidget(QWidget):
 
     def _end_recording(self):
         self.recording = False
-        if self.mouse_hook:
+        if self._mouse_hook_pause_scope is not None:
             try:
-                if self._previous_mouse_paused is not None:
-                    self.mouse_hook.set_paused(bool(self._previous_mouse_paused))
+                self._mouse_hook_pause_scope.__exit__(None, None, None)
             except Exception as exc:
                 logger.debug("结束触发录制时恢复鼠标钩子状态失败: %s", exc, exc_info=True)
             finally:
+                self._mouse_hook_pause_scope = None
                 self._previous_mouse_paused = None
         self.display.setPlaceholderText(tr("点击开始录制"))
         self.display.setStyleSheet("")

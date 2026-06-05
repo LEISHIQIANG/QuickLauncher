@@ -2,6 +2,7 @@
 托盘应用
 """
 
+import atexit
 import logging
 import os
 import sys
@@ -99,6 +100,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
         # Check plugin degrade switch before initializing plugin manager
         _safe_mode = bool(os.environ.get("QL_SAFE_MODE"))
+        self._safe_mode = _safe_mode
+        self._started = False
         _plugins_enabled = True
         try:
             _plugins_enabled = self.data_manager.get_settings().enable_plugins
@@ -185,34 +188,30 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self.show_popup_signal.connect(self._on_show_popup)
         self.show_config_signal.connect(self._show_config)  # 跨线程安全的配置窗口显示
         self._alt_double_tap_signal.connect(self._on_alt_double_tap)
-        self._update_event_signal.connect(self._on_update_event)
-        self._download_event_signal.connect(self._on_download_event)
-        self._install_event_signal.connect(self._on_install_event)
+        self._update_event_signal.connect(self._on_update_event, QtCompat.QueuedConnection)
+        self._download_event_signal.connect(self._on_download_event, QtCompat.QueuedConnection)
+        self._install_event_signal.connect(self._on_install_event, QtCompat.QueuedConnection)
 
         # 安装鼠标钩子（延迟到事件循环启动后，让托盘图标先显示）
         self.mouse_hook = None
         self._mouse_paused_state = False
         self._special_app_monitors_active = False
         self._hook_reinstall_cooldown_until = 0.0
-        if not _safe_mode:
-            logger.info("安装鼠标钩子...")
-            QTimer.singleShot(0, self._install_hook)
-        else:
-            logger.info("安全模式：鼠标钩子已禁用")
 
         # 安装键盘钩子 (Alt双击检测 + Alt按住状态跟踪)
         self.keyboard_hook = None
-        if not _safe_mode:
-            logger.info("安装键盘钩子...")
-            QTimer.singleShot(0, self._install_keyboard_hook_and_hotkey)
-        else:
-            logger.info("安全模式：键盘钩子已禁用")
 
         # 快捷键管理器（钩子安装后再共享DLL）
         from hooks.hotkey_manager import HotkeyManager
 
         self.hotkey_manager = HotkeyManager()
         self._quitting = False
+        self._atexit_shutdown_registered = False
+        try:
+            atexit.register(self._shutdown_runtime_components)
+            self._atexit_shutdown_registered = True
+        except Exception as exc:
+            logger.debug("注册退出清理失败: %s", exc, exc_info=True)
         self._last_synced_settings_snapshot = self._make_settings_snapshot()
         self._pending_settings_sync = False
         self._settings_sync_timer = QTimer(self)
@@ -232,7 +231,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._deferred_startup_timer.setSingleShot(True)
         self._deferred_startup_timer.setInterval(10)  # 极速启动预加载
         self._deferred_startup_timer.timeout.connect(self._run_deferred_startup_tasks)
-        self._deferred_startup_timer.start()
 
         # 内存保护
         from core.memory_guard import MemoryGuard
@@ -253,7 +251,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._memory_check_timer = QTimer(self)
         self._memory_check_timer.setInterval(120000)  # 改为每120秒检查
         self._memory_check_timer.timeout.connect(self._check_memory)
-        self._memory_check_timer.start()
 
         # hook.dll 模式下，仅在特殊进程启动时尝试重装一次钩子
         self._known_processes = set()
@@ -261,7 +258,9 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._process_check_timer.setInterval(10000)
         self._process_check_timer.timeout.connect(self._check_new_processes)
 
-        self._update_special_app_monitors(reset_state=True)
+        self._hook_health_timer = QTimer(self)
+        self._hook_health_timer.setInterval(10000)
+        self._hook_health_timer.timeout.connect(self._check_hook_health)
 
         self._update_checker = None
         self._update_downloader = None
@@ -269,18 +268,36 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._pending_update_info = None
         self._pending_update_installer = ""
         self._update_dialog_parent = None
-        if not _safe_mode:
+
+        logger.info("TrayApp 初始化完成，耗时 %.1f ms", (time.perf_counter() - init_start) * 1000)
+
+    def start(self):
+        """Start timers and hooks after main.py finishes callback registration."""
+        if self._started:
+            return
+        self._started = True
+
+        self._deferred_startup_timer.start()
+        self._memory_check_timer.start()
+
+        if not self._safe_mode:
+            logger.info("安装鼠标钩子...")
+            QTimer.singleShot(0, self._install_hook)
+            logger.info("安装键盘钩子...")
+            QTimer.singleShot(0, self._install_keyboard_hook_and_hotkey)
+            self._update_special_app_monitors(reset_state=True)
+            self._hook_health_timer.start()
             try:
                 if getattr(self.data_manager.get_settings(), "auto_update_enabled", False):
                     QTimer.singleShot(5000, self._init_update_system)
             except Exception as exc:
                 logger.debug("获取设置: %s", exc, exc_info=True)
         else:
+            logger.info("安全模式：鼠标钩子已禁用")
+            logger.info("安全模式：键盘钩子已禁用")
             logger.info("安全模式：自动更新检查已禁用")
 
         self._mark_activity("startup")
-
-        logger.info("TrayApp 初始化完成，耗时 %.1f ms", (time.perf_counter() - init_start) * 1000)
 
     def _make_settings_snapshot(self) -> dict:
         settings = self.data_manager.get_settings()
@@ -458,7 +475,11 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self.tray_menu.add_action("退出软件", self._quit)
 
     def _stop_timer_if_active(self, attr_name):
-        timer = getattr(self, attr_name, None)
+        try:
+            timer = getattr(self, attr_name, None)
+        except RuntimeError as exc:
+            logger.debug("读取定时器失败: %s", exc, exc_info=True)
+            return
         if timer is None:
             return
         try:
@@ -502,6 +523,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             "_deferred_startup_timer",
             "_memory_check_timer",
             "_process_check_timer",
+            "_hook_health_timer",
         ):
             self._stop_timer_if_active(timer_name)
 

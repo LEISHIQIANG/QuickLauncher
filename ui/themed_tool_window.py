@@ -313,7 +313,7 @@ class ThemedToolWindow(QDialog):
             if not hwnd:
                 return
             effect = get_window_effect()
-            radius = 8 if is_win11() else 8
+            radius = 8
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
                 effect.enable_window_shadow(hwnd, radius)
@@ -329,7 +329,7 @@ class ThemedToolWindow(QDialog):
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
 
-            radius = 8 if is_win11() else 8
+            radius = 8
             if self._theme == "dark":
                 bg = QColor(28, 28, 30, 180)
                 border = QColor(190, 190, 197, 60)

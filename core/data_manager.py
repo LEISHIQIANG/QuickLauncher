@@ -478,8 +478,6 @@ class DataManager:
         except Exception:
             # Don't save partial changes on exception — reset all dirty flags
             with self._save_lock:
-                if self._batch_depth > 0:
-                    self._batch_depth -= 1
                 self._batch_dirty = False
                 self._batch_force_immediate = False
                 self._save_pending = False
@@ -490,6 +488,7 @@ class DataManager:
             with self._save_lock:
                 if self._batch_depth > 0:
                     self._batch_depth -= 1
+                assert self._batch_depth >= 0, "batch_update depth underflow"
 
                 if self._batch_depth == 0:
                     if self._save_pending or self._batch_dirty:

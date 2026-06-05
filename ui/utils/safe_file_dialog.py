@@ -8,6 +8,7 @@
 
 import logging
 
+from hooks.hook_pause import mouse_hook_paused
 from qt_compat import QApplication, QDialog, QFileDialog
 from ui.styles.style import get_dialog_stylesheet
 from ui.styles.theme_controller import resolve_theme
@@ -41,53 +42,27 @@ def _execute_dialog_synchronously(parent, func, *args, **kwargs):
     """
     # logger.debug(f"[文件对话框追踪][PID: {os.getpid()}] ================= 开始执行安全文件对话框流程 ================= ")
 
-    mouse_hook_paused = False
-
-    # 1. 立即原子暂停鼠标钩子，直接改写 DLL 变量（0微秒延迟，瞬间屏蔽中键回调）
-    if _global_mouse_hook:
-        try:
-            _global_mouse_hook.set_paused(True)
-            mouse_hook_paused = True
-            # logger.debug(f"[文件对话框追踪][PID: {os.getpid()}] 步骤 1: 鼠标钩子已成功同步暂停，当前实际 DLL 暂停状态: {_global_mouse_hook.is_paused()}")
-        except Exception as he:
-            logger.warning(f"[文件对话框追踪] 步骤 1 异常: 暂停鼠标钩子失败: {he}")
-    else:
-        pass
-        # logger.debug("[文件对话框追踪] 步骤 1: _global_mouse_hook 句柄为空，跳过暂停")
-
     result = ""
-    try:
-        # logger.debug("[文件对话框追踪] 步骤 2: 准备启动 Qt 模态对话框执行体...")
-        result = func(*args, **kwargs)
-        # logger.debug(f"[文件对话框追踪] 步骤 2: 对话框已正常返回，选中结果为: {result}")
-    except Exception as e:
-        logger.error(f"[文件对话框追踪] 步骤 2 异常: 对话框执行失败: {e}", exc_info=True)
-    finally:
-        # 3. 恢复鼠标钩子
-        if _global_mouse_hook and mouse_hook_paused:
-            try:
-                # logger.debug("[文件对话框追踪] 步骤 3: 尝试解除暂停并恢复鼠标钩子")
-                _global_mouse_hook.set_paused(False)
-                # logger.debug("[文件对话框追踪] 步骤 3: 鼠标钩子已成功解除暂停并恢复")
-            except Exception as he:
-                logger.warning(f"[文件对话框追踪] 步骤 3 异常: 恢复鼠标钩子失败: {he}")
-        else:
-            pass
-            # logger.debug("[文件对话框追踪] 步骤 3: 无需恢复鼠标钩子")
+    with mouse_hook_paused(_global_mouse_hook, log_label="文件对话框鼠标钩子"):
+        try:
+            # logger.debug("[文件对话框追踪] 步骤 2: 准备启动 Qt 模态对话框执行体...")
+            result = func(*args, **kwargs)
+            # logger.debug(f"[文件对话框追踪] 步骤 2: 对话框已正常返回，选中结果为: {result}")
+        except Exception as e:
+            logger.error(f"[文件对话框追踪] 步骤 2 异常: 对话框执行失败: {e}", exc_info=True)
 
-        # 4. 重绘
-        if parent:
-            try:
-                # logger.debug("[文件对话框追踪] 步骤 4: 尝试重绘与恢复父窗口亚克力特效")
-                if hasattr(parent, "_apply_effects"):
-                    parent._apply_effects()
-                parent.repaint()
-                app = QApplication.instance()
-                if app:
-                    app.processEvents()
-                # logger.debug("[文件对话框追踪] 步骤 4: 父窗口效果重绘成功")
-            except Exception as pe:
-                logger.debug(f"[文件对话框追踪] 步骤 4 异常: 重绘失败: {pe}")
+    if parent:
+        try:
+            # logger.debug("[文件对话框追踪] 步骤 4: 尝试重绘与恢复父窗口亚克力特效")
+            if hasattr(parent, "_apply_effects"):
+                parent._apply_effects()
+            parent.repaint()
+            app = QApplication.instance()
+            if app:
+                app.processEvents()
+            # logger.debug("[文件对话框追踪] 步骤 4: 父窗口效果重绘成功")
+        except Exception as pe:
+            logger.debug(f"[文件对话框追踪] 步骤 4 异常: 重绘失败: {pe}")
 
     # logger.debug("[文件对话框追踪] ================= 安全文件对话框流程执行完毕 ================= ")
     return result

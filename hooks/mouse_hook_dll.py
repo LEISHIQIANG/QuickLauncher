@@ -45,6 +45,10 @@ class MouseHook:
         """获取暂停状态"""
         return self._dll.is_mouse_paused()
 
+    def is_installed(self) -> bool:
+        """Return whether the DLL reports the mouse hook as installed."""
+        return self._dll.is_mouse_hook_installed()
+
     def set_keyboard_hook(self, kb_hook):
         """设置键盘钩子引用"""
         self._keyboard_hook = kb_hook

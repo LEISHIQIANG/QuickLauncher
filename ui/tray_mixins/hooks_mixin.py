@@ -5,16 +5,28 @@
 import logging
 import time
 
+from qt_compat import QTimer
+
 logger = logging.getLogger(__name__)
+
+_HOOK_INSTALL_RETRY_DELAYS_MS = (500, 2000, 5000)
 
 
 class HooksMixin:
     """鼠标/键盘钩子管理相关方法。"""
 
-    def _install_hook(self):
+    def _install_hook(self, attempt: int = 0):
         """安装鼠标钩子"""
-        if not self._install_mouse_backend():
-            logger.error("鼠标钩子安装失败")
+        if self._install_mouse_backend():
+            return
+
+        if attempt < len(_HOOK_INSTALL_RETRY_DELAYS_MS):
+            delay = _HOOK_INSTALL_RETRY_DELAYS_MS[attempt]
+            logger.warning("鼠标钩子安装失败，%sms 后重试 (%s/%s)", delay, attempt + 1, len(_HOOK_INSTALL_RETRY_DELAYS_MS))
+            QTimer.singleShot(delay, lambda: self._install_hook(attempt + 1))
+            return
+
+        logger.error("鼠标钩子连续安装失败")
 
     def _install_mouse_backend(self) -> bool:
         """安装 DLL 鼠标后端。hooks.dll 是全局单例，必须按单实例方式重装。"""
@@ -89,6 +101,28 @@ class HooksMixin:
 
         except Exception:
             logger.exception("键盘钩子异常")
+
+    def _check_hook_health(self):
+        """Periodically recover DLL hooks if Windows reports them missing."""
+        try:
+            if getattr(self, "_sleeping", False):
+                return
+
+            mouse_hook = getattr(self, "mouse_hook", None)
+            keyboard_hook = getattr(self, "keyboard_hook", None)
+            mouse_missing = bool(mouse_hook) and hasattr(mouse_hook, "is_installed") and not mouse_hook.is_installed()
+            keyboard_missing = (
+                bool(keyboard_hook) and hasattr(keyboard_hook, "is_installed") and not keyboard_hook.is_installed()
+            )
+            if mouse_missing or keyboard_missing:
+                logger.warning(
+                    "检测到钩子健康异常，准备自动重装: mouse_missing=%s keyboard_missing=%s",
+                    mouse_missing,
+                    keyboard_missing,
+                )
+                self._reinstall_hooks()
+        except Exception as exc:
+            logger.debug("检查钩子健康状态失败: %s", exc, exc_info=True)
 
     def _install_keyboard_hook_and_hotkey(self):
         """安装键盘钩子并启动热键管理器（延迟执行）"""

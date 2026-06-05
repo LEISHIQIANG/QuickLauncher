@@ -101,12 +101,37 @@ class SettingsDataActionsMixin:
             if not path:
                 return
 
-            if self.data_manager.backup_full_config(path):
-                ThemedMessageBox.information(self, tr("备份成功"), tr("全量备份已保存至:\n{path}", path=path))
-            else:
-                ThemedMessageBox.warning(self, tr("备份失败"), tr("无法创建备份文件，请检查日志。"))
+            class _BackupThread(QThread):
+                finished_signal = pyqtSignal(bool)
+
+                def __init__(self, data_manager, backup_path):
+                    super().__init__()
+                    self._dm = data_manager
+                    self._path = backup_path
+
+                def run(self):
+                    try:
+                        result = self._dm.backup_full_config(self._path)
+                        self.finished_signal.emit(bool(result))
+                    except Exception:
+                        self.finished_signal.emit(False)
+
+            QApplication.setOverrideCursor(QtCompat.WaitCursor)
+            self._backup_thread = _BackupThread(self.data_manager, path)
+
+            def on_backup_done(success):
+                QApplication.restoreOverrideCursor()
+                self._backup_thread = None
+                if success:
+                    ThemedMessageBox.information(self, tr("备份成功"), tr("全量备份已保存至:\n{path}", path=path))
+                else:
+                    ThemedMessageBox.warning(self, tr("备份失败"), tr("无法创建备份文件，请检查日志。"))
+
+            self._backup_thread.finished_signal.connect(on_backup_done)
+            self._backup_thread.start()
 
         except Exception as e:
+            QApplication.restoreOverrideCursor()
             ThemedMessageBox.critical(self, "错误", str(e))
 
     def _on_restore_full_clicked(self):
@@ -126,21 +151,38 @@ class SettingsDataActionsMixin:
         )
 
         if result == ThemedMessageBox.Yes:
-            QApplication.setOverrideCursor(QtCompat.WaitCursor)
-            try:
-                success = self.data_manager.restore_full_config(path)
-            except Exception:
-                success = False
-            QApplication.restoreOverrideCursor()
+            class _RestoreThread(QThread):
+                finished_signal = pyqtSignal(bool)
 
-            if success:
-                report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
-                if report.get("has_warnings"):
-                    ThemedMessageBox.warning(self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。"))
-                ThemedMessageBox.information(self, tr("恢复成功"), tr("配置已恢复，程序即将重启。"))
-                self._restart_application()
-            else:
-                ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复备份，文件可能已损坏或格式不正确。"))
+                def __init__(self, data_manager, restore_path):
+                    super().__init__()
+                    self._dm = data_manager
+                    self._path = restore_path
+
+                def run(self):
+                    try:
+                        success = self._dm.restore_full_config(self._path)
+                        self.finished_signal.emit(bool(success))
+                    except Exception:
+                        self.finished_signal.emit(False)
+
+            QApplication.setOverrideCursor(QtCompat.WaitCursor)
+            self._restore_thread = _RestoreThread(self.data_manager, path)
+
+            def on_restore_done(success):
+                QApplication.restoreOverrideCursor()
+                self._restore_thread = None
+                if success:
+                    report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
+                    if report.get("has_warnings"):
+                        ThemedMessageBox.warning(self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。"))
+                    ThemedMessageBox.information(self, tr("恢复成功"), tr("配置已恢复，程序即将重启。"))
+                    self._restart_application()
+                else:
+                    ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复备份，文件可能已损坏或格式不正确。"))
+
+            self._restore_thread.finished_signal.connect(on_restore_done)
+            self._restore_thread.start()
 
     def _on_export_shareable_clicked(self):
         """导出分享配置"""

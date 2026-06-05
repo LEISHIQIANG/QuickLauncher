@@ -73,7 +73,42 @@ class ModuleRegistry:
         module_id = str(module_id or "")
         if module_id == ACTION_CHAIN_MODULE_ID:
             return self.load_action_chain(data_manager=data_manager)
+        # 查询已注册的外部 manifest
+        if module_id in self._external_manifests:
+            cached = self._records.get(module_id)
+            if cached is not None:
+                return cached
+            record = self._load_generic_module(module_id, data_manager=data_manager)
+            self._records[module_id] = record
+            return record
         return ModuleRecord(module_id, MODULE_MISSING, {}, None, "module_not_registered")
+
+    def _load_generic_module(self, module_id: str, *, data_manager: Any = None) -> ModuleRecord:
+        """通用模块加载：从 external_manifests 读取 manifest 并加载模块。"""
+        if module_id in self._disabled:
+            return ModuleRecord(module_id, MODULE_DISABLED, {}, None, "module_disabled")
+        manifest_path = self._external_manifests.get(module_id)
+        if manifest_path is None:
+            return ModuleRecord(module_id, MODULE_MISSING, {}, None, "no_manifest_registered")
+        try:
+            if not manifest_path.exists():
+                return ModuleRecord(module_id, MODULE_MISSING, {}, None, "manifest_missing", str(manifest_path))
+            with manifest_path.open("r", encoding="utf-8") as fh:
+                manifest = json.load(fh)
+            actual_id = str(manifest.get("id") or "")
+            if actual_id != module_id:
+                return ModuleRecord(module_id, MODULE_BROKEN, manifest, None, "manifest_id_mismatch", str(manifest_path))
+            if not _host_version_compatible(APP_VERSION, manifest):
+                return ModuleRecord(module_id, MODULE_INCOMPATIBLE, manifest, None, "host_version_incompatible", str(manifest_path))
+            entry = str(manifest.get("entry") or "")
+            module_name, class_name = entry.split(":", 1)
+            module = _import_module_from_manifest(module_name, manifest_path)
+            module_cls = getattr(module, class_name)
+            api = module_cls(DefaultActionChainHostAPI(data_manager), manifest)
+            return ModuleRecord(module_id, MODULE_AVAILABLE, manifest, api, "", str(manifest_path), "plugin")
+        except Exception as exc:
+            logger.exception("failed to load module %s", module_id)
+            return ModuleRecord(module_id, MODULE_BROKEN, {}, None, str(exc), str(manifest_path))
 
     def register_external_manifest(self, module_id: str, manifest_path: str | Path) -> bool:
         """Register a module manifest supplied by a plugin package.

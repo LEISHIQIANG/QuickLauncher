@@ -211,6 +211,57 @@ class TestFolderWatcherManagerStopAll:
         mgr.stop_all()
         mgr.stop_all()  # second call should not raise
 
+    def test_stop_all_retries_stuck_observer(self):
+        mgr = FolderWatcherManager()
+
+        class StuckObserver:
+            def __init__(self):
+                self.join_timeouts = []
+                self.unscheduled = False
+
+            def stop(self):
+                pass
+
+            def join(self, timeout=None):
+                self.join_timeouts.append(timeout)
+
+            def is_alive(self):
+                return True
+
+            def unschedule_all(self):
+                self.unscheduled = True
+
+        observer = StuckObserver()
+        mgr.observer = observer
+        mgr.watches["f1"] = object()
+
+        mgr.stop_all()
+
+        assert observer.join_timeouts == [5.0, 2.0]
+        assert observer.unscheduled is True
+        assert mgr.observer is None
+        assert mgr.watches == {}
+
+
+def test_observer_is_daemon_when_watchdog_available(monkeypatch):
+    import core.folder_watcher as folder_watcher
+
+    class FakeObserver:
+        def __init__(self):
+            self.daemon = False
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    monkeypatch.setattr(folder_watcher, "WATCHDOG_AVAILABLE", True)
+    monkeypatch.setattr(folder_watcher, "Observer", FakeObserver)
+
+    mgr = folder_watcher.FolderWatcherManager()
+
+    assert mgr.observer.daemon is True
+    assert mgr.observer.started is True
+
 
 # ---------------------------------------------------------------------------
 # get_watcher_manager singleton tests

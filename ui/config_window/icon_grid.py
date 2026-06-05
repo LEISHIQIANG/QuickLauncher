@@ -71,9 +71,7 @@ class SimpleStatusDialog(QDialog):
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
-        from ui.utils.window_effect import is_win11
-
-        self.corner_radius = 8 if is_win11() else 8
+        self.corner_radius = 8
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self._acrylic_applied = False
@@ -170,7 +168,7 @@ class SimpleStatusDialog(QDialog):
 
     def update_text(self, text):
         self.label.setText(text)
-        QApplication.processEvents()
+        self.label.repaint()
 
 
 class MoveFolderDialog(BaseDialog):
@@ -1555,7 +1553,7 @@ class IconGrid(QWidget):
         status_dialog = SimpleStatusDialog(tr("批量获取图标"), self)
         status_dialog.update_text(tr("正在获取图标... 0/{total}", total=len(url_shortcuts)))
         status_dialog.show()
-        QApplication.processEvents()
+        status_dialog.repaint()
 
         self._take_batch_snapshot()
         success_count = 0

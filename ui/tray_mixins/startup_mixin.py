@@ -2,12 +2,27 @@
 延迟启动、预加载、图标缓存清理相关方法。
 """
 
+import atexit
 import logging
 import os
 import sys
+import threading
 import time
 
 logger = logging.getLogger(__name__)
+
+# 跟踪启动阶段的后台线程，atexit 时优雅 join
+_startup_threads: list[threading.Thread] = []
+
+
+def _join_startup_threads():
+    """进程退出时 join 所有启动线程，防止文件操作被中断"""
+    for t in _startup_threads:
+        if t.is_alive():
+            t.join(timeout=3)
+
+
+atexit.register(_join_startup_threads)
 
 
 class StartupMixin:
@@ -101,7 +116,9 @@ class StartupMixin:
             except Exception as e:
                 logger.debug(f"图标缓存清理失败: {e}")
 
-        threading.Thread(target=do_clean, name="IconCacheCleaner", daemon=True).start()
+        t = threading.Thread(target=do_clean, name="IconCacheCleaner")
+        _startup_threads.append(t)
+        t.start()
 
     def _preinit_popup(self):
         if self._sleeping:
@@ -147,7 +164,9 @@ class StartupMixin:
             except Exception as e:
                 logger.debug(f"  预初始化文件夹监听管理器失败: {e}")
 
-        threading.Thread(target=do_init, name="PreinitWatcher", daemon=True).start()
+        t = threading.Thread(target=do_init, name="PreinitWatcher")
+        _startup_threads.append(t)
+        t.start()
 
     def _preimport_config_modules(self):
         """后台线程预导入配置窗口相关模块"""
@@ -169,7 +188,9 @@ class StartupMixin:
             except Exception as e:
                 logger.debug(f"  后台预导入配置窗口模块失败: {e}")
 
-        threading.Thread(target=do_import, name="PreimportConfigModules", daemon=True).start()
+        t = threading.Thread(target=do_import, name="PreimportConfigModules")
+        _startup_threads.append(t)
+        t.start()
 
     def _preload_icons(self):
         """预加载图标（在主线程分批执行，避免跨线程 Qt 对象风险）"""

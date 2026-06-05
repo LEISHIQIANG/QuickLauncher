@@ -7,8 +7,10 @@ from PyQt5.QtCore import (
     QAbstractListModel,
     QBuffer,
     QByteArray,
+    QCoreApplication,
     QEasingCurve,
     QEvent,
+    QEventLoop,
     QFileInfo,
     QIODevice,
     QMetaObject,
@@ -404,6 +406,11 @@ class QtCompat:
     QEasingCurve = QEasingCurve
     QParallelAnimationGroup = QParallelAnimationGroup
 
+    # Connection type constants
+    QueuedConnection = Qt.QueuedConnection
+    DirectConnection = Qt.DirectConnection
+    AutoConnection = Qt.AutoConnection
+
 
 def setup_high_dpi():
     """Configure Windows and Qt high-DPI behavior before QApplication creation."""
@@ -559,6 +566,8 @@ __all__ = [
     "QModelIndex",
     "QAbstractListModel",
     "QEvent",
+    "QEventLoop",
+    "QCoreApplication",
     "QMetaObject",
     "QPropertyAnimation",
     "QEasingCurve",

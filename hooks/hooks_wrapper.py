@@ -39,6 +39,23 @@ class HooksDLL:
     _load_attempted = False
 
     @classmethod
+    def reset(cls) -> None:
+        """清除加载状态，允许下次 get_instance() 重新尝试加载 DLL。
+
+        适用于 DLL 文件从不可用变为可用的场景（如安装过程中 DLL 部署延迟）。
+        """
+        with cls._instance_lock:
+            if cls._instance is not None:
+                try:
+                    if cls._instance.dll is not None:
+                        cls._instance.dll = None
+                        cls._instance.loaded = False
+                except Exception:
+                    pass
+            cls._instance = None
+            cls._load_attempted = False
+
+    @classmethod
     def get_instance(cls, dll_path: str = None) -> "HooksDLL":
         """获取单例实例，避免多次加载DLL导致GC回调问题"""
         if cls._instance is not None and cls._instance.dll is not None:
@@ -415,47 +432,9 @@ class HooksDLL:
     @staticmethod
     def _key_to_vk(key: str) -> int:
         """将按键字符串转换为VK码"""
-        key_lower = key.lower()
+        from hooks.key_map import key_to_vk
 
-        # A-Z
-        if len(key_lower) == 1 and 'a' <= key_lower <= 'z':
-            return ord(key_lower.upper())
-
-        # 0-9
-        if len(key) == 1 and '0' <= key <= '9':
-            return ord(key)
-
-        # F1-F24
-        if key_lower.startswith('f') and len(key_lower) > 1:
-            try:
-                fn_num = int(key_lower[1:])
-                if 1 <= fn_num <= 24:
-                    return 0x70 + fn_num - 1
-            except ValueError:
-                pass
-
-        # 特殊键
-        special_keys = {
-            "space": 0x20,
-            "enter": 0x0D,
-            "tab": 0x09,
-            "backspace": 0x08,
-            "esc": 0x1B,
-            "escape": 0x1B,
-            "delete": 0x2E,
-            "insert": 0x2D,
-            "home": 0x24,
-            "end": 0x23,
-            "pageup": 0x21,
-            "pagedown": 0x22,
-            "left": 0x25,
-            "up": 0x26,
-            "right": 0x27,
-            "down": 0x28,
-            "pause": 0x13,
-            "printscreen": 0x2C,
-        }
-        return special_keys.get(key_lower, 0)
+        return key_to_vk(key)
 
 
 def _dll_file_info(path: str) -> dict:

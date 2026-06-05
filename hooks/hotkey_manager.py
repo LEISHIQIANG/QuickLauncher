@@ -1,5 +1,4 @@
 import logging
-import sys
 import threading
 
 from qt_compat import QMetaObject, QObject, Qt, QTimer, pyqtSignal
@@ -12,7 +11,7 @@ class HotkeyManager(QObject):
 
     activated = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, dll=None):
         super().__init__(parent)
         self._current_hotkey = None
         self._is_running = False
@@ -22,7 +21,11 @@ class HotkeyManager(QObject):
         self._dispatch_timer.setSingleShot(True)
         self._dispatch_timer.setInterval(15)
         self._dispatch_timer.timeout.connect(self._drain_pending_activated)
-        self._dll = None
+        self._dll = dll
+
+    def set_dll(self, dll) -> None:
+        """注入 DLL 实例，替代通过 sys.modules 查找全局变量的方式。"""
+        self._dll = dll
 
     def _release_modifier_keys(self):
         """释放修饰键"""
@@ -220,15 +223,9 @@ class HotkeyManager(QObject):
         try:
             logger.info(f"尝试使用DLL钩子设置热键: {normalized}")
             if self._dll is None:
-                # 获取全局键盘钩子实例
-                if hasattr(sys.modules.get("__main__"), "keyboard_hook"):
-                    kb = sys.modules["__main__"].keyboard_hook
-                    if hasattr(kb, "_dll"):
-                        self._dll = kb._dll
-                if self._dll is None:
-                    from hooks.hooks_wrapper import HooksDLL
+                from hooks.hooks_wrapper import HooksDLL
 
-                    self._dll = HooksDLL.get_instance()
+                self._dll = HooksDLL.get_instance()
             logger.info(f"DLL实例: {self._dll}")
             if self._dll.set_hotkey(normalized, self._on_activated):
                 self._is_running = True

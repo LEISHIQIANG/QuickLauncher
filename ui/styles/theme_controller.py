@@ -34,17 +34,30 @@ def get_app_theme(default: str = DEFAULT_THEME) -> str:
 
 def resolve_theme(owner: Any = None, default: str = DEFAULT_THEME) -> str:
     """Resolve theme from an owner first, then from the global app settings."""
-    for attr in ("theme", "_theme", "current_theme"):
+    current = owner
+    seen: set[int] = set()
+    while current is not None:
+        ident = id(current)
+        if ident in seen:
+            break
+        seen.add(ident)
+
+        for attr in ("theme", "_theme", "current_theme"):
+            try:
+                value = getattr(current, attr, None)
+                if value:
+                    return normalize_theme(value, default)
+            except Exception:
+                continue
         try:
-            value = getattr(owner, attr, None) if owner is not None else None
-            if value:
-                return normalize_theme(value, default)
+            data_manager = getattr(current, "data_manager", None)
+            if data_manager is not None:
+                return normalize_theme(getattr(data_manager.get_settings(), "theme", ""), default)
+        except Exception as exc:
+            logger.debug("读取窗口主题失败: %s", exc, exc_info=True)
+
+        try:
+            current = current.parent() if hasattr(current, "parent") else None
         except Exception:
-            continue
-    try:
-        data_manager = getattr(owner, "data_manager", None) if owner is not None else None
-        if data_manager is not None:
-            return normalize_theme(getattr(data_manager.get_settings(), "theme", ""), default)
-    except Exception as exc:
-        logger.debug("读取窗口主题失败: %s", exc, exc_info=True)
+            current = None
     return get_app_theme(default)

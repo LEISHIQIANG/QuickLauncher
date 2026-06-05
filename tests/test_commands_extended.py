@@ -160,8 +160,21 @@ class TestQrGetLocalIp:
         assert isinstance(ip, str)
         assert len(ip) > 0
 
+    @patch("core.commands.socket.getaddrinfo")
+    def test_prefers_enumerated_non_loopback_ip(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [
+            (None, None, None, None, ("127.0.0.1", 0)),
+            (None, None, None, None, ("192.168.1.20", 0)),
+        ]
+
+        ip = _qr_get_local_ip()
+
+        assert ip == "192.168.1.20"
+
+    @patch("core.commands.socket.getaddrinfo")
     @patch("core.commands.socket.socket")
-    def test_fallback_on_exception(self, mock_socket_cls):
+    def test_fallback_on_exception(self, mock_socket_cls, mock_getaddrinfo):
+        mock_getaddrinfo.side_effect = Exception("no addresses")
         mock_socket_cls.side_effect = Exception("no network")
         ip = _qr_get_local_ip()
         assert ip == "127.0.0.1"

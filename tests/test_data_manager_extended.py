@@ -267,6 +267,22 @@ class TestBatchUpdate:
         assert not dm._batch_dirty
         assert not dm._save_pending
 
+    def test_nested_batch_exception_does_not_flush_outer_batch(self):
+        dm = _manager_with_data()
+        dm._do_save = MagicMock(return_value=True)
+        dm.save = MagicMock(return_value=True)
+
+        with pytest.raises(RuntimeError):
+            with dm.batch_update(immediate=True):
+                dm._batch_dirty = True
+                with dm.batch_update():
+                    dm._batch_dirty = True
+                    raise RuntimeError("boom")
+
+        assert dm._batch_depth == 0
+        dm._do_save.assert_not_called()
+        dm.save.assert_not_called()
+
     def test_batch_no_save_without_dirty(self):
         dm = _manager_with_data()
         dm._do_save = MagicMock(return_value=True)

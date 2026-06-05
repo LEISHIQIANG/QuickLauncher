@@ -3,7 +3,7 @@
   #define MyAppName "QuickLauncher"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "1.6.2.0"
+  #define MyAppVersion "1.6.3.0"
 #endif
 #ifndef MyAppPublisher
   #define MyAppPublisher "Layton"
@@ -12,7 +12,7 @@
   #define MyAppExeName "QuickLauncher.exe"
 #endif
 #ifndef MyAppFileVersion
-  #define MyAppFileVersion "1.6.2.0"
+  #define MyAppFileVersion "1.6.3.0"
 #endif
 #ifndef OutputBaseFilename
   #define OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion

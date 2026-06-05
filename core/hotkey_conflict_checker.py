@@ -190,59 +190,6 @@ def is_hotkey_registered(modifiers: list, key: str) -> bool:
 
 def _get_vk_code(key: str) -> int:
     """获取虚拟键码"""
-    key_upper = key.upper()
+    from hooks.key_map import key_to_vk
 
-    # 字母和数字
-    if len(key_upper) == 1:
-        if "A" <= key_upper <= "Z":
-            return ord(key_upper)
-        if "0" <= key_upper <= "9":
-            return ord(key_upper)
-
-    if key_upper.startswith("F"):
-        try:
-            fn_num = int(key_upper[1:])
-            if 1 <= fn_num <= 24:
-                return 0x70 + fn_num - 1
-        except ValueError:
-            pass
-
-    # 功能键
-    vk_map = {
-        "SPACE": 0x20,
-        "ENTER": 0x0D,
-        "ESC": 0x1B,
-        "ESCAPE": 0x1B,
-        "TAB": 0x09,
-        "BACKSPACE": 0x08,
-        "BACK": 0x08,
-        "DELETE": 0x2E,
-        "DEL": 0x2E,
-        "INSERT": 0x2D,
-        "INS": 0x2D,
-        "HOME": 0x24,
-        "END": 0x23,
-        "PAGEUP": 0x21,
-        "PGUP": 0x21,
-        "PAGEDOWN": 0x22,
-        "PGDN": 0x22,
-        "LEFT": 0x25,
-        "UP": 0x26,
-        "RIGHT": 0x27,
-        "DOWN": 0x28,
-        "PAUSE": 0x13,
-        "PRINTSCREEN": 0x2C,
-        "PRTSCR": 0x2C,
-        # 媒体键
-        "VOLUMEUP": 0xAF,
-        "VOLUMEDOWN": 0xAE,
-        "VOLUMEMUTE": 0xAD,
-        "MUTE": 0xAD,
-        "MEDIANEXT": 0xB0,
-        "MEDIAPREV": 0xB1,
-        "MEDIASTOP": 0xB2,
-        "MEDIAPLAY": 0xB3,
-        "PLAYPAUSE": 0xB3,
-    }
-
-    return vk_map.get(key_upper, 0)
+    return key_to_vk(key)

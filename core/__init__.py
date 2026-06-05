@@ -2,15 +2,6 @@
 
 from .clipboard_classifiers import classify_clipboard as classify_clipboard
 from .clipboard_classifiers import classify_text as classify_text
-from .clipboard_service import (
-    ClipboardClassification as ClipboardClassification,
-)
-from .clipboard_service import (
-    ClipboardService as ClipboardService,
-)
-from .clipboard_service import (
-    clipboard_service as clipboard_service,
-)
 from .data_manager import DataManager as DataManager
 from .data_models import DEFAULT_SPECIAL_APPS as DEFAULT_SPECIAL_APPS  # 添加这个
 from .data_models import AppData as AppData
@@ -18,40 +9,37 @@ from .data_models import AppSettings as AppSettings
 from .data_models import Folder as Folder
 from .data_models import ShortcutItem as ShortcutItem
 from .data_models import ShortcutType as ShortcutType
-from .interaction_context import InteractionContext as InteractionContext
-from .interaction_context import TriggerContext as TriggerContext
-from .selected_text_service import SelectedTextResult as SelectedTextResult
-from .selected_text_service import SelectedTextService as SelectedTextService
-from .selected_text_service import selected_text_service as selected_text_service
 from .version import APP_VERSION as APP_VERSION
 
-# 可选模块
-try:
-    from .icon_extractor import IconExtractor
-except ImportError:
-    IconExtractor = None
-
-try:
-    from .shortcut_parser import ShortcutParser
-except ImportError:
-    ShortcutParser = None
-
-try:
-    from .shortcut_executor import ShortcutExecutor
-except ImportError:
-    ShortcutExecutor = None
-
-try:
-    from .window_manager import WindowManager
-except ImportError:
-    WindowManager = None
+_LAZY_EXPORTS = {
+    "ClipboardClassification": ("clipboard_service", "ClipboardClassification"),
+    "ClipboardService": ("clipboard_service", "ClipboardService"),
+    "clipboard_service": ("clipboard_service", "clipboard_service"),
+    "InteractionContext": ("interaction_context", "InteractionContext"),
+    "TriggerContext": ("interaction_context", "TriggerContext"),
+    "SelectedTextResult": ("selected_text_service", "SelectedTextResult"),
+    "SelectedTextService": ("selected_text_service", "SelectedTextService"),
+    "selected_text_service": ("selected_text_service", "selected_text_service"),
+    "IconExtractor": ("icon_extractor", "IconExtractor"),
+    "ShortcutParser": ("shortcut_parser", "ShortcutParser"),
+    "ShortcutExecutor": ("shortcut_executor", "ShortcutExecutor"),
+    "WindowManager": ("window_manager", "WindowManager"),
+    "auto_start_manager": ("auto_start_manager", None),
+}
 
 
-# 自启动管理器（优化开机启动速度）
-try:
-    from . import auto_start_manager
-except ImportError:
-    auto_start_manager = None
+def __getattr__(name: str):
+    """Lazy: avoids circular import chains through core.__init__."""
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _LAZY_EXPORTS[name]
+    try:
+        module = __import__(f"{__name__}.{module_name}", fromlist=[attr_name] if attr_name else ["*"])
+        value = module if attr_name is None else getattr(module, attr_name)
+    except ImportError:
+        value = None
+    globals()[name] = value
+    return value
 
 
 # ============================================================
@@ -170,6 +158,7 @@ def ensure_plugin_manager_initialized():
     if plugin_manager is not None:
         return
     try:
+        # Lazy: avoids circular import via core.__init__.
         from .plugin_manager import PluginManager
 
         plugin_manager = PluginManager(registry)
@@ -187,6 +176,7 @@ def set_data_manager(dm):
 
 def _register_builtin_commands():
     """注册所有 Phase 2/3 内置命令到 registry。"""
+    # Lazy: avoids circular import via core.__init__.
     from .builtin_command_catalog import PANEL_COMMAND_IDS, build_builtin_command_definitions
     from .command_registry import (
         COMMAND_INTERACTION_DIRECT,

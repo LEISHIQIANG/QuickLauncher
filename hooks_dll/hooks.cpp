@@ -1,8 +1,6 @@
 #define HOOKS_EXPORTS
 #include "hooks.h"
 #include <windows.h>
-#include <thread>
-#include <chrono>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -14,7 +12,6 @@
 #include <fstream>
 #include <mutex>
 #include <sstream>
-#include <vector>
 
 // 全局变量
 static HHOOK g_mouseHook = NULL;
@@ -25,6 +22,8 @@ static HANDLE g_mouseThreadHandle = NULL;
 static HANDLE g_keyboardThreadHandle = NULL;
 static HANDLE g_mouseReadyEvent = NULL;
 static HANDLE g_keyboardReadyEvent = NULL;
+static HANDLE g_mouseExitedEvent = NULL;
+static HANDLE g_keyboardExitedEvent = NULL;
 static std::atomic<bool> g_mouseRunning(false);
 static std::atomic<bool> g_keyboardRunning(false);
 static std::atomic<bool> g_mouseInstalling(false);
@@ -62,8 +61,8 @@ static double g_lastAltReleaseTime = 0.0;
 static double g_lastDoubleTapTime = 0.0;
 static double g_altLClickLastTime = 0.0;
 static double g_altLClickLastTrigger = 0.0;
-static int g_altTapCount = 0;
-static bool g_otherKeyPressed = false;
+static std::atomic<int> g_altTapCount(0);
+static std::atomic<bool> g_otherKeyPressed(false);
 
 // 热键配置
 static int g_hotkeyModifiers = 0;
@@ -122,6 +121,7 @@ struct CallbackEvent {
 };
 static std::deque<CallbackEvent> g_pendingCallbacks;
 static std::mutex g_callbackMutex;
+static std::mutex g_callbackStartMutex;  // 保护 EnsureCallbackThread 的互斥锁
 
 // 常量
 constexpr double MIN_BLOCK_INTERVAL = 0.025;
@@ -139,6 +139,25 @@ constexpr unsigned int HOOKS_CAP_SPECIAL_APPS = 0x0008;
 constexpr unsigned int HOOKS_CAP_DIAGNOSTICS = 0x0010;
 constexpr unsigned int HOOKS_CAP_HEALTH_STATUS = 0x0020;
 constexpr size_t CALLBACK_QUEUE_LIMIT = 64;
+constexpr DWORD THREAD_JOIN_TIMEOUT_MS = 500;
+
+static HANDLE EnsureManualResetEvent(HANDLE& eventHandle, BOOL initialState) {
+    if (eventHandle == NULL) {
+        eventHandle = CreateEventW(NULL, TRUE, initialState, NULL);
+    }
+    return eventHandle;
+}
+
+static void WaitForHookThreadExit(std::atomic<bool>& threadAlive, HANDLE exitedEvent, HANDLE threadHandle) {
+    if (!threadAlive.load()) return;
+    if (exitedEvent != NULL) {
+        WaitForSingleObject(exitedEvent, THREAD_JOIN_TIMEOUT_MS);
+        return;
+    }
+    if (threadHandle != NULL) {
+        WaitForSingleObject(threadHandle, THREAD_JOIN_TIMEOUT_MS);
+    }
+}
 
 inline double GetTime() {
     return GetTickCount64() / 1000.0;
@@ -179,20 +198,18 @@ static bool IsModifierPressedNow(int bit) {
 // 回调线程 - 单线程排队执行，避免每次 CreateThread
 // ============================================================
 
-// SEH保护的回调执行 — 必须在独立函数中，不能和 C++ 对象（如 lock_guard）共存
-static void SafeInvokeCallback(KeyboardCallback cb) {
-    __try {
-        cb();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        // 忽略回调中的异常
-    }
-}
+#define SAFE_INVOKE_CALLBACK(call_expr) \
+    __try {                             \
+        call_expr;                      \
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
-static void SafeInvokeMouseCallback(MouseCallback cb, int x, int y) {
-    __try {
-        cb(x, y);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        // 忽略回调中的异常
+// SEH保护的回调执行 — 必须在独立函数中，不能和 C++ 对象（如 lock_guard）共存
+// 统一处理键盘和鼠标回调，替代原先的两个独立包装函数
+static void SafeInvokeAny(const CallbackEvent& ev) {
+    if (ev.type == CallbackEvent::Keyboard && ev.keyboardCallback) {
+        SAFE_INVOKE_CALLBACK(ev.keyboardCallback())
+    } else if (ev.type == CallbackEvent::Mouse && ev.mouseCallback) {
+        SAFE_INVOKE_CALLBACK(ev.mouseCallback(ev.x, ev.y))
     }
 }
 
@@ -207,11 +224,7 @@ static DWORD WINAPI CallbackThreadProc(LPVOID) {
                 callbacks.swap(g_pendingCallbacks);
             }
             for (const auto& callback : callbacks) {
-                if (callback.type == CallbackEvent::Keyboard && callback.keyboardCallback) {
-                    SafeInvokeCallback(callback.keyboardCallback);
-                } else if (callback.type == CallbackEvent::Mouse && callback.mouseCallback) {
-                    SafeInvokeMouseCallback(callback.mouseCallback, callback.x, callback.y);
-                }
+                SafeInvokeAny(callback);
             }
         }
     }
@@ -220,6 +233,11 @@ static DWORD WINAPI CallbackThreadProc(LPVOID) {
 
 
 static void EnsureCallbackThread() {
+    // 快速路径：无锁检查
+    if (g_callbackThreadRunning.load() && g_callbackThread) return;
+
+    // 慢路径：加锁 double-checked locking，防止并发创建多个回调线程
+    std::lock_guard<std::mutex> lock(g_callbackStartMutex);
     if (g_callbackThreadRunning.load() && g_callbackThread) return;
 
     if (g_callbackEvent == NULL) {
@@ -230,7 +248,10 @@ static void EnsureCallbackThread() {
 }
 
 static void StopCallbackThread() {
-    g_callbackThreadRunning = false;
+    {
+        std::lock_guard<std::mutex> lock(g_callbackStartMutex);
+        g_callbackThreadRunning = false;
+    }
     if (g_callbackEvent) SetEvent(g_callbackEvent);
     if (g_callbackThread) {
         WaitForSingleObject(g_callbackThread, 1000);
@@ -247,30 +268,121 @@ static void StopCallbackThread() {
     }
 }
 
-static void InvokeKeyboardCallbackAsync(KeyboardCallback callback) {
-    if (!callback) return;
+static void EnqueueCallbackEvent(const CallbackEvent& event) {
     EnsureCallbackThread();
     {
         std::lock_guard<std::mutex> lock(g_callbackMutex);
         if (g_pendingCallbacks.size() >= CALLBACK_QUEUE_LIMIT) {
             g_pendingCallbacks.pop_front();
         }
-        g_pendingCallbacks.push_back(CallbackEvent{CallbackEvent::Keyboard, callback, nullptr, 0, 0});
+        g_pendingCallbacks.push_back(event);
     }
     if (g_callbackEvent) SetEvent(g_callbackEvent);
 }
 
+// 统一回调入队 — 替代原先的两个独立函数
+static void InvokeKeyboardCallbackAsync(KeyboardCallback callback) {
+    if (!callback) return;
+    EnqueueCallbackEvent(CallbackEvent{CallbackEvent::Keyboard, callback, nullptr, 0, 0});
+}
+
 static void InvokeMouseCallbackAsync(MouseCallback callback, int x, int y) {
     if (!callback) return;
-    EnsureCallbackThread();
-    {
-        std::lock_guard<std::mutex> lock(g_callbackMutex);
-        if (g_pendingCallbacks.size() >= CALLBACK_QUEUE_LIMIT) {
-            g_pendingCallbacks.pop_front();
-        }
-        g_pendingCallbacks.push_back(CallbackEvent{CallbackEvent::Mouse, nullptr, callback, x, y});
+    EnqueueCallbackEvent(CallbackEvent{CallbackEvent::Mouse, nullptr, callback, x, y});
+}
+
+// ============================================================
+// HookContext — 统一鼠标/键盘钩子的安装与卸载
+// ============================================================
+
+struct HookContext {
+    HHOOK              hook           = NULL;
+    DWORD              threadId       = 0;
+    HANDLE             threadHandle   = NULL;
+    HANDLE             readyEvent     = NULL;
+    HANDLE             exitedEvent    = NULL;
+    std::atomic<bool>& running;
+    std::atomic<bool>& installing;
+    std::atomic<bool>& threadAlive;
+};
+
+// 通用钩子安装：创建事件、启动线程、等待就绪
+static bool InstallHookGeneric(
+    HookContext&          ctx,
+    LPTHREAD_START_ROUTINE threadProc,
+    MouseCallback         mouseCb,
+    KeyboardCallback      kbdCb)
+{
+    // 防重入
+    bool expected = false;
+    if (!ctx.installing.compare_exchange_strong(expected, true)) {
+        return ctx.hook != NULL;
     }
-    if (g_callbackEvent) SetEvent(g_callbackEvent);
+
+    if (mouseCb) g_mouseCallback = mouseCb;
+    if (kbdCb)   g_altDoubleTapCallback = kbdCb;
+
+    // 等待旧线程安全退出
+    WaitForHookThreadExit(ctx.threadAlive, ctx.exitedEvent, ctx.threadHandle);
+
+    if (ctx.running) {
+        ctx.installing = false;
+        return ctx.hook != NULL;
+    }
+
+    EnsureCallbackThread();
+
+    // 创建就绪事件
+    if (ctx.readyEvent) CloseHandle(ctx.readyEvent);
+    ctx.readyEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+
+    ctx.running = true;
+    EnsureManualResetEvent(ctx.exitedEvent, FALSE);
+    if (ctx.exitedEvent) ResetEvent(ctx.exitedEvent);
+
+    // 关闭旧线程句柄
+    if (ctx.threadHandle) {
+        CloseHandle(ctx.threadHandle);
+        ctx.threadHandle = NULL;
+    }
+
+    ctx.threadHandle = CreateThread(NULL, 0, threadProc, ctx.readyEvent, 0, NULL);
+    if (!ctx.threadHandle) {
+        g_lastHookError = GetLastError();
+        ctx.running = false;
+        ctx.installing = false;
+        return false;
+    }
+
+    // 等待钩子安装完成（最多 2 秒）
+    DWORD waitResult = WaitForSingleObject(ctx.readyEvent, 2000);
+    if (waitResult == WAIT_TIMEOUT) {
+        g_lastHookError = WAIT_TIMEOUT;
+    }
+
+    ctx.installing = false;
+    return ctx.hook != NULL;
+}
+
+// 通用钩子卸载：通知线程退出、清理句柄
+static void UninstallHookGeneric(HookContext& ctx) {
+    ctx.running = false;
+    if (ctx.threadId) {
+        PostThreadMessage(ctx.threadId, WM_QUIT, 0, 0);
+    }
+    if (ctx.threadHandle) {
+        WaitForSingleObject(ctx.threadHandle, 500);
+        CloseHandle(ctx.threadHandle);
+        ctx.threadHandle = NULL;
+    }
+    if (ctx.readyEvent) {
+        CloseHandle(ctx.readyEvent);
+        ctx.readyEvent = NULL;
+    }
+    if (ctx.exitedEvent) {
+        CloseHandle(ctx.exitedEvent);
+        ctx.exitedEvent = NULL;
+    }
 }
 
 // ============================================================
@@ -654,6 +766,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
 DWORD WINAPI MouseHookThread(LPVOID param) {
     g_mouseThreadAlive = true;
+    if (g_mouseExitedEvent) ResetEvent(g_mouseExitedEvent);
     HANDLE readyEvent = (HANDLE)param;
     g_mouseThreadId = GetCurrentThreadId();
     g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetCurrentDllModule(), 0);
@@ -664,6 +777,7 @@ DWORD WINAPI MouseHookThread(LPVOID param) {
         g_mouseThreadId = 0;
         g_mouseThreadAlive = false;
         if (readyEvent) SetEvent(readyEvent);
+        if (g_mouseExitedEvent) SetEvent(g_mouseExitedEvent);
         return 1;
     }
 
@@ -684,6 +798,7 @@ DWORD WINAPI MouseHookThread(LPVOID param) {
     g_mouseThreadId = 0;
     g_mouseRunning = false;
     g_mouseThreadAlive = false;
+    if (g_mouseExitedEvent) SetEvent(g_mouseExitedEvent);
     return 0;
 }
 
@@ -839,6 +954,7 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
 DWORD WINAPI KeyboardHookThread(LPVOID param) {
     g_keyboardThreadAlive = true;
+    if (g_keyboardExitedEvent) ResetEvent(g_keyboardExitedEvent);
     HANDLE readyEvent = (HANDLE)param;
     g_keyboardThreadId = GetCurrentThreadId();
     g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookProc, GetCurrentDllModule(), 0);
@@ -849,6 +965,7 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
         g_keyboardThreadId = 0;
         g_keyboardThreadAlive = false;
         if (readyEvent) SetEvent(readyEvent);
+        if (g_keyboardExitedEvent) SetEvent(g_keyboardExitedEvent);
         return 1;
     }
 
@@ -873,6 +990,7 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
     g_keyboardThreadId = 0;
     g_keyboardRunning = false;
     g_keyboardThreadAlive = false;
+    if (g_keyboardExitedEvent) SetEvent(g_keyboardExitedEvent);
     return 0;
 }
 
@@ -881,80 +999,29 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
 // ============================================================
 
 bool InstallMouseHook(MouseCallback callback) {
-    // 防重入
-    bool expected = false;
-    if (!g_mouseInstalling.compare_exchange_strong(expected, true)) {
-        // 已有安装操作进行中
-        return g_mouseHook != NULL;
-    }
-
-    g_mouseCallback = callback;
-
-    // 如果旧线程仍在运行，等待其安全退出，防止多线程钩子竞态
-    if (g_mouseThreadAlive.load()) {
-        int waitCount = 0;
-        while (g_mouseThreadAlive.load() && waitCount < 50) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            waitCount++;
-        }
-    }
-
-    if (g_mouseRunning) {
-        g_mouseInstalling = false;
-        return g_mouseHook != NULL;
-    }
-
-    // 确保回调线程已启动
-    EnsureCallbackThread();
-
-    // 创建同步事件
-    if (g_mouseReadyEvent) {
-        CloseHandle(g_mouseReadyEvent);
-    }
-    g_mouseReadyEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-
-    g_mouseRunning = true;
-
-    // 关闭之前的线程句柄（如果有）
-    if (g_mouseThreadHandle) {
-        CloseHandle(g_mouseThreadHandle);
-        g_mouseThreadHandle = NULL;
-    }
-
-    g_mouseThreadHandle = CreateThread(NULL, 0, MouseHookThread, g_mouseReadyEvent, 0, NULL);
-
-    if (!g_mouseThreadHandle) {
-        g_lastHookError = GetLastError();
-        g_mouseRunning = false;
-        g_mouseInstalling = false;
-        return false;
-    }
-
-    // 等待钩子安装完成（最多 2 秒）
-    DWORD waitResult = WaitForSingleObject(g_mouseReadyEvent, 2000);
-    if (waitResult == WAIT_TIMEOUT) {
-        g_lastHookError = WAIT_TIMEOUT;
-    }
-
-    g_mouseInstalling = false;
-    return g_mouseHook != NULL;
+    HookContext ctx{
+        g_mouseHook, g_mouseThreadId, g_mouseThreadHandle,
+        g_mouseReadyEvent, g_mouseExitedEvent,
+        g_mouseRunning, g_mouseInstalling, g_mouseThreadAlive
+    };
+    bool result = InstallHookGeneric(ctx, MouseHookThread, callback, nullptr);
+    // 同步结构体字段回全局变量
+    g_mouseHook = ctx.hook; g_mouseThreadId = ctx.threadId;
+    g_mouseThreadHandle = ctx.threadHandle;
+    g_mouseReadyEvent = ctx.readyEvent; g_mouseExitedEvent = ctx.exitedEvent;
+    return result;
 }
 
 void UninstallMouseHook() {
-    g_mouseRunning = false;
-    if (g_mouseThreadId) {
-        PostThreadMessage(g_mouseThreadId, WM_QUIT, 0, 0);
-    }
-    // 等待线程真正退出 (超时设为 500ms 彻底防死锁，同时确保 unhook 完成)
-    if (g_mouseThreadHandle) {
-        WaitForSingleObject(g_mouseThreadHandle, 500);
-        CloseHandle(g_mouseThreadHandle);
-        g_mouseThreadHandle = NULL;
-    }
-    if (g_mouseReadyEvent) {
-        CloseHandle(g_mouseReadyEvent);
-        g_mouseReadyEvent = NULL;
-    }
+    HookContext ctx{
+        g_mouseHook, g_mouseThreadId, g_mouseThreadHandle,
+        g_mouseReadyEvent, g_mouseExitedEvent,
+        g_mouseRunning, g_mouseInstalling, g_mouseThreadAlive
+    };
+    UninstallHookGeneric(ctx);
+    g_mouseHook = ctx.hook; g_mouseThreadId = ctx.threadId;
+    g_mouseThreadHandle = ctx.threadHandle;
+    g_mouseReadyEvent = ctx.readyEvent; g_mouseExitedEvent = ctx.exitedEvent;
     StopDebugLogThread();
 }
 
@@ -976,79 +1043,28 @@ void SetAltDoubleClickCallback(MouseCallback callback) {
 }
 
 bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
-    // 防重入
-    bool expected = false;
-    if (!g_keyboardInstalling.compare_exchange_strong(expected, true)) {
-        return g_keyboardHook != NULL;
-    }
-
-    g_altDoubleTapCallback = altDoubleTapCallback;
-
-    // 如果旧线程仍在运行，等待其安全退出，防止多线程钩子竞态
-    if (g_keyboardThreadAlive.load()) {
-        int waitCount = 0;
-        while (g_keyboardThreadAlive.load() && waitCount < 50) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            waitCount++;
-        }
-    }
-
-    if (g_keyboardRunning) {
-        g_keyboardInstalling = false;
-        return g_keyboardHook != NULL;
-    }
-
-    // 确保回调线程已启动
-    EnsureCallbackThread();
-
-    // 创建同步事件
-    if (g_keyboardReadyEvent) {
-        CloseHandle(g_keyboardReadyEvent);
-    }
-    g_keyboardReadyEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-
-    g_keyboardRunning = true;
-
-    // 关闭之前的线程句柄
-    if (g_keyboardThreadHandle) {
-        CloseHandle(g_keyboardThreadHandle);
-        g_keyboardThreadHandle = NULL;
-    }
-
-    g_keyboardThreadHandle = CreateThread(NULL, 0, KeyboardHookThread, g_keyboardReadyEvent, 0, NULL);
-
-    if (!g_keyboardThreadHandle) {
-        g_lastHookError = GetLastError();
-        g_keyboardRunning = false;
-        g_keyboardInstalling = false;
-        return false;
-    }
-
-    // 等待钩子安装完成（最多 2 秒）
-    DWORD waitResult = WaitForSingleObject(g_keyboardReadyEvent, 2000);
-    if (waitResult == WAIT_TIMEOUT) {
-        g_lastHookError = WAIT_TIMEOUT;
-    }
-
-    g_keyboardInstalling = false;
-    return g_keyboardHook != NULL;
+    HookContext ctx{
+        g_keyboardHook, g_keyboardThreadId, g_keyboardThreadHandle,
+        g_keyboardReadyEvent, g_keyboardExitedEvent,
+        g_keyboardRunning, g_keyboardInstalling, g_keyboardThreadAlive
+    };
+    bool result = InstallHookGeneric(ctx, KeyboardHookThread, nullptr, altDoubleTapCallback);
+    g_keyboardHook = ctx.hook; g_keyboardThreadId = ctx.threadId;
+    g_keyboardThreadHandle = ctx.threadHandle;
+    g_keyboardReadyEvent = ctx.readyEvent; g_keyboardExitedEvent = ctx.exitedEvent;
+    return result;
 }
 
 void UninstallKeyboardHook() {
-    g_keyboardRunning = false;
-    if (g_keyboardThreadId) {
-        PostThreadMessage(g_keyboardThreadId, WM_QUIT, 0, 0);
-    }
-    // 等待线程真正退出 (超时设为 500ms 彻底防死锁，同时确保 unhook 完成)
-    if (g_keyboardThreadHandle) {
-        WaitForSingleObject(g_keyboardThreadHandle, 500);
-        CloseHandle(g_keyboardThreadHandle);
-        g_keyboardThreadHandle = NULL;
-    }
-    if (g_keyboardReadyEvent) {
-        CloseHandle(g_keyboardReadyEvent);
-        g_keyboardReadyEvent = NULL;
-    }
+    HookContext ctx{
+        g_keyboardHook, g_keyboardThreadId, g_keyboardThreadHandle,
+        g_keyboardReadyEvent, g_keyboardExitedEvent,
+        g_keyboardRunning, g_keyboardInstalling, g_keyboardThreadAlive
+    };
+    UninstallHookGeneric(ctx);
+    g_keyboardHook = ctx.hook; g_keyboardThreadId = ctx.threadId;
+    g_keyboardThreadHandle = ctx.threadHandle;
+    g_keyboardReadyEvent = ctx.readyEvent; g_keyboardExitedEvent = ctx.exitedEvent;
     g_altHeld = false;
     g_ctrlHeld = false;
     g_altTapCount = 0;
@@ -1163,6 +1179,27 @@ static bool ParseGlobalHotkey(const std::string& hotkeyStr, int* modifiers, int*
             } else if (token == "printscreen" || token == "prtscr") {
                 if (*vk != 0) return false;
                 *vk = VK_SNAPSHOT;
+            } else if (token == "volumeup") {
+                if (*vk != 0) return false;
+                *vk = VK_VOLUME_UP;
+            } else if (token == "volumedown") {
+                if (*vk != 0) return false;
+                *vk = VK_VOLUME_DOWN;
+            } else if (token == "volumemute" || token == "mute") {
+                if (*vk != 0) return false;
+                *vk = VK_VOLUME_MUTE;
+            } else if (token == "medianext") {
+                if (*vk != 0) return false;
+                *vk = VK_MEDIA_NEXT_TRACK;
+            } else if (token == "mediaprev") {
+                if (*vk != 0) return false;
+                *vk = VK_MEDIA_PREV_TRACK;
+            } else if (token == "mediastop") {
+                if (*vk != 0) return false;
+                *vk = VK_MEDIA_STOP;
+            } else if (token == "mediaplay" || token == "playpause") {
+                if (*vk != 0) return false;
+                *vk = VK_MEDIA_PLAY_PAUSE;
             } else if (token.length() >= 2 && token[0] == 'f') {
                 int n = atoi(token.substr(1).c_str());
                 if (n < 1 || n > 24 || *vk != 0) return false;

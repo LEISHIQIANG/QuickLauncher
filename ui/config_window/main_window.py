@@ -213,6 +213,7 @@ class TitleBar(QWidget):
 
     def set_theme(self, theme: str):
         """根据主题设置文字和按钮颜色"""
+        self._theme = theme
         if theme == "dark":
             text_color = "#ffffff"
             subtext_color = "#aaaaaa"
@@ -350,8 +351,42 @@ class TitleBar(QWidget):
 
             if self.parent_window:
                 diff = new_pos - self._drag_pos
-                self.parent_window.move(self.parent_window.pos() + diff)
+                target_pos = self.parent_window.pos() + diff
+                # 约束窗口在屏幕可见区域内（标题栏至少保留 40px 可见）
+                target_pos = self._clamp_to_screen(target_pos)
+                self.parent_window.move(target_pos)
             self._drag_pos = new_pos
+
+    def _clamp_to_screen(self, pos):
+        """将窗口位置约束到所有屏幕的合并可用区域内"""
+        from PyQt5.QtCore import QRect
+        from PyQt5.QtWidgets import QApplication
+
+        screens = QApplication.screens()
+        if not screens:
+            return pos
+
+        # 合并所有屏幕的可用几何区域
+        combined = screens[0].availableGeometry()
+        for screen in screens[1:]:
+            combined = combined.united(screen.availableGeometry())
+
+        win = self.parent_window
+        win_rect = QRect(pos, win.size())
+
+        min_visible = 40  # 标题栏至少可见的像素数
+        # 水平约束
+        if win_rect.right() < combined.left() + min_visible:
+            pos.setX(combined.left() + min_visible - win.width())
+        elif win_rect.left() > combined.right() - min_visible:
+            pos.setX(combined.right() - min_visible)
+        # 垂直约束
+        if win_rect.bottom() < combined.top() + min_visible:
+            pos.setY(combined.top() + min_visible - win.height())
+        elif win_rect.top() > combined.bottom() - min_visible:
+            pos.setY(combined.bottom() - min_visible)
+
+        return pos
 
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
@@ -362,7 +397,7 @@ class RoundedWindow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.corner_radius = 8 if is_win11() else 8
+        self.corner_radius = 8
         self.bg_color = QColor(43, 43, 43, 200)  # 默认半透明
         self.border_color = QColor(85, 85, 85, 150)
         self.use_acrylic = True  # 是否使用磨砂玻璃模式
@@ -848,6 +883,7 @@ class ConfigWindow(QMainWindow):
     def _apply_theme(self):
         """应用主题 - 磨砂玻璃拟态风格"""
         theme = self.data_manager.get_settings().theme
+        self._theme = theme
         toggle_style = get_switch_stylesheet(theme) + get_radio_stylesheet(theme)
 
         # 使用新的磨砂玻璃拟态样式
@@ -1343,7 +1379,7 @@ class ConfigWindow(QMainWindow):
                 return
 
             effect = get_window_effect()
-            radius = 8 if is_win11() else 8
+            radius = 8
             theme = self.data_manager.get_settings().theme
 
             # 强制刷新效果状态

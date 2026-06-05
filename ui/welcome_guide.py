@@ -49,7 +49,7 @@ class WelcomeGuide(QDialog):
         self.setWindowTitle(tr("欢迎使用 QuickLauncher"))
         self.setModal(True)
         self._theme = normalize_theme(theme)
-        self.corner_radius = 8 if is_win11() else 8
+        self.corner_radius = 8
         self.current_step = 0
         self._shadow_applied = False
 

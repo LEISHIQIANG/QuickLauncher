@@ -51,7 +51,7 @@ def log_event(event: str, summary: str, details: dict | None = None) -> None:
             with open(path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as exc:
-        logger.debug("log_event failed: %s", exc)
+        logger.warning("log_event failed: %s", exc)
 
 
 def _rotate_if_needed(path: Path) -> None:

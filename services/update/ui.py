@@ -221,7 +221,7 @@ class UpdateDialog:
         dialog.setFont(get_qfont(12))
         dialog.setWindowOpacity(0)
 
-        corner_radius = 8 if is_win11() else 8
+        corner_radius = 8
         if theme == "dark":
             bg_color = QColor(28, 28, 30, 180)
             border_color = QColor(190, 190, 197, 60)

@@ -336,7 +336,7 @@ class LogWindow(QDialog):
                 return
 
             effect = get_window_effect()
-            radius = 8 if is_win11() else 8
+            radius = 8
 
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
@@ -360,7 +360,7 @@ class LogWindow(QDialog):
             painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
 
-        radius = 8 if is_win11() else 8
+        radius = 8
         inset = 1.0 if is_win10() else 0.5
 
         if self._theme == "dark":

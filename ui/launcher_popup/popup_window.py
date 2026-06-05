@@ -16,7 +16,8 @@ except ImportError:
 from core import DataManager
 from core.windows_uipi import allow_drag_drop_for_widget
 from qt_compat import (
-    QApplication,
+    QCoreApplication,
+    QEventLoop,
     QFont,
     QImage,
     QtCompat,
@@ -402,11 +403,6 @@ class LauncherPopup(
         self.setWindowOpacity(0.0)
         self.update()
 
-        try:
-            QApplication.processEvents()
-        except Exception as exc:
-            logger.debug("处理事件队列失败: %s", exc, exc_info=True)
-
     def show(self):
         """Show with a stable fade-in start state."""
         if not self.isVisible():
@@ -656,9 +652,6 @@ class LauncherPopup(
         except Exception as exc:
             logger.debug("清除窗口遮罩失败: %s", exc, exc_info=True)
 
-        # 强制刷新屏幕DPI信息
-        QApplication.processEvents()
-
         current_revision = self.data_manager.get_runtime_revision()
         revision_changed = force or current_revision != getattr(self, "_model_revision", -1)
         self._model_revision = current_revision
@@ -767,9 +760,8 @@ class LauncherPopup(
             except Exception:
                 self.move(x, y)
 
-            # 2. 强制处理事件流，让 OS 和 Qt 完成 DPI 信息的同步
-            QApplication.processEvents()
-            QApplication.processEvents()
+            # 2. 处理系统事件以完成 DPI 同步，但排除用户输入事件防止重入
+            QCoreApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
         # 更新 Dock 高度
         # 单行：icon_size + 16（与原来保持完全一致）

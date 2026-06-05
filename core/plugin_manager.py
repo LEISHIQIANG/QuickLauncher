@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import atexit
+import builtins
 import concurrent.futures
 import importlib.util
 import json
@@ -12,11 +14,13 @@ import subprocess
 import sys
 import time
 import traceback
+import types
 import webbrowser
+import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -35,70 +39,86 @@ from .command_registry import (
     remove_search_source,
 )
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
+from .plugin.constants import (
+    HIGH_RISK_PERMISSIONS,
+    PERMISSIONS_KNOWN,
+    PLUGIN_API_HTTP_METHODS,
+    PLUGIN_API_HTTP_TIMEOUT_SECONDS,
+    PLUGIN_API_MAX_HTTP_HEADER_CHARS,
+    PLUGIN_API_MAX_HTTP_HEADERS,
+    PLUGIN_API_MAX_HTTP_REQUEST_BYTES,
+    PLUGIN_API_MAX_HTTP_RESPONSE_BYTES,
+    PLUGIN_API_MAX_TEXT_FILE_BYTES,
+    PLUGIN_BLOCKED_IMPORT_ROOTS,
+    PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS,
+    PLUGIN_ERROR_LOG_BACKUPS,
+    PLUGIN_ERROR_LOG_MAX_BYTES,
+    PLUGIN_FAILURE_THRESHOLD,
+    PLUGIN_FAILURE_WINDOW_SECONDS,
+    PLUGIN_OS_BLOCKED_ATTRS,
+    PLUGIN_PACKAGE_EXTENSION,
+    PLUGIN_STATE_SCHEMA,
+    PLUGIN_TRUST_LEVELS,
+)
+from .plugin.installer import install_zip_archive
+from .plugin.paths import is_plugin_package_path
+from .plugin.paths import safe_relative_plugin_path as _safe_relative_plugin_path
 
 logger = logging.getLogger(__name__)
+
+# 共享线程池：所有插件命令执行共用，避免每次调用都创建/销毁线程池
+_SHARED_COMMAND_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="plugin-cmd")
+atexit.register(_SHARED_COMMAND_POOL.shutdown, wait=False)
 
 # ---------------------------------------------------------------------------
 # ── Data models ───────────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
 
-PERMISSIONS_KNOWN = frozenset(
-    {
-        "clipboard.read",
-        "clipboard.write",
-        "file.read",
-        "file.write",
-        "open.url",
-        "open.file",
-        "process.run",
-        "network.request",
-        "builtin.command",
-        "admin.required",
-    }
-)
+class _RestrictedPluginModule(types.ModuleType):
+    def __init__(self, original: types.ModuleType, blocked_attrs: frozenset[str], plugin_id: str):
+        super().__init__(original.__name__)
+        self._original = original
+        self._blocked_attrs = blocked_attrs
+        self._plugin_id = plugin_id
 
-HIGH_RISK_PERMISSIONS = frozenset(
-    {
-        "process.run",
-        "file.write",
-        "admin.required",
-    }
-)
+    def __getattr__(self, name: str):
+        if name in self._blocked_attrs:
+            raise PermissionError(f"插件 {self._plugin_id} 不能直接调用 os.{name}; 请使用 PluginAPI")
+        return getattr(self._original, name)
 
 
-PLUGIN_TRUST_LEVELS = ("builtin", "local-trusted", "community-unverified")
-PLUGIN_PACKAGE_EXTENSION = ".qlzip"
-PLUGIN_STATE_SCHEMA = 1
-PLUGIN_FAILURE_WINDOW_SECONDS = 10 * 60
-PLUGIN_FAILURE_THRESHOLD = 3
-PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS = 30
-PLUGIN_ERROR_LOG_MAX_BYTES = 1024 * 1024
-PLUGIN_ERROR_LOG_BACKUPS = 3
-PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES = 150 * 1024 * 1024
-PLUGIN_PACKAGE_MAX_FILES = 1000
-PLUGIN_API_MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
-PLUGIN_API_MAX_HTTP_REQUEST_BYTES = 2 * 1024 * 1024
-PLUGIN_API_MAX_HTTP_RESPONSE_BYTES = 2 * 1024 * 1024
-PLUGIN_API_HTTP_TIMEOUT_SECONDS = 10.0
-PLUGIN_API_HTTP_METHODS = frozenset({"GET", "POST", "HEAD"})
-PLUGIN_API_MAX_HTTP_HEADERS = 64
-PLUGIN_API_MAX_HTTP_HEADER_CHARS = 8192
+def _make_plugin_builtins(plugin_id: str, permissions: list[str], *, restricted: bool) -> dict[str, Any]:
+    if not restricted:
+        return vars(builtins)
 
+    allowed = set(permissions or [])
+    safe_builtins = dict(vars(builtins))
+    original_import = builtins.__import__
+    original_open = builtins.open
 
-def is_plugin_package_path(path: str | os.PathLike[str]) -> bool:
-    return Path(path).suffix.lower() == PLUGIN_PACKAGE_EXTENSION
+    def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+        root = str(name or "").split(".", 1)[0]
+        if level == 0 and root in PLUGIN_BLOCKED_IMPORT_ROOTS:
+            raise PermissionError(f"插件 {plugin_id} 不能直接导入 {root}; 请使用 PluginAPI")
+        module = original_import(name, globals, locals, fromlist, level)
+        if level == 0 and root == "os":
+            return _RestrictedPluginModule(module, PLUGIN_OS_BLOCKED_ATTRS, plugin_id)
+        return module
 
+    def restricted_open(file, mode="r", *args, **kwargs):
+        normalized_mode = str(mode or "r")
+        writes = any(flag in normalized_mode for flag in ("w", "a", "x", "+"))
+        if writes and "file.write" not in allowed:
+            raise PermissionError(f"插件 {plugin_id} 缺少权限: file.write")
+        if not writes and "file.read" not in allowed:
+            raise PermissionError(f"插件 {plugin_id} 缺少权限: file.read")
+        return original_open(file, mode, *args, **kwargs)
 
-def _safe_relative_plugin_path(raw: str) -> str | None:
-    value = str(raw or "").replace("\\", "/").strip()
-    if not value or value.startswith("/") or value.startswith("//"):
-        return None
-    if len(value) >= 2 and value[1] == ":":
-        return None
-    path = PurePosixPath(value)
-    if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
-        return None
-    return path.as_posix()
+    safe_builtins["__import__"] = restricted_import
+    safe_builtins["open"] = restricted_open
+    safe_builtins["eval"] = None
+    safe_builtins["exec"] = None
+    return safe_builtins
 
 
 @dataclass
@@ -626,10 +646,8 @@ class PluginAPI:
             return limit_command_result_actions(result)
 
         def _safe(context: CommandContext) -> CommandResult:
-            pool = None
             try:
-                pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                future = pool.submit(handler, context)
+                future = _SHARED_COMMAND_POOL.submit(handler, context)
                 result = future.result(timeout=PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS)
                 return _validate(result)
             except concurrent.futures.TimeoutError as e:
@@ -652,10 +670,6 @@ class PluginAPI:
                     "插件命令 %s 执行异常: %s", handler.__name__ if hasattr(handler, "__name__") else "?", e
                 )
                 return CommandResult(success=False, message=f"插件执行失败: {e}", error=str(e))
-
-            finally:
-                if pool is not None:
-                    pool.shutdown(wait=False, cancel_futures=True)
 
         return _safe
 
@@ -1309,6 +1323,11 @@ class PluginManager:
             loader = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = loader
             try:
+                loader.__dict__["__builtins__"] = _make_plugin_builtins(
+                    m.id,
+                    m.permissions,
+                    restricted=m.trust_level == "community-unverified",
+                )
                 spec.loader.exec_module(loader)
             except Exception:
                 sys.modules.pop(module_name, None)
@@ -1419,22 +1438,30 @@ class PluginManager:
         was_enabled = info.status == "enabled"
         was_error = info.status == "error"
 
-        self.disable_plugin(plugin_id)
-        # Force re-import by removing from sys.modules
+        # 先尝试重新解析 manifest，如果失败则不触碰当前运行状态
         module_name = f"_plugin_{plugin_id}"
-        sys.modules.pop(module_name, None)
-        # Re-scan manifest
         manifest_path = Path(info.directory) / "plugin.json"
         new_info = self._load_manifest(info.directory, manifest_path)
         if new_info and new_info.status == "error":
+            # manifest 解析失败，保留旧插件不动
             self._plugins[plugin_id] = new_info
             self._save_enabled()
             return False
+
+        # 清理 sys.modules 中该插件的所有模块（包括子模块），确保重新加载时代码是最新的
+        prefix = f"{module_name}."
+        keys_to_remove = [k for k in sys.modules if k == module_name or k.startswith(prefix)]
+        for k in keys_to_remove:
+            sys.modules.pop(k, None)
+
         if new_info:
             self._plugins[plugin_id] = new_info
         if not was_enabled and not was_error:
             self._save_enabled()
             return True
+
+        # 先禁用旧版本，再加载新版本
+        self.disable_plugin(plugin_id)
 
         ok = self.load_plugin(plugin_id)
         if ok:
@@ -1495,13 +1522,17 @@ class PluginManager:
         Raises ``ValueError`` on any error (invalid package, manifest error,
         validation failure, no *on_overwrite* callback when target exists).
         """
-        import zipfile
-
         if not is_plugin_package_path(package_path):
             raise ValueError(f"插件安装包必须使用 {PLUGIN_PACKAGE_EXTENSION} 扩展名")
 
         try:
-            return self._install_zip_archive(package_path, on_overwrite=on_overwrite)
+            return install_zip_archive(
+                package_path,
+                self._plugins_dir,
+                manifest_from_dict=PluginManifest.from_dict,
+                validate_manifest=validate_manifest,
+                on_overwrite=on_overwrite,
+            )
         except zipfile.BadZipFile as e:
             raise ValueError(f"无效的 {PLUGIN_PACKAGE_EXTENSION} 插件包:\n{e}") from e
 
@@ -1513,176 +1544,6 @@ class PluginManager:
     ) -> str | None:
         """Compatibility wrapper for plugin package installation."""
         return self.install_from_package(zip_path, on_overwrite=on_overwrite)
-
-    def _install_zip_archive(
-        self,
-        zip_path: str,
-        *,
-        on_overwrite: Callable[[str], bool] | None = None,
-    ) -> str | None:
-        import json as json_mod
-        import re
-        import shutil
-        import sys
-        import uuid
-        import zipfile
-        from pathlib import Path
-
-        plugins_dir = Path(self._plugins_dir).resolve(strict=False)
-        staging_base = resolve_under(plugins_dir, plugins_dir / ".staging")
-        staging_base.mkdir(parents=True, exist_ok=True)
-
-        staging_dir = resolve_under(staging_base, staging_base / f"install-{uuid.uuid4().hex[:12]}")
-        backup_dir: Path | None = None
-        plugin_id: str | None = None
-
-        try:
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                names = zf.namelist()
-
-                has_root = "plugin.json" in names
-                sub_manifest: str | None = None
-                archive_root: str | None = None
-                for n in names:
-                    if n.endswith("/plugin.json") and len(n.split("/")) == 2:
-                        sub_manifest = n
-                        archive_root = n.split("/", 1)[0]
-                        break
-                if not has_root and not sub_manifest:
-                    raise ValueError(
-                        "Could not find a valid plugin.json in the plugin archive.\n"
-                        "Please make sure the archive contains plugin.json."
-                    )
-
-                try:
-                    mb = zf.read("plugin.json") if has_root else zf.read(sub_manifest)
-                    manifest_data = json_mod.loads(mb.decode("utf-8"))
-                    plugin_id = manifest_data.get("id")
-                    plugin_name: str = manifest_data.get("name", plugin_id)
-                except Exception as e:
-                    raise ValueError(f"解析 plugin.json 失败:\n{e}") from e
-
-                if not plugin_id or not re.match(r"^[a-z0-9_-]+$", plugin_id):
-                    raise ValueError("插件ID无效或格式不正确！")
-
-                manifest = PluginManifest.from_dict(manifest_data)
-                manifest_error = validate_manifest(manifest)
-                if manifest_error:
-                    raise ValueError(manifest_error)
-
-                total_size = 0
-                file_count = 0
-                for member in zf.infolist():
-                    if not member.is_dir():
-                        if member.flag_bits & 0x1:
-                            raise ValueError("plugin archive contains encrypted files, which are not supported")
-                        file_count += 1
-                        total_size += max(0, int(member.file_size))
-                        if total_size > PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES:
-                            raise ValueError(
-                                "plugin archive uncompressed size exceeds limit "
-                                f"({total_size / 1024 / 1024:.1f} MB > "
-                                f"{PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES / 1024 / 1024:.0f} MB)"
-                            )
-                if file_count == 0:
-                    raise ValueError("压缩包为空，没有可安装的文件")
-                if file_count > PLUGIN_PACKAGE_MAX_FILES:
-                    raise ValueError(
-                        f"插件文件过多 ({file_count} 个)，最大值限制为 {PLUGIN_PACKAGE_MAX_FILES} 个"
-                    )
-                if total_size > PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES:
-                    raise ValueError(
-                        f"插件总大小 ({total_size / 1024 / 1024:.1f} MB) 超过限制 "
-                        f"({PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES / 1024 / 1024:.0f} MB)"
-                    )
-
-                target_dir = resolve_under(plugins_dir, plugins_dir / plugin_id)
-                if target_dir.exists():
-                    if target_dir.is_symlink():
-                        raise ValueError(f"插件目标目录不安全: {target_dir}")
-                    if on_overwrite is None:
-                        raise ValueError(f'插件 "{plugin_name}" 已存在，且未提供覆盖确认回调')
-                    if not on_overwrite(plugin_name):
-                        return None
-
-                os.makedirs(staging_dir, exist_ok=True)
-                seen_paths: set[str] = set()
-                for member in zf.infolist():
-                    if member.is_dir():
-                        continue
-                    filename = member.filename
-                    if has_root:
-                        rel_path = filename
-                    else:
-                        normalized_member = _safe_relative_plugin_path(filename)
-                        if normalized_member is None:
-                            raise ValueError(f"检测到路径穿越攻击，安装已终止: {filename}")
-                        if not archive_root or not normalized_member.startswith(f"{archive_root}/"):
-                            raise ValueError(f"plugin archive contains files outside its root folder: {filename}")
-                        rel_path = normalized_member.split("/", 1)[1]
-                    if not rel_path:
-                        continue
-                    safe_rel_path = _safe_relative_plugin_path(rel_path)
-                    if safe_rel_path is None:
-                        raise ValueError(f"检测到路径穿越攻击，安装已终止: {filename}")
-                    lower_rel_path = safe_rel_path.lower()
-                    if lower_rel_path in seen_paths:
-                        raise ValueError(f"插件压缩包包含重复路径，安装已终止: {filename}")
-                    seen_paths.add(lower_rel_path)
-                    try:
-                        dst = resolve_under(staging_dir, staging_dir / safe_rel_path)
-                    except UnsafePathError:
-                        raise ValueError(f"检测到路径穿越攻击，安装已终止: {filename}") from None
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(member) as src, open(dst, "wb") as fd:
-                        shutil.copyfileobj(src, fd)
-
-                if not (staging_dir / "plugin.json").is_file():
-                    raise ValueError("解压后的插件包缺少 plugin.json 文件")
-
-                if target_dir.exists():
-                    backup_base = resolve_under(plugins_dir, plugins_dir / ".backup")
-                    backup_dir = resolve_under(backup_base, backup_base / plugin_id)
-                    if backup_dir.exists():
-                        safe_rmtree_child(backup_base, backup_dir)
-                    backup_dir.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copytree(target_dir, backup_dir)
-
-                if target_dir.exists():
-                    safe_rmtree_child(plugins_dir, target_dir)
-                shutil.move(str(staging_dir), str(target_dir))
-                staging_dir = None
-
-            if backup_dir and backup_dir.exists():
-                safe_rmtree_child(backup_dir.parent, backup_dir)
-                backup_dir = None
-
-            return plugin_id
-
-        except Exception:
-            _exc_info = sys.exc_info()
-            if backup_dir and backup_dir.exists() and plugin_id:
-                try:
-                    tgt = resolve_under(plugins_dir, plugins_dir / plugin_id)
-                    if tgt.exists():
-                        safe_rmtree_child(plugins_dir, tgt)
-                    shutil.copytree(backup_dir, tgt)
-                    safe_rmtree_child(backup_dir.parent, backup_dir)
-                except Exception as rollback_err:
-                    logger.error("回滚插件安装失败: %s", rollback_err)
-            raise _exc_info[1].with_traceback(_exc_info[2]) from _exc_info[1]
-        finally:
-            if staging_dir and staging_dir.exists():
-                try:
-                    safe_rmtree_child(staging_base, staging_dir)
-                except Exception:
-                    logger.debug("failed to remove plugin staging dir: %s", staging_dir, exc_info=True)
-            if staging_base.exists():
-                try:
-                    if not any(staging_base.iterdir()):
-                        staging_base.rmdir()
-                except OSError:
-                    logger.debug("删除插件暂存目录失败", exc_info=True)
 
     # ---- queries ----
 

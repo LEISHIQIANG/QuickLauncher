@@ -56,8 +56,8 @@ class BaseDialog(QDialog):
         apply_custom_window_chrome(self, kind="window", translucent=True)
         self.setWindowOpacity(0)
 
-        self.corner_radius = 8 if is_win11() else 8
-        self.theme = "dark"
+        self.corner_radius = 8
+        self.theme = ""
         self._shadow_applied = False
         self._dialog_finished = False
         self._drag_pos = None
@@ -65,6 +65,7 @@ class BaseDialog(QDialog):
         # 使用 QColor 对象存储颜色（与主配置窗口一致）
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
+        self._apply_theme_colors()
 
     def _apply_theme_colors(self):
         """应用主题颜色 - 与主配置窗口保持一致"""
@@ -79,7 +80,16 @@ class BaseDialog(QDialog):
             self.border_color = QColor(229, 229, 234, 150)
 
     def _get_theme_from_parent(self) -> str:
-        """从统一主题控制器解析主题，不依赖父级窗口携带主题。"""
+        """从父级链或统一主题控制器解析主题。"""
+        parent = self.parent()
+        while parent is not None:
+            theme = resolve_theme(parent, default="")
+            if theme:
+                return theme
+            try:
+                parent = parent.parent()
+            except Exception:
+                break
         return resolve_theme(self)
 
     def paintEvent(self, event):

@@ -73,6 +73,15 @@ def test_known_permissions():
     assert "network.request" in PERMISSIONS_KNOWN
 
 
+def test_plugin_constants_are_reexported_for_compatibility():
+    import core.plugin_manager as plugin_manager
+    from core.plugin import constants
+
+    assert PERMISSIONS_KNOWN is constants.PERMISSIONS_KNOWN
+    assert HIGH_RISK_PERMISSIONS is constants.HIGH_RISK_PERMISSIONS
+    assert plugin_manager.PLUGIN_PACKAGE_EXTENSION == constants.PLUGIN_PACKAGE_EXTENSION
+
+
 def test_high_risk_permissions():
     assert has_high_risk_permissions(["process.run"]) is True
     assert has_high_risk_permissions(["clipboard.read"]) is False
@@ -180,6 +189,8 @@ def _create_plugin_dir(base: str, plugin_id: str, **overrides) -> str:
         "permissions": overrides.get("permissions", []),
         "commands": overrides.get("commands", []),
     }
+    if "trust_level" in overrides:
+        manifest["trust_level"] = overrides["trust_level"]
     with open(os.path.join(d, "plugin.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f)
     # Create main.py
@@ -212,6 +223,51 @@ class TestPluginManagerScan:
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             plugins = pm.scan_plugins()
             assert len(plugins) == 2
+
+
+class TestPluginNamespaceRestrictions:
+    def test_load_blocks_direct_subprocess_import(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(
+                tmp,
+                "unsafe_process",
+                trust_level="community-unverified",
+                permissions=["process.run"],
+                main_py="import subprocess\n\ndef register(api):\n    pass\n",
+            )
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.load_plugin("unsafe_process") is False
+            assert "subprocess" in pm.get_plugin("unsafe_process").error
+
+    def test_load_blocks_direct_open_without_file_permission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(
+                tmp,
+                "unsafe_open",
+                trust_level="community-unverified",
+                main_py='open(__file__, "r", encoding="utf-8").close()\n\ndef register(api):\n    pass\n',
+            )
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.load_plugin("unsafe_open") is False
+            assert "file.read" in pm.get_plugin("unsafe_open").error
+
+    def test_load_allows_direct_open_with_matching_file_permission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(
+                tmp,
+                "allowed_open",
+                trust_level="community-unverified",
+                permissions=["file.read"],
+                main_py='open(__file__, "r", encoding="utf-8").close()\n\ndef register(api):\n    pass\n',
+            )
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.load_plugin("allowed_open") is True
 
     def test_scan_skips_non_plugin_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:

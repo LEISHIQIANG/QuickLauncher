@@ -73,13 +73,13 @@ class ToastNotification(QWidget):
 
     def paintEvent(self, event):
         """绘制圆角矩形背景 - 与主配置窗口完全一致"""
-        from ui.utils.window_effect import is_win10, is_win11, paint_win10_rounded_surface
+        from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
 
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
 
-            radius = 8 if is_win11() else 8
+            radius = 8
 
             if self._theme == "error":
                 bg_color = QColor(229, 57, 53, 210)
@@ -224,7 +224,7 @@ class ToastNotification(QWidget):
             if not hwnd:
                 return
             effect = get_window_effect()
-            radius = 8 if is_win11() else 8
+            radius = 8
 
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
@@ -251,4 +251,7 @@ class ToastNotification(QWidget):
         except Exception as exc:
             logger.debug("设置窗口不透明度失败: %s", exc, exc_info=True)
         self._acrylic_applied = False
+        # 清理单例引用，允许 GC 回收隐藏的 Toast 实例
+        if ToastNotification._current_instance is self:
+            ToastNotification._current_instance = None
         super().hideEvent(event)

@@ -317,7 +317,6 @@ def test_blank_area_refresh_preserves_awakened_search_state():
                 "preserve_search_state": True,
             },
         ),
-        "flash",
     ]
 
 

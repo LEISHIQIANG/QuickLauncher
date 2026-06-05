@@ -32,12 +32,18 @@ class FakePopup:
 class FakeTimer:
     def __init__(self):
         self.stopped = False
+        self.started = False
+        self.start_count = 0
 
     def isActive(self):
         return True
 
     def stop(self):
         self.stopped = True
+
+    def start(self, *_args):
+        self.started = True
+        self.start_count += 1
 
 
 class FakeRuntimeComponent:
@@ -148,3 +154,39 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
     assert tray.tray_icon.hidden is True
     assert tray.config_window is None
     assert tray.diagnostics_window is None
+
+
+def test_start_defers_runtime_components_until_called(monkeypatch):
+    tray = _tray_like(multi_open=True)
+    tray._started = False
+    tray._safe_mode = False
+    tray._deferred_startup_timer = FakeTimer()
+    tray._memory_check_timer = FakeTimer()
+    tray._process_check_timer = FakeTimer()
+    tray._hook_health_timer = FakeTimer()
+    tray._sleep_timer = FakeTimer()
+    tray._special_app_monitors_active = False
+    tray._known_processes = {"old.exe"}
+    tray.data_manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(
+            auto_update_enabled=True,
+            sleep_mode_enabled=False,
+            special_apps=[],
+        )
+    )
+    scheduled = []
+    activity = []
+    monkeypatch.setattr("ui.tray_app.QTimer.singleShot", lambda delay, callback: scheduled.append((delay, callback)))
+    tray._install_hook = lambda: None
+    tray._install_keyboard_hook_and_hotkey = lambda: None
+    tray._init_update_system = lambda: None
+    tray._mark_activity = lambda source="": activity.append(source)
+
+    tray.start()
+    tray.start()
+
+    assert tray._deferred_startup_timer.start_count == 1
+    assert tray._memory_check_timer.start_count == 1
+    assert tray._hook_health_timer.start_count == 1
+    assert [delay for delay, _callback in scheduled] == [0, 0, 5000]
+    assert activity == ["startup"]

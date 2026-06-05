@@ -496,12 +496,25 @@ _qr_temp_files: list[str] = []
 
 def _qr_get_local_ip() -> str:
     try:
+        hostname = socket.gethostname()
+        infos = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_DGRAM)
+        for info in infos:
+            ip = info[4][0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        logger.debug("枚举本机IPv4地址失败", exc_info=True)
+
+    try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.settimeout(0.5)
             s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
+            ip = s.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                return ip
     except Exception:
-        return "127.0.0.1"
+        logger.debug("通过路由探测本机IPv4地址失败", exc_info=True)
+    return "127.0.0.1"
 
 
 def stop_qr_file_server(port: int):

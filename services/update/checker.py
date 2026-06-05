@@ -8,12 +8,28 @@ import threading
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-from services.api.base_client import ApiClient
+from services.api.base_client import ApiClient, ApiError
 from services.update.config import UpdateConfig, UpdateInfo
 
 logger = logging.getLogger(__name__)
 _SHA256_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 _SHA256_ANYWHERE_RE = re.compile(r"sha256:[0-9a-fA-F]{64}", re.IGNORECASE)
+
+
+class UpdateCheckError(Exception):
+    event = "check_failed"
+
+
+class UpdateNetworkError(UpdateCheckError):
+    event = "check_network_error"
+
+
+class UpdateParseError(UpdateCheckError):
+    event = "check_parse_error"
+
+
+class UpdateValidationError(UpdateCheckError):
+    event = "check_validation_error"
 
 
 class UpdateChecker:
@@ -102,51 +118,73 @@ class UpdateChecker:
 
         try:
             if self._config.update_source == "github":
-                result = self._do_github_release_check(APP_VERSION)
+                try:
+                    result = self._do_github_release_check(APP_VERSION)
+                except ApiError as exc:
+                    raise UpdateNetworkError(str(exc)) from exc
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise UpdateValidationError(str(exc)) from exc
                 self._last_check_status = "ok"
                 self._last_check_error = ""
                 return result
 
-            resp = self._api.get(
-                "/check",
-                {
-                    "version": APP_VERSION,
-                    "channel": self._config.channel,
-                    "platform": "win64",
-                },
-            )
+            try:
+                resp = self._api.get(
+                    "/check",
+                    {
+                        "version": APP_VERSION,
+                        "channel": self._config.channel,
+                        "platform": "win64",
+                    },
+                )
+            except ApiError as exc:
+                raise UpdateNetworkError(str(exc)) from exc
+            if not isinstance(resp, dict):
+                raise UpdateParseError("更新接口返回内容不是 JSON 对象")
             if not resp.get("has_update"):
                 self._last_check_status = "ok"
                 self._last_check_error = ""
                 return UpdateInfo(has_update=False)
-            changelog = resp.get("changelog", {})
-            info = UpdateInfo(
-                has_update=True,
-                version=resp["version"],
-                release_date=resp.get("release_date", ""),
-                changelog_zh=changelog.get("zh", ""),
-                changelog_en=changelog.get("en", ""),
-                download_url=resp["download_url"],
-                file_hash=resp.get("file_hash", ""),
-                file_size=int(resp.get("file_size", 0) or 0),
-                mandatory=bool(resp.get("mandatory", False)),
-                mandatory_min_version=resp.get("mandatory_min_version", ""),
-            )
+            try:
+                changelog = resp.get("changelog", {})
+                if not isinstance(changelog, dict):
+                    raise TypeError("changelog must be an object")
+                info = UpdateInfo(
+                    has_update=True,
+                    version=resp["version"],
+                    release_date=resp.get("release_date", ""),
+                    changelog_zh=changelog.get("zh", ""),
+                    changelog_en=changelog.get("en", ""),
+                    download_url=resp["download_url"],
+                    file_hash=resp.get("file_hash", ""),
+                    file_size=int(resp.get("file_size", 0) or 0),
+                    mandatory=bool(resp.get("mandatory", False)),
+                    mandatory_min_version=resp.get("mandatory_min_version", ""),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise UpdateParseError(f"更新接口响应解析失败: {exc}") from exc
             validation_error = self._validate_update_info(info)
             if validation_error:
-                raise ValueError(validation_error)
+                raise UpdateValidationError(validation_error)
             self._last_check_status = "ok"
             self._last_check_error = ""
             return info
+        except UpdateCheckError as exc:
+            return self._fail_check(exc.event, str(exc))
         except Exception as exc:
-            self._last_check_status = "failed"
-            self._last_check_error = str(exc)
-            self._notify("check_failed", str(exc))
-            return None
+            return self._fail_check("check_failed", str(exc))
+
+    def _fail_check(self, event: str, message: str) -> None:
+        self._last_check_status = "failed"
+        self._last_check_error = message
+        if event != "check_failed":
+            self._notify(event, message)
+        self._notify("check_failed", message)
+        return None
 
     def _do_github_release_check(self, current_version: str) -> UpdateInfo:
         resp = self._api.get()
-        if resp.get("draft") or resp.get("prerelease") and self._config.channel == "stable":
+        if resp.get("draft") or (resp.get("prerelease") and self._config.channel == "stable"):
             return UpdateInfo(has_update=False)
 
         version = _normalize_version(resp.get("tag_name") or resp.get("name") or "")
@@ -227,12 +265,14 @@ class UpdateChecker:
         return False
 
     def _get_state_file(self) -> str:
+        # Lazy: avoids circular import via core.__init__.
         from core.data_manager import DataManager
 
         dm = DataManager()
         return os.path.join(dm.app_dir, ".update_state.json")
 
     def _get_legacy_state_file(self) -> str:
+        # Lazy: avoids circular import via core.__init__.
         from core.data_manager import DataManager
 
         dm = DataManager()
