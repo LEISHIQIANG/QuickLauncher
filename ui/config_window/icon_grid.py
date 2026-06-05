@@ -49,6 +49,7 @@ from qt_compat import (
 # 使用统一的风格组件
 from ui.styles.style import Glassmorphism, PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.smooth_scroll import SmoothScrollArea
 
 from .action_button_icons import create_action_button_icon
@@ -67,8 +68,7 @@ class SimpleStatusDialog(QDialog):
         self.setWindowTitle(title)
         self.setModal(True)
         self.setFixedSize(220, 80)
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
         from ui.utils.window_effect import is_win11

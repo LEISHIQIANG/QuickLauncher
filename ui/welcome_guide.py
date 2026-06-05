@@ -26,6 +26,8 @@ from qt_compat import (
     QVBoxLayout,
 )
 from ui.styles.style import Glassmorphism
+from ui.styles.theme_controller import normalize_theme
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import (
@@ -46,13 +48,12 @@ class WelcomeGuide(QDialog):
         super().__init__(parent)
         self.setWindowTitle(tr("欢迎使用 QuickLauncher"))
         self.setModal(True)
-        self._theme = theme
+        self._theme = normalize_theme(theme)
         self.corner_radius = 8 if is_win11() else 8
         self.current_step = 0
         self._shadow_applied = False
 
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Window)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="window", translucent=True)
         self.setWindowOpacity(0)
 
         self.resize(500, 350)

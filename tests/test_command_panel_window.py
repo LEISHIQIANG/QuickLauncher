@@ -435,7 +435,7 @@ def test_save_text_action_writes_file(qapp, tmp_path, monkeypatch):
 
     win = _window(qapp)
     target = tmp_path / "out.txt"
-    monkeypatch.setattr(panel_mod.QFileDialog, "getSaveFileName", lambda *args, **kwargs: (str(target), ""))
+    monkeypatch.setattr(panel_mod, "get_save_file_name", lambda *args, **kwargs: (str(target), ""))
 
     win._execute_action(CommandAction(type="save_text", value="saved text"))
 

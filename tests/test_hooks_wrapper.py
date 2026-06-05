@@ -19,8 +19,10 @@ class _FakeDLL:
         for name in hooks_wrapper.HooksDLL.REQUIRED_EXPORTS:
             setattr(self, name, _FakeFunc(True))
         self.GetHooksVersion = _FakeFunc(hooks_wrapper.HooksDLL.EXPECTED_VERSION)
-        self.GetHooksCapabilities = _FakeFunc(0x1F)
+        self.GetHooksCapabilities = _FakeFunc(0x3F)
         self.GetLastHookError = _FakeFunc(0)
+        self.IsMouseHookInstalled = _FakeFunc(True)
+        self.IsKeyboardHookInstalled = _FakeFunc(False)
         self.SetSpecialApps = _FakeFunc(None)
         self.ClearSpecialApps = _FakeFunc(None)
 
@@ -34,7 +36,28 @@ def test_hooks_wrapper_reports_version_and_capabilities(monkeypatch):
     assert diagnostics["loaded"] is True
     assert diagnostics["compatible"] is True
     assert diagnostics["version"] == hooks_wrapper.HooksDLL.EXPECTED_VERSION
-    assert diagnostics["capabilities"] == 0x1F
+    assert diagnostics["capabilities"] == 0x3F
+    assert diagnostics["has_hook_health"] is True
+    assert diagnostics["mouse_hook_installed"] is True
+    assert diagnostics["keyboard_hook_installed"] is False
+
+
+def test_hooks_wrapper_tolerates_older_dll_without_health_exports(monkeypatch):
+    class LegacyDLL(_FakeDLL):
+        def __init__(self):
+            super().__init__()
+            del self.IsMouseHookInstalled
+            del self.IsKeyboardHookInstalled
+
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: LegacyDLL())
+
+    diagnostics = hooks_wrapper.HooksDLL("legacy.dll").get_diagnostics()
+
+    assert diagnostics["loaded"] is True
+    assert diagnostics["compatible"] is True
+    assert diagnostics["has_hook_health"] is False
+    assert diagnostics["mouse_hook_installed"] is False
+    assert diagnostics["keyboard_hook_installed"] is False
 
 
 def test_hooks_wrapper_handles_load_failure(monkeypatch):

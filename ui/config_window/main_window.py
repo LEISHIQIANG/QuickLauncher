@@ -19,7 +19,6 @@ from qt_compat import (
     QIcon,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPainter,
     QPainterPath,
     QPen,
@@ -36,6 +35,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -517,8 +517,7 @@ class ConfigWindow(QMainWindow):
         self._dialog_history = []
 
         # 无边框 + 透明背景
-        self.setWindowFlags(QtCompat.FramelessWindowHint)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="window", translucent=True)
         self.setWindowOpacity(0)  # 初始透明度为 0
 
         # 计算固定窗口大小 - 增加宽度使左右边距一致
@@ -713,7 +712,6 @@ class ConfigWindow(QMainWindow):
                 ThemedMessageBox.critical(self, tr("错误"), tr("无法加载设置面板:\n{error}", error=e))
             except Exception as exc:
                 logger.debug("显示错误对话框失败: %s", exc, exc_info=True)
-                QMessageBox.critical(self, "错误", f"无法加载设置面板:\n{e}")
             raise
 
     def _show_settings(self):

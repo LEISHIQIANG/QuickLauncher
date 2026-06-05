@@ -59,9 +59,11 @@ class MouseHook:
         try:
             diagnostics = self._dll.get_diagnostics()
             hook_ok = diagnostics.get("loaded", False) and diagnostics.get("compatible", False)
+            installed = diagnostics.get("mouse_hook_installed")
         except Exception as e:
             logger.debug("获取 DLL 诊断信息失败: %s", e)
             hook_ok = False
+            installed = None
         return {
             "total_events": None,
             "blocked_events": None,
@@ -69,7 +71,8 @@ class MouseHook:
             "errors": None,
             "is_safe_mode": self.is_paused(),
             "is_blocked": not self._dll._ready() if hasattr(self._dll, "_ready") else False,
-            "hook_health_ok": hook_ok,
+            "hook_installed": installed,
+            "hook_health_ok": hook_ok if installed is None else bool(hook_ok and installed),
         }
 
     def force_release(self):

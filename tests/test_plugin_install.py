@@ -580,10 +580,10 @@ class TestInstallUIIntegration:
             zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
 
-            # Mock QFileDialog
+            # Mock the themed file dialog adapter.
             dialog_calls = []
             monkeypatch.setattr(
-                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                "ui.config_window.settings_plugins_page.get_open_file_name",
                 lambda *a, **kw: dialog_calls.append((a, kw)) or (zip_path, "*.qlzip"),
             )
 
@@ -629,7 +629,7 @@ class TestInstallUIIntegration:
                 zf.writestr("plugin.json", "{bad")
 
             monkeypatch.setattr(
-                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                "ui.config_window.settings_plugins_page.get_open_file_name",
                 lambda *a, **kw: (zip_path, "*.qlzip"),
             )
             msgbox = MagicMock()
@@ -650,7 +650,7 @@ class TestInstallUIIntegration:
         from ui.styles.themed_messagebox import ThemedMessageBox
 
         monkeypatch.setattr(
-            "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+            "ui.config_window.settings_plugins_page.get_open_file_name",
             lambda *a, **kw: ("", "*.qlzip"),
         )
         msgbox = MagicMock()
@@ -685,7 +685,7 @@ class TestInstallUIIntegration:
             zip_path = os.path.join(tmp, "new.qlzip")
             _make_plugin_zip(zip_path, plugin_id="new_p")
             monkeypatch.setattr(
-                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                "ui.config_window.settings_plugins_page.get_open_file_name",
                 lambda *a, **kw: (zip_path, "*.qlzip"),
             )
             msgbox = MagicMock()
@@ -721,7 +721,7 @@ class TestInstallUIIntegration:
             zip_path = os.path.join(tmp, "plugin.qlzip")
             _make_plugin_zip(zip_path)
             monkeypatch.setattr(
-                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                "ui.config_window.settings_plugins_page.get_open_file_name",
                 lambda *a, **kw: (zip_path, "*.qlzip"),
             )
 
@@ -766,7 +766,7 @@ class TestInstallUIIntegration:
                 manifest_overrides={"permissions": ["process.run"]},
             )
             monkeypatch.setattr(
-                "ui.config_window.settings_plugins_page.QFileDialog.getOpenFileName",
+                "ui.config_window.settings_plugins_page.get_open_file_name",
                 lambda *a, **kw: (package_path, "*.qlzip"),
             )
 

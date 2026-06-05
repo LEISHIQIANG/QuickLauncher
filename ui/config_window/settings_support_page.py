@@ -32,6 +32,7 @@ from qt_compat import (
 )
 from ui.config_window.support_dialog import _rounded_pixmap, _support_image_path
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.styles.window_chrome import apply_custom_window_chrome
 
 logger = logging.getLogger(__name__)
 
@@ -46,21 +47,15 @@ class FloatingEmoji(QLabel):
         super().__init__(None)
         FloatingEmoji._active_instances.append(self)
 
-        # 1. 核心无边界参数配置：
-        # - FramelessWindowHint: 去除边框和标题栏
-        # - Tool: 避免在 Windows 任务栏或 Alt+Tab 切换器中创建图标
-        # - WindowStaysOnTopHint: 置顶于主窗口之上漂浮
-        # - WindowDoesNotAcceptFocus: 绝对的“鼠标穿透”，不夺取焦点、不阻挡任何点击事件
-        self.setWindowFlags(
-            QtCompat.FramelessWindowHint
-            | QtCompat.Tool
-            | QtCompat.WindowStaysOnTopHint
-            | QtCompat.NoDropShadowWindowHint
-            | Qt.WindowDoesNotAcceptFocus
+        # 开启统一无边框浮层、透明背景与无激活展示属性
+        apply_custom_window_chrome(
+            self,
+            kind="tool",
+            topmost=True,
+            translucent=True,
+            no_shadow=True,
+            extra_flags=Qt.WindowDoesNotAcceptFocus,
         )
-
-        # 开启透明背景与无激活展示属性
-        self.setAttribute(QtCompat.WA_TranslucentBackground)
         self.setAttribute(QtCompat.WA_ShowWithoutActivating)
 
         # 区分自动气泡与手动连击的物理参数

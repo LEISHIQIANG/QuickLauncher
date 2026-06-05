@@ -8,19 +8,20 @@ import os
 from core.i18n import tr
 from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, is_plugin_package_path
 from qt_compat import (
-    QDialog,
     QEvent,
-    QFileDialog,  # noqa: F401
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QtCompat,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+from ui.config_window.base_dialog import BaseDialog
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.themed_tool_window import ThemedToolWindow
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.safe_file_dialog import get_open_file_name
@@ -572,7 +573,6 @@ class SettingsPluginsPageMixin:
         import json
         from pathlib import Path
 
-        from qt_compat import QTextEdit
 
         try:
             config_dir = Path(str(self.data_manager.config_dir))
@@ -621,17 +621,18 @@ class SettingsPluginsPageMixin:
                     lines_out.append(f"  堆栈: {trace[:500]}")
                 lines_out.append("")
 
-            dialog = QDialog(self)
-            dialog.setWindowTitle(f"错误详情 - {plugin_id}")
+            dialog = ThemedToolWindow(f"错误详情 - {plugin_id}", theme=self.current_theme, parent=self)
             dialog.resize(600, 400)
-            layout = QVBoxLayout(dialog)
             text_edit = QTextEdit()
             text_edit.setReadOnly(True)
             text_edit.setPlainText("\n".join(lines_out))
-            layout.addWidget(text_edit)
+            dialog.content_layout.addWidget(text_edit)
+            dialog.style_plain_text(text_edit)
             close_btn = QPushButton("关闭")
             close_btn.clicked.connect(dialog.close)
-            layout.addWidget(close_btn)
+            dialog.button_layout.addStretch()
+            dialog.button_layout.addWidget(close_btn)
+            dialog.style_buttons(close_btn)
             dialog.exec()
         except Exception as exc:
             ThemedMessageBox.critical(self, tr("读取失败"), tr("无法读取错误记录: {error}", error=exc))
@@ -851,7 +852,7 @@ class SettingsPluginsPageMixin:
             )
 
 
-class PluginCreateDialog(QDialog):
+class PluginCreateDialog(BaseDialog):
     def __init__(self, parent=None, theme="dark"):
         super().__init__(parent)
         self.setWindowTitle(tr("新建开发插件"))

@@ -19,6 +19,7 @@ from qt_compat import (
     Qt,
     pyqtProperty,
 )
+from ui.styles.window_chrome import apply_custom_window_chrome
 
 
 def _rounded_pixmap(source: QPixmap, radius: int = 20) -> QPixmap:
@@ -73,14 +74,14 @@ class SupportDialog(QDialog):
                     self.theme = getattr(parent.window(), attr)
                     break
 
-        # 核心参数配置：
-        # - FramelessWindowHint: 去除边框和标题栏
-        # - Dialog: 对话框类型
-        # - WindowStaysOnTopHint: 置顶于主窗口之上漂浮
-        # - NoDropShadowWindowHint: 自定义极其细腻的弥散阴影
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_DeleteOnClose)
+        apply_custom_window_chrome(
+            self,
+            kind="dialog",
+            topmost=True,
+            translucent=True,
+            delete_on_close=True,
+            no_shadow=True,
+        )
         self.setModal(True)
 
         # 始终铺满全屏幕，以创造真正的无边界感觉

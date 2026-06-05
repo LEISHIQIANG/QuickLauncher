@@ -16,6 +16,7 @@ extern "C" {
     HOOKS_API void UninstallMouseHook();
     HOOKS_API void SetMousePaused(bool paused);
     HOOKS_API bool IsMousePaused();
+    HOOKS_API bool IsMouseHookInstalled();
     HOOKS_API void SetAltDoubleClickCallback(MouseCallback callback);
 
     // 键盘钩子
@@ -23,6 +24,7 @@ extern "C" {
     HOOKS_API void UninstallKeyboardHook();
     HOOKS_API bool IsAltHeld();
     HOOKS_API bool IsCtrlHeld();
+    HOOKS_API bool IsKeyboardHookInstalled();
     HOOKS_API bool SetGlobalHotkey(const char* hotkeyStr, KeyboardCallback callback);
     HOOKS_API void ClearGlobalHotkey();
 

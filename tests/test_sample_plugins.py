@@ -6,6 +6,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from core.command_registry import CommandContext, CommandRegistry
 from core.plugin_manager import PluginManager
 
@@ -86,6 +88,9 @@ def test_screenshot_ocr_package_bundles_wx_library_without_python_runtime():
 
 
 def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
+    if sys.version_info[:2] != (3, 12):
+        pytest.skip("screenshot_ocr bundles wxPython cp312 binaries; runtime import requires Python 3.12")
+
     _registry, manager = _install_sample_packages(tmp_path, ("screenshot_ocr",))
     plugin_dir = Path(manager.plugins_dir) / "screenshot_ocr"
     site_packages = plugin_dir / "runtime" / "site-packages"

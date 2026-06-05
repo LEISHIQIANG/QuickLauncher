@@ -21,6 +21,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.window_effect import paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -127,13 +128,13 @@ class PopupMenu(QWidget):
     """
 
     def __init__(self, theme: str = "dark", radius: int = 12, parent=None):
-        super().__init__(parent, QtCompat.Popup | QtCompat.FramelessWindowHint | QtCompat.NoDropShadowWindowHint)
+        super().__init__(parent)
+        apply_custom_window_chrome(self, kind="popup", translucent=True, no_shadow=True)
         self._theme = theme
         self._radius = radius
         self._blur_applied = False
 
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
         self.setAttribute(QtCompat.WA_NoSystemBackground, True)
 
         self._layout = QVBoxLayout(self)

@@ -23,12 +23,13 @@ from qt_compat import (
     QPlainTextEdit,
     QPoint,
     QPushButton,
-    Qt,
     QtCompat,
     QVBoxLayout,
 )
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
+from ui.styles.theme_controller import normalize_theme
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -64,7 +65,7 @@ class LogWindow(QDialog):
     def __init__(self, log_path: str, theme: str = "light", parent=None):
         super().__init__(parent)
         self.log_path = log_path
-        self._theme = theme
+        self._theme = normalize_theme(theme, default="light")
         self._blur_applied = False
         self.setWindowOpacity(0)  # 初始透明度为 0
         self._auto_refresh_timer = None
@@ -74,8 +75,7 @@ class LogWindow(QDialog):
         self.resize(700, 500)
 
         # 无边框 + 透明背景
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="window", translucent=True)
 
         self._load_window_icon()
         self._setup_ui()
@@ -224,7 +224,7 @@ class LogWindow(QDialog):
 
     def set_theme(self, theme: str):
         """外部切换主题"""
-        self._theme = theme
+        self._theme = normalize_theme(theme, default="light")
         self._apply_theme()
         # 重新应用模糊效果以更新底色
         if self.isVisible():

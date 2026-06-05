@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -112,7 +113,14 @@ static std::vector<MouseDebugEvent> g_pendingDebugEvents;
 static HANDLE g_callbackThread = NULL;
 static HANDLE g_callbackEvent = NULL;
 static std::atomic<bool> g_callbackThreadRunning(false);
-static KeyboardCallback g_pendingCallback = nullptr;
+struct CallbackEvent {
+    enum Type { Keyboard, Mouse } type;
+    KeyboardCallback keyboardCallback;
+    MouseCallback mouseCallback;
+    int x;
+    int y;
+};
+static std::deque<CallbackEvent> g_pendingCallbacks;
 static std::mutex g_callbackMutex;
 
 // 常量
@@ -129,6 +137,8 @@ constexpr unsigned int HOOKS_CAP_KEYBOARD = 0x0002;
 constexpr unsigned int HOOKS_CAP_GLOBAL_HOTKEY = 0x0004;
 constexpr unsigned int HOOKS_CAP_SPECIAL_APPS = 0x0008;
 constexpr unsigned int HOOKS_CAP_DIAGNOSTICS = 0x0010;
+constexpr unsigned int HOOKS_CAP_HEALTH_STATUS = 0x0020;
+constexpr size_t CALLBACK_QUEUE_LIMIT = 64;
 
 inline double GetTime() {
     return GetTickCount64() / 1000.0;
@@ -178,19 +188,30 @@ static void SafeInvokeCallback(KeyboardCallback cb) {
     }
 }
 
+static void SafeInvokeMouseCallback(MouseCallback cb, int x, int y) {
+    __try {
+        cb(x, y);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // 忽略回调中的异常
+    }
+}
+
 static DWORD WINAPI CallbackThreadProc(LPVOID) {
     while (g_callbackThreadRunning.load()) {
         DWORD result = WaitForSingleObject(g_callbackEvent, 500);
         if (!g_callbackThreadRunning.load()) break;
         if (result == WAIT_OBJECT_0) {
-            KeyboardCallback cb = nullptr;
+            std::deque<CallbackEvent> callbacks;
             {
                 std::lock_guard<std::mutex> lock(g_callbackMutex);
-                cb = g_pendingCallback;
-                g_pendingCallback = nullptr;
+                callbacks.swap(g_pendingCallbacks);
             }
-            if (cb) {
-                SafeInvokeCallback(cb);
+            for (const auto& callback : callbacks) {
+                if (callback.type == CallbackEvent::Keyboard && callback.keyboardCallback) {
+                    SafeInvokeCallback(callback.keyboardCallback);
+                } else if (callback.type == CallbackEvent::Mouse && callback.mouseCallback) {
+                    SafeInvokeMouseCallback(callback.mouseCallback, callback.x, callback.y);
+                }
             }
         }
     }
@@ -220,6 +241,10 @@ static void StopCallbackThread() {
         CloseHandle(g_callbackEvent);
         g_callbackEvent = NULL;
     }
+    {
+        std::lock_guard<std::mutex> lock(g_callbackMutex);
+        g_pendingCallbacks.clear();
+    }
 }
 
 static void InvokeKeyboardCallbackAsync(KeyboardCallback callback) {
@@ -227,7 +252,23 @@ static void InvokeKeyboardCallbackAsync(KeyboardCallback callback) {
     EnsureCallbackThread();
     {
         std::lock_guard<std::mutex> lock(g_callbackMutex);
-        g_pendingCallback = callback;
+        if (g_pendingCallbacks.size() >= CALLBACK_QUEUE_LIMIT) {
+            g_pendingCallbacks.pop_front();
+        }
+        g_pendingCallbacks.push_back(CallbackEvent{CallbackEvent::Keyboard, callback, nullptr, 0, 0});
+    }
+    if (g_callbackEvent) SetEvent(g_callbackEvent);
+}
+
+static void InvokeMouseCallbackAsync(MouseCallback callback, int x, int y) {
+    if (!callback) return;
+    EnsureCallbackThread();
+    {
+        std::lock_guard<std::mutex> lock(g_callbackMutex);
+        if (g_pendingCallbacks.size() >= CALLBACK_QUEUE_LIMIT) {
+            g_pendingCallbacks.pop_front();
+        }
+        g_pendingCallbacks.push_back(CallbackEvent{CallbackEvent::Mouse, nullptr, callback, x, y});
     }
     if (g_callbackEvent) SetEvent(g_callbackEvent);
 }
@@ -509,7 +550,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
             if ((now - g_altLClickLastTrigger) > ALT_LCLICK_COOLDOWN) {
                 g_altLClickLastTrigger = now;
                 if (g_altDoubleClickCallback) {
-                    g_altDoubleClickCallback(pMouse->pt.x, pMouse->pt.y);
+                    InvokeMouseCallbackAsync(g_altDoubleClickCallback, pMouse->pt.x, pMouse->pt.y);
                 }
             }
             g_altLClickLastTime = 0.0;
@@ -593,7 +634,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
         if (g_mouseCallback) {
             LogMiddleMouseEvent("mouse", wParam, pMouse, "trigger_callback_block_down");
-            g_mouseCallback(pMouse->pt.x, pMouse->pt.y);
+            InvokeMouseCallbackAsync(g_mouseCallback, pMouse->pt.x, pMouse->pt.y);
             g_blockedDown = true;
             g_lastBlockTime = now;
             return 1;
@@ -747,7 +788,7 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                         if (g_mouseCallback) {
                             POINT pt;
                             GetCursorPos(&pt);
-                            g_mouseCallback(pt.x, pt.y);
+                            InvokeMouseCallbackAsync(g_mouseCallback, pt.x, pt.y);
                         }
                     }
                 }
@@ -890,7 +931,10 @@ bool InstallMouseHook(MouseCallback callback) {
     }
 
     // 等待钩子安装完成（最多 2 秒）
-    WaitForSingleObject(g_mouseReadyEvent, 2000);
+    DWORD waitResult = WaitForSingleObject(g_mouseReadyEvent, 2000);
+    if (waitResult == WAIT_TIMEOUT) {
+        g_lastHookError = WAIT_TIMEOUT;
+    }
 
     g_mouseInstalling = false;
     return g_mouseHook != NULL;
@@ -921,6 +965,10 @@ void SetMousePaused(bool paused) {
 
 bool IsMousePaused() {
     return g_mousePaused;
+}
+
+bool IsMouseHookInstalled() {
+    return g_mouseHook != NULL && g_mouseRunning.load() && g_mouseThreadAlive.load();
 }
 
 void SetAltDoubleClickCallback(MouseCallback callback) {
@@ -977,7 +1025,10 @@ bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
     }
 
     // 等待钩子安装完成（最多 2 秒）
-    WaitForSingleObject(g_keyboardReadyEvent, 2000);
+    DWORD waitResult = WaitForSingleObject(g_keyboardReadyEvent, 2000);
+    if (waitResult == WAIT_TIMEOUT) {
+        g_lastHookError = WAIT_TIMEOUT;
+    }
 
     g_keyboardInstalling = false;
     return g_keyboardHook != NULL;
@@ -1014,6 +1065,10 @@ bool IsAltHeld() {
 
 bool IsCtrlHeld() {
     return g_ctrlHeld || IsCtrlPressedNow();
+}
+
+bool IsKeyboardHookInstalled() {
+    return g_keyboardHook != NULL && g_keyboardRunning.load() && g_keyboardThreadAlive.load();
 }
 
 static std::string NormalizeHotkeyToken(std::string token) {
@@ -1246,7 +1301,8 @@ HOOKS_API unsigned int GetHooksCapabilities() {
            HOOKS_CAP_KEYBOARD |
            HOOKS_CAP_GLOBAL_HOTKEY |
            HOOKS_CAP_SPECIAL_APPS |
-           HOOKS_CAP_DIAGNOSTICS;
+           HOOKS_CAP_DIAGNOSTICS |
+           HOOKS_CAP_HEALTH_STATUS;
 }
 
 HOOKS_API unsigned long GetLastHookError() {

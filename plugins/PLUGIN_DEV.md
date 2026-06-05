@@ -189,16 +189,35 @@ def handle_hello(context):
 |---|---|---|
 | `register_command(...)` | 注册命令；支持 `icon_path`、`search_terms` | 无 |
 | `register_builtin_command(...)` | 注册到“内置命令”下拉；仅适合主程序级入口 | `builtin.command` |
+| `register_search_source(id, handler=None)` | 注册插件搜索源；主程序会自动加插件 ID 命名空间，避免跨插件冲突 | 无 |
 | `register_module(module_id, manifest_path="module.json")` | 注册插件内的主程序模块 manifest，用于动作链这类可独立化模块 | 无 |
 | `register_chain_processor(definition, handler)` | 注册动作链电池，使用与内置电池一致的 schema | 无 |
 | `read_clipboard()` | 读取剪贴板文本 | `clipboard.read` |
 | `write_clipboard(text)` | 写入剪贴板 | `clipboard.write` |
 | `get_selected_files()` | 获取资源管理器选中文件 | `file.read` |
+| `get_theme()` | 获取主程序当前主题，返回 `dark` 或 `light` | 无 |
+| `get_app_version()` | 获取主程序版本号 | 无 |
+| `open_url(url)` | 打开 `http` / `https` URL | `open.url` |
+| `open_file(path)` | 打开已存在文件 | `open.file` |
+| `open_folder(path)` | 打开已存在文件夹 | `open.file` |
+| `read_text_file(path, encoding="utf-8", max_bytes=2097152)` | 读取有大小上限的文本文件 | `file.read` |
+| `write_data_file(relative_path, text, encoding="utf-8", append=False)` | 只写入插件私有 `data/` 目录内的文本文件 | `file.write` |
+| `http_request(url, method="GET", headers=None, body=None, timeout=10, max_bytes=2097152)` | 发起有超时、请求体、请求头和响应大小上限的 `GET` / `POST` / `HEAD` 请求 | `network.request` |
 | `logger` | 插件命名空间日志 | 无 |
 | `data_dir` | 插件私有数据目录 `data/` | 无 |
 | `check_data_path(path)` | 确认路径在插件 `data/` 下 | 无 |
 | `launch_target(target, parameters="", directory="", show_window=True, run_as_admin=False)` | 通过与图标执行相同的通道启动程序或文件 | `process.run`；`run_as_admin=True` 还需要 `admin.required` |
 | `run_command(command, cwd="", show_window=False, run_as_admin=False)` | 通过与命令图标相同的通道执行命令 | `process.run`；`run_as_admin=True` 还需要 `admin.required` |
+
+### 注册搜索源
+
+`register_search_source(...)` 用于给主搜索补充插件结果。搜索源 ID 会自动按插件 ID 收敛，例如插件 `my_plugin` 调用 `api.register_search_source("host_scan", handler)`，最终注册 ID 是 `my_plugin_host_scan`。这样两个插件都叫 `host_scan` 也不会互相覆盖。
+
+同一个插件内重复注册同一个搜索源会导致本次注册事务失败，并回滚已经写入的命令和搜索源。`handler(query)` 应快速返回 `list[dict]`；超时或异常会记录到插件失败计数，连续失败可能触发隔离。
+
+### 受控 HTTP 请求
+
+`http_request(...)` 只允许 `http` / `https`，方法限制为 `GET`、`POST`、`HEAD`。请求体只接受 `str`、`bytes` 或 `None`，最大 2 MB；响应默认最大读取 2 MB；请求头必须是 `dict`，最多 64 项，总字符数最多 8192，且会拒绝控制字符和 CRLF 注入。
 
 ### 注册为内置命令
 

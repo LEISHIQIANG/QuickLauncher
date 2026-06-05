@@ -39,7 +39,7 @@ class MockKeyboardHook:
 
 
 def test_safe_file_dialog_hook_lifecycle_pipeline():
-    """验证在原生文件框同步调用的整个生命周期中，鼠标钩子暂停与复原机制被 100% 完整执行，排除任何卡死风险"""
+    """验证在自定义文件框同步调用的整个生命周期中，鼠标钩子暂停与复原机制完整执行。"""
     from ui.utils.safe_file_dialog import (
         _execute_dialog_synchronously,
         set_global_keyboard_hook,
@@ -73,9 +73,21 @@ def test_safe_file_dialog_hook_lifecycle_pipeline():
     assert mock_mouse.paused is False
 
 
-def test_native_message_box_lifecycle_pipeline(monkeypatch, qapp):
-    """验证在原生系统消息框调用的生命周期中，鼠标钩子被同步暂停与复原，彻底避免誤觸"""
-    from ui.styles.themed_messagebox import _execute_native_message_box
+def test_safe_file_dialog_uses_non_native_custom_chrome(qapp):
+    from qt_compat import QFileDialog, QtCompat
+    from ui.utils.safe_file_dialog import _create_themed_file_dialog
+
+    dialog = _create_themed_file_dialog(None, "选择文件", "", "All Files (*)")
+    try:
+        assert dialog.testOption(QFileDialog.DontUseNativeDialog) is True
+        assert bool(dialog.windowFlags() & QtCompat.FramelessWindowHint)
+    finally:
+        dialog.close()
+
+
+def test_themed_message_box_lifecycle_pipeline(monkeypatch, qapp):
+    """验证在自定义消息框调用的生命周期中，鼠标钩子被同步暂停与复原。"""
+    from ui.styles.themed_messagebox import ThemedMessageBox, _execute_native_message_box
     from ui.utils.safe_file_dialog import set_global_keyboard_hook, set_global_mouse_hook
 
     mock_mouse = MockMouseHook()
@@ -85,23 +97,20 @@ def test_native_message_box_lifecycle_pipeline(monkeypatch, qapp):
     set_global_mouse_hook(mock_mouse)
     set_global_keyboard_hook(mock_keyboard)
 
-    native_called = False
-
-    # Mock QMessageBox.exec_
-    from PyQt5.QtWidgets import QMessageBox
+    dialog_called = False
 
     def mock_exec(self):
-        nonlocal native_called
-        native_called = True
-        # 在原生 MessageBox 挂起期间，断言鼠标钩子被同步暂停！
+        nonlocal dialog_called
+        dialog_called = True
         assert mock_mouse.paused is True
+        self.result_value = ThemedMessageBox.Ok
         return 1024  # Standard button OK
 
-    monkeypatch.setattr(QMessageBox, "exec_", mock_exec)
+    monkeypatch.setattr(ThemedMessageBox, "exec_", mock_exec)
 
     res = _execute_native_message_box(None, "Title", "Text", "info", 1024)
 
-    assert native_called is True
+    assert dialog_called is True
     assert res == 1024
 
     # 验证退出后，鼠标已同步解除暂停

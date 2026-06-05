@@ -30,13 +30,14 @@ from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
 from .style import get_dialog_stylesheet
+from .window_chrome import apply_custom_window_chrome
 
 logger = logging.getLogger(__name__)
 
 
 def _execute_native_message_box(parent, title, text, icon_type, buttons) -> int:
     """
-    同步安全地在主线程呼起 Qt 原生系统消息框。
+    同步安全地在主线程呼起 QuickLauncher 自定义消息框。
     在调用前原子同步暂停鼠标钩子，绝对防止瞬间误触与死锁，且完全集成于 Qt 事件循环。
     提供极其详尽的步骤追踪，便于环境审计。
     """
@@ -63,29 +64,21 @@ def _execute_native_message_box(parent, title, text, icon_type, buttons) -> int:
 
     res = 1024  # Default/None
     try:
-        # logger.debug("[消息框追踪] 步骤 2: 准备启动 QMessageBox...")
-        from qt_compat import QMessageBox
-
-        msg_box = QMessageBox(parent)
-        msg_box.setWindowTitle(title or "提示")
-        msg_box.setText(text)
-
         # 映射图标
         if icon_type == "info":
-            msg_box.setIcon(QMessageBox.Information)
+            icon = ThemedMessageBox.Information
         elif icon_type == "question":
-            msg_box.setIcon(QMessageBox.Question)
+            icon = ThemedMessageBox.Question
         elif icon_type == "warning":
-            msg_box.setIcon(QMessageBox.Warning)
+            icon = ThemedMessageBox.Warning
         elif icon_type == "critical":
-            msg_box.setIcon(QMessageBox.Critical)
+            icon = ThemedMessageBox.Critical
+        else:
+            icon = ThemedMessageBox.Information
 
-        # 映射按钮
-        msg_box.setStandardButtons(QMessageBox.StandardButtons(buttons))
-
-        # logger.debug("[消息框追踪] 步骤 2: 正在运行 msg_box.exec_()...")
-        res = msg_box.exec_()
-        # logger.debug(f"[消息框追踪] 步骤 2: msg_box 执行完成，返回值为: {res}")
+        dialog = ThemedMessageBox(parent, icon, title or "提示", text, buttons)
+        dialog.exec_()
+        res = dialog.result()
     except Exception as e:
         logger.error(f"[消息框追踪] 步骤 2 异常: {e}", exc_info=True)
     finally:
@@ -135,8 +128,7 @@ class ThemedMessageBox(QDialog):
         self.setModal(True)
         self.setMinimumWidth(180)
         self.setMaximumWidth(300)
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)  # 初始透明度为 0
 
@@ -533,8 +525,7 @@ class ThemedInputDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(240)
         self.setMaximumWidth(380)
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)
 

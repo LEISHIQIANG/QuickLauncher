@@ -12,11 +12,13 @@ import subprocess
 import sys
 import time
 import traceback
+import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlparse
 
 from .command_action_safety import sanitize_command_actions
 from .command_registry import (
@@ -74,6 +76,13 @@ PLUGIN_ERROR_LOG_MAX_BYTES = 1024 * 1024
 PLUGIN_ERROR_LOG_BACKUPS = 3
 PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES = 150 * 1024 * 1024
 PLUGIN_PACKAGE_MAX_FILES = 1000
+PLUGIN_API_MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
+PLUGIN_API_MAX_HTTP_REQUEST_BYTES = 2 * 1024 * 1024
+PLUGIN_API_MAX_HTTP_RESPONSE_BYTES = 2 * 1024 * 1024
+PLUGIN_API_HTTP_TIMEOUT_SECONDS = 10.0
+PLUGIN_API_HTTP_METHODS = frozenset({"GET", "POST", "HEAD"})
+PLUGIN_API_MAX_HTTP_HEADERS = 64
+PLUGIN_API_MAX_HTTP_HEADER_CHARS = 8192
 
 
 def is_plugin_package_path(path: str | os.PathLike[str]) -> bool:
@@ -196,8 +205,11 @@ class PluginAPI:
         This is a voluntary check — plugins using raw open() can bypass it.
         """
         data = self.data_dir.resolve(strict=False)
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = data / candidate
         try:
-            return resolve_under(data, path, allow_root=True)
+            return resolve_under(data, candidate, allow_root=True)
         except UnsafePathError as exc:
             raise PermissionError(f"path is outside plugin data directory: {path}") from exc
 
@@ -206,11 +218,15 @@ class PluginAPI:
         id: str,
         handler: Callable[[str], list[dict]] | None = None,
     ) -> None:
-        self.logger.info("search source staged: %s", id)
+        source_id = self._plugin_scoped_id(id, separator="_")
+        if not source_id:
+            self.logger.warning("插件搜索源 ID 无效: %s", id)
+            return
+        self.logger.info("search source staged: %s", source_id)
         # Defer write to _search_sources until commit_staged is called.
         # This ensures rollback can clean up completely if registration fails.
-        self._staged_search_sources.append(id)
-        self._staged_search_handlers[id] = handler
+        self._staged_search_sources.append(source_id)
+        self._staged_search_handlers[source_id] = handler
 
     def register_module(self, module_id: str, manifest_path: str = "module.json") -> bool:
         """Register a host module manifest from this plugin package.
@@ -551,6 +567,26 @@ class PluginAPI:
             )
         return [t for t in terms if t]
 
+    def _plugin_scoped_id(self, raw_id: str, separator: str = "_") -> str:
+        raw = str(raw_id or "").strip()
+        if not raw:
+            return ""
+        safe_plugin = re.sub(r"[^a-zA-Z0-9_]+", "_", self._plugin_id).strip("_")
+        safe_raw = re.sub(r"[^a-zA-Z0-9_\\.\\-]+", "_", raw).strip("._-")
+        if not safe_plugin or not safe_raw:
+            return ""
+        accepted_prefixes = (
+            self._plugin_id,
+            self._plugin_id.replace("-", "_").replace(" ", "_"),
+            safe_plugin,
+        )
+        if any(
+            safe_raw == prefix or safe_raw.startswith((f"{prefix}_", f"{prefix}.", f"{prefix}-"))
+            for prefix in accepted_prefixes
+        ):
+            return safe_raw
+        return f"{safe_plugin}{separator}{safe_raw}"
+
     def _wrap_handler(
         self,
         handler: Callable[[CommandContext], CommandResult],
@@ -650,6 +686,175 @@ class PluginAPI:
             return get_selected_files_for_process() or []
         except Exception:
             return []
+
+    def get_theme(self) -> str:
+        """Return the current host theme without exposing the DataManager object."""
+        try:
+            from core import get_data_manager
+
+            theme = getattr(get_data_manager().get_settings(), "theme", "dark")
+            return theme if theme in ("dark", "light") else "dark"
+        except Exception:
+            return "dark"
+
+    def get_app_version(self) -> str:
+        """Return the host application version."""
+        try:
+            from core.version import APP_VERSION
+
+            return str(APP_VERSION)
+        except Exception:
+            return ""
+
+    def open_url(self, url: str) -> tuple[bool, str]:
+        """Open an http(s) URL through the host-controlled API."""
+        self._check_permission("open.url")
+        parsed = urlparse(str(url or "").strip())
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return False, "only http(s) URLs are allowed"
+        try:
+            return bool(webbrowser.open(parsed.geturl())), ""
+        except Exception as exc:
+            return False, str(exc)
+
+    def open_file(self, path: str | Path) -> tuple[bool, str]:
+        """Open an existing file through Windows file association."""
+        self._check_permission("open.file")
+        target = Path(path).expanduser().resolve(strict=False)
+        if not target.is_file():
+            return False, f"file not found: {target}"
+        try:
+            os.startfile(str(target))
+            return True, ""
+        except Exception as exc:
+            return False, str(exc)
+
+    def open_folder(self, path: str | Path) -> tuple[bool, str]:
+        """Open an existing folder through Windows file association."""
+        self._check_permission("open.file")
+        target = Path(path).expanduser().resolve(strict=False)
+        if not target.is_dir():
+            return False, f"folder not found: {target}"
+        try:
+            os.startfile(str(target))
+            return True, ""
+        except Exception as exc:
+            return False, str(exc)
+
+    def read_text_file(
+        self,
+        path: str | Path,
+        *,
+        encoding: str = "utf-8",
+        max_bytes: int = PLUGIN_API_MAX_TEXT_FILE_BYTES,
+    ) -> str:
+        """Read a bounded text file through the host API."""
+        self._check_permission("file.read")
+        target = Path(path).expanduser().resolve(strict=False)
+        if not target.is_file():
+            raise FileNotFoundError(str(target))
+        limit = max(1, min(int(max_bytes or 0), PLUGIN_API_MAX_TEXT_FILE_BYTES))
+        size = target.stat().st_size
+        if size > limit:
+            raise ValueError(f"file exceeds read limit: {size} > {limit} bytes")
+        return target.read_text(encoding=encoding)
+
+    def write_data_file(
+        self,
+        relative_path: str | Path,
+        text: str,
+        *,
+        encoding: str = "utf-8",
+        append: bool = False,
+    ) -> Path:
+        """Write text inside the plugin data directory only."""
+        self._check_permission("file.write")
+        target = self.check_data_path(relative_path)
+        if target == self.data_dir.resolve(strict=False):
+            raise PermissionError("refusing to write plugin data directory root")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        mode = "a" if append else "w"
+        with target.open(mode, encoding=encoding) as handle:
+            handle.write(str(text))
+        return target
+
+    def http_request(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        headers: dict[str, str] | None = None,
+        body: str | bytes | None = None,
+        timeout: float = PLUGIN_API_HTTP_TIMEOUT_SECONDS,
+        max_bytes: int = PLUGIN_API_MAX_HTTP_RESPONSE_BYTES,
+    ) -> dict[str, Any]:
+        """Perform a bounded HTTP request for plugins with network permission."""
+        self._check_permission("network.request")
+        parsed = urlparse(str(url or "").strip())
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("only http(s) URLs are allowed")
+        method_upper = str(method or "GET").upper()
+        if method_upper not in PLUGIN_API_HTTP_METHODS:
+            raise ValueError(f"HTTP method not allowed: {method_upper}")
+        timeout_value = max(0.1, min(float(timeout or 0), PLUGIN_API_HTTP_TIMEOUT_SECONDS))
+        limit = max(1, min(int(max_bytes or 0), PLUGIN_API_MAX_HTTP_RESPONSE_BYTES))
+
+        from urllib.request import Request, urlopen
+
+        if isinstance(body, str):
+            payload = body.encode("utf-8")
+        elif isinstance(body, bytes | bytearray):
+            payload = bytes(body)
+        elif body is None:
+            payload = None
+        else:
+            raise TypeError("HTTP request body must be str, bytes, or None")
+        if payload is not None and len(payload) > PLUGIN_API_MAX_HTTP_REQUEST_BYTES:
+            raise ValueError(f"request body exceeds limit: {PLUGIN_API_MAX_HTTP_REQUEST_BYTES} bytes")
+        request = Request(parsed.geturl(), data=payload, method=method_upper)
+        normalized_headers = self._normalize_http_headers(headers or {})
+        for key, value in normalized_headers.items():
+            key_text = str(key or "").strip()
+            if key_text:
+                request.add_header(key_text, str(value or ""))
+        with urlopen(request, timeout=timeout_value) as response:
+            raw = response.read(limit + 1)
+            if len(raw) > limit:
+                raise ValueError(f"response exceeds read limit: {limit} bytes")
+            content_type = response.headers.get("content-type", "")
+            charset = response.headers.get_content_charset() or "utf-8"
+            text = raw.decode(charset, errors="replace")
+            return {
+                "status": int(getattr(response, "status", 0) or response.getcode()),
+                "url": response.geturl(),
+                "headers": dict(response.headers.items()),
+                "content_type": content_type,
+                "text": text,
+                "bytes": len(raw),
+            }
+
+    @staticmethod
+    def _normalize_http_headers(headers: dict[str, str]) -> dict[str, str]:
+        if not isinstance(headers, dict):
+            raise TypeError("HTTP headers must be a dict")
+        if len(headers) > PLUGIN_API_MAX_HTTP_HEADERS:
+            raise ValueError(f"too many HTTP headers: {len(headers)}")
+        normalized: dict[str, str] = {}
+        total_chars = 0
+        for key, value in headers.items():
+            key_text = str(key or "").strip()
+            value_text = str(value or "")
+            if not key_text:
+                continue
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in key_text):
+                raise ValueError(f"invalid HTTP header name: {key_text!r}")
+            if "\r" in value_text or "\n" in value_text:
+                raise ValueError(f"invalid HTTP header value for: {key_text}")
+            total_chars += len(key_text) + len(value_text)
+            if total_chars > PLUGIN_API_MAX_HTTP_HEADER_CHARS:
+                raise ValueError("HTTP headers exceed size limit")
+            normalized[key_text] = value_text
+        return normalized
 
     def launch_target(
         self,

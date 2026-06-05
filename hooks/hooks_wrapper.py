@@ -68,6 +68,7 @@ class HooksDLL:
         self.capabilities = 0
         self._has_special_apps = False
         self._has_last_error = False
+        self._has_hook_health = False
         try:
             self.dll = ctypes.CDLL(dll_path)
             self.loaded = True
@@ -159,6 +160,15 @@ class HooksDLL:
         except AttributeError:
             self._has_last_error = False
 
+        try:
+            self.dll.IsMouseHookInstalled.argtypes = []
+            self.dll.IsMouseHookInstalled.restype = ctypes.c_bool
+            self.dll.IsKeyboardHookInstalled.argtypes = []
+            self.dll.IsKeyboardHookInstalled.restype = ctypes.c_bool
+            self._has_hook_health = True
+        except AttributeError:
+            self._has_hook_health = False
+
         # 触发配置支持（可选）
         try:
             self.dll.SetTriggerConfig.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
@@ -186,6 +196,22 @@ class HooksDLL:
         except Exception:
             return 0
 
+    def is_mouse_hook_installed(self) -> bool:
+        if self.dll is None or not getattr(self, "_has_hook_health", False):
+            return False
+        try:
+            return bool(self.dll.IsMouseHookInstalled())
+        except Exception:
+            return False
+
+    def is_keyboard_hook_installed(self) -> bool:
+        if self.dll is None or not getattr(self, "_has_hook_health", False):
+            return False
+        try:
+            return bool(self.dll.IsKeyboardHookInstalled())
+        except Exception:
+            return False
+
     def get_diagnostics(self) -> dict:
         compatible = bool(self.loaded and not self.missing_exports)
         version_ok = self.version is None or self.version >= self.EXPECTED_VERSION
@@ -203,6 +229,9 @@ class HooksDLL:
             "version": self.version,
             "expected_version": self.EXPECTED_VERSION,
             "capabilities": self.capabilities,
+            "has_hook_health": bool(getattr(self, "_has_hook_health", False)),
+            "mouse_hook_installed": self.is_mouse_hook_installed(),
+            "keyboard_hook_installed": self.is_keyboard_hook_installed(),
             "missing_exports": list(self.missing_exports),
             "load_error": self.load_error,
             "last_hook_error": self.get_last_hook_error(),

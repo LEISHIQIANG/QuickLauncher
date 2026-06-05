@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 
@@ -17,6 +18,7 @@ import pathlib
 import socket
 import sys
 import tempfile
+import zipfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -91,8 +93,34 @@ from core.commands import (
     cmd_wifi,
 )
 from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
-from plugins.network_tools.main import handle_dns, handle_ping
-from plugins.text_tools.main import case_text, count_text, reverse_text
+
+_PLUGIN_TEST_TMP = tempfile.TemporaryDirectory()
+_PLUGIN_TEST_ROOT = pathlib.Path(_PLUGIN_TEST_TMP.name) / "plugins"
+_PLUGIN_PACKAGE_DIR = pathlib.Path(__file__).resolve().parents[1] / ".plugins"
+
+
+def _load_packaged_plugin_module(plugin_id: str):
+    package_path = _PLUGIN_PACKAGE_DIR / f"{plugin_id}.qlzip"
+    assert package_path.is_file(), package_path
+    _PLUGIN_TEST_ROOT.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(package_path) as archive:
+        archive.extractall(_PLUGIN_TEST_ROOT)
+    module_path = _PLUGIN_TEST_ROOT / plugin_id / "main.py"
+    spec = importlib.util.spec_from_file_location(f"builtin_suite_plugin_{plugin_id}", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+network_tools_main = _load_packaged_plugin_module("network_tools")
+text_tools_main = _load_packaged_plugin_module("text_tools")
+handle_dns = network_tools_main.handle_dns
+handle_ping = network_tools_main.handle_ping
+case_text = text_tools_main.case_text
+count_text = text_tools_main.count_text
+reverse_text = text_tools_main.reverse_text
 
 # ===========================================================================
 # ── String Processing (Base64 & URL) ───────────────────────────────────────
@@ -730,8 +758,13 @@ def test_plugin_text_tools():
     assert res.message == "HELLO"
 
 
-@patch("plugins.network_tools.main._run_cmd")
-def test_plugin_network_tools(mock_run):
+def test_plugin_network_tools():
+    mock_run = MagicMock()
+    with patch.object(network_tools_main, "_run_cmd", mock_run):
+        _assert_plugin_network_tools(mock_run)
+
+
+def _assert_plugin_network_tools(mock_run):
     # Ping success
     mock_run.return_value = (True, "ping successful output")
     ctx = CommandContext(args_text="example.com")

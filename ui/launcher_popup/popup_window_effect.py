@@ -12,6 +12,7 @@ from qt_compat import (
     QtCompat,
     QTimer,
 )
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.window_effect import is_win10, is_win11
 
 logger = logging.getLogger(__name__)
@@ -150,8 +151,7 @@ class PopupLayoutMixin:
 
     def _setup_window(self):
         """设置窗口属性"""
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Tool | QtCompat.WindowStaysOnTopHint)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="tool", topmost=True, translucent=True)
         self.setWindowOpacity(0)  # 初始透明度为 0
         try:
             self.setAttribute(QtCompat.WA_NoSystemBackground, True)

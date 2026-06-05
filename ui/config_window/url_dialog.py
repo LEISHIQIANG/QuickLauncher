@@ -359,17 +359,7 @@ class UrlDialog(BaseDialog):
         invert_v_layout.setSpacing(2)
         invert_v_layout.setContentsMargins(0, 0, 0, 0)
         self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_theme_cb.setStyleSheet("""
-            QCheckBox { font-size: 5px; spacing: 2px; }
-            QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
-            QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
         self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setStyleSheet("""
-            QCheckBox { font-size: 5px; spacing: 2px; }
-            QCheckBox::indicator { width: 6px; height: 6px; border-radius: 1px; border: 1px solid #888; background: transparent; }
-            QCheckBox::indicator:checked { background: #0A84FF; border-color: #0A84FF; }
-        """)
         self.invert_current_cb.setEnabled(False)
         self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
         invert_v_layout.addWidget(self.invert_theme_cb)

@@ -27,6 +27,7 @@ from qt_compat import (
     pyqtProperty,
     pyqtSignal,
 )
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -180,8 +181,7 @@ class ProgressDialog(QDialog):
         self.setWindowTitle(title)
         self.setModal(True)
         self.setMaximumWidth(260)
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="dialog", translucent=True)
 
         from ui.utils.window_effect import is_win11
 

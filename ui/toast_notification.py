@@ -20,6 +20,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,7 @@ class ToastNotification(QWidget):
         self._acrylic_applied = False
 
         # 窗口属性：无边框、置顶、工具窗口、透明背景、不获取焦点
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Tool | QtCompat.WindowStaysOnTopHint)
-        self.setAttribute(QtCompat.WA_TranslucentBackground)
-        self.setAttribute(QtCompat.WA_DeleteOnClose, False)
+        apply_custom_window_chrome(self, kind="tool", topmost=True, translucent=True, delete_on_close=False)
         # 不获取焦点
         try:
             self.setAttribute(Qt.WA_ShowWithoutActivating, True)

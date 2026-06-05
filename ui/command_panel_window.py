@@ -21,7 +21,6 @@ from qt_compat import (
     QColor,
     QComboBox,
     QEvent,
-    QFileDialog,  # noqa: F401
     QFont,
     QFormLayout,
     QGridLayout,
@@ -48,6 +47,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Colors, PopupMenu
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.themed_tool_window import ThemedToolWindow
 from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name, get_save_file_name
 
@@ -1240,11 +1240,13 @@ class CommandPanelWindow(ThemedToolWindow):
 
     def _show_popup_menu_without_focus(self, menu):
         try:
-            flags = Qt.ToolTip | Qt.FramelessWindowHint
             no_focus_flag = getattr(Qt, "WindowDoesNotAcceptFocus", None)
-            if no_focus_flag is not None:
-                flags |= no_focus_flag
-            menu.setWindowFlags(flags)
+            apply_custom_window_chrome(
+                menu,
+                kind="tooltip",
+                translucent=False,
+                extra_flags=no_focus_flag or 0,
+            )
             menu.setAttribute(Qt.WA_ShowWithoutActivating, True)
             menu.setFocusPolicy(Qt.NoFocus)
         except Exception as exc:

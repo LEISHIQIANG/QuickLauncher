@@ -26,7 +26,6 @@ from qt_compat import (
     QColor,
     QComboBox,
     QDialog,
-    QFileDialog,
     QFont,
     QFontMetrics,
     QFormLayout,
@@ -58,6 +57,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
 
 from .base_dialog import BaseDialog
 
@@ -2127,9 +2127,9 @@ class NodePropertyPanel(QWidget):
 
     def _browse_path(self, port: str, kind: str, edit: QLineEdit):
         if kind == "folder":
-            path = QFileDialog.getExistingDirectory(self, "选择文件夹", edit.text().strip())
+            path = get_existing_directory(self, "选择文件夹", edit.text().strip())
         else:
-            path, _ = QFileDialog.getOpenFileName(self, "选择文件", edit.text().strip())
+            path, _ = get_open_file_name(self, "选择文件", edit.text().strip())
         if path:
             edit.setText(path)
 

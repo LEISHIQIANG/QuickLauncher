@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 
 from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, QTimer
+from ui.styles.theme_controller import resolve_theme
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -51,8 +53,7 @@ class BaseDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Window)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="window", translucent=True)
         self.setWindowOpacity(0)
 
         self.corner_radius = 8 if is_win11() else 8
@@ -78,16 +79,8 @@ class BaseDialog(QDialog):
             self.border_color = QColor(229, 229, 234, 150)
 
     def _get_theme_from_parent(self) -> str:
-        """从父窗口获取主题 - 向上遍历查找"""
-        if self.parent():
-            try:
-                parent = self.parent()
-                while parent:
-                    if hasattr(parent, "data_manager"):
-                        return parent.data_manager.get_settings().theme
-                    parent = parent.parent()
-            except Exception as e:
-                logger.debug(f"获取主题失败: {e}")
+        """从统一主题控制器解析主题，不依赖父级窗口携带主题。"""
+        return resolve_theme(self)
 
     def paintEvent(self, event):
         _trace_to_crash_log(f"paintEvent.0: {type(self).__name__}")

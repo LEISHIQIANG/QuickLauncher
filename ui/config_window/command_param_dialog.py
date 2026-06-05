@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from core.data_models import ShortcutItem
-from qt_compat import QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
+from qt_compat import QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
+from ui.config_window.base_dialog import BaseDialog
+from ui.config_window.theme_helper import get_checkbox_stylesheet
+from ui.styles.style import Glassmorphism
+from ui.styles.theme_controller import resolve_theme
 
 
-class CommandParamDialog(QDialog):
+class CommandParamDialog(BaseDialog):
     """Small form for one command parameter."""
 
     TYPES = ["text", "textarea", "password", "choice", "bool", "number", "file", "folder"]
@@ -16,10 +20,12 @@ class CommandParamDialog(QDialog):
     def __init__(self, param: dict | None = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("参数")
+        self.theme = resolve_theme(parent)
         data = ShortcutItem._normalize_command_params([param or {"name": "param"}])
         self._initial = data[0] if data else {"name": "param"}
         self._setup_ui()
         self._load(self._initial)
+        self._apply_theme()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -75,6 +81,17 @@ class CommandParamDialog(QDialog):
         row.addWidget(cancel_btn)
         row.addWidget(ok_btn)
         layout.addLayout(row)
+        self._buttons = (cancel_btn, ok_btn)
+
+    def _apply_theme(self):
+        theme = self.theme
+        self.setStyleSheet(
+            Glassmorphism.get_full_glassmorphism_stylesheet(theme)
+            + get_checkbox_stylesheet(theme)
+        )
+        button_style = Glassmorphism.get_flat_action_button_style(theme)
+        for button in getattr(self, "_buttons", ()):
+            button.setStyleSheet(button_style)
 
     def _load(self, param: dict):
         self.name_edit.setText(str(param.get("name") or ""))

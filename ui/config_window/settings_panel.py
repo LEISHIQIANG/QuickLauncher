@@ -39,6 +39,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import StyleSheet
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
@@ -67,8 +68,7 @@ class CompactProgressDialog(QDialog):
         self.setMinimumWidth(240)
         self.setMaximumWidth(400)
         self.setMinimumHeight(90)
-        self.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
-        self.setAttribute(QtCompat.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
         from ui.utils.window_effect import is_win11

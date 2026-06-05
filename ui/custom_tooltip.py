@@ -1,6 +1,7 @@
 """完美圆角的自定义 Tooltip"""
 
 from qt_compat import QApplication, QColor, QCursor, QLabel, QPainter, QPainterPath, Qt, QTimer, QVBoxLayout, QWidget
+from ui.styles.window_chrome import apply_custom_window_chrome
 
 
 class CustomToolTip(QWidget):
@@ -11,8 +12,7 @@ class CustomToolTip(QWidget):
 
     def __init__(self):
         super().__init__(None)
-        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        apply_custom_window_chrome(self, kind="tooltip", topmost=True, translucent=True, no_shadow=True)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
 
         self.label = QLabel(self)

@@ -903,6 +903,107 @@ class TestPluginAPI:
 
             assert api.check_data_path(api.data_dir / "ok.txt").name == "ok.txt"
 
+    def test_data_file_api_is_bounded_to_plugin_data_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            api = PluginAPI("test", os.path.join(tmp, "plugin"), ["file.write"], CommandRegistry())
+
+            written = api.write_data_file("state/report.txt", "first")
+            assert written == api.data_dir / "state" / "report.txt"
+            assert written.read_text(encoding="utf-8") == "first"
+
+            with pytest.raises(PermissionError):
+                api.write_data_file("../escape.txt", "bad")
+
+            with pytest.raises(PermissionError):
+                PluginAPI("test", tmp, [], CommandRegistry()).write_data_file("x.txt", "bad")
+
+    def test_read_text_file_requires_permission_and_size_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "note.txt")
+            with open(target, "w", encoding="utf-8") as handle:
+                handle.write("hello")
+
+            api = PluginAPI("test", tmp, ["file.read"], CommandRegistry())
+            assert api.read_text_file(target) == "hello"
+            with pytest.raises(ValueError):
+                api.read_text_file(target, max_bytes=2)
+
+            with pytest.raises(PermissionError):
+                PluginAPI("test", tmp, [], CommandRegistry()).read_text_file(target)
+
+    def test_open_helpers_require_permissions_and_validate_targets(self, monkeypatch):
+        opened = []
+
+        monkeypatch.setattr("core.plugin_manager.webbrowser.open", lambda url: opened.append(("url", url)) or True)
+        monkeypatch.setattr(os, "startfile", lambda path: opened.append(("path", path)), raising=False)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            file_path = os.path.join(tmp, "note.txt")
+            os.makedirs(os.path.join(tmp, "folder"))
+            with open(file_path, "w", encoding="utf-8") as handle:
+                handle.write("hello")
+
+            api = PluginAPI("test", tmp, ["open.url", "open.file"], CommandRegistry())
+            assert api.open_url("https://example.com/path") == (True, "")
+            assert api.open_url("javascript:alert(1)")[0] is False
+            assert api.open_file(file_path) == (True, "")
+            assert api.open_folder(os.path.join(tmp, "folder")) == (True, "")
+            assert api.open_file(os.path.join(tmp, "missing.txt"))[0] is False
+
+            with pytest.raises(PermissionError):
+                PluginAPI("test", tmp, [], CommandRegistry()).open_url("https://example.com")
+            with pytest.raises(PermissionError):
+                PluginAPI("test", tmp, [], CommandRegistry()).open_file(file_path)
+
+        assert ("url", "https://example.com/path") in opened
+
+    def test_http_request_requires_permission_and_bounds_response(self, monkeypatch):
+        from email.message import Message
+
+        class FakeResponse:
+            def __init__(self):
+                self.status = 200
+                self.headers = Message()
+                self.headers["content-type"] = "text/plain; charset=utf-8"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _size):
+                return b"ok"
+
+            def geturl(self):
+                return "https://example.com/api"
+
+            def getcode(self):
+                return 200
+
+        monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: FakeResponse())
+        api = PluginAPI("test", ".", ["network.request"], CommandRegistry())
+
+        response = api.http_request("https://example.com/api", headers={"X-Test": "1"})
+        assert response["status"] == 200
+        assert response["text"] == "ok"
+        assert response["bytes"] == 2
+
+        with pytest.raises(ValueError):
+            api.http_request("file:///C:/temp/x")
+        with pytest.raises(ValueError):
+            api.http_request("https://example.com/api", method="DELETE")
+        with pytest.raises(ValueError):
+            api.http_request("https://example.com/api", body=b"x" * (2 * 1024 * 1024 + 1))
+        with pytest.raises(ValueError):
+            api.http_request("https://example.com/api", headers={"X-Bad": "ok\r\nInjected: yes"})
+        with pytest.raises(TypeError):
+            api.http_request("https://example.com/api", headers=[("X-Test", "1")])
+        with pytest.raises(TypeError):
+            api.http_request("https://example.com/api", body=object())
+        with pytest.raises(PermissionError):
+            PluginAPI("test", ".", [], CommandRegistry()).http_request("https://example.com/api")
+
     def test_high_risk_set(self):
         assert "process.run" in HIGH_RISK_PERMISSIONS
         assert "file.write" in HIGH_RISK_PERMISSIONS
@@ -1185,14 +1286,15 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_search_source("my_source")
+        source_id = "my_plugin_my_source"
         # Not in global dict before commit
-        assert "my_source" not in _search_sources
+        assert source_id not in _search_sources
         assert api.commit_staged() is True
         # Appears after commit
-        assert "my_source" in _search_sources
-        assert _search_sources["my_source"]["plugin_id"] == "my_plugin"
+        assert source_id in _search_sources
+        assert _search_sources[source_id]["plugin_id"] == "my_plugin"
         # Cleanup for test isolation
-        _search_sources.pop("my_source", None)
+        _search_sources.pop(source_id, None)
 
     def test_register_search_source_keeps_handler(self):
         """Search source handlers should survive staging and commit."""
@@ -1205,12 +1307,13 @@ class TestPluginAPI:
             return [{"title": query}]
 
         api.register_search_source("my_handler_source", handler)
+        source_id = "my_plugin_my_handler_source"
         assert api.commit_staged() is True
         try:
-            assert _search_sources["my_handler_source"]["handler"] is handler
-            assert _search_sources["my_handler_source"]["plugin_id"] == "my_plugin"
+            assert _search_sources[source_id]["handler"] is handler
+            assert _search_sources[source_id]["plugin_id"] == "my_plugin"
         finally:
-            _search_sources.pop("my_handler_source", None)
+            _search_sources.pop(source_id, None)
 
     def test_register_search_source_without_commit(self):
         """Staged search sources are not visible until commit."""
@@ -1219,8 +1322,17 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_search_source("staged_only")
-        assert "staged_only" not in _search_sources
-        assert api._staged_search_sources == ["staged_only"]
+        assert "my_plugin_staged_only" not in _search_sources
+        assert api._staged_search_sources == ["my_plugin_staged_only"]
+
+    def test_register_search_source_does_not_treat_partial_prefix_as_scoped(self):
+        """A plugin id prefix only counts when followed by an id separator."""
+        reg = CommandRegistry()
+        api = PluginAPI("test", os.getcwd(), [], reg)
+
+        api.register_search_source("testing_source")
+
+        assert api._staged_search_sources == ["test_testing_source"]
 
     def test_commit_staged_rolls_back_search_sources_on_failure(self):
         """When commit fails, search sources are rolled back along with commands."""
@@ -1230,6 +1342,7 @@ class TestPluginAPI:
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         # Register a search source
         api.register_search_source("rollback_source")
+        source_id = "my_plugin_rollback_source"
         # Register a valid command
         api.register_command(
             id="my_plugin.ok",
@@ -1251,13 +1364,13 @@ class TestPluginAPI:
         # Commit fails due to duplicate
         assert api.commit_staged() is False
         # Search source should be rolled back
-        assert "rollback_source" not in _search_sources
+        assert source_id not in _search_sources
         # Command should be rolled back
         assert reg.get("my_plugin.ok") is None
         assert len(api._registered_ids) == 0
 
-    def test_search_source_conflict_does_not_overwrite_existing_source(self):
-        """A conflicting search source id should fail without replacing the current owner."""
+    def test_search_source_ids_are_namespaced_per_plugin(self):
+        """Equal plugin-local search source ids should not conflict across plugins."""
         from core.command_registry import _search_sources
 
         reg = CommandRegistry()
@@ -1268,11 +1381,26 @@ class TestPluginAPI:
 
         try:
             assert first.commit_staged() is True
-            assert second.commit_staged() is False
-            assert _search_sources["shared_source"]["plugin_id"] == "first_plugin"
-            assert _search_sources["shared_source"]["handler"]("x") == [{"title": "first"}]
+            assert second.commit_staged() is True
+            assert _search_sources["first_plugin_shared_source"]["plugin_id"] == "first_plugin"
+            assert _search_sources["first_plugin_shared_source"]["handler"]("x") == [{"title": "first"}]
+            assert _search_sources["second_plugin_shared_source"]["plugin_id"] == "second_plugin"
+            assert _search_sources["second_plugin_shared_source"]["handler"]("x") == [{"title": "second"}]
         finally:
-            _search_sources.pop("shared_source", None)
+            _search_sources.pop("first_plugin_shared_source", None)
+            _search_sources.pop("second_plugin_shared_source", None)
+
+    def test_duplicate_search_source_in_same_plugin_rolls_back(self):
+        """Duplicate search source ids within one plugin fail atomically."""
+        from core.command_registry import _search_sources
+
+        reg = CommandRegistry()
+        api = PluginAPI("same_plugin", os.getcwd(), [], reg)
+        api.register_search_source("dup_source", lambda query: [{"title": "first"}])
+        api.register_search_source("dup_source", lambda query: [{"title": "second"}])
+
+        assert api.commit_staged() is False
+        assert "same_plugin_dup_source" not in _search_sources
 
     def test_search_source_rollback_preserves_existing_owner(self):
         """Rollback should only remove search sources written by the failing plugin."""
@@ -1286,13 +1414,30 @@ class TestPluginAPI:
         second = PluginAPI("second_plugin", os.getcwd(), [], reg)
         second.register_search_source("second_unique")
         second.register_search_source("rollback_shared")
+        second.register_command(
+            id="second_plugin.ok",
+            title="Ok",
+            aliases=[],
+            description="",
+            category="test",
+            handler=lambda ctx: CommandResult(success=True),
+        )
+        second.register_command(
+            id="second_plugin.ok",
+            title="Duplicate",
+            aliases=[],
+            description="",
+            category="test",
+            handler=lambda ctx: CommandResult(success=True),
+        )
 
         try:
             assert second.commit_staged() is False
-            assert "second_unique" not in _search_sources
-            assert _search_sources["rollback_shared"]["plugin_id"] == "first_plugin"
+            assert "second_plugin_second_unique" not in _search_sources
+            assert "second_plugin_rollback_shared" not in _search_sources
+            assert _search_sources["first_plugin_rollback_shared"]["plugin_id"] == "first_plugin"
         finally:
-            _search_sources.pop("rollback_shared", None)
+            _search_sources.pop("first_plugin_rollback_shared", None)
 
     def test_commit_staged_only_search_sources(self):
         """A plugin with only search sources (no commands) commits successfully."""
@@ -1301,9 +1446,10 @@ class TestPluginAPI:
         reg = CommandRegistry()
         api = PluginAPI("my_plugin", os.getcwd(), [], reg)
         api.register_search_source("source_only")
+        source_id = "my_plugin_source_only"
         assert api.commit_staged() is True
-        assert "source_only" in _search_sources
-        _search_sources.pop("source_only", None)
+        assert source_id in _search_sources
+        _search_sources.pop(source_id, None)
 
     def test_double_commit_is_noop(self):
         """Calling commit_staged twice succeeds on second call."""
@@ -1386,10 +1532,10 @@ def register(api):
             assert pm.load_plugin("second")
             second_info = pm.get_plugin("second")
             assert second_info is not None
-            second_info.registered_search_sources.append("shared_runtime_source")
+            second_info.registered_search_sources.append("first_shared_runtime_source")
 
             try:
                 pm.disable_plugin("second")
-                assert _search_sources["shared_runtime_source"]["plugin_id"] == "first"
+                assert _search_sources["first_shared_runtime_source"]["plugin_id"] == "first"
             finally:
-                _search_sources.pop("shared_runtime_source", None)
+                _search_sources.pop("first_shared_runtime_source", None)

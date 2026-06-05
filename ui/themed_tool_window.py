@@ -21,11 +21,12 @@ from qt_compat import (
     QPoint,
     QPushButton,
     QSize,
-    Qt,
     QtCompat,
     QVBoxLayout,
 )
 from ui.styles.style import Colors, StyleSheet
+from ui.styles.theme_controller import normalize_theme
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -43,13 +44,12 @@ class ThemedToolWindow(QDialog):
 
     def __init__(self, title: str, theme: str = "light", parent=None):
         super().__init__(parent)
-        self._theme = theme or "light"
+        self._theme = normalize_theme(theme, default="light")
         self._blur_applied = False
         self._drag_pos = None
         self.setWindowTitle(title)
         self.setWindowOpacity(0)
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        apply_custom_window_chrome(self, kind="window", translucent=True)
         self._load_window_icon()
         self._setup_shell(title)
         self._apply_theme()
@@ -100,7 +100,7 @@ class ThemedToolWindow(QDialog):
         self.subtitle_label.setVisible(bool(text))
 
     def set_theme(self, theme: str):
-        self._theme = theme or "light"
+        self._theme = normalize_theme(theme, default="light")
         self._apply_theme()
         self._apply_content_theme()
         if self.isVisible():
