@@ -678,7 +678,7 @@ fso.DeleteFile WScript.ScriptFullName
                     val_label.setText(self._desc_text(key, value, descs))
 
         self.data_manager.update_settings(**updates)
-        self.settings_changed.emit()
+        self.color_filter_changed.emit()
 
     def _get_slider_meta(self, key: str):
         """返回 (min, max, default, descs)"""

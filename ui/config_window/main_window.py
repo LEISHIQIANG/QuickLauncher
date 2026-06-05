@@ -728,6 +728,7 @@ class ConfigWindow(QMainWindow):
 
             self.settings_panel = SettingsPanel(self.data_manager, self.tray_app)
             self.settings_panel.settings_changed.connect(self._on_settings_panel_changed)
+            self.settings_panel.color_filter_changed.connect(self._apply_color_filter)
             self.settings_panel.command_settings_changed.connect(self.settings_changed.emit)
             self.settings_panel.import_completed.connect(self._on_import_completed)
             # 连接触发配置变更信号

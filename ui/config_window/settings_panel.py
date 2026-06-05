@@ -922,6 +922,7 @@ class SettingsPanel(
     QWidget,
 ):
     settings_changed = pyqtSignal()
+    color_filter_changed = pyqtSignal()
     command_settings_changed = pyqtSignal()
     import_completed = pyqtSignal(int)
     back_requested = pyqtSignal()
