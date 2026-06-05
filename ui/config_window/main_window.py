@@ -597,6 +597,11 @@ class ConfigWindow(QMainWindow):
         self.setWindowOpacity(0.0)
         self.move(pos.x(), pos.y() + 16)
 
+        # 每次重新打开时重置高级模式复选框（纯 UI 状态，不持久化）
+        panel = getattr(self, "settings_panel", None)
+        if panel and hasattr(panel, "advanced_mode_cb"):
+            panel.advanced_mode_cb.setChecked(False)
+
         super().showEvent(event)
         if not self._drag_drop_compat_applied:
             self._drag_drop_compat_applied = True

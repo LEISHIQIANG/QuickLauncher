@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
+- 新增高级颜色滤镜（Win11），支持黑点、白点、中间调 Gamma、色温、Acrylic 模糊度和底色 Alpha 六项参数分别针对深色/浅色主题独立调节，通过 DWM Acrylic 着色直接生效，不遮挡 UI 内容。
 - 新增独立 `.qlzip` 形式的"截图 OCR"插件包，通过插件 API 注册为内置命令，官方插件从运行时 `plugins/` 目录剥离为 `.plugins/*.qlzip` 安装包，主程序新增 `--plugin-helper` 子进程入口支持插件自带 Python 库。
 - 弹窗触发支持自定义触发按键和特殊触发按键，可选键盘、鼠标或混合模式。
 - 命令面板新增参数 invocation 快照、runtime shortcut 副本、非敏感参数历史恢复和 `{{input}}` 统一传递，参数表单新增执行预览，敏感参数自动遮罩。
@@ -36,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
+- 修复颜色滤镜参数（黑点、白点、Gamma、色温、Acrylic、底色 Alpha 共 12 个字段）未注册到 `config_validation._INT_RANGES` 导致每次启动时被 `sanitize_settings_dict` 静默重置为默认值的问题。
+- 修复颜色滤镜滑块调节后不能实时反映到窗口效果的问题，改用独立 `color_filter_changed` 信号避免触发重型数据重载。
+- 修复颜色滤镜覆盖层遮挡 UI 文字和图标的问题，改为通过 DWM Acrylic GradientColor 着色实现。
+- 修复色温滑块强度不足导致颜色偏移不可见的问题，提高冷暖色通道系数至 0.25–0.50。
+- 修复 Acrylic 和底色 Alpha 滑块无效的问题，扩展取值范围并接入 DWM 合成计算。
+- 修复弹窗和配置窗口双击空白区域刷新时不必要地重建 DWM 窗口效果导致视觉闪烁的问题。
 - 修复 Windows 10 兼容性、安装报错及 UI 显示异常。
 - 修复 shortcut 命令执行时运行时参数和确认状态写回原始配置导致连续执行串值的问题。
 - 修复批量启动窗口图标闪烁、搜索结果慢、编辑时图标丢失/污染、保存后类型引用错误等问题。

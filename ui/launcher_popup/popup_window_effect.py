@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 class PopupWindowEffectMixin:
     """Win10/Win11 window effects: corner radius, acrylic, blur."""
 
+    # 效果参数缓存，用于避免重复的 DWM 重建（showEvent 等场景）
+    _last_effect_state = None
+
     def _get_win11_corner_preference(self, desired_radius: int):
         r = max(0, int(desired_radius))
         if r <= 0:
@@ -76,9 +79,40 @@ class PopupWindowEffectMixin:
         self.setMask(QRegion(path.toFillPolygon().toPolygon()))
         logger.info("[MASK] 遮罩已应用")
 
+    def _snapshot_effect_state(self):
+        """收集当前效果相关参数快照，用于跳过无变化的 DWM 重建。"""
+        s = getattr(self, "settings", None)
+        if s is None:
+            return None
+        theme = getattr(s, "theme", "dark")
+        bg_mode = getattr(s, "bg_mode", "theme")
+        # 颜色滤镜参数（当前主题）
+        return (
+            bg_mode,
+            getattr(s, "corner_radius", 8),
+            getattr(s, "bg_alpha", 90),
+            getattr(s, "bg_blur_radius", 0),
+            theme,
+            getattr(s, f"{theme}_black_point", 50),
+            getattr(s, f"{theme}_white_point", 50),
+            getattr(s, f"{theme}_mid_gamma", 50),
+            getattr(s, f"{theme}_temperature", 50),
+            getattr(s, f"{theme}_acrylic", 30),
+            getattr(s, f"{theme}_bg_alpha_filter", 100),
+            self.width(),
+            self.height(),
+        )
+
     def _update_window_effect(self):
         """更新窗口特效 (Acrylic / Blur)"""
         try:
+            # 参数快照缓存：如果效果参数未变化则跳过 DWM 重建，
+            # 避免 showEvent 等场景重复调用导致的视觉闪烁
+            current_state = self._snapshot_effect_state()
+            if current_state is not None and current_state == self._last_effect_state:
+                logger.debug("[EFFECT] 参数未变化，跳过 DWM 重建")
+                return
+
             bg_mode = getattr(self.settings, "bg_mode", "theme")
             desired_radius = getattr(self.settings, "corner_radius", 8)
 
@@ -151,6 +185,9 @@ class PopupWindowEffectMixin:
                 self.window_effect.clear_window_region(hwnd)
                 if hasattr(self, "_apply_search_mask"):
                     self._apply_search_mask()
+
+            # 更新成功后保存参数快照
+            self._last_effect_state = current_state
 
         except Exception as e:
             logger.error(f"更新窗口特效失败: {e}")

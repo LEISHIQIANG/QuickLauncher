@@ -37,6 +37,19 @@ _INT_RANGES = {
     "shadow_size": (0, 80),
     "shadow_distance": (0, 80),
     "sleep_timeout_seconds": (1, 3600),
+    # 颜色滤镜参数 (dark / light 各 6 个)
+    "dark_black_point": (0, 100),
+    "dark_white_point": (0, 100),
+    "dark_mid_gamma": (0, 100),
+    "dark_temperature": (0, 100),
+    "dark_acrylic": (1, 255),
+    "dark_bg_alpha_filter": (1, 255),
+    "light_black_point": (0, 100),
+    "light_white_point": (0, 100),
+    "light_mid_gamma": (0, 100),
+    "light_temperature": (0, 100),
+    "light_acrylic": (1, 255),
+    "light_bg_alpha_filter": (1, 255),
 }
 _FLOAT_RANGES = {
     "icon_alpha": (0.0, 1.0),
