@@ -33,7 +33,6 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
-from ui.styles.color_filter_overlay import ColorFilterOverlay
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -705,14 +704,6 @@ class ConfigWindow(QMainWindow):
 
         main_layout.addWidget(self.status_bar)
         self.status_bar.showMessage(tr("就绪"))
-
-        # 高级颜色滤镜覆盖层 (仅Win11)
-        from ui.utils.window_effect import is_win11 as _is_win11
-        self._color_filter_overlay = None
-        if _is_win11():
-            self._color_filter_overlay = ColorFilterOverlay(self)
-            self._color_filter_overlay.raise_()
-            self._apply_color_filter()
 
     def _ensure_settings_panel(self):
         """确保设置面板已创建（延迟初始化）"""
@@ -1388,26 +1379,85 @@ class ConfigWindow(QMainWindow):
         self.move(self._anim_target_pos.x(), current_y)
 
     def _apply_color_filter(self):
-        """读取设置并应用高级颜色滤镜参数到覆盖层"""
-        overlay = getattr(self, "_color_filter_overlay", None)
-        if overlay is None:
+        """读取设置并通过修改 Acrylic 底色参数来应用颜色滤镜 (仅 Win11)"""
+        if not is_win11():
             return
         try:
             settings = self.data_manager.get_settings()
             theme = settings.theme or "dark"
-            prefix = theme  # "dark" or "light"
 
-            bp = getattr(settings, f"{prefix}_black_point", 50)
-            wp = getattr(settings, f"{prefix}_white_point", 50)
-            mg = getattr(settings, f"{prefix}_mid_gamma", 50)
-            tp = getattr(settings, f"{prefix}_temperature", 50)
+            bp = getattr(settings, f"{theme}_black_point", 50)
+            wp = getattr(settings, f"{theme}_white_point", 50)
+            mg = getattr(settings, f"{theme}_mid_gamma", 50)
+            tp = getattr(settings, f"{theme}_temperature", 50)
+            acrylic_alpha = getattr(settings, f"{theme}_acrylic", 30)
 
-            overlay.set_params(bp, wp, mg, tp)
-            overlay.setVisible(not overlay.is_neutral)
+            # 基础底色
+            if theme == "dark":
+                r, g, b = 0x1C, 0x1C, 0x1E
+            else:
+                r, g, b = 0xF2, 0xF2, 0xF7
 
-            # 同步 overlay 尺寸到窗口大小
-            overlay.setGeometry(self.rect())
-            overlay.raise_()
+            # 黑场调节
+            offset = bp - 50
+            if offset != 0:
+                factor = abs(offset) / 50.0
+                if offset > 0:
+                    r = max(0, int(r * (1 - factor * 0.35)))
+                    g = max(0, int(g * (1 - factor * 0.35)))
+                    b = max(0, int(b * (1 - factor * 0.35)))
+                else:
+                    r = min(255, int(r + (255 - r) * factor * 0.18))
+                    g = min(255, int(g + (255 - g) * factor * 0.18))
+                    b = min(255, int(b + (255 - b) * factor * 0.18))
+
+            # 白场调节
+            offset = wp - 50
+            if offset != 0:
+                factor = abs(offset) / 50.0
+                if offset > 0:
+                    r = min(255, int(r + (255 - r) * factor * 0.22))
+                    g = min(255, int(g + (255 - g) * factor * 0.22))
+                    b = min(255, int(b + (255 - b) * factor * 0.22))
+                else:
+                    r = max(0, int(r * (1 - factor * 0.20)))
+                    g = max(0, int(g * (1 - factor * 0.20)))
+                    b = max(0, int(b * (1 - factor * 0.20)))
+
+            # 中间调节节
+            offset = mg - 50
+            if offset != 0:
+                factor = abs(offset) / 50.0
+                if offset < 0:
+                    r = max(0, int(r * (1 - factor * 0.25)))
+                    g = max(0, int(g * (1 - factor * 0.25)))
+                    b = max(0, int(b * (1 - factor * 0.25)))
+                else:
+                    r = min(255, int(r + (255 - r) * factor * 0.12))
+                    g = min(255, int(g + (255 - g) * factor * 0.12))
+                    b = min(255, int(b + (255 - b) * factor * 0.12))
+
+            # 色温调节
+            offset = tp - 50
+            if offset != 0:
+                factor = abs(offset) / 50.0
+                if offset < 0:
+                    b = min(255, int(b + (255 - b) * factor * 0.12))
+                else:
+                    r = min(255, int(r + (255 - r) * factor * 0.08))
+                    g = min(255, int(g + (255 - g) * factor * 0.04))
+
+            r = max(0, min(255, r))
+            g = max(0, min(255, g))
+            b = max(0, min(255, b))
+
+            alpha = max(10, min(int(acrylic_alpha), 80))
+            gradient_color = f"{alpha:02x}{r:02x}{g:02x}{b:02x}"
+
+            hwnd = int(self.winId())
+            if hwnd:
+                effect = get_window_effect()
+                effect.apply_unified_blur_effect(hwnd, gradient_color, enable=True)
         except Exception as exc:
             logger.debug("应用颜色滤镜失败: %s", exc, exc_info=True)
 
@@ -1440,10 +1490,6 @@ class ConfigWindow(QMainWindow):
     def resizeEvent(self, event):
         """窗口大小变化时更新圆角区域（仅 Win10 需要）"""
         super().resizeEvent(event)
-        # 同步颜色滤镜覆盖层尺寸
-        overlay = getattr(self, "_color_filter_overlay", None)
-        if overlay is not None:
-            overlay.setGeometry(self.rect())
         try:
             if not is_win11():
                 hwnd = int(self.winId())
