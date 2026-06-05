@@ -229,6 +229,7 @@ class IconFlashOverlay(QWidget):
 
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setOpacity(self._opacity)
         dirty = event.rect()
         for x, y, _pixmap, cover in self._items:

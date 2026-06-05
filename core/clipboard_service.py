@@ -205,12 +205,13 @@ class Win32ClipboardImpl:
 
             try:
                 pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
-            except pythoncom.CO_E_ALREADYINITIALIZED:
-                pass  # Already initialized (may be MTA — proceed with caution)
-            except Exception:
+            except pythoncom.CO_E_ALREADYINITIALIZED as exc:
+                logger.debug("COM 已初始化，继续直接使用剪贴板: %s", exc, exc_info=True)
+            except Exception as exc:
+                logger.debug("STA COM 初始化失败，改用工作线程: %s", exc, exc_info=True)
                 Win32ClipboardImpl._use_worker_thread = True
-        except ImportError:
-            pass  # pythoncom not available, try win32clipboard directly
+        except ImportError as exc:
+            logger.debug("pythoncom 不可用，直接尝试 win32clipboard: %s", exc, exc_info=True)
         Win32ClipboardImpl._com_local._com_initialized = True
 
     @staticmethod

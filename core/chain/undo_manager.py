@@ -107,9 +107,8 @@ class RemoveNodeCommand(Command):
             for conn in self._connections:
                 try:
                     self._graph.add_connection(conn)
-                except ValueError:
-                    # Connection may be invalid now
-                    pass
+                except ValueError as exc:
+                    logger.debug("撤销删除节点时跳过已失效连接: %s", exc, exc_info=True)
 
 
 class MoveNodeCommand(Command):
@@ -181,8 +180,8 @@ class RemoveConnectionCommand(Command):
         if self._connection:
             try:
                 self._graph.add_connection(self._connection)
-            except ValueError:
-                pass
+            except ValueError as exc:
+                logger.debug("撤销删除连接时连接已失效: %s", exc, exc_info=True)
 
 
 class UpdateNodeParamCommand(Command):

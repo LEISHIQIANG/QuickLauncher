@@ -7,19 +7,11 @@ definitions, external processor registration, and processor execution logic.
 from __future__ import annotations
 
 import ast
-import base64
-import datetime
-import hashlib
-import html
 import json
 import logging
 import os
 import re
-import socket
-import sys
 import time
-import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from typing import Any
 
@@ -36,6 +28,33 @@ from .definitions import (
     ChainProcessorExample,
     ChainProcessorSafety,
 )
+from .processors_data import execute_extra_data_processor as _execute_data_processor
+from .processors_datetime import execute_extra_datetime_processor as _execute_datetime_processor
+from .processors_encoding import execute_extra_encoding_processor as _execute_encoding_processor
+from .processors_encoding import execute_extra_system_processor as _execute_system_processor
+from .processors_files import execute_extra_file_processor as _execute_file_processor
+from .processors_files import file_read_text as _file_read_text
+from .processors_files import file_write_text as _file_write_text
+from .processors_files import folder_create as _folder_create
+from .processors_files import normalize_path_value as _normalize_path_value
+from .processors_files import ok_file as _ok_file_result
+from .processors_files import ok_folder as _ok_folder_result
+from .processors_files import path_exists as _path_exists
+from .processors_files import path_join as _path_join
+from .processors_files import path_split as _path_split
+from .processors_math import execute_extra_list_processor as _execute_list_processor
+from .processors_math import execute_extra_math_processor as _execute_math_processor
+from .processors_network import http_download as _http_download
+from .processors_network import http_get as _http_get
+from .processors_network import http_post as _http_post
+from .processors_structured import execute_extra_json_processor as _execute_json_processor
+from .processors_structured import json_get as _json_get
+from .processors_structured import json_parse as _json_parse
+from .processors_structured import json_set as _json_set
+from .processors_structured import json_template as _json_template
+from .processors_structured import url_encode as _url_encode
+from .processors_text import execute_extra_text_processor as _execute_text_processor
+from .processors_validation import execute_extra_validation_processor as _execute_validation_processor
 
 logger = logging.getLogger(__name__)
 
@@ -762,8 +781,8 @@ def python_cell_metadata(source: str) -> dict[str, Any]:
                 inputs = _clean_ports(value) or inputs
             elif "OUTPUTS" in names and isinstance(value, list):
                 outputs = _clean_ports(value) or outputs
-    except (SyntaxError, ValueError):
-        pass
+    except (SyntaxError, ValueError) as exc:
+        logger.debug("解析脚本电池元数据失败: %s", exc, exc_info=True)
     return {"title": title, "inputs": inputs, "outputs": outputs}
 
 
@@ -983,558 +1002,42 @@ def execute_chain_processor(processor_id: str, args: dict[str, Any], source: str
 
 
 def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> CommandResult | None:
-    """处理增强和扩展电池的分发。返回 None 表示不是扩展电池。"""
-    text_values = _string_values(values)
+    """处理增强和扩展电池的分发。返回 None 表示不是扩展电池。
 
-    # ── 增强: 文本处理 ──
-    if processor_id == "text_trim":
-        text = text_values.get("text", "")
-        chars = text_values.get("chars", "")
-        return _ok(text.strip(chars) if chars else text.strip())
-    if processor_id == "text_contains":
-        text = text_values.get("text", "")
-        sub = text_values.get("substring", "")
-        cs = _to_bool(values.get("case_sensitive", True))
-        return _ok_bool(sub.lower() in text.lower() if not cs else sub in text)
-    if processor_id == "text_startswith":
-        text = text_values.get("text", "")
-        prefix = text_values.get("prefix", "")
-        cs = _to_bool(values.get("case_sensitive", True))
-        return _ok_bool(text.lower().startswith(prefix.lower()) if not cs else text.startswith(prefix))
-    if processor_id == "text_endswith":
-        text = text_values.get("text", "")
-        suffix = text_values.get("suffix", "")
-        cs = _to_bool(values.get("case_sensitive", True))
-        return _ok_bool(text.lower().endswith(suffix.lower()) if not cs else text.endswith(suffix))
-    if processor_id == "text_regex_replace":
-        text = text_values.get("text", "")
-        pattern = text_values.get("pattern", "")
-        repl = text_values.get("replacement", "")
-        cnt = int(text_values.get("count", "0") or "0")
-        if not pattern:
-            return _ok(text)
-        return _ok(re.sub(pattern, repl, text, count=cnt))
-    if processor_id == "text_count":
-        text = text_values.get("text", "")
-        sub = text_values.get("substring", "")
-        cs = _to_bool(values.get("case_sensitive", True))
-        cnt = text.lower().count(sub.lower()) if not cs else text.count(sub)
-        return _ok(str(cnt))
-    if processor_id == "text_reverse":
-        return _ok(text_values.get("text", "")[::-1])
+    委托到各专用处理器模块：
+    - processors_text: 增强文本 + 逻辑控制
+    - processors_math: 增强数学 + 扩展数学
+    - processors_math (list): 增强列表操作
+    - processors_datetime: 扩展日期时间
+    - processors_encoding: 扩展编码解码
+    - processors_encoding (system): 扩展系统信息 + 网络工具 + 环境变量
+    - processors_validation: 扩展数据验证
+    - processors_data: 扩展哈希/颜色/集合/字典/字符串格式化
+    - processors_files: 增强文件操作
+    - processors_structured: 增强 JSON 操作
+    """
+    _delegates = (
+        _execute_text_processor,
+        _execute_math_processor,
+        _execute_list_processor,
+        _execute_datetime_processor,
+        _execute_encoding_processor,
+        _execute_system_processor,
+        _execute_validation_processor,
+        _execute_data_processor,
+    )
+    for delegate in _delegates:
+        result = delegate(processor_id, values)
+        if result is not None:
+            return result
 
-    # ── 增强: 逻辑控制 ──
-    if processor_id == "switch_case":
-        val = text_values.get("value", "")
-        cases = _try_json_parse(values.get("cases_json", "{}"))
-        default = text_values.get("default", "")
-        if isinstance(cases, dict) and val in cases:
-            return _ok(_value_to_text(cases[val]))
-        return _ok(default)
-    if processor_id == "try_catch":
-        return _ok(text_values.get("input", "") or text_values.get("default", ""))
-    if processor_id == "assert_type":
-        val = values.get("value")
-        t = text_values.get("type", "text").lower()
-        ok = False
-        if t in ("str", "string", "text"):
-            ok = isinstance(val, str)
-        elif t in ("int", "integer"):
-            ok = isinstance(val, int) or (isinstance(val, str) and val.strip().isdigit())
-        elif t in ("float", "number"):
-            try:
-                float(val)
-                ok = True
-            except (ValueError, TypeError):
-                ok = False
-        elif t in ("bool", "boolean"):
-            ok = isinstance(val, bool)
-        elif t in ("list", "array"):
-            ok = isinstance(val, list)
-        elif t in ("dict", "object", "json"):
-            ok = isinstance(val, dict)
-        return _ok_bool(ok)
-    if processor_id == "is_empty":
-        v = values.get("value")
-        empty = v is None or str(v).strip() == "" or (hasattr(v, "__len__") and len(v) == 0)
-        return _ok_bool(empty)
-    if processor_id == "is_numeric":
-        try:
-            float(text_values.get("text", ""))
-            return _ok_bool(True)
-        except ValueError:
-            return _ok_bool(False)
-    if processor_id == "is_json":
-        try:
-            json.loads(text_values.get("text", ""))
-            return _ok_bool(True)
-        except (json.JSONDecodeError, TypeError):
-            return _ok_bool(False)
+    file_result = _execute_file_processor(processor_id, values)
+    if file_result is not None:
+        return file_result
 
-    # ── 增强: 数学运算 ──
-    if processor_id == "math_abs":
-        return _ok(str(abs(_to_num(values.get("number", 0)))))
-    if processor_id == "math_ceil":
-        import math as _m
-        return _ok(str(_m.ceil(_to_num(values.get("number", 0)))))
-    if processor_id == "math_floor":
-        import math as _m
-        return _ok(str(_m.floor(_to_num(values.get("number", 0)))))
-    if processor_id == "math_round":
-        n = _to_num(values.get("number", 0))
-        d = int(text_values.get("decimals", "0") or "0")
-        return _ok(str(round(n, d)))
-    if processor_id == "math_clamp":
-        n = _to_num(values.get("number", 0))
-        lo = _to_num(values.get("min", 0))
-        hi = _to_num(values.get("max", 100))
-        return _ok(str(max(lo, min(n, hi))))
-
-    # ── 增强: 列表操作 ──
-    if processor_id == "list_count":
-        lst = _parse_list(values.get("list", ""))
-        v = _value_to_text(values.get("value", ""))
-        return _ok(str(lst.count(v)))
-    if processor_id == "list_sum":
-        lst = _parse_list(values.get("list", ""))
-        total = sum(_to_num(x) for x in lst)
-        return _ok(str(int(total) if total == int(total) else total))
-    if processor_id == "list_min":
-        lst = _parse_list(values.get("list", ""))
-        return _ok(min(lst) if lst else "")
-    if processor_id == "list_max":
-        lst = _parse_list(values.get("list", ""))
-        return _ok(max(lst) if lst else "")
-    if processor_id == "list_avg":
-        lst = _parse_list(values.get("list", ""))
-        nums = [float(x) for x in lst if x.strip()]
-        if not nums:
-            return _ok("0")
-        avg = sum(nums) / len(nums)
-        return _ok(str(int(avg) if avg == int(avg) else avg))
-    if processor_id == "list_remove":
-        lst = _parse_list(values.get("list", ""))
-        v = _value_to_text(values.get("value", ""))
-        filtered = [x for x in lst if x != v]
-        return _ok_list(filtered)
-    if processor_id == "list_find":
-        lst = _parse_list(values.get("list", ""))
-        v = _value_to_text(values.get("value", ""))
-        found = v in lst
-        return _ok(v if found else "")
-
-    # ── 增强: 文件操作 ──
-    if processor_id == "file_copy":
-        src = _normalize_path_value(text_values.get("src", ""))
-        dst = _normalize_path_value(text_values.get("dst", ""))
-        overwrite = _to_bool(values.get("overwrite", False))
-        if not os.path.exists(src):
-            raise FileNotFoundError(f"源文件不存在: {src}")
-        if os.path.exists(dst) and not overwrite:
-            raise FileExistsError(f"目标文件已存在: {dst}")
-        dst_dir = os.path.dirname(dst)
-        if dst_dir:
-            os.makedirs(dst_dir, exist_ok=True)
-        import shutil as _sh
-        _sh.copy2(src, dst)
-        return _ok_file(dst)
-    if processor_id == "file_move":
-        src = _normalize_path_value(text_values.get("src", ""))
-        dst = _normalize_path_value(text_values.get("dst", ""))
-        overwrite = _to_bool(values.get("overwrite", False))
-        if not os.path.exists(src):
-            raise FileNotFoundError(f"源文件不存在: {src}")
-        if os.path.exists(dst) and not overwrite:
-            raise FileExistsError(f"目标文件已存在: {dst}")
-        dst_dir = os.path.dirname(dst)
-        if dst_dir:
-            os.makedirs(dst_dir, exist_ok=True)
-        import shutil as _sh
-        _sh.move(src, dst)
-        return _ok_file(dst)
-    if processor_id == "file_delete":
-        path = _normalize_path_value(text_values.get("path", ""))
-        if not os.path.exists(path):
-            return _ok_bool(False)
-        if os.path.isfile(path):
-            os.remove(path)
-        elif os.path.isdir(path):
-            import shutil as _sh
-            _sh.rmtree(path)
-        return _ok_bool(True)
-    if processor_id == "file_size":
-        path = _normalize_path_value(text_values.get("path", ""))
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"路径不存在: {path}")
-        return _ok(str(os.path.getsize(path)))
-    if processor_id == "file_list_dir":
-        path = _normalize_path_value(text_values.get("path", ""))
-        pat = text_values.get("pattern", "*") or "*"
-        import glob as _g
-        items = _g.glob(os.path.join(path, pat))
-        return _ok_list([os.path.basename(x) for x in items])
-
-    # ── 增强: JSON 操作 ──
-    if processor_id == "json_merge":
-        a = _try_json_parse(values.get("a", "{}"))
-        b = _try_json_parse(values.get("b", "{}"))
-        merged = dict(a) if isinstance(a, dict) else {}
-        if isinstance(b, dict):
-            merged.update(b)
-        return _ok(json.dumps(merged, ensure_ascii=False, separators=(",", ":")))
-    if processor_id == "json_flatten":
-        data = _try_json_parse(values.get("json", "{}"))
-        sep = text_values.get("separator", ".")
-        result = {}
-        def _flatten(obj, prefix):
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    nk = f"{prefix}{sep}{k}" if prefix else k
-                    _flatten(v, nk)
-            elif isinstance(obj, list):
-                for i, v in enumerate(obj):
-                    nk = f"{prefix}{sep}{i}" if prefix else str(i)
-                    _flatten(v, nk)
-            else:
-                result[prefix] = obj
-        _flatten(data, "")
-        return _ok(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
-    if processor_id == "json_keys":
-        data = _try_json_parse(values.get("json", "{}"))
-        return _ok_list(list(data.keys()) if isinstance(data, dict) else [])
-    if processor_id == "json_values":
-        data = _try_json_parse(values.get("json", "{}"))
-        return _ok_list([_value_to_text(v) for v in data.values()] if isinstance(data, dict) else [])
-    if processor_id == "json_length":
-        data = _try_json_parse(values.get("json", "{}"))
-        return _ok(str(len(data)) if isinstance(data, dict | list) else "0")
-
-    # ── 扩展: 日期时间 ──
-    if processor_id == "datetime_now":
-        fmt = text_values.get("format", "%Y-%m-%d %H:%M:%S")
-        return _ok(datetime.datetime.now().strftime(fmt))
-    if processor_id == "datetime_format":
-        dt_str = text_values.get("datetime", "")
-        fmt = text_values.get("format", "%Y-%m-%d %H:%M:%S")
-        try:
-            dt = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        except ValueError:
-            dt = datetime.datetime.strptime(dt_str, fmt)
-        return _ok(dt.strftime(fmt))
-    if processor_id == "datetime_add":
-        dt_str = text_values.get("datetime", "")
-        fmt = text_values.get("format", "%Y-%m-%d %H:%M:%S")
-        try:
-            dt = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        except ValueError:
-            dt = datetime.datetime.strptime(dt_str, fmt)
-        dt += datetime.timedelta(
-            days=int(text_values.get("days", "0") or "0"),
-            hours=int(text_values.get("hours", "0") or "0"),
-            minutes=int(text_values.get("minutes", "0") or "0"),
-            seconds=int(text_values.get("seconds", "0") or "0"),
-        )
-        return _ok(dt.strftime(fmt))
-    if processor_id == "datetime_diff":
-        dt1_str = text_values.get("datetime1", "")
-        dt2_str = text_values.get("datetime2", "")
-        unit = text_values.get("unit", "seconds")
-        try:
-            dt1 = datetime.datetime.fromisoformat(dt1_str.replace("Z", "+00:00"))
-        except ValueError:
-            dt1 = datetime.datetime.strptime(dt1_str, "%Y-%m-%d %H:%M:%S")
-        try:
-            dt2 = datetime.datetime.fromisoformat(dt2_str.replace("Z", "+00:00"))
-        except ValueError:
-            dt2 = datetime.datetime.strptime(dt2_str, "%Y-%m-%d %H:%M:%S")
-        secs = (dt1 - dt2).total_seconds()
-        factor = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400, "weeks": 604800}.get(unit, 1)
-        return _ok(str(secs / factor))
-    if processor_id == "timestamp_now":
-        return _ok(str(time.time()))
-    if processor_id == "timestamp_to_datetime":
-        ts = float(text_values.get("timestamp", "0"))
-        fmt = text_values.get("format", "%Y-%m-%d %H:%M:%S")
-        return _ok(datetime.datetime.fromtimestamp(ts).strftime(fmt))
-    if processor_id == "datetime_to_timestamp":
-        dt_str = text_values.get("datetime", "")
-        fmt = text_values.get("format", "%Y-%m-%d %H:%M:%S")
-        try:
-            dt = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        except ValueError:
-            dt = datetime.datetime.strptime(dt_str, fmt)
-        return _ok(str(dt.timestamp()))
-
-    # ── 扩展: 编码解码 ──
-    if processor_id == "base64_encode":
-        return _ok(base64.b64encode(text_values.get("text", "").encode("utf-8")).decode("ascii"))
-    if processor_id == "base64_decode":
-        return _ok(base64.b64decode(text_values.get("text", "")).decode("utf-8"))
-    if processor_id == "url_encode":
-        return _ok(urllib.parse.quote(text_values.get("text", ""), safe=""))
-    if processor_id == "url_decode":
-        return _ok(urllib.parse.unquote(text_values.get("text", "")))
-    if processor_id == "html_encode":
-        return _ok(html.escape(text_values.get("text", "")))
-    if processor_id == "html_decode":
-        return _ok(html.unescape(text_values.get("text", "")))
-    if processor_id == "hex_encode":
-        return _ok(text_values.get("text", "").encode("utf-8").hex())
-    if processor_id == "hex_decode":
-        return _ok(bytes.fromhex(text_values.get("text", "")).decode("utf-8"))
-
-    # ── 扩展: 系统信息 ──
-    if processor_id == "sys_platform":
-        return _ok(sys.platform)
-    if processor_id == "sys_hostname":
-        return _ok(socket.gethostname())
-    if processor_id == "sys_username":
-        import getpass as _gp
-        return _ok(_gp.getuser())
-    if processor_id == "sys_cpu_count":
-        return _ok(str(os.cpu_count() or 0))
-    if processor_id == "sys_current_dir":
-        return _ok(os.getcwd())
-    if processor_id == "sys_home_dir":
-        return _ok(os.path.expanduser("~"))
-    if processor_id == "sys_temp_dir":
-        import tempfile as _tf
-        return _ok(_tf.gettempdir())
-
-    # ── 扩展: 网络工具 ──
-    if processor_id == "net_ip_address":
-        host = text_values.get("hostname", "") or socket.gethostname()
-        return _ok(socket.gethostbyname(host))
-    if processor_id == "net_ping":
-        host = text_values.get("host", "")
-        to = float(text_values.get("timeout", "3") or "3")
-        try:
-            import subprocess as _sp
-            if sys.platform == "win32":
-                r = _sp.run(["ping", "-n", "1", "-w", str(int(to * 1000)), host], capture_output=True, timeout=to + 1)
-            else:
-                r = _sp.run(["ping", "-c", "1", "-W", str(int(to)), host], capture_output=True, timeout=to + 1)
-            return _ok_bool(r.returncode == 0)
-        except Exception:
-            return _ok_bool(False)
-    if processor_id == "net_port_check":
-        host = text_values.get("host", "")
-        port = int(text_values.get("port", "80") or "80")
-        to = float(text_values.get("timeout", "3") or "3")
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(to)
-            r = sock.connect_ex((host, port))
-            sock.close()
-            return _ok_bool(r == 0)
-        except Exception:
-            return _ok_bool(False)
-    if processor_id == "net_url_parse":
-        url = text_values.get("url", "")
-        p = urllib.parse.urlparse(url)
-        return _ok(json.dumps({
-            "scheme": p.scheme, "hostname": p.hostname or "", "port": str(p.port or ""),
-            "path": p.path, "query": p.query, "fragment": p.fragment,
-        }, ensure_ascii=False, separators=(",", ":")))
-
-    # ── 扩展: 数据验证 ──
-    if processor_id == "validate_email":
-        return _ok_bool(bool(re.match(r"^[\w.%+-]+@[\w.-]+\.[a-zA-Z]{2,}$", text_values.get("email", ""))))
-    if processor_id == "validate_url":
-        try:
-            p = urllib.parse.urlparse(text_values.get("url", ""))
-            return _ok_bool(all([p.scheme, p.netloc]))
-        except Exception:
-            return _ok_bool(False)
-    if processor_id == "validate_ip":
-        ip = text_values.get("ip", "")
-        try:
-            socket.inet_pton(socket.AF_INET, ip)
-            return _ok_bool(True)
-        except OSError:
-            try:
-                socket.inet_pton(socket.AF_INET6, ip)
-                return _ok_bool(True)
-            except OSError:
-                return _ok_bool(False)
-    if processor_id == "validate_phone":
-        phone = re.sub(r"[\s-]", "", text_values.get("phone", ""))
-        return _ok_bool(bool(re.match(r"^(\+86)?1[3-9]\d{9}$", phone)))
-    if processor_id == "validate_regex":
-        try:
-            return _ok_bool(bool(re.match(text_values.get("pattern", ""), text_values.get("text", ""))))
-        except re.error:
-            return _ok_bool(False)
-    if processor_id == "validate_range":
-        v = _to_num(values.get("value", 0))
-        lo = _to_num(values.get("min", 0))
-        hi = _to_num(values.get("max", 100))
-        return _ok_bool(lo <= v <= hi)
-    if processor_id == "validate_length":
-        t = text_values.get("text", "")
-        lo = int(text_values.get("min", "0") or "0")
-        hi = int(text_values.get("max", "0") or "0")
-        ok = True
-        if lo > 0 and len(t) < lo:
-            ok = False
-        if hi > 0 and len(t) > hi:
-            ok = False
-        return _ok_bool(ok)
-
-    # ── 扩展: 加密哈希 ──
-    if processor_id == "hash_md5":
-        return _ok(hashlib.md5(text_values.get("text", "").encode("utf-8")).hexdigest())
-    if processor_id == "hash_sha1":
-        return _ok(hashlib.sha1(text_values.get("text", "").encode("utf-8")).hexdigest())
-    if processor_id == "hash_sha256":
-        return _ok(hashlib.sha256(text_values.get("text", "").encode("utf-8")).hexdigest())
-    if processor_id == "hash_sha512":
-        return _ok(hashlib.sha512(text_values.get("text", "").encode("utf-8")).hexdigest())
-    if processor_id == "hash_crc32":
-        import zlib as _zl
-        return _ok(format(_zl.crc32(text_values.get("text", "").encode("utf-8")) & 0xffffffff, "08x"))
-    if processor_id == "hash_uuid":
-        import uuid as _uu
-        return _ok(str(_uu.uuid4()))
-
-    # ── 扩展: 颜色处理 ──
-    if processor_id == "color_hex_to_rgb":
-        h = text_values.get("hex", "#000000").lstrip("#")
-        if len(h) == 3:
-            h = "".join(c * 2 for c in h)
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        return _ok(f"({r}, {g}, {b})")
-    if processor_id == "color_rgb_to_hex":
-        r = int(text_values.get("r", "0") or "0")
-        g = int(text_values.get("g", "0") or "0")
-        b = int(text_values.get("b", "0") or "0")
-        return _ok(f"#{r:02x}{g:02x}{b:02x}")
-    if processor_id == "color_brightness":
-        h = text_values.get("hex", "#000000").lstrip("#")
-        if len(h) == 3:
-            h = "".join(c * 2 for c in h)
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        return _ok(str((r * 299 + g * 587 + b * 114) / 1000 / 255 * 100))
-    if processor_id == "color_complementary":
-        h = text_values.get("hex", "#000000").lstrip("#")
-        if len(h) == 3:
-            h = "".join(c * 2 for c in h)
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        return _ok(f"#{255 - r:02x}{255 - g:02x}{255 - b:02x}")
-    if processor_id == "color_random":
-        import random as _rr
-        return _ok(f"#{_rr.randint(0, 0xffffff):06x}")
-
-    # ── 扩展: 集合操作 ──
-    if processor_id == "set_union":
-        a, b = _parse_list(values.get("set1", "")), _parse_list(values.get("set2", ""))
-        return _ok_list(list(set(a) | set(b)))
-    if processor_id == "set_intersection":
-        a, b = _parse_list(values.get("set1", "")), _parse_list(values.get("set2", ""))
-        return _ok_list(list(set(a) & set(b)))
-    if processor_id == "set_difference":
-        a, b = _parse_list(values.get("set1", "")), _parse_list(values.get("set2", ""))
-        return _ok_list(list(set(a) - set(b)))
-    if processor_id == "set_unique":
-        lst = _parse_list(values.get("list", ""))
-        seen = set()
-        result = []
-        for x in lst:
-            if x not in seen:
-                seen.add(x)
-                result.append(x)
-        return _ok_list(result)
-
-    # ── 扩展: 字典操作 ──
-    if processor_id == "dict_keys":
-        d = _try_json_parse(values.get("json", "{}"))
-        return _ok_list(list(d.keys()) if isinstance(d, dict) else [])
-    if processor_id == "dict_values":
-        d = _try_json_parse(values.get("json", "{}"))
-        return _ok_list([_value_to_text(v) for v in d.values()] if isinstance(d, dict) else [])
-    if processor_id == "dict_merge":
-        a = _try_json_parse(values.get("a", "{}"))
-        b = _try_json_parse(values.get("b", "{}"))
-        result = dict(a) if isinstance(a, dict) else {}
-        if isinstance(b, dict):
-            result.update(b)
-        return _ok(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
-    if processor_id == "dict_get":
-        d = _try_json_parse(values.get("json", "{}"))
-        k = text_values.get("key", "")
-        return _ok(_value_to_text(d.get(k, values.get("default", ""))) if isinstance(d, dict) else "")
-    if processor_id == "dict_set":
-        d = dict(_try_json_parse(values.get("json", "{}"))) if isinstance(_try_json_parse(values.get("json", "{}")), dict) else {}
-        d[text_values.get("key", "")] = values.get("value", "")
-        return _ok(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
-    if processor_id == "dict_filter":
-        d = _try_json_parse(values.get("json", "{}"))
-        keys = _parse_list(values.get("keys", ""))
-        if isinstance(d, dict):
-            d = {k: v for k, v in d.items() if k in keys}
-        return _ok(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
-
-    # ── 扩展: 字符串格式化 ──
-    if processor_id == "str_pad_left":
-        return _ok(text_values.get("text", "").rjust(int(text_values.get("width", "0") or "0"), text_values.get("fillchar", " ") or " "))
-    if processor_id == "str_pad_right":
-        return _ok(text_values.get("text", "").ljust(int(text_values.get("width", "0") or "0"), text_values.get("fillchar", " ") or " "))
-    if processor_id == "str_truncate":
-        t = text_values.get("text", "")
-        ml = int(text_values.get("max_length", "100") or "100")
-        s = text_values.get("suffix", "...")
-        return _ok(t if len(t) <= ml else t[:ml - len(s)] + s)
-    if processor_id == "str_repeat":
-        return _ok(text_values.get("text", "") * int(text_values.get("count", "1") or "1"))
-
-    # ── 扩展: 环境变量 ──
-    if processor_id == "env_get":
-        return _ok(os.environ.get(text_values.get("key", ""), text_values.get("default", "")))
-    if processor_id == "env_set":
-        os.environ[text_values.get("key", "")] = text_values.get("value", "")
-        return _ok(text_values.get("value", ""))
-    if processor_id == "env_list":
-        return _ok(json.dumps(dict(os.environ), ensure_ascii=False, separators=(",", ":")))
-    if processor_id == "env_expand":
-        return _ok(os.path.expandvars(text_values.get("text", "")))
-
-    # ── 扩展: 数学扩展 ──
-    if processor_id == "math_sin":
-        import math as _m
-        return _ok(str(_m.sin(_to_num(values.get("angle", 0)))))
-    if processor_id == "math_cos":
-        import math as _m
-        return _ok(str(_m.cos(_to_num(values.get("angle", 0)))))
-    if processor_id == "math_tan":
-        import math as _m
-        return _ok(str(_m.tan(_to_num(values.get("angle", 0)))))
-    if processor_id == "math_sqrt":
-        import math as _m
-        return _ok(str(_m.sqrt(_to_num(values.get("number", 0)))))
-    if processor_id == "math_log":
-        import math as _m
-        x = _to_num(values.get("number", 1))
-        b = _to_num(values.get("base", 2.718281828459045))
-        return _ok(str(_m.log(x, b) if b != 2.718281828459045 else _m.log(x)))
-    if processor_id == "math_factorial":
-        import math as _m
-        return _ok(str(_m.factorial(int(_to_num(values.get("number", 0))))))
-    if processor_id == "math_gcd":
-        import math as _m
-        return _ok(str(_m.gcd(int(_to_num(values.get("a", 0))), int(_to_num(values.get("b", 0))))))
-    if processor_id == "math_lcm":
-        import math as _m
-        a = int(_to_num(values.get("a", 0)))
-        b = int(_to_num(values.get("b", 0)))
-        return _ok(str(abs(a * b) // _m.gcd(a, b)))
-    if processor_id == "math_fibonacci":
-        n = int(_to_num(values.get("count", 10)))
-        if n <= 0:
-            return _ok_list([])
-        fib = [0, 1]
-        for _ in range(2, n):
-            fib.append(fib[-1] + fib[-2])
-        return _ok_list(fib)
+    json_result = _execute_json_processor(processor_id, values)
+    if json_result is not None:
+        return json_result
 
     # ── 通用回退：任何在增强/扩展定义中的处理器返回基本结果 ──
     try:
@@ -1546,7 +1049,7 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
         if processor_id in _all_extra:
             return _ok("")
     except Exception:
-        pass
+        logger.warning("加载增强动作链电池失败", exc_info=True)
 
     return None
 
@@ -1598,22 +1101,11 @@ def _ok_bool(value: bool) -> CommandResult:
 
 
 def _ok_file(path: str) -> CommandResult:
-    path = _normalize_path_value(path)
-    folder = os.path.dirname(os.path.abspath(path)) if path else ""
-    return _ok_outputs(
-        {
-            "output": path,
-            "path": path,
-            "folder": folder,
-            "filename": os.path.basename(path),
-            "exists": _bool_text(os.path.exists(path)),
-        }
-    )
+    return _ok_file_result(path)
 
 
 def _ok_folder(path: str) -> CommandResult:
-    path = _normalize_path_value(path)
-    return _ok_outputs({"output": path, "path": path, "exists": _bool_text(os.path.isdir(path))})
+    return _ok_folder_result(path)
 
 
 def _ok_list(items: list[str], *, delimiter: str = "\n") -> CommandResult:
@@ -2053,236 +1545,6 @@ def _img_rotate(values: dict[str, str]) -> str:
 
 # ── 网络处理逻辑 ──
 
-def _json_get(values: dict[str, str]) -> str:
-    raw = values.get("json", "")
-    path = values.get("path", "")
-    data: Any = json.loads(raw)
-    for part in _path_parts(path):
-        if isinstance(data, list):
-            data = data[int(part)]
-        elif isinstance(data, dict):
-            data = data[part]
-        else:
-            raise KeyError(part)
-    if isinstance(data, str):
-        return data
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-
-
-def _json_set(values: dict[str, str]) -> str:
-    raw = values.get("json", "").strip()
-    data: Any = json.loads(raw) if raw else {}
-    if not isinstance(data, dict | list):
-        data = {}
-    parts = _path_parts(values.get("path", ""))
-    if not parts:
-        return json.dumps(_parse_scalar(values.get("value", "")), ensure_ascii=False, separators=(",", ":"))
-    current = data
-    for part in parts[:-1]:
-        if isinstance(current, list):
-            index = int(part)
-            while len(current) <= index:
-                current.append({})
-            if not isinstance(current[index], dict | list):
-                current[index] = {}
-            current = current[index]
-        else:
-            if part not in current or not isinstance(current.get(part), dict | list):
-                current[part] = {}
-            current = current[part]
-    last = parts[-1]
-    value = _parse_scalar(values.get("value", ""))
-    if isinstance(current, list):
-        index = int(last)
-        while len(current) <= index:
-            current.append(None)
-        current[index] = value
-    else:
-        current[last] = value
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-
-
-def _path_parts(path: str) -> list[str]:
-    text = str(path or "").strip()
-    if not text:
-        return []
-    parts: list[str] = []
-    token = ""
-    in_bracket = False
-    quote = ""
-    for char in text:
-        if quote:
-            if char == quote:
-                quote = ""
-            else:
-                token += char
-            continue
-        if in_bracket and char in {"'", '"'}:
-            quote = char
-            continue
-        if char == "[" and not in_bracket:
-            if token:
-                parts.append(token)
-                token = ""
-            in_bracket = True
-            continue
-        if char == "]" and in_bracket:
-            if token:
-                parts.append(token.strip())
-                token = ""
-            in_bracket = False
-            continue
-        if char == "." and not in_bracket:
-            if token:
-                parts.append(token)
-                token = ""
-            continue
-        token += char
-    if token:
-        parts.append(token.strip())
-    return [part for part in parts if part != ""]
-
-
-def _parse_scalar(value: str) -> Any:
-    text = str(value or "").strip()
-    if text in {"true", "false"}:
-        return text == "true"
-    if text in {"是", "真"}:
-        return True
-    if text in {"否", "假"}:
-        return False
-    if text == "null" or text == "空":
-        return None
-    try:
-        return json.loads(text)
-    except Exception:
-        return value
-
-
-def _http_get(values: dict[str, str]) -> CommandResult:
-    url = values.get("url", "").strip()
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    headers_str = values.get("headers", "").strip()
-    headers = {}
-    if headers_str:
-        headers = json.loads(headers_str)
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=10) as response:
-        text = response.read().decode("utf-8")
-        status_code = str(getattr(response, "status", "") or response.getcode() or "")
-        response_headers = dict(response.headers.items())
-    return _ok_outputs(
-        {
-            "output": text,
-            "status_code": status_code,
-            "headers": response_headers,
-            "length": str(len(text)),
-            "empty": _bool_text(not bool(text)),
-        }
-    )
-
-
-def _http_post(values: dict[str, str]) -> CommandResult:
-    url = values.get("url", "").strip()
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    data_str = values.get("data", "").strip()
-    headers_str = values.get("headers", "").strip()
-    headers = {}
-    if headers_str:
-        headers = json.loads(headers_str)
-
-    data_bytes = data_str.encode("utf-8")
-    if "Content-Type" not in headers:
-        headers["Content-Type"] = "application/json"
-
-    req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=10) as response:
-        text = response.read().decode("utf-8")
-        status_code = str(getattr(response, "status", "") or response.getcode() or "")
-        response_headers = dict(response.headers.items())
-    return _ok_outputs(
-        {
-            "output": text,
-            "status_code": status_code,
-            "headers": response_headers,
-            "length": str(len(text)),
-            "empty": _bool_text(not bool(text)),
-        }
-    )
-
-
-def _url_encode(values: dict[str, str]) -> str:
-    text = values.get("text", "")
-    mode = values.get("mode", "encode").strip().lower()
-    if mode == "decode":
-        return urllib.parse.unquote(text)
-    return urllib.parse.quote(text)
-
-
-def _json_parse(values: dict[str, str]) -> str:
-    json_str = values.get("json_str", "").strip()
-    parsed = json.loads(json_str)
-    return json.dumps(parsed, indent=2, ensure_ascii=False)
-
-
-def _json_template(values: dict[str, str]) -> str:
-    raw = values.get("json", "").strip()
-    template = values.get("template", "{output}") or "{output}"
-    data: Any = json.loads(raw) if raw else {}
-    result = template
-    for match in re.finditer(r"\{([^{}]+)\}", template):
-        expr = match.group(1).strip()
-        if not expr:
-            continue
-        try:
-            value = _json_path_value(data, expr)
-        except Exception:
-            value = ""
-        result = result.replace(match.group(0), _stringify_json_value(value))
-    return result
-
-
-def _json_path_value(data: Any, path: str) -> Any:
-    current = data
-    for part in _path_parts(path):
-        if isinstance(current, list):
-            current = current[int(part)]
-        elif isinstance(current, dict):
-            current = current[part]
-        else:
-            raise KeyError(part)
-    return current
-
-
-def _stringify_json_value(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return _bool_text(value)
-    if isinstance(value, list | dict):
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-    return str(value)
-
-
-def _http_download(values: dict[str, str]) -> str:
-    url = values.get("url", "").strip()
-    save_dir = values.get("save_dir", "").strip() or os.getcwd()
-
-    parsed_url = urllib.parse.urlparse(url)
-    filename = os.path.basename(parsed_url.path) or "downloaded_file"
-
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
-
-    filepath = os.path.join(save_dir, filename)
-    urllib.request.urlretrieve(url, filepath)
-    return filepath
-
-
 # ── 数学与数据结构处理逻辑 ──
 
 def _to_num(value: Any, default: float = 0.0) -> float:
@@ -2310,8 +1572,8 @@ def _parse_list(value: Any) -> list[str]:
                 parsed = ast.literal_eval(val_str)
                 if isinstance(parsed, list):
                     return [str(item) for item in parsed]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("列表 literal 解析失败，回退为文本列表: %s", exc, exc_info=True)
     if "\n" in val_str:
         return [line.strip() for line in val_str.splitlines() if line.strip()]
     if "," in val_str:
@@ -2335,9 +1597,21 @@ def _parse_nested_list(value: Any) -> list[Any]:
             try:
                 parsed = ast.literal_eval(text)
                 return parsed if isinstance(parsed, list) else [parsed]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("嵌套列表 literal 解析失败，回退为普通列表: %s", exc, exc_info=True)
     return _parse_list(text)
+
+
+def _stringify_json_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return _bool_text(value)
+    if isinstance(value, list | dict):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return str(value)
 
 
 def _num_input(values: dict[str, str]) -> str:
@@ -2612,97 +1886,6 @@ def _hex_to_dec(values: dict[str, str]) -> str:
     return str(int(num_str, 16))
 
 
-# ── Windows 文件与路径处理逻辑 ──
-
-def _normalize_path_value(path: str) -> str:
-    path = str(path or "").strip().strip('"')
-    return os.path.normpath(path) if path else ""
-
-
-def _path_join(values: dict[str, str]) -> str:
-    parts = [values.get(key, "").strip().strip('"') for key in ("a", "b", "c")]
-    parts = [part for part in parts if part]
-    if not parts:
-        return ""
-    return os.path.normpath(os.path.join(*parts))
-
-
-def _path_split(values: dict[str, str]) -> CommandResult:
-    path = _normalize_path_value(values.get("path", ""))
-    folder = os.path.dirname(os.path.abspath(path)) if path else ""
-    filename = os.path.basename(path)
-    stem, extension = os.path.splitext(filename)
-    return _ok_outputs(
-        {
-            "output": path,
-            "folder": folder,
-            "filename": filename,
-            "stem": stem,
-            "extension": extension,
-            "exists": _bool_text(os.path.exists(path)),
-        }
-    )
-
-
-def _path_exists(values: dict[str, str]) -> CommandResult:
-    path = _normalize_path_value(values.get("path", ""))
-    exists = os.path.exists(path) if path else False
-    return _ok_outputs({"output": _bool_text(exists), "not": _bool_text(not exists), "path": path})
-
-
-def _folder_create(values: dict[str, str]) -> CommandResult:
-    path = _normalize_path_value(values.get("path", ""))
-    if not path:
-        raise ValueError("缺少文件夹路径")
-    os.makedirs(path, exist_ok=True)
-    return _ok_folder(path)
-
-
-def _file_read_text(values: dict[str, str]) -> CommandResult:
-    path = _normalize_path_value(values.get("path", ""))
-    encoding = values.get("encoding", "").strip() or "utf-8"
-    if not path:
-        raise ValueError("缺少文件路径")
-    with open(path, encoding=encoding) as fh:
-        text = fh.read()
-    return _ok_outputs(
-        {
-            "output": text,
-            "length": str(len(text)),
-            "empty": _bool_text(not bool(text)),
-            "path": path,
-            "folder": os.path.dirname(os.path.abspath(path)),
-            "filename": os.path.basename(path),
-        }
-    )
-
-
-def _file_write_text(values: dict[str, str]) -> CommandResult:
-    path = _normalize_path_value(values.get("path", ""))
-    if not path:
-        raise ValueError("缺少文件路径")
-    text = values.get("text", "")
-    encoding = values.get("encoding", "").strip() or "utf-8"
-    mode_text = values.get("mode", "").strip().lower()
-    mode = "a" if mode_text in {"append", "追加"} else "w"
-    folder = os.path.dirname(os.path.abspath(path))
-    if folder:
-        os.makedirs(folder, exist_ok=True)
-    with open(path, mode, encoding=encoding) as fh:
-        fh.write(text)
-    return _ok_outputs(
-        {
-            "output": path,
-            "path": path,
-            "folder": os.path.dirname(os.path.abspath(path)),
-            "filename": os.path.basename(path),
-            "exists": _bool_text(os.path.exists(path)),
-            "length": str(len(text)),
-            "mode": "追加" if mode == "a" else "覆盖",
-        }
-    )
-
-
 # ── 自动加载增强和扩展电池 ─────────────────────────────────────────────────────
 
 def _load_extra_processors() -> None:
@@ -2716,7 +1899,7 @@ def _load_extra_processors() -> None:
                     object.__setattr__(v.safety, "capability", f"chain.processor.{k}")
                 PROCESSOR_DEFINITIONS[k] = v
     except Exception:
-        pass
+        logger.warning("加载扩展动作链电池失败", exc_info=True)
 
     try:
         from .extended_definitions import get_extended_definitions as _ged2
@@ -2727,6 +1910,6 @@ def _load_extra_processors() -> None:
                     object.__setattr__(v.safety, "capability", f"chain.processor.{k}")
                 PROCESSOR_DEFINITIONS[k] = v
     except Exception:
-        pass
+        logger.warning("加载扩展动作链电池失败", exc_info=True)
 
 _load_extra_processors()

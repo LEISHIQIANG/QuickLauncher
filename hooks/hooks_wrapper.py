@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class HooksDLL:
     EXPECTED_VERSION = 4
+    EXPECTED_DLL_SHA256 = "2533e2767b0aee9c0b18870ef53e5c631663ab67def0e85679b3960b90e646f8"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -47,11 +48,9 @@ class HooksDLL:
         with cls._instance_lock:
             if cls._instance is not None:
                 try:
-                    if cls._instance.dll is not None:
-                        cls._instance.dll = None
-                        cls._instance.loaded = False
-                except Exception:
-                    pass
+                    cls._instance.shutdown_hooks()
+                except Exception as exc:
+                    logger.warning("hooks.dll reset 卸载钩子失败: %s", exc, exc_info=True)
             cls._instance = None
             cls._load_attempted = False
 
@@ -72,8 +71,7 @@ class HooksDLL:
 
     def __init__(self, dll_path: str = None):
         if dll_path is None:
-            hooks_dir = os.path.dirname(os.path.abspath(__file__))
-            dll_path = os.path.join(hooks_dir, "hooks.dll")
+            dll_path = self._default_dll_path()
         dll_path = os.path.abspath(dll_path)
         self.dll_path = dll_path
         self.dll = None
@@ -86,6 +84,13 @@ class HooksDLL:
         self._has_special_apps = False
         self._has_last_error = False
         self._has_hook_health = False
+        integrity_error = self._validate_integrity()
+        if integrity_error:
+            self.load_error = integrity_error
+            HooksDLL._last_probe = self.get_diagnostics()
+            logger.error("hooks.dll integrity check failed: %s", integrity_error)
+            self._init_callback_refs()
+            return
         try:
             self.dll = ctypes.CDLL(dll_path)
             self.loaded = True
@@ -109,6 +114,25 @@ class HooksDLL:
         self._alt_dclick_callback_ref = None
         self._keyboard_callback_ref = None
         self._hotkey_callback_ref = None
+
+    @classmethod
+    def _default_dll_path(cls) -> str:
+        hooks_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(hooks_dir, "hooks.dll")
+
+    def _validate_integrity(self) -> str:
+        if os.path.abspath(self.dll_path) != os.path.abspath(self._default_dll_path()):
+            return ""
+        expected = str(self.EXPECTED_DLL_SHA256 or "").strip().lower()
+        if not expected:
+            return ""
+        file_info = _dll_file_info(self.dll_path)
+        if not file_info["exists"]:
+            return ""
+        actual = str(file_info["sha256"] or "").strip().lower()
+        if actual != expected:
+            return f"hooks.dll SHA-256 mismatch: expected {expected}, actual {actual}"
+        return ""
 
     def _bind_required_exports(self):
         for name in self.REQUIRED_EXPORTS:
@@ -264,6 +288,21 @@ class HooksDLL:
 
     def _ready(self) -> bool:
         return bool(self.loaded and self.compatible and self.dll is not None)
+
+    def shutdown_hooks(self) -> None:
+        """Uninstall native hooks before dropping the DLL reference."""
+        if self.dll is not None:
+            for func_name in ("UninstallMouseHook", "UninstallKeyboardHook", "ClearGlobalHotkey"):
+                try:
+                    func = getattr(self.dll, func_name, None)
+                    if func is not None:
+                        func()
+                except Exception as exc:
+                    logger.debug("hooks.dll %s failed during shutdown: %s", func_name, exc, exc_info=True)
+        self.dll = None
+        self.loaded = False
+        self.compatible = False
+        self._init_callback_refs()
 
     def install_mouse_hook(self, callback: Callable[[int, int], None]) -> bool:
         """安装鼠标钩子"""

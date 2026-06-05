@@ -180,6 +180,7 @@ def install_service():
 
         return True, "服务安装成功"
     except Exception as e:
+        logger.debug("install_service failed: %s", e)
         return False, f"服务安装失败: {e}"
 
 
@@ -189,6 +190,7 @@ def uninstall_service():
         win32serviceutil.RemoveService(SERVICE_NAME)
         return True, "服务卸载成功"
     except Exception as e:
+        logger.debug("uninstall_service failed: %s", e)
         return False, f"服务卸载失败: {e}"
 
 
@@ -211,6 +213,7 @@ def start_service():
 
         return False, "服务启动超时"
     except Exception as e:
+        logger.debug("start_service failed: %s", e)
         return False, f"服务启动失败: {e}"
 
 
@@ -233,6 +236,7 @@ def stop_service():
 
         return False, "服务停止超时"
     except Exception as e:
+        logger.debug("stop_service failed: %s", e)
         return False, f"服务停止失败: {e}"
 
 
@@ -242,6 +246,7 @@ def is_service_installed():
         win32serviceutil.QueryServiceStatus(SERVICE_NAME)
         return True
     except Exception:
+        logger.debug("is_service_installed check failed", exc_info=True)
         return False
 
 
@@ -251,6 +256,7 @@ def is_service_running():
         status = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
         return status == win32service.SERVICE_RUNNING
     except Exception:
+        logger.debug("is_service_running check failed", exc_info=True)
         return False
 
 

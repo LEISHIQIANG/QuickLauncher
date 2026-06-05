@@ -78,6 +78,7 @@ class ToastNotification(QWidget):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             radius = 8
 
@@ -107,7 +108,11 @@ class ToastNotification(QWidget):
             pen_color.setAlpha(40)
             from qt_compat import QPen
 
-            painter.setPen(QPen(pen_color, 0.3))
+            pen = QPen(pen_color, 0.3)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            pen.setCosmetic(True)
+            painter.setPen(pen)
             painter.drawPath(path)
         finally:
             painter.end()

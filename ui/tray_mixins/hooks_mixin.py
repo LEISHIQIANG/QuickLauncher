@@ -4,12 +4,28 @@
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
 
 _HOOK_INSTALL_RETRY_DELAYS_MS = (500, 2000, 5000)
+_PROCESS_CHECK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="QLProcessCheck")
+
+
+def _collect_special_process_pids(target_apps: set[str]) -> set[int]:
+    import psutil
+
+    current_pids = set()
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            name = str(proc.info.get("name") or "").lower()
+            if any(app in name for app in target_apps):
+                current_pids.add(int(proc.info["pid"]))
+        except Exception as exc:
+            logger.debug("获取进程信息失败: %s", exc, exc_info=True)
+    return current_pids
 
 
 class HooksMixin:
@@ -152,24 +168,33 @@ class HooksMixin:
     def _check_new_processes(self):
         """检测特定软件启动时重装钩子（仅监测可能有钩子冲突的软件）"""
         try:
-            import psutil
-
-            # 需要监测的软件关键词（可能有钩子冲突的专业软件）
             target_apps = set(self._get_special_apps())
-
             if not target_apps:
                 self._known_processes = set()
                 return
 
-            current_pids = set()
-            for proc in psutil.process_iter(["pid", "name"]):
-                try:
-                    name = proc.info["name"].lower()
-                    if any(app in name for app in target_apps):
-                        current_pids.add(proc.info["pid"])
-                except Exception as exc:
-                    logger.debug("获取进程信息失败: %s", exc, exc_info=True)
+            future = getattr(self, "_process_check_future", None)
+            if future is not None and not future.done():
+                return
+            future = _PROCESS_CHECK_EXECUTOR.submit(_collect_special_process_pids, target_apps)
+            self._process_check_future = future
+            future.add_done_callback(self._emit_process_check_done)
+        except Exception as exc:
+            logger.debug("提交特殊应用监控任务失败: %s", exc, exc_info=True)
 
+    def _emit_process_check_done(self, future):
+        try:
+            signal = getattr(self, "_process_check_done_signal", None)
+            if signal is not None:
+                signal.emit(future)
+        except Exception as exc:
+            logger.debug("发送特殊应用监控结果失败: %s", exc, exc_info=True)
+
+    def _on_process_check_done(self, future):
+        try:
+            if getattr(self, "_process_check_future", None) is future:
+                self._process_check_future = None
+            current_pids = set(future.result())
             if not self._known_processes:
                 self._known_processes = current_pids
                 return

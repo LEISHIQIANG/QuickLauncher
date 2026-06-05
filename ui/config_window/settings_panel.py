@@ -3,10 +3,7 @@
 """
 
 import logging
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import DataManager
 from core.i18n import tr
 from qt_compat import (
@@ -148,34 +145,41 @@ class CompactProgressDialog(QDialog):
     def paintEvent(self, event):
         """背景绘制 - 完全按照ThemedMessageBox的逻辑"""
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        from ui.utils.window_effect import is_win10
+            from ui.utils.window_effect import is_win10
 
-        if is_win10():
-            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
-            return
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+                return
 
-        inset = 1.0 if is_win10() else 0.5
+            inset = 1.0 if is_win10() else 0.5
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
-        )
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+            )
 
-        # 磨砂玻璃模式：与ThemedMessageBox完全一致
-        tint_color = QColor(self.bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 220))
-        else:
-            tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            # 磨砂玻璃模式：与ThemedMessageBox完全一致
+            tint_color = QColor(self.bg_color)
+            if is_win10():
+                tint_color.setAlpha(min(tint_color.alpha(), 220))
+            else:
+                tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
 
-        # 边框
-        pen_color = QColor(self.border_color)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1))
-        painter.drawPath(path)
+            # 边框
+            pen_color = QColor(self.border_color)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            pen = QPen(pen_color, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def showEvent(self, event):
         """显示时居中并应用模糊效果"""
@@ -306,6 +310,7 @@ class NavigationItemWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # Determine selection and hover states
         is_selected = False
@@ -474,6 +479,7 @@ class NavigationWidget(QListWidget):
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if self.theme == "dark":
                 pill_color = QColor(255, 255, 255, int(self._pill_opacity * 38))  # rgba(255, 255, 255, 0.15)
@@ -626,6 +632,7 @@ class BaseSettingPage(SmoothScrollArea):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
         painter.scale(size / 22.0, size / 22.0)
 
@@ -781,7 +788,10 @@ class BaseSettingPage(SmoothScrollArea):
             line(9.2, 12.5, 7.2, 14.1, accent_pen)
             line(11.2, 14.1, 14.3, 14.1)
         elif kind == "command_favorite":
-            painter.setPen(QPen(accent, 1.7))
+            pen_star = QPen(accent, 1.7)
+            pen_star.setJoinStyle(QtCompat.RoundJoin)
+            pen_star.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen_star)
             painter.setBrush(QtCompat.NoBrush)
             painter.drawPath(star_path(10.7, 10.3, 5.6, 2.5))
             line(6.5, 16, 15.5, 16, pen)
@@ -800,7 +810,10 @@ class BaseSettingPage(SmoothScrollArea):
             path.lineTo(18, 17)
             path.lineTo(4, 17)
             path.closeSubpath()
-            painter.setPen(QPen(accent, 1.8))
+            pen_warn = QPen(accent, 1.8)
+            pen_warn.setJoinStyle(QtCompat.RoundJoin)
+            pen_warn.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen_warn)
             painter.setBrush(QtCompat.NoBrush)
             painter.drawPath(path)
             line(11, 8.3, 11, 12.6)

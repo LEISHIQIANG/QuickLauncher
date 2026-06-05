@@ -490,8 +490,8 @@ class GraphRuntime:
         try:
             from .registry import get_processor_handler
             return get_processor_handler(processor_id)
-        except ImportError:
-            pass
+        except ImportError as exc:
+            logger.debug("无法从 registry 导入处理器 %s: %s", processor_id, exc, exc_info=True)
 
         return None
 

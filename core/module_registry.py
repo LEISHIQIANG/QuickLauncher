@@ -232,8 +232,8 @@ def _import_module_from_manifest(module_name: str, manifest_path: Path):
     finally:
         try:
             sys.path.remove(module_dir)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("临时模块路径已不存在: %s", exc, exc_info=True)
 
 
 module_registry = ModuleRegistry()

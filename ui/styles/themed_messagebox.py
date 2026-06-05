@@ -325,32 +325,39 @@ class ThemedMessageBox(QDialog):
     def paintEvent(self, event):
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        if is_win10():
-            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
-            return
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+                return
 
-        inset = 1.0 if is_win10() else 0.5
+            inset = 1.0 if is_win10() else 0.5
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
-        )
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+            )
 
-        # 磨砂玻璃模式：与RoundedWindow完全一致
-        tint_color = QColor(self.bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 220))
-        else:
-            tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            # 磨砂玻璃模式：与RoundedWindow完全一致
+            tint_color = QColor(self.bg_color)
+            if is_win10():
+                tint_color.setAlpha(min(tint_color.alpha(), 220))
+            else:
+                tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
 
-        # 边框
-        pen_color = QColor(self.border_color)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1))
-        painter.drawPath(path)
+            # 边框
+            pen_color = QColor(self.border_color)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            pen = QPen(pen_color, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def _set_result(self, value):
         """设置结果并关闭"""
@@ -587,32 +594,39 @@ class ThemedInputDialog(QDialog):
     def paintEvent(self, event):
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        if is_win10():
-            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
-            return
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+                return
 
-        inset = 1.0 if is_win10() else 0.5
+            inset = 1.0 if is_win10() else 0.5
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
-        )
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+            )
 
-        # 磨砂玻璃模式：与RoundedWindow完全一致
-        tint_color = QColor(self.bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 220))
-        else:
-            tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            # 磨砂玻璃模式：与RoundedWindow完全一致
+            tint_color = QColor(self.bg_color)
+            if is_win10():
+                tint_color.setAlpha(min(tint_color.alpha(), 220))
+            else:
+                tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
 
-        # 边框
-        pen_color = QColor(self.border_color)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1.0))
-        painter.drawPath(path)
+            # 边框
+            pen_color = QColor(self.border_color)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            pen = QPen(pen_color, 1.0)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def _on_ok(self):
         """确定按钮点击"""

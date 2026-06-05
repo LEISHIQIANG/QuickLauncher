@@ -243,8 +243,8 @@ def discover_processors() -> int:
         try:
             count = loader.discover_from_module(module_name)
             total += count
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("发现处理器模块失败: %s", exc, exc_info=True)
 
     return total
 

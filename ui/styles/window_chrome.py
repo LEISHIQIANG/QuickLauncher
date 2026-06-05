@@ -46,8 +46,8 @@ def apply_custom_window_chrome(
             widget.setAttribute(QtCompat.WA_DeleteOnClose, True)
         try:
             widget.setAutoFillBackground(False)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("禁用窗口自动填充背景失败: %s", exc, exc_info=True)
         return flags
     except Exception as exc:
         logger.debug("应用自定义窗口壳失败: %s", exc, exc_info=True)

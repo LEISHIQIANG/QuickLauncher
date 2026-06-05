@@ -8,7 +8,6 @@ import sys
 
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import APP_VERSION, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
 from core.windows_uipi import allow_drag_drop_for_widget
@@ -57,6 +56,7 @@ class DotWidget(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QtCompat.Antialiasing)
+        p.setRenderHint(QtCompat.HighQualityAntialiasing)
         p.setPen(QtCompat.NoPen)
         p.setBrush(self._color)
         cy = self.height() // 2 + 1
@@ -435,6 +435,7 @@ class RoundedWindow(QWidget):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             # Win10 特殊优化：使用更高质量的抗锯齿渲染
             try:
@@ -484,7 +485,10 @@ class RoundedWindow(QWidget):
 
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            painter.setPen(QPen(pen_color, 1))
+            pen = QPen(pen_color, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
             painter.drawPath(path)
 
             try:
@@ -493,7 +497,11 @@ class RoundedWindow(QWidget):
                 if is_win10():
                     soften_color_inner = QColor(self.bg_color)
                     soften_color_inner.setAlpha(int(soften_color_inner.alpha() * 0.6))
-                    painter.setPen(QPen(soften_color_inner, 0.5))
+                    pen_inner = QPen(soften_color_inner, 0.5)
+                    pen_inner.setJoinStyle(QtCompat.RoundJoin)
+                    pen_inner.setCapStyle(QtCompat.RoundCap)
+                    pen_inner.setCosmetic(True)
+                    painter.setPen(pen_inner)
                     inner_path = QPainterPath()
                     inner_path.addRoundedRect(
                         0.75, 0.75, self.width() - 1.5, self.height() - 1.5, self.corner_radius, self.corner_radius
@@ -502,7 +510,11 @@ class RoundedWindow(QWidget):
 
                     soften_color_outer = QColor(self.bg_color)
                     soften_color_outer.setAlpha(int(soften_color_outer.alpha() * 0.3))
-                    painter.setPen(QPen(soften_color_outer, 0.5))
+                    pen_outer = QPen(soften_color_outer, 0.5)
+                    pen_outer.setJoinStyle(QtCompat.RoundJoin)
+                    pen_outer.setCapStyle(QtCompat.RoundCap)
+                    pen_outer.setCosmetic(True)
+                    painter.setPen(pen_outer)
                     outer_path = QPainterPath()
                     outer_path.addRoundedRect(
                         0.25,

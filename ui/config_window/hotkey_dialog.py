@@ -3,9 +3,6 @@
 import ctypes
 import logging
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
@@ -25,6 +22,7 @@ from qt_compat import (
     QPixmap,
     QPushButton,
     QRadioButton,
+    QRectF,
     QSizePolicy,
     Qt,
     QtCompat,
@@ -282,6 +280,7 @@ class HotkeyDialog(BaseDialog):
             painter = QPainter(pixmap)
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing)
                 painter.setFont(QFont("Segoe UI Symbol", 38))
                 painter.setPen(QColor(144, 238, 144))
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌘")
@@ -565,10 +564,11 @@ class HotkeyDialog(BaseDialog):
         painter = QPainter(pixmap)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
             painter.setBrush(QColor(70, 130, 180))
             painter.setPen(QtCompat.NoPen)
             margin = size // 8
-            painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+            painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
             painter.setPen(QColor(255, 255, 255))
             painter.setFont(QFont("Segoe UI Symbol", size // 3))
             painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌘")

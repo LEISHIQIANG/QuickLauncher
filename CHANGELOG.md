@@ -24,24 +24,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Changed
 
+- `sleep_mixin.py`：将 `_iter_visible_blocking_widgets()` 生成器末尾的清理逻辑（热键停止、图标缓存释放、`gc.collect()` 等约 60 行）提取为独立方法 `_perform_sleep_cleanup()`，在 `_enter_light_sleep()` 中显式调用，消除 `_mark_activity()` 每次标记活动时意外触发热键停止和 GC 的副作用。
+- `chain/registry.py` SSRF 防护：HTTP GET/POST/Download 处理器统一走 `core.network_security.safe_urlopen()`，拦截私有地址、本机地址、链路本地地址和保留地址，逐跳校验重定向目标，限制响应体大小，过滤 `Host`/`Cookie` 等敏感请求头。
+- `chain/registry.py` 巨型函数拆分：将 `_execute_extra_processor()`（原 489 行、96 个 if 分支）拆分为 7 个专用处理器模块（`processors_text.py`、`processors_math.py`、`processors_datetime.py`、`processors_encoding.py`、`processors_validation.py`、`processors_data.py`）加 1 个共享助手模块（`_proc_helpers.py`），原函数缩减为 55 行委托分发；HTTP/文件/结构化处理器分别抽离到 `processors_network.py`、`processors_files.py`、`processors_structured.py`；`registry.py` 从 2352 行降至 1922 行。
+- `shortcut_command_exec.py` 命令执行去重：将 `_execute_command()` 与 `run_command_capture()` 入口处的值占位符替换、外部变量安全检查、变量解析逻辑统一抽取到 `_prepare_command_for_execution()`；捕获路径的通用失败结果与 builtin 结果包装抽到 `_capture_error_result()` / `_capture_builtin_result()`；`run_command_capture()` 内部 on_update 与 no-on_update 两条路径的重复输出处理逻辑提取为 5 个共享助手（`_decode_capture_output()`、`_build_capture_payload()`、`_build_capture_cancel_result()`、`_build_capture_success_result()`、`_build_bash_fallback_result()`），消除约 270 行重复代码。
+- `_check_new_processes()` 进程检测移至后台线程：不再在 GUI 线程调用 `psutil.process_iter()`，改为后台线程扫描后通过 Qt 信号回传主线程处理，消除每 10 秒 100–500 ms 的周期性 UI 卡顿。
+- UI 信号连接生命周期治理：修复 `CommandPanelWindow` 全局 `focusChanged` 连接未释放问题；修复 `tooltip_helper`、`custom_tooltip`、`icon_grid`、`config_history_window` 的无父 QTimer 问题（`ui/` 与 `core/` 下已无 `QTimer()` / `QTimer(None)`）；`CommandDialog` / `UrlDialog` 孤儿线程保活列表增加已完成清理和数量上限；为 `chain_dialog.py` 添加 `closeEvent` 清理后台测试线程和动画定时器。
+- `tooltip_helper.py` 主题读取优化：Tooltip 主题改为模块级缓存，避免每次显示提示时走 DataManager 实例化流程；首次缓存读取失败时记录 debug 日志；tooltip 延迟定时器绑定到 widget 父对象随销毁自动停止。
+- `core/chain/__init__.py` 导出列表合并：合并冲突遗留的两份 `__all__` 定义改为 `_EXTRA_ALL` 与主 `__all__` 合并去重，消除第二份完全覆盖第一份导致子模块引用丢失的问题。
+- 生产代码异常日志策略：`core/chain/registry.py` 增强/扩展处理器加载失败改为 `logger.warning()`；对 6 个高危文件（`shortcut_command_exec.py`、`plugin_manager.py`、`windows_service.py`、`window_detection.py`、`popup_mixin.py`、`window_effect.py`）共 29 处 Tier 1 静默异常处理器添加 `logger.debug()` 日志；`tests/test_exception_logging_policy.py` 扩展为全生产 Python 代码门禁，当前仅测试代码保留 3 处容许 `pass`。
+- C++ 钩子层重构与 DLL 完整性：`EnsureCallbackThread` 加入互斥锁保护消除并发竞态，共享变量改为 `std::atomic`，Install/Uninstall/ThreadProc 统一为 `HookContext` 结构体（消除约 400 行重复代码），安全调用函数合并为 `SafeInvokeAny`；`hooks.dll` 加载前校验 SHA-256 哈希值，`reset()` 先卸载鼠标/键盘钩子并清理全局热键再释放 DLL 引用，防止悬空钩子回调。
+- 12 个 UI 文件移除 `sys.path.insert`（`tray_app.py`、`log_window.py`、`welcome_guide.py`、`main_window.py`、`icon_grid.py`、`folder_panel.py`、`settings_panel.py`、`shortcut_dialog.py`、`batch_launch_dialog.py`、`hotkey_dialog.py`、`url_dialog.py`、`file_selection.py`），`ui/` 下已无 `sys.path.insert` / `sys.path.append`，统一依赖入口点路径管理。
+- chain/registry.py 测试覆盖：新增 `tests/test_chain_registry_processors.py`（121 个测试），覆盖全部 8 个新处理器模块及 `_execute_extra_processor()` 委托分发；新增 `tests/test_issue_00_quick_wins.py` 覆盖 SleepMixin、HTTP SSRF、敏感请求头、`__all__` 合并、hooks reset 等快速修复项；配合已有的 `test_enhanced_processors.py`、`test_extended_processors.py`、`test_math_processors.py` 共 304 个测试全部通过。
 - 插件系统：命令软超时调整为 30 秒，新增受权限保护的内置命令注册接口，`.qlzip` 安装限制放宽至 150 MB / 1000 文件，HTTP API 收紧请求边界减少注入风险，命令参数白名单同步支持新字段和 outputs 契约。
 - 插件分发：发布包不再复制插件源码，截图 OCR 专用依赖从主程序剥离，OCR 插件内置 `wxPython` 但不内置 `python.exe`。
 - 命令面板：底部按钮改为自适应网格布局，`hash`/`tls`/`json`/`jwt`/`port` 内置命令补齐结构化参数和标准 outputs。
 - 模块注册表支持插件提供的外部 manifest 并在禁用后自动回退，动作链画布运行结果优先按 `node_id` 映射，主配置窗口双击编辑按类型分发到对应编辑器。
 - 文件选择统一改为非原生 Qt 对话框并套用项目主题，C++ DLL 钩子回调从单槽挂起改为有界 FIFO 队列。
-- C++ 钩子层重构：`EnsureCallbackThread` 加入互斥锁保护消除并发竞态，共享变量改为 `std::atomic`，Install/Uninstall/ThreadProc 统一为 `HookContext` 结构体（消除约 400 行重复代码），安全调用函数合并为 `SafeInvokeAny`。
 - 钩子可靠性：安装加入退避重试（500ms/2s/5s）和 `is_installed` 健康检查自动恢复，键盘钩子改为依赖注入（移除 `sys.modules["__main__"]` 耦合），DLL 加载失败支持 `reset()` 重新加载，失败时提供存根类上层无需判空。
 - 线程安全：对话框移除 `QThread.terminate()` 改为协作式取消，插件命令改用全局共享线程池避免资源碎片化，启动线程添加 `atexit` 生命周期管理移除 `daemon=True`，跨线程信号连接显式指定 `QueuedConnection`。
-- 构建与代码质量：发布门禁新增覆盖率检查（`--cov-fail-under=70`），mypy 全局启用 `check_untyped_defs`，清理 17 处 `is_win11()` 冗余判断，动作链实现版本迁移链框架，修复版本比较运算符优先级 bug，配置备份/恢复改用 `QThread` 避免阻塞主线程。
+- 构建与代码质量：发布门禁新增覆盖率检查（`--cov-fail-under=70`），mypy 全局启用 `check_untyped_defs`，清理 17 处 `is_win11()` 冗余判断，动作链实现版本迁移链框架，配置备份/恢复改用 `QThread` 避免阻塞主线程。
 - UI 细节：配置窗口拖拽增加屏幕边界约束，Toast 隐藏时清除单例引用允许 GC，`processEvents()` 滥用全面修复（无效调用移除、重绘制调用替换为 `repaint()`、DPI 同步改用 `ExcludeUserInputEvents` 排除用户输入）。
 
 ### Fixed
 
-- 修复颜色滤镜参数（黑点、白点、Gamma、色温、Acrylic、底色 Alpha 共 12 个字段）未注册到 `config_validation._INT_RANGES` 导致每次启动时被 `sanitize_settings_dict` 静默重置为默认值的问题。
-- 修复颜色滤镜滑块调节后不能实时反映到窗口效果的问题，改用独立 `color_filter_changed` 信号避免触发重型数据重载。
-- 修复颜色滤镜覆盖层遮挡 UI 文字和图标的问题，改为通过 DWM Acrylic GradientColor 着色实现。
-- 修复色温滑块强度不足导致颜色偏移不可见的问题，提高冷暖色通道系数至 0.25–0.50。
-- 修复 Acrylic 和底色 Alpha 滑块无效的问题，扩展取值范围并接入 DWM 合成计算。
+- 修复颜色滤镜多个参数和效果问题：12 个字段未注册到 `config_validation._INT_RANGES` 导致启动时被静默重置；滑块调节后不实时反映改用独立 `color_filter_changed` 信号；覆盖层遮挡 UI 文字图标改为 DWM Acrylic 着色；色温系数不足提高至 0.25–0.50；Acrylic 和底色 Alpha 滑块无效扩展取值范围并接入 DWM 合成计算。
+- 修复版本比较运算符优先级 bug。
 - 修复弹窗和配置窗口双击空白区域刷新时不必要地重建 DWM 窗口效果导致视觉闪烁的问题。
 - 修复 Windows 10 兼容性、安装报错及 UI 显示异常。
 - 修复 shortcut 命令执行时运行时参数和确认状态写回原始配置导致连续执行串值的问题。
@@ -50,11 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - 修复弹窗和配置子窗口仍可能使用默认系统窗口边框的问题，统一改为自定义窗口外壳。
 - 修复插件搜索源跨插件重名互相覆盖的问题，搜索源 ID 自动加命名空间并支持注册失败事务回滚。
 - 修复 `ui/tray_app.py` 信号连接使用未导入的 `Qt` 导致启动崩溃（`NameError`）。
-- 修复 `QApplication.processEvents()` 滥用导致的嵌套事件循环重入风险（7 处全面修复）。
-- 修复 C++ 回调线程竞态条件导致句柄泄漏和回调队列数据竞争。
-- 修复对话框 `QThread.terminate()` 可能损坏 COM 状态、泄漏 GIL 和产生孤儿进程的风险。
-- 修复插件命令执行每次创建新线程池导致资源碎片化的问题。
-- 修复守护线程无生命周期管理导致进程退出时悬挂线程阻止正常终止。
+- 修复 `ui/utils/global_hotkey.py` 中 `_HotkeyEventFilter` 不是 `QAbstractNativeEventFilter` 子类导致 `installNativeEventFilter()` 报 `unexpected type '_HotkeyEventFilter'` 错误的问题，新增 `tests/test_global_hotkey.py` 防回归。
 
 ## [1.6.2.0] - 2026-06-01
 

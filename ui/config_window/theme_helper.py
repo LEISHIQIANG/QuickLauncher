@@ -81,6 +81,7 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
                 return ""
 
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if checked:
                 # Blue fill with white dot
@@ -106,7 +107,10 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
                 painter.setBrush(QBrush(QColor(fill_color)))
                 painter.drawEllipse(0, 0, s, s)
                 # 再画边框
-                painter.setPen(QPen(QColor(border_color), 1.5))
+                pen = QPen(QColor(border_color), 1.5)
+                pen.setJoinStyle(QtCompat.RoundJoin)
+                pen.setCapStyle(QtCompat.RoundCap)
+                painter.setPen(pen)
                 painter.setBrush(QtCompat.NoBrush)
                 painter.drawEllipse(1, 1, s - 2, s - 2)  # inset
         finally:
@@ -160,6 +164,7 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
                 return ""
 
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if checked:
                 bg_color = QColor("#007AFF")  # Changed to Blue from iOS Green
@@ -174,20 +179,26 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
             # Draw track
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(bg_color))
-            painter.drawRoundedRect(0, 0, w, h, h / 2, h / 2)
+            painter.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
 
             # Draw border for off state if needed for contrast
             if not checked:
                 if theme == "dark":
-                    painter.setPen(QPen(QColor("#8E8E93"), 1))
+                    pen = QPen(QColor("#8E8E93"), 1)
                 else:
-                    painter.setPen(QPen(QColor("#D1D1D6"), 1))
+                    pen = QPen(QColor("#D1D1D6"), 1)
+                pen.setJoinStyle(QtCompat.RoundJoin)
+                pen.setCapStyle(QtCompat.RoundCap)
+                painter.setPen(pen)
                 painter.setBrush(QtCompat.NoBrush)
-                painter.drawRoundedRect(0, 0, w, h, h / 2, h / 2)
+                painter.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
 
             # Draw knob
             knob_size = h - 4
-            painter.setPen(QPen(QColor(0, 0, 0, 50), 1))
+            pen = QPen(QColor(0, 0, 0, 50), 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
             painter.setBrush(QBrush(QColor("#FFFFFF")))
             # Add shadow/border to knob
             painter.drawEllipse(QRectF(knob_x, 2, knob_size, knob_size))
@@ -241,12 +252,13 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
                 return ""
 
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if checked:
                 # Blue fill with checkmark
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(QColor("#007AFF")))
-                painter.drawRoundedRect(0, 0, s, s, 3, 3)
+                painter.drawRoundedRect(QRectF(0, 0, s, s), 3, 3)
 
                 # Draw checkmark
                 painter.setPen(QPen(QColor("#FFFFFF"), 1.5))
@@ -269,11 +281,14 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
                 # 濉厖瀹屾暣涓渾瑙掔煩褰紙瑕嗙洊鍏ㄩ儴鍍忕礌锛屾秷闄ゅ洓瑙掗€忔槑锛?
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(QColor(fill_color)))
-                painter.drawRoundedRect(0, 0, s, s, 3, 3)
+                painter.drawRoundedRect(QRectF(0, 0, s, s), 3, 3)
                 # 再画边框
-                painter.setPen(QPen(QColor(border_color), 1.5))
+                pen = QPen(QColor(border_color), 1.5)
+                pen.setJoinStyle(QtCompat.RoundJoin)
+                pen.setCapStyle(QtCompat.RoundCap)
+                painter.setPen(pen)
                 painter.setBrush(QtCompat.NoBrush)
-                painter.drawRoundedRect(1, 1, s - 2, s - 2, 3, 3)  # inset
+                painter.drawRoundedRect(QRectF(1, 1, s - 2, s - 2), 3, 3)  # inset
         finally:
             painter.end()
 

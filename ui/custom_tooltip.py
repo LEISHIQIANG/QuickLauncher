@@ -1,6 +1,20 @@
 """完美圆角的自定义 Tooltip"""
 
-from qt_compat import QApplication, QColor, QCursor, QLabel, QPainter, QPainterPath, Qt, QTimer, QVBoxLayout, QWidget
+from qt_compat import (
+    QApplication,
+    QColor,
+    QCursor,
+    QLabel,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QRectF,
+    Qt,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
+    QWidget,
+)
 from ui.styles.window_chrome import apply_custom_window_chrome
 
 
@@ -32,27 +46,34 @@ class CustomToolTip(QWidget):
         from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        if self._theme == "dark":
-            bg = QColor(44, 44, 48, 240)
-            border = QColor(255, 255, 255, 38)
-        else:
-            bg = QColor(255, 255, 255, 240)
-            border = QColor(0, 0, 0, 25)
+            if self._theme == "dark":
+                bg = QColor(44, 44, 48, 240)
+                border = QColor(255, 255, 255, 38)
+            else:
+                bg = QColor(255, 255, 255, 240)
+                border = QColor(0, 0, 0, 25)
 
-        if is_win10():
-            paint_win10_rounded_surface(painter, self, bg, border, 6, inset=0.5, max_border_alpha=80)
-            return
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, bg, border, 6, inset=0.5, max_border_alpha=80)
+                return
 
-        rect = self.rect()
-        path = QPainterPath()
-        path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), 6, 6)
+            rect = self.rect()
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(rect), 6, 6)
 
-        painter.fillPath(path, bg)
-        painter.setPen(border)
+            painter.fillPath(path, bg)
+            pen = QPen(border)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
 
-        painter.drawPath(path)
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def showText(self, text: str, pos, theme: str = "dark"):
         self._theme = theme
@@ -110,7 +131,7 @@ class CustomToolTip(QWidget):
 
         cls._instance.showText(text, pos, theme)
 
-        cls._timer = QTimer()
+        cls._timer = QTimer(cls._instance)
         cls._timer.setSingleShot(True)
         cls._timer.timeout.connect(cls._instance.hide)
         cls._timer.start(3000)

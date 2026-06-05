@@ -292,6 +292,7 @@ class WobblyCoffeeCup(QLabel):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
 
         rect = self.rect()
@@ -441,6 +442,7 @@ class DrinkCard(QFrame):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
 
         rect = self.rect()
@@ -504,6 +506,8 @@ class DrinkCard(QFrame):
 
         # 3. 绘制精致单像素描边 (描边淡且细，恒定为 1.0 宽度)
         pen = QPen(border_color, 1.0)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
         painter.setPen(pen)
         painter.drawPath(path)
 

@@ -21,6 +21,7 @@ def _normalize_window_hwnd(hwnd) -> int:
     try:
         current = int(hwnd or 0)
     except Exception:
+        logger.debug("_normalize_window_hwnd failed", exc_info=True)
         return 0
     if not current or not HAS_WIN32_SHELL:
         return current
@@ -41,6 +42,7 @@ def _get_window_class_name(hwnd) -> str:
     try:
         return str(win32gui.GetClassName(int(hwnd or 0)) or "")
     except Exception:
+        logger.debug("_get_window_class_name failed", exc_info=True)
         return ""
 
 
@@ -66,6 +68,7 @@ def _window_from_point(x: int, y: int) -> int:
     try:
         return int(win32gui.WindowFromPoint((int(x), int(y))) or 0)
     except Exception:
+        logger.debug("_window_from_point failed", exc_info=True)
         return 0
 
 
@@ -83,6 +86,7 @@ def _point_near_window(hwnd, x: int, y: int, margin: int = EXPLORER_WINDOW_PROXI
     try:
         left, top, right, bottom = win32gui.GetWindowRect(int(hwnd or 0))
     except Exception:
+        logger.debug("_point_near_window GetWindowRect failed", exc_info=True)
         return False
     margin = max(0, int(margin or 0))
     return (left - margin) <= int(x) <= (right + margin) and (top - margin) <= int(y) <= (bottom + margin)

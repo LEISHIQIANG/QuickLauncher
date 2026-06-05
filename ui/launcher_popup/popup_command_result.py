@@ -17,6 +17,7 @@ from qt_compat import (
     QPainter,
     QPen,
     QRect,
+    QRectF,
     Qt,
     QtCompat,
     QTextEdit,
@@ -400,6 +401,7 @@ class PopupCommandResultMixin:
             return
         planner = QPainter(self)
         planner.setRenderHint(QPainter.Antialiasing)
+        planner.setRenderHint(QtCompat.HighQualityAntialiasing)
         planner.setRenderHint(QPainter.TextAntialiasing)
         try:
             _, text_color, _, _, accent_color, _, _ = self._get_theme_colors()
@@ -731,7 +733,7 @@ class PopupCommandResultMixin:
             QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 60 if is_dark else 40), 1
         )
         painter.setPen(border_pen)
-        painter.drawRoundedRect(card_x, card_y, card_w, card_h, _CARD_RADIUS, _CARD_RADIUS)
+        painter.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), _CARD_RADIUS, _CARD_RADIUS)
 
         # Color swatch (payload.color_hex)
         color_hex = result.payload.get("color_hex", "")
@@ -742,7 +744,7 @@ class PopupCommandResultMixin:
                     swatch_rect = QRect(card_x + 16, card_y + 16, 32, 32)
                     painter.setBrush(swatch_color)
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(swatch_rect, 6, 6)
+                    painter.drawRoundedRect(QRectF(swatch_rect), 6, 6)
             except Exception as exc:
                 logger.debug("绘制颜色色块失败: %s", exc, exc_info=True)
 
@@ -803,12 +805,12 @@ class PopupCommandResultMixin:
             bar_x = card_x + _CARD_PADDING_LEFT
             # Track background
             painter.setBrush(QColor(255, 255, 255, 20 if is_dark else 40))
-            painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 3, 3)
+            painter.drawRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), 3, 3)
             # Fill
             fill = int(bar_w * min(result.progress, 1.0))
             if fill > 4:
                 painter.setBrush(QColor(accent_color))
-                painter.drawRoundedRect(bar_x, bar_y, fill, bar_h, 3, 3)
+                painter.drawRoundedRect(QRectF(bar_x, bar_y, fill, bar_h), 3, 3)
 
         # QR text (painted directly since QTextEdit is hidden for QR mode)
         if result.display_type == "qr":
@@ -867,7 +869,7 @@ class PopupCommandResultMixin:
                     QColor(accent_color.red(), accent_color.green(), accent_color.blue(), border_alpha), 1
                 )
                 painter.setPen(border_pen)
-                painter.drawRoundedRect(draw_rect, 5, 5)
+                painter.drawRoundedRect(QRectF(draw_rect), 5, 5)
 
                 # Exquisite text color and modern font selection
                 btn_text_color = QColor(255, 255, 255, 220) if is_dark else QColor(accent_color).darker(150)
@@ -923,7 +925,7 @@ class PopupCommandResultMixin:
         close_border_pen = QPen(QColor(text_color.red(), text_color.green(), text_color.blue(), close_border_alpha), 1)
         close_border_pen.setStyle(Qt.SolidLine)
         painter.setPen(close_border_pen)
-        painter.drawRoundedRect(close_draw_rect, 5, 5)
+        painter.drawRoundedRect(QRectF(close_draw_rect), 5, 5)
 
         close_text_color = QColor(text_color)
         if close_hovered or close_pressed:

@@ -27,6 +27,7 @@ from qt_compat import (
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
+    QRectF,
     QSpinBox,
     QStackedWidget,
     QtCompat,
@@ -97,6 +98,7 @@ class CommandDialog(BaseDialog):
     """命令编辑对话框"""
 
     _orphaned_threads = []
+    _MAX_ORPHANED_THREADS = 8
 
     BUILTIN_COMMANDS = [
         ("置顶/取消置顶 (Toggle Topmost)", "toggle_topmost"),
@@ -227,8 +229,8 @@ class CommandDialog(BaseDialog):
                     title = getattr(cmd, "title", "") or cmd.id
                     options.append((title, cmd.id))
                     seen.add(cmd.id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("读取插件内置命令选项失败: %s", exc, exc_info=True)
         return options
 
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
@@ -271,6 +273,7 @@ class CommandDialog(BaseDialog):
                 if not painter.isActive():
                     return
                 painter.setRenderHint(QtCompat.Antialiasing)
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
                 # 绘制一个简单的闪电形状（几何图形，不依赖字体）
                 from qt_compat import QPoint, QPolygon
@@ -1020,8 +1023,8 @@ class CommandDialog(BaseDialog):
                     self.show_window_cb.setChecked(val)
                 elif name == "capture_output":
                     self.capture_output_cb.setChecked(val)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("应用命令参数默认值失败: %s", exc, exc_info=True)
 
     def _on_builtin_changed(self, index):
         """内置命令改变"""
@@ -1267,6 +1270,7 @@ class CommandDialog(BaseDialog):
         painter = QPainter(pixmap)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
             color = QColor(255, 255, 255, 150) if self.theme == "dark" else QColor(60, 60, 67, 150)
             painter.setPen(QPen(color, 1.4))
             if expanded:
@@ -1473,11 +1477,7 @@ class CommandDialog(BaseDialog):
             thread.wait(2000)  # 延长等待替代 terminate，让线程自然完成
         if thread.isRunning():
             try:
-                thread.setParent(None)
-                self._orphaned_threads.append(thread)
-                _cls = type(self)
-                thread.finished.connect(lambda t=thread: _cls._forget_orphaned_thread(t))
-                thread.finished.connect(thread.deleteLater)
+                type(self)._adopt_orphaned_thread(thread)
             except Exception as exc:
                 logger.debug("设置孤儿线程清理失败: %s", exc, exc_info=True)
             self._command_test_thread = None
@@ -1505,6 +1505,17 @@ class CommandDialog(BaseDialog):
         cls._orphaned_threads = still_running
         if removed:
             logger.info(f"清理了 {removed} 个已完成的孤儿线程")
+
+    @classmethod
+    def _adopt_orphaned_thread(cls, thread):
+        cls._cleanup_finished_orphans()
+        if len(cls._orphaned_threads) >= cls._MAX_ORPHANED_THREADS:
+            logger.warning("命令测试孤儿线程数量达到上限: %s", len(cls._orphaned_threads))
+            return
+        thread.setParent(None)
+        cls._orphaned_threads.append(thread)
+        thread.finished.connect(lambda t=thread: cls._forget_orphaned_thread(t))
+        thread.finished.connect(thread.deleteLater)
 
     def _load_data(self):
         """加载数据"""
@@ -1646,11 +1657,12 @@ class CommandDialog(BaseDialog):
             painter = QPainter(pixmap)
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
                 painter.setBrush(QColor(50, 50, 50))
                 painter.setPen(QtCompat.NoPen)
                 margin = size // 8
-                painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+                painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
                 painter.setPen(QColor(0, 255, 0))
                 font = QFont("Consolas", size // 3)

@@ -152,6 +152,7 @@ class PopupBackgroundMixin:
 
             painter = QPainter(rounded_pixmap)
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
             painter.setRenderHint(QtCompat.SmoothPixmapTransform)
 
             path = QPainterPath()
@@ -267,8 +268,8 @@ class PopupBackgroundMixin:
             from ui.utils.window_effect import is_win10
             if is_win10() and hasattr(self, '_win10_fallback_bg') and self._win10_fallback_bg:
                 return self._win10_fallback_bg
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("获取 Win10 背景回退缓存失败: %s", exc, exc_info=True)
 
         return None
 
@@ -295,7 +296,8 @@ class PopupBackgroundMixin:
             if self._pending_bg_params != params or not self._bg_load_timer.isActive():
                 self._pending_bg_params = params
                 self._bg_load_timer.start(120)
-        except Exception:
+        except Exception as exc:
+            logger.debug("调度背景加载失败: %s", exc, exc_info=True)
             return
 
     def _run_bg_load_request(self):
@@ -336,7 +338,7 @@ class PopupBackgroundMixin:
                 from ui.utils.window_effect import is_win10
                 if is_win10():
                     self._win10_fallback_bg = self._bg_cache
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("检测 Win10 背景回退缓存失败: %s", exc, exc_info=True)
         self._bg_cache = None
         self._last_bg_params = None

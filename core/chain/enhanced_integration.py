@@ -255,8 +255,8 @@ def _parse_list(value: Any) -> list[str]:
                 parsed = ast.literal_eval(val_str)
                 if isinstance(parsed, list):
                     return [str(item) for item in parsed]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("增强处理器列表解析失败，回退为按行/逗号解析: %s", exc, exc_info=True)
     if "\n" in val_str:
         return [line.strip() for line in val_str.splitlines() if line.strip()]
     if "," in val_str:

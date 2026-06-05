@@ -7,7 +7,6 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import DataManager
 from core.i18n import tr
 from qt_compat import (
@@ -78,6 +77,7 @@ class FolderItemDelegate(QStyledItemDelegate):
                 theme = self._owner._get_current_theme()
 
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if theme == "dark":
                 # Dark theme: fresh mint green (minty pastel)
@@ -91,7 +91,7 @@ class FolderItemDelegate(QStyledItemDelegate):
             painter.setPen(QPen(pen_color, 1.5))
             painter.setBrush(brush_color)
             rect = option.rect.adjusted(2, 2, -2, -2)
-            painter.drawRoundedRect(rect, 8, 8)
+            painter.drawRoundedRect(QRectF(rect), 8, 8)
 
 
 class FolderInputDialog(BaseDialog):
@@ -241,6 +241,7 @@ class FolderItemWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # Determine selection and hover states
         is_selected = False
@@ -256,7 +257,7 @@ class FolderItemWidget(QWidget):
                 hover_bg = QColor(0, 0, 0, 10)  # rgba(0, 0, 0, 0.04)
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(QRectF(self.rect()).adjusted(0, 1, 0, -1), 8, 8)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(2, 1, -2, -1), 8, 8)
 
         # Draw icon
         if self.icon:
@@ -325,7 +326,8 @@ class FolderListWidget(QListWidget):
         if curr_indexes:
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
-            target_rect = QRectF(visual_rect).adjusted(0, 1, 0, -1)
+            # 左右各内缩 2px，防止圆角抗锯齿像素被 viewport 右边界裁剪
+            target_rect = QRectF(visual_rect).adjusted(2, 1, -2, -1)
 
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
@@ -373,10 +375,21 @@ class FolderListWidget(QListWidget):
     def dropEvent(self, event):
         self._owner._list_drop_event(event)
 
+    def resizeEvent(self, event):
+        """Recalculate pill position when viewport resizes to avoid clipping."""
+        super().resizeEvent(event)
+        curr_indexes = self.selectedIndexes()
+        if curr_indexes and not self._pill_rect.isEmpty():
+            index = curr_indexes[0]
+            visual_rect = self.visualRect(index)
+            self._pill_rect = QRectF(visual_rect).adjusted(2, 1, -2, -1)
+            self.viewport().update()
+
     def paintEvent(self, event):
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             theme = self._owner._get_current_theme()
             if theme == "dark":
@@ -727,6 +740,7 @@ class FolderPanel(QWidget):
 
         painter = QPainter(transparent_pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setOpacity(0.75)  # Floating glass translucent card
         painter.drawPixmap(0, 0, pixmap)
 
@@ -740,7 +754,7 @@ class FolderPanel(QWidget):
 
         painter.setPen(QPen(border_color, 1.5))
         painter.setBrush(QtCompat.NoBrush)
-        painter.drawRoundedRect(1, 1, w - 2, h - 2, 8, 8)
+        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 8, 8)
         painter.end()
 
         drag.setPixmap(transparent_pixmap)

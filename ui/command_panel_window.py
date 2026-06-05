@@ -41,6 +41,7 @@ from qt_compat import (
     Qt,
     QTableWidget,
     QTableWidgetItem,
+    QtCompat,
     QTextOption,
     QTimer,
     QWidget,
@@ -85,21 +86,25 @@ class CommandHistoryDropButton(QPushButton):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        if not self.isEnabled():
-            color = QColor(128, 128, 128, 85)
-        else:
-            color = QColor(128, 128, 128, 165)
-        pen = QPen(color, 1.6)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        painter.setPen(pen)
-        cx = self.width() / 2 - 2
-        cy = self.height() / 2 + 1
-        half_w = 4.5
-        half_h = 3.0
-        painter.drawLine(int(cx - half_w), int(cy - half_h), int(cx), int(cy + half_h))
-        painter.drawLine(int(cx), int(cy + half_h), int(cx + half_w), int(cy - half_h))
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
+            if not self.isEnabled():
+                color = QColor(128, 128, 128, 85)
+            else:
+                color = QColor(128, 128, 128, 165)
+            pen = QPen(color, 1.6)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            cx = self.width() / 2 - 2
+            cy = self.height() / 2 + 1
+            half_w = 4.5
+            half_h = 3.0
+            painter.drawLine(int(cx - half_w), int(cy - half_h), int(cx), int(cy + half_h))
+            painter.drawLine(int(cx), int(cy + half_h), int(cx + half_w), int(cy - half_h))
+        finally:
+            painter.end()
 
 
 class CommandPanelWindow(ThemedToolWindow):
@@ -133,6 +138,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self._suppress_command_suggestions = False
         self._running = False
         self._closing_panel = False
+        self._focus_changed_connected = False
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__("命令面板", theme=theme, parent=parent)
         self._setup_ui()
@@ -152,12 +158,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.command_input.returnPressed.connect(self._rerun_from_input)
         self.command_input.textChanged.connect(self._on_command_input_changed)
         self.command_input.installEventFilter(self)
-        app = QApplication.instance()
-        if app is not None:
-            try:
-                app.focusChanged.connect(self._on_app_focus_changed)
-            except Exception as exc:
-                logger.debug("连接焦点变更信号: %s", exc, exc_info=True)
+        self._connect_app_focus_changed()
 
         input_row = QHBoxLayout()
         input_row.setContentsMargins(0, 0, 4, 0)
@@ -556,8 +557,34 @@ class CommandPanelWindow(ThemedToolWindow):
         super().set_theme(theme)
         self._apply_content_theme()
 
+    def _connect_app_focus_changed(self):
+        if self._focus_changed_connected:
+            return
+        app = QApplication.instance()
+        if app is None:
+            return
+        try:
+            app.focusChanged.connect(self._on_app_focus_changed)
+            self._focus_changed_connected = True
+        except Exception as exc:
+            logger.debug("连接焦点变更信号: %s", exc, exc_info=True)
+
+    def _disconnect_app_focus_changed(self):
+        if not self._focus_changed_connected:
+            return
+        app = QApplication.instance()
+        if app is None:
+            self._focus_changed_connected = False
+            return
+        try:
+            app.focusChanged.disconnect(self._on_app_focus_changed)
+        except Exception as exc:
+            logger.debug("断开焦点变更信号: %s", exc, exc_info=True)
+        self._focus_changed_connected = False
+
     def showEvent(self, event):
         self._closing_panel = False
+        self._connect_app_focus_changed()
         super().showEvent(event)
         self._clear_command_input_focus()
 
@@ -568,11 +595,13 @@ class CommandPanelWindow(ThemedToolWindow):
     def hideEvent(self, event):
         self._closing_panel = True
         self._hide_command_suggestions()
+        self._disconnect_app_focus_changed()
         return super().hideEvent(event)
 
     def closeEvent(self, event):
         self._closing_panel = True
         self._hide_command_suggestions()
+        self._disconnect_app_focus_changed()
         return super().closeEvent(event)
 
     def _close_panel(self):

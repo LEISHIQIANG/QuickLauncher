@@ -135,56 +135,60 @@ class ColorFilterOverlay(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        w, h = self.width(), self.height()
-        if w <= 0 or h <= 0:
-            return
+            w, h = self.width(), self.height()
+            if w <= 0 or h <= 0:
+                return
 
-        # --- Black point (黑场) ---
-        bp = self._black_point - 50  # -50 to +50
-        if bp > 0:
-            # Darken shadows: black overlay with alpha proportional to bp
-            alpha = int(255 * bp / 50 * 0.35)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(0, 0, 0, alpha))
-        elif bp < 0:
-            # Lift shadows: white overlay
-            alpha = int(255 * abs(bp) / 50 * 0.18)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(255, 255, 255, alpha))
+            # --- Black point (黑场) ---
+            bp = self._black_point - 50  # -50 to +50
+            if bp > 0:
+                # Darken shadows: black overlay with alpha proportional to bp
+                alpha = int(255 * bp / 50 * 0.35)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(0, 0, 0, alpha))
+            elif bp < 0:
+                # Lift shadows: white overlay
+                alpha = int(255 * abs(bp) / 50 * 0.18)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(255, 255, 255, alpha))
 
-        # --- White point (白场) ---
-        wp = self._white_point - 50
-        if wp > 0:
-            alpha = int(255 * wp / 50 * 0.22)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(255, 255, 255, alpha))
-        elif wp < 0:
-            alpha = int(255 * abs(wp) / 50 * 0.20)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(0, 0, 0, alpha))
+            # --- White point (白场) ---
+            wp = self._white_point - 50
+            if wp > 0:
+                alpha = int(255 * wp / 50 * 0.22)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(255, 255, 255, alpha))
+            elif wp < 0:
+                alpha = int(255 * abs(wp) / 50 * 0.20)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(0, 0, 0, alpha))
 
-        # --- Mid gamma (中间调) ---
-        mg = self._mid_gamma - 50
-        if mg < 0:
-            alpha = int(255 * abs(mg) / 50 * 0.25)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(0, 0, 0, alpha))
-        elif mg > 0:
-            alpha = int(255 * mg / 50 * 0.12)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(255, 255, 255, alpha))
+            # --- Mid gamma (中间调) ---
+            mg = self._mid_gamma - 50
+            if mg < 0:
+                alpha = int(255 * abs(mg) / 50 * 0.25)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(0, 0, 0, alpha))
+            elif mg > 0:
+                alpha = int(255 * mg / 50 * 0.12)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(255, 255, 255, alpha))
 
-        # --- Temperature (色温) ---
-        tp = self._temperature - 50
-        if tp < 0:
-            # Cool: blue tint
-            alpha = int(255 * abs(tp) / 50 * 0.12)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(40, 80, 200, alpha))
-        elif tp > 0:
-            # Warm: orange tint
-            alpha = int(255 * tp / 50 * 0.12)
-            if alpha > 0:
-                painter.fillRect(0, 0, w, h, QColor(220, 130, 40, alpha))
+            # --- Temperature (色温) ---
+            tp = self._temperature - 50
+            if tp < 0:
+                # Cool: blue tint
+                alpha = int(255 * abs(tp) / 50 * 0.12)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(40, 80, 200, alpha))
+            elif tp > 0:
+                # Warm: orange tint
+                alpha = int(255 * tp / 50 * 0.12)
+                if alpha > 0:
+                    painter.fillRect(0, 0, w, h, QColor(220, 130, 40, alpha))
+        finally:
+            painter.end()

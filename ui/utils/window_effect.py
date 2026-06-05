@@ -30,6 +30,7 @@ def get_windows_version():
         else:
             _windows_version_cache = "win7"
     except Exception:
+        logger.debug("get_windows_version failed", exc_info=True)
         _windows_version_cache = "win10"
 
     return _windows_version_cache
@@ -59,6 +60,7 @@ def _qpaint_composition_mode(name: str):
                 return value
         return getattr(QPainter, f"CompositionMode_{name}", None)
     except Exception:
+        logger.debug("_qpaint_composition_mode failed", exc_info=True)
         return None
 
 
@@ -214,6 +216,7 @@ class WindowEffect:
         try:
             return bool(self.user32.IsWindow(HWND(int(hwnd))))
         except Exception:
+            logger.debug("_is_window check failed", exc_info=True)
             return bool(hwnd)
 
     def _get_dpi_scale(self, hwnd: int):
@@ -571,6 +574,7 @@ class WindowEffect:
 
             return True
         except Exception:
+            logger.debug("enable_window_shadow failed", exc_info=True)
             return False
 
     def enable_shadow_for_dialog(self, hwnd: int, radius: int = 12):
@@ -619,6 +623,7 @@ class WindowEffect:
 
             return True
         except Exception:
+            logger.debug("enable_shadow_for_dialog failed", exc_info=True)
             return False
 
 
@@ -695,6 +700,7 @@ def enable_window_shadow_and_round_corners(widget, radius: int = 12, force_regio
                 logger.debug("应用Win10窗口区域裁剪失败: %s", exc, exc_info=True)
             return False
     except Exception:
+        logger.debug("enable_window_shadow_and_round_corners failed", exc_info=True)
         return False
 
 
@@ -747,8 +753,8 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
             effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
             try:
                 widget.update()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("刷新窗口区域失败: %s", exc, exc_info=True)
 
         return True
     except Exception:
@@ -814,4 +820,5 @@ def force_activate_window(hwnd: int):
 
         return user32.GetForegroundWindow() == hwnd
     except Exception:
+        logger.debug("force_activate_window failed", exc_info=True)
         return False

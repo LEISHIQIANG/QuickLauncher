@@ -8,12 +8,15 @@ IP addresses, emails, URLs, file paths, and more.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "SmartType",
@@ -419,8 +422,8 @@ class SmartTypeRecognizer:
                 try:
                     if all(0 <= int(p) <= 255 for p in parts):
                         return 0.9
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    logger.debug("IPv4 片段解析失败: %s", exc, exc_info=True)
             return 0.3  # Low confidence if validation fails
         if smart_type == SmartType.JSON_STRING:
             try:
@@ -445,8 +448,8 @@ class SmartTypeRecognizer:
             if "." in text:
                 return SmartType.FLOAT, 0.8
             return SmartType.INTEGER, 0.8
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("智能类型数值识别失败: %s", exc, exc_info=True)
 
         # Check if it's a boolean
         if text.lower() in {"true", "false", "yes", "no", "1", "0", "on", "off"}:
@@ -457,8 +460,8 @@ class SmartTypeRecognizer:
             try:
                 json.loads(text)
                 return SmartType.JSON, 0.85
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                logger.debug("智能类型 JSON 识别失败: %s", exc, exc_info=True)
 
         # Check if it looks like a path
         if os.sep in text or "/" in text:
@@ -777,8 +780,8 @@ class TypeConverter:
                 parsed = json.loads(text)
                 if isinstance(parsed, list):
                     return parsed
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                logger.debug("列表文本 JSON 解析失败，按换行拆分: %s", exc, exc_info=True)
         # Split by newlines
         return [line.strip() for line in text.splitlines() if line.strip()]
 

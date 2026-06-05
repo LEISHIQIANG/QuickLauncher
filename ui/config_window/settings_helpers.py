@@ -78,6 +78,7 @@ class NumberedListDelegate(QStyledItemDelegate):
         try:
             painter.save()
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             # Get theme
             theme = "dark"
@@ -230,34 +231,41 @@ class ProgressDialog(QDialog):
     def paintEvent(self, event):
         """背景绘制 - 完全按照ThemedMessageBox的逻辑"""
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        from ui.utils.window_effect import is_win10
+            from ui.utils.window_effect import is_win10
 
-        if is_win10():
-            paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
-            return
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
+                return
 
-        inset = 1.0 if is_win10() else 0.5
+            inset = 1.0 if is_win10() else 0.5
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
-        )
+            path = QPainterPath()
+            path.addRoundedRect(
+                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+            )
 
-        # 磨砂玻璃模式：与ThemedMessageBox完全一致
-        tint_color = QColor(self.bg_color)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 220))
-        else:
-            tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            # 磨砂玻璃模式：与ThemedMessageBox完全一致
+            tint_color = QColor(self.bg_color)
+            if is_win10():
+                tint_color.setAlpha(min(tint_color.alpha(), 220))
+            else:
+                tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
 
-        # 边框
-        pen_color = QColor(self.border_color)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1))
-        painter.drawPath(path)
+            # 边框
+            pen_color = QColor(self.border_color)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            pen = QPen(pen_color, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -377,73 +385,82 @@ class SwitchButton(QCheckBox):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        # Switch dimensions
-        sw_width = 29
-        sw_height = 18
-        spacing = 8
+            # Switch dimensions
+            sw_width = 29
+            sw_height = 18
+            spacing = 8
 
-        rect = self.rect()
-        sw_y = (rect.height() - sw_height) / 2.0
-        sw_x = 0.0
+            rect = self.rect()
+            sw_y = (rect.height() - sw_height) / 2.0
+            sw_x = 0.0
 
-        # Colors based on theme and progress
-        if self._theme == "dark":
-            bg_off = QColor("#48484A")
-            bg_border_off = QColor("#8E8E93")
-            text_color = QColor("#FFFFFF")
-        else:
-            bg_off = QColor("#E9E9EA")
-            bg_border_off = QColor("#D1D1D6")
-            text_color = QColor("#333333")
+            # Colors based on theme and progress
+            if self._theme == "dark":
+                bg_off = QColor("#48484A")
+                bg_border_off = QColor("#8E8E93")
+                text_color = QColor("#FFFFFF")
+            else:
+                bg_off = QColor("#E9E9EA")
+                bg_border_off = QColor("#D1D1D6")
+                text_color = QColor("#333333")
 
-        bg_on = QColor("#007AFF")  # Apple system blue
+            bg_on = QColor("#007AFF")  # Apple system blue
 
-        # Interpolate background color
-        r = int(bg_off.red() + (bg_on.red() - bg_off.red()) * self._progress)
-        g = int(bg_off.green() + (bg_on.green() - bg_off.green()) * self._progress)
-        b = int(bg_off.blue() + (bg_on.blue() - bg_off.blue()) * self._progress)
-        current_bg = QColor(r, g, b)
+            # Interpolate background color
+            r = int(bg_off.red() + (bg_on.red() - bg_off.red()) * self._progress)
+            g = int(bg_off.green() + (bg_on.green() - bg_off.green()) * self._progress)
+            b = int(bg_off.blue() + (bg_on.blue() - bg_off.blue()) * self._progress)
+            current_bg = QColor(r, g, b)
 
-        # Draw background track
-        painter.setPen(QtCompat.NoPen)
-        painter.setBrush(QBrush(current_bg))
-        track_rect = QRectF(sw_x, sw_y, sw_width, sw_height)
-        painter.drawRoundedRect(track_rect, sw_height / 2.0, sw_height / 2.0)
+            # Draw background track
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(current_bg))
+            track_rect = QRectF(sw_x, sw_y, sw_width, sw_height)
+            painter.drawRoundedRect(track_rect, sw_height / 2.0, sw_height / 2.0)
 
-        # Draw unchecked border for contrast when not fully checked
-        if self._progress < 1.0:
-            opacity = 1.0 - self._progress
-            border_color = QColor(bg_border_off)
-            border_color.setAlphaF(opacity)
-            painter.setPen(QPen(border_color, 1))
-            painter.setBrush(QtCompat.NoBrush)
-            painter.drawRoundedRect(track_rect.adjusted(0.5, 0.5, -0.5, -0.5), sw_height / 2.0, sw_height / 2.0)
+            # Draw unchecked border for contrast when not fully checked
+            if self._progress < 1.0:
+                opacity = 1.0 - self._progress
+                border_color = QColor(bg_border_off)
+                border_color.setAlphaF(opacity)
+                pen = QPen(border_color, 1)
+                pen.setJoinStyle(QtCompat.RoundJoin)
+                pen.setCapStyle(QtCompat.RoundCap)
+                painter.setPen(pen)
+                painter.setBrush(QtCompat.NoBrush)
+                painter.drawRoundedRect(track_rect.adjusted(0.5, 0.5, -0.5, -0.5), sw_height / 2.0, sw_height / 2.0)
 
-        # Draw white knob
-        knob_size = sw_height - 4
-        knob_min_x = sw_x + 2.0
-        knob_max_x = sw_x + sw_width - sw_height + 2.0
-        knob_current_x = knob_min_x + (knob_max_x - knob_min_x) * self._progress
+            # Draw white knob
+            knob_size = sw_height - 4
+            knob_min_x = sw_x + 2.0
+            knob_max_x = sw_x + sw_width - sw_height + 2.0
+            knob_current_x = knob_min_x + (knob_max_x - knob_min_x) * self._progress
 
-        # Draw knob shadow
-        painter.setPen(QPen(QColor(0, 0, 0, 30), 0.5))
-        painter.setBrush(QBrush(QColor("#FFFFFF")))
-        shadow_rect = QRectF(knob_current_x, sw_y + 2.5, knob_size, knob_size)
-        painter.drawEllipse(shadow_rect)
+            # Draw knob shadow
+            shadow_pen = QPen(QColor(0, 0, 0, 30), 0.5)
+            shadow_pen.setCosmetic(True)
+            painter.setPen(shadow_pen)
+            painter.setBrush(QBrush(QColor("#FFFFFF")))
+            shadow_rect = QRectF(knob_current_x, sw_y + 2.5, knob_size, knob_size)
+            painter.drawEllipse(shadow_rect)
 
-        # Draw knob
-        knob_rect = QRectF(knob_current_x, sw_y + 2.0, knob_size, knob_size)
-        painter.drawEllipse(knob_rect)
+            # Draw knob
+            knob_rect = QRectF(knob_current_x, sw_y + 2.0, knob_size, knob_size)
+            painter.drawEllipse(knob_rect)
 
-        # Draw text
-        text = self.text()
-        if text:
-            font = self.font()
-            painter.setFont(font)
-            painter.setPen(QPen(text_color))
+            # Draw text
+            text = self.text()
+            if text:
+                font = self.font()
+                painter.setFont(font)
+                painter.setPen(QPen(text_color))
 
-            text_x = sw_x + sw_width + spacing
-            text_rect = QRectF(text_x, 0, rect.width() - text_x, rect.height())
-            painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, text)
+                text_x = sw_x + sw_width + spacing
+                text_rect = QRectF(text_x, 0, rect.width() - text_x, rect.height())
+                painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, text)
+        finally:
+            painter.end()

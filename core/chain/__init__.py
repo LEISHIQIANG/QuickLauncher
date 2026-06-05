@@ -473,7 +473,7 @@ __all__ = [
     "enhanced_integration",
 ]
 
-__all__ = [
+_EXTRA_ALL = [
     "ChainConnectionIssue",
     "ChainPortSpec",
     "binding_key",
@@ -686,3 +686,5 @@ __all__ = [
     "typed_mapping",
     "value_to_text",
 ]
+
+__all__ = list(dict.fromkeys(__all__ + _EXTRA_ALL))

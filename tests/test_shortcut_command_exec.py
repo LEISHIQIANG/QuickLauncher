@@ -12,6 +12,62 @@ from core.data_models import ShortcutItem, ShortcutType
 pytestmark = pytest.mark.ui
 
 
+@pytest.fixture(autouse=True)
+def _default_shortcut_executor(monkeypatch):
+    if command_exec.ShortcutExecutor is None:
+        from core import ShortcutExecutor
+
+        monkeypatch.setattr(command_exec, "ShortcutExecutor", ShortcutExecutor)
+
+
+@pytest.mark.parametrize("capture_output", [False, True])
+def test_command_preparation_rejects_unquoted_external_variables(monkeypatch, capture_output):
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        pass
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo {{input}}"
+    item.command_variables_enabled = True
+    item.capture_output = capture_output
+
+    if capture_output:
+        result = command_exec.CommandExecutionMixin.run_command_capture(item)
+        assert result.success is False
+        assert "必须使用 :q 引用" in result.message
+        assert result.payload["window_size"]
+    else:
+        success, error = command_exec.CommandExecutionMixin._execute_command(item)
+        assert success is False
+        assert "必须使用 :q 引用" in error
+
+
+@pytest.mark.parametrize("capture_output", [False, True])
+def test_command_preparation_rejects_value_only_variables(monkeypatch, capture_output):
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        pass
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "{{clipboard}}"
+    item.command_variables_enabled = True
+    item.capture_output = capture_output
+
+    if capture_output:
+        result = command_exec.CommandExecutionMixin.run_command_capture(item)
+        assert result.success is False
+        assert "命令只包含值占位符" in result.message
+        assert result.error == "命令无效"
+    else:
+        success, error = command_exec.CommandExecutionMixin._execute_command(item)
+        assert success is False
+        assert "命令只包含值占位符" in error
+
+
 def test_python_visible_window_runs_python_directly(monkeypatch):
     """Show-window Python runs python.exe script.py, not a cmd.exe wrapper."""
     captured = {}

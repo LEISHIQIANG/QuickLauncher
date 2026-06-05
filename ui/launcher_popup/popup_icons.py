@@ -5,7 +5,7 @@ import os
 import sys
 
 from core import ShortcutItem, ShortcutType
-from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, Qt, QtCompat
+from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QRectF, Qt, QtCompat
 
 try:
     from core import IconExtractor
@@ -306,6 +306,7 @@ class PopupIconMixin:
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         color = QColor(135, 206, 250)
         painter.setBrush(QBrush(color))
@@ -313,7 +314,7 @@ class PopupIconMixin:
 
         margin = size // 8
         radius = size // 6
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, radius, radius)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
 
         first_char = item.name[0] if item.name else "?"
         painter.setPen(QPen(QColor(255, 255, 255)))

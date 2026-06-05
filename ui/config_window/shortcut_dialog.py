@@ -4,9 +4,7 @@
 
 import logging
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
 from qt_compat import (
@@ -22,6 +20,7 @@ from qt_compat import (
     QPainter,
     QPixmap,
     QPushButton,
+    QRectF,
     QtCompat,
     QThread,
     QVBoxLayout,
@@ -104,6 +103,7 @@ class ShortcutDialog(BaseDialog):
             painter = QPainter(pixmap)
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing)
                 font = QFont("Segoe UI Emoji", 40)
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
@@ -392,11 +392,12 @@ class ShortcutDialog(BaseDialog):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         painter.setBrush(QColor(70, 130, 180))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)

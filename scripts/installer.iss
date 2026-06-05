@@ -1,4 +1,4 @@
-; QuickLauncher 安装程序脚本
+; QuickLauncher Installer Script
 #ifndef MyAppName
   #define MyAppName "QuickLauncher"
 #endif
@@ -61,7 +61,7 @@ Name: "startupicon"; Description: "Start with Windows"; Flags: unchecked
 
 [Files]
 Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config\*.log,config\*.log.*,temp_icons\favicons\*,temp_icons\favicons\*.*"
-; VC++ Redistributable 安装包（如果需要的话）
+; VC++ Redistributable package (if needed)
 ; Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Dirs]
@@ -76,10 +76,10 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Registry]
-; 不再使用注册表方式，改用 helper + Task Scheduler
+; Registry method removed, using helper + Task Scheduler
 
 [Run]
-; 配置开机自启（如果勾选了开机自启）
+; Configure autostart (if startup task is checked)
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Parameters: "--configure-autostart enable --target-exe ""{app}\{#MyAppExeName}"" --target-cwd ""{app}"""; StatusMsg: "Configuring startup task..."; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: startupicon
 
 ; Launch application after install
@@ -93,7 +93,7 @@ procedure StopServiceIfRunning();
 var
   ResultCode: Integer;
 begin
-  // 停止服务（如果正在运行）
+  // Stop service if running
   Exec('net', 'stop QuickLauncherService', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
 end;
@@ -131,7 +131,7 @@ procedure KillRunningProcesses();
 var
   ResultCode: Integer;
 begin
-  // 强制关闭所有 QuickLauncher 进程 (使用 cmd 调用 taskkill 避免环境变量路径引发的问题)
+  // Force kill all QuickLauncher processes (use cmd taskkill to avoid env path issues)
   if not IsQuickLauncherRunning() then
     Exit;
 
@@ -159,13 +159,13 @@ begin
   if not DirExists(InstallDir) then
     Exit;
 
-  Log('清理旧版本文件: ' + InstallDir);
+  Log('Cleaning old version files: ' + InstallDir);
 
-  // 清理旧版本的 config\ContextMenus 目录
+  // Clean old config\ContextMenus directory
   OldContextMenusDir := InstallDir + '\config\ContextMenus';
   if DirExists(OldContextMenusDir) then
   begin
-    Log('清理旧版本 ContextMenus: ' + OldContextMenusDir);
+    Log('Cleaning old ContextMenus: ' + OldContextMenusDir);
     DelTree(OldContextMenusDir, True, True, True);
   end;
 
@@ -185,7 +185,7 @@ begin
           else
             DeleteFile(FilePath);
 
-          Log('已删除: ' + FilePath);
+          Log('Deleted: ' + FilePath);
         end;
       until not FindNext(FindRec);
     finally
@@ -236,11 +236,11 @@ begin
 
   if DirExists(OldConfigDir) then
   begin
-    Log('检测到旧配置，开始迁移...');
+    Log('Old config detected, migrating...');
     ForceDirectories(NewConfigDir);
     CopyDirectory(OldConfigDir, NewConfigDir);
     RemoveDir(OldConfigDir);
-    Log('配置迁移完成');
+    Log('Config migration complete');
   end;
 end;
 
@@ -258,7 +258,7 @@ begin
   VCRedistInstalled := True;
   MissingDlls := '';
 
-  // 需要检测的 DLL 列表
+  // Required DLL list
   DllsToCheck[0] := 'msvcp140.dll';
   DllsToCheck[1] := 'vcruntime140.dll';
   DllsToCheck[2] := 'vcruntime140_1.dll';
@@ -267,7 +267,7 @@ begin
   DllsToCheck[5] := 'concrt140.dll';
   DllsToCheck[6] := 'vcomp140.dll';
 
-  // 检查 System32 目录
+  // Check System32 directory
   SystemPath := ExpandConstant('{sys}');
 
   for I := 0 to 6 do
@@ -279,42 +279,41 @@ begin
       if MissingDlls <> '' then
         MissingDlls := MissingDlls + ', ';
       MissingDlls := MissingDlls + DllsToCheck[I];
-      Log('缺少 DLL: ' + DllsToCheck[I]);
+      Log('Missing DLL: ' + DllsToCheck[I]);
     end;
   end;
 
-  // 如果未安装，提示用户
+  // Prompt user if not installed
   if not VCRedistInstalled then
   begin
-    Log('检测到缺少以下 DLL: ' + MissingDlls);
+    Log('Missing DLLs detected: ' + MissingDlls);
 
-    if MsgBox('检测到系统缺少必需的运行时组件 (Microsoft Visual C++ Redistributable)。' + #13#10 + #13#10 +
-              '缺少的文件: ' + MissingDlls + #13#10 + #13#10 +
-              '程序需要这些组件才能正常运行。' + #13#10 + #13#10 +
-              '是否现在下载并安装？' + #13#10 + #13#10 +
-              '(如果选择"否"，安装将继续，但程序可能无法启动)',
+    if MsgBox('Missing required runtime components (Microsoft Visual C++ Redistributable).' + #13#10 + #13#10 +
+              'Missing files: ' + MissingDlls + #13#10 + #13#10 +
+              'These components are required for the application to run properly.' + #13#10 + #13#10 +
+              'Download and install now?' + #13#10 + #13#10 +
+              '(If you choose "No", installation will continue but the application may not start)',
               mbConfirmation, MB_YESNO) = IDYES then
     begin
-      // 打开下载页面
+      // Open download page
       ShellExec('open', 'https://aka.ms/vs/17/release/vc_redist.x64.exe', '', '', SW_SHOW, ewNoWait, ErrorCode);
-      MsgBox('请下载并安装 VC++ Redistributable 后，再继续安装 QuickLauncher。' + #13#10 + #13#10 +
-             '安装完成后，请重新运行此安装程序。', mbInformation, MB_OK);
+      MsgBox('Please download and install VC++ Redistributable, then re-run the QuickLauncher installer.', mbInformation, MB_OK);
       Result := False;
     end;
   end
   else
   begin
-    Log('检测到 VC++ Redistributable 已安装');
+    Log('VC++ Redistributable is installed');
   end;
 end;
 
 function InitializeSetup(): Boolean;
 begin
-  // 安装前停止服务和进程
+  // Stop service and processes before installation
   StopServiceIfRunning();
   KillRunningProcesses();
 
-  // 检查 VC++ Redistributable
+  // Check VC++ Redistributable
   Result := CheckVCRedist();
 end;
 
@@ -325,7 +324,7 @@ var
 begin
   if CurStep = ssInstall then
   begin
-    // 检查是否是同路径升级
+    // Check if upgrading to the same path
     PrevInstallDir := '';
     if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1', 'InstallLocation', PrevInstallDir) or
        RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4F6C9B2A-55B0-4CB9-9AC9-0798A02A7D88}_is1', 'InstallLocation', PrevInstallDir) then
@@ -333,17 +332,17 @@ begin
       CurrentInstallDir := ExpandConstant('{app}');
       if CompareText(RemoveBackslashUnlessRoot(PrevInstallDir), RemoveBackslashUnlessRoot(CurrentInstallDir)) = 0 then
       begin
-        Log('检测到同路径升级，清理旧版本文件');
+        Log('Same-path upgrade detected, cleaning old version files');
         CleanOldVersionFiles();
       end
       else
-        Log('安装路径已更改，跳过清理');
+        Log('Install path changed, skipping cleanup');
     end;
   end;
 
   if CurStep = ssPostInstall then
   begin
-    // 安装完成后执行配置迁移
+    // Migrate config after installation
     MigrateConfigFromAppData();
   end;
 end;

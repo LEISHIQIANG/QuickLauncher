@@ -4,9 +4,7 @@ URL编辑对话框
 
 import logging
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
 from qt_compat import (
@@ -22,6 +20,7 @@ from qt_compat import (
     QPainter,
     QPixmap,
     QPushButton,
+    QRectF,
     QtCompat,
     QThread,
     QTimer,
@@ -105,6 +104,7 @@ class UrlDialog(BaseDialog):
     """URL编辑对话框"""
 
     _orphaned_threads = []
+    _MAX_ORPHANED_THREADS = 8
 
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
         super().__init__(parent)
@@ -138,6 +138,7 @@ class UrlDialog(BaseDialog):
             painter = QPainter(pixmap)
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing)
                 font = QFont("Segoe UI Emoji", 40)
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
@@ -612,12 +613,13 @@ class UrlDialog(BaseDialog):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # 使用更柔和的颜色
         painter.setBrush(QColor(60, 160, 120))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 8, 8)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 8, 8)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -719,11 +721,7 @@ class UrlDialog(BaseDialog):
                 thread.wait(2000)  # 延长等待替代 terminate，让线程自然完成
             if thread.isRunning():
                 try:
-                    thread.setParent(None)
-                    self._orphaned_threads.append(thread)
-                    _cls = type(self)
-                    thread.finished.connect(lambda t=thread, cls=_cls: cls._forget_orphaned_thread(t))
-                    thread.finished.connect(thread.deleteLater)
+                    type(self)._adopt_orphaned_thread(thread)
                 except Exception as exc:
                     logger.debug("设置孤立线程失败: %s", exc, exc_info=True)
                 setattr(self, attr, None)
@@ -740,6 +738,27 @@ class UrlDialog(BaseDialog):
             cls._orphaned_threads.remove(thread)
         except ValueError:
             logger.debug("移除孤立线程记录失败", exc_info=True)
+
+    @classmethod
+    def _cleanup_finished_orphans(cls):
+        if not cls._orphaned_threads:
+            return
+        still_running = [t for t in cls._orphaned_threads if t.isRunning()]
+        removed = len(cls._orphaned_threads) - len(still_running)
+        cls._orphaned_threads = still_running
+        if removed:
+            logger.info("清理了 %s 个 URL 对话框孤儿线程", removed)
+
+    @classmethod
+    def _adopt_orphaned_thread(cls, thread):
+        cls._cleanup_finished_orphans()
+        if len(cls._orphaned_threads) >= cls._MAX_ORPHANED_THREADS:
+            logger.warning("URL 对话框孤儿线程数量达到上限: %s", len(cls._orphaned_threads))
+            return
+        thread.setParent(None)
+        cls._orphaned_threads.append(thread)
+        thread.finished.connect(lambda t=thread: cls._forget_orphaned_thread(t))
+        thread.finished.connect(thread.deleteLater)
 
     def showEvent(self, event):
         """显示时进行延迟测试"""

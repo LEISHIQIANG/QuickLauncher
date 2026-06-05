@@ -20,6 +20,7 @@ from qt_compat import (
     QRect,
     QRectF,
     Qt,
+    QtCompat,
     QTimer,
 )
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
@@ -813,6 +814,7 @@ class PopupSearchMixin:
 
         painter = QPainter(mask)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setBrush(Qt.color1)
         painter.setPen(Qt.NoPen)
 

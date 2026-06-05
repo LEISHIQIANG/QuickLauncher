@@ -17,6 +17,7 @@ from qt_compat import (
     QRect,
     QRectF,
     Qt,
+    QtCompat,
     pyqtProperty,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -33,6 +34,7 @@ def _rounded_pixmap(source: QPixmap, radius: int = 20) -> QPixmap:
 
     p = QPainter(result)
     p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QtCompat.HighQualityAntialiasing)
     p.setClipPath(path)
     p.drawPixmap(0, 0, source)
     p.end()
@@ -159,7 +161,9 @@ class SupportDialog(QDialog):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QtCompat.SmoothPixmapTransform)
 
         # 1. 绘制全屏背景半透明遮罩 (随着 anim_progress 渐变)
         overlay_alpha = int(140 * self._anim_progress)
@@ -185,7 +189,10 @@ class SupportDialog(QDialog):
             shadow_color = QColor(0, 0, 0, int((22 - i * 3) * self._anim_progress))
             shadow_path = QPainterPath()
             shadow_path.addRoundedRect(QRectF(cx - i, cy - i, pw + i * 2, ph + i * 2), 20 + i, 20 + i)
-            painter.setPen(QPen(shadow_color, 1.0))
+            shadow_pen = QPen(shadow_color, 1.0)
+            shadow_pen.setJoinStyle(QtCompat.RoundJoin)
+            shadow_pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(shadow_pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(shadow_path)
 
@@ -200,7 +207,10 @@ class SupportDialog(QDialog):
             border_color = QColor(0, 0, 0, 22)
         border_path = QPainterPath()
         border_path.addRoundedRect(QRectF(cx, cy, pw, ph), 20, 20)
-        painter.setPen(QPen(border_color, 1.0))
+        pen = QPen(border_color, 1.0)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
+        painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawPath(border_path)
 

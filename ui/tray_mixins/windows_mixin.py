@@ -70,6 +70,26 @@ class WindowsMixin:
 
             ThemedMessageBox.critical(None, tr("错误"), tr("无法打开设置窗口:\n{error}", error=e))
 
+    def _toggle_config(self):
+        """切换配置窗口的显示/隐藏状态（全局快捷键 Ctrl+Shift+L 触发）"""
+        try:
+            if (
+                self.config_window is not None
+                and self.config_window.isVisible()
+                and not self.config_window.isMinimized()
+            ):
+                self.config_window.hide()
+                logger.info("配置窗口已隐藏 (快捷键切换)")
+            else:
+                self._show_config()
+        except Exception as e:
+            logger.error("切换配置窗口失败: %s", e, exc_info=True)
+            # 降级为直接显示
+            try:
+                self._show_config()
+            except Exception as exc:
+                logger.debug("降级显示配置窗口失败: %s", exc, exc_info=True)
+
     def _on_settings_changed(self):
         """设置变更时的回调"""
         self._pending_settings_sync = True

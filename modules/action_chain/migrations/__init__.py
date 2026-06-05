@@ -2,7 +2,7 @@
 
 import copy
 import logging
-from typing import Callable, Dict
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 #       data["new_field"] = data.pop("old_field", "default")
 #       return data
 #   _MIGRATIONS[1] = _migrate_1_to_2
-_MIGRATIONS: Dict[int, Callable[[dict], dict]] = {}
+_MIGRATIONS: dict[int, Callable[[dict], dict]] = {}
 
 LATEST_SCHEMA = 1  # 随迁移注册同步更新
 

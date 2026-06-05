@@ -18,6 +18,7 @@ def _root_hwnd(user32, hwnd: int) -> int:
             return 0
         return int(user32.GetAncestor(hwnd, 2) or hwnd)  # GA_ROOT
     except Exception:
+        logger.debug("_root_hwnd failed", exc_info=True)
         return int(hwnd or 0)
 
 
@@ -29,6 +30,7 @@ def _window_pid(user32, hwnd: int) -> int:
         user32.GetWindowThreadProcessId(int(hwnd or 0), ctypes.byref(pid))
         return int(pid.value)
     except Exception:
+        logger.debug("_window_pid failed", exc_info=True)
         return 0
 
 
@@ -38,6 +40,7 @@ def _window_title(user32, hwnd: int) -> str:
         user32.GetWindowTextW(int(hwnd or 0), title_buf, len(title_buf))
         return title_buf.value or ""
     except Exception:
+        logger.debug("_window_title failed", exc_info=True)
         return ""
 
 
@@ -50,6 +53,7 @@ def _window_from_point(user32, x: int, y: int) -> int:
 
         return int(user32.WindowFromPoint(POINT(int(x), int(y))) or 0)
     except Exception:
+        logger.debug("_window_from_point failed", exc_info=True)
         return 0
 
 
@@ -137,6 +141,7 @@ def _is_own_native_dialog_foreground() -> bool:
         user32.GetClassNameW(root, class_buf, len(class_buf))
         return class_buf.value == "#32770"
     except Exception:
+        logger.debug("_is_own_native_dialog_foreground failed", exc_info=True)
         return False
 
 
@@ -297,6 +302,7 @@ class PopupMixin:
             settings = self.data_manager.get_settings()
             return bool(getattr(settings, "popup_multi_open_when_pinned", False))
         except Exception:
+            logger.debug("_should_multi_open_pinned_popup failed", exc_info=True)
             return False
 
     def _keep_as_extra_popup(self, popup):
@@ -351,6 +357,7 @@ class PopupMixin:
                 if s.geometry().contains(pt):
                     return True
         except Exception:
+            logger.debug("_is_point_in_any_qt_screen failed", exc_info=True)
             return True
         return False
 

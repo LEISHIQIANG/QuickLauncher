@@ -16,6 +16,7 @@ Key concepts:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -23,6 +24,8 @@ from enum import Enum
 from typing import Any
 
 from .definitions import ChainPortDefinition, ChainProcessorDefinition
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "NodeStatus",
@@ -1065,8 +1068,7 @@ class ChainGraph:
 
             try:
                 graph.add_connection(conn)
-            except ValueError:
-                # Skip invalid connections
-                pass
+            except ValueError as exc:
+                logger.debug("跳过无效图连接: %s", exc, exc_info=True)
 
         return graph

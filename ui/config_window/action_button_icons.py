@@ -10,6 +10,7 @@ def create_action_button_icon(kind: str, theme: str, size: int = 18) -> QIcon:
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QtCompat.Antialiasing)
+    painter.setRenderHint(QtCompat.HighQualityAntialiasing)
     painter.setRenderHint(QtCompat.SmoothPixmapTransform)
     painter.scale(size / 18.0, size / 18.0)
 

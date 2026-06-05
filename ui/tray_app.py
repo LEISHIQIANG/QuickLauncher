@@ -8,8 +8,6 @@ import os
 import sys
 import time
 
-# 导入兼容层
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.i18n import tr
 from qt_compat import (
     QApplication,
@@ -75,6 +73,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
     _update_event_signal = pyqtSignal(str, object)
     _download_event_signal = pyqtSignal(str, object)
     _install_event_signal = pyqtSignal(str, object)
+    _process_check_done_signal = pyqtSignal(object)
 
     def __init__(self):
         init_start = time.perf_counter()
@@ -254,9 +253,11 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
         # hook.dll 模式下，仅在特殊进程启动时尝试重装一次钩子
         self._known_processes = set()
+        self._process_check_future = None
         self._process_check_timer = QTimer(self)
         self._process_check_timer.setInterval(10000)
         self._process_check_timer.timeout.connect(self._check_new_processes)
+        self._process_check_done_signal.connect(self._on_process_check_done)
 
         self._hook_health_timer = QTimer(self)
         self._hook_health_timer.setInterval(10000)
@@ -269,6 +270,12 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._pending_update_installer = ""
         self._update_dialog_parent = None
 
+        # 全局快捷键管理器（Win32 RegisterHotKey，独立于 DLL 热键）
+        from ui.utils.global_hotkey import Win32GlobalHotkey
+
+        self._win32_hotkey = Win32GlobalHotkey()
+        self._config_toggle_hotkey_id = 0
+
         logger.info("TrayApp 初始化完成，耗时 %.1f ms", (time.perf_counter() - init_start) * 1000)
 
     def start(self):
@@ -279,6 +286,9 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
         self._deferred_startup_timer.start()
         self._memory_check_timer.start()
+
+        # 延迟注册全局快捷键 Ctrl+Shift+L（等待事件循环就绪）
+        QTimer.singleShot(200, self._register_config_toggle_hotkey)
 
         if not self._safe_mode:
             logger.info("安装鼠标钩子...")
@@ -528,6 +538,14 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             self._stop_timer_if_active(timer_name)
 
         try:
+            future = getattr(self, "_process_check_future", None)
+            if future is not None and not future.done():
+                future.cancel()
+            self._process_check_future = None
+        except Exception as exc:
+            logger.debug("取消特殊应用监控任务失败: %s", exc, exc_info=True)
+
+        try:
             if self._update_checker:
                 self._update_checker.stop()
         except Exception as e:
@@ -537,6 +555,13 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             self.hotkey_manager.stop()
         except Exception as e:
             logger.debug(f"stop hotkey manager failed: {e}")
+
+        # 清理 Win32 全局快捷键
+        try:
+            self._win32_hotkey.unregister_all()
+            self._win32_hotkey.remove_filter()
+        except Exception as exc:
+            logger.debug("清理 Win32 全局快捷键失败: %s", exc, exc_info=True)
 
         try:
             from core.folder_watcher import shutdown_watcher_manager
@@ -710,6 +735,18 @@ fso.DeleteFile WScript.ScriptFullName
             # 稍微偏移一点，避免遮住托盘图标
             offset_pos = QPoint(pos.x(), pos.y() - 5)
             self.tray_menu.popup(offset_pos)
+
+    def _register_config_toggle_hotkey(self):
+        """注册全局快捷键 Ctrl+Shift+L 用于切换配置窗口"""
+        try:
+            hotkey_id = self._win32_hotkey.register("Ctrl+Shift+L", self._toggle_config)
+            if hotkey_id:
+                self._config_toggle_hotkey_id = hotkey_id
+                logger.info("全局快捷键 Ctrl+Shift+L 已注册 (id=%d)", hotkey_id)
+            else:
+                logger.warning("全局快捷键 Ctrl+Shift+L 注册失败，可能已被其他程序占用")
+        except Exception as exc:
+            logger.error("注册全局快捷键失败: %s", exc, exc_info=True)
 
     def _clean_icon_cache_now(self):
         """立即执行图标缓存维护。"""

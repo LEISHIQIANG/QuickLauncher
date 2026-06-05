@@ -12,10 +12,13 @@ This module provides optimized and extended processor implementations:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     # Text processors
@@ -374,8 +377,8 @@ def file_delete(path: str, to_trash: bool = True) -> bool:
             from send2trash import send2trash
             send2trash(path)
             return True
-        except ImportError:
-            pass
+        except ImportError as exc:
+            logger.debug("send2trash 不可用，改为直接删除: %s", exc, exc_info=True)
 
     if os.path.isfile(path):
         os.remove(path)

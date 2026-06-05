@@ -20,6 +20,7 @@ from qt_compat import (
     QPixmap,
     QPoint,
     QPushButton,
+    QRectF,
     QtCompat,
     QTimer,
     QVBoxLayout,
@@ -91,6 +92,7 @@ class DragDropListWidget(QListWidget):
 
         painter = QPainter(transparent_pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setOpacity(0.75)  # Floating glass translucent card
         painter.drawPixmap(0, 0, pixmap)
 
@@ -101,9 +103,12 @@ class DragDropListWidget(QListWidget):
         else:
             border_color = QColor(70, 180, 140, 220)
 
-        painter.setPen(QPen(border_color, 1.5))
+        pen = QPen(border_color, 1.5)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
+        painter.setPen(pen)
         painter.setBrush(QtCompat.NoBrush)
-        painter.drawRoundedRect(1, 1, w - 2, h - 2, 6, 6)
+        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 6, 6)
 
         painter.end()
 

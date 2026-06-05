@@ -6,6 +6,7 @@ the smart type recognition system for better type handling.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,6 +17,8 @@ from .smart_types import (
     get_type_hint,
     validate_value,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "PortType",
@@ -148,8 +151,8 @@ class EnhancedPortDefinition:
                         return False, f"值必须小于 {max_val}"
                     elif not exclusive and num > max_val:
                         return False, f"值必须小于等于 {max_val}"
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as exc:
+                logger.debug("端口数值约束校验跳过: %s", exc, exc_info=True)
 
         # Min/max length for strings
         if "min_length" in constraints or "max_length" in constraints:

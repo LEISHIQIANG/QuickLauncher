@@ -104,14 +104,16 @@ class SleepMixin:
         except Exception as exc:
             logger.debug("关闭文件夹监听管理器: %s", exc, exc_info=True)
 
+        self._perform_sleep_cleanup()
+
     def _iter_visible_blocking_widgets(self):
         yield self.popup_window
-        for popup in list(getattr(self, "_extra_popup_windows", []) or []):
-            yield popup
+        yield from list(getattr(self, "_extra_popup_windows", []) or [])
         yield self.config_window
         yield self.log_window
         yield getattr(self, "command_panel_window", None)
 
+    def _perform_sleep_cleanup(self):
         try:
             self.hotkey_manager.stop()
         except Exception as exc:

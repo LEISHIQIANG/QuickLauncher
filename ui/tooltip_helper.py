@@ -1,6 +1,33 @@
 """Tooltip 辅助函数 - 为所有控件添加完美圆角 Tooltip"""
 
+import logging
+
 from qt_compat import QCursor, QTimer, QWidget
+
+logger = logging.getLogger(__name__)
+_cached_theme = "dark"
+_theme_initialized = False
+
+
+def update_tooltip_theme(theme: str):
+    global _cached_theme, _theme_initialized
+    _cached_theme = str(theme or "dark")
+    _theme_initialized = True
+
+
+def _get_tooltip_theme() -> str:
+    global _cached_theme, _theme_initialized
+    if _theme_initialized:
+        return _cached_theme
+    try:
+        from core import DataManager
+
+        _cached_theme = getattr(DataManager().get_settings(), "theme", "dark") or "dark"
+    except Exception as exc:
+        logger.debug("读取 tooltip 主题失败: %s", exc, exc_info=True)
+        _cached_theme = "dark"
+    _theme_initialized = True
+    return _cached_theme
 
 
 def install_tooltip(widget: QWidget, text: str):
@@ -17,7 +44,7 @@ def install_tooltip(widget: QWidget, text: str):
             widget._tooltip_timer.stop()
 
         # 延迟500ms显示
-        widget._tooltip_timer = QTimer()
+        widget._tooltip_timer = QTimer(widget)
         widget._tooltip_timer.setSingleShot(True)
         widget._tooltip_timer.timeout.connect(lambda: show_tooltip())
         widget._tooltip_timer.start(500)
@@ -27,13 +54,7 @@ def install_tooltip(widget: QWidget, text: str):
     def show_tooltip():
         from ui.custom_tooltip import CustomToolTip
 
-        try:
-            from core import DataManager
-
-            dm = DataManager()
-            theme = dm.get_settings().theme
-        except Exception:
-            theme = "dark"
+        theme = _get_tooltip_theme()
 
         # 显示时获取当前鼠标位置
         mouse_pos = QCursor.pos()

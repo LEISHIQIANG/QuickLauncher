@@ -389,6 +389,7 @@ class PopupMenu(QWidget):
         """绘制圆角背景（模糊层之上的半透明着色）"""
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setRenderHint(QtCompat.TextAntialiasing)
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
 

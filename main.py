@@ -361,8 +361,8 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
         if add_dll_directory:
             try:
                 add_dll_directory(dll_dir)
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"plugin helper could not add DLL directory {dll_dir}: {exc}", file=sys.stderr)
 
     sys.argv = [script_path, *helper_args]
     try:

@@ -565,7 +565,8 @@ class PluginAPI:
             plugin_root = self._plugin_dir.resolve()
             if path.exists() and (path == plugin_root or plugin_root in path.parents):
                 return str(path)
-        except Exception:
+        except Exception as exc:
+            logger.debug("插件 API 读取剪贴板失败: %s", exc, exc_info=True)
             return ""
         return ""
 
@@ -681,6 +682,7 @@ class PluginAPI:
             cb = QApplication.clipboard()
             return cb.text() or ""
         except Exception:
+            logger.debug("read_clipboard failed", exc_info=True)
             return ""
 
     def write_clipboard(self, text: str) -> None:
@@ -698,7 +700,8 @@ class PluginAPI:
             from core.file_selection import get_selected_files_for_process
 
             return get_selected_files_for_process() or []
-        except Exception:
+        except Exception as exc:
+            logger.debug("插件 API 获取选中文件失败: %s", exc, exc_info=True)
             return []
 
     def get_theme(self) -> str:
@@ -708,7 +711,8 @@ class PluginAPI:
 
             theme = getattr(get_data_manager().get_settings(), "theme", "dark")
             return theme if theme in ("dark", "light") else "dark"
-        except Exception:
+        except Exception as exc:
+            logger.debug("插件 API 获取主题失败: %s", exc, exc_info=True)
             return "dark"
 
     def get_app_version(self) -> str:
@@ -717,7 +721,8 @@ class PluginAPI:
             from core.version import APP_VERSION
 
             return str(APP_VERSION)
-        except Exception:
+        except Exception as exc:
+            logger.debug("插件 API 获取应用版本失败: %s", exc, exc_info=True)
             return ""
 
     def open_url(self, url: str) -> tuple[bool, str]:
@@ -961,6 +966,7 @@ class PluginAPI:
         try:
             return subprocess.list2cmdline([str(p) for p in parameters])
         except Exception:
+            logger.debug("_normalize_parameters failed", exc_info=True)
             return str(parameters or "")
 
 

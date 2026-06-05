@@ -93,7 +93,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
 
         class _TooltipFilter(QObject):
             def __init__(self, list_widget, get_theme):
-                super().__init__()
+                super().__init__(list_widget)
                 self._list = list_widget
                 self._get_theme = get_theme
                 self._hovered = None
@@ -111,7 +111,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
                             tip = item.data(Qt.UserRole)
                             if tip:
                                 theme = self._get_theme()
-                                self._timer = QTimer()
+                                self._timer = QTimer(self)
                                 self._timer.setSingleShot(True)
                                 self._timer.timeout.connect(lambda t=tip, th=theme: CustomToolTip.showToolTip(t, th))
                                 self._timer.start(500)

@@ -8,9 +8,12 @@ can show whether a value is text, JSON, a list, a file path, and so on.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ChainValueKind:
@@ -180,8 +183,8 @@ def _coerce_value(value: Any, kind: str) -> Any:
                 parsed = json.loads(text)
                 if isinstance(parsed, list):
                     return parsed
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("解析列表 JSON 失败，回退为按行解析: %s", exc, exc_info=True)
         return [line for line in text.splitlines() if line]
     if kind == ChainValueKind.FILE:
         return _coerce_to_path(value)

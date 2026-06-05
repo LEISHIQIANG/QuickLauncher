@@ -2,7 +2,7 @@
 setlocal EnableDelayedExpansion
 set "COPYCMD=/Y"
 cd /d "%~dp0.."
-chcp 65001 >nul
+set "PYTHONIOENCODING=utf-8"
 
 echo ========================================
 echo QuickLauncher Win11 Full Build - Smooth UI Runtime (Nuitka + PyQt5)
@@ -20,8 +20,8 @@ for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul'
 for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
 set "APP_VERSION=%DEFAULT_APP_VERSION%"
 
-REM === 打包日志：交互输入完成后，用 PowerShell Tee-Object 记录后续所有输出 ===
-REM 第二次进入（QL_LOGGING=1）时跳过，直接执行构建
+REM === Build log: wrap with PowerShell Tee-Object to record all output ===
+REM Skipped on second entry (QL_LOGGING=1), runs build directly
 if not defined QL_LOGGING (
     if not exist "dist\build_logs" mkdir "dist\build_logs" >nul 2>&1
     set "QL_LOGGING=1"
@@ -42,10 +42,6 @@ echo.
 echo [Build Info]
 echo   Publisher: %APP_PUBLISHER%
 echo   Version: %APP_VERSION%
-
-REM Write version back to source so Nuitka embeds the correct value into the compiled binary
-!PYTHON_CMD! -c "import re,pathlib; p=pathlib.Path('core/version.py'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"%APP_VERSION%\"', t), encoding='utf-8')" 2>nul
-echo   [OK] core/version.py updated to %APP_VERSION%
 
 if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=smooth"
 
@@ -126,6 +122,10 @@ if not defined PYTHON_CMD (
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
+
+REM Write version back to source so Nuitka embeds the correct value into the compiled binary
+!PYTHON_CMD! -c "import re,pathlib; p=pathlib.Path('core/version.py'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"%APP_VERSION%\"', t), encoding='utf-8')" 2>nul
+echo   [OK] core/version.py updated to %APP_VERSION%
 
 REM Clean PATH to avoid conflicting C compilers (e.g. 32-bit TDM-GCC or mismatched MinGW)
 set "PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"
@@ -560,7 +560,7 @@ if !ERRORLEVEL! NEQ 0 (
 
 REM Create portable zip package
 echo.
-echo [5/4] Creating portable zip package...
+echo [5/5] Creating portable zip package...
 set "PORTABLE_NAME=QuickLauncher_Portable_%APP_VERSION%"
 if exist "%PORTABLE_NAME%" if not exist "%PORTABLE_NAME%\" (
     del /f /q "%PORTABLE_NAME%" >nul 2>&1

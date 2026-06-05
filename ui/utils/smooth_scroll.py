@@ -67,28 +67,32 @@ class _EdgeFeedbackOverlay(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        height = max(32, min(72, int(self.height() * 0.14)))
-        width = self.width()
+            height = max(32, min(72, int(self.height() * 0.14)))
+            width = self.width()
 
-        if self._top_opacity > 0.001:
-            gradient = QLinearGradient(0, 0, 0, height)
-            color = QColor(255, 255, 255, int(44 * self._top_opacity))
-            shadow = QColor(0, 0, 0, int(22 * self._top_opacity))
-            gradient.setColorAt(0.0, color)
-            gradient.setColorAt(0.24, shadow)
-            gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
-            painter.fillRect(QRectF(0, 0, width, height), gradient)
+            if self._top_opacity > 0.001:
+                gradient = QLinearGradient(0, 0, 0, height)
+                color = QColor(255, 255, 255, int(44 * self._top_opacity))
+                shadow = QColor(0, 0, 0, int(22 * self._top_opacity))
+                gradient.setColorAt(0.0, color)
+                gradient.setColorAt(0.24, shadow)
+                gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+                painter.fillRect(QRectF(0, 0, width, height), gradient)
 
-        if self._bottom_opacity > 0.001:
-            gradient = QLinearGradient(0, self.height(), 0, self.height() - height)
-            color = QColor(255, 255, 255, int(44 * self._bottom_opacity))
-            shadow = QColor(0, 0, 0, int(22 * self._bottom_opacity))
-            gradient.setColorAt(0.0, color)
-            gradient.setColorAt(0.24, shadow)
-            gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
-            painter.fillRect(QRectF(0, self.height() - height, width, height), gradient)
+            if self._bottom_opacity > 0.001:
+                gradient = QLinearGradient(0, self.height(), 0, self.height() - height)
+                color = QColor(255, 255, 255, int(44 * self._bottom_opacity))
+                shadow = QColor(0, 0, 0, int(22 * self._bottom_opacity))
+                gradient.setColorAt(0.0, color)
+                gradient.setColorAt(0.24, shadow)
+                gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+                painter.fillRect(QRectF(0, self.height() - height, width, height), gradient)
+        finally:
+            painter.end()
 
 
 class SmoothScrollArea(QScrollArea):

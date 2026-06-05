@@ -26,6 +26,7 @@ from qt_compat import (
     QPixmap,
     QPlainTextEdit,
     QPushButton,
+    QRectF,
     QScrollArea,
     QSpinBox,
     Qt,
@@ -358,6 +359,22 @@ class ChainDialog(BaseDialog):
                         return True
         return super().eventFilter(watched, event)
 
+    def closeEvent(self, event):
+        """Clean up background threads and timers on close."""
+        # Stop test thread
+        test_thread = getattr(self, "_test_thread", None)
+        if test_thread is not None and test_thread.isRunning():
+            test_thread.quit()
+            test_thread.wait(2000)
+        # Stop close-animation timer
+        close_anim_timer = getattr(self, "_close_anim_timer", None)
+        if close_anim_timer is not None:
+            try:
+                close_anim_timer.stop()
+            except Exception:
+                logger.debug("停止 close_anim_timer 失败", exc_info=True)
+        super().closeEvent(event)
+
     def done(self, result):
         if getattr(self, "_closing_with_animation", False):
             return
@@ -500,8 +517,8 @@ class ChainDialog(BaseDialog):
                 settings = data_manager.get_settings()
                 if settings is not None:
                     theme = settings.theme
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("读取动作链对话框主题失败: %s", exc, exc_info=True)
 
         self.file_btn = QPushButton()
         self.folder_btn = QPushButton()
@@ -1228,10 +1245,11 @@ class ChainDialog(BaseDialog):
         pixmap.fill(QtCompat.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setBrush(QColor(180, 100, 50))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)

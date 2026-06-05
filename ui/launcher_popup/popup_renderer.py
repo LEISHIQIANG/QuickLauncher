@@ -61,6 +61,7 @@ class PopupRendererMixin:
         except Exception as exc:
             logger.debug("设置绘制裁剪区域失败: %s", exc, exc_info=True)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setRenderHint(QtCompat.TextAntialiasing)
         painter.setRenderHint(QtCompat.SmoothPixmapTransform)
         dirty_rect = event.rect()
@@ -193,7 +194,10 @@ class PopupRendererMixin:
                 border_c = QColor(85, 85, 85, 120)
             else:
                 border_c = QColor(200, 200, 200, 120)
-            painter.setPen(QPen(border_c, 1))
+            pen = QPen(border_c, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
             painter.setBrush(QtCompat.NoBrush)
             painter.drawPath(path)
 
@@ -405,6 +409,7 @@ class PopupRendererMixin:
         image = self._create_page_animation_image()
         page_painter = QPainter(image)
         page_painter.setRenderHint(QtCompat.Antialiasing)
+        page_painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         page_painter.setRenderHint(QtCompat.TextAntialiasing)
         page_painter.setRenderHint(QtCompat.SmoothPixmapTransform)
         old_suspend = getattr(self, "_suspend_icon_extraction", False)
@@ -789,7 +794,7 @@ class PopupRendererMixin:
                     painter.setBrush(QBrush(QColor(255, 255, 255, 22 if is_dark else 90)))
                     painter.setPen(QPen(QColor(255, 255, 255, 40 if is_dark else 120), 1))
 
-                painter.drawRoundedRect(card_x, card_y, card_size, card_size, card_r, card_r)
+                painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
                 icon_x = card_x + card_pad
                 icon_y = card_y + card_pad
             else:
@@ -798,11 +803,11 @@ class PopupRendererMixin:
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 2))
-                    painter.drawRoundedRect(x, y, self.cell_size, self.cell_h, 6, 6)
+                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), 6, 6)
                 elif not is_prev and (i == self.hover_index or i == selected_index):
                     painter.setBrush(QBrush(hover_color))
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(x, y, self.cell_size, self.cell_h, 6, 6)
+                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), 6, 6)
                 total_h = self.icon_size + text_spacing + text_h
                 icon_x = x + (self.cell_size - self.icon_size) // 2
                 icon_y = y + (self.cell_h - total_h) // 2
@@ -894,7 +899,7 @@ class PopupRendererMixin:
             a = int(dim_color.alpha() + (accent_color.alpha() - dim_color.alpha()) * t)
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(QColor(r, g, b, a)))
-            painter.drawRoundedRect(int(cx), y, max(1, int(w)), dot_size, dot_size // 2, dot_size // 2)
+            painter.drawRoundedRect(QRectF(int(cx), y, max(1, int(w)), dot_size), dot_size // 2, dot_size // 2)
             cx += w + spacing
 
     def _indicator_accent_color(self, accent_color: QColor) -> QColor:
@@ -940,13 +945,14 @@ class PopupRendererMixin:
         painter.setBrush(QBrush(dock_bg))
         painter.setPen(QtCompat.NoPen)
         radius = getattr(self.settings, "dock_corner_radius", 10)
-        painter.drawRoundedRect(6, dock_y, self.width() - 12, self.dock_height, radius, radius)
+        painter.drawRoundedRect(QRectF(6, dock_y, self.width() - 12, self.dock_height), radius, radius)
 
         # 顶部分隔线 — 极细纯黑（关闭抗锯齿保证清晰）
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(QPen(QColor(0, 0, 0, 60), 1))
         painter.drawLine(0, dock_y, self.width(), dock_y)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # Dock 行数模式
         dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
@@ -1012,7 +1018,7 @@ class PopupRendererMixin:
                 else:
                     painter.setBrush(QBrush(QColor(255, 255, 255, 22 if is_dark else 90)))
                     painter.setPen(QPen(QColor(255, 255, 255, 40 if is_dark else 120), 1))
-                painter.drawRoundedRect(card_x, card_y, card_size, card_size, card_r, card_r)
+                painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
                 icon_x = card_x + card_pad
                 icon_y = card_y + card_pad
             else:
@@ -1021,13 +1027,13 @@ class PopupRendererMixin:
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 2))
-                    painter.drawRoundedRect(hover_x, hover_y, hover_size, hover_size, 6, 6)
+                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), 6, 6)
                 elif i == self.dock_hover_index:
                     hover = QColor(hover_color)
                     hover.setAlpha(180)
                     painter.setBrush(QBrush(hover))
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(hover_x, hover_y, hover_size, hover_size, 6, 6)
+                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), 6, 6)
                 icon_x = x + (self.cell_size - self.icon_size) // 2
                 icon_y = y
             # ===== 背景绘制结束 =====

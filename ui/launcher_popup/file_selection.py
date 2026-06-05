@@ -3,8 +3,6 @@
 # ruff: noqa: I001
 
 import logging
-import os
-import sys
 import time
 from dataclasses import dataclass
 
@@ -16,7 +14,6 @@ try:
 except ImportError:
     HAS_WIN32_SHELL = False
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from qt_compat import QThread, pyqtSignal
 from core.window_detection import (
     _normalize_window_hwnd,

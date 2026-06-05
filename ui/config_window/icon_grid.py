@@ -5,10 +5,8 @@
 import copy
 import logging
 import os
-import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import AppData, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
 from qt_compat import (
@@ -35,6 +33,7 @@ from qt_compat import (
     QPropertyAnimation,
     QPushButton,
     QRect,
+    QRectF,
     QRegion,
     QSize,
     Qt,
@@ -117,6 +116,7 @@ class SimpleStatusDialog(QDialog):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
             if is_win10():
                 paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
                 return
@@ -135,7 +135,10 @@ class SimpleStatusDialog(QDialog):
             painter.fillPath(path, tint_color)
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            painter.setPen(QPen(pen_color, 1))
+            pen = QPen(pen_color, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
             painter.drawPath(path)
         finally:
             painter.end()
@@ -407,6 +410,68 @@ class _IconLoadWorker(QObject):
         return None
 
 
+class RoundedFrame(QFrame):
+    """High-quality antialiased rounded frame using QPainter.
+
+    Replaces QSS ``border-radius`` which produces jagged / whitish edges
+    on small widgets, especially noticeable in dark mode.  QPainter with
+    *HighQualityAntialiasing* + ``QRectF`` half-pixel alignment yields
+    clean sub-pixel rendering.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._bg_color = QColor(255, 255, 255, 22)
+        self._border_color = QColor(255, 255, 255, 35)
+        self._border_width = 1.0
+        self._radius = 9.0
+        self._is_dashed = False
+        self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+
+    def set_colors(self, bg_color, border_color, border_width=1.0, radius=9.0, dashed=False):
+        """Update visual properties and trigger repaint."""
+        self._bg_color = QColor(bg_color) if not isinstance(bg_color, QColor) else QColor(bg_color)
+        self._border_color = QColor(border_color) if not isinstance(border_color, QColor) else QColor(border_color)
+        self._border_width = float(border_width)
+        self._radius = float(radius)
+        self._is_dashed = bool(dashed)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QtCompat.Antialiasing, True)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
+
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            painter.end()
+            return
+
+        # Half-pixel inset so the 1 px pen sits exactly on the pixel grid,
+        # eliminating the fuzzy / whitish halo that QSS border-radius produces.
+        inset = self._border_width / 2.0
+        rect = QRectF(inset, inset, w - inset * 2, h - inset * 2)
+
+        path = QPainterPath()
+        path.addRoundedRect(rect, self._radius, self._radius)
+
+        # -- fill --
+        painter.fillPath(path, self._bg_color)
+
+        # -- border --
+        if self._border_color.alpha() > 0 and self._border_width > 0:
+            pen = QPen(self._border_color, self._border_width)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            if self._is_dashed:
+                pen.setStyle(QtCompat.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QtCompat.NoBrush)
+            painter.drawPath(path)
+
+        painter.end()
+
+
 class IconWidget(QFrame):
     """单个图标控件"""
 
@@ -434,6 +499,10 @@ class IconWidget(QFrame):
         self._normal_bg = self.DARK_NORMAL_BG if theme == "dark" else self.LIGHT_NORMAL_BG
         self._hover_bg = self.DARK_HOVER_BG if theme == "dark" else self.LIGHT_HOVER_BG
         self._border = "1px solid rgba(255, 255, 255, 35)" if theme == "dark" else "1px solid rgba(0, 0, 0, 12)"
+        # QColor values for RoundedFrame (high-quality antialiased painting)
+        self._border_qcolor = QColor(255, 255, 255, 35) if theme == "dark" else QColor(0, 0, 0, 12)
+        self._bg_qcolor = QColor(255, 255, 255, 22) if theme == "dark" else QColor(255, 255, 255, 100)
+        self._hover_qcolor = QColor(255, 255, 255, 45) if theme == "dark" else QColor(255, 255, 255, 160)
 
         self._setup_ui()
         self.setAcceptDrops(False)
@@ -448,12 +517,13 @@ class IconWidget(QFrame):
         layout.setSpacing(2)
         layout.setAlignment(QtCompat.AlignCenter)
 
-        # 图标底框：图标四周各大7px
+        # 图标底框：图标四周各大7px — 使用 RoundedFrame 替代 QSS border-radius
+        # 以消除深色模式下圆角边缘的锯齿和泛白
         icon_frame_h = self.icon_size + 14
         icon_frame_w = self.icon_size + 14
-        self.icon_frame = QFrame()
+        self.icon_frame = RoundedFrame()
         self.icon_frame.setFixedSize(icon_frame_w, icon_frame_h)
-        self.icon_frame.setStyleSheet(self._icon_frame_style())
+        self._apply_icon_frame_style()
         self.icon_frame.setAttribute(Qt.WA_TransparentForMouseEvents, True)
 
         frame_layout = QVBoxLayout(self.icon_frame)
@@ -477,6 +547,33 @@ class IconWidget(QFrame):
         layout.addWidget(self.name_label)
 
         self._load_icon()
+
+    def _apply_icon_frame_style(self, hover=False, drop=False):
+        """Apply antialiased QPainter-based style to RoundedFrame."""
+        if not isinstance(self.icon_frame, RoundedFrame):
+            return
+        if self._is_selected:
+            self.icon_frame.set_colors(
+                QColor(100, 181, 246, 26), QColor(100, 181, 246, 170),
+                border_width=1.0, radius=9.0,
+            )
+        elif drop:
+            if self.theme == "dark":
+                self.icon_frame.set_colors(
+                    QColor(168, 230, 207, 45), QColor(168, 230, 207, 180),
+                    border_width=2.0, radius=9.0, dashed=True,
+                )
+            else:
+                self.icon_frame.set_colors(
+                    QColor(168, 230, 207, 75), QColor(70, 180, 140, 200),
+                    border_width=2.0, radius=9.0, dashed=True,
+                )
+        else:
+            bg = self._hover_qcolor if hover else self._bg_qcolor
+            self.icon_frame.set_colors(
+                bg, self._border_qcolor,
+                border_width=1.0, radius=9.0,
+            )
 
     def _icon_frame_style(self, hover=False, drop=False):
         if self._is_selected:
@@ -516,11 +613,12 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         painter.setBrush(QColor(135, 206, 250))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         radius = size // 6
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, radius, radius)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
 
         first_char = self.shortcut.name[0] if self.shortcut.name else "?"
         painter.setPen(QColor(255, 255, 255))
@@ -539,11 +637,12 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         painter.setBrush(QColor(70, 130, 180))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -560,11 +659,12 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         painter.setBrush(QColor(60, 160, 120))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -581,11 +681,12 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         painter.setBrush(QColor(50, 50, 50))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(0, 255, 0))
         font = QFont("Consolas", size // 3)
@@ -603,11 +704,12 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         painter.setBrush(QColor(180, 100, 50))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -624,11 +726,12 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         painter.setBrush(QColor(130, 95, 200))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
-        painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, 6, 6)
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
         font = QFont("Segoe UI Symbol", size // 3)
@@ -641,22 +744,22 @@ class IconWidget(QFrame):
     def _set_normal_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
         if hasattr(self, "icon_frame"):
-            self.icon_frame.setStyleSheet(self._icon_frame_style(hover=False))
+            self._apply_icon_frame_style(hover=False)
 
     def _set_hover_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
         if hasattr(self, "icon_frame"):
-            self.icon_frame.setStyleSheet(self._icon_frame_style(hover=True))
+            self._apply_icon_frame_style(hover=True)
 
     def _set_drop_target_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
         if hasattr(self, "icon_frame"):
-            self.icon_frame.setStyleSheet(self._icon_frame_style(drop=True))
+            self._apply_icon_frame_style(drop=True)
 
     def set_selected(self, selected: bool):
         self._is_selected = bool(selected)
         if hasattr(self, "icon_frame"):
-            self.icon_frame.setStyleSheet(self._icon_frame_style())
+            self._apply_icon_frame_style()
 
     def enterEvent(self, event):
         if not self._is_drop_target and not self._is_dragging:
@@ -706,6 +809,8 @@ class IconWidget(QFrame):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
+        painter.setRenderHint(QtCompat.SmoothPixmapTransform)
 
         # 浅雅清新的粉绿配色系统
         if self.theme == "dark":
@@ -715,16 +820,19 @@ class IconWidget(QFrame):
             bg_color = QColor(225, 248, 243, 215)
             border_color = QColor(168, 230, 207, 220)
 
-        # 模拟精致的悬浮阴影
+        # 模拟精致的悬浮阴影 — 使用 QRectF 半像素对齐
         shadow_color = QColor(0, 0, 0, 15 if self.theme == "dark" else 10)
         painter.setPen(QtCompat.NoPen)
         painter.setBrush(shadow_color)
-        painter.drawRoundedRect(2, 2, size - 4, size - 4, 9, 9)
+        painter.drawRoundedRect(QRectF(2.5, 2.5, size - 5, size - 5), 9, 9)
 
         # 绘制卡片背景与浅绿边框 (圆角完美契合底框的 9px)
         painter.setBrush(bg_color)
-        painter.setPen(QPen(border_color, 1.5))
-        painter.drawRoundedRect(1, 1, size - 3, size - 3, 9, 9)
+        pen = QPen(border_color, 1.5)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
+        painter.setPen(pen)
+        painter.drawRoundedRect(QRectF(1.5, 1.5, size - 3, size - 3), 9, 9)
 
         # 居中绘制图标本身，去掉文本标签
         icon_pixmap = self.icon_label.pixmap()
@@ -1676,7 +1784,7 @@ class IconGrid(QWidget):
                 logger.debug("调整菜单大小: %s", exc, exc_info=True)
             path = QPainterPath()
             rect = menu.rect()
-            path.addRoundedRect(rect, radius, radius)
+            path.addRoundedRect(QRectF(rect), radius, radius)
             menu.setMask(QRegion(path.toFillPolygon().toPolygon()))
         except Exception as exc:
             logger.debug("调整菜单大小: %s", exc, exc_info=True)
@@ -1724,6 +1832,7 @@ class IconGrid(QWidget):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
         for i in range(visible_count - 1, -1, -1):
             painter.setOpacity(0.72 if i else 0.95)
             painter.drawPixmap(i * offset, i * offset, base)
@@ -2120,7 +2229,7 @@ class IconGrid(QWidget):
                 timer.stop()
             except RuntimeError:
                 logger.debug("停止拖拽离开延迟定时器失败", exc_info=True)
-        self._drag_leave_timer = QTimer()
+        self._drag_leave_timer = QTimer(self)
         self._drag_leave_timer.setSingleShot(True)
         self._drag_leave_timer.timeout.connect(self._on_delayed_drag_leave)
         self._drag_leave_timer.start(50)

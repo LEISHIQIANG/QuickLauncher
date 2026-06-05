@@ -97,6 +97,7 @@ class BaseDialog(QDialog):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if is_win10():
                 paint_win10_rounded_surface(
@@ -125,7 +126,10 @@ class BaseDialog(QDialog):
 
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            painter.setPen(QPen(pen_color, 1))
+            pen = QPen(pen_color, 1)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
             painter.drawPath(path)
         finally:
             painter.end()

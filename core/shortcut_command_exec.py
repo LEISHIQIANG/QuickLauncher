@@ -339,6 +339,289 @@ class CommandExecutionMixin:
         )
 
     @staticmethod
+    def _capture_error_result(
+        message: str,
+        error: str,
+        panel_size: str,
+        *,
+        start: float | None = None,
+        command: str | None = None,
+    ) -> CommandResult:
+        payload = {"window_size": panel_size}
+        if start is not None:
+            payload["duration"] = time.monotonic() - start
+        if command is not None:
+            payload["command"] = command
+        return CommandResult(
+            success=False,
+            message=message,
+            display_type="log",
+            error=error,
+            payload=payload,
+        )
+
+    @staticmethod
+    def _capture_builtin_result(success: bool, panel_size: str, start: float) -> CommandResult:
+        return CommandResult(
+            success=success,
+            message="内置命令已执行。" if success else "内置命令执行失败",
+            display_type="log",
+            error="" if success else "执行失败",
+            payload={
+                "window_size": panel_size,
+                "exit_code": 0 if success else 1,
+                "duration": time.monotonic() - start,
+            },
+        )
+
+    @staticmethod
+    def _decode_capture_output(
+        stdout_bytes: bytes,
+        stderr_bytes: bytes,
+        shortcut: ShortcutItem,
+        command_type: str,
+        max_chars: int,
+    ) -> tuple[str, str, bool, str, bool]:
+        """Decode and truncate captured stdout/stderr bytes.
+
+        Returns (stdout, stderr, stdout_truncated, stderr, stderr_truncated)
+        along with encoding info as a named tuple-like flat return:
+        (stdout, stderr, stdout_truncated, stderr_truncated,
+         stdout_encoding, stderr_encoding, decode_fallback_used)
+        """
+        encoding = getattr(shortcut, "command_encoding", "auto")
+        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+            stdout_bytes or b"", encoding, command_type
+        )
+        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+            stderr_bytes or b"", encoding, command_type
+        )
+        stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
+        stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+        return (
+            stdout, stderr,
+            stdout_truncated, stderr_truncated,
+            stdout_encoding, stderr_encoding,
+            stdout_fallback or stderr_fallback,
+        )
+
+    @staticmethod
+    def _build_capture_payload(
+        *,
+        panel_size: str,
+        returncode: int,
+        start: float,
+        stdout: str,
+        stderr: str,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
+        stdout_encoding: str,
+        stderr_encoding: str,
+        decode_fallback_used: bool,
+        command: str,
+        timed_out: bool = False,
+        cancelled: bool = False,
+        wrap: bool = False,
+    ) -> dict:
+        """Build the common payload dict for capture results."""
+        return {
+            "window_size": panel_size,
+            "wrap": wrap,
+            "exit_code": returncode,
+            "duration": time.monotonic() - start,
+            "stdout": stdout,
+            "stderr": stderr,
+            "stdout_truncated": stdout_truncated,
+            "stderr_truncated": stderr_truncated,
+            "stdout_encoding": stdout_encoding,
+            "stderr_encoding": stderr_encoding,
+            "decode_fallback_used": decode_fallback_used,
+            "command": command,
+            "cancelled": cancelled,
+            "timed_out": timed_out,
+        }
+
+    @staticmethod
+    def _build_capture_cancel_result(
+        *,
+        panel_size: str,
+        returncode: int,
+        start: float,
+        stdout: str,
+        stderr: str,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
+        stdout_encoding: str,
+        stderr_encoding: str,
+        decode_fallback_used: bool,
+        command: str,
+    ) -> CommandResult:
+        """Build a CommandResult for a cancelled capture."""
+        message = "\n".join(part for part in ["命令执行已取消。", stdout, stderr] if part)
+        return CommandResult(
+            success=False,
+            message=message,
+            display_type="log",
+            payload=ShortcutExecutor._build_capture_payload(
+                panel_size=panel_size,
+                returncode=returncode,
+                start=start,
+                stdout=stdout,
+                stderr=stderr,
+                stdout_truncated=stdout_truncated,
+                stderr_truncated=stderr_truncated,
+                stdout_encoding=stdout_encoding,
+                stderr_encoding=stderr_encoding,
+                decode_fallback_used=decode_fallback_used,
+                command=command,
+                cancelled=True,
+                timed_out=False,
+            ),
+            error="已取消",
+        )
+
+    @staticmethod
+    def _build_capture_success_result(
+        *,
+        panel_size: str,
+        returncode: int,
+        start: float,
+        stdout: str,
+        stderr: str,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
+        stdout_encoding: str,
+        stderr_encoding: str,
+        decode_fallback_used: bool,
+        command: str,
+        timed_out: bool,
+        timeout_value: float,
+    ) -> CommandResult:
+        """Build a CommandResult for a completed (success/failure/timeout) capture."""
+        success = (returncode == 0) and not timed_out
+        parts = []
+        if stdout:
+            parts.append(stdout)
+        if stderr and not success:
+            parts.append(stderr)
+        if not parts:
+            parts.append("(无输出)")
+        message = "\n".join(parts)
+        if timed_out:
+            message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
+        error = ""
+        if timed_out:
+            error = "执行超时"
+        elif returncode != 0:
+            error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
+        return CommandResult(
+            success=success,
+            message=message,
+            display_type="log",
+            payload=ShortcutExecutor._build_capture_payload(
+                panel_size=panel_size,
+                returncode=returncode,
+                start=start,
+                stdout=stdout,
+                stderr=stderr,
+                stdout_truncated=stdout_truncated,
+                stderr_truncated=stderr_truncated,
+                stdout_encoding=stdout_encoding,
+                stderr_encoding=stderr_encoding,
+                decode_fallback_used=decode_fallback_used,
+                command=command,
+                timed_out=timed_out,
+            ),
+            actions=[CommandAction(type="copy", label="复制输出", value=message)],
+            error=error,
+        )
+
+    @staticmethod
+    def _build_bash_fallback_result(
+        *,
+        panel_size: str,
+        returncode: int,
+        start: float,
+        stdout: str,
+        stderr: str,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
+        stdout_encoding: str,
+        stderr_encoding: str,
+        decode_fallback_used: bool,
+        command: str,
+        timed_out: bool,
+    ) -> CommandResult:
+        """Build a CommandResult when bash direct capture is denied."""
+        message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())
+        return CommandResult(
+            success=False,
+            message=message,
+            display_type="log",
+            payload=ShortcutExecutor._build_capture_payload(
+                panel_size=panel_size,
+                returncode=returncode,
+                start=start,
+                stdout=stdout,
+                stderr=stderr,
+                stdout_truncated=stdout_truncated,
+                stderr_truncated=stderr_truncated,
+                stdout_encoding=stdout_encoding,
+                stderr_encoding=stderr_encoding,
+                decode_fallback_used=decode_fallback_used,
+                command=command,
+                timed_out=timed_out,
+            ),
+            actions=[CommandAction(type="copy", label="复制输出", value=message)],
+            error=stderr.strip().splitlines()[0] if stderr.strip() else "Git Bash 直接捕获启动失败",
+        )
+
+    @staticmethod
+    def _prepare_command_for_execution(
+        shortcut: ShortcutItem,
+        command: str,
+        command_type: str,
+        *,
+        panel_size: str | None = None,
+        display_type: str = "text",
+    ) -> tuple[str, CommandResult | None]:
+        payload = {"window_size": panel_size} if panel_size else {}
+
+        def _invalid(message: str, error: str | None = None) -> tuple[str, CommandResult]:
+            return command, CommandResult(
+                success=False,
+                message=message,
+                display_type=display_type,
+                error=error if error is not None else message,
+                payload=dict(payload),
+            )
+
+        raw_mode = bool(getattr(shortcut, "raw_mode", False))
+        expand_variables = ShortcutExecutor._should_expand_command_variables(shortcut)
+        if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
+            if expand_variables:
+                return _invalid(
+                    f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}",
+                    "命令无效",
+                )
+            return _invalid(
+                f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}",
+                "命令无效",
+            )
+        if command_type in ("cmd", "powershell", "bash") and expand_variables:
+            unsafe_variables = find_unquoted_external_command_variables(command)
+            if unsafe_variables:
+                examples = ", ".join("{{" + name + ":q}}" for name in unsafe_variables[:3])
+                message = f"外部输入变量用于 CMD/PowerShell/Bash 命令时必须使用 :q 引用，例如: {examples}"
+                return _invalid(message)
+        try:
+            if expand_variables:
+                command = ShortcutExecutor._resolve_command_variables(shortcut, command)
+        except CommandVariableError as e:
+            return _invalid(str(e), "变量解析失败")
+        return command, None
+
+    @staticmethod
     def _command_param_defs(shortcut: ShortcutItem) -> list[dict]:
         return command_param_defs(shortcut)
 
@@ -564,6 +847,7 @@ class CommandExecutionMixin:
             )
             return completed.returncode == 0
         except Exception:
+            logger.debug("_probe_python_launcher check failed", exc_info=True)
             return False
 
     @staticmethod
@@ -655,6 +939,7 @@ class CommandExecutionMixin:
         try:
             return len(subprocess.list2cmdline([str(part) for part in argv]))
         except Exception:
+            logger.debug("_direct_command_line_length failed", exc_info=True)
             return sum(len(str(part)) + 1 for part in argv)
 
     @staticmethod
@@ -856,6 +1141,7 @@ class CommandExecutionMixin:
             app = QApplication.instance()
             return bool(app and QThread.currentThread() == app.thread())
         except Exception:
+            logger.debug("_is_qt_main_thread check failed", exc_info=True)
             return False
 
     @staticmethod
@@ -968,25 +1254,13 @@ class CommandExecutionMixin:
             return False, "命令内容为空"
 
         command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
-        raw_mode = bool(getattr(shortcut, "raw_mode", False))
-        if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
-            if ShortcutExecutor._should_expand_command_variables(shortcut):
-                return False, f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}"
-            return (
-                False,
-                f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}",
-            )
-        _shell_types = ("cmd", "powershell", "bash")
-        if command_type in _shell_types and ShortcutExecutor._should_expand_command_variables(shortcut):
-            unsafe_variables = find_unquoted_external_command_variables(command)
-            if unsafe_variables:
-                examples = ", ".join("{{" + name + ":q}}" for name in unsafe_variables[:3])
-                return False, f"外部输入变量用于 CMD/PowerShell/Bash 命令时必须使用 :q 引用，例如: {examples}"
-        try:
-            if ShortcutExecutor._should_expand_command_variables(shortcut):
-                command = ShortcutExecutor._resolve_command_variables(shortcut, command)
-        except CommandVariableError as e:
-            return False, str(e)
+        command, prepare_error = ShortcutExecutor._prepare_command_for_execution(
+            shortcut,
+            command,
+            command_type,
+        )
+        if prepare_error is not None:
+            return False, prepare_error.message or prepare_error.error
 
         capture_output = bool(getattr(shortcut, "capture_output", False))
         if not capture_output:
@@ -1577,50 +1851,15 @@ class CommandExecutionMixin:
             else getattr(shortcut, "command_timeout_seconds", DEFAULT_COMMAND_TIMEOUT_SECONDS)
         )
 
-        raw_mode = bool(getattr(shortcut, "raw_mode", False))
-        if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
-            if ShortcutExecutor._should_expand_command_variables(shortcut):
-                return CommandResult(
-                    success=False,
-                    message=f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}",
-                    display_type="log",
-                    error="命令无效",
-                    payload={"window_size": panel_size},
-                )
-            return CommandResult(
-                success=False,
-                message=(
-                    "命令只包含变量占位符，但未启用解析变量。" f"请启用解析变量，或改为可执行命令，例如: echo {command}"
-                ),
-                display_type="log",
-                error="命令无效",
-                payload={"window_size": panel_size},
-            )
-        _shell_types = ("cmd", "powershell", "bash")
-        if command_type in _shell_types and ShortcutExecutor._should_expand_command_variables(shortcut):
-            unsafe_variables = find_unquoted_external_command_variables(command)
-            if unsafe_variables:
-                examples = ", ".join("{{" + name + ":q}}" for name in unsafe_variables[:3])
-                message = f"外部输入变量用于 CMD/PowerShell/Bash 命令时必须使用 :q 引用，例如: {examples}"
-                return CommandResult(
-                    success=False,
-                    message=message,
-                    display_type="log",
-                    error=message,
-                    payload={"window_size": panel_size},
-                )
-
-        try:
-            if ShortcutExecutor._should_expand_command_variables(shortcut):
-                command = ShortcutExecutor._resolve_command_variables(shortcut, command)
-        except CommandVariableError as e:
-            return CommandResult(
-                success=False,
-                message=str(e),
-                display_type="log",
-                error="变量解析失败",
-                payload={"window_size": panel_size},
-            )
+        command, prepare_error = ShortcutExecutor._prepare_command_for_execution(
+            shortcut,
+            command,
+            command_type,
+            panel_size=panel_size,
+            display_type="log",
+        )
+        if prepare_error is not None:
+            return prepare_error
 
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
         if command_type == "builtin":
@@ -1629,17 +1868,7 @@ class CommandExecutionMixin:
             if pending is not None:
                 pending.payload.setdefault("window_size", panel_size)
                 return pending
-            return CommandResult(
-                success=success,
-                message="内置命令已执行。" if success else "内置命令执行失败",
-                display_type="log",
-                error="" if success else "执行失败",
-                payload={
-                    "window_size": panel_size,
-                    "exit_code": 0 if success else 1,
-                    "duration": time.monotonic() - start,
-                },
-            )
+            return ShortcutExecutor._capture_builtin_result(success, panel_size, start)
 
         preflight = ShortcutExecutor._preflight_command(shortcut, command, command_type, capture=True)
         if preflight is not None:
@@ -1662,12 +1891,10 @@ class CommandExecutionMixin:
             if command_type == "python":
                 python_exe = ShortcutExecutor._python_launcher()
                 if not python_exe:
-                    return CommandResult(
-                        success=False,
-                        message=ShortcutExecutor._python_launcher_error(),
-                        display_type="log",
-                        error="Python 不可用",
-                        payload={"window_size": panel_size},
+                    return ShortcutExecutor._capture_error_result(
+                        ShortcutExecutor._python_launcher_error(),
+                        "Python 不可用",
+                        panel_size,
                     )
                 popen_args = [python_exe, "-u"]
                 stdin_data = command.encode("utf-8")
@@ -1676,35 +1903,21 @@ class CommandExecutionMixin:
                 popen_args = ShortcutExecutor._powershell_argv(command)
                 if ShortcutExecutor._direct_command_line_too_long(popen_args):
                     message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
-                    return CommandResult(
-                        success=False,
-                        message=message,
-                        display_type="log",
-                        error="命令过长",
-                        payload={"window_size": panel_size, "duration": time.monotonic() - start},
-                    )
+                    return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)
                 shell = False
             elif command_type == "bash":
                 bash_exe = ShortcutExecutor._bash_launcher()
                 if not bash_exe:
-                    return CommandResult(
-                        success=False,
-                        message=ShortcutExecutor._bash_launcher_error(),
-                        display_type="log",
-                        error="Git Bash 不可用",
-                        payload={"window_size": panel_size},
+                    return ShortcutExecutor._capture_error_result(
+                        ShortcutExecutor._bash_launcher_error(),
+                        "Git Bash 不可用",
+                        panel_size,
                     )
                 logger.debug("Bash capture: launcher=%s, route=capture-direct", bash_exe)
                 popen_args = ShortcutExecutor._bash_argv(command)
                 if ShortcutExecutor._direct_command_line_too_long(popen_args):
                     message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
-                    return CommandResult(
-                        success=False,
-                        message=message,
-                        display_type="log",
-                        error="命令过长",
-                        payload={"window_size": panel_size, "duration": time.monotonic() - start},
-                    )
+                    return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)
                 shell = False
             elif command_type == "cmd":
                 if ShortcutExecutor._cmd_has_newline(command):
@@ -1714,21 +1927,14 @@ class CommandExecutionMixin:
                     popen_args = ShortcutExecutor._cmd_argv(command)
                     if ShortcutExecutor._direct_command_line_too_long(popen_args):
                         message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
-                        return CommandResult(
-                            success=False,
-                            message=message,
-                            display_type="log",
-                            error="命令过长",
-                            payload={"window_size": panel_size, "duration": time.monotonic() - start},
-                        )
+                        return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)
                 shell = False
             else:
-                return CommandResult(
-                    success=False,
-                    message=f"Unsupported command type: {command_type}",
-                    display_type="log",
-                    error="Unsupported command type",
-                    payload={"window_size": panel_size, "duration": time.monotonic() - start},
+                return ShortcutExecutor._capture_error_result(
+                    f"Unsupported command type: {command_type}",
+                    "Unsupported command type",
+                    panel_size,
+                    start=start,
                 )
             try:
                 env = ShortcutExecutor._runtime_env(shortcut)
@@ -1759,16 +1965,12 @@ class CommandExecutionMixin:
                     if fallback is not None:
                         return fallback
                     message = ShortcutExecutor._bash_direct_capture_denied_message(str(exc))
-                    return CommandResult(
-                        success=False,
-                        message=message,
-                        display_type="log",
-                        error=str(exc),
-                        payload={
-                            "window_size": panel_size,
-                            "duration": time.monotonic() - start,
-                            "command": command,
-                        },
+                    return ShortcutExecutor._capture_error_result(
+                        message,
+                        str(exc),
+                        panel_size,
+                        start=start,
+                        command=command,
                     )
                 else:
                     raise
@@ -1886,120 +2088,44 @@ class CommandExecutionMixin:
                     stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stdout_bytes)
                     stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stderr_bytes)
                 returncode = process.returncode
+                (
+                    stdout, stderr,
+                    stdout_truncated, stderr_truncated,
+                    stdout_encoding, stderr_encoding,
+                    decode_fallback_used,
+                ) = ShortcutExecutor._decode_capture_output(
+                    stdout_bytes, stderr_bytes, shortcut, command_type, max_chars
+                )
                 if cancelled:
-                    stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                        stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
+                    return ShortcutExecutor._build_capture_cancel_result(
+                        panel_size=panel_size, returncode=returncode, start=start,
+                        stdout=stdout, stderr=stderr,
+                        stdout_truncated=stdout_truncated, stderr_truncated=stderr_truncated,
+                        stdout_encoding=stdout_encoding, stderr_encoding=stderr_encoding,
+                        decode_fallback_used=decode_fallback_used, command=command,
                     )
-                    stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                        stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
-                    )
-                    stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-                    stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
-                    message = "\n".join(part for part in ["命令执行已取消。", stdout, stderr] if part)
-                    return CommandResult(
-                        success=False,
-                        message=message,
-                        display_type="log",
-                        payload={
-                            "window_size": panel_size,
-                            "wrap": False,
-                            "exit_code": returncode,
-                            "duration": time.monotonic() - start,
-                            "stdout": stdout,
-                            "stderr": stderr,
-                            "stdout_truncated": stdout_truncated,
-                            "stderr_truncated": stderr_truncated,
-                            "stdout_encoding": stdout_encoding,
-                            "stderr_encoding": stderr_encoding,
-                            "decode_fallback_used": stdout_fallback or stderr_fallback,
-                            "command": command,
-                            "cancelled": True,
-                            "timed_out": False,
-                        },
-                        error="已取消",
-                    )
-                stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                    stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto")
-                )
-                stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                    stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto")
-                )
-                stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-                stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
                 if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
                     fallback = ShortcutExecutor._bash_capture_via_script(
-                        command,
-                        cwd,
-                        env,
-                        timeout_value,
-                        start,
-                        max_chars,
-                        panel_size,
-                        command_type,
-                        shortcut,
+                        command, cwd, env, timeout_value, start, max_chars,
+                        panel_size, command_type, shortcut,
                     )
                     if fallback is not None:
                         return fallback
-                    message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())
-                    return CommandResult(
-                        success=False,
-                        message=message,
-                        display_type="log",
-                        payload={
-                            "window_size": panel_size,
-                            "wrap": False,
-                            "exit_code": returncode,
-                            "duration": time.monotonic() - start,
-                            "stdout": stdout,
-                            "stderr": stderr,
-                            "stdout_truncated": stdout_truncated,
-                            "stderr_truncated": stderr_truncated,
-                            "stdout_encoding": stdout_encoding,
-                            "stderr_encoding": stderr_encoding,
-                            "decode_fallback_used": stdout_fallback or stderr_fallback,
-                            "command": command,
-                            "timed_out": timed_out,
-                        },
-                        actions=[CommandAction(type="copy", label="复制输出", value=message)],
-                        error=stderr.strip().splitlines()[0] if stderr.strip() else "Git Bash 直接捕获启动失败",
+                    return ShortcutExecutor._build_bash_fallback_result(
+                        panel_size=panel_size, returncode=returncode, start=start,
+                        stdout=stdout, stderr=stderr,
+                        stdout_truncated=stdout_truncated, stderr_truncated=stderr_truncated,
+                        stdout_encoding=stdout_encoding, stderr_encoding=stderr_encoding,
+                        decode_fallback_used=decode_fallback_used, command=command,
+                        timed_out=timed_out,
                     )
-                success = (returncode == 0) and not timed_out
-                parts = []
-                if stdout:
-                    parts.append(stdout)
-                if stderr and not success:
-                    parts.append(stderr)
-                if not parts:
-                    parts.append("(无输出)")
-                message = "\n".join(parts)
-                if timed_out:
-                    message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
-                error = ""
-                if timed_out:
-                    error = "执行超时"
-                elif returncode != 0:
-                    error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
-                return CommandResult(
-                    success=success,
-                    message=message,
-                    display_type="log",
-                    payload={
-                        "window_size": panel_size,
-                        "wrap": False,
-                        "exit_code": returncode,
-                        "duration": time.monotonic() - start,
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "stdout_truncated": stdout_truncated,
-                        "stderr_truncated": stderr_truncated,
-                        "stdout_encoding": stdout_encoding,
-                        "stderr_encoding": stderr_encoding,
-                        "decode_fallback_used": stdout_fallback or stderr_fallback,
-                        "command": command,
-                        "timed_out": timed_out,
-                    },
-                    actions=[CommandAction(type="copy", label="复制输出", value=message)],
-                    error=error,
+                return ShortcutExecutor._build_capture_success_result(
+                    panel_size=panel_size, returncode=returncode, start=start,
+                    stdout=stdout, stderr=stderr,
+                    stdout_truncated=stdout_truncated, stderr_truncated=stderr_truncated,
+                    stdout_encoding=stdout_encoding, stderr_encoding=stderr_encoding,
+                    decode_fallback_used=decode_fallback_used, command=command,
+                    timed_out=timed_out, timeout_value=timeout_value,
                 )
             try:
                 if cancel_event is None:
@@ -2017,36 +2143,20 @@ class CommandExecutionMixin:
                         if cancel_event.is_set():
                             ShortcutExecutor._terminate_process_tree(process)
                             stdout_bytes, stderr_bytes = process.communicate()
-                            stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
+                            (
+                                stdout, stderr,
+                                stdout_truncated, stderr_truncated,
+                                stdout_encoding, stderr_encoding,
+                                decode_fallback_used,
+                            ) = ShortcutExecutor._decode_capture_output(
+                                stdout_bytes, stderr_bytes, shortcut, command_type, max_chars
                             )
-                            stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
-                            )
-                            stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-                            stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
-                            message = "\n".join(part for part in ["命令执行已取消。", stdout, stderr] if part)
-                            return CommandResult(
-                                success=False,
-                                message=message,
-                                display_type="log",
-                                payload={
-                                    "window_size": panel_size,
-                                    "wrap": False,
-                                    "exit_code": process.returncode,
-                                    "duration": time.monotonic() - start,
-                                    "stdout": stdout,
-                                    "stderr": stderr,
-                                    "stdout_truncated": stdout_truncated,
-                                    "stderr_truncated": stderr_truncated,
-                                    "stdout_encoding": stdout_encoding,
-                                    "stderr_encoding": stderr_encoding,
-                                    "decode_fallback_used": stdout_fallback or stderr_fallback,
-                                    "command": command,
-                                    "cancelled": True,
-                                    "timed_out": False,
-                                },
-                                error="已取消",
+                            return ShortcutExecutor._build_capture_cancel_result(
+                                panel_size=panel_size, returncode=process.returncode, start=start,
+                                stdout=stdout, stderr=stderr,
+                                stdout_truncated=stdout_truncated, stderr_truncated=stderr_truncated,
+                                stdout_encoding=stdout_encoding, stderr_encoding=stderr_encoding,
+                                decode_fallback_used=decode_fallback_used, command=command,
                             )
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
@@ -2065,88 +2175,36 @@ class CommandExecutionMixin:
                 stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stdout_bytes)
                 stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stderr_bytes)
 
-            stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
-                stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
+            (
+                stdout, stderr,
+                stdout_truncated, stderr_truncated,
+                stdout_encoding, stderr_encoding,
+                decode_fallback_used,
+            ) = ShortcutExecutor._decode_capture_output(
+                stdout_bytes, stderr_bytes, shortcut, command_type, max_chars
             )
-            stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
-                stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type
-            )
-            stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-            stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
             if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
                 fallback = ShortcutExecutor._bash_capture_via_script(
-                    command,
-                    cwd,
-                    env,
-                    timeout_value,
-                    start,
-                    max_chars,
-                    panel_size,
-                    command_type,
-                    shortcut,
+                    command, cwd, env, timeout_value, start, max_chars,
+                    panel_size, command_type, shortcut,
                 )
                 if fallback is not None:
                     return fallback
-                message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())
-                return CommandResult(
-                    success=False,
-                    message=message,
-                    display_type="log",
-                    payload={
-                        "window_size": panel_size,
-                        "wrap": False,
-                        "exit_code": returncode,
-                        "duration": time.monotonic() - start,
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "stdout_truncated": stdout_truncated,
-                        "stderr_truncated": stderr_truncated,
-                        "stdout_encoding": stdout_encoding,
-                        "stderr_encoding": stderr_encoding,
-                        "decode_fallback_used": stdout_fallback or stderr_fallback,
-                        "command": command,
-                        "timed_out": timed_out,
-                    },
-                    actions=[CommandAction(type="copy", label="复制输出", value=message)],
-                    error=stderr.strip().splitlines()[0] if stderr.strip() else "Git Bash 直接捕获启动失败",
+                return ShortcutExecutor._build_bash_fallback_result(
+                    panel_size=panel_size, returncode=returncode, start=start,
+                    stdout=stdout, stderr=stderr,
+                    stdout_truncated=stdout_truncated, stderr_truncated=stderr_truncated,
+                    stdout_encoding=stdout_encoding, stderr_encoding=stderr_encoding,
+                    decode_fallback_used=decode_fallback_used, command=command,
+                    timed_out=timed_out,
                 )
-            success = (returncode == 0) and not timed_out
-            parts = []
-            if stdout:
-                parts.append(stdout)
-            if stderr and not success:
-                parts.append(stderr)
-            if not parts:
-                parts.append("(无输出)")
-            message = "\n".join(parts)
-            if timed_out:
-                message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
-            error = ""
-            if timed_out:
-                error = "执行超时"
-            elif returncode != 0:
-                error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
-            return CommandResult(
-                success=success,
-                message=message,
-                display_type="log",
-                payload={
-                    "window_size": panel_size,
-                    "wrap": False,
-                    "exit_code": returncode,
-                    "duration": time.monotonic() - start,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "stdout_truncated": stdout_truncated,
-                    "stderr_truncated": stderr_truncated,
-                    "stdout_encoding": stdout_encoding,
-                    "stderr_encoding": stderr_encoding,
-                    "decode_fallback_used": stdout_fallback or stderr_fallback,
-                    "command": command,
-                    "timed_out": timed_out,
-                },
-                actions=[CommandAction(type="copy", label="复制输出", value=message)],
-                error=error,
+            return ShortcutExecutor._build_capture_success_result(
+                panel_size=panel_size, returncode=returncode, start=start,
+                stdout=stdout, stderr=stderr,
+                stdout_truncated=stdout_truncated, stderr_truncated=stderr_truncated,
+                stdout_encoding=stdout_encoding, stderr_encoding=stderr_encoding,
+                decode_fallback_used=decode_fallback_used, command=command,
+                timed_out=timed_out, timeout_value=timeout_value,
             )
         except Exception as e:
             return CommandResult(

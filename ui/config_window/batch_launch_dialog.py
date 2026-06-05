@@ -5,9 +5,7 @@
 import copy
 import logging
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from core import DataManager, ShortcutItem, ShortcutType
 from core.data_models import BATCH_LAUNCH_MODULE_ID, BATCH_LAUNCH_MODULE_VERSION
 from core.i18n import tr
@@ -23,10 +21,13 @@ from qt_compat import (
     QLabel,
     QLineEdit,
     QPainter,
+    QPainterPath,
+    QPen,
     QPixmap,
     QPoint,
     QPropertyAnimation,
     QPushButton,
+    QRectF,
     Qt,
     QtCompat,
     QThread,
@@ -82,11 +83,12 @@ def _create_type_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QtCompat.Antialiasing)
+    painter.setRenderHint(QtCompat.HighQualityAntialiasing)
     painter.setBrush(bg)
     painter.setPen(QtCompat.NoPen)
     margin = max(2, size // 8)
     radius = max(4, size // 5)
-    painter.drawRoundedRect(margin, margin, size - margin * 2, size - margin * 2, radius, radius)
+    painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
 
     painter.setPen(QColor(255, 255, 255))
     font = QFont("Segoe UI", max(8, int(size * 0.42)))
@@ -323,9 +325,43 @@ class CompactIconWidget(QFrame):
         self.icon_label.setPixmap(_create_type_icon(self.shortcut, 24))
 
     def _apply_theme(self):
-        border = "1px solid rgba(255, 255, 255, 0.06)" if self.theme == "dark" else "1px solid rgba(0, 0, 0, 0.04)"
-        bg = "rgba(255, 255, 255, 0.03)" if self.theme == "dark" else "rgba(0, 0, 0, 0.02)"
-        self.setStyleSheet(f"QFrame {{ background: {bg}; border: {border}; border-radius: 6px; }}")
+        """Store theme colours for QPainter-based rendering (replaces QSS border-radius)."""
+        if self.theme == "dark":
+            self._bg_color = QColor(255, 255, 255, 8)
+            self._border_color = QColor(255, 255, 255, 15)
+        else:
+            self._bg_color = QColor(0, 0, 0, 5)
+            self._border_color = QColor(0, 0, 0, 10)
+        self._radius = 6.0
+        # Remove QSS border-radius — painting is handled by paintEvent now
+        self.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QtCompat.Antialiasing, True)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
+
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            painter.end()
+            return
+
+        inset = 0.5
+        rect = QRectF(inset, inset, w - inset * 2, h - inset * 2)
+        path = QPainterPath()
+        path.addRoundedRect(rect, self._radius, self._radius)
+
+        painter.fillPath(path, self._bg_color)
+
+        pen = QPen(self._border_color, 1.0)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(QtCompat.NoBrush)
+        painter.drawPath(path)
+
+        painter.end()
 
     def _on_check_changed(self, state):
         self._checked = state == Qt.Checked
@@ -1006,8 +1042,8 @@ class BatchLaunchDialog(BaseDialog):
     def _forget_card_animation(self, animation):
         try:
             self._card_animations.remove(animation)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("批量启动卡片动画已被移除: %s", exc, exc_info=True)
 
     def _browse_batch_icon(self):
         file_path = choose_custom_icon(self, tr("选择图标"))

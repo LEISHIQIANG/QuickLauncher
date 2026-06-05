@@ -50,6 +50,7 @@ from qt_compat import (
     QRectF,
     QSpinBox,
     Qt,
+    QtCompat,
     QTextEdit,
     QTextOption,
     QVBoxLayout,
@@ -453,6 +454,7 @@ class NodeItem(QGraphicsRectItem):
     def paint(self, painter: QPainter, option, widget=None):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # 绘制 Grasshopper 经典的精美圆角矩形电池外观
         rect = self.rect()
@@ -521,6 +523,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # Check selection status of connected nodes
         source_selected = self.source_node_item.isSelected() if self.source_node_item else False
@@ -548,6 +551,7 @@ class ConnectionItem(QGraphicsPathItem):
         shadow_path = path.translated(0, 1.2)
         shadow_pen = QPen(QColor(0, 0, 0, 40), 4.5)
         shadow_pen.setCapStyle(Qt.RoundCap)
+        shadow_pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(shadow_pen)
         painter.drawPath(shadow_path)
 
@@ -559,6 +563,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         core_pen = QPen(QBrush(grad), 2.0)
         core_pen.setCapStyle(Qt.RoundCap)
+        core_pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(core_pen)
         painter.drawPath(path)
 
@@ -659,8 +664,8 @@ class ChainCanvasScene(QGraphicsScene):
                         self._hovered_snap_port.setBrush(QBrush(self._hovered_snap_port.color))
                         self._hovered_snap_port.setPen(QPen(QColor(255, 255, 255, 150), 1.2))
                         self._hovered_snap_port.setRect(-6, -6, 12, 12)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("恢复吸附端口样式失败: %s", exc, exc_info=True)
 
                 self._hovered_snap_port = snap_port
 
@@ -670,8 +675,8 @@ class ChainCanvasScene(QGraphicsScene):
                         snap_port.setBrush(QBrush(snap_port.color.lighter(125)))
                         snap_port.setPen(QPen(QColor(255, 255, 255, 240), 2.0))
                         snap_port.setRect(-8.0, -8.0, 16, 16)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("设置吸附端口高亮失败: %s", exc, exc_info=True)
 
             if self._drag_source_port.direction == "output":
                 start_pt = self._drag_source_port.scenePos()
@@ -698,16 +703,16 @@ class ChainCanvasScene(QGraphicsScene):
                     self._hovered_snap_port.setBrush(QBrush(self._hovered_snap_port.color))
                     self._hovered_snap_port.setPen(QPen(QColor(255, 255, 255, 150), 1.2))
                     self._hovered_snap_port.setRect(-6, -6, 12, 12)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("释放时恢复吸附端口样式失败: %s", exc, exc_info=True)
                 self._hovered_snap_port = None
 
             # 先移除拖拽预览路径，避免 port_connected 触发 _render() 导致 drag_path 被 clear() 销毁后 removeItem 报错
             if self._drag_path is not None:
                 try:
                     self.removeItem(self._drag_path)
-                except (RuntimeError, Exception):
-                    pass
+                except (RuntimeError, Exception) as exc:
+                    logger.debug("移除拖拽预览路径失败: %s", exc, exc_info=True)
                 self._drag_path = None
 
             # 检测是否是微小的点击操作（拖拽位移小于 5 像素），如果是则触发纯点击连线流程
@@ -738,8 +743,8 @@ class ChainCanvasScene(QGraphicsScene):
                             from ui.toast_notification import ToastNotification
                             toast = ToastNotification(self.views()[0])
                             toast.show_toast(f"连接失败: {str(e)}", theme="error", duration_ms=3000, target_widget=self.views()[0])
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("显示连线失败提示失败: %s", exc, exc_info=True)
 
             self._drag_source_port = None
             event.accept()
@@ -779,6 +784,7 @@ class ChainCanvasView(QGraphicsView):
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
         self.setRenderHint(QPainter.Antialiasing)
+        self.setRenderHint(QPainter.HighQualityAntialiasing)
         self.setDragMode(QGraphicsView.RubberBandDrag)
         self.setFrameShape(QGraphicsView.NoFrame)
 
@@ -1285,8 +1291,8 @@ class ChainCanvasWidget(QWidget):
                 scene_center = self.view.mapToScene(view_rect.center())
                 node_x = float(scene_center.x() - 178 / 2.0)
                 node_y = float(scene_center.y() - 50.0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("计算新节点默认位置失败: %s", exc, exc_info=True)
 
         node = {
             "id": str(uuid.uuid4()),
@@ -1503,8 +1509,8 @@ class ChainCanvasWidget(QWidget):
         if hasattr(self, "_active_dialog") and self._active_dialog:
             try:
                 self._active_dialog.reject()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭已有 Python 电池源码对话框失败: %s", exc, exc_info=True)
 
         dialog = PythonCellSourceDialog(source, self)
         # 设为 modeless 非模态！这样用户可以自由点击“动作链”父窗口的一切内容！
@@ -1546,8 +1552,8 @@ class ChainCanvasWidget(QWidget):
             if hasattr(self, "_leader_lines") and self._leader_lines:
                 try:
                     self.scene.removeItem(self._leader_lines)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("移除 Python 电池引线失败: %s", exc, exc_info=True)
                 self._leader_lines = None
 
             self._active_dialog = None
@@ -1659,8 +1665,8 @@ class PythonCellSourceDialog(BaseDialog):
         try:
             from qt_compat import QApplication
             QApplication.instance().removeEventFilter(self)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("移除 Python 电池源码对话框事件过滤器失败: %s", exc, exc_info=True)
         super().done(result)
 
     def moveEvent(self, event):

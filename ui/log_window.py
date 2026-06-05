@@ -7,7 +7,6 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.i18n import tr
 from qt_compat import (
     QColor,
@@ -352,42 +351,49 @@ class LogWindow(QDialog):
     def paintEvent(self, event):
         """绘制圆角半透明背景 - 与主配置窗口一致"""
         painter = QPainter(self)
-        painter.setRenderHint(QtCompat.Antialiasing)
+        try:
+            painter.setRenderHint(QtCompat.Antialiasing)
+            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        from ui.utils.window_effect import is_win10
+            from ui.utils.window_effect import is_win10
 
-        if is_win10():
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
-            painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
+            if is_win10():
+                painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
+                painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
 
-        radius = 8
-        inset = 1.0 if is_win10() else 0.5
+            radius = 8
+            inset = 1.0 if is_win10() else 0.5
 
-        if self._theme == "dark":
-            bg = QColor(28, 28, 30, 180)
-            border = QColor(190, 190, 197, 60)
-        else:
-            bg = QColor(242, 242, 247, 160)
-            border = QColor(229, 229, 234, 150)
+            if self._theme == "dark":
+                bg = QColor(28, 28, 30, 180)
+                border = QColor(190, 190, 197, 60)
+            else:
+                bg = QColor(242, 242, 247, 160)
+                border = QColor(229, 229, 234, 150)
 
-        if is_win10():
-            paint_win10_rounded_surface(painter, self, bg, border, radius)
-            return
+            if is_win10():
+                paint_win10_rounded_surface(painter, self, bg, border, radius)
+                return
 
-        path = QPainterPath()
-        path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
+            path = QPainterPath()
+            path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
 
-        tint_color = QColor(bg)
-        if is_win10():
-            tint_color.setAlpha(min(tint_color.alpha(), 220))
-        else:
-            tint_color.setAlpha(min(tint_color.alpha(), 100))
-        painter.fillPath(path, tint_color)
+            tint_color = QColor(bg)
+            if is_win10():
+                tint_color.setAlpha(min(tint_color.alpha(), 220))
+            else:
+                tint_color.setAlpha(min(tint_color.alpha(), 100))
+            painter.fillPath(path, tint_color)
 
-        pen_color = QColor(border)
-        pen_color.setAlpha(min(pen_color.alpha(), 120))
-        painter.setPen(QPen(pen_color, 1.0))
-        painter.drawPath(path)
+            pen_color = QColor(border)
+            pen_color.setAlpha(min(pen_color.alpha(), 120))
+            pen = QPen(pen_color, 1.0)
+            pen.setJoinStyle(QtCompat.RoundJoin)
+            pen.setCapStyle(QtCompat.RoundCap)
+            painter.setPen(pen)
+            painter.drawPath(path)
+        finally:
+            painter.end()
 
     def resizeEvent(self, event):
         """窗口大小变化时更新圆角区域（仅 Win10 需要）"""

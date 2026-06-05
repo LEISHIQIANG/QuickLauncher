@@ -99,8 +99,8 @@ class LegacyAdapter:
                     )
                     try:
                         graph.add_connection(connection)
-                    except ValueError:
-                        pass
+                    except ValueError as exc:
+                        logger.debug("跳过无效的旧版链路连接: %s", exc, exc_info=True)
 
             bindings = step.get("param_bindings") or {}
 
@@ -122,9 +122,8 @@ class LegacyAdapter:
 
                     try:
                         graph.add_connection(connection)
-                    except ValueError:
-                        # Skip invalid connections
-                        pass
+                    except ValueError as exc:
+                        logger.debug("跳过无效的旧版参数绑定连接: %s", exc, exc_info=True)
 
         return graph
 
@@ -464,8 +463,8 @@ class GraphExecutor:
             match = re.search(pattern, text)
             if match:
                 return {"output": match.group(group)}
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("正则处理器执行失败，返回空输出: %s", exc, exc_info=True)
         return {"output": ""}
 
     def _handle_math_add(self, node: ChainNode, inputs: dict[str, Any],
