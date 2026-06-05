@@ -53,7 +53,12 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
     assert envs[0]["RUFF_NO_CACHE"] == "1"
     assert envs[0]["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    assert commands[1] == ["py-test", "-m", "pytest", "--basetemp", str(release_gate.PYTEST_BASETEMP)]
+    assert commands[1] == [
+        "py-test", "-m", "pytest", "--basetemp", str(release_gate.PYTEST_BASETEMP),
+        "--cov=core", "--cov=services", "--cov=hooks",
+        "--cov-report=term-missing",
+        "--cov-fail-under=70",
+    ]
     assert envs[1]["PYTHONDONTWRITEBYTECODE"] == "1"
 
     assert commands[2] == [
