@@ -82,14 +82,14 @@ def compute_graded_tint(
         f = abs(offset) / 50.0
         if offset < 0:
             # 冷色: 增加蓝色, 减少红绿
-            b = _clamp(b + (255 - b) * f * 0.15)
-            r = _clamp(r * (1 - f * 0.06))
-            g = _clamp(g * (1 - f * 0.03))
+            b = _clamp(b + (255 - b) * f * 0.50)
+            r = _clamp(r * (1 - f * 0.25))
+            g = _clamp(g * (1 - f * 0.15))
         else:
-            # 暖色: 增加红色, 减少蓝色, 微增绿
-            r = _clamp(r + (255 - r) * f * 0.10)
-            g = _clamp(g + (255 - g) * f * 0.04)
-            b = _clamp(b * (1 - f * 0.12))
+            # 暖色: 增加红绿, 减少蓝色
+            r = _clamp(r + (255 - r) * f * 0.45)
+            g = _clamp(g + (255 - g) * f * 0.25)
+            b = _clamp(b * (1 - f * 0.45))
 
     return (_clamp(r), _clamp(g), _clamp(b))
 
