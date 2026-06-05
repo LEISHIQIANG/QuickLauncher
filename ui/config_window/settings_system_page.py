@@ -110,16 +110,16 @@ class SettingsSystemPageMixin:
         theme_layout.addWidget(self.dark_radio)
         theme_layout.addWidget(self.light_radio)
         theme_layout.addStretch()
-        layout.addLayout(theme_layout)
 
-        # 高级颜色滤镜 (仅Win11)
+        # 高级颜色滤镜复选框 (仅Win11) — 同一排末尾
         self.advanced_mode_cb = QCheckBox(tr("高级模式"))
         self.advanced_mode_cb.setToolTip(tr("调节窗口颜色滤镜效果 (黑场/白场/中间调/色温/Acrylic/底色α)"))
         self.advanced_mode_cb.stateChanged.connect(self._on_advanced_mode_changed)
         if not is_win11():
             self.advanced_mode_cb.setEnabled(False)
             self.advanced_mode_cb.setToolTip(tr("高级模式仅支持 Windows 11"))
-        layout.addWidget(self.advanced_mode_cb)
+        theme_layout.addWidget(self.advanced_mode_cb)
+        layout.addLayout(theme_layout)
 
         self.color_filter_panel = self._create_color_filter_panel()
         self.color_filter_panel.setVisible(False)
