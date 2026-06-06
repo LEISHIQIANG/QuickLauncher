@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
-- 修复所有编辑器中图标反转（浅色/深色）设置无法保存的问题，替换旧版依赖式复选框为独立控制并消除初始化时的意外重置。
+- 修复图标反转 bug，改为浅色/深色独立反转勾选。
 - 修复颜色滤镜多个参数和效果问题：12 个字段未注册到 `config_validation._INT_RANGES` 导致启动时被静默重置；滑块调节后不实时反映改用独立 `color_filter_changed` 信号；覆盖层遮挡 UI 文字图标改为 DWM Acrylic 着色；色温系数不足提高至 0.25–0.50；Acrylic 和底色 Alpha 滑块无效扩展取值范围并接入 DWM 合成计算。
 - 修复版本比较运算符优先级 bug。
 - 修复弹窗和配置窗口双击空白区域刷新时不必要地重建 DWM 窗口效果导致视觉闪烁的问题。
