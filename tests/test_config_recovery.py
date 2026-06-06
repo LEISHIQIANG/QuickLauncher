@@ -10,8 +10,6 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-pytestmark = pytest.mark.integration
-
 from core.config_recovery import (
     MAX_QUARANTINED_BYTES,
     RECOVERY_STATE_FILE,
@@ -22,6 +20,8 @@ from core.config_recovery import (
     recovery_state_path,
     write_recovery_report,
 )
+
+pytestmark = pytest.mark.integration
 
 # ── ConfigRecoveryReport Dataclass ──────────────────────────────────────────
 

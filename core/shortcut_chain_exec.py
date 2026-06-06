@@ -7,8 +7,6 @@ import logging
 import time
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from core.chain_canvas_adapter import runtime_steps
 from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node, validate_step_bindings
 from core.chain_values import ChainValue, ChainValueKind, make_chain_value, raw_value, typed_mapping
@@ -25,6 +23,8 @@ from core.runtime_constants import (
     COMMAND_CHAIN_MAX_STEPS,
     COMMAND_CHAIN_SUMMARY_MAX_CHARS,
 )
+
+logger = logging.getLogger(__name__)
 
 MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
 

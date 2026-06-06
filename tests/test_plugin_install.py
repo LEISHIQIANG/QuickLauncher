@@ -11,16 +11,12 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.integration
-
-import pytest
-
 from core.command_registry import CommandRegistry
 from core.path_security import UnsafePathError
 from core.plugin.constants import PLUGIN_PACKAGE_MAX_FILES
 from core.plugin_manager import PluginManager
 
-pytestmark = pytest.mark.ui
+pytestmark = [pytest.mark.integration, pytest.mark.ui]
 
 # ---------------------------------------------------------------------------
 # helpers

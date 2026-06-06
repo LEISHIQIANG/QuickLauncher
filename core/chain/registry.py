@@ -1149,6 +1149,7 @@ def _execute_external_with_timeout(
     its result is discarded.
     """
     import threading
+
     from core.background_tasks import start_background_thread
 
     done_event = threading.Event()
