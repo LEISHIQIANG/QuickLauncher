@@ -36,7 +36,9 @@ class PostPackageSmokeResult:
         }
 
 
-def _extract_smoke_payload(stdout: str) -> dict | None:
+def _extract_smoke_payload(stdout: str | None) -> dict | None:
+    if not stdout:
+        return None
     for line in reversed(stdout.splitlines()):
         line = line.strip()
         if not line.startswith("{"):
@@ -90,6 +92,8 @@ def run_packaged_smoke(
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -135,8 +139,8 @@ def run_packaged_smoke(
         errors=errors,
         command=command,
         returncode=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
         elapsed_seconds=time.monotonic() - started,
         smoke_payload=payload,
     )
