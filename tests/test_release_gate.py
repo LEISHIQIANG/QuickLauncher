@@ -66,7 +66,7 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "py-test",
         "scripts/audit_broad_exceptions.py",
         "--max-total",
-        "1315",
+        "1325",
         "--max-unlogged",
         "290",
     ]
