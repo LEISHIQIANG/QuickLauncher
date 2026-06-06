@@ -318,7 +318,8 @@ class PopupIconMixin:
 
         first_char = item.name[0] if item.name else "?"
         painter.setPen(QPen(QColor(255, 255, 255)))
-        font = QFont("Segoe UI", int(size * 0.4))
+        font = QFont("Segoe UI")
+        font.setPixelSize(max(10, int(size * 0.4)))
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)

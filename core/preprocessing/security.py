@@ -80,7 +80,9 @@ def validate_safe_path(path: str, base_dir: str | None = None) -> SecurityIssue 
 
     normalized = os.path.normpath(path)
 
-    if ".." in normalized:
+    # Check for path traversal: must be a path component, not substring
+    parts = normalized.replace("\\", "/").split("/")
+    if ".." in parts:
         return SecurityIssue(
             type="path_traversal",
             severity="high",
@@ -92,7 +94,11 @@ def validate_safe_path(path: str, base_dir: str | None = None) -> SecurityIssue 
         try:
             abs_path = os.path.abspath(normalized)
             abs_base = os.path.abspath(base_dir)
-            if not abs_path.startswith(abs_base):
+            # Ensure directory boundary to prevent prefix bypass
+            # (e.g., C:\config_backup should not match C:\config)
+            if abs_base != abs_path and not abs_base.endswith(os.sep):
+                abs_base = abs_base + os.sep
+            if not abs_path.startswith(abs_base) and abs_path != os.path.abspath(base_dir):
                 return SecurityIssue(
                     type="path_escape",
                     severity="high",

@@ -40,9 +40,7 @@ class ConfigDataStore:
             raise ValueError(f"fatal config schema issues: {issues}")
         if issues:
             logger.warning("data manager message: %s", issues)
-        payload = json.dumps(data_dict, ensure_ascii=False, separators=(",", ":"))
-        json.loads(payload)
-        return payload
+        return json.dumps(data_dict, ensure_ascii=False, separators=(",", ":"))
 
     def replace_data_file(self, temp_file: Path | str) -> None:
         """Replace data.json, falling back when Windows denies atomic rename."""
@@ -55,10 +53,12 @@ class ConfigDataStore:
 
         fallback_backup = self.data_file.with_suffix(".write_backup")
         had_original = self.data_file.exists()
+        data_file_intact = False
         try:
             if had_original:
                 shutil.copy2(self.data_file, fallback_backup)
             shutil.copyfile(temp_path, self.data_file)
+            data_file_intact = True
             try:
                 os.remove(temp_path)
             except Exception as cleanup_error:
@@ -67,11 +67,12 @@ class ConfigDataStore:
             if had_original and fallback_backup.exists():
                 try:
                     shutil.copyfile(fallback_backup, self.data_file)
+                    data_file_intact = True
                 except Exception as restore_error:
                     logger.error("restore data file after fallback failure failed: %s", restore_error)
             raise
         finally:
-            if fallback_backup.exists():
+            if data_file_intact and fallback_backup.exists():
                 try:
                     fallback_backup.unlink()
                 except Exception as cleanup_error:
@@ -114,7 +115,7 @@ class ConfigBackupService:
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("list auto backups failed: %s", exc)
             return []
 

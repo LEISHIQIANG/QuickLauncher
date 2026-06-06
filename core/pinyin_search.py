@@ -6,6 +6,8 @@ the API open for a future optional full pinyin backend.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 _PINYIN = {
     # Original keys
     "阿": "a",
@@ -165,17 +167,12 @@ _PINYIN = {
     "里": "li",
     "聊": "liao",
     "抖": "dou",
-    "快": "kuai",
     "手": "shou",
     "歌": "ge",
     "谷": "gu",
     "雅": "ya",
     "虎": "hu",
-    "络": "luo",
     "任": "ren",
-    "务": "wu",
-    "设": "she",
-    "备": "bei",
     "计": "ji",
     "算": "suan",
     "夹": "jia",
@@ -225,11 +222,13 @@ _PINYIN = {
 
 _HAS_PYPINYIN = None
 _HAS_XPINYIN = None
+_xpinyin_instance = None
 
 
+@lru_cache(maxsize=1024)
 def _get_external_pinyin(text: str) -> list[str]:
     """Try to generate pinyin variants via external libraries if installed."""
-    global _HAS_PYPINYIN, _HAS_XPINYIN
+    global _HAS_PYPINYIN, _HAS_XPINYIN, _xpinyin_instance
 
     if _HAS_PYPINYIN is not False:
         try:
@@ -249,15 +248,18 @@ def _get_external_pinyin(text: str) -> list[str]:
             return variants
         except ImportError:
             _HAS_PYPINYIN = False
+        except Exception:
+            _HAS_PYPINYIN = False
 
     if _HAS_XPINYIN is not False:
         try:
             from xpinyin import Pinyin
 
             _HAS_XPINYIN = True
-            xp = Pinyin()
-            full = xp.get_pinyin(text, splitter="").lower()
-            initials = xp.get_initials(text, splitter="").lower()
+            if _xpinyin_instance is None:
+                _xpinyin_instance = Pinyin()
+            full = _xpinyin_instance.get_pinyin(text, splitter="").lower()
+            initials = _xpinyin_instance.get_initials(text, splitter="").lower()
 
             variants = []
             if full:
@@ -266,6 +268,8 @@ def _get_external_pinyin(text: str) -> list[str]:
                 variants.append(initials)
             return variants
         except ImportError:
+            _HAS_XPINYIN = False
+        except Exception:
             _HAS_XPINYIN = False
 
     return []
@@ -282,6 +286,7 @@ def _normalize_search_text(text: str) -> str:
     )
 
 
+@lru_cache(maxsize=2048)
 def pinyin_variants(text: str) -> list[str]:
     """Return full-pinyin and initials variants for CJK text."""
     if not text:
@@ -305,17 +310,17 @@ def pinyin_variants(text: str) -> list[str]:
     # 2. Fall back to lightweight built-in dictionary
     full_parts: list[str] = []
     initials: list[str] = []
-    has_cjk = False
+    has_mapped_cjk = False
     for ch in normalized:
         py = _PINYIN.get(ch)
         if py:
-            has_cjk = True
+            has_mapped_cjk = True
             full_parts.append(py)
             initials.append(py[0])
         elif ch.isascii() and ch.isalnum():
             full_parts.append(ch.lower())
             initials.append(ch.lower())
-    if not has_cjk:
+    if not has_mapped_cjk:
         return []
     full = "".join(full_parts)
     short = "".join(initials)

@@ -1454,6 +1454,10 @@ class PluginManager:
             self._save_enabled()
             return False
 
+        # 先禁用旧版本（必须在替换 info 之前执行，否则 disable_plugin 看不到旧的 registered_commands）
+        if was_enabled or was_error:
+            self.disable_plugin(plugin_id)
+
         # 清理 sys.modules 中该插件的所有模块（包括子模块），确保重新加载时代码是最新的
         prefix = f"{module_name}."
         keys_to_remove = [k for k in sys.modules if k == module_name or k.startswith(prefix)]
@@ -1465,9 +1469,6 @@ class PluginManager:
         if not was_enabled and not was_error:
             self._save_enabled()
             return True
-
-        # 先禁用旧版本，再加载新版本
-        self.disable_plugin(plugin_id)
 
         ok = self.load_plugin(plugin_id)
         if ok:

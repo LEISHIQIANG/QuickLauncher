@@ -291,7 +291,7 @@ class DataManager:
         system_names = {item.name for item in system_items}
         filtered = []
         for item in user_items:
-            if item.id in system_ids and item.name in system_names:
+            if item.id in system_ids or item.name in system_names:
                 continue
             item._icon_repo_source = "user"
             filtered.append(item)
@@ -506,21 +506,19 @@ class DataManager:
                 if flush_immediately:
                     self._do_save()
                 else:
-                    self.save()
+                    self.save(immediate=True)
 
     def _do_save(self) -> bool:
         """Save data to disk atomically with lock splitting."""
-        import logging
-        logger = logging.getLogger(__name__)
 
         with self._save_lock:
             try:
                 payload = self._serialize_data()
                 next_data_dict = json.loads(payload)
-                previous_data_dict = getattr(self, "_last_saved_data_dict", None)
-                suppress_history = bool(getattr(self, "_suppress_next_history", False))
-                history_action = getattr(self, "_pending_history_action", "\u914d\u7f6e\u53d8\u66f4")
-                history_summary = getattr(self, "_pending_history_summary", "")
+                previous_data_dict = self._last_saved_data_dict
+                suppress_history = bool(self._suppress_next_history)
+                history_action = self._pending_history_action
+                history_summary = self._pending_history_summary
             except (json.JSONDecodeError, TypeError, ValueError) as e:
                 logger.error("serialize data failed: %s", e)
                 return False
@@ -654,10 +652,6 @@ class DataManager:
     def _create_auto_backup(self):
         """Create a timestamped backup of the current data file before replacing it."""
         self._get_backup_service().create_auto_backup(self.data_file)
-
-    def _prune_auto_backups(self):
-        """Keep only the newest configured automatic backups."""
-        self._get_backup_service().prune_auto_backups()
 
     def flush_pending_save(self):
         """Data manager."""
@@ -908,9 +902,9 @@ class DataManager:
             if not wanted_set:
                 return {"requested": 0, "success": 0, "failed": 0, "affected_ids": []}
 
-            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             icon_touched = False
             with self.batch_update(immediate=True):
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 for folder in self.data.folders:
                     kept = []
                     for item in folder.items:
@@ -944,10 +938,10 @@ class DataManager:
             if not target_folder or not wanted:
                 return {"requested": len(wanted), "success": 0, "failed": len(wanted), "affected_ids": []}
 
-            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             moved = []
             icon_touched = getattr(target_folder, "is_icon_repo", False)
             with self.batch_update(immediate=True):
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 for shortcut_id in wanted:
                     source_folder, item = self._find_shortcut_with_folder(shortcut_id)
                     if not source_folder or not item or source_folder.id == target_folder.id:
@@ -1021,9 +1015,9 @@ class DataManager:
             if not wanted_set:
                 return {"requested": 0, "success": 0, "failed": 0, "affected_ids": []}
 
-            self._mark_history("\u914d\u7f6e\u53d8\u66f4")
             icon_touched = False
             with self.batch_update(immediate=True):
+                self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 for folder in self.data.folders:
                     for item in folder.items:
                         if item.id in wanted_set:
@@ -1084,7 +1078,8 @@ class DataManager:
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 if getattr(folder, "is_icon_repo", False):
                     user_items = [item for item in folder.items if not self._is_system_icon_repo_item(item)]
-                    user_ids = [sid for sid in shortcut_ids if any(item.id == sid for item in user_items)]
+                    user_id_set = {item.id for item in user_items}
+                    user_ids = [sid for sid in shortcut_ids if sid in user_id_set]
                     order_map = {sid: i for i, sid in enumerate(user_ids)}
                     for item in user_items:
                         if item.id in order_map:
@@ -1155,11 +1150,8 @@ class DataManager:
         return normalized
 
     def clean_icon_cache(self, dry_run: bool = False) -> dict:
-        """clean_icon_cache"""
+        """清理图标缓存中的无用、重复和非法文件。"""
         import hashlib
-        import logging
-
-        logger = logging.getLogger(__name__)
 
         stats = {
             "exe_files_removed": 0,
@@ -1231,9 +1223,10 @@ class DataManager:
 
             if not should_delete:
                 try:
+                    file_size = file_path.stat().st_size
                     with open(file_path, "rb") as f:
                         content = f.read(65536)
-                        file_hash = hashlib.md5(content).hexdigest()
+                        file_hash = hashlib.md5(content + str(file_size).encode()).hexdigest()
 
                     if file_hash in seen_hashes:
                         if not is_in_use:
@@ -1333,7 +1326,8 @@ class DataManager:
 
         for key_path in registry_keys:
             try:
-                winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+                handle = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+                winreg.CloseKey(handle)
                 cache_info["registry_keys"].append(key_path)
             except OSError:
                 logger.debug("打开注册表键失败: %s", key_path, exc_info=True)
@@ -1342,10 +1336,7 @@ class DataManager:
 
     def factory_reset(self, callback=None) -> dict:
         """factory_reset"""
-        import logging
         import winreg
-
-        logger = logging.getLogger(__name__)
 
         with self._save_lock:
             stats = {"files_removed": 0, "dirs_removed": 0, "registry_keys_removed": 0, "errors": []}
@@ -1402,12 +1393,21 @@ class DataManager:
 
             report("Resetting in-memory configuration...", 0.9)
             try:
-                from .data_models import AppData
-
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 self.data = AppData()
+                self._last_saved_data_dict = None
             except Exception as e:
                 stats["errors"].append(f"Factory reset step failed: {e}")
+
+            # Persist the clean state to disk directly
+            data_file = self.app_dir / "data.json"
+            try:
+                data_file.parent.mkdir(parents=True, exist_ok=True)
+                default_data = AppData().to_dict()
+                with open(data_file, "w", encoding="utf-8") as f:
+                    json.dump(default_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                stats["errors"].append(f"Factory reset persist failed: {e}")
 
             return stats
 
@@ -1701,7 +1701,7 @@ class DataManager:
                                     ext = os.path.splitext(actual_path)[1].lower()
                                     if ext in [".exe", ".dll"]:
                                         new_icon_name = f"{original_id}.png"
-                                        icon_entries.append((icon_path, "extract", new_icon_name))
+                                        icon_entries.append((actual_path, "extract", new_icon_name))
                                     else:
                                         original_ext = os.path.splitext(actual_path)[1] or ".png"
                                         new_icon_name = f"{original_id}{original_ext}"

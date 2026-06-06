@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
+- 修复中键弹窗在高 DPI / 高缩放屏幕上图标文字过大、与图标和格子比例失调的问题：将弹窗全部字体（标签、搜索栏、命令结果面板、默认占位图标等共 15 处）从 `setPointSize`（物理点数，随 DPI 独立放大）统一改为 `setPixelSize`（逻辑像素，与布局坐标系一致），文字大小不再受屏幕缩放倍率影响。
 - 修复图标反转 bug，改为浅色/深色独立反转勾选。
 - 修复颜色滤镜多个参数和效果问题：12 个字段未注册到 `config_validation._INT_RANGES` 导致启动时被静默重置；滑块调节后不实时反映改用独立 `color_filter_changed` 信号；覆盖层遮挡 UI 文字图标改为 DWM Acrylic 着色；色温系数不足提高至 0.25–0.50；Acrylic 和底色 Alpha 滑块无效扩展取值范围并接入 DWM 合成计算。
 - 修复版本比较运算符优先级 bug。

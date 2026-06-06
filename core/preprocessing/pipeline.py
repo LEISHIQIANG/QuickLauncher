@@ -216,7 +216,7 @@ class PreprocessingPipeline:
                 log_rate_limit_exceeded(context.shortcut_id, reason)
                 return False
 
-            limiter.record_execution(context.shortcut_id)
+            # Execution is now recorded atomically inside check_rate_limit
 
         return True
 

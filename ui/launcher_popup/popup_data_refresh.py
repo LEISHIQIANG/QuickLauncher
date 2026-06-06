@@ -65,7 +65,7 @@ class PopupDataRefreshMixin:
         self.cols = self.settings.cols
         self.cell_size = self.settings.cell_size
         self.icon_size = self.settings.icon_size
-        self._label_font.setPointSize(int(self.icon_size * 0.34))
+        self._label_font.setPixelSize(max(10, int(self.icon_size * 0.28)))
         self.cell_h = int(self.cell_size * 1.15)
 
         layout_changed = (

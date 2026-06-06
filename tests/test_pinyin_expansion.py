@@ -249,6 +249,10 @@ def test_pinyin_xpinyin_fallback(monkeypatch):
     monkeypatch.setattr(pinyin_search, "_HAS_PYPINYIN", None)
     monkeypatch.setattr(pinyin_search, "_HAS_XPINYIN", None)
 
+    # Clear lru_cache so the monkeypatched state takes effect
+    pinyin_search.pinyin_variants.cache_clear()
+    pinyin_search._get_external_pinyin.cache_clear()
+
     class MockPinyin:
         def get_pinyin(self, text, splitter=""):
             return "mockedpinyin"
@@ -282,6 +286,10 @@ def test_pinyin_both_libraries_missing(monkeypatch):
 
     monkeypatch.setattr(pinyin_search, "_HAS_PYPINYIN", None)
     monkeypatch.setattr(pinyin_search, "_HAS_XPINYIN", None)
+
+    # Clear lru_cache so the monkeypatched state takes effect
+    pinyin_search.pinyin_variants.cache_clear()
+    pinyin_search._get_external_pinyin.cache_clear()
 
     # Hide both by setting them to None in sys.modules
     real_pypinyin = sys.modules.get("pypinyin")

@@ -8,7 +8,6 @@ import hashlib
 import logging
 import os
 import queue
-import re
 import shutil
 import subprocess
 import sys
@@ -110,21 +109,6 @@ def _write_atomic(path: str, content: str) -> None:
         raise
 
 
-def _pipe_reader(pipe, output_queue, name):
-    """Read lines from a pipe and put them on a queue for the on_update path."""
-    try:
-        while True:
-            chunk = pipe.readline()
-            if not chunk:
-                break
-            output_queue.put((name, chunk))
-    finally:
-        try:
-            pipe.close()
-        except Exception as exc:
-            logger.debug("关闭管道失败: %s", exc, exc_info=True)
-
-
 def _bash_fallback_result(
     stdout_bytes,
     stderr_bytes,
@@ -194,8 +178,6 @@ def _bash_fallback_result(
 
 
 class CommandExecutionMixin:
-    _PARAM_TOKEN_RE = re.compile(r"(?<!\{)\{\{param:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
-    _CHAIN_TOKEN_RE = re.compile(r"(?<!\{)\{\{chain:([^{}\r\n:]+)(?::q)?\}\}(?!\})")
     _SUPPORTED_COMMAND_TYPES = SUPPORTED_COMMAND_TYPES
     _DESTRUCTIVE_CONFIRMATION_ATTR = "_destructive_command_confirmed"
     _executor: ThreadPoolExecutor | None = None
@@ -384,8 +366,7 @@ class CommandExecutionMixin:
     ) -> tuple[str, str, bool, str, bool]:
         """Decode and truncate captured stdout/stderr bytes.
 
-        Returns (stdout, stderr, stdout_truncated, stderr, stderr_truncated)
-        along with encoding info as a named tuple-like flat return:
+        Returns a 7-element tuple:
         (stdout, stderr, stdout_truncated, stderr_truncated,
          stdout_encoding, stderr_encoding, decode_fallback_used)
         """
@@ -1885,7 +1866,6 @@ class CommandExecutionMixin:
         if confirmation is not None:
             return confirmation
 
-        tmp_path = None
         stdin_data = None
         try:
             if command_type == "python":
@@ -2214,33 +2194,21 @@ class CommandExecutionMixin:
                 error=str(e),
                 payload={"window_size": panel_size, "duration": time.monotonic() - start},
             )
-        finally:
-            for _p in (tmp_path,):
-                if _p:
-                    try:
-                        os.remove(_p)
-                    except Exception as exc:
-                        logger.debug("删除临时文件失败 %s: %s", _p, exc, exc_info=True)
 
     @staticmethod
     def test_command(shortcut: ShortcutItem, timeout: float = DEFAULT_COMMAND_TIMEOUT_SECONDS) -> dict:
         """Run a command shortcut synchronously for the editor test button."""
-        old_timeout = getattr(shortcut, "command_timeout_seconds", DEFAULT_COMMAND_TIMEOUT_SECONDS)
-        shortcut.command_timeout_seconds = timeout
-        try:
-            captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout)
-            payload = captured.payload if isinstance(captured.payload, dict) else {}
-            return {
-                "success": captured.success,
-                "exit_code": payload.get("exit_code"),
-                "stdout": payload.get("stdout", captured.message if captured.success else ""),
-                "stderr": payload.get("stderr", ""),
-                "error": captured.error,
-                "duration": payload.get("duration", 0.0),
-                "resolved_command": payload.get("command", ""),
-            }
-        finally:
-            shortcut.command_timeout_seconds = old_timeout
+        captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout)
+        payload = captured.payload if isinstance(captured.payload, dict) else {}
+        return {
+            "success": captured.success,
+            "exit_code": payload.get("exit_code"),
+            "stdout": payload.get("stdout", captured.message if captured.success else ""),
+            "stderr": payload.get("stderr", ""),
+            "error": captured.error,
+            "duration": payload.get("duration", 0.0),
+            "resolved_command": payload.get("command", ""),
+        }
 
     @staticmethod
     def _execute_builtin_command(command: str) -> bool:

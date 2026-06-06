@@ -351,18 +351,6 @@ def _execute_step(target: ShortcutItem, cancel_event=None) -> tuple[bool, str, s
     return bool(ok), "已完成。" if ok else str(error or "执行失败。"), str(error or ""), None
 
 
-def _prepare_step_shortcut(
-    target: ShortcutItem,
-    step: dict[str, Any],
-    chain_values: dict[str, str],
-    previous_output: str,
-) -> tuple[ShortcutItem, str]:
-    args, input_values, binding_error = _prepare_step_values(step, chain_values, {}, previous_output)
-    if binding_error:
-        return target, binding_error
-    return _prepare_runtime_step_shortcut(target, args, input_values, chain_values), ""
-
-
 def _prepare_runtime_step_shortcut(
     target: ShortcutItem,
     args: dict[str, Any],

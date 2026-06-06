@@ -239,11 +239,6 @@ class PopupRendererMixin:
                 painter.setBrush(QtCompat.NoBrush)
                 painter.drawPath(make_border_path(1.0))
 
-        # 偏移 painter 坐标系，以便后续内容绘制逻辑不用修改坐标
-        # margin = getattr(self, 'shadow_margin', 0)
-        # if margin > 0:
-        #     painter.translate(margin, margin)
-
         # 绘制内容。滚轮翻页动画只刷新主体和指示器区域，避免每帧重画 Dock 图标。
         search_visible = bool(
             getattr(self, "search_query", "")
@@ -578,7 +573,7 @@ class PopupRendererMixin:
         painter.drawRoundedRect(rect, 8, 8)
         painter.setPen(text_color)
         font = QFont(self._label_font)
-        font.setPointSize(max(8, font.pointSize() + 1))
+        font.setPixelSize(max(10, font.pixelSize() + 2))
         painter.setFont(font)
         preedit = getattr(self, "_search_preedit_text", "") or ""
         prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ("搜索: " if query else "搜索")
@@ -655,8 +650,6 @@ class PopupRendererMixin:
             painter.drawText(
                 QRect(0, self.padding + y_offset, self.width(), self.content_height), QtCompat.AlignCenter, action_hint
             )
-            return
-        if not results:
             return
 
         items = [
@@ -759,13 +752,7 @@ class PopupRendererMixin:
 
             # 只记录第一个图标的位置
             if i == 0:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.debug(
-                    f"[PAINT] 绘制图标0: height={self.height()}, icons_bottom={icons_bottom}, "
-                    f"row={row}, y={y}, window_y={self.geometry().y()}, screen_y={self.geometry().y() + y}"
-                )
+                pass  # Position info available for debugging if needed
 
             opacity = 1.0 if reveal_done else reveal_opacity
             if opacity <= 0:

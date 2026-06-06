@@ -116,11 +116,19 @@ class CommandExecutionService:
             duration = time.perf_counter() - started
             if handle.cancelled:
                 return
-            result_id = self._store_result(request, result, command_def, duration)
-            if on_finished is not None:
-                on_finished(handle.request_id, result, command_def, duration, result_id)
+            try:
+                result_id = self._store_result(request, result, command_def, duration)
+                if on_finished is not None:
+                    on_finished(handle.request_id, result, command_def, duration, result_id)
+            except Exception as post_err:
+                logger.exception("Post-execution processing failed: %s", post_err)
+                if on_finished is not None:
+                    try:
+                        on_finished(handle.request_id, result, command_def, duration, "")
+                    except Exception:
+                        logger.debug("on_finished fallback callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name="CommandExecutionService").start()
+        threading.Thread(target=_worker, daemon=True, name=f"CmdExec-{handle.request_id[:8]}").start()
         return handle
 
     def run_shortcut_capture(
@@ -136,9 +144,12 @@ class CommandExecutionService:
             if handle.cancelled and not self._is_cancel_result(result):
                 return
             if on_finished is not None:
-                on_finished(handle.request_id, result, None, duration, result_id)
+                try:
+                    on_finished(handle.request_id, result, None, duration, result_id)
+                except Exception:
+                    logger.debug("run_shortcut_capture on_finished callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name="ShortcutCaptureService").start()
+        threading.Thread(target=_worker, daemon=True, name=f"ShortcutCapture-{handle.request_id[:8]}").start()
         return handle
 
     def run_shortcut_chain(
@@ -154,9 +165,12 @@ class CommandExecutionService:
             if handle.cancelled and not self._is_cancel_result(result):
                 return
             if on_finished is not None:
-                on_finished(handle.request_id, result, None, duration, result_id)
+                try:
+                    on_finished(handle.request_id, result, None, duration, result_id)
+                except Exception:
+                    logger.debug("run_shortcut_chain on_finished callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name="ShortcutChainService").start()
+        threading.Thread(target=_worker, daemon=True, name=f"ShortcutChain-{handle.request_id[:8]}").start()
         return handle
 
     def run_shortcut_command(
@@ -173,9 +187,12 @@ class CommandExecutionService:
             if handle.cancelled and not self._is_cancel_result(result):
                 return
             if on_finished is not None:
-                on_finished(handle.request_id, result, None, duration, result_id)
+                try:
+                    on_finished(handle.request_id, result, None, duration, result_id)
+                except Exception:
+                    logger.debug("run_shortcut_command on_finished callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name="ShortcutCommandService").start()
+        threading.Thread(target=_worker, daemon=True, name=f"ShortcutCommand-{handle.request_id[:8]}").start()
         return handle
 
     def execute_shortcut_capture_sync(
@@ -191,11 +208,12 @@ class CommandExecutionService:
         try:
             from core import ShortcutExecutor
 
-            result = ShortcutExecutor.run_command_capture(runtime_shortcut, cancel_event=handle.cancel_event)
-        except TypeError:
-            from core import ShortcutExecutor
-
-            result = ShortcutExecutor.run_command_capture(runtime_shortcut)
+            # 检查函数签名以决定是否传递 cancel_event，避免宽泛 except TypeError
+            _fn = ShortcutExecutor.run_command_capture
+            if "cancel_event" in __import__("inspect").signature(_fn).parameters:
+                result = _fn(runtime_shortcut, cancel_event=handle.cancel_event)
+            else:
+                result = _fn(runtime_shortcut)
         except Exception as e:
             logger.exception("Captured shortcut execution failed: %s", e)
             result = CommandResult(
@@ -299,7 +317,7 @@ class CommandExecutionService:
             or request.command_id,
             raw_input=request.raw_input,
             source=getattr(command_def, "source", request.source or ""),
-            duration=float(duration or 0.0),
+            duration=duration,
             args=remembered_args(invocation.args, params),
             masked_args=invocation.masked_args,
             has_sensitive_args=has_sensitive_args(invocation.args, params),

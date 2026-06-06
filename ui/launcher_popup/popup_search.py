@@ -145,7 +145,7 @@ class PopupSearchMixin:
     def _search_font(self) -> QFont:
         base_font = self.__dict__.get("_label_font")
         font = QFont(base_font) if base_font is not None else QFont()
-        font.setPointSize(max(8, font.pointSize() + 1))
+        font.setPixelSize(max(10, font.pixelSize() + 2))
         return font
 
     def _search_metrics(self) -> QFontMetrics:

@@ -27,7 +27,10 @@ class CommandRateLimiter:
         self._lock = threading.Lock()
 
     def check_rate_limit(self, shortcut_id: str = "", is_admin: bool = False) -> tuple[bool, str]:
-        """Check if command execution is allowed.
+        """Check if command execution is allowed and record atomically.
+
+        This method checks the rate limit and, if allowed, records the execution
+        in a single lock acquisition to prevent TOCTOU race conditions.
 
         Returns:
             (allowed, reason) - True if allowed, False with reason if blocked
@@ -48,10 +51,19 @@ class CommandRateLimiter:
                 if len(self._shortcut_tokens[shortcut_id]) >= limit:
                     return False, f"快捷方式速率限制: {limit} 命令/分钟"
 
+            # Record atomically within the same lock to prevent TOCTOU race
+            self._global_tokens.append(now)
+            if shortcut_id:
+                self._shortcut_tokens[shortcut_id].append(now)
+
             return True, ""
 
     def record_execution(self, shortcut_id: str = "") -> None:
-        """Record a command execution."""
+        """Record a command execution (for backward compatibility).
+
+        Note: When using check_rate_limit, execution is recorded atomically.
+        This method is kept for callers that need to record separately.
+        """
         now = time.time()
         with self._lock:
             self._global_tokens.append(now)

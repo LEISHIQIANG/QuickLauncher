@@ -39,6 +39,7 @@ class UpdateChecker:
         self._config = config or UpdateConfig()
         self._api = ApiClient(self._config.check_url, timeout=10, verify_ssl=self._config.verify_ssl)
         self._timer: threading.Timer | None = None
+        self._timer_lock = threading.Lock()
         self._listeners = []
         self._running = False
         self._last_check_status = ""
@@ -180,7 +181,6 @@ class UpdateChecker:
         if event != "check_failed":
             self._notify(event, message)
         self._notify("check_failed", message)
-        return None
 
     def _do_github_release_check(self, current_version: str) -> UpdateInfo:
         resp = self._api.get()
@@ -255,7 +255,7 @@ class UpdateChecker:
         return ""
 
     def _is_allowed_download_host(self, host: str) -> bool:
-        allowed_hosts = tuple(self._config.allowed_download_hosts or ())
+        allowed_hosts = self._config.allowed_download_hosts or ()
         if not allowed_hosts:
             return True
         for allowed in allowed_hosts:
@@ -314,18 +314,22 @@ class UpdateChecker:
         self._save_state(state)
 
     def _schedule_next(self):
-        if not self._running:
-            return
-        interval = max(1, int(self._config.check_interval_hours)) * 3600
-        self._timer = threading.Timer(interval, self._auto_check)
-        self._timer.daemon = True
-        self._timer.start()
+        with self._timer_lock:
+            if not self._running:
+                return
+            interval = max(3600, int(self._config.check_interval_hours * 3600))
+            timer = threading.Timer(interval, self._auto_check)
+            timer.daemon = True
+            self._timer = timer
+            timer.start()
 
     def stop(self):
-        self._running = False
-        if self._timer:
-            self._timer.cancel()
+        with self._timer_lock:
+            self._running = False
+            timer = self._timer
             self._timer = None
+        if timer:
+            timer.cancel()
 
 
 def _normalize_version(value: str) -> str:

@@ -24,7 +24,9 @@ def validate_path(path: str, must_exist: bool = False) -> ValidationResult:
 
     normalized = os.path.normpath(path.strip())
 
-    if ".." in normalized:
+    # Check for path traversal: must be a path component, not substring
+    parts = normalized.replace("\\", "/").split("/")
+    if ".." in parts:
         return ValidationResult(False, "检测到路径遍历", "使用绝对路径或相对路径")
 
     if must_exist and not os.path.exists(normalized):

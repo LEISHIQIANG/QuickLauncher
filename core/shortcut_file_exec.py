@@ -507,6 +507,7 @@ class FileExecutionMixin:
 
         threading.Thread(target=run, daemon=True, name="ActivateLaunchedApp").start()
 
+    @staticmethod
     def _shell_execute_cmd(command: str, cwd: str | None = None, run_as_admin: bool = False) -> bool:
         """通过 cmd.exe 执行命令，并统一走 ShellExecute 的提权/降权路径。"""
         if os.name != "nt":

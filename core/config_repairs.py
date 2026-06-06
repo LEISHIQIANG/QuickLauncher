@@ -80,7 +80,7 @@ def _repair_config(data: AppData | dict[str, Any], *, apply: bool) -> RepairRepo
     if isinstance(data, AppData):
         return _repair_app_data(data, apply=apply)
     if isinstance(data, dict):
-        return _repair_app_data(AppData.from_dict(data), apply=False)
+        return _repair_app_data(AppData.from_dict(data), apply=apply)
     return RepairReport([RepairIssue("invalid_config", "$", "Unsupported config object")])
 
 

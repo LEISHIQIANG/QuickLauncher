@@ -260,7 +260,9 @@ class PopupCommandResultMixin:
             import os
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-            te.setFont(QFont(font_family, 9))
+            _te_font = QFont(font_family)
+            _te_font.setPixelSize(12)
+            te.setFont(_te_font)
             te.setStyleSheet(
                 f"QTextEdit {{"
                 f"  background-color: transparent;"
@@ -436,7 +438,8 @@ class PopupCommandResultMixin:
         import os
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-        font = QFont(font_family, 8)
+        font = QFont(font_family)
+        font.setPixelSize(11)
         from qt_compat import QFontMetrics
 
         fm = QFontMetrics(font)
@@ -460,7 +463,8 @@ class PopupCommandResultMixin:
         import os
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-        font = QFont(font_family, 8)
+        font = QFont(font_family)
+        font.setPixelSize(11)
         from qt_compat import QFontMetrics
 
         fm = QFontMetrics(font)
@@ -753,7 +757,9 @@ class PopupCommandResultMixin:
         if result.display_type == "table":
             rows = result.payload.get("rows", [])
             if rows:
-                painter.setFont(QFont("Segoe UI", 10))
+                _tbl_font = QFont("Segoe UI")
+                _tbl_font.setPixelSize(13)
+                painter.setFont(_tbl_font)
                 painter.setPen(text_color)
                 row_h = 22
                 col_x = card_x + 56
@@ -783,7 +789,9 @@ class PopupCommandResultMixin:
             import os
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-            painter.setFont(QFont(font_family, 10))
+            _msg_font = QFont(font_family)
+            _msg_font.setPixelSize(13)
+            painter.setFont(_msg_font)
             painter.setPen(text_color)
             msg = result.message or result.error or "完成"
 
@@ -817,7 +825,9 @@ class PopupCommandResultMixin:
             import os
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-            painter.setFont(QFont(font_family, 10))
+            _qr_font = QFont(font_family)
+            _qr_font.setPixelSize(13)
+            painter.setFont(_qr_font)
             painter.setPen(text_color)
             _CARD_PADDING_LEFT = 6
             _CARD_PADDING_RIGHT = 6
@@ -880,7 +890,8 @@ class PopupCommandResultMixin:
                 import os
 
                 font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-                font = QFont(font_family, 8)
+                font = QFont(font_family)
+                font.setPixelSize(11)
                 painter.setFont(font)
 
                 # Friendly localizations
@@ -934,7 +945,8 @@ class PopupCommandResultMixin:
         import os
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
-        font = QFont(font_family, 8)
+        font = QFont(font_family)
+        font.setPixelSize(11)
         painter.setFont(font)
         painter.drawText(close_rect, Qt.AlignCenter, "关闭")
 
@@ -944,7 +956,7 @@ class PopupCommandResultMixin:
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             error_font = QFont(font_family)
-            error_font.setPointSizeF(8.5)
+            error_font.setPixelSize(11)
             painter.setFont(error_font)
             painter.setPen(QColor("#f44336"))
             painter.drawText(

@@ -1,7 +1,10 @@
 """Fuzzy search helpers for launcher shortcuts."""
 
+from __future__ import annotations
+
 import logging
 import re
+import time
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -30,7 +33,6 @@ def _text(value) -> str:
 
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _TOKEN_SPLIT_RE = re.compile(r"[\s,;，；、|]+")
-_SEPARATOR_CHARS = set(" _-./\\()[]{}:：+&@#~`'\"!！?？<>,，。；;|")
 
 
 @lru_cache(maxsize=2048)
@@ -136,7 +138,9 @@ def _iter_fields(shortcut) -> Iterable[tuple[str, str, float]]:
 
 
 def _word_boundary_bonus(haystack: str, start: int) -> float:
-    if start <= 0:
+    if start < 0:
+        return 0.0
+    if start == 0:
         return 18.0
     previous = haystack[start - 1]
     current = haystack[start]
@@ -335,7 +339,13 @@ def _usage_bonus(shortcut) -> float:
         last_used_at = max(0.0, float(getattr(shortcut, "last_used_at", 0.0) or 0.0))
     except (TypeError, ValueError):
         last_used_at = 0.0
-    return min(35.0, use_count * 1.8) + min(20.0, last_used_at / 100000000.0)
+    # Time-decay bonus: more recently used shortcuts get a higher score.
+    # Half-life ≈ 3 days (259200 seconds).
+    time_bonus = 0.0
+    if last_used_at > 0:
+        elapsed = max(0.0, time.time() - last_used_at)
+        time_bonus = 20.0 * (0.5 ** (elapsed / 259200.0))
+    return min(35.0, use_count * 1.8) + time_bonus
 
 
 def _order_value(shortcut, sort_mode: str, original_index: int) -> int:

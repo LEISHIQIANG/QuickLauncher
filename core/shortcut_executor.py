@@ -30,18 +30,21 @@ STANDARD_USER_LAUNCH_FAILED_MESSAGE = (
 # 尝试导入 pynput 键盘控制 — 懒加载避免模块级阻塞
 _pynput_Key = None
 HAS_PYNPUT = False
+_pynput_import_attempted = False
 
 
 def _import_pynput():
-    global HAS_PYNPUT, _pynput_Key
-    if HAS_PYNPUT or _pynput_Key is not None:
+    global HAS_PYNPUT, _pynput_Key, _pynput_import_attempted
+    if _pynput_import_attempted:
         return
+    _pynput_import_attempted = True
     try:
         from pynput.keyboard import Key as K
 
         _pynput_Key = K
         HAS_PYNPUT = True
-    except Exception:
+    except Exception as exc:
+        logger.debug("pynput import failed: %s", exc)
         HAS_PYNPUT = False
 
 
@@ -91,7 +94,6 @@ class ShortcutExecutor(
     _previous_hwnd = None
     _hotkey_lock = threading.Lock()
     _hotkey_lock_timeout = 2.0
-    _last_cleanup_time = 0
 
     # pynput 特殊键映射（懒加载，避免模块级 pynput 导入阻塞）
     PYNPUT_SPECIAL_KEYS = {}
@@ -101,9 +103,9 @@ class ShortcutExecutor(
     def _ensure_pynput_keys(cls):
         if cls._PYNPUT_KEYS_LOADED:
             return
-        cls._PYNPUT_KEYS_LOADED = True
         k = Key()
         if k is None:
+            cls._PYNPUT_KEYS_LOADED = True
             return
         cls.PYNPUT_SPECIAL_KEYS = {
             "ctrl": k.ctrl,
@@ -154,6 +156,7 @@ class ShortcutExecutor(
             "printscreen": k.print_screen,
             "pause": k.pause,
         }
+        cls._PYNPUT_KEYS_LOADED = True
 
     # ===== POINT 结构体（用于获取鼠标位置）=====
     class POINT(ctypes.Structure):

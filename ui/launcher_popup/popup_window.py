@@ -248,7 +248,7 @@ class LauncherPopup(
         self.cols = self.settings.cols
         self.cell_size = self.settings.cell_size
         self.icon_size = self.settings.icon_size
-        self._label_font.setPointSize(int(self.icon_size * 0.34))
+        self._label_font.setPixelSize(max(10, int(self.icon_size * 0.28)))
         self.row_spacing = 2
         self.cell_h = int(self.cell_size * 1.15)
 
@@ -736,7 +736,7 @@ class LauncherPopup(
         self.cols = self.settings.cols
         self.cell_size = self.settings.cell_size
         self.icon_size = self.settings.icon_size
-        self._label_font.setPointSize(int(self.icon_size * 0.34))
+        self._label_font.setPixelSize(max(10, int(self.icon_size * 0.28)))
         self.cell_h = int(self.cell_size * 1.15)
         if preserved_search_state is not None:
             self._ensure_search_cursor_visible()
@@ -790,22 +790,7 @@ class LauncherPopup(
         if reposition:
             self._center_to(x, y, calculated_width, calculated_height)
 
-        # 调试输出：记录屏幕、位置、尺寸和缩放等详细信息 (已在正常运行中注释)
-        # try:
-        #     get_display_debug_logger().log_all_display_info(
-        #         cursor_x=x,
-        #         cursor_y=y,
-        #         window_width=calculated_width,
-        #         window_height=calculated_height,
-        #         icon_size=self.icon_size,
-        #         cell_size=self.cell_size,
-        #         hwnd=int(self.winId())
-        #     )
-        # except Exception as e:
-        #     logger.debug(f"记录显示调试日志失败: {e}")
-
         self.updateGeometry()
-        self.update()
         self.repaint()  # 强制立即重绘，确保不出现视觉残留
 
         # 保存前台窗口 (如果需要)
@@ -814,6 +799,3 @@ class LauncherPopup(
                 ShortcutExecutor.save_foreground_window()
             except Exception as exc:
                 logger.debug("保存前台窗口失败: %s", exc, exc_info=True)
-
-        # 确保重绘
-        self.update()

@@ -21,6 +21,7 @@ def test_module_constant():
 def test_import_pynput_success(monkeypatch):
     monkeypatch.setattr(se, "HAS_PYNPUT", False)
     monkeypatch.setattr(se, "_pynput_Key", None)
+    monkeypatch.setattr(se, "_pynput_import_attempted", False)
     _import_pynput()
     assert se.HAS_PYNPUT is True
     assert se._pynput_Key is not None
@@ -29,7 +30,8 @@ def test_import_pynput_success(monkeypatch):
 def test_import_pynput_idempotent(monkeypatch):
     sentinel = MagicMock()
     monkeypatch.setattr(se, "_pynput_Key", sentinel)
-    monkeypatch.setattr(se, "HAS_PYNPUT", False)
+    monkeypatch.setattr(se, "HAS_PYNPUT", True)
+    monkeypatch.setattr(se, "_pynput_import_attempted", True)
     _import_pynput()
     assert se._pynput_Key is sentinel
 
@@ -37,6 +39,7 @@ def test_import_pynput_idempotent(monkeypatch):
 def test_import_pynput_failure_graceful(monkeypatch):
     monkeypatch.setattr(se, "HAS_PYNPUT", False)
     monkeypatch.setattr(se, "_pynput_Key", None)
+    monkeypatch.setattr(se, "_pynput_import_attempted", False)
     import sys
 
     monkeypatch.setitem(sys.modules, "pynput.keyboard", None)
@@ -49,6 +52,7 @@ def test_import_pynput_failure_graceful(monkeypatch):
 def test_key_function(monkeypatch):
     monkeypatch.setattr(se, "HAS_PYNPUT", False)
     monkeypatch.setattr(se, "_pynput_Key", None)
+    monkeypatch.setattr(se, "_pynput_import_attempted", False)
     result = Key()
     assert se.HAS_PYNPUT is True
     assert result is se._pynput_Key
@@ -58,7 +62,6 @@ def test_shortcut_executor_class_attrs():
     assert ShortcutExecutor._previous_hwnd is None
     assert hasattr(ShortcutExecutor, "_hotkey_lock")
     assert ShortcutExecutor._hotkey_lock_timeout == 2.0
-    assert ShortcutExecutor._last_cleanup_time == 0
     assert ShortcutExecutor.PYNPUT_SPECIAL_KEYS == {}
     assert ShortcutExecutor._PYNPUT_KEYS_LOADED is False
 

@@ -179,6 +179,7 @@ def test_start_defers_runtime_components_until_called(monkeypatch):
     monkeypatch.setattr("ui.tray_app.QTimer.singleShot", lambda delay, callback: scheduled.append((delay, callback)))
     tray._install_hook = lambda: None
     tray._install_keyboard_hook_and_hotkey = lambda: None
+    tray._register_config_toggle_hotkey = lambda: None
     tray._init_update_system = lambda: None
     tray._mark_activity = lambda source="": activity.append(source)
 
@@ -188,5 +189,5 @@ def test_start_defers_runtime_components_until_called(monkeypatch):
     assert tray._deferred_startup_timer.start_count == 1
     assert tray._memory_check_timer.start_count == 1
     assert tray._hook_health_timer.start_count == 1
-    assert [delay for delay, _callback in scheduled] == [0, 0, 5000]
+    assert [delay for delay, _callback in scheduled] == [200, 0, 0, 5000]
     assert activity == ["startup"]

@@ -315,6 +315,7 @@ def test_blank_area_refresh_preserves_awakened_search_state():
                 "force": True,
                 "reposition": False,
                 "preserve_search_state": True,
+                "skip_effect": True,
             },
         ),
     ]
