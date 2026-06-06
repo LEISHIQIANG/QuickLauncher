@@ -7,11 +7,12 @@ import logging
 import os
 import re
 import tempfile
-import threading
 from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from core.background_tasks import start_background_thread
+from core.network_security import safe_urlopen
 from core.version import APP_VERSION
 from services.update.session import create_update_session, update_session_state, utc_now_text
 
@@ -33,7 +34,7 @@ class UpdateDownloader:
         for callback in list(self._listeners):
             try:
                 callback(event, data)
-            except Exception as exc:
+            except (RuntimeError, TypeError, ValueError) as exc:
                 logger.debug("Downloader listener failed: %s", exc)
 
     def download(
@@ -47,14 +48,23 @@ class UpdateDownloader:
         version: str = "",
     ):
         self._cancel_flag = False
-        threading.Thread(
+        self._download_thread = start_background_thread(
+            name="UpdateDownloader",
             target=self._do_download,
             args=(url, target_dir, expected_hash, expected_size, max_bytes, allowed_hosts, version),
-            daemon=True,
-        ).start()
+            owner=self,
+        )
 
     def cancel(self):
         self._cancel_flag = True
+
+    def wait(self, timeout: float = 5.0) -> bool:
+        """Wait for the download thread to finish. Returns True if done."""
+        thread = getattr(self, "_download_thread", None)
+        if thread is None:
+            return True
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
 
     def _do_download(
         self,
@@ -93,7 +103,7 @@ class UpdateDownloader:
             )
 
             req = Request(url, headers={"User-Agent": f"QuickLauncher/{APP_VERSION}"})
-            with urlopen(req, timeout=30) as resp:
+            with safe_urlopen(req, timeout=30) as resp:
                 self._validate_final_url(resp, allowed_hosts)
                 total = int(resp.headers.get("Content-Length", 0) or 0)
                 if max_bytes and total > max_bytes:
@@ -165,7 +175,7 @@ class UpdateDownloader:
             if session_dir:
                 self._fail_session(session_dir, 0, str(exc.reason))
             self._notify("failed", f"download failed: {exc.reason}")
-        except Exception as exc:
+        except (OSError, TypeError, ValueError) as exc:
             if session_dir:
                 self._fail_session(session_dir, 0, str(exc))
             self._notify("failed", f"download error: {exc}")
@@ -200,7 +210,7 @@ class UpdateDownloader:
         try:
             if path and os.path.exists(path):
                 os.remove(path)
-        except Exception:
+        except OSError:
             logger.debug("删除下载文件失败", exc_info=True)
 
 

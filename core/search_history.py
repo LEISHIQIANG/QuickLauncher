@@ -8,6 +8,8 @@ import os
 import threading
 from pathlib import Path
 
+from .config_services import SaveScheduler
+
 logger = logging.getLogger(__name__)
 
 _MAX_HISTORY_ENTRIES = 500
@@ -26,7 +28,8 @@ class SearchHistory:
         self._data: dict[str, dict[str, float]] = {}
         self._lock = threading.Lock()
         self._dirty = False
-        self._save_timer: threading.Timer | None = None
+        self._save_scheduler = SaveScheduler(delay=_SAVE_DELAY, owner="search-history-save")
+        self._save_timer: threading.Thread | None = None
         self._path = os.path.join(str(data_dir), _PERSIST_FILE) if data_dir else ""
         self._load()
 
@@ -100,13 +103,11 @@ class SearchHistory:
             logger.debug("failed to save search history: %s", e)
 
     def _schedule_save(self) -> None:
-        if self._save_timer is not None:
-            self._save_timer.cancel()
-        self._save_timer = threading.Timer(_SAVE_DELAY, self._flush_save)
-        self._save_timer.daemon = True
-        self._save_timer.start()
+        self._save_scheduler.schedule(self._flush_save)
+        self._save_timer = self._save_scheduler.current_timer
 
     def _flush_save(self) -> None:
+        self._save_timer = None
         with self._lock:
             if self._dirty:
                 self._save()

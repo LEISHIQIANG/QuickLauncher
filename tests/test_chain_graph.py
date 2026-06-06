@@ -20,6 +20,7 @@ from core.chain.graph_models import (
     NodeStatus,
     PortDirection,
 )
+from core.chain.graph_runtime import GraphRuntime
 from core.chain.processor_registry import ProcessorRegistry, get_registry
 
 
@@ -375,6 +376,19 @@ class TestGraphRuntime:
         assert result.success
         assert result.node_results["node1"].status == NodeStatus.SUCCESS
         assert result.node_results["node2"].status == NodeStatus.SUCCESS
+
+    def test_runtime_timeout_uses_run_start_time(self):
+        graph = ChainGraph()
+        node = ChainNode(id="node1", processor_id="text_input")
+        node.params["text"] = "Hello"
+        node.outputs.append(ChainPort(id="output", direction=PortDirection.OUTPUT))
+        graph.add_node(node)
+
+        runtime = GraphRuntime()
+        result = runtime.execute(graph, timeout=5.0)
+
+        assert result.status == "completed"
+        assert result.node_results["node1"].status == NodeStatus.SUCCESS
 
 
 class TestLegacyAdapter:

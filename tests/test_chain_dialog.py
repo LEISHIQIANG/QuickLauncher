@@ -518,10 +518,14 @@ def test_chain_dialog_run_status_updates(qapp):
 
     # 模拟启动测试，清除状态
     import unittest.mock as mock
-    with mock.patch("ui.config_window.chain_dialog._ChainTestThread") as mock_thread_class:
+    with mock.patch("ui.config_window.chain_dialog.DialogTestTask") as mock_task_class:
         mock_thread = mock.Mock()
-        mock_thread_class.return_value = mock_thread
+        mock_task_class.return_value = mock_thread
         dialog._run_test()
+
+    mock_task_class.assert_called_once()
+    mock_thread.result_ready.connect.assert_called_once_with(dialog._on_test_result)
+    mock_thread.start.assert_called_once()
 
     # 检查状态已被清除
     nodes = sorted(dialog.canvas_widget.canvas.get("nodes", []), key=lambda n: int(n.get("order", 0) or 0))

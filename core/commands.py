@@ -29,6 +29,7 @@ try:
 except ImportError:
     _HAS_QRCODE = False
 
+from .background_tasks import start_background_thread
 from .command_registry import CommandAction, CommandContext, CommandResult
 from .commands_git import cmd_git as cmd_git
 from .commands_maintenance import cmd_clean_cache as cmd_clean_cache
@@ -40,6 +41,7 @@ from .commands_system import cmd_process as cmd_process
 from .commands_system import cmd_sysreport as cmd_sysreport
 from .commands_windows import cmd_env as cmd_env
 from .commands_windows import cmd_god as cmd_god
+from .network_security import read_limited_response, safe_urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -216,8 +218,8 @@ def _fetch_public_ip(timeout: float = 2.0) -> tuple[str, str]:
     for url, response_type in endpoints:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "QuickLauncher/1.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read(4096).decode("utf-8", errors="replace").strip()
+            with safe_urlopen(req, timeout=timeout) as resp:
+                raw = read_limited_response(resp, 4096).decode("utf-8", errors="replace").strip()
             ip_text = json.loads(raw).get("ip", "").strip() if response_type == "json" else raw.split()[0].strip()
             parsed = ipaddress.ip_address(ip_text)
             if parsed.version in (4, 6):
@@ -559,8 +561,11 @@ def _start_qr_file_server(dir_path: str, file_path: str):
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=dir_path)
     httpd = socketserver.TCPServer(("127.0.0.1", port), handler)
     httpd.timeout = 0.5
-    t = threading.Thread(target=httpd.serve_forever, daemon=True)
-    t.start()
+    t = start_background_thread(
+        name=f"QRFileServer-{port}",
+        target=httpd.serve_forever,
+        owner="qr-file-server",
+    )
     with _qr_server_lock:
         _qr_file_servers[port] = (httpd, file_path, t)
     return port

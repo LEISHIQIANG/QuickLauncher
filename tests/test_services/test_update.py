@@ -33,6 +33,7 @@ class TestUpdateConfig:
         assert "api.github.com/repos/LEISHIQIANG/QuickLauncher/releases/latest" in cfg.check_url
         assert cfg.check_interval_hours == 24
         assert cfg.verify_ssl is True
+        assert cfg.require_signature is True
 
     def test_custom(self):
         cfg = UpdateConfig(update_source="api", check_url="http://localhost", check_interval_hours=6)
@@ -53,6 +54,7 @@ class TestUpdateChecker:
                 update_source="api",
                 check_url="http://localhost",
                 allowed_download_hosts=("update.quicklauncher.app",),
+                require_signature=False,
             )
         )
         result = checker.check_now()
@@ -77,6 +79,7 @@ class TestUpdateChecker:
                 update_source="api",
                 check_url="http://localhost",
                 allowed_download_hosts=("update.quicklauncher.app",),
+                require_signature=False,
             )
         )
         checker.add_listener(lambda event, data: events.append((event, data)))
@@ -102,7 +105,7 @@ class TestUpdateChecker:
                 }
             ],
         }
-        cfg = UpdateConfig(allowed_download_hosts=("github.com",))
+        cfg = UpdateConfig(allowed_download_hosts=("github.com",), require_signature=False)
         checker = UpdateChecker(cfg)
 
         result = checker.check_now()
@@ -125,7 +128,7 @@ class TestUpdateChecker:
                 }
             ],
         }
-        checker = UpdateChecker(UpdateConfig(allowed_download_hosts=("github.com",)))
+        checker = UpdateChecker(UpdateConfig(allowed_download_hosts=("github.com",), require_signature=False))
 
         result = checker.check_now()
 
@@ -214,6 +217,22 @@ class TestUpdateChecker:
         assert "check_network_error" in event_names
         assert "check_failed" in event_names
 
+    def test_auto_check_timer_stop_sets_cancel_event(self):
+        checker = UpdateChecker(UpdateConfig(check_interval_hours=0, check_on_startup=False, repeat_auto_check=True))
+        checker._running = True
+
+        checker._schedule_next()
+        cancel_event = checker._timer_cancel_event
+        timer_thread = checker._timer
+
+        checker.stop()
+
+        assert cancel_event is not None
+        assert cancel_event.is_set()
+        assert timer_thread is not None
+        timer_thread.join(timeout=1.0)
+        assert not timer_thread.is_alive()
+
     @patch("services.update.checker.ApiClient.get")
     def test_check_parse_error_has_specific_event(self, mock_get):
         mock_get.return_value = {"has_update": True, "version": "9.9.9.9", "changelog": []}
@@ -266,7 +285,7 @@ class TestUpdateDownloader:
         downloader.cancel()
         assert downloader._cancel_flag
 
-    @patch("services.update.downloader.urlopen")
+    @patch("services.update.downloader.safe_urlopen")
     def test_download_success(self, mock_urlopen, tmp_path):
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Length": "11"}
@@ -303,7 +322,7 @@ class TestUpdateDownloader:
         assert session["status"] == "downloaded"
         mock_replace.assert_called_once()
 
-    @patch("services.update.downloader.urlopen")
+    @patch("services.update.downloader.safe_urlopen")
     def test_download_hash_mismatch(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Length": "5"}
@@ -329,7 +348,7 @@ class TestUpdateDownloader:
         assert any(event == "failed" and "哈希校验失败" in str(data) for event, data in events)
 
     @patch("services.update.downloader._is_allowed_host", side_effect=[True, False])
-    @patch("services.update.downloader.urlopen")
+    @patch("services.update.downloader.safe_urlopen")
     def test_download_rejects_redirect_to_untrusted_host(self, mock_urlopen, _mock_allowed):
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Length": "5"}

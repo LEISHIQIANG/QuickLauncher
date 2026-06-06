@@ -5,9 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-import webbrowser
 
-from core.command_action_safety import normalize_command_action
+from core.action_executor import ActionExecutionContext, execute_command_action
 from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
 from core.command_io import discover_input_variables, resolve_param_default
 from core.command_param_validation import validate_param_value
@@ -1874,53 +1873,16 @@ class CommandPanelWindow(ThemedToolWindow):
                 logger.warning("保存命令结果失败: %s", e)
 
     def _execute_action(self, action):
-        action = normalize_command_action(action)
-        if action is None:
-            return
-        if not getattr(action, "enabled", True):
-            return
-        if action.type == "copy" and action.value:
-            QApplication.clipboard().setText(action.value)
-        elif action.type in ("copy_table", "copy_json") and action.value:
-            QApplication.clipboard().setText(action.value)
-        elif action.type == "open_url" and action.value:
-            webbrowser.open(action.value)
-        elif action.type in ("open_file", "open_folder") and action.value:
-            try:
-                os.startfile(action.value)
-            except Exception:
-                logger.warning("打开路径失败: %s", action.value, exc_info=True)
-        elif action.type == "save_text" and action.value:
-            path, _ = get_save_file_name(self, "保存文本", "", "文本文件 (*.txt);;所有文件 (*)")
-            if path:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(action.value)
-        elif action.type == "save_csv" and action.value:
-            path, _ = get_save_file_name(self, "保存 CSV", "command-result.csv", "CSV 文件 (*.csv);;所有文件 (*)")
-            if path:
-                with open(path, "w", encoding="utf-8-sig", newline="") as f:
-                    f.write(action.value)
-        elif action.type == "save_json" and action.value:
-            path, _ = get_save_file_name(self, "保存 JSON", "command-result.json", "JSON 文件 (*.json);;所有文件 (*)")
-            if path:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(action.value)
-        elif action.type == "rerun":
-            self.rerun_current()
-        elif action.type == "save_file" and action.value:
-            default_name = os.path.basename(action.value) if os.path.isfile(action.value) else "command-result"
-            path, _ = get_save_file_name(self, "保存文件", default_name, "所有文件 (*)")
-            if path:
-                import shutil
-
-                shutil.copy2(action.value, path)
-        elif action.type == "close_qr_server" and action.value:
-            try:
-                from core.commands import stop_qr_file_server
-
-                stop_qr_file_server(int(action.value))
-            except Exception as e:
-                logger.warning("关闭 QR 文件服务器失败: %s", e)
+        execute_command_action(
+            action,
+            ActionExecutionContext(
+                source=str(getattr(self, "_current_command_id", "") or "command_panel"),
+                parent=self,
+                set_clipboard_text=QApplication.clipboard().setText,
+                save_file_dialog=get_save_file_name,
+                rerun_callback=self.rerun_current,
+            ),
+        )
 
     @staticmethod
     def _action_default_label(action_type: str) -> str:

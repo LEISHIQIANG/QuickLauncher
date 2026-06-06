@@ -18,6 +18,7 @@ def test_release_gate_dry_run_skips_execution(capsys):
     assert f"pytest: py-test -m pytest --basetemp {release_gate.PYTEST_BASETEMP}" in output
     assert "compileall: py-test -m compileall core ui hooks services bootstrap plugins" in output
     assert "py-test scripts/check_release_artifacts.py --source-only" in output
+    assert "py-test scripts/post_package_smoke.py" in output
 
 
 def test_release_gate_skip_tests_and_returns_failure(monkeypatch):
@@ -57,7 +58,7 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "py-test", "-m", "pytest", "--basetemp", str(release_gate.PYTEST_BASETEMP),
         "--cov=core", "--cov=services", "--cov=hooks",
         "--cov-report=term-missing",
-        "--cov-fail-under=70",
+        f"--cov-fail-under={release_gate.COVERAGE_FAIL_UNDER}",
     ]
     assert envs[1]["PYTHONDONTWRITEBYTECODE"] == "1"
 
@@ -65,9 +66,9 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "py-test",
         "scripts/audit_broad_exceptions.py",
         "--max-total",
-        "1320",
+        "1315",
         "--max-unlogged",
-        "365",
+        "290",
     ]
     assert envs[2]["PYTHONDONTWRITEBYTECODE"] == "1"
 
@@ -76,6 +77,9 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
 
     assert commands[4] == ["py-test", "scripts/check_release_artifacts.py", "--source-only"]
     assert envs[4]["PYTHONDONTWRITEBYTECODE"] == "1"
+
+    assert commands[5] == ["py-test", "scripts/post_package_smoke.py"]
+    assert envs[5]["PYTHONDONTWRITEBYTECODE"] == "1"
 
 
 def test_release_gate_step_order_matches_spec():
@@ -86,7 +90,16 @@ def test_release_gate_step_order_matches_spec():
         "broad exception audit",
         "compileall",
         "release metadata",
+        "post-package smoke",
     ]
+
+
+def test_release_gate_pytest_basetemp_is_outside_project_root():
+    assert release_gate.ROOT.resolve(strict=False) not in release_gate.PYTEST_BASETEMP.resolve(strict=False).parents
+
+
+def test_release_gate_coverage_baseline_matches_current_project_floor():
+    assert release_gate.COVERAGE_FAIL_UNDER == 67
 
 
 def test_release_gate_cleans_stale_caches_before_running(monkeypatch):

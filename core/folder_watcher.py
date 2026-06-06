@@ -9,6 +9,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from .background_tasks import register_background_thread, unregister_background_thread
+
 try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
@@ -81,9 +83,11 @@ class FolderWatcherManager:
         if WATCHDOG_AVAILABLE:
             self.observer = Observer()
             try:
-                self.observer.daemon = True
+                self.observer.daemon = False
             except Exception as exc:
-                logger.debug("设置文件夹监听器 daemon 失败: %s", exc, exc_info=True)
+                logger.debug("设置文件夹监听器 daemon 状态失败: %s", exc, exc_info=True)
+            if hasattr(self.observer, "is_alive"):
+                register_background_thread(self.observer, owner="folder-watcher")
             self.observer.start()
 
     def start_watch(self, folder_id: str, folder_path: str, callback: Callable):
@@ -150,6 +154,8 @@ class FolderWatcherManager:
                         logger.warning("文件夹监听器停止超时")
             except Exception:
                 logger.warning("停止文件夹监听器失败", exc_info=True)
+            finally:
+                unregister_background_thread(observer)
         self.watches.clear()
 
 

@@ -419,12 +419,12 @@ def setup_high_dpi():
 
         try:
             ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-        except Exception:
+        except (AttributeError, OSError, ValueError):
             try:
                 ctypes.windll.shcore.SetProcessDpiAwareness(2)
-            except Exception:
+            except (AttributeError, OSError, ValueError):
                 ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
+    except (AttributeError, ImportError, OSError, ValueError):
         logger.debug("设置DPI感知失败", exc_info=True)
 
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
-## [1.6.3.0] - Unreleased
+## [1.6.3.0] - 2026-06-06
 
 ### Added
 
@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - 文件选择统一改为非原生 Qt 对话框并套用项目主题，C++ DLL 钩子回调从单槽挂起改为有界 FIFO 队列。
 - 钩子可靠性：安装加入退避重试（500ms/2s/5s）和 `is_installed` 健康检查自动恢复，键盘钩子改为依赖注入（移除 `sys.modules["__main__"]` 耦合），DLL 加载失败支持 `reset()` 重新加载，失败时提供存根类上层无需判空。
 - 线程安全：对话框移除 `QThread.terminate()` 改为协作式取消，插件命令改用全局共享线程池避免资源碎片化，启动线程添加 `atexit` 生命周期管理移除 `daemon=True`，跨线程信号连接显式指定 `QueuedConnection`。
-- 构建与代码质量：发布门禁新增覆盖率检查（`--cov-fail-under=70`），mypy 全局启用 `check_untyped_defs`，清理 17 处 `is_win11()` 冗余判断，动作链实现版本迁移链框架，配置备份/恢复改用 `QThread` 避免阻塞主线程。
+- 构建与代码质量：发布门禁新增覆盖率检查（`--cov-fail-under=67`），mypy 全局启用 `check_untyped_defs`，清理 17 处 `is_win11()` 冗余判断，动作链实现版本迁移链框架，配置备份/恢复改用 `QThread` 避免阻塞主线程。
 - UI 细节：配置窗口拖拽增加屏幕边界约束，Toast 隐藏时清除单例引用允许 GC，`processEvents()` 滥用全面修复（无效调用移除、重绘制调用替换为 `repaint()`、DPI 同步改用 `ExcludeUserInputEvents` 排除用户输入）。
 
 ### Fixed

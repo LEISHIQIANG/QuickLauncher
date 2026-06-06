@@ -12,7 +12,7 @@ import webbrowser
 from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from .clipboard_service import clipboard_service
 from .command_variables import (
@@ -23,6 +23,7 @@ from .command_variables import (
     get_default_lan_ipv4,
 )
 from .data_models import ShortcutItem
+from .network_security import safe_urlopen
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
@@ -169,7 +170,7 @@ class UrlExecutionMixin:
         request = Request(url, method="HEAD", headers={"User-Agent": _URL_LATENCY_USER_AGENT})
 
         try:
-            response = urlopen(request, timeout=timeout_seconds)
+            response = safe_urlopen(request, timeout=timeout_seconds)
             try:
                 if hasattr(response, "read"):
                     response.read(0)
@@ -214,7 +215,7 @@ class UrlExecutionMixin:
     def _test_url_latency_get(url: str, start: float, timeout_seconds: float, timeout_ms: int) -> dict:
         try:
             request = Request(url, method="GET", headers={"User-Agent": _URL_LATENCY_USER_AGENT})
-            response = urlopen(request, timeout=timeout_seconds)
+            response = safe_urlopen(request, timeout=timeout_seconds)
             try:
                 if hasattr(response, "read"):
                     response.read(1)

@@ -12,12 +12,20 @@ import threading
 import uuid
 import zipfile
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 from .config_history import ConfigHistoryManager
 from .config_recovery import ConfigRecoveryReport
 from .config_repairs import apply_config_repairs
-from .config_services import ConfigBackupService, ConfigDataStore, ConfigPackageService, ConfigRecoveryService
+from .config_services import (
+    ConfigBackupService,
+    ConfigDataStore,
+    ConfigPackageService,
+    ConfigRecoveryService,
+    IconRepository,
+    SaveScheduler,
+)
 from .config_validation import (
     load_valid_data_file,
     sanitize_app_data_dict,
@@ -138,6 +146,9 @@ class DataManager:
         self.package_service = ConfigPackageService(self.app_dir)
         self.recovery_service = ConfigRecoveryService(self.recovery_dir, self.auto_backup_dir, self.data_file)
         self.history_manager = ConfigHistoryManager(self.history_dir, self._max_history_snapshots)
+        self.save_scheduler = SaveScheduler(delay=self._save_delay, owner="data-manager-save")
+        self.icon_repository = IconRepository(self.icons_dir)
+        self._detect_stale_transaction_journal()
         self.data = self._load()
         repair_report = self._apply_config_repairs_to_current()
         self._icon_repo_folder = self._load_icon_repo_folder()
@@ -191,6 +202,32 @@ class DataManager:
             self.package_service = service
         service.configure(self.app_dir)
         return service
+
+    def _get_save_scheduler(self) -> SaveScheduler:
+        service = getattr(self, "save_scheduler", None)
+        if service is None:
+            service = SaveScheduler(delay=getattr(self, "_save_delay", 0.5), owner="data-manager-save")
+            self.save_scheduler = service
+        service.delay = getattr(self, "_save_delay", service.delay)
+        return service
+
+    def _get_icon_repository(self) -> IconRepository:
+        service = getattr(self, "icon_repository", None)
+        if service is None:
+            service = IconRepository(self.icons_dir)
+            self.icon_repository = service
+        service.icons_dir = Path(self.icons_dir)
+        return service
+
+    def _cancel_scheduled_save_locked(self) -> None:
+        scheduler = getattr(self, "save_scheduler", None)
+        scheduler_timer = scheduler.current_timer if scheduler is not None else None
+        timer = getattr(self, "_save_timer", None)
+        self._save_timer = None
+        if scheduler is not None:
+            scheduler.cancel()
+        if timer is not None and timer is not scheduler_timer:
+            timer.cancel()
 
     def _detach_icon_repo_folder(self) -> Folder | None:
         """Remove and return the runtime icon repository folder from AppData."""
@@ -448,9 +485,9 @@ class DataManager:
         with self._save_lock:
             self._save_pending = True
             if self._save_timer is None:
-                self._save_timer = threading.Timer(self._save_delay, self._delayed_save)
-                self._save_timer.daemon = True
-                self._save_timer.start()
+                scheduler = self._get_save_scheduler()
+                scheduler.schedule(self._delayed_save)
+                self._save_timer = scheduler.current_timer
         return True
 
     def _delayed_save(self):
@@ -464,6 +501,24 @@ class DataManager:
 
         if should_save:
             self._do_save()
+
+    def shutdown(self, timeout: float = 3.0) -> None:
+        """Flush pending saves and cancel timers before application exit.
+
+        Call this once during application teardown to ensure no data is lost
+        from the delayed-save debounce window.
+        """
+        should_save = False
+        with self._save_lock:
+            if self._save_pending:
+                self._save_pending = False
+                should_save = True
+            self._cancel_scheduled_save_locked()
+        if should_save:
+            try:
+                self._do_save()
+            except Exception as exc:
+                logger.error("shutdown flush save failed: %s", exc, exc_info=True)
 
     @contextmanager
     def batch_update(self, immediate: bool = False):
@@ -481,6 +536,7 @@ class DataManager:
                 self._batch_dirty = False
                 self._batch_force_immediate = False
                 self._save_pending = False
+                self._cancel_scheduled_save_locked()
             raise
         finally:
             should_flush = False
@@ -494,9 +550,7 @@ class DataManager:
                     if self._save_pending or self._batch_dirty:
                         should_flush = True
                         flush_immediately = self._batch_force_immediate
-                        if self._save_timer is not None:
-                            self._save_timer.cancel()
-                            self._save_timer = None
+                        self._cancel_scheduled_save_locked()
                         self._save_pending = False
 
                     self._batch_dirty = False
@@ -657,9 +711,7 @@ class DataManager:
         """Data manager."""
         should_save = False
         with self._save_lock:
-            if self._save_timer:
-                self._save_timer.cancel()
-                self._save_timer = None
+            self._cancel_scheduled_save_locked()
             if self._save_pending:
                 self._save_pending = False
                 should_save = True
@@ -1150,25 +1202,20 @@ class DataManager:
         return normalized
 
     def clean_icon_cache(self, dry_run: bool = False) -> dict:
-        """清理图标缓存中的无用、重复和非法文件。"""
-        import hashlib
+        """清理图标缓存中的无用、重复和非法文件。
 
-        stats = {
-            "exe_files_removed": 0,
-            "exe_files_size_mb": 0,
-            "large_files_removed": 0,
-            "large_files_size_mb": 0,
-            "orphan_files_removed": 0,
-            "orphan_files_size_mb": 0,
-            "duplicate_files_removed": 0,
-            "duplicate_files_size_mb": 0,
-            "total_removed": 0,
-            "total_size_freed_mb": 0,
-            "dry_run": dry_run,
-        }
-
+        Delegates to ``self.icon_repository.clean()`` for the actual file
+        iteration and removal logic.
+        """
         if not self.icons_dir.exists():
-            return stats
+            return {
+                "exe_files_removed": 0, "exe_files_size_mb": 0,
+                "large_files_removed": 0, "large_files_size_mb": 0,
+                "orphan_files_removed": 0, "orphan_files_size_mb": 0,
+                "duplicate_files_removed": 0, "duplicate_files_size_mb": 0,
+                "total_removed": 0, "total_size_freed_mb": 0,
+                "dry_run": dry_run,
+            }
 
         with self._save_lock:
             used_icons = set()
@@ -1177,128 +1224,11 @@ class DataManager:
                     if item.icon_path:
                         used_icons.add(os.path.normcase(os.path.abspath(item.icon_path)))
 
-        seen_hashes = {}  # hash -> file_path
-
-        invalid_exts = {".exe", ".dll", ".sys", ".com", ".bat", ".cmd", ".msi", ".scr"}
-        max_size = 10 * 1024 * 1024  # 10MB
-
-        for file_path in self.icons_dir.iterdir():
-            if not file_path.is_file():
-                continue
-
-            file_path_str = str(file_path)
-            file_path_normalized = os.path.normcase(os.path.abspath(file_path_str))
-            ext = file_path.suffix.lower()
-
-            try:
-                file_size = file_path.stat().st_size
-                file_size_mb = file_size / (1024 * 1024)
-            except OSError:
-                continue
-
-            is_in_use = file_path_normalized in used_icons
-
-            should_delete = False
-            reason = ""
-
-            if ext in invalid_exts:
-                if not is_in_use:
-                    should_delete = True
-                    reason = "executable"
-                    stats["exe_files_removed"] += 1
-                    stats["exe_files_size_mb"] += file_size_mb
-
-            elif file_size > max_size:
-                if not is_in_use:
-                    should_delete = True
-                    reason = "too_large"
-                    stats["large_files_removed"] += 1
-                    stats["large_files_size_mb"] += file_size_mb
-
-            elif not is_in_use:
-                should_delete = True
-                reason = "orphan"
-                stats["orphan_files_removed"] += 1
-                stats["orphan_files_size_mb"] += file_size_mb
-
-            if not should_delete:
-                try:
-                    file_size = file_path.stat().st_size
-                    with open(file_path, "rb") as f:
-                        content = f.read(65536)
-                        file_hash = hashlib.md5(content + str(file_size).encode()).hexdigest()
-
-                    if file_hash in seen_hashes:
-                        if not is_in_use:
-                            should_delete = True
-                            reason = "duplicate"
-                            stats["duplicate_files_removed"] += 1
-                            stats["duplicate_files_size_mb"] += file_size_mb
-                        else:
-                            seen_hashes[file_hash] = file_path_str
-                    else:
-                        seen_hashes[file_hash] = file_path_str
-                except OSError as exc:
-                    logger.debug("计算文件哈希失败: %s", exc, exc_info=True)
-
-            if should_delete:
-                stats["total_removed"] += 1
-                stats["total_size_freed_mb"] += file_size_mb
-
-                if not dry_run:
-                    try:
-                        os.remove(file_path)
-                        logger.info("removed icon cache file: %s (%s, %.2f MB)", file_path.name, reason, file_size_mb)
-                    except OSError as e:
-                        logger.warning("failed to remove icon cache file %s: %s", file_path, e)
-                        stats["total_removed"] -= 1
-                        stats["total_size_freed_mb"] -= file_size_mb
-
-        for key in stats:
-            if isinstance(stats[key], float):
-                stats[key] = round(stats[key], 2)
-
-        return stats
+        return self._get_icon_repository().clean(used_icons, dry_run=dry_run)
 
     def get_icon_cache_stats(self) -> dict:
-        """get_icon_cache_stats"""
-        stats = {"total_files": 0, "total_size_mb": 0, "by_extension": {}, "invalid_files": 0, "invalid_size_mb": 0}
-
-        if not self.icons_dir.exists():
-            return stats
-
-        invalid_exts = {".exe", ".dll", ".sys", ".com", ".bat", ".cmd", ".msi", ".scr"}
-
-        for file_path in self.icons_dir.iterdir():
-            if not file_path.is_file():
-                continue
-
-            try:
-                file_size = file_path.stat().st_size
-                file_size_mb = file_size / (1024 * 1024)
-            except OSError:
-                continue
-
-            ext = file_path.suffix.lower() or ".unknown"
-
-            stats["total_files"] += 1
-            stats["total_size_mb"] += file_size_mb
-
-            if ext not in stats["by_extension"]:
-                stats["by_extension"][ext] = {"count": 0, "size_mb": 0}
-            stats["by_extension"][ext]["count"] += 1
-            stats["by_extension"][ext]["size_mb"] += file_size_mb
-
-            if ext in invalid_exts or file_size > 10 * 1024 * 1024:
-                stats["invalid_files"] += 1
-                stats["invalid_size_mb"] += file_size_mb
-
-        stats["total_size_mb"] = round(stats["total_size_mb"], 2)
-        stats["invalid_size_mb"] = round(stats["invalid_size_mb"], 2)
-        for ext_stats in stats["by_extension"].values():
-            ext_stats["size_mb"] = round(ext_stats["size_mb"], 2)
-
-        return stats
+        """get_icon_cache_stats — delegates to ``self.icon_repository.get_stats()``."""
+        return self._get_icon_repository().get_stats()
 
     def get_all_cache_paths(self) -> dict:
         """get_all_cache_paths"""
@@ -1453,12 +1383,142 @@ class DataManager:
                 logger.error("backup_full_config failed: %s", e)
                 return False
 
+    # ── Transaction journal helpers ────────────────────────────────
+
+    def _detect_stale_transaction_journal(self) -> None:
+        """Check for a stale transaction journal from a previous crash.
+
+        If a journal file exists at startup, the previous session likely
+        crashed mid-transaction.  We log a warning and attempt to restore
+        from the most recent automatic backup if data.json is corrupted
+        or missing.
+        """
+        journal_path = self.recovery_dir / "transaction_journal.json"
+        if not journal_path.exists():
+            return
+        try:
+            journal = json.loads(journal_path.read_text(encoding="utf-8"))
+            operation = journal.get("operation", "unknown")
+            timestamp = journal.get("timestamp", "unknown")
+            logger.warning(
+                "检测到上次会话遗留的事务日志 (operation=%s, timestamp=%s), "
+                "可能表明上次事务未完成。正在检查数据完整性...",
+                operation,
+                timestamp,
+            )
+            data_ok = self.data_file.exists()
+            if data_ok:
+                try:
+                    json.loads(self.data_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    data_ok = False
+            if not data_ok:
+                logger.warning("data.json 损坏或缺失，尝试从最近备份恢复...")
+                self._attempt_restore_from_latest_backup()
+            else:
+                logger.info("data.json 完整性正常，清除遗留事务日志")
+            try:
+                journal_path.unlink()
+            except OSError as exc:
+                logger.debug("清除遗留事务日志失败: %s", exc)
+        except Exception as exc:
+            logger.warning("处理遗留事务日志失败: %s", exc, exc_info=True)
+
+    def _attempt_restore_from_latest_backup(self) -> None:
+        """Try to restore data.json from the most recent automatic backup."""
+        if not self.auto_backup_dir.is_dir():
+            logger.warning("无自动备份目录，无法恢复")
+            return
+        backups = sorted(self.auto_backup_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not backups:
+            logger.warning("自动备份目录为空，无法恢复")
+            return
+        latest = backups[0]
+        try:
+            backup_data = json.loads(latest.read_text(encoding="utf-8"))
+            if not isinstance(backup_data, dict):
+                logger.warning("最新备份 %s 格式无效", latest.name)
+                return
+            import shutil
+            shutil.copy2(str(latest), str(self.data_file))
+            logger.info("已从备份 %s 恢复 data.json", latest.name)
+        except Exception as exc:
+            logger.error("从备份恢复 data.json 失败: %s", exc, exc_info=True)
+
+    def _write_transaction_journal(self, operation: str, extra: dict | None = None) -> None:
+        """Write a pre-transaction state snapshot to the recovery directory.
+
+        The journal records the current data.json hash, icon directory file
+        count, and timestamp.  If the application crashes mid-transaction,
+        the journal can be used to detect an inconsistent state on next
+        startup.
+        """
+        journal_path = self.recovery_dir / "transaction_journal.json"
+        try:
+            self.recovery_dir.mkdir(parents=True, exist_ok=True)
+            data_hash = ""
+            if self.data_file.exists():
+                import hashlib
+
+                data_hash = hashlib.sha256(self.data_file.read_bytes()).hexdigest()
+            icon_count = 0
+            if self.icons_dir.exists():
+                icon_count = sum(1 for p in self.icons_dir.iterdir() if p.is_file())
+            journal = {
+                "operation": operation,
+                "timestamp": datetime.now().isoformat(),
+                "data_file_hash": data_hash,
+                "icon_file_count": icon_count,
+                "data_file_exists": self.data_file.exists(),
+                "icons_dir_exists": self.icons_dir.exists(),
+            }
+            if extra:
+                journal.update(extra)
+            journal_path.write_text(json.dumps(journal, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.debug("write transaction journal failed: %s", exc, exc_info=True)
+
+    def _clear_transaction_journal(self) -> None:
+        """Remove the transaction journal after successful completion."""
+        journal_path = self.recovery_dir / "transaction_journal.json"
+        try:
+            if journal_path.exists():
+                journal_path.unlink()
+        except Exception as exc:
+            logger.debug("clear transaction journal failed: %s", exc, exc_info=True)
+
+    def _verify_transaction_consistency(self) -> dict:
+        """Post-transaction verification: compare in-memory state with disk.
+
+        Returns a dict with ``consistent`` (bool) and ``issues`` (list).
+        """
+        issues: list[str] = []
+        # Check that data.json on disk matches in-memory state.
+        if self.data_file.exists():
+            try:
+                disk_data = json.loads(self.data_file.read_text(encoding="utf-8"))
+                mem_data = self.data.to_dict() if hasattr(self.data, "to_dict") else {}
+                if disk_data.get("version") != mem_data.get("version"):
+                    issues.append("version mismatch between memory and disk")
+                disk_folders = len(disk_data.get("folders", []))
+                mem_folders = len(mem_data.get("folders", []))
+                if disk_folders != mem_folders:
+                    issues.append(f"folder count mismatch: disk={disk_folders}, mem={mem_folders}")
+            except Exception as exc:
+                issues.append(f"data.json verification failed: {exc}")
+        else:
+            issues.append("data.json does not exist after transaction")
+
+        return {"consistent": len(issues) == 0, "issues": issues}
+
     def restore_full_config(self, backup_path: str) -> bool:
         """Data manager."""
         return self._restore_full_config_safe(backup_path)
 
     def _restore_full_config_safe(self, backup_path: str) -> bool:
         with self._save_lock:
+            # Write pre-transaction journal for crash recovery.
+            self._write_transaction_journal("restore_full_config", {"source": backup_path})
             report = self._reset_import_report()
             restored_bg_path = None
             try:
@@ -1622,6 +1682,11 @@ class DataManager:
                     if backup_icons_dir and backup_icons_dir.exists():
                         safe_rmtree_child(backup_icons_dir.parent, backup_icons_dir)
 
+                    # Post-transaction: clear journal and verify consistency.
+                    consistency = self._verify_transaction_consistency()
+                    if not consistency["consistent"]:
+                        logger.warning("post-restore consistency issues: %s", consistency["issues"])
+                    self._clear_transaction_journal()
                     return True
 
             except (UnsafeZipError, ValueError, json.JSONDecodeError) as e:
@@ -1765,6 +1830,9 @@ class DataManager:
             if not zipfile.is_zipfile(import_path):
                 return False
 
+            # Write pre-transaction journal for crash recovery.
+            self._write_transaction_journal("import_shareable_config", {"source": import_path, "merge": merge})
+
             with self._save_lock:
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                 original_data_dict = self.data.to_dict()
@@ -1869,6 +1937,12 @@ class DataManager:
                 if not self.save(immediate=True):
                     raise RuntimeError("failed to save imported shareable config")
                 set_imported_items(report, imported_count)
+
+                # Post-transaction: clear journal and verify consistency.
+                consistency = self._verify_transaction_consistency()
+                if not consistency["consistent"]:
+                    logger.warning("post-import consistency issues: %s", consistency["issues"])
+                self._clear_transaction_journal()
                 return imported_count > 0
 
         except Exception as e:

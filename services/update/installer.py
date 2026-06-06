@@ -11,6 +11,7 @@ import sys
 
 from core.path_security import UnsafePathError, resolve_under
 from services.update.session import find_session_for_installer, update_session_state, utc_now_text
+from services.update.trust import UpdateSignatureError, verify_update_signature
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,19 @@ class UpdateInstaller:
         for callback in list(self._listeners):
             try:
                 callback(event, data)
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 logger.debug("通知安装回调失败", exc_info=True)
 
-    def install(self, installer_path: str, expected_hash: str = "", trusted_dir: str = "", data_manager=None):
+    def install(
+        self,
+        installer_path: str,
+        expected_hash: str = "",
+        trusted_dir: str = "",
+        data_manager=None,
+        expected_signature: str = "",
+        signature_payload: bytes | str = b"",
+        signature_public_keys: tuple[str, ...] = (),
+    ):
         session_dir, _session_state = find_session_for_installer(installer_path)
         if not os.path.isfile(installer_path):
             self._fail_session(session_dir, f"安装文件不存在: {installer_path}; installer file does not exist")
@@ -55,6 +65,19 @@ class UpdateInstaller:
         if expected_hash and not _verify_sha256(installer_path, expected_hash):
             self._fail_session(session_dir, "安装文件哈希校验失败; installer hash mismatch")
             return
+        if expected_signature:
+            try:
+                signature_valid = verify_update_signature(
+                    signature_payload,
+                    expected_signature,
+                    tuple(signature_public_keys or ()),
+                )
+            except UpdateSignatureError as exc:
+                self._fail_session(session_dir, f"安装文件签名配置无效; installer signature config invalid: {exc}")
+                return
+            if not signature_valid:
+                self._fail_session(session_dir, "安装文件签名校验失败; installer signature mismatch")
+                return
 
         pre_install_backup = ""
         if data_manager is not None:
@@ -93,7 +116,7 @@ class UpdateInstaller:
                 command.append(f"/LOG={log_path}")
             subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             sys.exit(0)
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             self._fail_session(session_dir, f"failed to start installer: {exc}")
 
     def _fail_session(self, session_dir: str, message: str) -> None:

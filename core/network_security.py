@@ -100,6 +100,7 @@ def safe_urlopen(
     *,
     timeout: float,
     max_redirects: int = DEFAULT_MAX_REDIRECTS,
+    context=None,
 ):
     original_url = (
         request_or_url.full_url if isinstance(request_or_url, urllib.request.Request) else str(request_or_url)
@@ -108,12 +109,17 @@ def safe_urlopen(
     headers = dict(getattr(request_or_url, "headers", {}) or {}) if isinstance(request_or_url, urllib.request.Request) else {}
     data = getattr(request_or_url, "data", None) if isinstance(request_or_url, urllib.request.Request) else None
     method = getattr(request_or_url, "method", None) if isinstance(request_or_url, urllib.request.Request) else None
-    opener = urllib.request.build_opener(_NoRedirectHandler)
+    handlers = [_NoRedirectHandler()]
+    if context is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=context))
+    opener = urllib.request.build_opener(*handlers)
 
     for _ in range(max_redirects + 1):
         request = urllib.request.Request(current_url, data=data, headers=headers, method=method)
         try:
             if is_urlopen_patched():
+                if context is not None:
+                    return urllib.request.urlopen(request, timeout=timeout, context=context)
                 return urllib.request.urlopen(request, timeout=timeout)
             return opener.open(request, timeout=timeout)
         except urllib.error.HTTPError as exc:

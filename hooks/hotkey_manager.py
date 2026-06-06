@@ -10,6 +10,7 @@ class HotkeyManager(QObject):
     """全局热键管理器"""
 
     activated = pyqtSignal()
+    _start_dispatch_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, dll=None):
         super().__init__(parent)
@@ -21,6 +22,18 @@ class HotkeyManager(QObject):
         self._dispatch_timer.setSingleShot(True)
         self._dispatch_timer.setInterval(15)
         self._dispatch_timer.timeout.connect(self._drain_pending_activated)
+        connected = False
+        for conn_type in (getattr(getattr(Qt, "ConnectionType", object), "QueuedConnection", None), getattr(Qt, "QueuedConnection", None)):
+            if conn_type is None:
+                continue
+            try:
+                self._start_dispatch_requested.connect(self._start_dispatch_timer, conn_type)
+                connected = True
+                break
+            except Exception:
+                continue
+        if not connected:
+            self._start_dispatch_requested.connect(self._start_dispatch_timer)
         self._dll = dll
 
     def set_dll(self, dll) -> None:
@@ -64,6 +77,11 @@ class HotkeyManager(QObject):
             except Exception as exc:
                 logger.debug("清除DLL热键失败: %s", exc, exc_info=True)
         self._is_running = False
+        # Stop the dispatch timer to prevent stale activations after stop().
+        try:
+            self._dispatch_timer.stop()
+        except Exception:
+            logger.debug("停止 dispatch_timer 失败", exc_info=True)
 
     def _normalize_hotkey(self, hotkey_str: str) -> str:
         s = (hotkey_str or "").strip()
@@ -256,22 +274,19 @@ class HotkeyManager(QObject):
                     continue
             # 所有 QMetaObject 方式都失败时，通过信号桥间接调度到主线程
             try:
-                from qt_compat import QApplication
-
-                app = QApplication.instance()
-                if app is not None:
-                    from qt_compat import QTimer
-
-                    timer = QTimer()
-                    timer.setSingleShot(True)
-                    timer.timeout.connect(lambda: self._dispatch_timer.start() if self._dispatch_timer else None)
-                    timer.start(0)
-                    return
+                self._start_dispatch_requested.emit()
+                return
             except Exception as exc:
                 logger.debug("跨线程调度QTimer失败: %s", exc, exc_info=True)
             logger.warning("无法跨线程调度 QTimer.start，热键激活可能延迟")
         except Exception:
             return
+
+    def _start_dispatch_timer(self):
+        try:
+            self._dispatch_timer.start()
+        except Exception:
+            logger.debug("启动热键分发定时器失败", exc_info=True)
 
     def _drain_pending_activated(self):
         n = 0

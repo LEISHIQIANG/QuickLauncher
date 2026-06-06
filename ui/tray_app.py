@@ -538,9 +538,12 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             self._stop_timer_if_active(timer_name)
 
         try:
+            cancel_event = getattr(self, "_process_check_cancel_event", None)
+            if cancel_event is not None:
+                cancel_event.set()
             future = getattr(self, "_process_check_future", None)
-            if future is not None and not future.done():
-                future.cancel()
+            if future is not None and future.done():
+                self._process_check_cancel_event = None
             self._process_check_future = None
         except Exception as exc:
             logger.debug("取消特殊应用监控任务失败: %s", exc, exc_info=True)

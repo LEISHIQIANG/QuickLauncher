@@ -2,8 +2,8 @@
 
 import logging
 import os
-import threading
 
+from core.background_tasks import start_background_thread
 from core.i18n import tr
 from core.icon_extractor import IconExtractor
 from qt_compat import (
@@ -100,13 +100,12 @@ class IconPickerDialog(BaseDialog):
 
         self.info_label.setText(f"发现 {count} 个图标，正在加载...")
         self._stop_loading = False
-        self._load_thread = threading.Thread(
+        self._load_thread = start_background_thread(
+            name="IconResourcePicker",
             target=self._load_task,
             args=(count,),
-            daemon=True,
-            name="IconResourcePicker",
+            owner=self,
         )
-        self._load_thread.start()
 
     def _load_task(self, count: int):
         try:

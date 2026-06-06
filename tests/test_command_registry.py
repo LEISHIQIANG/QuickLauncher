@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import time
@@ -1079,3 +1080,27 @@ def test_execute_search_sources_runs_sources_with_bounded_timeout(monkeypatch):
     assert "fast" in flattened
     assert "slow" not in flattened
     assert errors
+
+
+def test_execute_search_sources_does_not_nested_submit_to_same_pool(monkeypatch):
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr(command_registry, "_get_search_pool", lambda: pool)
+
+    def first(query):
+        return [{"id": "first", "title": query, "command": "echo first"}]
+
+    def second(query):
+        return [{"id": "second", "title": query, "command": "echo second"}]
+
+    try:
+        assert register_search_source("test_single_pool_first", {"plugin_id": "p1", "handler": first})
+        assert register_search_source("test_single_pool_second", {"plugin_id": "p2", "handler": second})
+
+        results = execute_search_sources("q", timeout=1.0)
+    finally:
+        remove_search_source("test_single_pool_first", plugin_id="p1")
+        remove_search_source("test_single_pool_second", plugin_id="p2")
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    flattened = {item["id"] for _source_id, _source_info, items in results for item in items}
+    assert {"first", "second"}.issubset(flattened)

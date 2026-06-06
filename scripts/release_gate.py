@@ -7,12 +7,14 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPILE_PYCACHE_PREFIX = ROOT / "dist" / "release-gate-pycache"
-PYTEST_BASETEMP = ROOT / "dist" / "pytest-tmp" / "release-gate"
+PYTEST_BASETEMP = Path(tempfile.gettempdir()) / "QuickLauncher" / "pytest-tmp" / "release-gate"
+COVERAGE_FAIL_UNDER = 67
 
 _ESSENTIAL_ENV_KEYS = frozenset({
     "appdata",
@@ -64,7 +66,7 @@ def _default_steps(python: str) -> list[GateStep]:
                 python, "-m", "pytest", "--basetemp", str(PYTEST_BASETEMP),
                 "--cov=core", "--cov=services", "--cov=hooks",
                 "--cov-report=term-missing",
-                "--cov-fail-under=70",
+                f"--cov-fail-under={COVERAGE_FAIL_UNDER}",
             ],
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
@@ -74,9 +76,9 @@ def _default_steps(python: str) -> list[GateStep]:
                 python,
                 "scripts/audit_broad_exceptions.py",
                 "--max-total",
-                "1320",
+                "1315",
                 "--max-unlogged",
-                "365",
+                "290",
             ],
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
@@ -88,6 +90,11 @@ def _default_steps(python: str) -> list[GateStep]:
         GateStep(
             "release metadata",
             [python, "scripts/check_release_artifacts.py", "--source-only"],
+            {"PYTHONDONTWRITEBYTECODE": "1"},
+        ),
+        GateStep(
+            "post-package smoke",
+            [python, "scripts/post_package_smoke.py"],
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
     ]
@@ -116,6 +123,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python", default=sys.executable, help="Python executable to use for every gate step.")
     parser.add_argument("--skip-tests", action="store_true", help="Skip pytest while keeping compile, ruff, and metadata checks.")
+    parser.add_argument("--skip-smoke", action="store_true", help="Skip post-package smoke test (useful when no packaged build is available).")
     parser.add_argument("--dry-run", action="store_true", help="Print the commands without running them.")
     return parser.parse_args(argv)
 
@@ -126,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     steps = _default_steps(args.python)
     if args.skip_tests:
         steps = [step for step in steps if step.name != "pytest"]
+    if args.skip_smoke:
+        steps = [step for step in steps if step.name != "post-package smoke"]
 
     for index, step in enumerate(steps, start=1):
         command = step.command

@@ -2,6 +2,8 @@ import pytest
 
 from core.path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
+pytestmark = pytest.mark.integration
+
 
 def test_resolve_under_accepts_child(tmp_path):
     child = tmp_path / "child" / "file.txt"

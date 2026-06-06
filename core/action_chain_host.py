@@ -138,7 +138,13 @@ class DefaultActionChainHostAPI:
         Returns:
             True if the capability is allowed.
         """
-        return True
+        capability = str(capability or "").strip()
+        if not capability:
+            return False
+        if not capability.startswith("chain."):
+            return False
+        denied = _settings_values(self.data_manager, "denied_action_chain_capabilities")
+        return capability not in denied
 
     def request_confirmation(self, request: dict[str, Any]) -> bool:
         """Request user confirmation for a dangerous operation.
@@ -153,7 +159,34 @@ class DefaultActionChainHostAPI:
         Returns:
             True if the user confirmed.
         """
-        return True
+        request = dict(request or {})
+        for name in ("request_action_chain_confirmation", "confirm_action_chain_request"):
+            callback = getattr(self.data_manager, name, None)
+            if callable(callback):
+                try:
+                    return bool(callback(request))
+                except Exception as exc:
+                    logger.warning("动作链确认回调失败: %s", exc, exc_info=True)
+                    return False
+
+        if _settings_flag(self.data_manager, "auto_confirm_dangerous_action_chain"):
+            return True
+
+        try:
+            from qt_compat import QApplication, QMessageBox
+
+            if QApplication.instance() is None:
+                logger.warning("拒绝危险动作链操作：当前没有可用 UI 确认上下文")
+                return False
+            title = str(request.get("title") or "确认动作链操作")
+            message = str(request.get("message") or "该动作链步骤需要确认后才能继续。")
+            details = str(request.get("details") or "")
+            text = message if not details else f"{message}\n\n{details}"
+            result = QMessageBox.question(None, title, text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            return result == QMessageBox.Yes
+        except Exception as exc:
+            logger.warning("拒绝危险动作链操作：无法显示确认对话框: %s", exc, exc_info=True)
+            return False
 
     # ── Internal helpers ───────────────────────────────────────────────
 
@@ -178,3 +211,35 @@ def command_result_to_host_dict(result: CommandResult) -> dict[str, Any]:
         "display_type": str(result.display_type or "text"),
         "payload": dict(result.payload or {}),
     }
+
+
+def _settings_values(data_manager: Any, key: str) -> set[str]:
+    settings = _settings_obj(data_manager)
+    if isinstance(settings, dict):
+        raw = settings.get(key, [])
+    else:
+        raw = getattr(settings, key, [])
+    if isinstance(raw, str):
+        return {raw}
+    try:
+        return {str(item) for item in list(raw or [])}
+    except TypeError:
+        return set()
+
+
+def _settings_flag(data_manager: Any, key: str) -> bool:
+    settings = _settings_obj(data_manager)
+    if isinstance(settings, dict):
+        return bool(settings.get(key, False))
+    return bool(getattr(settings, key, False))
+
+
+def _settings_obj(data_manager: Any) -> Any:
+    getter = getattr(data_manager, "get_settings", None)
+    if callable(getter):
+        try:
+            return getter()
+        except Exception as exc:
+            logger.debug("读取动作链 host 设置失败: %s", exc, exc_info=True)
+    data = getattr(data_manager, "data", data_manager)
+    return getattr(data, "settings", {}) if data is not None else {}

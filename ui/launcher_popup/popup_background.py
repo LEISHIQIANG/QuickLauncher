@@ -2,8 +2,8 @@
 
 import logging
 import os
-import threading
 
+from core.background_tasks import start_background_thread
 from qt_compat import (
     QApplication,
     QImage,
@@ -327,8 +327,11 @@ class PopupBackgroundMixin:
                 logger.error(f"异步加载背景失败: {e}")
                 self.bg_loaded_signal.emit(QImage(), params, seq)
 
-        t = threading.Thread(target=run_load, name="BgLoaderThread", daemon=True)
-        t.start()
+        self._bg_load_thread = start_background_thread(
+            name="BgLoaderThread",
+            target=run_load,
+            owner=self,
+        )
 
     def _release_background_cache(self):
         """Release instance background pixmaps when the popup is hidden."""

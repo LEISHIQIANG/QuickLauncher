@@ -507,7 +507,7 @@ class HotkeyDialog(BaseDialog):
         self._test_btn.setEnabled(False)
         self.test_result_label.setText(tr("发送中..."))
 
-        import threading
+        from core.background_tasks import start_background_thread
 
         def _do():
             try:
@@ -521,7 +521,11 @@ class HotkeyDialog(BaseDialog):
 
             QTimer.singleShot(0, lambda: self._on_test_hotkey_done(text))
 
-        threading.Thread(target=_do, daemon=True).start()
+        self._test_hotkey_thread = start_background_thread(
+            name="HotkeyDialogTest",
+            target=_do,
+            owner=self,
+        )
 
     def _on_test_hotkey_done(self, text: str):
         if self._dialog_finished:

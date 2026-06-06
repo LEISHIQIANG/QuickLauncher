@@ -214,7 +214,7 @@ def test_url_latency_fast_success_is_green(monkeypatch):
         def close(self):
             pass
 
-    monkeypatch.setattr(url_exec, "urlopen", lambda request, timeout=0: FakeResponse())
+    monkeypatch.setattr(url_exec, "safe_urlopen", lambda request, timeout=0: FakeResponse())
     values = iter([100.0, 100.12])
     monkeypatch.setattr(url_exec.time, "perf_counter", lambda: next(values))
 
@@ -233,7 +233,7 @@ def test_url_latency_slow_success_is_yellow(monkeypatch):
         def close(self):
             pass
 
-    monkeypatch.setattr(url_exec, "urlopen", lambda request, timeout=0: FakeResponse())
+    monkeypatch.setattr(url_exec, "safe_urlopen", lambda request, timeout=0: FakeResponse())
     values = iter([100.0, 101.2])
     monkeypatch.setattr(url_exec.time, "perf_counter", lambda: next(values))
 
@@ -248,7 +248,7 @@ def test_url_latency_network_error_is_red_minus_one(monkeypatch):
     def fail(request, timeout=0):
         raise URLError("network unreachable")
 
-    monkeypatch.setattr(url_exec, "urlopen", fail)
+    monkeypatch.setattr(url_exec, "safe_urlopen", fail)
 
     result = UrlExecutionMixin.test_url_latency("https://example.com")
 

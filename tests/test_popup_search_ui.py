@@ -1317,7 +1317,9 @@ def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
     monkeypatch.setattr(core, "data_manager", FakeDataManager)
     monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
     monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
-    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    from core import background_tasks
+
+    monkeypatch.setattr(background_tasks.threading.Thread, "start", lambda self: self.run())
 
     item = ShortcutItem(
         id="env",
@@ -1430,7 +1432,9 @@ def test_captured_command_hides_pinned_popup_and_runs_in_command_panel(monkeypat
 
     monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
     monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", object())
-    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    from core import background_tasks
+
+    monkeypatch.setattr(background_tasks.threading.Thread, "start", lambda self: self.run())
     popup.tray_app = FakeTrayApp()
 
     item = ShortcutItem(
@@ -1481,7 +1485,9 @@ def test_captured_bash_command_hides_pinned_popup_and_runs_in_command_panel(monk
 
     monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
     monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", object())
-    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    from core import background_tasks
+
+    monkeypatch.setattr(background_tasks.threading.Thread, "start", lambda self: self.run())
     popup.tray_app = FakeTrayApp()
 
     item = ShortcutItem(
@@ -1552,7 +1558,9 @@ def test_non_captured_command_does_not_open_command_panel(monkeypatch):
 
     monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
     monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
-    monkeypatch.setattr(popup_exec_mod.threading.Thread, "start", lambda self: self.run())
+    from core import background_tasks
+
+    monkeypatch.setattr(background_tasks.threading.Thread, "start", lambda self: self.run())
     popup.tray_app = FakeTrayApp()
 
     item = ShortcutItem(

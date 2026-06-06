@@ -87,6 +87,7 @@ class ActionChainModule:
         kwargs: dict[str, Any] = {"cancel_event": cancel_event}
         if max_steps is not None:
             kwargs["max_steps"] = max_steps
+        kwargs["host_api"] = self.host_api
         return _execute_shortcut_chain_runtime(runtime_chain, data_manager, **kwargs)
 
     def validate_chain(self, chain_data: Any) -> list[dict[str, Any]]:

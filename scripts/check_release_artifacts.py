@@ -18,6 +18,7 @@ OFFICIAL_PLUGIN_PACKAGE_IDS = (
     "file_tools",
     "network_tools",
     "process_tools",
+    "qr_code_scanner",
     "screenshot_ocr",
     "startup_tools",
     "text_tools",
@@ -41,6 +42,33 @@ def _default_version(root: Path) -> str:
                 if isinstance(target, ast.Name) and target.id == "APP_VERSION":
                     return str(ast.literal_eval(node.value))
     return "0.0.0.0"
+
+
+def _version_metadata(root: Path) -> tuple[str, str]:
+    import ast
+
+    version = "0.0.0.0"
+    status = ""
+    tree = ast.parse((root / "core" / "version.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        targets = []
+        value = None
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        if value is None:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id == "APP_VERSION":
+                version = str(ast.literal_eval(value))
+            elif target.id == "RELEASE_STATUS":
+                status = str(ast.literal_eval(value))
+    return version, status
 
 
 def _sha256(path: Path) -> str:
@@ -67,9 +95,12 @@ def _require_dir(errors: list[str], path: Path) -> None:
 
 def check_source_metadata(root: Path = ROOT, version: str | None = None) -> ReleaseCheckResult:
     root = Path(root)
-    version = version or _default_version(root)
+    metadata_version, release_status = _version_metadata(root)
+    version = version or metadata_version
     errors: list[str] = []
-    manifest: dict = {"version": version, "source": {}, "artifacts": {}}
+    manifest: dict = {"version": version, "release_status": release_status, "source": {}, "artifacts": {}}
+    if release_status not in {"unreleased", "rc", "stable"}:
+        errors.append(f"core/version.py RELEASE_STATUS is invalid: {release_status!r}")
 
     installer = (root / "scripts" / "installer.iss").read_text(encoding="utf-8")
     for define_name in ("MyAppVersion", "MyAppFileVersion"):
@@ -112,6 +143,29 @@ def check_source_metadata(root: Path = ROOT, version: str | None = None) -> Rele
     if plugin_package_dir.is_dir():
         for plugin_id in OFFICIAL_PLUGIN_PACKAGE_IDS:
             _require_file(errors, plugin_package_dir / f"{plugin_id}.qlzip")
+        actual_packages = {path.stem for path in plugin_package_dir.glob("*.qlzip")}
+        expected_packages = set(OFFICIAL_PLUGIN_PACKAGE_IDS)
+        extra_packages = sorted(actual_packages - expected_packages)
+        missing_packages = sorted(expected_packages - actual_packages)
+        if extra_packages:
+            errors.append(f"unexpected official plugin packages: {', '.join(extra_packages)}")
+        if missing_packages:
+            errors.append(f"missing official plugin packages: {', '.join(missing_packages)}")
+
+    changelog_path = root / "CHANGELOG.md"
+    if changelog_path.is_file():
+        changelog = changelog_path.read_text(encoding="utf-8")
+        if release_status == "stable" and f"## [{version}] - Unreleased" in changelog:
+            errors.append(f"CHANGELOG.md marks stable version {version} as Unreleased")
+
+    dist_root = root / "dist"
+    version_artifacts = [
+        dist_root / f"QuickLauncher_Setup_{version}.exe",
+        dist_root / f"QuickLauncher_Portable_{version}.zip",
+        dist_root / f"QuickLauncher_release_{version}.json",
+    ]
+    if release_status == "unreleased" and any(path.exists() for path in version_artifacts):
+        errors.append(f"dist contains artifacts for unreleased version {version}")
 
     return ReleaseCheckResult(ok=not errors, errors=errors, manifest=manifest)
 
@@ -150,6 +204,10 @@ def check_release_artifacts(
     installer: Path | None = None,
     version: str | None = None,
     min_exe_bytes: int = 1024 * 1024,
+    run_smoke: bool = False,
+    smoke_timeout: float = 30.0,
+    smoke_exe: Path | None = None,
+    smoke_args: list[str] | None = None,
 ) -> ReleaseCheckResult:
     root = Path(root)
     version = version or _default_version(root)
@@ -198,6 +256,24 @@ def check_release_artifacts(
                 "sha256": _sha256(path),
             }
 
+    if run_smoke and not errors:
+        try:
+            from scripts.post_package_smoke import run_packaged_smoke
+        except ModuleNotFoundError:
+            from post_package_smoke import run_packaged_smoke
+
+        smoke_result = run_packaged_smoke(
+            dist_dir,
+            exe=smoke_exe,
+            timeout=smoke_timeout,
+            smoke_args=smoke_args,
+        )
+        release_manifest["post_package_smoke"] = smoke_result.to_manifest()
+        if not smoke_result.ok:
+            errors.extend(f"post-package smoke: {error}" for error in smoke_result.errors)
+    elif run_smoke:
+        release_manifest["post_package_smoke"] = {"ok": False, "skipped": "artifact validation failed"}
+
     return ReleaseCheckResult(ok=not errors, errors=errors, manifest=release_manifest)
 
 
@@ -209,6 +285,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dist-dir", type=Path, default=None)
     parser.add_argument("--installer", type=Path, default=None)
     parser.add_argument("--min-exe-bytes", type=int, default=1024 * 1024)
+    parser.add_argument("--run-smoke", action="store_true")
+    parser.add_argument("--smoke-timeout", type=float, default=30.0)
     parser.add_argument("--write-manifest", type=Path, default=None)
     parser.add_argument("--write-installer-sha256", type=Path, default=None)
     return parser.parse_args(argv)
@@ -225,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
             installer=args.installer,
             version=args.version,
             min_exe_bytes=args.min_exe_bytes,
+            run_smoke=args.run_smoke,
+            smoke_timeout=args.smoke_timeout,
         )
     )
     if args.write_manifest:

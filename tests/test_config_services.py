@@ -1,9 +1,16 @@
 import json
 import os
+import threading
 import time
 import zipfile
 
-from core.config_services import ConfigBackupService, ConfigDataStore, ConfigPackageService, ConfigRecoveryService
+from core.config_services import (
+    ConfigBackupService,
+    ConfigDataStore,
+    ConfigPackageService,
+    ConfigRecoveryService,
+    SaveScheduler,
+)
 from core.data_models import AppData, Folder
 from core.import_security import build_safe_zip_index, new_import_report
 
@@ -40,6 +47,30 @@ def test_config_backup_service_missing_data_file_is_noop(tmp_path):
 
     assert service.create_auto_backup(tmp_path / "missing.json") is None
     assert service.list_auto_backups() == []
+
+
+def test_save_scheduler_runs_delayed_callback():
+    fired = threading.Event()
+    scheduler = SaveScheduler(delay=0.01, owner="test-save")
+
+    scheduler.schedule(fired.set)
+
+    assert fired.wait(1.0)
+    assert scheduler.current_timer is None
+
+
+def test_save_scheduler_cancel_prevents_callback():
+    fired = threading.Event()
+    scheduler = SaveScheduler(delay=0.2, owner="test-save")
+
+    scheduler.schedule(fired.set)
+    thread = scheduler.current_timer
+    scheduler.cancel()
+
+    if thread is not None:
+        thread.join(timeout=1.0)
+    assert not fired.wait(0.05)
+    assert scheduler.pending is False
 
 
 def test_config_data_store_serializes_valid_payload(tmp_path):

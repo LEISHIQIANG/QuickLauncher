@@ -13,7 +13,7 @@ import logging
 import threading
 import time
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -134,10 +134,11 @@ class ParallelGraphRuntime(GraphRuntime):
         context = GraphExecutionContext(
             graph=graph,
             run_id=result.run_id,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event or threading.Event(),
             max_steps=max_steps,
             timeout=timeout,
         )
+        context.started_at = result.started_at
 
         try:
             if parallel and plan and plan.max_parallelism > 1:
@@ -358,49 +359,77 @@ class ParallelGraphRuntime(GraphRuntime):
             future = executor.submit(self._execute_node_thread_safe, node, context)
             futures[node_id] = future
 
-        # Wait for all futures to complete
-        for node_id, future in futures.items():
-            # Check cancellation
+        pending: dict[Future, str] = {future: node_id for node_id, future in futures.items()}
+        while pending:
             context.check_cancelled()
+            if context.is_timed_out():
+                self._signal_group_cancel(context)
+                result.status = "failed"
+                result.error = "Execution timed out"
+                break
 
-            # Wait for result
-            try:
-                node_result = future.result(timeout=30)  # 30 second timeout per node
-                result.node_results[node_id] = node_result
+            wait_timeout = self._group_wait_timeout(context)
+            done, _not_done = wait(pending.keys(), timeout=wait_timeout, return_when=FIRST_COMPLETED)
+            if not done:
+                continue
 
-                # Update node status
-                node = graph.get_node(node_id)
-                if node:
-                    node.status = node_result.status
-                    node.execution_time = node_result.execution_time
-                    if node_result.error:
-                        node.error = node_result.error
-
-                # Handle failure
+            for future in done:
+                node_id = pending.pop(future)
+                self._collect_node_future(future, node_id, graph, context, result)
+                node_result = result.node_results.get(node_id)
+                if node_result is None:
+                    continue
                 if node_result.status == NodeStatus.FAILED:
                     if graph.stop_on_error:
+                        node = graph.get_node(node_id)
+                        title = node.title if node else node_id
                         result.status = "failed"
-                        result.error = f"Node '{node.title}' failed: {node_result.error}"
-                        # Cancel remaining futures
-                        for remaining_future in futures.values():
-                            remaining_future.cancel()
-                        break
-                    else:
-                        # Mark downstream nodes as skipped
-                        self._skip_downstream_nodes(graph, node_id, result, context)
+                        result.error = f"Node '{title}' failed: {node_result.error}"
+                        self._signal_group_cancel(context)
+                        return
+                    self._skip_downstream_nodes(graph, node_id, result, context)
 
-                context.current_step += 1
+    def _group_wait_timeout(self, context: GraphExecutionContext) -> float:
+        if context.timeout <= 0:
+            return 0.1
+        elapsed = time.time() - context.started_at
+        remaining = max(0.0, context.timeout - elapsed)
+        return min(0.1, remaining)
 
-            except Exception as e:
-                logger.error("Node %s execution failed: %s", node_id, e)
-                node_result = NodeExecutionResult(
-                    node_id=node_id,
-                    processor_id="",
-                    status=NodeStatus.FAILED,
-                    error=str(e),
-                )
-                result.node_results[node_id] = node_result
-                context.current_step += 1
+    def _signal_group_cancel(self, context: GraphExecutionContext) -> None:
+        if context.cancel_event is not None:
+            context.cancel_event.set()
+
+    def _collect_node_future(
+        self,
+        future: Future,
+        node_id: str,
+        graph: ChainGraph,
+        context: GraphExecutionContext,
+        result: ExecutionResult,
+    ) -> None:
+        try:
+            node_result = future.result()
+            result.node_results[node_id] = node_result
+
+            node = graph.get_node(node_id)
+            if node:
+                node.status = node_result.status
+                node.execution_time = node_result.execution_time
+                if node_result.error:
+                    node.error = node_result.error
+
+            context.current_step += 1
+        except Exception as e:
+            logger.error("Node %s execution failed: %s", node_id, e)
+            node_result = NodeExecutionResult(
+                node_id=node_id,
+                processor_id="",
+                status=NodeStatus.FAILED,
+                error=str(e),
+            )
+            result.node_results[node_id] = node_result
+            context.current_step += 1
 
     def _execute_node_thread_safe(self, node: ChainNode, context: GraphExecutionContext) -> NodeExecutionResult:
         """Execute a node in a thread-safe manner."""
@@ -420,6 +449,7 @@ class ParallelGraphRuntime(GraphRuntime):
         start_time = time.time()
 
         try:
+            context.check_cancelled()
             # Get processor handler
             handler = self._get_processor_handler(node.processor_id)
 

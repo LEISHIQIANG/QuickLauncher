@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+pytestmark = pytest.mark.integration
 
 from core.config_recovery import (
     MAX_QUARANTINED_BYTES,

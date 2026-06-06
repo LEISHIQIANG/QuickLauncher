@@ -12,7 +12,7 @@ class TestApiClient:
     def setup_method(self):
         self.client = ApiClient("https://example.com/api", timeout=5)
 
-    @patch("services.api.base_client.urlopen")
+    @patch("services.api.base_client.safe_urlopen")
     def test_get_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"ok": True}).encode()
@@ -24,7 +24,7 @@ class TestApiClient:
         call_url = mock_urlopen.call_args[0][0].full_url
         assert "key=val" in call_url
 
-    @patch("services.api.base_client.urlopen")
+    @patch("services.api.base_client.safe_urlopen")
     def test_get_without_path(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"ok": True}).encode()
@@ -34,7 +34,7 @@ class TestApiClient:
 
         assert mock_urlopen.call_args[0][0].full_url == "https://example.com/api"
 
-    @patch("services.api.base_client.urlopen")
+    @patch("services.api.base_client.safe_urlopen")
     def test_post_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"id": 1}).encode()
@@ -44,21 +44,21 @@ class TestApiClient:
 
         assert result == {"id": 1}
 
-    @patch("services.api.base_client.urlopen")
+    @patch("services.api.base_client.safe_urlopen")
     def test_http_error(self, mock_urlopen):
         mock_urlopen.side_effect = HTTPError("http://example.com", 404, "Not Found", {}, None)
 
         with pytest.raises(ApiError, match="HTTP 404"):
             self.client.get("/notfound")
 
-    @patch("services.api.base_client.urlopen")
+    @patch("services.api.base_client.safe_urlopen")
     def test_network_error(self, mock_urlopen):
         mock_urlopen.side_effect = URLError("connection refused")
 
         with pytest.raises(ApiError, match="Network error"):
             self.client.get("/fail")
 
-    @patch("services.api.base_client.urlopen")
+    @patch("services.api.base_client.safe_urlopen")
     def test_ssl_error_is_wrapped(self, mock_urlopen):
         mock_urlopen.side_effect = URLError(ssl.SSLError(1, "CERTIFICATE_VERIFY_FAILED"))
 

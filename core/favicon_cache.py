@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import concurrent.futures
 import hashlib
-import ipaddress
 import json
 import logging
 import os
@@ -20,6 +19,8 @@ import warnings
 from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import unquote_to_bytes, urljoin, urlparse
+
+from core.network_security import UnsafeUrlError, safe_urlopen
 
 _CACHE_SIZE = 512
 _MAX_ICON_BYTES = 5 * 1024 * 1024
@@ -84,11 +85,6 @@ _SVG_UNSAFE_RE = re.compile(
 
 class UnsafeFaviconUrlError(ValueError):
     pass
-
-
-class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
 
 
 class _IconLinkParser(HTMLParser):
@@ -362,84 +358,6 @@ def _round_cache_stats(stats: dict):
             stats[key] = round(value, 2)
 
 
-def _is_urlopen_patched() -> bool:
-    return getattr(urllib.request.urlopen, "__module__", "") != "urllib.request"
-
-
-def _validate_public_http_url(url: str) -> str:
-    parsed = urlparse(url)
-    scheme = (parsed.scheme or "").lower()
-    if scheme not in ("http", "https") or not parsed.netloc:
-        raise UnsafeFaviconUrlError("unsupported URL")
-    host = parsed.hostname or ""
-    if not host:
-        raise UnsafeFaviconUrlError("missing host")
-    if host.lower() == "localhost" or host.lower().endswith(".localhost"):
-        raise UnsafeFaviconUrlError("local hosts are blocked")
-    literal_ip = None
-    try:
-        literal_ip = ipaddress.ip_address(host)
-    except ValueError:
-        literal_ip = None
-    if literal_ip and (
-        literal_ip.is_loopback
-        or literal_ip.is_private
-        or literal_ip.is_link_local
-        or literal_ip.is_multicast
-        or literal_ip.is_unspecified
-        or literal_ip.is_reserved
-    ):
-        raise UnsafeFaviconUrlError(f"blocked private address: {host}")
-    if _is_urlopen_patched():
-        return url
-    try:
-        addresses = socket.getaddrinfo(host, parsed.port or (443 if scheme == "https" else 80), type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise UnsafeFaviconUrlError(f"host resolution failed: {host}") from exc
-    for _family, _, _, _, sockaddr in addresses:
-        address = sockaddr[0]
-        try:
-            ip = ipaddress.ip_address(address)
-        except ValueError as exc:
-            raise UnsafeFaviconUrlError(f"invalid resolved address: {address}") from exc
-        if (
-            ip.is_loopback
-            or ip.is_private
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_unspecified
-            or ip.is_reserved
-        ):
-            raise UnsafeFaviconUrlError(f"blocked private address: {address}")
-    return url
-
-
-def _safe_urlopen(request_or_url, timeout: float):
-    original_url = (
-        request_or_url.full_url if isinstance(request_or_url, urllib.request.Request) else str(request_or_url)
-    )
-    current_url = _validate_public_http_url(original_url)
-    headers = (
-        dict(getattr(request_or_url, "headers", {}) or {}) if isinstance(request_or_url, urllib.request.Request) else {}
-    )
-    opener = urllib.request.build_opener(_NoRedirectHandler)
-
-    for _ in range(_MAX_REDIRECTS + 1):
-        request = urllib.request.Request(current_url, headers=headers)
-        try:
-            if _is_urlopen_patched():
-                return urllib.request.urlopen(request, timeout=timeout)
-            return opener.open(request, timeout=timeout)
-        except urllib.error.HTTPError as exc:
-            if exc.code not in (301, 302, 303, 307, 308):
-                raise
-            location = exc.headers.get("Location")
-            if not location:
-                raise
-            current_url = _validate_public_http_url(urljoin(current_url, location))
-    raise UnsafeFaviconUrlError("too many redirects")
-
-
 def _is_usable_png(path: str) -> bool:
     if not os.path.exists(path) or os.path.getsize(path) <= 0:
         return False
@@ -532,7 +450,7 @@ def _fetch_html(url: str) -> tuple[str, str]:
     for attempt in range(_HTML_RETRIES + 1):
         try:
             request = urllib.request.Request(url, headers=_HTML_HEADERS)
-            with _safe_urlopen(request, timeout=_HTML_TIMEOUT) as response:
+            with safe_urlopen(request, timeout=_HTML_TIMEOUT, max_redirects=_MAX_REDIRECTS) as response:
                 content_type = response.headers.get("Content-Type", "")
                 if "html" not in content_type.lower():
                     logger.debug("图标获取：页面响应不是 HTML url=%s content_type=%s", url, content_type)
@@ -556,6 +474,8 @@ def _fetch_html(url: str) -> tuple[str, str]:
             if attempt >= _HTML_RETRIES:
                 raise
             _sleep_before_html_retry(url, attempt, "timeout")
+        except UnsafeUrlError as exc:
+            raise UnsafeFaviconUrlError(str(exc)) from exc
     return "", url
 
 
@@ -638,12 +558,15 @@ def _fetch_manifest_icon_links(manifest_urls) -> list[str]:
 
 def _fetch_manifest(manifest_url: str) -> tuple[dict, str]:
     request = urllib.request.Request(manifest_url, headers=_MANIFEST_HEADERS)
-    with _safe_urlopen(request, timeout=_HTML_TIMEOUT) as response:
-        data = response.read(_MAX_MANIFEST_BYTES + 1)
-        if len(data) > _MAX_MANIFEST_BYTES:
-            raise ValueError("manifest too large")
-        charset = response.headers.get_content_charset() or "utf-8"
-        final_url = response.geturl()
+    try:
+        with safe_urlopen(request, timeout=_HTML_TIMEOUT, max_redirects=_MAX_REDIRECTS) as response:
+            data = response.read(_MAX_MANIFEST_BYTES + 1)
+            if len(data) > _MAX_MANIFEST_BYTES:
+                raise ValueError("manifest too large")
+            charset = response.headers.get_content_charset() or "utf-8"
+            final_url = response.geturl()
+    except UnsafeUrlError as exc:
+        raise UnsafeFaviconUrlError(str(exc)) from exc
     manifest = json.loads(data.decode(charset, errors="replace"))
     if not isinstance(manifest, dict):
         raise ValueError("manifest root is not an object")
@@ -710,7 +633,7 @@ def _fetch_and_save_icon(icon_url: str, target: str) -> bool:
             data, content_type = _decode_data_url_bytes(icon_url.encode("utf-8"), "")
             return _save_icon_bytes(data, content_type, target, icon_url)
         request = urllib.request.Request(icon_url, headers=_ICON_HEADERS)
-        with _safe_urlopen(request, timeout=_ICON_TIMEOUT) as response:
+        with safe_urlopen(request, timeout=_ICON_TIMEOUT, max_redirects=_MAX_REDIRECTS) as response:
             content_type = response.headers.get("Content-Type", "").lower()
             if "html" in content_type:
                 logger.debug("图标获取：跳过 HTML 响应 icon_url=%s content_type=%s", icon_url, content_type)
@@ -737,6 +660,8 @@ def _fetch_and_save_icon(icon_url: str, target: str) -> bool:
             "图标获取：候选图标请求超时 icon_url=%s timeout=%.1fs error=%s", icon_url, _ICON_TIMEOUT, e, exc_info=True
         )
         return False
+    except UnsafeUrlError as e:
+        raise UnsafeFaviconUrlError(str(e)) from e
 
 
 def _save_icon_bytes(data: bytes, content_type: str, target: str, source: str) -> bool:

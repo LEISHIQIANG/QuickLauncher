@@ -376,12 +376,91 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
         return 1
 
 
+def _run_smoke_test_from_argv(argv: list[str]) -> int:
+    """Run a non-interactive packaged-runtime smoke test and exit."""
+
+    import json
+    from pathlib import Path
+
+    checks: dict[str, object] = {}
+    errors: list[str] = []
+
+    def record(name: str, callback):
+        try:
+            checks[name] = callback()
+        except Exception as exc:
+            checks[name] = "failed"
+            errors.append(f"{name}: {type(exc).__name__}: {exc}")
+
+    root_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    checks["root_dir"] = str(root_dir)
+    checks["safe_mode"] = bool(os.environ.get("QL_SAFE_MODE"))
+
+    def check_version():
+        from core.version import APP_VERSION, RELEASE_STATUS
+
+        return {"app_version": APP_VERSION, "release_status": RELEASE_STATUS}
+
+    def check_runtime_files():
+        required = [
+            root_dir / "assets" / "app.ico",
+            root_dir / "hooks" / "hooks.dll",
+            root_dir / "plugins",
+        ]
+        missing = [str(path) for path in required if not path.exists()]
+        if missing:
+            raise FileNotFoundError(", ".join(missing))
+        return {"required_files": len(required)}
+
+    def check_qt_application():
+        from qt_compat import QT_LIB, QApplication
+
+        app = QApplication.instance()
+        created = app is None
+        if app is None:
+            app = QApplication([argv[0], "--smoke-test"])
+        app.processEvents()
+        if created:
+            app.quit()
+        return {"binding": QT_LIB, "created": created}
+
+    def check_core_services():
+        from core.command_registry import CommandRegistry
+        from core.data_manager import DataManager
+        from core.plugin_manager import PluginManager
+
+        data_manager = DataManager()
+        registry = CommandRegistry()
+        plugin_manager = PluginManager(registry, plugins_dir=str(root_dir / "plugins"))
+        return {
+            "config_dir": str(data_manager.config_dir),
+            "registry_sources": len(getattr(registry, "_sources", {})),
+            "plugins_loaded": len(getattr(plugin_manager, "_plugins", {})),
+        }
+
+    for name, callback in (
+        ("version", check_version),
+        ("runtime_files", check_runtime_files),
+        ("qt_application", check_qt_application),
+        ("core_services", check_core_services),
+    ):
+        record(name, callback)
+
+    payload = {"status": "ok" if not errors else "failed", "checks": checks, "errors": errors}
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    return 0 if not errors else 1
+
+
 if __name__ == "__main__":
     # --safe-mode: disable plugins, hooks, update checks, custom background
     if "--safe-mode" in sys.argv:
         os.environ["QL_SAFE_MODE"] = "1"
         sys.argv = [a for a in sys.argv if a != "--safe-mode"]
         print("[safe-mode] 已启用安全模式：插件/钩子/更新/自定义背景已禁用")
+
+    if "--smoke-test" in sys.argv:
+        sys.argv = [a for a in sys.argv if a != "--smoke-test"]
+        sys.exit(_run_smoke_test_from_argv(sys.argv))
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "--file-dialog":
@@ -391,7 +470,7 @@ if __name__ == "__main__":
                 from ui.utils.file_dialog_subprocess import main as run_dialog
 
                 run_dialog()
-            except Exception as e:
+            except (ImportError, OSError, RuntimeError, ValueError) as e:
                 import json
 
                 print(json.dumps({"error": str(e)}))

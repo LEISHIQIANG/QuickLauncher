@@ -8,6 +8,7 @@ import shutil
 from typing import Any
 
 from core.command_registry import CommandResult
+from core.path_security import assert_safe_user_path, move_to_trash
 
 
 def normalize_path_value(path: str) -> str:
@@ -50,6 +51,7 @@ def folder_create(values: dict[str, str]) -> CommandResult:
     path = normalize_path_value(values.get("path", ""))
     if not path:
         raise ValueError("缺少文件夹路径")
+    assert_safe_user_path(path, operation="create folder")
     os.makedirs(path, exist_ok=True)
     return ok_folder(path)
 
@@ -59,6 +61,7 @@ def file_read_text(values: dict[str, str]) -> CommandResult:
     encoding = values.get("encoding", "").strip() or "utf-8"
     if not path:
         raise ValueError("缺少文件路径")
+    assert_safe_user_path(path, operation="read file")
     with open(path, encoding=encoding) as fh:
         text = fh.read()
     return _ok_outputs(
@@ -81,6 +84,7 @@ def file_write_text(values: dict[str, str]) -> CommandResult:
     encoding = values.get("encoding", "").strip() or "utf-8"
     mode_text = values.get("mode", "").strip().lower()
     mode = "a" if mode_text in {"append", "追加"} else "w"
+    assert_safe_user_path(path, operation="write file")
     folder = os.path.dirname(os.path.abspath(path))
     if folder:
         os.makedirs(folder, exist_ok=True)
@@ -110,6 +114,7 @@ def execute_extra_file_processor(processor_id: str, values: dict[str, Any]) -> C
             raise FileNotFoundError(f"源文件不存在: {src}")
         if os.path.exists(dst) and not overwrite:
             raise FileExistsError(f"目标文件已存在: {dst}")
+        assert_safe_user_path(dst, operation="copy file")
         dst_dir = os.path.dirname(dst)
         if dst_dir:
             os.makedirs(dst_dir, exist_ok=True)
@@ -124,6 +129,8 @@ def execute_extra_file_processor(processor_id: str, values: dict[str, Any]) -> C
             raise FileNotFoundError(f"源文件不存在: {src}")
         if os.path.exists(dst) and not overwrite:
             raise FileExistsError(f"目标文件已存在: {dst}")
+        assert_safe_user_path(src, operation="move source")
+        assert_safe_user_path(dst, operation="move destination")
         dst_dir = os.path.dirname(dst)
         if dst_dir:
             os.makedirs(dst_dir, exist_ok=True)
@@ -134,10 +141,7 @@ def execute_extra_file_processor(processor_id: str, values: dict[str, Any]) -> C
         path = normalize_path_value(text_values.get("path", ""))
         if not os.path.exists(path):
             return _ok_bool(False)
-        if os.path.isfile(path):
-            os.remove(path)
-        elif os.path.isdir(path):
-            shutil.rmtree(path)
+        move_to_trash(path)
         return _ok_bool(True)
 
     if processor_id == "file_size":

@@ -307,10 +307,11 @@ class GraphRuntime:
         context = GraphExecutionContext(
             graph=graph,
             run_id=result.run_id,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event or threading.Event(),
             max_steps=max_steps,
             timeout=timeout,
         )
+        context.started_at = result.started_at
 
         try:
             # Get execution order

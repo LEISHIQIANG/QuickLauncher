@@ -23,6 +23,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from .background_tasks import start_background_thread
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -279,8 +281,7 @@ class Win32ClipboardImpl:
                         logger.debug("STA线程队列操作失败: %s", exc, exc_info=True)
 
             Win32ClipboardImpl._sta_queue = _queue.Queue()
-            t = threading.Thread(target=_sta_worker, daemon=True, name="ClipboardSTA")
-            t.start()
+            t = start_background_thread(name="ClipboardSTA", target=_sta_worker, owner="clipboard")
             Win32ClipboardImpl._sta_thread = t
 
         result_queue = _queue.Queue()

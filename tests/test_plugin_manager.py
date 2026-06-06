@@ -82,6 +82,14 @@ def test_plugin_constants_are_reexported_for_compatibility():
     assert plugin_manager.PLUGIN_PACKAGE_EXTENSION == constants.PLUGIN_PACKAGE_EXTENSION
 
 
+def test_manifest_missing_or_unknown_trust_defaults_to_unverified():
+    missing = PluginManifest.from_dict({"id": "x", "name": "X", "version": "1.0"})
+    unknown = PluginManifest.from_dict({"id": "x", "name": "X", "version": "1.0", "trust_level": "trusted-by-me"})
+
+    assert missing.trust_level == "community-unverified"
+    assert unknown.trust_level == "community-unverified"
+
+
 def test_high_risk_permissions():
     assert has_high_risk_permissions(["process.run"]) is True
     assert has_high_risk_permissions(["clipboard.read"]) is False
@@ -226,6 +234,20 @@ class TestPluginManagerScan:
 
 
 class TestPluginNamespaceRestrictions:
+    def test_load_without_trust_blocks_direct_subprocess_import(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(
+                tmp,
+                "implicit_untrusted",
+                permissions=["process.run"],
+                main_py="import subprocess\n\ndef register(api):\n    pass\n",
+            )
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.load_plugin("implicit_untrusted") is False
+            assert "subprocess" in pm.get_plugin("implicit_untrusted").error
+
     def test_load_blocks_direct_subprocess_import(self):
         with tempfile.TemporaryDirectory() as tmp:
             _create_plugin_dir(
@@ -240,6 +262,21 @@ class TestPluginNamespaceRestrictions:
 
             assert pm.load_plugin("unsafe_process") is False
             assert "subprocess" in pm.get_plugin("unsafe_process").error
+
+    def test_load_blocks_direct_socket_import(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _create_plugin_dir(
+                tmp,
+                "unsafe_socket",
+                trust_level="community-unverified",
+                permissions=["network.request"],
+                main_py="import socket\n\ndef register(api):\n    pass\n",
+            )
+            pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+            pm.scan_plugins()
+
+            assert pm.load_plugin("unsafe_socket") is False
+            assert "socket" in pm.get_plugin("unsafe_socket").error
 
     def test_load_blocks_direct_open_without_file_permission(self):
         with tempfile.TemporaryDirectory() as tmp:

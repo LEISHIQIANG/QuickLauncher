@@ -199,20 +199,28 @@ class TestFolderWatcherManagerStopAll:
     @pytest.mark.skipif(not WATCHDOG_AVAILABLE, reason="watchdog not installed")
     def test_stop_all_clears_state(self, tmp_path):
         mgr = FolderWatcherManager()
-        cb = MagicMock()
-        mgr.start_watch("f1", str(tmp_path), cb)
-        mgr.stop_all()
-        assert mgr.observer is None
-        assert mgr.watches == {}
+        try:
+            cb = MagicMock()
+            mgr.start_watch("f1", str(tmp_path), cb)
+            mgr.stop_all()
+            assert mgr.observer is None
+            assert mgr.watches == {}
+        finally:
+            mgr.stop_all()
 
     @pytest.mark.skipif(not WATCHDOG_AVAILABLE, reason="watchdog not installed")
     def test_stop_all_is_idempotent(self):
         mgr = FolderWatcherManager()
-        mgr.stop_all()
-        mgr.stop_all()  # second call should not raise
+        try:
+            mgr.stop_all()
+            mgr.stop_all()  # second call should not raise
+        finally:
+            mgr.stop_all()
 
     def test_stop_all_retries_stuck_observer(self):
-        mgr = FolderWatcherManager()
+        mgr = object.__new__(FolderWatcherManager)
+        mgr.observer = None
+        mgr.watches = {}
 
         class StuckObserver:
             def __init__(self):
@@ -243,7 +251,7 @@ class TestFolderWatcherManagerStopAll:
         assert mgr.watches == {}
 
 
-def test_observer_is_daemon_when_watchdog_available(monkeypatch):
+def test_observer_is_non_daemon_when_watchdog_available(monkeypatch):
     import core.folder_watcher as folder_watcher
 
     class FakeObserver:
@@ -259,7 +267,7 @@ def test_observer_is_daemon_when_watchdog_available(monkeypatch):
 
     mgr = folder_watcher.FolderWatcherManager()
 
-    assert mgr.observer.daemon is True
+    assert mgr.observer.daemon is False
     assert mgr.observer.started is True
 
 

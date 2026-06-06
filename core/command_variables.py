@@ -15,6 +15,8 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from core.network_security import read_limited_response, safe_urlopen
+
 logger = logging.getLogger(__name__)
 
 _MAX_EXTERNAL_INPUT_BYTES = 1 * 1024 * 1024
@@ -197,8 +199,8 @@ def fetch_public_wan_ipv4(timeout: float = 2.0) -> str:
     for url, response_type in endpoints:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "QuickLauncher/1.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read(4096).decode("utf-8", errors="replace").strip()
+            with safe_urlopen(req, timeout=timeout) as resp:
+                raw = read_limited_response(resp, 4096).decode("utf-8", errors="replace").strip()
             ip_text = json.loads(raw).get("ip", "").strip() if response_type == "json" else raw.split()[0].strip()
             parsed = ipaddress.ip_address(ip_text)
             if parsed.version == 4:

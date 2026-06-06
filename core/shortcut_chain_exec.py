@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from core.chain_canvas_adapter import runtime_steps
 from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node, validate_step_bindings
@@ -61,6 +64,7 @@ def _execute_shortcut_chain_runtime(
     *,
     cancel_event=None,
     max_steps: int = MAX_CHAIN_STEPS,
+    host_api: Any = None,
 ) -> CommandResult:
     """Execute enabled chain steps sequentially and return a list report."""
 
@@ -174,7 +178,7 @@ def _execute_shortcut_chain_runtime(
                 timeout_ms = int(step.get("timeout_ms", 0) or 0)
                 step_success, detail, step_error, step_result, resolved_args, resolved_inputs = _execute_processor_step(
                     step, chain_values, typed_chain_values, previous_output,
-                    cancel_event=cancel_event, timeout_ms=timeout_ms,
+                    cancel_event=cancel_event, timeout_ms=timeout_ms, host_api=host_api,
                 )
         elif target is None:
             step_success = False
@@ -459,6 +463,7 @@ def _execute_processor_step(
     previous_output: str,
     cancel_event=None,
     timeout_ms: int = 0,
+    host_api: Any = None,
 ) -> tuple[bool, str, str, CommandResult | None, dict[str, Any], dict[str, Any]]:
     from core.chain_processors import execute_chain_processor
 
@@ -472,26 +477,179 @@ def _execute_processor_step(
     if _is_cancelled(cancel_event):
         return False, "已取消", "已取消", None, args, input_values
 
+    safety_error = _processor_safety_error(step, processor_args, host_api)
+    if safety_error:
+        return False, safety_error, safety_error, None, args, input_values
+
     # Execute with timeout if specified
     if timeout_ms > 0:
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(
-                execute_chain_processor,
+        result, timeout_error = _execute_processor_with_timeout(step, processor_args, cancel_event, timeout_ms)
+        if timeout_error:
+            return False, timeout_error, "timeout", None, args, input_values
+    else:
+        result = execute_chain_processor(
+            str(step.get("processor_id") or ""),
+            processor_args,
+            str(step.get("source") or ""),
+            cancel_event=cancel_event,
+        )
+
+    return bool(result.success), _capture_summary(result), result.error or "", result, args, input_values
+
+
+def _execute_processor_with_timeout(
+    step: dict[str, Any],
+    processor_args: dict[str, Any],
+    cancel_event,
+    timeout_ms: int,
+) -> tuple[CommandResult | None, str]:
+    import threading
+
+    from core.background_tasks import start_background_thread
+    from core.cancellation import CancellationToken
+    from core.chain_processors import execute_chain_processor
+
+    done_event = threading.Event()
+    processor_cancel_event = threading.Event()
+    cancel_token = CancellationToken()
+    result_holder: dict[str, Any] = {}
+
+    def _run_processor() -> None:
+        try:
+            result_holder["result"] = execute_chain_processor(
                 str(step.get("processor_id") or ""),
                 processor_args,
                 str(step.get("source") or ""),
+                cancel_event=processor_cancel_event,
             )
-            try:
-                result = future.result(timeout=timeout_ms / 1000.0)
-            except concurrent.futures.TimeoutError:
-                return False, f"执行超时（{timeout_ms}ms）", "timeout", None, args, input_values
-            except Exception as exc:
-                return False, str(exc), str(exc), None, args, input_values
-    else:
-        result = execute_chain_processor(str(step.get("processor_id") or ""), processor_args, str(step.get("source") or ""))
+        except Exception as exc:
+            result_holder["error"] = exc
+        finally:
+            done_event.set()
 
-    return bool(result.success), _capture_summary(result), result.error or "", result, args, input_values
+    start_background_thread(
+        name="chain-processor",
+        target=_run_processor,
+        owner="shortcut_chain_exec.processor_timeout",
+    )
+    deadline = time.monotonic() + max(0, timeout_ms) / 1000.0
+    while not done_event.is_set():
+        if _is_cancelled(cancel_event):
+            processor_cancel_event.set()
+            cancel_token.cancel("parent_cancelled")
+            return None, "已取消"
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            processor_cancel_event.set()
+            cancel_token.cancel("timeout")
+            logger.warning(
+                "动作链 processor 超时: processor=%s, timeout=%dms, cancel_token 已设置",
+                str(step.get("processor_id") or ""),
+                timeout_ms,
+            )
+            return None, f"执行超时（{timeout_ms}ms）"
+        done_event.wait(min(COMMAND_CAPTURE_POLL_SECONDS, remaining))
+
+    if "error" in result_holder:
+        exc = result_holder["error"]
+        return None, str(exc)
+    return result_holder.get("result"), ""
+
+
+def _processor_safety_error(step: dict[str, Any], processor_args: dict[str, Any], host_api: Any = None) -> str:
+    if host_api is None:
+        processor_id = str(step.get("processor_id") or "")
+        logger.warning(
+            "动作链安全检查: host_api 为空, 拒绝执行 processor=%s (node=%s)",
+            processor_id,
+            str(step.get("id") or ""),
+        )
+        return "动作链安全检查失败: 缺少主机 API 上下文，无法验证权限"
+    try:
+        from core.chain_processors import processor_definition, processor_title
+
+        processor_id = str(step.get("processor_id") or "")
+        definition = processor_definition(processor_id)
+        safety = getattr(definition, "safety", None)
+        capability = str(getattr(safety, "capability", "") or "")
+        title = getattr(definition, "title", "") if definition is not None else processor_title(processor_id)
+        if capability:
+            allowed = bool(host_api.check_permission(capability))
+            if not allowed:
+                _audit_dangerous_processor(processor_id, step, title, capability, "denied")
+                return f"处理节点未授权: {title} ({capability})"
+        requires_confirmation = bool(getattr(safety, "requires_confirmation", False)) or str(
+            getattr(safety, "level", "")
+        ) == "dangerous"
+        if not requires_confirmation:
+            return ""
+        request = {
+            "title": "确认危险动作链步骤",
+            "message": f"动作链即将执行高风险处理节点: {title}",
+            "details": _processor_safety_details(processor_id, processor_args, safety),
+            "risk_level": str(getattr(safety, "level", "dangerous") or "dangerous"),
+            "processor_id": processor_id,
+            "node_id": str(step.get("id") or ""),
+            "capability": capability,
+        }
+        confirm = getattr(host_api, "request_confirmation", None)
+        if not callable(confirm):
+            return f"处理节点缺少确认通道: {title}"
+        confirmed = bool(confirm(request))
+        if not confirmed:
+            _audit_dangerous_processor(processor_id, step, title, capability, "rejected")
+            return f"用户未确认高风险处理节点: {title}"
+        _audit_dangerous_processor(processor_id, step, title, capability, "confirmed")
+    except Exception as exc:
+        return f"动作链安全检查失败: {exc}"
+    return ""
+
+
+def _audit_dangerous_processor(
+    processor_id: str,
+    step: dict[str, Any],
+    title: str,
+    capability: str,
+    outcome: str,
+) -> None:
+    """Log an audit entry for dangerous processor execution attempts."""
+    try:
+        from core.event_log import log_event
+
+        log_event(
+            "chain.dangerous_processor",
+            f"Dangerous processor {processor_id}: {outcome}",
+            {
+                "processor_id": processor_id,
+                "node_id": str(step.get("id") or ""),
+                "title": title,
+                "capability": capability,
+                "outcome": outcome,
+            },
+        )
+    except Exception as exc:
+        logger.debug("审计危险处理器日志失败: %s", exc, exc_info=True)
+
+
+def _processor_safety_details(processor_id: str, processor_args: dict[str, Any], safety: Any) -> str:
+    flags = []
+    if bool(getattr(safety, "writes_files", False)):
+        flags.append("写入文件")
+    if bool(getattr(safety, "reads_files", False)):
+        flags.append("读取文件")
+    if bool(getattr(safety, "network", False)):
+        flags.append("网络请求")
+    if bool(getattr(safety, "executes_code", False)):
+        flags.append("执行代码")
+    args_preview = ", ".join(
+        f"{key}={_chain_value_to_text(value)[:80]}" for key, value in list(dict(processor_args or {}).items())[:6]
+    )
+    parts = [f"processor={processor_id}"]
+    if flags:
+        parts.append("风险: " + "、".join(flags))
+    if args_preview:
+        parts.append("参数: " + args_preview)
+    return "\n".join(parts)
 
 
 def _capture_summary(result: CommandResult) -> str:

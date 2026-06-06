@@ -18,7 +18,7 @@ def setup_logging(log_dir: str) -> tuple:
     """初始化日志系统，返回 (log_file, logger)"""
     try:
         os.makedirs(log_dir, exist_ok=True)
-    except Exception:
+    except OSError:
         log_dir = os.path.join(os.path.expanduser("~"), "QuickLauncher")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -169,7 +169,7 @@ def setup_faulthandler(log_dir: str):
         py_ver = sys.version.split()[0]
         try:
             win_ver = platform.version()
-        except Exception:
+        except OSError:
             win_ver = "unknown"
         fh_file.write(
             f"\n{'='*60}\n"

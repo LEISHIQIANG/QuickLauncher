@@ -18,6 +18,8 @@ import re
 import shutil
 from typing import Any
 
+from core.path_security import assert_safe_user_path, move_to_trash
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -343,6 +345,7 @@ def file_copy(src: str, dst: str, overwrite: bool = False) -> str:
         raise FileNotFoundError(f"源文件不存在: {src}")
     if os.path.exists(dst) and not overwrite:
         raise FileExistsError(f"目标文件已存在: {dst}")
+    assert_safe_user_path(dst, operation="copy file")
 
     dst_dir = os.path.dirname(dst)
     if dst_dir:
@@ -358,6 +361,8 @@ def file_move(src: str, dst: str, overwrite: bool = False) -> str:
         raise FileNotFoundError(f"源文件不存在: {src}")
     if os.path.exists(dst) and not overwrite:
         raise FileExistsError(f"目标文件已存在: {dst}")
+    assert_safe_user_path(src, operation="move source")
+    assert_safe_user_path(dst, operation="move destination")
 
     dst_dir = os.path.dirname(dst)
     if dst_dir:
@@ -371,19 +376,9 @@ def file_delete(path: str, to_trash: bool = True) -> bool:
     """Delete file (optionally to trash)."""
     if not os.path.exists(path):
         return False
-
-    if to_trash:
-        try:
-            from send2trash import send2trash
-            send2trash(path)
-            return True
-        except ImportError as exc:
-            logger.debug("send2trash 不可用，改为直接删除: %s", exc, exc_info=True)
-
-    if os.path.isfile(path):
-        os.remove(path)
-    elif os.path.isdir(path):
-        shutil.rmtree(path)
+    if not to_trash:
+        raise PermissionError("file_delete must use recoverable trash")
+    move_to_trash(path)
     return True
 
 

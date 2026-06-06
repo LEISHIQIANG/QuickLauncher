@@ -4,9 +4,12 @@ import json
 import ssl
 import urllib.parse
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from core.network_security import read_limited_response, safe_urlopen
 from core.version import APP_VERSION
+
+API_CLIENT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
 class ApiError(Exception):
@@ -58,8 +61,9 @@ class ApiClient:
 
     def _request(self, req: Request) -> dict:
         try:
-            with urlopen(req, timeout=self._timeout, context=self._ssl_context) as resp:
-                return json.loads(resp.read().decode("utf-8") or "{}")
+            with safe_urlopen(req, timeout=self._timeout, context=self._ssl_context) as resp:
+                raw = read_limited_response(resp, API_CLIENT_MAX_RESPONSE_BYTES)
+                return json.loads(raw.decode("utf-8") or "{}")
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise ApiError(f"HTTP {exc.code}: {body}") from exc

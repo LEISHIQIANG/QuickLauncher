@@ -11,6 +11,10 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
+import pytest
+
 from core.command_registry import CommandRegistry
 from core.path_security import UnsafePathError
 from core.plugin.constants import PLUGIN_PACKAGE_MAX_FILES
@@ -527,6 +531,21 @@ class TestPluginDeleteSafety:
 
             with pytest.raises(UnsafePathError):
                 pm.delete_plugin_files("evil")
+
+
+def test_install_third_party_package_forces_unverified_trust():
+    with tempfile.TemporaryDirectory() as tmp:
+        plugins_dir = os.path.join(tmp, "plugins")
+        os.makedirs(plugins_dir)
+        zip_path = os.path.join(tmp, "plugin.qlzip")
+        _make_plugin_zip(zip_path, manifest_overrides={"trust_level": "local-trusted"})
+
+        pm = PluginManager(CommandRegistry(), plugins_dir=plugins_dir)
+        assert pm.install_from_package(zip_path) == "test_p"
+
+        manifest = json.loads((Path(plugins_dir) / "test_p" / "plugin.json").read_text(encoding="utf-8"))
+        assert manifest["trust_level"] == "community-unverified"
+        assert manifest["install_source"] == "third_party"
 
 
 # ---------------------------------------------------------------------------

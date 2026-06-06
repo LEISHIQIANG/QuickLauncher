@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import atexit
 import builtins
-import concurrent.futures
 import importlib.util
 import json
 import logging
@@ -12,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import types
@@ -24,6 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .background_tasks import start_background_thread
 from .command_action_safety import sanitize_command_actions
 from .command_registry import (
     COMMAND_INTERACTION_PANEL,
@@ -38,6 +38,7 @@ from .command_registry import (
     register_search_source,
     remove_search_source,
 )
+from .network_security import ResponseTooLargeError, safe_urlopen, sanitize_headers, validate_public_http_url
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 from .plugin.constants import (
     HIGH_RISK_PERMISSIONS,
@@ -65,10 +66,61 @@ from .plugin.paths import is_plugin_package_path
 from .plugin.paths import safe_relative_plugin_path as _safe_relative_plugin_path
 
 logger = logging.getLogger(__name__)
+_PLUGIN_EXECUTOR_REGISTRY_LOCK = threading.Lock()
 
-# 共享线程池：所有插件命令执行共用，避免每次调用都创建/销毁线程池
-_SHARED_COMMAND_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="plugin-cmd")
-atexit.register(_SHARED_COMMAND_POOL.shutdown, wait=False)
+# ---------------------------------------------------------------------------
+# ── Plugin executor tracking ──────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+
+def _track_executor(
+    registry: dict[str, list[threading.Thread]],
+    plugin_id: str,
+    executor: threading.Thread,
+) -> None:
+    """Register a plugin command worker thread."""
+    with _PLUGIN_EXECUTOR_REGISTRY_LOCK:
+        executors = registry.setdefault(plugin_id, [])
+        executors.append(executor)
+
+
+def _untrack_executor(
+    registry: dict[str, list[threading.Thread]],
+    plugin_id: str,
+    executor: threading.Thread,
+) -> None:
+    """Remove a finished command worker from the tracking registry."""
+    with _PLUGIN_EXECUTOR_REGISTRY_LOCK:
+        executors = registry.get(plugin_id)
+        if executors is not None:
+            try:
+                executors.remove(executor)
+            except ValueError as exc:
+                logger.debug("plugin executor already untracked: %s", exc, exc_info=True)
+            if not executors:
+                registry.pop(plugin_id, None)
+
+
+def _drain_plugin_executors(
+    registry: dict[str, list[threading.Thread]],
+    plugin_id: str,
+    timeout: float = 5.0,
+) -> None:
+    """Wait briefly for tracked plugin command workers during quarantine."""
+    with _PLUGIN_EXECUTOR_REGISTRY_LOCK:
+        workers = registry.pop(plugin_id, [])
+    if not workers:
+        return
+    deadline = time.monotonic() + max(0.0, float(timeout or 0.0))
+    for worker in workers:
+        remaining = max(0.0, deadline - time.monotonic())
+        if remaining <= 0:
+            break
+        worker.join(timeout=remaining)
+    still_alive = [worker for worker in workers if worker.is_alive()]
+    if still_alive:
+        logger.warning("插件 %s 隔离时仍有 %d 个命令工作线程在运行", plugin_id, len(still_alive))
+
 
 # ---------------------------------------------------------------------------
 # ── Data models ───────────────────────────────────────────────────────────
@@ -133,13 +185,15 @@ class PluginManifest:
     keywords: list[str] = field(default_factory=list)
     permissions: list[str] = field(default_factory=list)
     commands: list[dict[str, Any]] = field(default_factory=list)
-    trust_level: str = "local-trusted"
+    trust_level: str = "community-unverified"
+    install_source: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> PluginManifest:
         trust = data.get("trust_level", "").lower().replace(" ", "-")
         if trust not in PLUGIN_TRUST_LEVELS:
-            trust = "local-trusted"
+            trust = "community-unverified"
+        install_source = str(data.get("install_source", "") or "").strip()
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
@@ -152,6 +206,7 @@ class PluginManifest:
             permissions=data.get("permissions", []),
             commands=data.get("commands", []),
             trust_level=trust,
+            install_source=install_source,
         )
 
 
@@ -176,6 +231,42 @@ class PluginInfo:
 
 
 # ---------------------------------------------------------------------------
+# ── Plugin lifecycle state machine ─────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+_VALID_TRANSITIONS: dict[str, frozenset[str]] = {
+    "loaded": frozenset({"enabled", "error", "disabled"}),
+    "enabled": frozenset({"disabled", "error", "quarantined"}),
+    "disabled": frozenset({"enabled", "error", "quarantined"}),
+    "error": frozenset({"enabled", "disabled", "quarantined"}),
+    "quarantined": frozenset({"disabled"}),
+}
+
+
+def _validate_state_transition(info: PluginInfo, target_status: str) -> bool:
+    """Check whether *target_status* is reachable from the current status.
+
+    Returns ``True`` if the transition is valid.  Logs a warning and returns
+    ``False`` otherwise.  The ``quarantined`` target is always allowed from
+    any state except itself to ensure quarantine is never silently blocked.
+    """
+    if target_status == "quarantined" and info.status == "quarantined":
+        return False
+    if target_status == "quarantined":
+        return True
+    allowed = _VALID_TRANSITIONS.get(info.status, frozenset())
+    if target_status not in allowed:
+        logger.warning(
+            "Invalid plugin state transition: %s -> %s (plugin=%s)",
+            info.status,
+            target_status,
+            info.manifest.id,
+        )
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # ── PluginAPI — controlled surface exposed to plugin main.py ──────────────
 # ---------------------------------------------------------------------------
 
@@ -189,6 +280,7 @@ class PluginAPI:
         registry: CommandRegistry,
         manifest: PluginManifest | None = None,
         failure_callback: Callable[[str, str, str, BaseException, str], str] | None = None,
+        active_executors: dict[str, list[threading.Thread]] | None = None,
     ):
         self._plugin_id = plugin_id
         self._plugin_dir = Path(plugin_dir)
@@ -196,6 +288,7 @@ class PluginAPI:
         self._registry = registry
         self._manifest = manifest
         self._failure_callback = failure_callback
+        self._plugin_active_executors = active_executors if active_executors is not None else {}
         self._registered_ids: list[str] = []
         self._staged_commands: list[CommandDefinition] = []
         self._staged_search_sources: list[str] = []
@@ -284,7 +377,7 @@ class PluginAPI:
         try:
             from core.chain_processors import register_external_processor
 
-            ok = register_external_processor(definition, handler, owner=self._plugin_id)
+            ok = register_external_processor(definition, handler, owner=self._plugin_id, permissions=frozenset(self._permissions))
         except Exception:
             logger.debug("插件动作链电池注册失败: %s", definition, exc_info=True)
             return False
@@ -647,22 +740,57 @@ class PluginAPI:
             return limit_command_result_actions(result)
 
         def _safe(context: CommandContext) -> CommandResult:
-            try:
-                future = _SHARED_COMMAND_POOL.submit(handler, context)
-                result = future.result(timeout=PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS)
-                return _validate(result)
-            except concurrent.futures.TimeoutError as e:
+            done_event = threading.Event()
+            result_holder: dict[str, Any] = {}
+            worker: threading.Thread | None = None
+
+            def _run_handler() -> None:
+                try:
+                    result_holder["result"] = handler(context)
+                except Exception as exc:
+                    result_holder["error"] = exc
+                    result_holder["trace"] = traceback.format_exc()
+                finally:
+                    done_event.set()
+                    if worker is not None:
+                        _untrack_executor(self._plugin_active_executors, self._plugin_id, worker)
+
+            def _before_start(thread: threading.Thread) -> None:
+                nonlocal worker
+                worker = thread
+                _track_executor(self._plugin_active_executors, self._plugin_id, thread)
+
+            worker = start_background_thread(
+                name=f"plugin-{self._plugin_id}",
+                target=_run_handler,
+                owner=f"plugin:{self._plugin_id}",
+                before_start=_before_start,
+            )
+
+            if not done_event.wait(PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS):
                 action = ""
-                trace = traceback.format_exc()
                 if self._failure_callback is not None:
-                    action = self._failure_callback(self._plugin_id, "command_timeout", command_id, e, trace)
+                    action = self._failure_callback(
+                        self._plugin_id,
+                        "command_timeout",
+                        command_id,
+                        TimeoutError(f"plugin command timeout: {command_id}"),
+                        "",
+                    )
                 message = f"插件命令执行超时: {command_id}"
                 if action == "quarantined":
                     message = f"插件已因重复超时被隔离: {command_id}"
+                logger.warning(
+                    "插件命令超时: plugin=%s command=%s, 后台线程仍在运行",
+                    self._plugin_id,
+                    command_id,
+                )
                 return CommandResult(success=False, message=message, error="timeout")
-            except Exception as e:
+
+            if "error" in result_holder:
+                e = result_holder["error"]
                 action = ""
-                trace = traceback.format_exc()
+                trace = str(result_holder.get("trace") or "")
                 if self._failure_callback is not None:
                     action = self._failure_callback(self._plugin_id, "command", command_id, e, trace)
                 if action == "quarantined":
@@ -671,6 +799,7 @@ class PluginAPI:
                     "插件命令 %s 执行异常: %s", handler.__name__ if hasattr(handler, "__name__") else "?", e
                 )
                 return CommandResult(success=False, message=f"插件执行失败: {e}", error=str(e))
+            return _validate(result_holder.get("result"))
 
         return _safe
 
@@ -809,16 +938,14 @@ class PluginAPI:
     ) -> dict[str, Any]:
         """Perform a bounded HTTP request for plugins with network permission."""
         self._check_permission("network.request")
-        parsed = urlparse(str(url or "").strip())
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError("only http(s) URLs are allowed")
+        safe_url = validate_public_http_url(str(url or "").strip())
         method_upper = str(method or "GET").upper()
         if method_upper not in PLUGIN_API_HTTP_METHODS:
             raise ValueError(f"HTTP method not allowed: {method_upper}")
         timeout_value = max(0.1, min(float(timeout or 0), PLUGIN_API_HTTP_TIMEOUT_SECONDS))
         limit = max(1, min(int(max_bytes or 0), PLUGIN_API_MAX_HTTP_RESPONSE_BYTES))
 
-        from urllib.request import Request, urlopen
+        from urllib.request import Request
 
         if isinstance(body, str):
             payload = body.encode("utf-8")
@@ -830,16 +957,19 @@ class PluginAPI:
             raise TypeError("HTTP request body must be str, bytes, or None")
         if payload is not None and len(payload) > PLUGIN_API_MAX_HTTP_REQUEST_BYTES:
             raise ValueError(f"request body exceeds limit: {PLUGIN_API_MAX_HTTP_REQUEST_BYTES} bytes")
-        request = Request(parsed.geturl(), data=payload, method=method_upper)
+        request = Request(safe_url, data=payload, method=method_upper)
         normalized_headers = self._normalize_http_headers(headers or {})
         for key, value in normalized_headers.items():
             key_text = str(key or "").strip()
             if key_text:
                 request.add_header(key_text, str(value or ""))
-        with urlopen(request, timeout=timeout_value) as response:
-            raw = response.read(limit + 1)
-            if len(raw) > limit:
-                raise ValueError(f"response exceeds read limit: {limit} bytes")
+        with safe_urlopen(request, timeout=timeout_value) as response:
+            try:
+                from .network_security import read_limited_response
+
+                raw = read_limited_response(response, limit)
+            except ResponseTooLargeError as exc:
+                raise ValueError(f"response exceeds read limit: {limit} bytes") from exc
             content_type = response.headers.get("content-type", "")
             charset = response.headers.get_content_charset() or "utf-8"
             text = raw.decode(charset, errors="replace")
@@ -873,7 +1003,7 @@ class PluginAPI:
             if total_chars > PLUGIN_API_MAX_HTTP_HEADER_CHARS:
                 raise ValueError("HTTP headers exceed size limit")
             normalized[key_text] = value_text
-        return normalized
+        return sanitize_headers(normalized)
 
     def launch_target(
         self,
@@ -1004,6 +1134,17 @@ def has_high_risk_permissions(permissions: list[str]) -> bool:
     return any(p in HIGH_RISK_PERMISSIONS for p in permissions)
 
 
+def _is_builtin_plugin_package(package_path: str, plugin_id: str) -> bool:
+    try:
+        package = Path(package_path).resolve(strict=False)
+        plugins_dir = Path(__file__).resolve(strict=False).parents[1] / ".plugins"
+        expected = plugins_dir / f"{plugin_id}{PLUGIN_PACKAGE_EXTENSION}"
+        return package == expected.resolve(strict=False)
+    except Exception:
+        logger.debug("判断官方插件包来源失败: %s", package_path, exc_info=True)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # ── PluginManager ──────────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
@@ -1018,6 +1159,7 @@ class PluginManager:
         self._plugins: dict[str, PluginInfo] = {}
         self._loaded_modules: dict[str, object] = {}
         self._active_apis: dict[str, PluginAPI] = {}
+        self._plugin_active_executors: dict[str, list[threading.Thread]] = {}
         self._save_callback = save_callback
         self._confirm_high_risk_callback: Callable[[PluginInfo], bool] | None = None
         plugins_root = Path(self._plugins_dir).resolve(strict=False)
@@ -1107,11 +1249,23 @@ class PluginManager:
         info = self._plugins.get(plugin_id)
         if info is None:
             return
+        if not _validate_state_transition(info, "quarantined"):
+            logger.debug("插件 %s 状态转换到 quarantined 被拒绝 (当前 %s)", plugin_id, info.status)
+            return
         if info.status == "enabled":
             self.disable_plugin(plugin_id, persist=True)
         info = self._plugins.get(plugin_id)
         if info is None:
             return
+        try:
+            from .command_registry import cancel_search_tasks_for_plugin
+
+            active_searches = cancel_search_tasks_for_plugin(plugin_id)
+            if active_searches:
+                logger.warning("插件 %s 隔离时仍有 %d 个搜索任务处于活动或排队状态", plugin_id, active_searches)
+        except Exception as exc:
+            logger.debug("取消插件搜索任务失败 %s: %s", plugin_id, exc, exc_info=True)
+        _drain_plugin_executors(self._plugin_active_executors, plugin_id)
         info.status = "quarantined"
         info.quarantined = True
         info.disabled_reason = reason
@@ -1129,6 +1283,8 @@ class PluginManager:
         """Clear quarantine state and reset failure counters for a plugin."""
         info = self._plugins.get(plugin_id)
         if info is None:
+            return False
+        if not _validate_state_transition(info, "disabled"):
             return False
         info.quarantined = False
         info.status = "disabled"
@@ -1291,6 +1447,7 @@ class PluginManager:
             return False
         if info.status == "enabled":
             return True
+        self._validate_install_source_trust(info)
         try:
             self._do_load(info)
             info.status = "enabled"
@@ -1332,7 +1489,7 @@ class PluginManager:
                 loader.__dict__["__builtins__"] = _make_plugin_builtins(
                     m.id,
                     m.permissions,
-                    restricted=m.trust_level == "community-unverified",
+                    restricted=m.trust_level != "builtin",
                 )
                 spec.loader.exec_module(loader)
             except Exception:
@@ -1349,6 +1506,7 @@ class PluginManager:
             registry=self._registry,
             manifest=m,
             failure_callback=self._record_plugin_failure,
+            active_executors=self._plugin_active_executors,
         )
         loader.register(api)
         # Transactional commit — rollback on any registration failure.
@@ -1533,15 +1691,53 @@ class PluginManager:
             raise ValueError(f"插件安装包必须使用 {PLUGIN_PACKAGE_EXTENSION} 扩展名")
 
         try:
-            return install_zip_archive(
+            plugin_id = install_zip_archive(
                 package_path,
                 self._plugins_dir,
                 manifest_from_dict=PluginManifest.from_dict,
                 validate_manifest=validate_manifest,
                 on_overwrite=on_overwrite,
             )
+            if plugin_id:
+                self._apply_install_source_trust(plugin_id, package_path)
+            return plugin_id
         except zipfile.BadZipFile as e:
             raise ValueError(f"无效的 {PLUGIN_PACKAGE_EXTENSION} 插件包:\n{e}") from e
+
+    def _apply_install_source_trust(self, plugin_id: str, package_path: str) -> None:
+        manifest_path = Path(self._plugins_dir) / plugin_id / "plugin.json"
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return
+            if _is_builtin_plugin_package(package_path, plugin_id):
+                data["trust_level"] = "builtin"
+                data["install_source"] = "builtin"
+            else:
+                data["trust_level"] = "community-unverified"
+                data["install_source"] = "third_party"
+            manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("写入插件安装来源信任元数据失败 %s: %s", plugin_id, exc, exc_info=True)
+
+    def _validate_install_source_trust(self, info: PluginInfo) -> None:
+        """Validate trust_level consistency with install_source at load time.
+
+        If a plugin claims ``builtin`` trust but was not installed from an
+        official source, demote it to ``community-unverified`` and log a
+        warning.
+        """
+        m = info.manifest
+        if m.trust_level != "builtin":
+            return
+        source = m.install_source
+        if source and source != "builtin":
+            logger.warning(
+                "插件 %s 声明 trust_level=builtin 但 install_source=%s，降级为 community-unverified",
+                m.id,
+                source,
+            )
+            info.manifest.trust_level = "community-unverified"
 
     def install_from_zip(
         self,

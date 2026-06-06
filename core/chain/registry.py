@@ -13,6 +13,7 @@ import os
 import re
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from core.command_registry import CommandResult
@@ -549,8 +550,15 @@ def register_external_processor(
     handler: ChainProcessorHandler,
     *,
     owner: str,
+    permissions: frozenset[str] | None = None,
 ) -> bool:
-    """Register a processor supplied by a plugin or module package."""
+    """Register a processor supplied by a plugin or module package.
+
+    If *permissions* is provided (the plugin's declared permissions), the
+    processor's safety declaration is validated against them.  For example,
+    a plugin that lacks ``file.write`` permission cannot register a processor
+    that claims ``writes_files=False`` — the safety will be escalated.
+    """
 
     if not callable(handler):
         return False
@@ -566,6 +574,11 @@ def register_external_processor(
     existing_owner = EXTERNAL_PROCESSOR_OWNERS.get(processor_id)
     if existing_owner and existing_owner != owner:
         return False
+
+    # Bind safety declaration to plugin permissions
+    if permissions is not None:
+        normalized = replace(normalized, safety=_bind_safety_to_permissions(normalized.safety, permissions))
+
     EXTERNAL_PROCESSOR_DEFINITIONS[processor_id] = normalized
     EXTERNAL_PROCESSOR_HANDLERS[processor_id] = handler
     EXTERNAL_PROCESSOR_OWNERS[processor_id] = owner
@@ -731,6 +744,50 @@ def _external_param_defs(
     return result
 
 
+def _bind_safety_to_permissions(
+    safety: ChainProcessorSafety,
+    permissions: frozenset[str],
+) -> ChainProcessorSafety:
+    """Elevate safety flags when plugin permissions don't support the declared safety.
+
+    A plugin cannot declare a processor as ``writes_files=False`` if it lacks
+    the ``file.write`` permission — the safety will be escalated to match what
+    the plugin is actually allowed to do.
+    """
+    if not isinstance(safety, ChainProcessorSafety):
+        return safety
+    if isinstance(permissions, set):
+        permissions = frozenset(permissions)
+
+    perm_map = {
+        "writes_files": "file.write",
+        "reads_files": "file.read",
+        "network": "network.request",
+    }
+
+    updates: dict[str, Any] = {}
+    for flag_name, perm in perm_map.items():
+        current = getattr(safety, flag_name, False)
+        if current:
+            continue
+        if perm in permissions:
+            updates[flag_name] = True
+
+    if "process.run" in permissions or "admin.required" in permissions:
+        if not safety.executes_code:
+            updates["executes_code"] = True
+
+    if updates:
+        safety = replace(safety, **updates)
+    if safety.executes_code or safety.writes_files or safety.network:
+        final_updates: dict[str, Any] = {"requires_confirmation": True}
+        if safety.level != "dangerous":
+            final_updates["level"] = "dangerous"
+        safety = replace(safety, **final_updates)
+
+    return safety
+
+
 def _external_safety(value: Any, processor_id: str) -> ChainProcessorSafety:
     if isinstance(value, ChainProcessorSafety):
         return value
@@ -798,13 +855,22 @@ def _clean_ports(values: list[Any]) -> list[str]:
     return ports
 
 
-def execute_chain_processor(processor_id: str, args: dict[str, Any], source: str = "") -> CommandResult:
+def execute_chain_processor(
+    processor_id: str,
+    args: dict[str, Any],
+    source: str = "",
+    cancel_event=None,
+) -> CommandResult:
     processor_id = str(processor_id or "").strip()
     values = {str(k): v for k, v in dict(args or {}).items()}
+    if cancel_event is not None:
+        values["__cancel_event"] = cancel_event
     try:
+        if _is_cancelled(cancel_event):
+            return CommandResult(success=False, message="已取消", display_type="text", error="cancelled")
         external_handler = EXTERNAL_PROCESSOR_HANDLERS.get(processor_id)
         if external_handler is not None:
-            return _normalize_external_processor_result(external_handler(values))
+            return _execute_external_with_timeout(processor_id, external_handler, values, cancel_event)
         if processor_id == "python_cell":
             return _execute_python_cell(source or DEFAULT_PYTHON_CELL_SOURCE, values)
 
@@ -828,7 +894,7 @@ def execute_chain_processor(processor_id: str, args: dict[str, Any], source: str
         if processor_id == "logger_node":
             return _ok(_logger_node(_string_values(values)))
         if processor_id == "sleep_node":
-            return _sleep_node(_string_values(values))
+            return _sleep_node(_string_values(values), cancel_event)
         if processor_id == "bool_value":
             return _ok_bool(_to_bool(values.get("value", "")))
         if processor_id == "bool_not":
@@ -1066,6 +1132,66 @@ def _try_json_parse(value: Any) -> Any:
         return {}
 
 
+_EXTERNAL_PROCESSOR_TIMEOUT_SECONDS = 60.0
+
+
+def _execute_external_with_timeout(
+    processor_id: str,
+    handler,
+    values: dict[str, Any],
+    cancel_event,
+) -> CommandResult:
+    """Execute an external processor handler with timeout and cancellation.
+
+    If the handler exceeds ``_EXTERNAL_PROCESSOR_TIMEOUT_SECONDS`` or the
+    *cancel_event* is set, the caller receives an error result.  The worker
+    thread may still be running in the background (Python limitation), but
+    its result is discarded.
+    """
+    import threading
+    from core.background_tasks import start_background_thread
+
+    done_event = threading.Event()
+    result_holder: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            result_holder["result"] = handler(values)
+        except Exception as exc:
+            result_holder["error"] = exc
+        finally:
+            done_event.set()
+
+    start_background_thread(
+        name=f"ext-proc-{processor_id}",
+        target=_run,
+        owner=f"chain.external_processor.{processor_id}",
+    )
+    deadline = time.monotonic() + _EXTERNAL_PROCESSOR_TIMEOUT_SECONDS
+    while not done_event.is_set():
+        if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+            return CommandResult(
+                success=False, message="已取消", display_type="text", error="cancelled",
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            logger.warning("外部 processor 超时: %s (%ss)", processor_id, _EXTERNAL_PROCESSOR_TIMEOUT_SECONDS)
+            return CommandResult(
+                success=False,
+                message=f"外部处理器执行超时（{_EXTERNAL_PROCESSOR_TIMEOUT_SECONDS:g}s）: {processor_id}",
+                display_type="text",
+                error="timeout",
+            )
+        done_event.wait(min(0.5, remaining))
+
+    if "error" in result_holder:
+        exc = result_holder["error"]
+        return CommandResult(
+            success=False, message=str(exc), display_type="text", error=str(exc),
+        )
+    return _normalize_external_processor_result(result_holder.get("result"))
+
+
 def _normalize_external_processor_result(result: CommandResult | dict[str, Any] | str) -> CommandResult:
     if isinstance(result, CommandResult):
         return result
@@ -1281,13 +1407,17 @@ def _logger_node(values: dict[str, str]) -> str:
     return text
 
 
-def _sleep_node(values: dict[str, str]) -> CommandResult:
+def _sleep_node(values: dict[str, str], cancel_event=None) -> CommandResult:
     ms_str = values.get("ms", "1000").strip()
     try:
         ms = max(0.0, min(600000.0, float(ms_str)))
     except ValueError:
         ms = 1000.0
-    time.sleep(ms / 1000.0)
+    end = time.monotonic() + ms / 1000.0
+    while time.monotonic() < end:
+        if _is_cancelled(cancel_event):
+            return CommandResult(success=False, message="已取消", display_type="text", error="cancelled")
+        time.sleep(min(0.05, max(0.0, end - time.monotonic())))
     text = values.get("input", "")
     waited = str(int(ms)) if ms.is_integer() else str(ms)
     return _ok_outputs(
@@ -1298,6 +1428,10 @@ def _sleep_node(values: dict[str, str]) -> CommandResult:
             "ms": waited,
         }
     )
+
+
+def _is_cancelled(cancel_event) -> bool:
+    return bool(cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)())
 
 
 def _to_bool(value: Any) -> bool:

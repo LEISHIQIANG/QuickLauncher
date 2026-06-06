@@ -22,89 +22,60 @@ from qt_compat import (
     QPushButton,
     QRectF,
     QtCompat,
-    QThread,
     QTimer,
     QVBoxLayout,
-    pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
 from ui.utils.safe_file_dialog import get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
+from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
 
-class UrlLatencyTestThread(QThread):
-    finished_signal = pyqtSignal(dict)
+def run_url_latency_test(url: str, input_values: dict | None = None, request_id: int = 0) -> dict:
+    try:
+        from core.shortcut_url_exec import UrlExecutionMixin
 
-    def __init__(self, url: str, input_values: dict | None = None, parent=None):
-        super().__init__(parent)
-        self.url = url
-        self.input_values = input_values or {}
-        self._suppress_signal = False
-
-    def suppress_result_signal(self):
-        self._suppress_signal = True
-
-    def run(self):
-        try:
-            from core.shortcut_url_exec import UrlExecutionMixin
-
-            result = UrlExecutionMixin.test_url_latency(self.url, self.input_values, timeout_ms=5000)
-        except Exception as e:
-            result = {
-                "success": False,
-                "latency_ms": -1,
-                "color": "red",
-                "error": f"无法测试: {e}",
-                "url": "",
-                "timeout_ms": 5000,
-            }
-        if not self._suppress_signal:
-            result["request_id"] = getattr(self, "request_id", 0)
-            self.finished_signal.emit(result)
+        result = UrlExecutionMixin.test_url_latency(url, input_values or {}, timeout_ms=5000)
+    except Exception as e:
+        result = {
+            "success": False,
+            "latency_ms": -1,
+            "color": "red",
+            "error": f"无法测试: {e}",
+            "url": "",
+            "timeout_ms": 5000,
+        }
+    result["request_id"] = request_id
+    return result
 
 
-class UrlIconFetchThread(QThread):
-    finished_signal = pyqtSignal(dict)
+def run_url_icon_fetch(url: str, request_id: int = 0) -> dict:
+    try:
+        from core.favicon_cache import fetch_favicon
 
-    def __init__(self, url: str, parent=None):
-        super().__init__(parent)
-        self.url = url
-        self._suppress_signal = False
-
-    def suppress_result_signal(self):
-        self._suppress_signal = True
-
-    def run(self):
-        try:
-            from core.favicon_cache import fetch_favicon
-
-            icon_path = fetch_favicon(self.url, force_refresh=True)
-            result = {
-                "success": bool(icon_path),
-                "icon_path": icon_path or "",
-                "error": "" if icon_path else "未获取到可用图标",
-            }
-        except Exception as e:
-            result = {
-                "success": False,
-                "icon_path": "",
-                "error": f"自动获取失败: {e}",
-            }
-        if not self._suppress_signal:
-            result["request_id"] = getattr(self, "request_id", 0)
-            self.finished_signal.emit(result)
+        icon_path = fetch_favicon(url, force_refresh=True)
+        result = {
+            "success": bool(icon_path),
+            "icon_path": icon_path or "",
+            "error": "" if icon_path else "未获取到可用图标",
+        }
+    except Exception as e:
+        result = {
+            "success": False,
+            "icon_path": "",
+            "error": f"自动获取失败: {e}",
+        }
+    result["request_id"] = request_id
+    return result
 
 
 class UrlDialog(BaseDialog):
     """URL编辑对话框"""
-
-    _orphaned_threads = []
-    _MAX_ORPHANED_THREADS = 8
 
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
         super().__init__(parent)
@@ -429,9 +400,13 @@ class UrlDialog(BaseDialog):
         self._latency_request_id += 1
         self._latency_btn.setEnabled(False)
         self._set_latency_result("测试中...", "muted")
-        self._latency_thread = UrlLatencyTestThread(url, {"input": "test"}, parent=None)
-        self._latency_thread.request_id = self._latency_request_id
-        self._latency_thread.finished_signal.connect(self._show_latency_result)
+        request_id = self._latency_request_id
+        self._latency_thread = DialogTestTask(
+            name="url-latency-test",
+            callback=lambda _cancel_event: run_url_latency_test(url, {"input": "test"}, request_id),
+            owner=self,
+        )
+        self._latency_thread.result_ready.connect(self._show_latency_result)
         self._latency_thread.start()
 
     def _show_latency_result(self, result: dict):
@@ -470,7 +445,13 @@ class UrlDialog(BaseDialog):
 
         self._set_latency_result(text, color)
         self._latency_btn.setEnabled(True)
+        task = self._latency_thread
         self._latency_thread = None
+        if task is not None:
+            try:
+                task.deleteLater()
+            except Exception as exc:
+                logger.debug("删除 URL 延迟测试任务失败: %s", exc, exc_info=True)
 
     def _set_latency_result(self, text: str, color: str):
         self._latency_result_state = (color, text)
@@ -540,9 +521,13 @@ class UrlDialog(BaseDialog):
         self._icon_fetch_request_id += 1
         self._auto_icon_btn.setEnabled(False)
         self._auto_icon_btn.setText(tr("获取中..."))
-        self._icon_fetch_thread = UrlIconFetchThread(url, parent=None)
-        self._icon_fetch_thread.request_id = self._icon_fetch_request_id
-        self._icon_fetch_thread.finished_signal.connect(self._show_auto_icon_result)
+        request_id = self._icon_fetch_request_id
+        self._icon_fetch_thread = DialogTestTask(
+            name="url-icon-fetch",
+            callback=lambda _cancel_event: run_url_icon_fetch(url, request_id),
+            owner=self,
+        )
+        self._icon_fetch_thread.result_ready.connect(self._show_auto_icon_result)
         self._icon_fetch_thread.start()
 
     def _show_auto_icon_result(self, result: dict):
@@ -562,7 +547,13 @@ class UrlDialog(BaseDialog):
             QTimer.singleShot(1200, self._restore_auto_icon_button)
 
         self._auto_icon_btn.setEnabled(True)
+        task = self._icon_fetch_thread
         self._icon_fetch_thread = None
+        if task is not None:
+            try:
+                task.deleteLater()
+            except Exception as exc:
+                logger.debug("删除 URL 图标获取任务失败: %s", exc, exc_info=True)
 
     def _restore_auto_icon_button(self):
         if getattr(self, "_dialog_finished", False) or not self.isVisible():
@@ -692,7 +683,7 @@ class UrlDialog(BaseDialog):
             if thread is None:
                 continue
             try:
-                thread.finished_signal.disconnect(slot)
+                thread.result_ready.disconnect(slot)
             except Exception as exc:
                 logger.debug("断开线程信号失败: %s", exc, exc_info=True)
             try:
@@ -704,10 +695,7 @@ class UrlDialog(BaseDialog):
             if thread.isRunning():
                 thread.wait(2000)  # 延长等待替代 terminate，让线程自然完成
             if thread.isRunning():
-                try:
-                    type(self)._adopt_orphaned_thread(thread)
-                except Exception as exc:
-                    logger.debug("设置孤立线程失败: %s", exc, exc_info=True)
+                logger.warning("URL 对话框后台任务取消后仍在运行: %s", attr)
                 setattr(self, attr, None)
             else:
                 try:
@@ -715,34 +703,6 @@ class UrlDialog(BaseDialog):
                 except Exception as exc:
                     logger.debug("删除线程失败: %s", exc, exc_info=True)
                 setattr(self, attr, None)
-
-    @classmethod
-    def _forget_orphaned_thread(cls, thread):
-        try:
-            cls._orphaned_threads.remove(thread)
-        except ValueError:
-            logger.debug("移除孤立线程记录失败", exc_info=True)
-
-    @classmethod
-    def _cleanup_finished_orphans(cls):
-        if not cls._orphaned_threads:
-            return
-        still_running = [t for t in cls._orphaned_threads if t.isRunning()]
-        removed = len(cls._orphaned_threads) - len(still_running)
-        cls._orphaned_threads = still_running
-        if removed:
-            logger.info("清理了 %s 个 URL 对话框孤儿线程", removed)
-
-    @classmethod
-    def _adopt_orphaned_thread(cls, thread):
-        cls._cleanup_finished_orphans()
-        if len(cls._orphaned_threads) >= cls._MAX_ORPHANED_THREADS:
-            logger.warning("URL 对话框孤儿线程数量达到上限: %s", len(cls._orphaned_threads))
-            return
-        thread.setParent(None)
-        cls._orphaned_threads.append(thread)
-        thread.finished.connect(lambda t=thread: cls._forget_orphaned_thread(t))
-        thread.finished.connect(thread.deleteLater)
 
     def showEvent(self, event):
         """显示时进行延迟测试"""

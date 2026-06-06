@@ -23,6 +23,130 @@ SEARCH_SOURCE_RESULT_KEYS = {"id", "title", "name", "command", "folder", "icon_p
 SEARCH_SOURCE_TIMEOUT_SECONDS = 1.0
 SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS = 1.5
 
+# Shared thread pool for plugin search — avoids creating a new executor per search
+# and per source.  Sized to accommodate concurrent searches from multiple sources
+# while keeping a predictable ceiling on resource usage.
+_SEARCH_POOL_MAX_WORKERS = 6
+_search_pool: concurrent.futures.ThreadPoolExecutor | None = None
+_search_pool_lock = threading.Lock()
+_active_search_futures: dict[str, dict[concurrent.futures.Future, SearchCancelToken]] = {}
+_active_search_futures_lock = threading.Lock()
+
+
+class SearchCancelToken:
+    """Cooperative cancellation token for plugin search operations.
+
+    Callers create a token and pass it to ``execute_search_sources``.  Setting
+    ``cancelled = True`` signals in-flight handlers to exit early when they
+    next check the token.
+    """
+
+    __slots__ = ("_cancelled",)
+
+    def __init__(self) -> None:
+        self._cancelled = False
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+
+def _get_search_pool() -> concurrent.futures.ThreadPoolExecutor:
+    """Return (and lazily create) the shared search thread pool."""
+    global _search_pool
+    if _search_pool is None:
+        with _search_pool_lock:
+            if _search_pool is None:
+                _search_pool = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=_SEARCH_POOL_MAX_WORKERS,
+                    thread_name_prefix="PluginSearch",
+                )
+    return _search_pool
+
+
+def shutdown_search_pool(timeout: float = 3.0) -> None:
+    """Shut down the shared search pool.  Safe to call multiple times."""
+    global _search_pool
+    with _search_pool_lock:
+        pool = _search_pool
+        _search_pool = None
+    if pool is not None:
+        futures = _snapshot_active_search_futures()
+        if futures:
+            concurrent.futures.wait(futures, timeout=max(0.0, float(timeout or 0.0)))
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def cancel_search_tasks_for_plugin(plugin_id: str) -> int:
+    """Cancel pending search work for a plugin and return active task count."""
+    plugin_id = str(plugin_id or "").strip()
+    if not plugin_id:
+        return 0
+    with _active_search_futures_lock:
+        tasks = dict(_active_search_futures.get(plugin_id, {}))
+    for token in tasks.values():
+        token.cancel()
+    return len(tasks)
+
+
+def _track_search_future(plugin_id: str, future: concurrent.futures.Future, cancel_token: SearchCancelToken) -> None:
+    plugin_id = str(plugin_id or "").strip()
+    if not plugin_id:
+        return
+    with _active_search_futures_lock:
+        _active_search_futures.setdefault(plugin_id, {})[future] = cancel_token
+
+    def _cleanup(_future: concurrent.futures.Future, pid: str = plugin_id) -> None:
+        with _active_search_futures_lock:
+            futures = _active_search_futures.get(pid)
+            if futures is not None:
+                futures.pop(_future, None)
+                if not futures:
+                    _active_search_futures.pop(pid, None)
+
+    future.add_done_callback(_cleanup)
+
+
+def _snapshot_active_search_futures() -> list[concurrent.futures.Future]:
+    with _active_search_futures_lock:
+        return [future for futures in _active_search_futures.values() for future in futures]
+
+
+def _run_search_handler(
+    source_id: str,
+    source_info: dict,
+    query: str,
+    *,
+    cancel_token: SearchCancelToken | None = None,
+) -> list[dict]:
+    handler = source_info.get("handler")
+    if handler is None:
+        return []
+    plugin_id = str(source_info.get("plugin_id") or "")
+    try:
+        if cancel_token is not None and cancel_token.cancelled:
+            return []
+        raw_results = handler(query)
+        if cancel_token is not None and cancel_token.cancelled:
+            return []
+        if not isinstance(raw_results, list):
+            return []
+        results = []
+        for item in raw_results[:MAX_SEARCH_SOURCE_RESULTS]:
+            if not isinstance(item, dict):
+                continue
+            results.append({key: value for key, value in item.items() if key in SEARCH_SOURCE_RESULT_KEYS})
+        return results
+    except Exception as exc:
+        callback = source_info.get("error_callback")
+        if callable(callback):
+            callback(plugin_id, "search", source_id, exc, traceback.format_exc())
+        logger.exception("plugin search source failed: %s", source_id)
+        return []
+
 
 def builtin_command_metadata(command_id: str, category: str = "") -> CommandMetadata:
     """Compatibility facade for older imports from command_registry."""
@@ -170,77 +294,80 @@ def snapshot_search_sources() -> list[tuple[str, dict]]:
         return [(source_id, dict(source_info)) for source_id, source_info in _search_sources.items()]
 
 
-def execute_search_source(source_id: str, query: str) -> list[dict]:
-    """Execute one plugin search source with validation, timeout, and failure reporting."""
+def execute_search_source(source_id: str, query: str, *, cancel_token: SearchCancelToken | None = None) -> list[dict]:
+    """Execute one plugin search source with validation, timeout, and failure reporting.
+
+    Uses the shared search pool instead of creating a per-call executor.
+    """
     with _search_sources_lock:
         source_info = dict(_search_sources.get(source_id) or {})
-    handler = source_info.get("handler")
-    if handler is None:
-        return []
     plugin_id = str(source_info.get("plugin_id") or "")
-    pool = None
-    try:
-        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = pool.submit(handler, query)
-        try:
-            raw_results = future.result(timeout=SEARCH_SOURCE_TIMEOUT_SECONDS)
-        except concurrent.futures.TimeoutError:
-            logger.warning("plugin search source timed out: %s", source_id)
-            callback = source_info.get("error_callback")
-            if callable(callback):
-                callback(plugin_id, "search", source_id, TimeoutError("search source timed out"), "")
-            return []
-        if not isinstance(raw_results, list):
-            return []
-        results = []
-        for item in raw_results[:MAX_SEARCH_SOURCE_RESULTS]:
-            if not isinstance(item, dict):
-                continue
-            results.append({key: value for key, value in item.items() if key in SEARCH_SOURCE_RESULT_KEYS})
-        return results
-    except Exception as exc:
+    if source_info.get("handler") is None:
+        return []
+    pool = _get_search_pool()
+    task_token = cancel_token or SearchCancelToken()
+    future = pool.submit(_run_search_handler, source_id, source_info, query, cancel_token=task_token)
+    _track_search_future(plugin_id, future, task_token)
+    done, _pending = concurrent.futures.wait([future], timeout=SEARCH_SOURCE_TIMEOUT_SECONDS)
+    if future not in done:
+        task_token.cancel()
+        logger.warning("plugin search source timed out: %s", source_id)
         callback = source_info.get("error_callback")
         if callable(callback):
-            callback(plugin_id, "search", source_id, exc, traceback.format_exc())
-        logger.exception("plugin search source failed: %s", source_id)
+            callback(plugin_id, "search", source_id, TimeoutError("search source timed out"), "")
         return []
-    finally:
-        if pool is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
+    return future.result()
 
 
 def execute_search_sources(
-    query: str, timeout: float = SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS
+    query: str,
+    timeout: float = SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS,
+    *,
+    cancel_token: SearchCancelToken | None = None,
 ) -> list[tuple[str, dict, list[dict]]]:
-    """Execute plugin search sources concurrently within a bounded total timeout."""
+    """Execute plugin search sources concurrently within a bounded total timeout.
+
+    The optional *cancel_token* allows callers to signal that results are no
+    longer needed (e.g. the user typed a new query).  Pending futures are
+    cancelled and in-flight handlers see ``cancel_token.cancelled == True``.
+    """
     sources = snapshot_search_sources()
     if not sources:
         return []
+    if cancel_token is not None and cancel_token.cancelled:
+        return []
     results: list[tuple[str, dict, list[dict]]] = []
-    max_workers = max(1, min(len(sources), 8))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        future_map = {
-            pool.submit(execute_search_source, source_id, query): (source_id, source_info)
-            for source_id, source_info in sources
-        }
-        done, pending = concurrent.futures.wait(future_map, timeout=max(0.01, float(timeout or 0)))
-        for future in done:
-            source_id, source_info = future_map[future]
-            try:
-                source_results = future.result()
-            except Exception:
-                logger.exception("plugin search source future failed: %s", source_id)
-                source_results = []
-            if source_results:
-                results.append((source_id, source_info, source_results))
-        for future in pending:
-            source_id, source_info = future_map[future]
-            plugin_id = str(source_info.get("plugin_id") or "")
-            logger.warning("plugin search source skipped by total timeout: %s", source_id)
-            callback = source_info.get("error_callback")
-            if callable(callback):
-                callback(plugin_id, "search", source_id, TimeoutError("search sources total timeout"), "")
-            future.cancel()
+    pool = _get_search_pool()
+    future_map = {}
+    future_tokens = {}
+    for source_id, source_info in sources:
+        task_token = cancel_token or SearchCancelToken()
+        future = pool.submit(_run_search_handler, source_id, source_info, query, cancel_token=task_token)
+        _track_search_future(str(source_info.get("plugin_id") or ""), future, task_token)
+        future_map[future] = (source_id, source_info)
+        future_tokens[future] = task_token
+    done, pending = concurrent.futures.wait(future_map, timeout=max(0.01, float(timeout or 0)))
+    for future in done:
+        source_id, source_info = future_map[future]
+        if cancel_token is not None and cancel_token.cancelled:
+            break
+        try:
+            source_results = future.result()
+        except Exception:
+            logger.exception("plugin search source future failed: %s", source_id)
+            source_results = []
+        if source_results:
+            results.append((source_id, source_info, source_results))
+    for future in pending:
+        source_id, source_info = future_map[future]
+        plugin_id = str(source_info.get("plugin_id") or "")
+        logger.warning("plugin search source skipped by total timeout: %s", source_id)
+        callback = source_info.get("error_callback")
+        if callable(callback):
+            callback(plugin_id, "search", source_id, TimeoutError("search sources total timeout"), "")
+        token = future_tokens.get(future)
+        if token is not None:
+            token.cancel()
     return results
 
 

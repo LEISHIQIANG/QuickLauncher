@@ -3,6 +3,7 @@
 """
 
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,11 +15,13 @@ _HOOK_INSTALL_RETRY_DELAYS_MS = (500, 2000, 5000)
 _PROCESS_CHECK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="QLProcessCheck")
 
 
-def _collect_special_process_pids(target_apps: set[str]) -> set[int]:
+def _collect_special_process_pids(target_apps: set[str], cancel_event: threading.Event | None = None) -> set[int]:
     import psutil
 
     current_pids = set()
     for proc in psutil.process_iter(["pid", "name"]):
+        if cancel_event is not None and cancel_event.is_set():
+            break
         try:
             name = str(proc.info.get("name") or "").lower()
             if any(app in name for app in target_apps):
@@ -171,12 +174,15 @@ class HooksMixin:
             target_apps = set(self._get_special_apps())
             if not target_apps:
                 self._known_processes = set()
+                self._process_check_cancel_event = None
                 return
 
             future = getattr(self, "_process_check_future", None)
             if future is not None and not future.done():
                 return
-            future = _PROCESS_CHECK_EXECUTOR.submit(_collect_special_process_pids, target_apps)
+            cancel_event = threading.Event()
+            self._process_check_cancel_event = cancel_event
+            future = _PROCESS_CHECK_EXECUTOR.submit(_collect_special_process_pids, target_apps, cancel_event)
             self._process_check_future = future
             future.add_done_callback(self._emit_process_check_done)
         except Exception as exc:
@@ -194,6 +200,7 @@ class HooksMixin:
         try:
             if getattr(self, "_process_check_future", None) is future:
                 self._process_check_future = None
+                self._process_check_cancel_event = None
             current_pids = set(future.result())
             if not self._known_processes:
                 self._known_processes = current_pids

@@ -8,12 +8,15 @@ import threading
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
+from core.background_tasks import start_background_thread
 from services.api.base_client import ApiClient, ApiError
 from services.update.config import UpdateConfig, UpdateInfo
+from services.update.trust import UpdateSignatureError, update_signature_payload, verify_update_signature
 
 logger = logging.getLogger(__name__)
 _SHA256_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 _SHA256_ANYWHERE_RE = re.compile(r"sha256:[0-9a-fA-F]{64}", re.IGNORECASE)
+_ED25519_SIGNATURE_RE = re.compile(r"ed25519:[A-Za-z0-9+/=_-]{43,128}|ed25519:[0-9a-fA-F]{128}", re.IGNORECASE)
 
 
 class UpdateCheckError(Exception):
@@ -38,7 +41,8 @@ class UpdateChecker:
     def __init__(self, config: UpdateConfig | None = None):
         self._config = config or UpdateConfig()
         self._api = ApiClient(self._config.check_url, timeout=10, verify_ssl=self._config.verify_ssl)
-        self._timer: threading.Timer | None = None
+        self._timer: threading.Thread | None = None
+        self._timer_cancel_event: threading.Event | None = None
         self._timer_lock = threading.Lock()
         self._listeners = []
         self._running = False
@@ -60,7 +64,11 @@ class UpdateChecker:
             return
         self._running = True
         if self._config.check_on_startup:
-            threading.Thread(target=self._auto_check, daemon=True).start()
+            self._auto_check_thread = start_background_thread(
+                name="UpdateAutoCheck",
+                target=self._auto_check,
+                owner=self,
+            )
         else:
             self._schedule_next()
 
@@ -111,7 +119,7 @@ class UpdateChecker:
                 return True
             last = datetime.fromisoformat(last_check)
             return datetime.now() - last >= timedelta(hours=self._config.check_interval_hours)
-        except Exception:
+        except (OSError, TypeError, ValueError):
             return True
 
     def _do_check(self) -> UpdateInfo | None:
@@ -158,6 +166,7 @@ class UpdateChecker:
                     changelog_en=changelog.get("en", ""),
                     download_url=resp["download_url"],
                     file_hash=resp.get("file_hash", ""),
+                    file_signature=resp.get("file_signature", "") or resp.get("signature", ""),
                     file_size=int(resp.get("file_size", 0) or 0),
                     mandatory=bool(resp.get("mandatory", False)),
                     mandatory_min_version=resp.get("mandatory_min_version", ""),
@@ -172,7 +181,7 @@ class UpdateChecker:
             return info
         except UpdateCheckError as exc:
             return self._fail_check(exc.event, str(exc))
-        except Exception as exc:
+        except (ApiError, OSError, RuntimeError, TypeError, ValueError) as exc:
             return self._fail_check("check_failed", str(exc))
 
     def _fail_check(self, event: str, message: str) -> None:
@@ -198,6 +207,7 @@ class UpdateChecker:
             raise ValueError("GitHub Release 未找到 Windows 安装包 asset")
 
         file_hash = self._extract_release_hash(resp, asset)
+        file_signature = self._extract_release_signature(resp, asset)
         info = UpdateInfo(
             has_update=True,
             version=version,
@@ -205,6 +215,7 @@ class UpdateChecker:
             changelog_zh=resp.get("body") or "",
             download_url=asset.get("browser_download_url", ""),
             file_hash=file_hash,
+            file_signature=file_signature,
             file_size=int(asset.get("size", 0) or 0),
             mandatory=False,
         )
@@ -230,6 +241,13 @@ class UpdateChecker:
             return body_match.group(0)
         return ""
 
+    def _extract_release_signature(self, release: dict, asset: dict) -> str:
+        for value in (asset.get("signature"), asset.get("ed25519"), release.get("body")):
+            match = _ED25519_SIGNATURE_RE.search(str(value or ""))
+            if match:
+                return match.group(0)
+        return ""
+
     def _validate_update_info(self, info: UpdateInfo) -> str:
         if not info.version:
             return "更新信息缺少版本号"
@@ -248,6 +266,19 @@ class UpdateChecker:
             return f"更新包下载域名不受信任: {host}"
         if self._config.require_file_hash and not _SHA256_RE.fullmatch(info.file_hash or ""):
             return "更新包缺少有效的 sha256 哈希"
+        if self._config.require_signature:
+            if not info.file_signature:
+                return "更新包缺少发布签名"
+            try:
+                valid_signature = verify_update_signature(
+                    update_signature_payload(info),
+                    info.file_signature,
+                    tuple(self._config.signature_public_keys or ()),
+                )
+            except UpdateSignatureError as exc:
+                return f"更新签名配置无效: {exc}"
+            if not valid_signature:
+                return "更新包发布签名校验失败"
         if info.file_size <= 0:
             return "更新包大小无效"
         if info.file_size > self._config.max_download_bytes:
@@ -292,7 +323,7 @@ class UpdateChecker:
                 if isinstance(data, dict):
                     self._save_state(data)
                     return data
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.debug("Failed to load update state: %s", exc)
         return {}
 
@@ -302,7 +333,7 @@ class UpdateChecker:
             os.makedirs(os.path.dirname(state_file), exist_ok=True)
             with open(state_file, "w", encoding="utf-8") as handle:
                 json.dump(state, handle, ensure_ascii=False, indent=2)
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("Failed to save update state: %s", exc)
 
     def _save_check_time(self):
@@ -318,18 +349,28 @@ class UpdateChecker:
             if not self._running:
                 return
             interval = max(3600, int(self._config.check_interval_hours * 3600))
-            timer = threading.Timer(interval, self._auto_check)
-            timer.daemon = True
-            self._timer = timer
-            timer.start()
+            cancel_event = threading.Event()
+            self._timer_cancel_event = cancel_event
+            self._timer = start_background_thread(
+                name="UpdateAutoCheckTimer",
+                target=self._wait_then_auto_check,
+                args=(interval, cancel_event),
+                owner=self,
+            )
+
+    def _wait_then_auto_check(self, interval: int, cancel_event: threading.Event) -> None:
+        if cancel_event.wait(max(0, int(interval))):
+            return
+        self._auto_check()
 
     def stop(self):
         with self._timer_lock:
             self._running = False
-            timer = self._timer
+            cancel_event = self._timer_cancel_event
             self._timer = None
-        if timer:
-            timer.cancel()
+            self._timer_cancel_event = None
+        if cancel_event:
+            cancel_event.set()
 
 
 def _normalize_version(value: str) -> str:

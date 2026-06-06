@@ -31,10 +31,8 @@ from qt_compat import (
     QSpinBox,
     QStackedWidget,
     QtCompat,
-    QThread,
     QTimer,
     QVBoxLayout,
-    pyqtSignal,
 )
 from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
@@ -49,56 +47,14 @@ from .command_profile_helpers import (
     parse_command_params_text,
 )
 from .icon_browse_helper import choose_custom_icon
+from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
 
-class CommandTestThread(QThread):
-    finished_signal = pyqtSignal(dict)
-
-    def __init__(self, shortcut: ShortcutItem, timeout: float = 10.0, parent=None):
-        super().__init__(parent)
-        self.shortcut = shortcut
-        self.timeout = timeout
-        self._suppress_signal = False
-
-    def suppress_result_signal(self):
-        self._suppress_signal = True
-
-    def run(self):
-        try:
-            from core import ShortcutExecutor
-
-            if not ShortcutExecutor:
-                result = {
-                    "success": False,
-                    "exit_code": None,
-                    "stdout": "",
-                    "stderr": "",
-                    "error": "执行器不可用，请检查运行环境依赖。",
-                    "duration": 0.0,
-                }
-            else:
-                result = ShortcutExecutor.test_command(self.shortcut, timeout=self.timeout)
-        except Exception as e:
-            result = {
-                "success": False,
-                "exit_code": None,
-                "stdout": "",
-                "stderr": "",
-                "error": str(e),
-                "duration": 0.0,
-            }
-        if not self._suppress_signal:
-            self.finished_signal.emit(result)
-
-
 class CommandDialog(BaseDialog):
     """命令编辑对话框"""
-
-    _orphaned_threads = []
-    _MAX_ORPHANED_THREADS = 8
 
     BUILTIN_COMMANDS = [
         ("置顶/取消置顶 (Toggle Topmost)", "toggle_topmost"),
@@ -234,9 +190,6 @@ class CommandDialog(BaseDialog):
         return options
 
     def __init__(self, parent=None, shortcut: ShortcutItem = None):
-        # 清理已完成的孤儿线程
-        self._cleanup_finished_orphans()
-
         super().__init__(parent)
         if shortcut:
             self.shortcut = shortcut
@@ -1408,12 +1361,31 @@ class CommandDialog(BaseDialog):
                 ),
             )
 
+        self._cleanup_command_test_thread()
         self._test_btn.setEnabled(False)
         self.test_output.setPlainText("正在测试...")
-        self._command_test_thread = CommandTestThread(
-            shortcut, timeout=float(self.capture_timeout_spin.value()), parent=None
+        timeout = float(self.capture_timeout_spin.value())
+
+        def run_command_test(cancel_event):
+            from core import ShortcutExecutor
+
+            if not ShortcutExecutor:
+                return {
+                    "success": False,
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "error": "执行器不可用，请检查运行环境依赖。",
+                    "duration": 0.0,
+                }
+            return ShortcutExecutor.test_command(shortcut, timeout=timeout, cancel_event=cancel_event)
+
+        self._command_test_thread = DialogTestTask(
+            name="command-dialog-test",
+            callback=run_command_test,
+            owner=self,
         )
-        self._command_test_thread.finished_signal.connect(self._show_test_result)
+        self._command_test_thread.result_ready.connect(self._show_test_result)
         self._command_test_thread.start()
 
     def _show_test_result(self, result: dict):
@@ -1434,7 +1406,13 @@ class CommandDialog(BaseDialog):
             lines.extend(["", "stderr:", str(result.get("stderr"))])
         self.test_output.setPlainText("\n".join(lines))
         self._test_btn.setEnabled(self.type_combo.currentIndex() != 4)
+        task = self._command_test_thread
         self._command_test_thread = None
+        if task is not None:
+            try:
+                task.deleteLater()
+            except Exception as exc:
+                logger.debug("删除命令测试任务失败: %s", exc, exc_info=True)
 
     def closeEvent(self, event):
         super().closeEvent(event)
@@ -1462,22 +1440,18 @@ class CommandDialog(BaseDialog):
         if thread is None:
             return
         try:
-            thread.finished_signal.disconnect(self._show_test_result)
+            thread.result_ready.disconnect(self._show_test_result)
         except Exception as exc:
             logger.debug("断开信号失败: %s", exc, exc_info=True)
         try:
             thread.suppress_result_signal()
+            thread.cancel()
         except Exception as exc:
-            logger.debug("抑制结果信号失败: %s", exc, exc_info=True)
+            logger.debug("取消测试线程失败: %s", exc, exc_info=True)
         if thread.isRunning():
-            thread.wait(500)
+            thread.wait(3000)
         if thread.isRunning():
-            thread.wait(2000)  # 延长等待替代 terminate，让线程自然完成
-        if thread.isRunning():
-            try:
-                type(self)._adopt_orphaned_thread(thread)
-            except Exception as exc:
-                logger.debug("设置孤儿线程清理失败: %s", exc, exc_info=True)
+            logger.warning("命令测试任务取消后仍在后台运行")
             self._command_test_thread = None
         else:
             try:
@@ -1485,35 +1459,6 @@ class CommandDialog(BaseDialog):
             except Exception as exc:
                 logger.debug("删除线程失败: %s", exc, exc_info=True)
             self._command_test_thread = None
-
-    @classmethod
-    def _forget_orphaned_thread(cls, thread):
-        try:
-            cls._orphaned_threads.remove(thread)
-        except ValueError:
-            logger.debug("移除孤立线程记录失败", exc_info=True)
-
-    @classmethod
-    def _cleanup_finished_orphans(cls):
-        """清理已完成的孤儿线程（仅从列表移除，deleteLater 由 finished 信号负责）"""
-        if not cls._orphaned_threads:
-            return
-        still_running = [t for t in cls._orphaned_threads if t.isRunning()]
-        removed = len(cls._orphaned_threads) - len(still_running)
-        cls._orphaned_threads = still_running
-        if removed:
-            logger.info(f"清理了 {removed} 个已完成的孤儿线程")
-
-    @classmethod
-    def _adopt_orphaned_thread(cls, thread):
-        cls._cleanup_finished_orphans()
-        if len(cls._orphaned_threads) >= cls._MAX_ORPHANED_THREADS:
-            logger.warning("命令测试孤儿线程数量达到上限: %s", len(cls._orphaned_threads))
-            return
-        thread.setParent(None)
-        cls._orphaned_threads.append(thread)
-        thread.finished.connect(lambda t=thread: cls._forget_orphaned_thread(t))
-        thread.finished.connect(thread.deleteLater)
 
     def _load_data(self):
         """加载数据"""

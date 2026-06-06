@@ -6,11 +6,11 @@ import logging
 import os
 import shlex
 import subprocess
-import threading
 import time
 
 import win32process
 
+from .background_tasks import start_background_thread
 from .command_variables import CommandVariableError, resolve_command_variables
 from .data_models import ShortcutItem
 from .shortcut_types import (
@@ -505,7 +505,11 @@ class FileExecutionMixin:
                     logger.debug("Failed to activate launched app %s: %s", exe_path, e)
                     continue
 
-        threading.Thread(target=run, daemon=True, name="ActivateLaunchedApp").start()
+        start_background_thread(
+            name="ActivateLaunchedApp",
+            target=run,
+            owner="shortcut-file-exec",
+        )
 
     @staticmethod
     def _shell_execute_cmd(command: str, cwd: str | None = None, run_as_admin: bool = False) -> bool:

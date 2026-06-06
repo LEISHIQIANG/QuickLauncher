@@ -1,13 +1,19 @@
 import threading
+import time
 
+from core.action_chain_host import DefaultActionChainHostAPI
 from core.command_registry import CommandResult
 from core.data_models import Folder, ShortcutItem, ShortcutType
 from core.shortcut_chain_exec import _execute_shortcut_chain_runtime, execute_shortcut_chain
 
 
 class _Data:
-    def __init__(self, items):
+    def __init__(self, items, *, confirm_dangerous=False):
+        self._confirm_dangerous = confirm_dangerous
         self.data = type("AppData", (), {"folders": [Folder(id="f", name="F", items=items)]})()
+
+    def request_action_chain_confirmation(self, request):
+        return self._confirm_dangerous
 
 
 def test_shortcut_item_serializes_chain_steps():
@@ -56,12 +62,73 @@ def test_runtime_executes_canvas_only_processor_chain_without_mutating_steps():
         },
     )
 
-    result = _execute_shortcut_chain_runtime(chain)
+    result = _execute_shortcut_chain_runtime(chain, _Data([]), host_api=DefaultActionChainHostAPI(_Data([])))
 
     assert result.success is True
     assert result.payload["items"][-1]["node_id"] == "panel"
     assert result.payload["node_snapshots"]["panel"]["outputs"]["output"] == "Hello"
     assert chain.chain_steps == []
+
+
+def test_processor_timeout_cancels_cooperative_sleep_node():
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "sleep_node",
+                "args": {"ms": "2000"},
+                "timeout_ms": 50,
+            }
+        ],
+    )
+
+    started = time.monotonic()
+    result = execute_shortcut_chain(chain, _Data([]))
+    elapsed = time.monotonic() - started
+
+    assert result.success is False
+    assert "超时" in result.payload["items"][0]["detail"]
+    assert elapsed < 1.0
+
+
+def test_dangerous_processor_requires_confirmation(tmp_path):
+    target = tmp_path / "blocked.txt"
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "file_write_text",
+                "args": {"path": str(target), "text": "blocked"},
+            }
+        ],
+    )
+
+    result = execute_shortcut_chain(chain, _Data([], confirm_dangerous=False))
+
+    assert result.success is False
+    assert "未确认" in result.payload["items"][0]["detail"]
+    assert not target.exists()
+
+
+def test_dangerous_processor_executes_after_confirmation(tmp_path):
+    target = tmp_path / "allowed.txt"
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "file_write_text",
+                "args": {"path": str(target), "text": "allowed"},
+            }
+        ],
+    )
+
+    result = execute_shortcut_chain(chain, _Data([], confirm_dangerous=True))
+
+    assert result.success is True
+    assert target.read_text(encoding="utf-8") == "allowed"
 
 
 def test_chain_executes_steps_skips_disabled_and_stops_on_error(monkeypatch):
@@ -558,10 +625,28 @@ def test_python_processor_custom_output_and_multi_input_bindings():
         ],
     )
 
-    result = execute_shortcut_chain(chain, _Data([]))
+    result = execute_shortcut_chain(chain, _Data([], confirm_dangerous=True))
 
     assert result.success is True
     assert "A,B" in result.payload["items"][2]["detail"]
+
+
+def test_dangerous_processor_requires_runtime_confirmation():
+    chain = ShortcutItem(
+        type=ShortcutType.CHAIN,
+        chain_steps=[
+            {
+                "node_type": "processor",
+                "processor_id": "python_cell",
+                "source": 'INPUTS=[]\nOUTPUTS=["foo"]\ndef process(inputs):\n    return {"foo": "A"}\n',
+            }
+        ],
+    )
+
+    result = execute_shortcut_chain(chain, _Data([]))
+
+    assert result.success is False
+    assert "未确认" in result.payload["items"][0]["detail"]
 
 
 def test_chain_guards_nested_missing_max_and_cancel(monkeypatch):

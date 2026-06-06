@@ -2,9 +2,9 @@
 
 import logging
 import os
-import threading
 import time
 
+from core.background_tasks import start_background_thread
 from core.data_models import ShortcutItem, ShortcutType
 from core.i18n import tr
 from qt_compat import QTimer
@@ -436,7 +436,11 @@ class PopupItemExecutionMixin:
             finally:
                 self._executing = False
 
-        threading.Thread(target=do_execute_thread, daemon=True, name="ItemExecutor").start()
+        self._item_execution_thread = start_background_thread(
+            name="ItemExecutor",
+            target=do_execute_thread,
+            owner=self,
+        )
 
     def _should_wait_for_selection(self, item: ShortcutItem, force_new: bool = False) -> bool:
         """Briefly defer execution while the Explorer/Desktop selection probe is still running."""

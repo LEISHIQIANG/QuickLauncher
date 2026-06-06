@@ -6,20 +6,16 @@ import atexit
 import logging
 import os
 import sys
-import threading
 import time
 
-logger = logging.getLogger(__name__)
+from core.background_tasks import join_background_tasks, start_background_thread
 
-# 跟踪启动阶段的后台线程，atexit 时优雅 join
-_startup_threads: list[threading.Thread] = []
+logger = logging.getLogger(__name__)
 
 
 def _join_startup_threads():
     """进程退出时 join 所有启动线程，防止文件操作被中断"""
-    for t in _startup_threads:
-        if t.is_alive():
-            t.join(timeout=3)
+    join_background_tasks("startup", timeout=9.0)
 
 
 atexit.register(_join_startup_threads)
@@ -48,7 +44,6 @@ class StartupMixin:
         """异步清理图标缓存"""
         if self._sleeping:
             return
-        import threading
 
         def do_clean():
             if self._sleeping:
@@ -116,9 +111,7 @@ class StartupMixin:
             except Exception as e:
                 logger.debug(f"图标缓存清理失败: {e}")
 
-        t = threading.Thread(target=do_clean, name="IconCacheCleaner")
-        _startup_threads.append(t)
-        t.start()
+        start_background_thread(name="IconCacheCleaner", target=do_clean, owner="startup")
 
     def _preinit_popup(self):
         if self._sleeping:
@@ -151,7 +144,6 @@ class StartupMixin:
         """预初始化文件夹监听管理器（在后台线程中创建 watchdog Observer）"""
         if self._sleeping:
             return
-        import threading
 
         def do_init():
             if self._sleeping:
@@ -164,15 +156,12 @@ class StartupMixin:
             except Exception as e:
                 logger.debug(f"  预初始化文件夹监听管理器失败: {e}")
 
-        t = threading.Thread(target=do_init, name="PreinitWatcher")
-        _startup_threads.append(t)
-        t.start()
+        start_background_thread(name="PreinitWatcher", target=do_init, owner="startup")
 
     def _preimport_config_modules(self):
         """后台线程预导入配置窗口相关模块"""
         if self._sleeping:
             return
-        import threading
 
         def do_import():
             if self._sleeping:
@@ -188,9 +177,7 @@ class StartupMixin:
             except Exception as e:
                 logger.debug(f"  后台预导入配置窗口模块失败: {e}")
 
-        t = threading.Thread(target=do_import, name="PreimportConfigModules")
-        _startup_threads.append(t)
-        t.start()
+        start_background_thread(name="PreimportConfigModules", target=do_import, owner="startup")
 
     def _preload_icons(self):
         """预加载图标（在主线程分批执行，避免跨线程 Qt 对象风险）"""

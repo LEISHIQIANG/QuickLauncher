@@ -32,7 +32,6 @@ from qt_compat import (
     Qt,
     QTabWidget,
     QtCompat,
-    QThread,
     QTimer,
     QVBoxLayout,
     QWidget,
@@ -43,6 +42,7 @@ from ui.styles.style import Colors, Glassmorphism, PopupMenu
 from .base_dialog import BaseDialog
 from .chain_canvas import ChainCanvasWidget, NodePropertyPanel, canvas_from_steps, processor_library_items
 from .icon_browse_helper import choose_custom_icon
+from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
@@ -58,29 +58,6 @@ _TYPE_COLORS = {
 
 # 状态颜色
 _STATUS_COLORS = {"ok": "#4CAF50", "failed": "#F44336", "skipped": "#9E9E9E"}
-
-
-class _ChainTestThread(QThread):
-    """后台线程执行动作链测试。"""
-
-    result_ready = pyqtSignal(object)
-
-    def __init__(self, chain: ShortcutItem, data_manager, parent=None):
-        super().__init__(parent)
-        self.chain = chain
-        self.data_manager = data_manager
-
-    def run(self):
-        try:
-            from core.shortcut_chain_exec import execute_shortcut_chain
-
-            result = execute_shortcut_chain(self.chain, self.data_manager)
-            self.result_ready.emit(result)
-        except Exception as e:
-            logger.exception("动作链测试运行失败")
-            from core.command_registry import CommandResult
-
-            self.result_ready.emit(CommandResult(success=False, message=str(e), error=str(e)))
 
 
 class StepCardWidget(QFrame):
@@ -361,11 +338,7 @@ class ChainDialog(BaseDialog):
 
     def closeEvent(self, event):
         """Clean up background threads and timers on close."""
-        # Stop test thread
-        test_thread = getattr(self, "_test_thread", None)
-        if test_thread is not None and test_thread.isRunning():
-            test_thread.quit()
-            test_thread.wait(2000)
+        self._cleanup_chain_test_thread()
         # Stop close-animation timer
         close_anim_timer = getattr(self, "_close_anim_timer", None)
         if close_anim_timer is not None:
@@ -376,6 +349,7 @@ class ChainDialog(BaseDialog):
         super().closeEvent(event)
 
     def done(self, result):
+        self._cleanup_chain_test_thread()
         if getattr(self, "_closing_with_animation", False):
             return
         if not self.isVisible() or getattr(self, "_dialog_finished", False):
@@ -1716,6 +1690,7 @@ class ChainDialog(BaseDialog):
     # ── 测试运行 ─────────────────────────────────────────────
 
     def _run_test(self):
+        self._cleanup_chain_test_thread()
         chain = self.get_shortcut()
         parent = self.parent()
         data_manager = getattr(parent, "data_manager", None)
@@ -1726,9 +1701,24 @@ class ChainDialog(BaseDialog):
         self.result_view.setPlainText(tr("正在执行..."))
         if hasattr(self, "canvas_widget"):
             self.canvas_widget.set_run_status([])
-        self._test_thread = _ChainTestThread(chain, data_manager, self)
+        self._test_thread = DialogTestTask(
+            name="chain-dialog-test",
+            callback=lambda cancel_event: self._execute_chain_test(chain, data_manager, cancel_event),
+            owner=self,
+        )
         self._test_thread.result_ready.connect(self._on_test_result)
         self._test_thread.start()
+
+    def _execute_chain_test(self, chain: ShortcutItem, data_manager, cancel_event):
+        try:
+            from core.shortcut_chain_exec import execute_shortcut_chain
+
+            return execute_shortcut_chain(chain, data_manager, cancel_event=cancel_event)
+        except Exception as e:
+            logger.exception("动作链测试运行失败")
+            from core.command_registry import CommandResult
+
+            return CommandResult(success=False, message=str(e), error=str(e))
 
     def _on_test_result(self, result):
         self.test_btn.setEnabled(True)
@@ -1762,6 +1752,13 @@ class ChainDialog(BaseDialog):
         if error:
             lines.append(tr("错误: {e}", e=error))
         self.result_view.setPlainText("\n".join(lines))
+        task = self._test_thread
+        self._test_thread = None
+        if task is not None:
+            try:
+                task.deleteLater()
+            except Exception as exc:
+                logger.debug("删除动作链测试任务失败: %s", exc, exc_info=True)
 
     def _clear_run_results(self):
         self._last_test_result = None
@@ -1769,6 +1766,37 @@ class ChainDialog(BaseDialog):
             self.canvas_widget.set_run_status([])
         self._refresh_properties()
         self._refresh_risk_analysis()
+
+    # ── 测试线程生命周期管理 ─────────────────────────────────────
+
+    def _cleanup_chain_test_thread(self):
+        """Comprehensive cleanup of the chain test thread, matching CommandDialog's pattern."""
+        thread = getattr(self, "_test_thread", None)
+        if thread is None:
+            return
+        try:
+            thread.result_ready.disconnect(self._on_test_result)
+        except Exception as exc:
+            logger.debug("断开动作链测试信号失败: %s", exc, exc_info=True)
+        try:
+            thread.suppress_result_signal()
+        except Exception as exc:
+            logger.debug("抑制动作链测试结果信号失败: %s", exc, exc_info=True)
+        try:
+            thread.cancel()
+        except Exception as exc:
+            logger.debug("取消动作链测试线程失败: %s", exc, exc_info=True)
+        if thread.isRunning():
+            thread.wait(3000)
+        if thread.isRunning():
+            logger.warning("动作链测试任务取消后仍在后台运行")
+            self._test_thread = None
+        else:
+            try:
+                thread.deleteLater()
+            except Exception as exc:
+                logger.debug("删除动作链测试线程失败: %s", exc, exc_info=True)
+            self._test_thread = None
 
     # ── get_shortcut 契约 ────────────────────────────────────
 

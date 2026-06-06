@@ -14,6 +14,7 @@
 - `file_tools.qlzip`
 - `network_tools.qlzip`
 - `process_tools.qlzip`
+- `qr_code_scanner.qlzip`
 - `screenshot_ocr.qlzip`
 - `startup_tools.qlzip`
 - `text_tools.qlzip`

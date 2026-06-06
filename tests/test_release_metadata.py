@@ -3,8 +3,9 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from core.version import APP_ID, APP_PUBLISHER, APP_VERSION
+from core.version import APP_ID, APP_PUBLISHER, APP_VERSION, RELEASE_STATUS
 from scripts.check_release_artifacts import check_release_artifacts, check_source_metadata
+from scripts.post_package_smoke import run_packaged_smoke
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,6 +69,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert 'if not defined QL_UPX_EXE set "QL_UPX_EXE=0"' in script
     assert 'if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"' in script
     assert "scripts\\check_release_artifacts.py" in script
+    assert "--run-smoke" in script
     assert "QuickLauncher_Setup_%APP_VERSION%.sha256" in script
 
 
@@ -81,6 +83,15 @@ def test_release_source_gate_passes_current_tree():
     result = check_source_metadata(ROOT, APP_VERSION)
 
     assert result.ok, result.errors
+    assert result.manifest["release_status"] == RELEASE_STATUS
+
+
+def test_changelog_release_state_matches_core_version():
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    if RELEASE_STATUS == "stable":
+        assert f"## [{APP_VERSION}] - Unreleased" not in changelog
+        assert f"## [{APP_VERSION}] -" in changelog
 
 
 def test_release_artifact_checker_validates_dist_tree(tmp_path):
@@ -99,6 +110,56 @@ def test_release_artifact_checker_validates_dist_tree(tmp_path):
     assert result.ok, result.errors
     assert result.manifest["artifacts"]["exe"]["sha256"]
     assert result.manifest["artifacts"]["installer"]["sha256"]
+
+
+def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
+    dist = tmp_path / "QuickLauncher"
+    (dist / "hooks").mkdir(parents=True)
+    (dist / "assets").mkdir()
+    (dist / "plugins").mkdir()
+    (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
+    (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (dist / "assets" / "app.ico").write_bytes(b"ico")
+    installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
+    installer.write_bytes(b"setup")
+    fake_smoke = tmp_path / "fake_smoke.py"
+    fake_smoke.write_text(
+        "import json\n"
+        "print('starting fake smoke')\n"
+        "print(json.dumps({'status': 'ok', 'checks': {'fake': True}, 'errors': []}))\n",
+        encoding="utf-8",
+    )
+
+    result = check_release_artifacts(
+        ROOT,
+        dist_dir=dist,
+        installer=installer,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        run_smoke=True,
+        smoke_exe=Path(sys.executable),
+        smoke_args=[str(fake_smoke)],
+    )
+
+    assert result.ok, result.errors
+    assert result.manifest["post_package_smoke"]["ok"] is True
+    assert result.manifest["post_package_smoke"]["smoke_payload"]["checks"]["fake"] is True
+
+
+def test_post_package_smoke_rejects_failed_payload(tmp_path):
+    dist = tmp_path / "QuickLauncher"
+    dist.mkdir()
+    fake_smoke = tmp_path / "fake_smoke.py"
+    fake_smoke.write_text(
+        "import json\nprint(json.dumps({'status': 'failed', 'errors': ['boom']}))\n",
+        encoding="utf-8",
+    )
+
+    result = run_packaged_smoke(dist, exe=Path(sys.executable), smoke_args=[str(fake_smoke)])
+
+    assert not result.ok
+    assert "boom" in result.errors
+    assert result.smoke_payload == {"status": "failed", "errors": ["boom"]}
 
 
 def test_release_artifact_checker_fails_missing_hooks(tmp_path):

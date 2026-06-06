@@ -40,7 +40,14 @@ PLUGIN_API_HTTP_TIMEOUT_SECONDS = 10.0
 PLUGIN_API_HTTP_METHODS = frozenset({"GET", "POST", "HEAD"})
 PLUGIN_API_MAX_HTTP_HEADERS = 64
 PLUGIN_API_MAX_HTTP_HEADER_CHARS = 8192
-PLUGIN_BLOCKED_IMPORT_ROOTS = frozenset({"subprocess"})
+PLUGIN_BLOCKED_IMPORT_ROOTS = frozenset(
+    {
+        "ctypes",
+        "multiprocessing",
+        "socket",
+        "subprocess",
+    }
+)
 PLUGIN_OS_BLOCKED_ATTRS = frozenset(
     {
         "execl",

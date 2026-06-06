@@ -1402,7 +1402,8 @@ class FolderPanel(QWidget):
     def _restore_folder_watches_async(self):
         """异步恢复所有启用自动同步的文件夹监听（在后台线程中执行 Observer 初始化）"""
         import logging
-        import threading
+
+        from core.background_tasks import start_background_thread
 
         logger = logging.getLogger(__name__)
 
@@ -1429,7 +1430,11 @@ class FolderPanel(QWidget):
             except Exception as e:
                 logger.error(f"初始化文件夹监听管理器失败: {e}")
 
-        threading.Thread(target=do_restore, name="RestoreFolderWatches", daemon=True).start()
+        self._restore_watch_thread = start_background_thread(
+            name="RestoreFolderWatches",
+            target=do_restore,
+            owner=self,
+        )
 
     def _restore_folder_watches(self):
         """恢复所有启用自动同步的文件夹监听（同步版本，已弃用，保留兼容）"""

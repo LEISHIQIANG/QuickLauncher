@@ -1,7 +1,6 @@
 """Search bar editing, search logic, IME support and reveal animation for LauncherPopup."""
 
 import logging
-import threading
 import time
 
 from core.data_models import ShortcutItem, ShortcutType
@@ -597,12 +596,24 @@ class PopupSearchMixin:
         except Exception:
             return
 
+        # Cancel any previous in-flight search via the cancel token.
+        old_token = getattr(self, "_plugin_search_cancel_token", None)
+        if old_token is not None:
+            old_token.cancel()
+
+        from core.command_registry import SearchCancelToken
+
+        cancel_token = SearchCancelToken()
+        self._plugin_search_cancel_token = cancel_token
+
         def worker():
             payload = []
             try:
                 from core.command_registry import execute_search_sources
 
-                for src_id, src_info, src_results in execute_search_sources(cmd_query):
+                for src_id, src_info, src_results in execute_search_sources(cmd_query, cancel_token=cancel_token):
+                    if cancel_token.cancelled:
+                        return
                     for sr in src_results:
                         payload.append(
                             {
@@ -616,13 +627,17 @@ class PopupSearchMixin:
                         )
             except Exception:
                 logger.exception("插件搜索失败: %s", cmd_query)
+            if cancel_token.cancelled:
+                return
             try:
                 signal.emit(token, cmd_query, payload)
             except RuntimeError:
                 logger.debug("发送插件搜索信号失败", exc_info=True)
 
-        thread = threading.Thread(target=worker, name="QuickLauncherPluginSearch", daemon=True)
-        thread.start()
+        # Use the shared search pool instead of a dedicated daemon thread.
+        from core.command_registry import _get_search_pool
+
+        _get_search_pool().submit(worker)
 
     def _on_plugin_search_results_ready(self, token: int, cmd_query: str, payload):
         if token != int(self.__dict__.get("_plugin_search_seq", 0) or 0):

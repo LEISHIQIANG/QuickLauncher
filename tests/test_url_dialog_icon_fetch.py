@@ -1,9 +1,9 @@
 from core.data_models import ShortcutItem, ShortcutType
 
 
-def test_url_icon_fetch_thread_forces_refresh(monkeypatch, qapp):
+def test_url_icon_fetch_task_forces_refresh(monkeypatch, qapp):
     import core.favicon_cache as favicon_cache
-    from ui.config_window.url_dialog import UrlIconFetchThread
+    from ui.config_window.url_dialog import run_url_icon_fetch
 
     captured = {}
 
@@ -13,14 +13,11 @@ def test_url_icon_fetch_thread_forces_refresh(monkeypatch, qapp):
         return "C:/tmp/icon.png"
 
     monkeypatch.setattr(favicon_cache, "fetch_favicon", fake_fetch_favicon)
-    thread = UrlIconFetchThread("https://example.test")
-    results = []
-    thread.finished_signal.connect(results.append)
 
-    thread.run()
+    result = run_url_icon_fetch("https://example.test")
 
     assert captured == {"url": "https://example.test", "force_refresh": True}
-    assert results[-1]["icon_path"] == "C:/tmp/icon.png"
+    assert result["icon_path"] == "C:/tmp/icon.png"
 
 
 def test_url_dialog_ok_does_not_fetch_icon_without_click(monkeypatch, qapp):

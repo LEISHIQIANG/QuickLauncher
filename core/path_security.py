@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
+import uuid
 from pathlib import Path
 
 
@@ -16,6 +18,49 @@ def resolve_existing(path: str | os.PathLike[str]) -> Path:
     return Path(path).expanduser().resolve(strict=False)
 
 
+def assert_safe_user_path(path: str | os.PathLike[str], *, operation: str = "file operation") -> Path:
+    """Reject paths that should never be modified by user-authored chains.
+
+    The action-chain file processors accept values from variables and plugin
+    outputs, so destructive/write operations need a host-side boundary even
+    when the UI has already shown risk metadata.
+    """
+    raw = str(path or "").strip().strip('"')
+    if not raw:
+        raise UnsafePathError(f"Refusing empty path for {operation}")
+    target = resolve_existing(raw)
+    if _is_drive_or_fs_root(target):
+        raise UnsafePathError(f"Refusing to operate on filesystem root: {target}")
+    if target.exists() and target.is_symlink():
+        raise UnsafePathError(f"Refusing to operate on symlink: {target}")
+    for protected in _protected_roots():
+        if _is_allowed_temp_path(target):
+            continue
+        if target == protected or protected in target.parents:
+            raise UnsafePathError(f"Refusing {operation} inside protected path: {target}")
+        if target in protected.parents:
+            raise UnsafePathError(f"Refusing {operation} on parent of protected path: {target}")
+    return target
+
+
+def move_to_trash(path: str | os.PathLike[str]) -> Path | None:
+    """Move a file/folder to the OS trash or a recoverable app trash folder."""
+    target = assert_safe_user_path(path, operation="delete")
+    if not target.exists():
+        return None
+    try:
+        from send2trash import send2trash
+
+        send2trash(str(target))
+        return None
+    except ImportError:
+        trash_root = Path(tempfile.gettempdir()) / "QuickLauncherTrash"
+        trash_root.mkdir(parents=True, exist_ok=True)
+        destination = trash_root / f"{target.name}.{uuid.uuid4().hex}"
+        shutil.move(str(target), str(destination))
+        return destination
+
+
 def is_safe_child(root: str | os.PathLike[str], candidate: str | os.PathLike[str], *, allow_root: bool = False) -> bool:
     try:
         root_path = resolve_existing(root)
@@ -23,7 +68,7 @@ def is_safe_child(root: str | os.PathLike[str], candidate: str | os.PathLike[str
         if candidate_path == root_path:
             return allow_root
         return root_path in candidate_path.parents
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError):
         return False
 
 
@@ -57,3 +102,44 @@ def safe_rmtree_child(
         shutil.rmtree(target_path)
         return
     target_path.unlink()
+
+
+def _protected_roots() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    env_names = (
+        "SystemRoot",
+        "WINDIR",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramData",
+        "APPDATA",
+        "LOCALAPPDATA",
+    )
+    for name in env_names:
+        value = os.environ.get(name)
+        if value:
+            roots.append(resolve_existing(value))
+    home = Path.home()
+    if str(home):
+        roots.append(resolve_existing(home / ".qoderwork"))
+    roots.append(Path(__file__).resolve(strict=False).parents[1])
+    deduped: list[Path] = []
+    for root in roots:
+        if root not in deduped:
+            deduped.append(root)
+    return tuple(deduped)
+
+
+def _is_allowed_temp_path(path: Path) -> bool:
+    try:
+        temp_root = resolve_existing(tempfile.gettempdir())
+    except (OSError, RuntimeError):
+        return False
+    return path == temp_root or temp_root in path.parents
+
+
+def _is_drive_or_fs_root(path: Path) -> bool:
+    try:
+        return path.parent == path or str(path) == path.anchor
+    except (OSError, RuntimeError):
+        return False

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 
+from core.action_executor import ActionExecutionContext, execute_command_action
 from core.command_action_safety import normalize_command_action, sanitize_command_actions
 from core.command_registry import MAX_COMMAND_RESULT_ACTIONS
 from qt_compat import (
@@ -435,7 +437,6 @@ class PopupCommandResultMixin:
         card_rect = self._result_card_rect()
         if card_rect.isNull():
             return QRect()
-        import os
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family)
@@ -460,7 +461,6 @@ class PopupCommandResultMixin:
         rects = []
 
         # Get font metrics to calculate dynamic button width
-        import os
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family)
@@ -613,69 +613,16 @@ class PopupCommandResultMixin:
         action = normalize_command_action(action)
         if action is None:
             return
-        if action.type == "copy" and action.value:
-            QApplication.clipboard().setText(action.value)
-            # Keep the panel open after copying — don't call clear_command_result()
-        elif action.type == "open_url" and action.value:
-            import webbrowser
-
-            webbrowser.open(action.value)
-            self.clear_command_result()
-        elif action.type == "open_file" and action.value:
-            import os
-
-            try:
-                os.startfile(action.value)
-            except Exception:
-                import subprocess
-
-                subprocess.Popen(["explorer", action.value])
-            self.clear_command_result()
-        elif action.type == "open_folder" and action.value:
-            import os
-
-            try:
-                os.startfile(action.value)
-            except Exception:
-                import subprocess
-
-                subprocess.Popen(["explorer", action.value])
-            self.clear_command_result()
-        elif action.type == "save_file" and action.value:
-            import os
-            import shutil
-
-            src_path = action.value
-            default_name = os.path.basename(src_path) if os.path.isfile(src_path) else "qrcode.png"
-            dst, _ = get_save_file_name(self, "保存图片", default_name, "PNG 图片 (*.png);;所有文件 (*)")
-            if dst:
-                try:
-                    if os.path.isfile(src_path):
-                        shutil.copy2(src_path, dst)
-                except Exception as e:
-                    logger.warning("保存图片失败: %s", e)
-            self.clear_command_result()
-        elif action.type == "save_text" and action.value:
-            path, _ = get_save_file_name(self, "保存文件", "", "文本文件 (*.txt);;所有文件 (*)")
-            if path:
-                try:
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(action.value)
-                except Exception as e:
-                    logger.warning("保存文件失败: %s", e)
-            self.clear_command_result()
-        elif action.type == "create_shortcut" and action.value:
-            import webbrowser
-
-            webbrowser.open(action.value)
-            self.clear_command_result()
-        elif action.type == "close_qr_server" and action.value:
-            try:
-                from core.commands import stop_qr_file_server
-
-                stop_qr_file_server(int(action.value))
-            except Exception as e:
-                logger.warning("关闭文件分享服务器失败: %s", e)
+        ok = execute_command_action(
+            action,
+            ActionExecutionContext(
+                source=str(getattr(self, "_command_id", "") or "launcher_popup"),
+                parent=self,
+                set_clipboard_text=QApplication.clipboard().setText,
+                save_file_dialog=get_save_file_name,
+            ),
+        )
+        if ok and action.type not in {"copy", "copy_table", "copy_json"}:
             self.clear_command_result()
 
     # ------------------------------------------------------------------

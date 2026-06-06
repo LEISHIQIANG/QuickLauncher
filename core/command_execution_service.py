@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
 import time
@@ -26,6 +27,9 @@ from core.data_models import ShortcutItem
 
 logger = logging.getLogger(__name__)
 
+# Maximum concurrent command executions across the application.
+_MAX_EXECUTION_WORKERS = 8
+
 
 @dataclass
 class CommandExecutionRequest:
@@ -41,11 +45,18 @@ class CommandExecutionRequest:
 
 
 class CommandExecutionHandle:
-    """Cancelable handle for a command-panel execution."""
+    """Cancelable handle for a command-panel execution.
+
+    The handle wraps a cooperative ``threading.Event`` for cancellation and
+    optionally tracks the underlying ``concurrent.futures.Future`` so callers
+    can query status, wait for completion, or register callbacks.
+    """
 
     def __init__(self, request_id: str | None = None):
         self.request_id = request_id or str(uuid.uuid4())
         self._cancel_event = threading.Event()
+        self._future: concurrent.futures.Future | None = None
+        self._start_time = time.perf_counter()
 
     def cancel(self) -> None:
         self._cancel_event.set()
@@ -58,12 +69,80 @@ class CommandExecutionHandle:
     def cancel_event(self) -> threading.Event:
         return self._cancel_event
 
+    @property
+    def elapsed(self) -> float:
+        """Seconds elapsed since handle creation."""
+        return time.perf_counter() - self._start_time
+
+    @property
+    def is_done(self) -> bool:
+        return self._future is not None and self._future.done()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait for the underlying future to complete. Returns True if done."""
+        if self._future is None:
+            return True
+        done, _pending = concurrent.futures.wait([self._future], timeout=timeout)
+        return self._future in done
+
+    def _bind_future(self, future: concurrent.futures.Future) -> None:
+        self._future = future
+
 
 class CommandExecutionService:
-    """Run registry, captured shortcut, and chain commands; persist final results."""
+    """Run registry, captured shortcut, and chain commands; persist final results.
+
+    All asynchronous executions are submitted to a bounded ``ThreadPoolExecutor``
+    instead of creating ad-hoc daemon threads.  This gives the application a
+    predictable concurrency ceiling and a single place to implement graceful
+    shutdown.
+    """
 
     def __init__(self, result_store: CommandResultStore | None = None):
         self.result_store = result_store
+        self._pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=_MAX_EXECUTION_WORKERS,
+            thread_name_prefix="CmdExecPool",
+        )
+        self._active_futures: dict[str, concurrent.futures.Future] = {}
+        self._futures_lock = threading.Lock()
+
+    # ── internal helpers ──────────────────────────────────────────
+
+    def _submit_worker(self, worker: Callable[[], None], name_prefix: str, request_id: str) -> concurrent.futures.Future:
+        """Submit *worker* to the shared pool and track the future."""
+        future = self._pool.submit(worker)
+        with self._futures_lock:
+            self._active_futures[request_id] = future
+
+        def _cleanup(fut: concurrent.futures.Future, rid: str = request_id) -> None:
+            with self._futures_lock:
+                self._active_futures.pop(rid, None)
+
+        future.add_done_callback(_cleanup)
+        return future
+
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Gracefully shut down the execution pool.
+
+        Waits up to *timeout* seconds for active tasks to finish, then logs
+        any remaining unfinished futures.
+        """
+        with self._futures_lock:
+            futures = list(self._active_futures.values())
+        if futures:
+            concurrent.futures.wait(futures, timeout=max(0.0, float(timeout or 0.0)))
+        with self._futures_lock:
+            pending = [rid for rid, fut in self._active_futures.items() if not fut.done()]
+        if pending:
+            logger.warning("CommandExecutionService shutdown: %d tasks still pending: %s", len(pending), pending)
+        self._pool.shutdown(wait=False, cancel_futures=True)
+
+    @property
+    def active_count(self) -> int:
+        """Number of currently tracked active futures."""
+        with self._futures_lock:
+            return sum(1 for fut in self._active_futures.values() if not fut.done())
 
     def run_registry_command(
         self,
@@ -128,7 +207,8 @@ class CommandExecutionService:
                     except Exception:
                         logger.debug("on_finished fallback callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name=f"CmdExec-{handle.request_id[:8]}").start()
+        future = self._submit_worker(_worker, "CmdExec", handle.request_id)
+        handle._bind_future(future)
         return handle
 
     def run_shortcut_capture(
@@ -149,7 +229,8 @@ class CommandExecutionService:
                 except Exception:
                     logger.debug("run_shortcut_capture on_finished callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name=f"ShortcutCapture-{handle.request_id[:8]}").start()
+        future = self._submit_worker(_worker, "ShortcutCapture", handle.request_id)
+        handle._bind_future(future)
         return handle
 
     def run_shortcut_chain(
@@ -170,7 +251,8 @@ class CommandExecutionService:
                 except Exception:
                     logger.debug("run_shortcut_chain on_finished callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name=f"ShortcutChain-{handle.request_id[:8]}").start()
+        future = self._submit_worker(_worker, "ShortcutChain", handle.request_id)
+        handle._bind_future(future)
         return handle
 
     def run_shortcut_command(
@@ -192,7 +274,8 @@ class CommandExecutionService:
                 except Exception:
                     logger.debug("run_shortcut_command on_finished callback failed", exc_info=True)
 
-        threading.Thread(target=_worker, daemon=True, name=f"ShortcutCommand-{handle.request_id[:8]}").start()
+        future = self._submit_worker(_worker, "ShortcutCommand", handle.request_id)
+        handle._bind_future(future)
         return handle
 
     def execute_shortcut_capture_sync(
