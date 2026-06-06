@@ -32,7 +32,7 @@ from ui.utils.safe_file_dialog import get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
+from .theme_helper import get_compact_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,6 @@ class UrlDialog(BaseDialog):
             btn.setStyleSheet(flat_btn_style)
 
         # 应用复选框样式
-        cb_style = get_small_checkbox_stylesheet(theme)
         invert_cb_style = get_compact_checkbox_stylesheet(theme)
         self.invert_light_cb.setStyleSheet(invert_cb_style)
         self.invert_dark_cb.setStyleSheet(invert_cb_style)

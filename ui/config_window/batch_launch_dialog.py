@@ -41,7 +41,7 @@ from ui.utils.smooth_scroll import SmoothScrollArea
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
+from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 

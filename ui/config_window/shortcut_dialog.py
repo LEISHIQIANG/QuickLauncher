@@ -31,7 +31,7 @@ from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
+from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
