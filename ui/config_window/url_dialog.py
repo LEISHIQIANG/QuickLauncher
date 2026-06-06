@@ -32,7 +32,7 @@ from ui.utils.safe_file_dialog import get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet
+from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -221,8 +221,9 @@ class UrlDialog(BaseDialog):
 
         # 应用复选框样式
         cb_style = get_small_checkbox_stylesheet(theme)
-        self.invert_theme_cb.setStyleSheet(cb_style)
-        self.invert_current_cb.setStyleSheet(cb_style)
+        invert_cb_style = get_compact_checkbox_stylesheet(theme)
+        self.invert_light_cb.setStyleSheet(invert_cb_style)
+        self.invert_dark_cb.setStyleSheet(invert_cb_style)
         self._apply_latency_result_style(*self._latency_result_state)
 
     def _setup_ui(self):
@@ -355,17 +356,11 @@ class UrlDialog(BaseDialog):
         icon_btn_layout.addStretch()
         icon_path_layout.addLayout(icon_btn_layout)
 
-        # 图标反转选项（紧凑垂直排列，在清除按钮右侧）
-        invert_v_layout = QVBoxLayout()
-        invert_v_layout.setSpacing(2)
-        invert_v_layout.setContentsMargins(0, 0, 0, 0)
-        self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setEnabled(False)
-        self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
-        invert_v_layout.addWidget(self.invert_theme_cb)
-        invert_v_layout.addWidget(self.invert_current_cb)
-        icon_btn_layout.addLayout(invert_v_layout)
+        # 图标反转选项（并排排列）
+        self.invert_light_cb = QCheckBox("浅色反转")
+        self.invert_dark_cb = QCheckBox("深色反转")
+        icon_btn_layout.addWidget(self.invert_light_cb)
+        icon_btn_layout.addWidget(self.invert_dark_cb)
 
         icon_layout.addLayout(icon_path_layout, 1)
         layout.addWidget(icon_group)
@@ -403,8 +398,8 @@ class UrlDialog(BaseDialog):
             self.icon_path_edit.setText(self._custom_icon_path)
 
         # 加载反转设置
-        self.invert_theme_cb.setChecked(self.shortcut.icon_invert_with_theme)
-        self.invert_current_cb.setChecked(self.shortcut.icon_invert_current)
+        self.invert_light_cb.setChecked(self.shortcut.icon_invert_light)
+        self.invert_dark_cb.setChecked(self.shortcut.icon_invert_dark)
 
         self._update_icon_preview()
 
@@ -561,8 +556,6 @@ class UrlDialog(BaseDialog):
         if icon_path and os.path.exists(icon_path):
             self._custom_icon_path = icon_path
             self.icon_path_edit.setText(icon_path)
-            self.invert_theme_cb.setChecked(False)
-            self.invert_current_cb.setChecked(False)
             self._update_icon_preview()
             self._auto_icon_btn.setText(tr("自动获取"))
         else:
@@ -595,7 +588,12 @@ class UrlDialog(BaseDialog):
             pixmap = self._create_url_icon(48)
 
         # 应用反转
-        if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
+        _current_theme = getattr(self, "theme", "dark")
+        _need_invert = (
+            self.invert_light_cb.isChecked() if _current_theme == "light"
+            else self.invert_dark_cb.isChecked()
+        )
+        if _need_invert and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor
 
             pixmap = IconExtractor.invert_pixmap(pixmap)
@@ -636,23 +634,12 @@ class UrlDialog(BaseDialog):
         if file_path:
             self._custom_icon_path = file_path
             self.icon_path_edit.setText(file_path)
-            self.invert_theme_cb.setChecked(False)
-            self.invert_current_cb.setChecked(False)
             self._update_icon_preview()
 
     def _clear_icon(self):
         """清除自定义图标"""
         self._custom_icon_path = ""
         self.icon_path_edit.clear()
-        self.invert_theme_cb.setChecked(False)
-        self.invert_current_cb.setChecked(False)
-        self._update_icon_preview()
-
-    def _on_invert_theme_changed(self, state):
-        """随主题反转勾选变化"""
-        self.invert_current_cb.setEnabled(bool(state))
-        if not state:
-            self.invert_current_cb.setChecked(False)
         self._update_icon_preview()
 
     def _on_ok(self):
@@ -688,10 +675,8 @@ class UrlDialog(BaseDialog):
         self.shortcut.preferred_browser_args = self.browser_args_edit.text().strip()
         self.shortcut.icon_path = self._custom_icon_path
         self.shortcut.type = ShortcutType.URL
-        self.shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
-        self.shortcut.icon_invert_current = self.invert_current_cb.isChecked()
-        if self.invert_theme_cb.isChecked():
-            self.shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
+        self.shortcut.icon_invert_light = self.invert_light_cb.isChecked()
+        self.shortcut.icon_invert_dark = self.invert_dark_cb.isChecked()
         return self.shortcut
 
     def done(self, result):

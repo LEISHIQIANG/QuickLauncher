@@ -382,6 +382,32 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
     """
 
 
+def get_compact_checkbox_stylesheet(theme: str) -> str:
+    """获取紧凑复选框样式表（11px字号，匹配按钮文字大小）"""
+    check_on = create_ios_checkbox_icon(True, theme)
+    check_off = create_ios_checkbox_icon(False, theme)
+
+    return f"""
+        QCheckBox {{
+            font-size: 11px;
+            spacing: 6px;
+            color: {"#ffffff" if theme == "dark" else "#333333"};
+        }}
+        QCheckBox::indicator {{
+            width: 13px;
+            height: 13px;
+            border: none;
+            background: transparent;
+        }}
+        QCheckBox::indicator:unchecked {{
+            image: url("{check_off}");
+        }}
+        QCheckBox::indicator:checked {{
+            image: url("{check_on}");
+        }}
+    """
+
+
 def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
     """复选框样式表 — 只设置指示器图片，不覆盖文字大小和颜色。"""
     check_on = create_ios_checkbox_icon(True, theme)

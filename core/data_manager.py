@@ -1686,6 +1686,8 @@ class DataManager:
                                 "run_as_admin": shortcut.get("run_as_admin", False),
                                 "command_variables_enabled": shortcut.get("command_variables_enabled", False),
                                 "icon_data": shortcut.get("icon_data", ""),
+                                "icon_invert_light": shortcut.get("icon_invert_light", False),
+                                "icon_invert_dark": shortcut.get("icon_invert_dark", False),
                                 "icon_invert_with_theme": shortcut.get("icon_invert_with_theme", False),
                                 "icon_invert_current": shortcut.get("icon_invert_current", False),
                                 "icon_invert_theme_when_set": shortcut.get("icon_invert_theme_when_set", ""),

@@ -1030,14 +1030,12 @@ class IconExtractor:
 
 
 def should_invert_icon(item, current_theme: str) -> bool:
-    if not getattr(item, "icon_invert_with_theme", False):
-        return False
-    set_theme = getattr(item, "icon_invert_theme_when_set", "")
-    if not set_theme:
-        return False
-    if getattr(item, "icon_invert_current", False):
-        return current_theme == set_theme
-    return current_theme != set_theme
+    # 新版逻辑：根据当前主题检查对应的反转标志
+    if current_theme == "light":
+        return getattr(item, "icon_invert_light", False)
+    elif current_theme == "dark":
+        return getattr(item, "icon_invert_dark", False)
+    return False
 
 
 def get_icon_dir() -> str:

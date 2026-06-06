@@ -43,7 +43,7 @@ from ui.styles.style import Colors, Glassmorphism, PopupMenu
 from .base_dialog import BaseDialog
 from .chain_canvas import ChainCanvasWidget, NodePropertyPanel, canvas_from_steps, processor_library_items
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet
+from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -833,17 +833,11 @@ class ChainDialog(BaseDialog):
 
         icon_btn_layout.addStretch()
 
-        # 图标反转选项
-        invert_v_layout = QVBoxLayout()
-        invert_v_layout.setSpacing(2)
-        invert_v_layout.setContentsMargins(0, 0, 0, 0)
-        self.invert_theme_cb = QCheckBox(tr("随主题反转"))
-        self.invert_current_cb = QCheckBox(tr("当前反转"))
-        self.invert_current_cb.setEnabled(False)
-        self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
-        invert_v_layout.addWidget(self.invert_theme_cb)
-        invert_v_layout.addWidget(self.invert_current_cb)
-        icon_btn_layout.addLayout(invert_v_layout)
+        # 图标反转选项（并排排列）
+        self.invert_light_cb = QCheckBox(tr("浅色反转"))
+        self.invert_dark_cb = QCheckBox(tr("深色反转"))
+        icon_btn_layout.addWidget(self.invert_light_cb)
+        icon_btn_layout.addWidget(self.invert_dark_cb)
 
         icon_right_layout.addLayout(icon_btn_layout)
         icon_layout.addLayout(icon_right_layout, 1)
@@ -985,12 +979,14 @@ class ChainDialog(BaseDialog):
         icon_btn_layout.addWidget(self._clear_icon_btn)
         icon_layout.addLayout(icon_btn_layout)
 
-        self.invert_theme_cb = QCheckBox(tr("随主题反转"))
-        self.invert_current_cb = QCheckBox(tr("当前反转"))
-        self.invert_current_cb.setEnabled(False)
-        self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
-        icon_layout.addWidget(self.invert_theme_cb)
-        icon_layout.addWidget(self.invert_current_cb)
+        invert_row = QHBoxLayout()
+        invert_row.setContentsMargins(0, 0, 0, 0)
+        self.invert_light_cb = QCheckBox(tr("浅色反转"))
+        self.invert_dark_cb = QCheckBox(tr("深色反转"))
+        invert_row.addWidget(self.invert_light_cb)
+        invert_row.addWidget(self.invert_dark_cb)
+        invert_row.addStretch()
+        icon_layout.addLayout(invert_row)
         layout.addWidget(icon_group)
 
         layout.addStretch()
@@ -1132,8 +1128,8 @@ class ChainDialog(BaseDialog):
         cb_style = get_small_checkbox_stylesheet(theme)
         for cb in self._result_checks.values():
             cb.setStyleSheet(cb_style)
-        self.invert_theme_cb.setStyleSheet(cb_style)
-        self.invert_current_cb.setStyleSheet(cb_style)
+        self.invert_light_cb.setStyleSheet(get_compact_checkbox_stylesheet(theme))
+        self.invert_dark_cb.setStyleSheet(get_compact_checkbox_stylesheet(theme))
 
         # result_view 透明背景，文字直接显示在分栏框里
         self.result_view.setStyleSheet(
@@ -1182,9 +1178,8 @@ class ChainDialog(BaseDialog):
         self._custom_icon_path = getattr(self.shortcut, "icon_path", "") or ""
         if self._custom_icon_path:
             self.icon_edit.setText(self._custom_icon_path)
-        self.invert_theme_cb.setChecked(getattr(self.shortcut, "icon_invert_with_theme", False))
-        self.invert_current_cb.setChecked(getattr(self.shortcut, "icon_invert_current", False))
-        self.invert_current_cb.setEnabled(self.invert_theme_cb.isChecked())
+        self.invert_light_cb.setChecked(getattr(self.shortcut, "icon_invert_light", False))
+        self.invert_dark_cb.setChecked(getattr(self.shortcut, "icon_invert_dark", False))
         self._update_icon_preview()
         canvas = copy.deepcopy(getattr(self.shortcut, "chain_canvas", {}) or {})
         if not canvas:
@@ -1200,21 +1195,11 @@ class ChainDialog(BaseDialog):
         if file_path:
             self._custom_icon_path = file_path
             self.icon_edit.setText(file_path)
-            self.invert_theme_cb.setChecked(False)
-            self.invert_current_cb.setChecked(False)
             self._update_icon_preview()
 
     def _clear_icon(self):
         self._custom_icon_path = ""
         self.icon_edit.clear()
-        self.invert_theme_cb.setChecked(False)
-        self.invert_current_cb.setChecked(False)
-        self._update_icon_preview()
-
-    def _on_invert_theme_changed(self, state):
-        self.invert_current_cb.setEnabled(bool(state))
-        if not state:
-            self.invert_current_cb.setChecked(False)
         self._update_icon_preview()
 
     def _update_icon_preview(self):
@@ -1229,7 +1214,12 @@ class ChainDialog(BaseDialog):
                 logger.debug("加载自定义图标失败: %s", exc, exc_info=True)
         if not pixmap or pixmap.isNull():
             pixmap = self._create_chain_icon(48)
-        if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
+        _current_theme = getattr(self, "theme", "dark")
+        _need_invert = (
+            self.invert_light_cb.isChecked() if _current_theme == "light"
+            else self.invert_dark_cb.isChecked()
+        )
+        if _need_invert and pixmap and not pixmap.isNull():
             try:
                 from core.icon_extractor import IconExtractor
 
@@ -1801,10 +1791,8 @@ class ChainDialog(BaseDialog):
             shortcut.chain_canvas = ShortcutItem._chain_canvas_from_steps(shortcut.chain_steps)
         shortcut.chain_result_window = self._get_result_window_value()
         shortcut.icon_path = self._custom_icon_path
-        shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
-        shortcut.icon_invert_current = self.invert_current_cb.isChecked()
-        if self.invert_theme_cb.isChecked():
-            shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
+        shortcut.icon_invert_light = self.invert_light_cb.isChecked()
+        shortcut.icon_invert_dark = self.invert_dark_cb.isChecked()
         return shortcut
 
     def _apply_step_overrides_to_canvas(self, canvas: dict):

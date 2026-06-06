@@ -31,7 +31,7 @@ from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet
+from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +160,9 @@ class ShortcutDialog(BaseDialog):
 
         # 应用复选框样式
         cb_style = get_small_checkbox_stylesheet(theme)
-        self.invert_theme_cb.setStyleSheet(cb_style)
-        self.invert_current_cb.setStyleSheet(cb_style)
+        invert_cb_style = get_compact_checkbox_stylesheet(theme)
+        self.invert_light_cb.setStyleSheet(invert_cb_style)
+        self.invert_dark_cb.setStyleSheet(invert_cb_style)
         self.run_as_admin_cb.setStyleSheet(cb_style)
 
     def _setup_ui(self):
@@ -277,17 +278,11 @@ class ShortcutDialog(BaseDialog):
         icon_btn_layout.addStretch()
         icon_right_layout.addLayout(icon_btn_layout)
 
-        # 图标反转选项（紧凑垂直排列，在清除按钮右侧）
-        invert_v_layout = QVBoxLayout()
-        invert_v_layout.setSpacing(2)
-        invert_v_layout.setContentsMargins(0, 0, 0, 0)
-        self.invert_theme_cb = QCheckBox("随主题反转")
-        self.invert_current_cb = QCheckBox("当前反转")
-        self.invert_current_cb.setEnabled(False)
-        self.invert_theme_cb.stateChanged.connect(self._on_invert_theme_changed)
-        invert_v_layout.addWidget(self.invert_theme_cb)
-        invert_v_layout.addWidget(self.invert_current_cb)
-        icon_btn_layout.addLayout(invert_v_layout)
+        # 图标反转选项（并排排列）
+        self.invert_light_cb = QCheckBox("浅色反转")
+        self.invert_dark_cb = QCheckBox("深色反转")
+        icon_btn_layout.addWidget(self.invert_light_cb)
+        icon_btn_layout.addWidget(self.invert_dark_cb)
 
         icon_layout.addLayout(icon_right_layout, 1)
 
@@ -323,8 +318,8 @@ class ShortcutDialog(BaseDialog):
             self.icon_edit.setText(self._custom_icon_path)
 
         # 加载反转设置
-        self.invert_theme_cb.setChecked(self.shortcut.icon_invert_with_theme)
-        self.invert_current_cb.setChecked(self.shortcut.icon_invert_current)
+        self.invert_light_cb.setChecked(self.shortcut.icon_invert_light)
+        self.invert_dark_cb.setChecked(self.shortcut.icon_invert_dark)
 
         # 加载管理员运行设置
         self.run_as_admin_cb.setChecked(self.shortcut.run_as_admin)
@@ -373,8 +368,13 @@ class ShortcutDialog(BaseDialog):
 
     def _apply_icon_to_preview(self, pixmap):
         """将图标应用到预览控件（仅在主线程调用）"""
-        # 应用反转
-        if self.invert_theme_cb.isChecked() and self.invert_current_cb.isChecked() and pixmap and not pixmap.isNull():
+        # 应用反转（根据当前主题对应的反转标志）
+        _current_theme = getattr(self, "theme", "dark")
+        _need_invert = (
+            self.invert_light_cb.isChecked() if _current_theme == "light"
+            else self.invert_dark_cb.isChecked()
+        )
+        if _need_invert and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor
 
             pixmap = IconExtractor.invert_pixmap(pixmap)
@@ -451,23 +451,12 @@ class ShortcutDialog(BaseDialog):
         if file_path:
             self._custom_icon_path = file_path
             self.icon_edit.setText(file_path)
-            self.invert_theme_cb.setChecked(False)
-            self.invert_current_cb.setChecked(False)
             self._update_icon_preview()
 
     def _clear_icon(self):
         """清除图标"""
         self._custom_icon_path = ""
         self.icon_edit.clear()
-        self.invert_theme_cb.setChecked(False)
-        self.invert_current_cb.setChecked(False)
-        self._update_icon_preview()
-
-    def _on_invert_theme_changed(self, state):
-        """随主题反转勾选变化"""
-        self.invert_current_cb.setEnabled(bool(state))
-        if not state:
-            self.invert_current_cb.setChecked(False)
         self._update_icon_preview()
 
     def _on_ok(self):
@@ -509,9 +498,7 @@ class ShortcutDialog(BaseDialog):
         self.shortcut.target_args = self.args_edit.text().strip()
         self.shortcut.working_dir = self.workdir_edit.text().strip()
         self.shortcut.icon_path = self._custom_icon_path
-        self.shortcut.icon_invert_with_theme = self.invert_theme_cb.isChecked()
-        self.shortcut.icon_invert_current = self.invert_current_cb.isChecked()
+        self.shortcut.icon_invert_light = self.invert_light_cb.isChecked()
+        self.shortcut.icon_invert_dark = self.invert_dark_cb.isChecked()
         self.shortcut.run_as_admin = self.run_as_admin_cb.isChecked()
-        if self.invert_theme_cb.isChecked():
-            self.shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
         return self.shortcut

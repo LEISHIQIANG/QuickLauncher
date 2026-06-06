@@ -85,6 +85,8 @@ def test_shortcut_item_defaults():
     assert item.icon_path == ""
     assert item.icon_data == ""
     assert item.alias == ""
+    assert item.icon_invert_light is False
+    assert item.icon_invert_dark is False
     assert item.icon_invert_with_theme is False
     assert item.icon_invert_current is False
     assert item.icon_invert_theme_when_set == ""

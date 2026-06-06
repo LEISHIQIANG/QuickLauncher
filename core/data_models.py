@@ -111,7 +111,10 @@ class ShortcutItem:
     icon_data: str = ""
     alias: str = ""
 
-    # 图标反转设置
+    # 图标反转设置（按主题独立控制）
+    icon_invert_light: bool = False
+    icon_invert_dark: bool = False
+    # 旧版兼容字段（迁移后不再使用）
     icon_invert_with_theme: bool = False
     icon_invert_current: bool = False
     icon_invert_theme_when_set: str = ""
@@ -145,6 +148,8 @@ class ShortcutItem:
             "icon_path": self.icon_path,
             "icon_data": self.icon_data,
             "alias": self.alias,
+            "icon_invert_light": self.icon_invert_light,
+            "icon_invert_dark": self.icon_invert_dark,
             "icon_invert_with_theme": self.icon_invert_with_theme,
             "icon_invert_current": self.icon_invert_current,
             "icon_invert_theme_when_set": self.icon_invert_theme_when_set,
@@ -202,9 +207,26 @@ class ShortcutItem:
         item.icon_path = data.get("icon_path", "")
         item.icon_data = data.get("icon_data", "")
         item.alias = data.get("alias", "")
+        item.icon_invert_light = data.get("icon_invert_light", False)
+        item.icon_invert_dark = data.get("icon_invert_dark", False)
         item.icon_invert_with_theme = data.get("icon_invert_with_theme", False)
         item.icon_invert_current = data.get("icon_invert_current", False)
         item.icon_invert_theme_when_set = data.get("icon_invert_theme_when_set", "")
+        # 旧版数据迁移：将旧字段转换为新的浅色/深色独立反转字段
+        if item.icon_invert_with_theme and not (item.icon_invert_light or item.icon_invert_dark):
+            set_theme = item.icon_invert_theme_when_set
+            if item.icon_invert_current:
+                # 旧逻辑"当前反转"：只在设置时的主题下反转
+                if set_theme == "light":
+                    item.icon_invert_light = True
+                elif set_theme == "dark":
+                    item.icon_invert_dark = True
+            else:
+                # 旧逻辑"随主题反转"：在相反主题下反转
+                if set_theme == "light":
+                    item.icon_invert_dark = True
+                elif set_theme == "dark":
+                    item.icon_invert_light = True
         item.run_as_admin = data.get("run_as_admin", False)
         item.show_window = data.get("show_window", False)
         item.command_variables_enabled = data.get("command_variables_enabled", False)

@@ -216,8 +216,8 @@ def test_batch_launch_save_creates_batch_launch_shortcut(qapp, monkeypatch):
             dialog.icon_selector.icon_widgets[shortcut_id].checkbox.setChecked(True)
         dialog.batch_name_edit.setText("Batch")
         dialog._custom_icon_path = "C:/icons/batch.png"
-        dialog.batch_invert_theme_cb.setChecked(True)
-        dialog.batch_invert_current_cb.setChecked(True)
+        dialog.batch_invert_light_cb.setChecked(True)
+        dialog.batch_invert_dark_cb.setChecked(True)
         dialog.launch_cards[0].delay_input.setText("1.25")
         dialog.launch_cards[0].pause_checkbox.setChecked(True)
 
@@ -229,9 +229,8 @@ def test_batch_launch_save_creates_batch_launch_shortcut(qapp, monkeypatch):
         assert shortcut.type == ShortcutType.BATCH_LAUNCH
         assert shortcut.name == "Batch"
         assert shortcut.icon_path == "C:/icons/batch.png"
-        assert shortcut.icon_invert_with_theme is True
-        assert shortcut.icon_invert_current is True
-        assert shortcut.icon_invert_theme_when_set == "dark"
+        assert shortcut.icon_invert_light is True
+        assert shortcut.icon_invert_dark is True
         assert shortcut.chain_result_window == "none"
         assert shortcut.chain_steps == []
         assert [step["shortcut_id"] for step in shortcut.batch_launch_steps] == ["one", "two"]
@@ -255,8 +254,8 @@ def test_batch_launch_edit_restores_settings_and_cards(qapp, monkeypatch):
         name="RunAll",
         type=ShortcutType.BATCH_LAUNCH,
         icon_path="C:/icons/batch.png",
-        icon_invert_with_theme=True,
-        icon_invert_current=True,
+        icon_invert_light=True,
+        icon_invert_dark=True,
         batch_launch_steps=[
             {"shortcut_id": "two", "delay_ms": 500, "stop_on_error": False},
             {"shortcut_id": "one", "delay_ms": 0, "stop_on_error": True},
@@ -281,8 +280,8 @@ def test_batch_launch_edit_restores_settings_and_cards(qapp, monkeypatch):
 
         assert dialog.batch_name_edit.text() == "RunAll"
         assert dialog.batch_icon_edit.text() == "C:/icons/batch.png"
-        assert dialog.batch_invert_theme_cb.isChecked() is True
-        assert dialog.batch_invert_current_cb.isChecked() is True
+        assert dialog.batch_invert_light_cb.isChecked() is True
+        assert dialog.batch_invert_dark_cb.isChecked() is True
         assert dialog.selected_order == ["two", "one"]
         assert dialog.launch_cards[0].delay_input.text() == "0.5"
         assert dialog.launch_cards[0].pause_checkbox.isChecked() is False

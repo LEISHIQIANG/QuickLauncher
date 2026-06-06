@@ -41,7 +41,7 @@ from ui.utils.smooth_scroll import SmoothScrollArea
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
-from .theme_helper import get_small_checkbox_stylesheet
+from .theme_helper import get_small_checkbox_stylesheet, get_compact_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -667,20 +667,14 @@ class BatchLaunchDialog(BaseDialog):
         icon_row.addWidget(clear_btn)
         self._clear_batch_icon_btn = clear_btn
 
-        invert_layout = QVBoxLayout()
-        invert_layout.setSpacing(2)
-        invert_layout.setContentsMargins(0, 0, 0, 0)
-        self.batch_invert_theme_cb = QCheckBox(tr("随主题反转"))
-        self.batch_invert_current_cb = QCheckBox(tr("当前反转"))
-        invert_with_theme = bool(getattr(self.shortcut, "icon_invert_with_theme", False))
-        self.batch_invert_theme_cb.setChecked(invert_with_theme)
-        self.batch_invert_current_cb.setEnabled(invert_with_theme)
-        self.batch_invert_current_cb.setChecked(bool(getattr(self.shortcut, "icon_invert_current", False)))
-        self.batch_invert_theme_cb.stateChanged.connect(self._on_batch_invert_theme_changed)
-        self.batch_invert_current_cb.stateChanged.connect(lambda: self._update_batch_icon_preview())
-        invert_layout.addWidget(self.batch_invert_theme_cb)
-        invert_layout.addWidget(self.batch_invert_current_cb)
-        icon_row.addLayout(invert_layout)
+        self.batch_invert_light_cb = QCheckBox(tr("浅色反转"))
+        self.batch_invert_dark_cb = QCheckBox(tr("深色反转"))
+        self.batch_invert_light_cb.setChecked(bool(getattr(self.shortcut, "icon_invert_light", False)))
+        self.batch_invert_dark_cb.setChecked(bool(getattr(self.shortcut, "icon_invert_dark", False)))
+        self.batch_invert_dark_cb.stateChanged.connect(lambda: self._update_batch_icon_preview())
+        self.batch_invert_light_cb.stateChanged.connect(lambda: self._update_batch_icon_preview())
+        icon_row.addWidget(self.batch_invert_light_cb)
+        icon_row.addWidget(self.batch_invert_dark_cb)
 
         right.addLayout(icon_row)
         layout.addLayout(right, 1)
@@ -1050,21 +1044,11 @@ class BatchLaunchDialog(BaseDialog):
         if file_path:
             self._custom_icon_path = file_path
             self.batch_icon_edit.setText(file_path)
-            self.batch_invert_theme_cb.setChecked(False)
-            self.batch_invert_current_cb.setChecked(False)
             self._update_batch_icon_preview()
 
     def _clear_batch_icon(self):
         self._custom_icon_path = ""
         self.batch_icon_edit.clear()
-        self.batch_invert_theme_cb.setChecked(False)
-        self.batch_invert_current_cb.setChecked(False)
-        self._update_batch_icon_preview()
-
-    def _on_batch_invert_theme_changed(self, state):
-        self.batch_invert_current_cb.setEnabled(bool(state))
-        if not state:
-            self.batch_invert_current_cb.setChecked(False)
         self._update_batch_icon_preview()
 
     def _update_batch_icon_preview(self):
@@ -1081,12 +1065,12 @@ class BatchLaunchDialog(BaseDialog):
         if not pixmap or pixmap.isNull():
             name = self.batch_name_edit.text() if hasattr(self, "batch_name_edit") else tr("批量启动")
             pixmap = _create_type_icon(ShortcutItem(type=ShortcutType.BATCH_LAUNCH, name=name), 48)
-        if (
-            self.batch_invert_theme_cb.isChecked()
-            and self.batch_invert_current_cb.isChecked()
-            and pixmap
-            and not pixmap.isNull()
-        ):
+        _current_theme = getattr(self, "theme", "dark")
+        _need_invert = (
+            self.batch_invert_light_cb.isChecked() if _current_theme == "light"
+            else self.batch_invert_dark_cb.isChecked()
+        )
+        if _need_invert and pixmap and not pixmap.isNull():
             try:
                 from core.icon_extractor import IconExtractor
 
@@ -1124,10 +1108,8 @@ class BatchLaunchDialog(BaseDialog):
         shortcut.module_version = BATCH_LAUNCH_MODULE_VERSION
         shortcut.chain_data = {}
         shortcut.icon_path = self._custom_icon_path
-        shortcut.icon_invert_with_theme = self.batch_invert_theme_cb.isChecked()
-        shortcut.icon_invert_current = self.batch_invert_current_cb.isChecked()
-        if shortcut.icon_invert_with_theme:
-            shortcut.icon_invert_theme_when_set = getattr(self, "theme", "dark")
+        shortcut.icon_invert_light = self.batch_invert_light_cb.isChecked()
+        shortcut.icon_invert_dark = self.batch_invert_dark_cb.isChecked()
         return shortcut
 
     def _save_batch_launch(self):
@@ -1198,3 +1180,7 @@ class BatchLaunchDialog(BaseDialog):
         checkbox_style = get_small_checkbox_stylesheet(theme)
         for cb in self.findChildren(QCheckBox):
             cb.setStyleSheet(checkbox_style)
+
+        invert_cb_style = get_compact_checkbox_stylesheet(theme)
+        self.batch_invert_light_cb.setStyleSheet(invert_cb_style)
+        self.batch_invert_dark_cb.setStyleSheet(invert_cb_style)
