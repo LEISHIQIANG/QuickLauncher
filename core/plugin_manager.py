@@ -5,8 +5,8 @@ from __future__ import annotations
 import builtins
 import importlib.util
 import json
-import logging
 import locale
+import logging
 import os
 import re
 import subprocess
@@ -996,7 +996,7 @@ class PluginAPI:
     ) -> dict[str, Any]:
         """Run a process through the host and return bounded captured output."""
         self._check_permission("process.run")
-        if not isinstance(args, (list, tuple)) or not args:
+        if not isinstance(args, list | tuple) or not args:
             raise ValueError("args must be a non-empty list")
         argv = [str(part) for part in args if str(part or "")]
         if not argv:
@@ -1049,7 +1049,7 @@ class PluginAPI:
                         file_bytes = path.read_bytes()
                         if file_bytes:
                             stdout_bytes = stdout_bytes + (b"\n" if stdout_bytes else b"") + file_bytes
-                except Exception:
+                except OSError:
                     logger.debug("读取插件 helper 输出文件失败: %s", helper_output_path, exc_info=True)
                 finally:
                     try:
@@ -1098,7 +1098,7 @@ class PluginAPI:
             import ctypes
 
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, ImportError, OSError):
             return False
 
     def get_recycle_bin_info(self) -> dict[str, int]:
@@ -1119,7 +1119,7 @@ class PluginAPI:
             info.cbSize = ctypes.sizeof(SHQUERYRBINFO)
             ctypes.windll.shell32.SHQueryRecycleBinW(None, ctypes.byref(info))
             return {"size": int(info.i64Size), "items": int(info.i64NumItems)}
-        except Exception:
+        except (AttributeError, ImportError, OSError):
             logger.debug("插件 API 查询回收站失败", exc_info=True)
             return {"size": 0, "items": 0}
 
@@ -1131,7 +1131,7 @@ class PluginAPI:
 
             ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0)
             return True, ""
-        except Exception as exc:
+        except (AttributeError, ImportError, OSError) as exc:
             return False, str(exc)
 
     @staticmethod
