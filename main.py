@@ -327,6 +327,7 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
     script_path = os.path.abspath(argv[2])
     site_paths: list[str] = []
     helper_args: list[str] = []
+    output_path = ""
     i = 3
     while i < len(argv):
         arg = argv[i]
@@ -337,11 +338,33 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
             site_paths.append(os.path.abspath(argv[i + 1]))
             i += 2
             continue
+        if arg == "--plugin-output" and i + 1 < len(argv):
+            output_path = os.path.abspath(argv[i + 1])
+            i += 2
+            continue
         print(f"unknown plugin helper argument: {arg}", file=sys.stderr)
         return 2
 
+    output_handle = None
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    if output_path:
+        try:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            output_handle = open(output_path, "w", encoding="utf-8", buffering=1)
+            sys.stdout = output_handle
+            sys.stderr = output_handle
+        except OSError as exc:
+            print(f"plugin helper could not open output file {output_path}: {exc}", file=sys.stderr)
+            return 2
+
     if not os.path.isfile(script_path):
         print(f"plugin helper script not found: {script_path}", file=sys.stderr)
+        if output_handle is not None:
+            output_handle.flush()
+            output_handle.close()
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
         return 2
 
     script_dir = os.path.dirname(script_path)
@@ -374,6 +397,14 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
     except Exception:
         traceback.print_exc()
         return 1
+    finally:
+        if output_handle is not None:
+            try:
+                output_handle.flush()
+                output_handle.close()
+            finally:
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
 
 
 def _run_smoke_test_from_argv(argv: list[str]) -> int:

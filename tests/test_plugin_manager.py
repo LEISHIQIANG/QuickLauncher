@@ -1097,6 +1097,48 @@ class TestPluginAPI:
         with pytest.raises(PermissionError):
             PluginAPI("test", ".", [], CommandRegistry()).http_request("https://example.com/api")
 
+    def test_run_process_capture_requires_permission_and_returns_output(self):
+        api = PluginAPI("test", ".", ["process.run"], CommandRegistry())
+        result = api.run_process_capture([sys.executable, "-c", "print('plugin-ok')"], timeout=5)
+
+        assert result["returncode"] == 0
+        assert result["stdout"].strip() == "plugin-ok"
+        assert result["timed_out"] is False
+
+        with pytest.raises(PermissionError):
+            PluginAPI("test", ".", [], CommandRegistry()).run_process_capture([sys.executable, "-V"])
+
+    def test_run_process_capture_can_inherit_environment(self, monkeypatch):
+        monkeypatch.setenv("PYTHONPATH", "plugin-runtime-path")
+        api = PluginAPI("test", ".", ["process.run"], CommandRegistry())
+        code = "import os; print(os.environ.get('PYTHONPATH', ''))"
+
+        default_result = api.run_process_capture([sys.executable, "-c", code], timeout=5)
+        inherited_result = api.run_process_capture(
+            [sys.executable, "-c", code],
+            timeout=5,
+            inherit_environment=True,
+        )
+
+        assert default_result["stdout"].strip() == ""
+        assert inherited_result["stdout"].strip() == "plugin-runtime-path"
+
+    def test_run_process_capture_reads_plugin_helper_output_file(self):
+        api = PluginAPI("test", ".", ["process.run"], CommandRegistry())
+        with tempfile.TemporaryDirectory() as tmp:
+            helper = os.path.join(tmp, "helper.py")
+            with open(helper, "w", encoding="utf-8") as handle:
+                handle.write("print('HELPER_FILE_OK', flush=True)\n")
+
+            result = api.run_process_capture(
+                [sys.executable, "main.py", "--plugin-helper", helper, "--"],
+                timeout=10,
+                helper_output_file=True,
+            )
+
+        assert result["returncode"] == 0
+        assert "HELPER_FILE_OK" in result["stdout"]
+
     def test_high_risk_set(self):
         assert "process.run" in HIGH_RISK_PERMISSIONS
         assert "file.write" in HIGH_RISK_PERMISSIONS

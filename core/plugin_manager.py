@@ -6,10 +6,12 @@ import builtins
 import importlib.util
 import json
 import logging
+import locale
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -981,6 +983,156 @@ class PluginAPI:
                 "text": text,
                 "bytes": len(raw),
             }
+
+    def run_process_capture(
+        self,
+        args: list[str] | tuple[str, ...],
+        cwd: str = "",
+        *,
+        timeout: float = 30.0,
+        max_bytes: int = PLUGIN_API_MAX_HTTP_RESPONSE_BYTES,
+        inherit_environment: bool = False,
+        helper_output_file: bool = False,
+    ) -> dict[str, Any]:
+        """Run a process through the host and return bounded captured output."""
+        self._check_permission("process.run")
+        if not isinstance(args, (list, tuple)) or not args:
+            raise ValueError("args must be a non-empty list")
+        argv = [str(part) for part in args if str(part or "")]
+        if not argv:
+            raise ValueError("args must contain a target")
+        timeout_value = max(0.1, min(float(timeout or 0), 300.0))
+        limit = max(1, min(int(max_bytes or 0), PLUGIN_API_MAX_HTTP_RESPONSE_BYTES))
+
+        from .shortcut_executor import ShortcutExecutor
+
+        helper_output_path = ""
+        if helper_output_file and "--plugin-helper" in argv:
+            try:
+                separator_index = argv.index("--")
+            except ValueError:
+                separator_index = len(argv)
+            fd, helper_output_path = tempfile.mkstemp(prefix=f"ql_plugin_{self._plugin_id}_", suffix=".out")
+            os.close(fd)
+            argv = [*argv[:separator_index], "--plugin-output", helper_output_path, *argv[separator_index:]]
+
+        env = os.environ.copy() if inherit_environment else ShortcutExecutor._sanitized_child_env()
+        kwargs: dict[str, Any] = {
+            "cwd": cwd or None,
+            "env": env,
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "shell": False,
+            "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
+        }
+        stdout_bytes = b""
+        stderr_bytes = b""
+        timed_out = False
+        returncode = -1
+        try:
+            completed = subprocess.run(argv, timeout=timeout_value, **kwargs)
+            stdout_bytes = completed.stdout or b""
+            stderr_bytes = completed.stderr or b""
+            timed_out = False
+            returncode = int(completed.returncode)
+        except subprocess.TimeoutExpired as exc:
+            stdout_bytes = exc.stdout or b""
+            stderr_bytes = (exc.stderr or b"") + b"\nprocess timed out"
+            timed_out = True
+            returncode = -1
+        finally:
+            if helper_output_path:
+                try:
+                    path = Path(helper_output_path)
+                    if path.is_file():
+                        file_bytes = path.read_bytes()
+                        if file_bytes:
+                            stdout_bytes = stdout_bytes + (b"\n" if stdout_bytes else b"") + file_bytes
+                except Exception:
+                    logger.debug("读取插件 helper 输出文件失败: %s", helper_output_path, exc_info=True)
+                finally:
+                    try:
+                        Path(helper_output_path).unlink(missing_ok=True)
+                    except OSError:
+                        logger.debug("删除插件 helper 输出文件失败: %s", helper_output_path, exc_info=True)
+
+        truncated = len(stdout_bytes) > limit or len(stderr_bytes) > limit
+        stdout_bytes = stdout_bytes[:limit]
+        stderr_bytes = stderr_bytes[:limit]
+        stdout = self._decode_process_output(stdout_bytes)
+        stderr = self._decode_process_output(stderr_bytes)
+        output = stdout
+        if stderr:
+            output = f"{output}\n{stderr}" if output else stderr
+        return {
+            "returncode": returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "output": output,
+            "timed_out": timed_out,
+            "truncated": truncated,
+        }
+
+    @staticmethod
+    def _decode_process_output(data: bytes) -> str:
+        if not data:
+            return ""
+        encodings: list[str] = []
+        preferred = locale.getpreferredencoding(False)
+        if preferred:
+            encodings.append(preferred.lower())
+        for encoding in ("utf-8", "gbk", "utf-16", "cp437"):
+            if encoding not in encodings:
+                encodings.append(encoding)
+        for encoding in encodings:
+            try:
+                return data.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return data.decode(encodings[0] if encodings else "utf-8", errors="replace")
+
+    def is_user_admin(self) -> bool:
+        """Return whether the current host process has administrator rights."""
+        try:
+            import ctypes
+
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            return False
+
+    def get_recycle_bin_info(self) -> dict[str, int]:
+        """Return recycle bin item count and total size in bytes."""
+        self._check_permission("file.read")
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class SHQUERYRBINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD),
+                    ("i64Size", ctypes.c_int64),
+                    ("i64NumItems", ctypes.c_int64),
+                ]
+
+            info = SHQUERYRBINFO()
+            info.cbSize = ctypes.sizeof(SHQUERYRBINFO)
+            ctypes.windll.shell32.SHQueryRecycleBinW(None, ctypes.byref(info))
+            return {"size": int(info.i64Size), "items": int(info.i64NumItems)}
+        except Exception:
+            logger.debug("插件 API 查询回收站失败", exc_info=True)
+            return {"size": 0, "items": 0}
+
+    def empty_recycle_bin(self) -> tuple[bool, str]:
+        """Empty the recycle bin through the host API."""
+        self._check_permission("file.write")
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0)
+            return True, ""
+        except Exception as exc:
+            return False, str(exc)
 
     @staticmethod
     def _normalize_http_headers(headers: dict[str, str]) -> dict[str, str]:

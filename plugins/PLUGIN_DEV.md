@@ -203,6 +203,10 @@ def handle_hello(context):
 | `read_text_file(path, encoding="utf-8", max_bytes=2097152)` | 读取有大小上限的文本文件 | `file.read` |
 | `write_data_file(relative_path, text, encoding="utf-8", append=False)` | 只写入插件私有 `data/` 目录内的文本文件 | `file.write` |
 | `http_request(url, method="GET", headers=None, body=None, timeout=10, max_bytes=2097152)` | 发起有超时、请求体、请求头和响应大小上限的 `GET` / `POST` / `HEAD` 请求 | `network.request` |
+| `run_process_capture(args, cwd="", timeout=30, max_bytes=2097152, inherit_environment=False, helper_output_file=False)` | 通过主程序受控执行子进程并返回 `stdout` / `stderr` / `returncode`；截图/GUI helper 可用 `inherit_environment=True` 保留 Qt/wx 运行环境，用 `helper_output_file=True` 兼容打包版 GUI stdout | `process.run` |
+| `is_user_admin()` | 判断主程序当前是否具备管理员权限 | 无 |
+| `get_recycle_bin_info()` | 查询回收站条目数和估算大小 | `file.read` |
+| `empty_recycle_bin()` | 通过主程序清空回收站 | `file.write` |
 | `logger` | 插件命名空间日志 | 无 |
 | `data_dir` | 插件私有数据目录 `data/` | 无 |
 | `check_data_path(path)` | 确认路径在插件 `data/` 下 | 无 |
