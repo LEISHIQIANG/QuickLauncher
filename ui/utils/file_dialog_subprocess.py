@@ -1,6 +1,7 @@
 """
-独立进程文件对话框脚本
-在独立进程中显示非原生 Qt 文件对话框，避免主进程鼠标钩子干扰
+独立进程文件对话框脚本。
+
+在独立进程中显示原生系统文件对话框，避免主进程鼠标钩子干扰。
 """
 
 import json
@@ -19,32 +20,23 @@ def main():
     filter_str = args.get("filter", "")
 
     # 延迟导入PyQt5，只在需要时导入
-    from qt_compat import QApplication, QDialog, QFileDialog
-    from ui.styles.style import get_dialog_stylesheet
-    from ui.styles.window_chrome import apply_custom_window_chrome
+    from qt_compat import QApplication, QFileDialog
 
     QApplication(sys.argv)
     result = ""
-
-    dialog = QFileDialog(None, caption, directory, filter_str)
-    dialog.setOption(QFileDialog.DontUseNativeDialog, True)
-    apply_custom_window_chrome(dialog, kind="dialog", translucent=True)
-    dialog.setStyleSheet(get_dialog_stylesheet("dark"))
+    options = QFileDialog.Options()
 
     if dialog_type == "open":
-        dialog.setFileMode(QFileDialog.ExistingFile)
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
+        result, _ = QFileDialog.getOpenFileName(None, caption or "选择文件", directory, filter_str, "", options)
     elif dialog_type == "save":
-        dialog.setFileMode(QFileDialog.AnyFile)
-        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        result, _ = QFileDialog.getSaveFileName(None, caption or "保存文件", directory, filter_str, "", options)
     elif dialog_type == "dir":
-        dialog.setFileMode(QFileDialog.Directory)
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setOption(QFileDialog.ShowDirsOnly, True)
-
-    if dialog_type in {"open", "save", "dir"} and dialog.exec_() == QDialog.Accepted:
-        selected = dialog.selectedFiles()
-        result = selected[0] if selected else ""
+        result = QFileDialog.getExistingDirectory(
+            None,
+            caption or "选择文件夹",
+            directory,
+            options | QFileDialog.ShowDirsOnly,
+        )
 
     print(json.dumps({"result": result or ""}))
 

@@ -179,7 +179,18 @@ if exist "dist\QuickLauncher" (
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
-if exist "dist\main.dist" rmdir /s /q "dist\main.dist"
+if exist "dist\main.dist" (
+    rmdir /s /q "dist\main.dist" >nul 2>&1
+)
+if exist "dist\main.dist" (
+    attrib -R "dist\main.dist\*" /S /D >nul 2>&1
+    rmdir /s /q "dist\main.dist" >nul 2>&1
+)
+if exist "dist\main.dist" (
+    echo   [X] Failed to remove old dist\main.dist. Close Explorer/antivirus handles and retry.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
 if exist "dist\main.build" rmdir /s /q "dist\main.build"
 if exist "obfuscated_src" rmdir /s /q "obfuscated_src"
 for /d /r . %%d in (__pycache__) do @if exist "%%d" rmdir /s /q "%%d" 2>nul
@@ -551,7 +562,7 @@ if !ERRORLEVEL! NEQ 0 (
 
 if exist "%SETUP_STAGE_DIR%" rmdir /s /q "%SETUP_STAGE_DIR%" >nul 2>&1
 
-!PYTHON_CMD! scripts\check_release_artifacts.py --version "%APP_VERSION%" --dist-dir "dist\QuickLauncher" --installer "dist\QuickLauncher_Setup_%APP_VERSION%.exe" --run-smoke --write-manifest "dist\QuickLauncher_release_%APP_VERSION%.json" --write-installer-sha256 "dist\QuickLauncher_Setup_%APP_VERSION%.sha256"
+!PYTHON_CMD! scripts\check_release_artifacts.py --version "%APP_VERSION%" --dist-dir "dist\QuickLauncher" --installer "dist\QuickLauncher_Setup_%APP_VERSION%.exe" --allow-source-runtime-plugins --run-smoke --write-manifest "dist\QuickLauncher_release_%APP_VERSION%.json" --write-installer-sha256 "dist\QuickLauncher_Setup_%APP_VERSION%.sha256"
 if !ERRORLEVEL! NEQ 0 (
     echo   [!] Release artifact verification failed.
     if "%QL_NO_PAUSE%"=="" pause

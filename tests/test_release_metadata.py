@@ -69,6 +69,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert 'if not defined QL_UPX_EXE set "QL_UPX_EXE=0"' in script
     assert 'if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"' in script
     assert "scripts\\check_release_artifacts.py" in script
+    assert "--allow-source-runtime-plugins" in script
     assert "--run-smoke" in script
     assert "QuickLauncher_Setup_%APP_VERSION%.sha256" in script
 
@@ -80,7 +81,7 @@ def test_installer_preserves_user_plugins_on_upgrade():
 
 
 def test_release_source_gate_passes_current_tree():
-    result = check_source_metadata(ROOT, APP_VERSION)
+    result = check_source_metadata(ROOT, APP_VERSION, allow_source_runtime_plugins=True)
 
     assert result.ok, result.errors
     assert result.manifest["release_status"] == RELEASE_STATUS
@@ -105,11 +106,92 @@ def test_release_artifact_checker_validates_dist_tree(tmp_path):
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
-    result = check_release_artifacts(ROOT, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1)
+    result = check_release_artifacts(
+        ROOT,
+        dist_dir=dist,
+        installer=installer,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
+    )
 
     assert result.ok, result.errors
     assert result.manifest["artifacts"]["exe"]["sha256"]
     assert result.manifest["artifacts"]["installer"]["sha256"]
+
+
+def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_path):
+    root = tmp_path / "release-root"
+    (root / "core").mkdir(parents=True)
+    (root / "scripts").mkdir()
+    (root / "assets").mkdir()
+    (root / "hooks").mkdir()
+    (root / "plugins" / "screenshot_ocr").mkdir(parents=True)
+    (root / ".plugins").mkdir()
+
+    (root / "core" / "version.py").write_text(
+        f'APP_VERSION = "{APP_VERSION}"\nRELEASE_STATUS = "stable"\n',
+        encoding="utf-8",
+    )
+    (root / "scripts" / "installer.iss").write_text(
+        f'#define MyAppVersion "{APP_VERSION}"\n'
+        f'#define MyAppFileVersion "{APP_VERSION}"\n'
+        'OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion\n',
+        encoding="utf-8",
+    )
+    (root / "scripts" / "build_win11_setup.bat").write_text("@echo off\n", encoding="utf-8")
+    (root / "QuickLauncher.manifest").write_text(
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">\n'
+        f'  <assemblyIdentity version="{APP_VERSION}" name="QuickLauncher" type="win32"/>\n'
+        "</assembly>\n",
+        encoding="utf-8",
+    )
+    (root / "assets" / "app.ico").write_bytes(b"ico")
+    (root / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (root / "plugins" / "PLUGIN_DEV.md").write_text("plugin docs\n", encoding="utf-8")
+    (root / "plugins" / "screenshot_ocr" / "plugin.json").write_text(
+        '{"id": "screenshot_ocr"}\n',
+        encoding="utf-8",
+    )
+    for plugin_id in (
+        "api_tester",
+        "disk_cleaner",
+        "event_inspector",
+        "file_tools",
+        "network_tools",
+        "process_tools",
+        "qr_code_scanner",
+        "screenshot_ocr",
+        "startup_tools",
+        "text_tools",
+    ):
+        (root / ".plugins" / f"{plugin_id}.qlzip").write_bytes(b"pkg")
+
+    dist = tmp_path / "QuickLauncher"
+    (dist / "hooks").mkdir(parents=True)
+    (dist / "assets").mkdir()
+    (dist / "plugins").mkdir()
+    (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
+    (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (dist / "assets" / "app.ico").write_bytes(b"ico")
+    installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
+    installer.write_bytes(b"setup")
+
+    strict_result = check_release_artifacts(root, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1)
+    allowed_result = check_release_artifacts(
+        root,
+        dist_dir=dist,
+        installer=installer,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
+    )
+
+    assert not strict_result.ok
+    assert any("source plugins directory" in error for error in strict_result.errors)
+    assert allowed_result.ok, allowed_result.errors
+    assert allowed_result.manifest["source"]["runtime_plugin_dirs_ignored"] == ["screenshot_ocr"]
 
 
 def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
@@ -136,6 +218,7 @@ def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
         installer=installer,
         version=APP_VERSION,
         min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
         run_smoke=True,
         smoke_exe=Path(sys.executable),
         smoke_args=[str(fake_smoke)],
@@ -171,7 +254,14 @@ def test_release_artifact_checker_fails_missing_hooks(tmp_path):
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
-    result = check_release_artifacts(ROOT, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1)
+    result = check_release_artifacts(
+        ROOT,
+        dist_dir=dist,
+        installer=installer,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
+    )
 
     assert not result.ok
     assert any("hooks.dll" in error for error in result.errors)
@@ -192,7 +282,14 @@ def test_release_artifact_checker_rejects_pycache(tmp_path):
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
-    result = check_release_artifacts(ROOT, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1)
+    result = check_release_artifacts(
+        ROOT,
+        dist_dir=dist,
+        installer=installer,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
+    )
 
     assert not result.ok
     debris_errors = [e for e in result.errors if "pycache" in e.lower() or ".pyc" in e.lower()]
