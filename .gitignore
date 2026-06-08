@@ -13,6 +13,7 @@ tests/.tmp/
 *$py.class
 *.so
 .Python
+!plugins/**/runtime/site-packages/**/*.pyd
 build/
 develop-eggs/
 dist/

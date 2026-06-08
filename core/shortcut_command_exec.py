@@ -2456,9 +2456,13 @@ class CommandExecutionMixin:
         )
 
     @staticmethod
-    def test_command(shortcut: ShortcutItem, timeout: float = DEFAULT_COMMAND_TIMEOUT_SECONDS) -> dict:
+    def test_command(
+        shortcut: ShortcutItem,
+        timeout: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        cancel_event: threading.Event | None = None,
+    ) -> dict:
         """Run a command shortcut synchronously for the editor test button."""
-        captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout)
+        captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout, cancel_event=cancel_event)
         payload = captured.payload if isinstance(captured.payload, dict) else {}
         return {
             "success": captured.success,
