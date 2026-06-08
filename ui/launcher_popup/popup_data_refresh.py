@@ -20,8 +20,8 @@ from qt_compat import (
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.utils.ui_scale import font_px, sp, spf
 from ui.utils.window_effect import is_win11
-from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 

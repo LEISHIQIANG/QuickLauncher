@@ -7,7 +7,7 @@ import os
 import tempfile
 
 from qt_compat import QBrush, QColor, QPainter, QPen, QPixmap, QRectF, QtCompat
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

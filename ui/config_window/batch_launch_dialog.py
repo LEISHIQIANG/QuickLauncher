@@ -37,10 +37,10 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
-from ui.utils.smooth_scroll import SmoothScrollArea
 from ui.utils.interruptible_animation import stop_animation
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.smooth_scroll import SmoothScrollArea
+from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon

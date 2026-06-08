@@ -15,7 +15,6 @@ from qt_compat import (
     QListWidgetItem,
     QPixmap,
     QPushButton,
-    QSize,
     QtCompat,
     QVBoxLayout,
     pyqtSignal,

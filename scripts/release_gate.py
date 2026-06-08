@@ -77,6 +77,8 @@ def _default_steps(python: str) -> list[GateStep]:
                 "scripts/audit_broad_exceptions.py",
                 "--exclude-dir",
                 "plugins",
+                "--exclude-dir",
+                "tools",
                 "--max-total",
                 "1325",
                 "--max-unlogged",

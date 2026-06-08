@@ -27,7 +27,7 @@ from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_animation
-from ui.utils.ui_scale import font_px, scale_qss, sp, spf
+from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,

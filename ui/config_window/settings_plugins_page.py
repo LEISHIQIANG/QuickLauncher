@@ -25,7 +25,7 @@ from ui.themed_tool_window import ThemedToolWindow
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.safe_file_dialog import get_open_file_name
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

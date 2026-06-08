@@ -22,7 +22,7 @@ from qt_compat import (
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_animation
-from ui.utils.ui_scale import sp, spf, font_px
+from ui.utils.ui_scale import font_px, sp
 
 
 def _rounded_pixmap(source: QPixmap, radius: int = 20) -> QPixmap:

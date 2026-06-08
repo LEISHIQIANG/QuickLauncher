@@ -120,9 +120,9 @@ def sqsize(w: int, h: int):
     return QSize(sp(w), sp(h))
 
 
-def smargins(l: int, t: int, r: int, b: int) -> tuple[int, int, int, int]:
+def smargins(left: int, top: int, right: int, bottom: int) -> tuple[int, int, int, int]:
     """Return scaled margin values as a tuple (left, top, right, bottom)."""
-    return (sp(l), sp(t), sp(r), sp(b))
+    return (sp(left), sp(top), sp(right), sp(bottom))
 
 
 def srect(x: int, y: int, w: int, h: int):

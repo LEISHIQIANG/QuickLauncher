@@ -16,7 +16,7 @@ from qt_compat import (
     QWidget,
     pyqtProperty,
 )
-from ui.utils.ui_scale import sp, spf, font_px
+from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
 

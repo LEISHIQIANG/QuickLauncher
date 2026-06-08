@@ -38,7 +38,7 @@ from ui.launcher_popup.popup_search import PopupSearchMixin
 from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowEffectMixin
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
 from ui.utils.interruptible_animation import is_animation_running, stop_named_animations
-from ui.utils.ui_scale import sp, spf, font_px
+from ui.utils.ui_scale import font_px, sp, spf
 from ui.utils.window_effect import WindowEffect
 
 logger = logging.getLogger(__name__)

@@ -13,8 +13,8 @@ from qt_compat import (
     QTimer,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.ui_scale import sp
 from ui.utils.window_effect import is_win10, is_win11
-from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 

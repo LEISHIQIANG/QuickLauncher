@@ -14,7 +14,7 @@ from qt_compat import (
     QtCompat,
     QVBoxLayout,
 )
-from ui.utils.ui_scale import sp, scale_qss, font_px
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

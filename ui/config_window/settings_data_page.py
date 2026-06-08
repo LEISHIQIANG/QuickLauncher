@@ -7,7 +7,7 @@ from core.i18n import tr
 from qt_compat import QHBoxLayout, QLabel, QPushButton
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

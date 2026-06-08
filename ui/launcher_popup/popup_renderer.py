@@ -19,8 +19,8 @@ from qt_compat import (
     QRectF,
     QtCompat,
 )
+from ui.utils.ui_scale import font_px, sp
 from ui.utils.window_effect import is_win10
-from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 

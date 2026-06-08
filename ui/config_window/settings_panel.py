@@ -39,7 +39,7 @@ from ui.styles.style import StyleSheet
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
-from ui.utils.ui_scale import sp, spf, font_px, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 from .settings_about_page import SettingsAboutPageMixin

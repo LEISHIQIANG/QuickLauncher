@@ -36,7 +36,7 @@ from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_named_animations
-from ui.utils.ui_scale import sp, spf, font_px, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -474,14 +474,14 @@ class RoundedWindow(QWidget):
                         painter, self, self.bg_color, self.border_color, self.corner_radius
                     )
                     return
-            except Exception as exc:
+            except (AttributeError, ImportError, RuntimeError, TypeError) as exc:
                 logger.debug("设置渲染提示失败: %s", exc, exc_info=True)
 
             try:
                 from ui.utils.window_effect import is_win10
 
                 inset = 1.0 if is_win10() else 0.5
-            except Exception as exc:
+            except (AttributeError, ImportError, RuntimeError, TypeError) as exc:
                 logger.debug("获取窗口边距失败: %s", exc, exc_info=True)
                 inset = 0.5
 
@@ -504,7 +504,7 @@ class RoundedWindow(QWidget):
                         tint_color.setAlpha(min(tint_color.alpha(), 220))
                     else:
                         tint_color.setAlpha(min(tint_color.alpha(), 100))
-                except Exception as exc:
+                except (AttributeError, ImportError, RuntimeError, TypeError) as exc:
                     logger.debug("设置色调透明度失败: %s", exc, exc_info=True)
                     tint_color.setAlpha(min(tint_color.alpha(), 100))
                 painter.fillPath(path, tint_color)
@@ -553,7 +553,7 @@ class RoundedWindow(QWidget):
                         self.corner_radius + 0.5,
                     )
                     painter.drawPath(outer_path)
-            except Exception as exc:
+            except (AttributeError, RuntimeError, TypeError) as exc:
                 logger.debug("绘制边框柔化失败: %s", exc, exc_info=True)
         finally:
             painter.end()
@@ -628,7 +628,7 @@ class ConfigWindow(QMainWindow):
                 from .welcome_integration import show_welcome_if_first_run
 
                 show_welcome_if_first_run(self, self.data_manager)
-            except Exception:
+            except (AttributeError, ImportError, RuntimeError, TypeError):
                 logger.exception("新手引导加载失败")
 
     def showEvent(self, event):
@@ -905,18 +905,18 @@ class ConfigWindow(QMainWindow):
         state = {"stack_index": 0}
         try:
             state["stack_index"] = int(self.stack.currentIndex())
-        except Exception as exc:
+        except (AttributeError, RuntimeError, TypeError) as exc:
             logger.debug("捕获配置窗口页面状态失败: %s", exc, exc_info=True)
         settings_panel = getattr(self, "settings_panel", None)
         if settings_panel is not None and hasattr(settings_panel, "capture_view_state"):
             try:
                 state.update(settings_panel.capture_view_state())
-            except Exception as exc:
+            except (AttributeError, RuntimeError, TypeError) as exc:
                 logger.debug("捕获设置页面状态失败: %s", exc, exc_info=True)
         try:
             state["folder_id"] = getattr(self.icon_grid, "current_folder_id", None)
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError, TypeError) as exc:
+            logger.debug("捕获当前文件夹状态失败: %s", exc, exc_info=True)
         return state
 
     def restore_view_state(self, state: dict | None):

@@ -63,12 +63,13 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.11 --max 3.12 --prefer "3.12,3.11" --cmd') do set "PYTHON_CMD=%%p"
+for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.11 --max 3.12 --prefer "3.12,3.11" --executable') do set "PYTHON_CMD=%%p"
 if not defined PYTHON_CMD (
     echo   [X] Failed to select Python interpreter.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
+echo       Build command: !PYTHON_CMD!
 
 REM Clean PATH to avoid conflicting C compilers (e.g. 32-bit TDM-GCC or mismatched MinGW)
 set "PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"

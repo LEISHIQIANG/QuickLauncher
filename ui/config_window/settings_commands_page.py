@@ -28,7 +28,7 @@ from qt_compat import (
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

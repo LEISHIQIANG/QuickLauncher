@@ -46,7 +46,7 @@ from qt_compat import (
 )
 from ui.styles.style import PopupMenu, get_dialog_stylesheet
 from ui.styles.themed_messagebox import ThemedMessageBox
-from ui.utils.ui_scale import sp, spf, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .folder_panel_helpers import (

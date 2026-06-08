@@ -28,7 +28,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.utils.ui_scale import sp, spf, font_px, scale_qss
+from ui.utils.ui_scale import scale_qss, sp, spf
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)

@@ -27,7 +27,7 @@ from qt_compat import (
 )
 from ui.styles.style import PopupMenu
 from ui.utils.safe_file_dialog import get_save_file_name
-from ui.utils.ui_scale import sp, spf, font_px, scale_qss
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

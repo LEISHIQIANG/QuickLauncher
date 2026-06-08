@@ -116,12 +116,13 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.12 --max 3.12 --prefer "3.12" --cmd') do set "PYTHON_CMD=%%p"
+for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.12 --max 3.12 --prefer "3.12" --executable') do set "PYTHON_CMD=%%p"
 if not defined PYTHON_CMD (
     echo   [X] Failed to select Python interpreter.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
 )
+echo       Build command: !PYTHON_CMD!
 
 REM Write version back to source so Nuitka embeds the correct value into the compiled binary
 !PYTHON_CMD! -c "import re,pathlib; p=pathlib.Path('core/version.py'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"%APP_VERSION%\"', t), encoding='utf-8')" 2>nul

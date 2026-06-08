@@ -9,7 +9,7 @@ delete them only after their ``finished`` signal fires.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,9 @@ _deferred_qthreads: list[dict[str, object]] = []
 def _safe_disconnect(signal) -> None:
     try:
         signal.disconnect()
-    except (TypeError, RuntimeError):
-        pass
-    except Exception as exc:
+    except (TypeError, RuntimeError) as exc:
+        logger.debug("线程信号已断开或对象已失效: %s", exc, exc_info=True)
+    except AttributeError as exc:
         logger.debug("断开线程信号失败: %s", exc, exc_info=True)
 
 
@@ -32,9 +32,9 @@ def _safe_delete_later(obj, owner: str) -> None:
         delete_later = getattr(obj, "deleteLater", None)
         if callable(delete_later):
             delete_later()
-    except RuntimeError:
-        pass
-    except Exception as exc:
+    except RuntimeError as exc:
+        logger.debug("延迟删除线程对象时对象已失效 [%s]: %s", owner, exc, exc_info=True)
+    except (AttributeError, TypeError) as exc:
         logger.debug("延迟删除线程对象失败 [%s]: %s", owner, exc, exc_info=True)
 
 
@@ -45,9 +45,9 @@ def _safe_set_parent_none(obj, owner: str) -> None:
         set_parent = getattr(obj, "setParent", None)
         if callable(set_parent):
             set_parent(None)
-    except RuntimeError:
-        pass
-    except Exception as exc:
+    except RuntimeError as exc:
+        logger.debug("解除线程父对象时对象已失效 [%s]: %s", owner, exc, exc_info=True)
+    except (AttributeError, TypeError) as exc:
         logger.debug("解除线程父对象失败 [%s]: %s", owner, exc, exc_info=True)
 
 
@@ -56,7 +56,7 @@ def _is_running(thread) -> bool:
         return bool(thread is not None and thread.isRunning())
     except RuntimeError:
         return False
-    except Exception:
+    except (AttributeError, TypeError):
         return False
 
 
@@ -97,25 +97,25 @@ def stop_qthread_nonblocking(
             worker.cancel()
         elif callable(getattr(thread, "request_stop", None)):
             thread.request_stop()
-    except RuntimeError:
-        pass
-    except Exception as exc:
+    except RuntimeError as exc:
+        logger.debug("请求线程停止时对象已失效 [%s]: %s", owner, exc, exc_info=True)
+    except (AttributeError, TypeError) as exc:
         logger.debug("请求线程停止失败 [%s]: %s", owner, exc, exc_info=True)
 
     try:
         if callable(getattr(thread, "quit", None)):
             thread.quit()
-    except RuntimeError:
-        pass
-    except Exception as exc:
+    except RuntimeError as exc:
+        logger.debug("quit 线程时对象已失效 [%s]: %s", owner, exc, exc_info=True)
+    except (AttributeError, TypeError) as exc:
         logger.debug("quit 线程失败 [%s]: %s", owner, exc, exc_info=True)
 
     if wait_ms > 0 and _is_running(thread):
         try:
             thread.wait(int(wait_ms))
-        except RuntimeError:
-            pass
-        except Exception as exc:
+        except RuntimeError as exc:
+            logger.debug("等待线程停止时对象已失效 [%s]: %s", owner, exc, exc_info=True)
+        except (AttributeError, TypeError) as exc:
             logger.debug("等待线程停止失败 [%s]: %s", owner, exc, exc_info=True)
 
     if not _is_running(thread):
@@ -140,14 +140,14 @@ def stop_qthread_nonblocking(
         finally:
             try:
                 _deferred_qthreads.remove(record)
-            except ValueError:
-                pass
+            except ValueError as exc:
+                logger.debug("延迟回收记录已移除 [%s]: %s", owner, exc)
 
     try:
         thread.finished.connect(_cleanup_deferred_thread)
     except RuntimeError:
         _cleanup_deferred_thread()
-    except Exception as exc:
+    except (AttributeError, TypeError) as exc:
         logger.debug("注册线程延迟回收失败 [%s]: %s", owner, exc, exc_info=True)
 
     logger.debug("线程仍在运行，已移入延迟回收列表 [%s]", owner)

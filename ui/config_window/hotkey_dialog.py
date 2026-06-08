@@ -31,7 +31,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.tooltip_helper import install_tooltip
-from ui.utils.ui_scale import sp, font_px, scale_qss
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon

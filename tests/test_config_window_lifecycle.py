@@ -82,9 +82,9 @@ def test_settings_panel_stop_background_timers_stops_slider_and_command_timers()
 
 
 def test_ui_scale_reopen_keeps_new_config_window_centered_on_old_window(monkeypatch):
+    import ui.config_window as config_window_pkg
     import ui.utils.font_manager as font_manager
     import ui.utils.ui_scale as ui_scale
-    import ui.config_window as config_window_pkg
 
     old_center = QPoint(420, 260)
     applied_scale = []

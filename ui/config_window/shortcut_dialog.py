@@ -29,7 +29,7 @@ from qt_compat import (
 from ui.styles.style import Glassmorphism
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
-from ui.utils.ui_scale import sp, font_px, scale_qss
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon

@@ -29,10 +29,10 @@ from qt_compat import (
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
 from ui.utils.interruptible_animation import stop_animation
+from ui.utils.ui_scale import DEFAULT_SCALE_PERCENT, MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, scale_qss, set_scale, sp
 from ui.utils.window_effect import is_win11
 
 from .settings_helpers import SwitchButton
-from ui.utils.ui_scale import DEFAULT_SCALE_PERCENT, MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, set_scale, sp, scale_qss
 
 logger = logging.getLogger(__name__)
 

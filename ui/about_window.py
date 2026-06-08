@@ -7,7 +7,7 @@ from core.i18n import tr
 from qt_compat import QLabel
 from ui.themed_tool_window import ThemedToolWindow
 from ui.utils.font_manager import get_qfont
-from ui.utils.ui_scale import font_px, sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 _ABOUT_SECTIONS = [
     (

@@ -49,9 +49,9 @@ from qt_compat import (
 from ui.styles.style import Glassmorphism, PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.utils.smooth_scroll import SmoothScrollArea
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
-from ui.utils.ui_scale import sp, spf, font_px, scale_qss
+from ui.utils.smooth_scroll import SmoothScrollArea
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog

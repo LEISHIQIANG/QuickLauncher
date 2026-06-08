@@ -29,7 +29,7 @@ from qt_compat import (
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
-from ui.utils.ui_scale import font_px, scale_qss, sp, spf
+from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
 from .style import get_dialog_stylesheet

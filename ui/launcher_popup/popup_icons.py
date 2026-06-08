@@ -6,7 +6,7 @@ import sys
 
 from core import ShortcutItem, ShortcutType
 from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QRectF, Qt, QtCompat
-from ui.utils.ui_scale import sp, spf, font_px
+from ui.utils.ui_scale import font_px
 
 try:
     from core import IconExtractor

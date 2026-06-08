@@ -268,6 +268,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--max", default="3.12", type=_parse_version)
     parser.add_argument("--prefer", type=_parse_prefer, help="comma-separated preferred versions, e.g. 3.12,3.11")
     parser.add_argument("--cmd", action="store_true", help="print only the selected command line")
+    parser.add_argument("--executable", action="store_true", help="print only the selected executable path")
     parser.add_argument("--explain", action="store_true", help="print selected interpreter and candidates")
     args = parser.parse_args(argv)
 
@@ -278,7 +279,7 @@ def main(argv: list[str]) -> int:
     selected = select_best(candidates, args.min, args.max, args.prefer)
 
     if selected is None:
-        if args.cmd:
+        if args.cmd or args.executable:
             return 1
         print(f"  [X] No supported 64-bit CPython {args.min[0]}.{args.min[1]}-{args.max[0]}.{args.max[1]} found")
         if candidates:
@@ -289,6 +290,9 @@ def main(argv: list[str]) -> int:
 
     if args.cmd:
         print(selected.command_line())
+        return 0
+    if args.executable:
+        print(_quote_arg(selected.executable))
         return 0
 
     print(f"  [OK] Selected {selected.label()} ({selected.source})")

@@ -34,7 +34,7 @@ from ui.config_window.support_dialog import _rounded_pixmap, _support_image_path
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_animation, stop_named_animations
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

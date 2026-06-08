@@ -37,7 +37,7 @@ from qt_compat import (
 from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 from ui.utils.safe_file_dialog import get_existing_directory
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .command_param_dialog import CommandParamDialog

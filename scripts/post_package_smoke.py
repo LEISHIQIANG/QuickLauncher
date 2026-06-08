@@ -60,7 +60,7 @@ def _source_version(root: Path) -> str | None:
     namespace: dict[str, object] = {}
     try:
         exec(compile(version_file.read_text(encoding="utf-8"), str(version_file), "exec"), namespace)
-    except Exception:
+    except (OSError, SyntaxError, UnicodeDecodeError):
         return None
     version = namespace.get("APP_VERSION")
     return version if isinstance(version, str) and version else None

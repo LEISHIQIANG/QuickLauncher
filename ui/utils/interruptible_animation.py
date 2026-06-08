@@ -12,9 +12,9 @@ def stop_animation(animation, *, owner: str = "") -> None:
         return
     try:
         animation.stop()
-    except RuntimeError:
-        pass
-    except Exception as exc:
+    except RuntimeError as exc:
+        logger.debug("停止动画时对象已失效 [%s]: %s", owner, exc, exc_info=True)
+    except (AttributeError, TypeError) as exc:
         logger.debug("停止动画失败 [%s]: %s", owner, exc, exc_info=True)
 
 
@@ -23,7 +23,7 @@ def is_animation_running(animation) -> bool:
         return False
     try:
         return int(animation.state()) != 0
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError):
         return False
 
 

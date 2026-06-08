@@ -5,7 +5,7 @@ import os
 
 from core import ShortcutItem, ShortcutType
 from qt_compat import QTimer
-from ui.utils.ui_scale import sp, spf, font_px
+from ui.utils.ui_scale import sp
 
 try:
     from core import ShortcutExecutor

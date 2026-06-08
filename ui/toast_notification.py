@@ -22,7 +22,7 @@ from qt_compat import (
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont
-from ui.utils.ui_scale import font_px, scale_qss, sp, spf
+from ui.utils.ui_scale import scale_qss, sp, spf
 
 logger = logging.getLogger(__name__)
 

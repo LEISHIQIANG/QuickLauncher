@@ -38,7 +38,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Colors, Glassmorphism, PopupMenu
-from ui.utils.ui_scale import sp, scale_qss
+from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .chain_canvas import ChainCanvasWidget, NodePropertyPanel, canvas_from_steps, processor_library_items

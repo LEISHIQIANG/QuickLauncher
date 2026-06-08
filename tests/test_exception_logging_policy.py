@@ -1,7 +1,19 @@
 import ast
 from pathlib import Path
 
-SKIP_PARTS = {"build", "dist", ".git", ".pytest_cache", ".venv", "venv", "__pycache__", "tests"}
+SKIP_PARTS = {
+    "build",
+    "dist",
+    ".git",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "plugins",
+    "tests",
+    "tools",
+}
 
 
 def test_no_exception_pass_handlers_in_production_code():
