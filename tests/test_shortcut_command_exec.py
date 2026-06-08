@@ -749,6 +749,36 @@ def test_test_command_rejects_value_only_variable(monkeypatch):
     assert result["error"]
 
 
+def test_test_command_forwards_cancel_event(monkeypatch):
+    cancel_event = threading.Event()
+    seen = {}
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def run_command_capture(shortcut, timeout=None, cancel_event=None, on_update=None):
+            seen["timeout"] = timeout
+            seen["cancel_event"] = cancel_event
+            return CommandResult(
+                success=False,
+                message="cancelled",
+                display_type="log",
+                error="已取消",
+                payload={"duration": 0.0},
+            )
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "ping -n 10 127.0.0.1"
+
+    result = command_exec.CommandExecutionMixin.test_command(item, timeout=1.5, cancel_event=cancel_event)
+
+    assert result["success"] is False
+    assert result["error"] == "已取消"
+    assert seen == {"timeout": 1.5, "cancel_event": cancel_event}
+
+
 def test_quoted_external_variable_in_cmd_still_executes(monkeypatch):
     captured = {}
 

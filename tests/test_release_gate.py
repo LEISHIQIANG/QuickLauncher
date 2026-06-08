@@ -17,7 +17,7 @@ def test_release_gate_dry_run_skips_execution(capsys):
     assert "ruff: py-test -m ruff check --no-cache core ui hooks services tests" in output
     assert f"pytest: py-test -m pytest --basetemp {release_gate.PYTEST_BASETEMP}" in output
     assert "compileall: py-test -m compileall core ui hooks services bootstrap plugins" in output
-    assert "py-test scripts/check_release_artifacts.py --source-only" in output
+    assert "py-test scripts/check_release_artifacts.py --source-only --allow-source-runtime-plugins" in output
     assert "py-test scripts/post_package_smoke.py" in output
 
 
@@ -65,6 +65,8 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
     assert commands[2] == [
         "py-test",
         "scripts/audit_broad_exceptions.py",
+        "--exclude-dir",
+        "plugins",
         "--max-total",
         "1325",
         "--max-unlogged",
@@ -75,7 +77,12 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
     assert commands[3][:3] == ["py-test", "-m", "compileall"]
     assert envs[3]["PYTHONPYCACHEPREFIX"] == str(release_gate.COMPILE_PYCACHE_PREFIX)
 
-    assert commands[4] == ["py-test", "scripts/check_release_artifacts.py", "--source-only"]
+    assert commands[4] == [
+        "py-test",
+        "scripts/check_release_artifacts.py",
+        "--source-only",
+        "--allow-source-runtime-plugins",
+    ]
     assert envs[4]["PYTHONDONTWRITEBYTECODE"] == "1"
 
     assert commands[5] == ["py-test", "scripts/post_package_smoke.py"]

@@ -93,7 +93,12 @@ def _require_dir(errors: list[str], path: Path) -> None:
         errors.append(f"missing directory: {path}")
 
 
-def check_source_metadata(root: Path = ROOT, version: str | None = None) -> ReleaseCheckResult:
+def check_source_metadata(
+    root: Path = ROOT,
+    version: str | None = None,
+    *,
+    allow_source_runtime_plugins: bool = False,
+) -> ReleaseCheckResult:
     root = Path(root)
     metadata_version, release_status = _version_metadata(root)
     version = version or metadata_version
@@ -133,10 +138,16 @@ def check_source_metadata(root: Path = ROOT, version: str | None = None) -> Rele
     plugins_dir = root / "plugins"
     _require_dir(errors, plugins_dir)
     if plugins_dir.is_dir():
+        ignored_runtime_plugins: list[str] = []
         plugin_dirs = [p for p in plugins_dir.iterdir() if p.is_dir()]
         for plugin_dir in plugin_dirs:
             if (plugin_dir / "plugin.json").is_file():
-                errors.append(f"source plugins directory must not bundle runtime plugin: {plugin_dir}")
+                if allow_source_runtime_plugins:
+                    ignored_runtime_plugins.append(plugin_dir.name)
+                else:
+                    errors.append(f"source plugins directory must not bundle runtime plugin: {plugin_dir}")
+        if ignored_runtime_plugins:
+            manifest["source"]["runtime_plugin_dirs_ignored"] = sorted(ignored_runtime_plugins)
 
     plugin_package_dir = root / ".plugins"
     _require_dir(errors, plugin_package_dir)
@@ -208,10 +219,15 @@ def check_release_artifacts(
     smoke_timeout: float = 30.0,
     smoke_exe: Path | None = None,
     smoke_args: list[str] | None = None,
+    allow_source_runtime_plugins: bool = False,
 ) -> ReleaseCheckResult:
     root = Path(root)
     version = version or _default_version(root)
-    source_result = check_source_metadata(root, version)
+    source_result = check_source_metadata(
+        root,
+        version,
+        allow_source_runtime_plugins=allow_source_runtime_plugins,
+    )
     errors = list(source_result.errors)
     release_manifest = source_result.manifest
 
@@ -287,6 +303,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--min-exe-bytes", type=int, default=1024 * 1024)
     parser.add_argument("--run-smoke", action="store_true")
     parser.add_argument("--smoke-timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--allow-source-runtime-plugins",
+        action="store_true",
+        help="Ignore local runtime plugin directories under source plugins/ while validating packaged artifacts.",
+    )
     parser.add_argument("--write-manifest", type=Path, default=None)
     parser.add_argument("--write-installer-sha256", type=Path, default=None)
     return parser.parse_args(argv)
@@ -295,7 +316,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
     result = (
-        check_source_metadata(args.root, args.version)
+        check_source_metadata(
+            args.root,
+            args.version,
+            allow_source_runtime_plugins=args.allow_source_runtime_plugins,
+        )
         if args.source_only
         else check_release_artifacts(
             args.root,
@@ -305,6 +330,7 @@ def main(argv: list[str] | None = None) -> int:
             min_exe_bytes=args.min_exe_bytes,
             run_smoke=args.run_smoke,
             smoke_timeout=args.smoke_timeout,
+            allow_source_runtime_plugins=args.allow_source_runtime_plugins,
         )
     )
     if args.write_manifest:

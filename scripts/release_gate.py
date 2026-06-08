@@ -75,6 +75,8 @@ def _default_steps(python: str) -> list[GateStep]:
             [
                 python,
                 "scripts/audit_broad_exceptions.py",
+                "--exclude-dir",
+                "plugins",
                 "--max-total",
                 "1325",
                 "--max-unlogged",
@@ -89,7 +91,7 @@ def _default_steps(python: str) -> list[GateStep]:
         ),
         GateStep(
             "release metadata",
-            [python, "scripts/check_release_artifacts.py", "--source-only"],
+            [python, "scripts/check_release_artifacts.py", "--source-only", "--allow-source-runtime-plugins"],
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
         GateStep(

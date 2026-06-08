@@ -81,10 +81,35 @@ def test_screenshot_ocr_package_bundles_wx_library_without_python_runtime():
 
     with zipfile.ZipFile(package_path) as archive:
         names = set(archive.namelist())
+        screenshot_py = archive.read("screenshot_ocr/screenshot.py").decode("utf-8")
+        main_py = archive.read("screenshot_ocr/main.py").decode("utf-8")
 
     assert "screenshot_ocr/runtime/site-packages/wx/__init__.py" in names
     assert not any(name.lower().endswith("python.exe") for name in names)
     assert not any(name.lower().endswith("python312.dll") for name in names)
+    assert "class _Win32GuiFallback" in screenshot_py
+    assert "win32gui = _Win32GuiFallback()" in screenshot_py
+    assert '"import win32gui\\n"' in main_py
+    assert "and _python_has_wx([str(current)])" in main_py
+
+
+def test_qr_code_scanner_prefers_host_helper_for_bundled_qt_runtime():
+    package_path = PLUGIN_PACKAGE_DIR / "qr_code_scanner.qlzip"
+    assert package_path.is_file()
+
+    with zipfile.ZipFile(package_path) as archive:
+        names = set(archive.namelist())
+        main_py = archive.read("qr_code_scanner/main.py").decode("utf-8")
+        runner_py = archive.read("qr_code_scanner/qr_runner.py").decode("utf-8")
+
+    assert "qr_code_scanner/runtime/site-packages/zxingcpp.cp312-win_amd64.pyd" in names
+    assert "qr_code_scanner/runtime/site-packages/zxingcpp.cp313-win_amd64.pyd" in names
+    assert "current.parent / \"QuickLauncher.exe\"" in main_py
+    assert "def _python_has_qr_runtime" in main_py
+    assert "from PyQt5.QtCore import QPoint" in main_py
+    assert "import zxingcpp" in main_py
+    assert "APP_ROOT = Path(sys.executable or \"\").resolve().parent" in runner_py
+    assert "APP_ROOT / \"PyQt5\"" in runner_py
 
 
 def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
