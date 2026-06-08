@@ -1,21 +1,17 @@
 """
-安全的文件对话框包装器，基于非原生 QFileDialog 与 DLL 同步原子级暂停保护机制。
-通过在显示自定义 Qt 文件对话框前，执行 C++ DLL 的 SetMousePaused(True) 同步原子暂停，
-并在主线程中使用统一主题和自定义窗口外壳进行呼起，从而融入 Qt 事件循环，
-彻底杜绝 IDE 调试、低级钩子与外壳扩展造成的死锁/转圈/卡死。
-提供极其详尽的日志步骤追踪，便于对各种复杂环境进行深度审计。
+安全的文件对话框包装器，基于原生系统文件选择对话框与钩子暂停保护机制。
+
+显示文件对话框前会暂停全局鼠标钩子，退出后恢复并重绘父窗口。文件选择本身使用
+系统原生资源管理器对话框，避免配置导入/导出等入口出现 Qt 自绘文件框。
 """
 
 import logging
 
 from hooks.hook_pause import mouse_hook_paused
-from qt_compat import QApplication, QDialog, QFileDialog
-from ui.styles.style import get_dialog_stylesheet
-from ui.styles.theme_controller import resolve_theme
-from ui.styles.window_chrome import apply_custom_window_chrome
+from qt_compat import QApplication, QFileDialog
 
 logger = logging.getLogger(__name__)
-logger.debug("[safe_file_dialog] 自定义 Qt 文件对话框集成模块已加载")
+logger.debug("[safe_file_dialog] 原生系统文件对话框集成模块已加载")
 
 # 全局鼠标/键盘钩子物理引用
 _global_mouse_hook = None
@@ -68,39 +64,32 @@ def _execute_dialog_synchronously(parent, func, *args, **kwargs):
     return result
 
 
-def _create_themed_file_dialog(parent, caption: str, directory: str, filter_text: str) -> QFileDialog:
-    dialog = QFileDialog(parent, caption, directory, filter_text)
-    dialog.setOption(QFileDialog.DontUseNativeDialog, True)
-    apply_custom_window_chrome(dialog, kind="dialog", translucent=True)
+def _native_dialog_options(options=None):
+    """返回不含 DontUseNativeDialog 的 QFileDialog 选项。"""
+    if options is None:
+        return QFileDialog.Options()
     try:
-        dialog.setStyleSheet(get_dialog_stylesheet(resolve_theme(parent)))
+        return QFileDialog.Options(options & ~QFileDialog.DontUseNativeDialog)
     except Exception as exc:
-        logger.debug("应用文件对话框主题失败: %s", exc, exc_info=True)
-    return dialog
-
-
-def _exec_file_dialog(dialog: QFileDialog) -> tuple[str, str]:
-    accepted = dialog.exec_() == QDialog.Accepted
-    selected_filter = dialog.selectedNameFilter() if hasattr(dialog, "selectedNameFilter") else ""
-    if not accepted:
-        return "", selected_filter
-    files = dialog.selectedFiles() if hasattr(dialog, "selectedFiles") else []
-    return (files[0] if files else ""), selected_filter
+        logger.debug("清理文件对话框选项失败: %s", exc, exc_info=True)
+        return QFileDialog.Options()
 
 
 def get_open_file_name(parent=None, caption="", directory="", filter="", selected_filter=""):
     """
-    【同步重构】使用非原生 Qt QFileDialog (集成于事件循环，防死锁)
+    使用原生系统打开文件对话框，并在显示期间暂停全局鼠标钩子。
     """
     # logger.debug(f"[文件对话框追踪] get_open_file_name 被调用: caption={caption}, directory={directory}")
 
     def runner():
-        dialog = _create_themed_file_dialog(parent, caption or "选择文件", directory, filter)
-        dialog.setFileMode(QFileDialog.ExistingFile)
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        if selected_filter:
-            dialog.selectNameFilter(selected_filter)
-        return _exec_file_dialog(dialog)
+        return QFileDialog.getOpenFileName(
+            parent,
+            caption or "选择文件",
+            directory,
+            filter,
+            selected_filter,
+            _native_dialog_options(),
+        )
 
     result = _execute_dialog_synchronously(parent, runner)
     return result if isinstance(result, tuple) else ("", "")
@@ -108,17 +97,19 @@ def get_open_file_name(parent=None, caption="", directory="", filter="", selecte
 
 def get_save_file_name(parent=None, caption="", directory="", filter="", selected_filter=""):
     """
-    【同步重构】使用非原生 Qt QFileDialog (集成于事件循环，防死锁)
+    使用原生系统保存文件对话框，并在显示期间暂停全局鼠标钩子。
     """
     # logger.debug(f"[文件对话框追踪] get_save_file_name 被调用: caption={caption}, directory={directory}")
 
     def runner():
-        dialog = _create_themed_file_dialog(parent, caption or "保存文件", directory, filter)
-        dialog.setAcceptMode(QFileDialog.AcceptSave)
-        dialog.setFileMode(QFileDialog.AnyFile)
-        if selected_filter:
-            dialog.selectNameFilter(selected_filter)
-        return _exec_file_dialog(dialog)
+        return QFileDialog.getSaveFileName(
+            parent,
+            caption or "保存文件",
+            directory,
+            filter,
+            selected_filter,
+            _native_dialog_options(),
+        )
 
     result = _execute_dialog_synchronously(parent, runner)
     return result if isinstance(result, tuple) else ("", "")
@@ -126,22 +117,18 @@ def get_save_file_name(parent=None, caption="", directory="", filter="", selecte
 
 def get_existing_directory(parent=None, caption="", directory="", options=None):
     """
-    【同步重构】使用非原生 Qt QFileDialog (集成于事件循环，防死锁)
+    使用原生系统选择文件夹对话框，并在显示期间暂停全局鼠标钩子。
     """
     # logger.debug(f"[文件对话框追踪] get_existing_directory 被调用: caption={caption}, directory={directory}")
 
     def runner():
-        dialog = _create_themed_file_dialog(parent, caption or "选择文件夹", directory, "")
-        dialog.setFileMode(QFileDialog.Directory)
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setOption(QFileDialog.ShowDirsOnly, True)
-        if options is not None:
-            try:
-                dialog.setOptions(options | QFileDialog.DontUseNativeDialog)
-            except Exception as exc:
-                logger.debug("应用目录对话框选项失败: %s", exc, exc_info=True)
-        selected, _ = _exec_file_dialog(dialog)
-        return selected
+        dialog_options = _native_dialog_options(options) | QFileDialog.ShowDirsOnly
+        return QFileDialog.getExistingDirectory(
+            parent,
+            caption or "选择文件夹",
+            directory,
+            dialog_options,
+        )
 
     result = _execute_dialog_synchronously(parent, runner)
     return result
