@@ -73,16 +73,13 @@ def test_safe_file_dialog_hook_lifecycle_pipeline():
     assert mock_mouse.paused is False
 
 
-def test_safe_file_dialog_uses_non_native_custom_chrome(qapp):
-    from qt_compat import QFileDialog, QtCompat
-    from ui.utils.safe_file_dialog import _create_themed_file_dialog
+def test_safe_file_dialog_strips_non_native_option(qapp):
+    from qt_compat import QFileDialog
+    from ui.utils.safe_file_dialog import _native_dialog_options
 
-    dialog = _create_themed_file_dialog(None, "选择文件", "", "All Files (*)")
-    try:
-        assert dialog.testOption(QFileDialog.DontUseNativeDialog) is True
-        assert bool(dialog.windowFlags() & QtCompat.FramelessWindowHint)
-    finally:
-        dialog.close()
+    options = QFileDialog.Options() | QFileDialog.DontUseNativeDialog
+
+    assert not (_native_dialog_options(options) & QFileDialog.DontUseNativeDialog)
 
 
 def test_themed_message_box_lifecycle_pipeline(monkeypatch, qapp):
