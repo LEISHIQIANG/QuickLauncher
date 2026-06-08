@@ -14,6 +14,7 @@ from qt_compat import (
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.window_effect import is_win10, is_win11
+from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ class PopupWindowEffectMixin:
     def _get_paint_corner_radius(self, bg_mode=None, blur_radius=None) -> int:
         desired = getattr(self.settings, "corner_radius", 8)
         desired = max(0, int(desired))
+        # Scale the corner radius for current UI scale
+        desired = sp(desired)
 
         if bg_mode is None:
             bg_mode = getattr(self.settings, "bg_mode", "theme")
@@ -238,14 +241,14 @@ class PopupLayoutMixin:
         # theme/image 模式：mask 裁掉顶部34px，所有坐标需整体下移补偿
         self.content_height = self.padding + y_offset + self.fixed_rows * self.cell_h
 
-        indicator_height = 16 if len(self.pages) > 1 else 0
-        indicator_spacing = 4 if len(self.pages) > 1 else 0
+        indicator_height = sp(16) if len(self.pages) > 1 else 0
+        indicator_spacing = sp(4) if len(self.pages) > 1 else 0
         self.indicator_y = self.content_height + indicator_spacing
 
         dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
         self.dock_y = self.indicator_y + indicator_height
 
-        height = self.content_height + indicator_spacing + indicator_height + dock_height + 6
+        height = self.content_height + indicator_spacing + indicator_height + dock_height + sp(6)
 
         total_width = width + self.shadow_margin * 2
         total_height = height + self.shadow_margin * 2
@@ -279,8 +282,8 @@ class PopupLayoutMixin:
             left = work_area.center().x() - window_width // 2
             top = work_area.center().y() - window_height // 2
         elif align_mode == "bottom_right":
-            left = work_area.right() - window_width - 10
-            top = work_area.bottom() - window_height - 10
+            left = work_area.right() - window_width - sp(10)
+            top = work_area.bottom() - window_height - sp(10)
         elif align_mode == "mouse_top_left":
             left = lx
             top = ly
@@ -288,8 +291,8 @@ class PopupLayoutMixin:
             left = lx - window_width // 2
             top = ly - window_height // 2
 
-        left = max(work_area.left() + 5, min(left, work_area.right() - window_width - 5))
-        top = max(work_area.top() + 5, min(top, work_area.bottom() - window_height - 5))
+        left = max(work_area.left() + sp(5), min(left, work_area.right() - window_width - sp(5)))
+        top = max(work_area.top() + sp(5), min(top, work_area.bottom() - window_height - sp(5)))
 
         self.move(left, top)
 
@@ -299,12 +302,16 @@ class PopupLayoutMixin:
         overlay = getattr(self, "_icon_flash_overlay", None)
         if overlay is not None:
             overlay.setGeometry(self.rect())
-        QTimer.singleShot(0, self._update_window_effect)
+        if not getattr(self, "_geometry_adjusting", False):
+            QTimer.singleShot(0, self._update_window_effect)
         super().resizeEvent(event)
 
     def moveEvent(self, event):
         """窗口移动时更新特效，确保在新屏幕上正确显示"""
         try:
+            if getattr(self, "_geometry_adjusting", False):
+                super().moveEvent(event)
+                return
             old_screen = QApplication.screenAt(event.oldPos()) if hasattr(event, "oldPos") else None
             new_screen = QApplication.screenAt(self.pos())
 

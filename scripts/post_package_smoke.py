@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+REQUIRED_SMOKE_CHECKS = ("network_runtime",)
 
 
 @dataclass
@@ -50,6 +51,47 @@ def _extract_smoke_payload(stdout: str | None) -> dict | None:
         if isinstance(payload, dict) and "status" in payload:
             return payload
     return None
+
+
+def _source_version(root: Path) -> str | None:
+    version_file = Path(root) / "core" / "version.py"
+    if not version_file.is_file():
+        return None
+    namespace: dict[str, object] = {}
+    try:
+        exec(compile(version_file.read_text(encoding="utf-8"), str(version_file), "exec"), namespace)
+    except Exception:
+        return None
+    version = namespace.get("APP_VERSION")
+    return version if isinstance(version, str) and version else None
+
+
+def default_dist_dir(root: Path = ROOT) -> Path:
+    """Return the most likely packaged runtime directory for this tree."""
+    root = Path(root)
+    dist_root = root / "dist"
+    legacy = dist_root / "QuickLauncher"
+    if (legacy / "QuickLauncher.exe").is_file():
+        return legacy
+
+    candidates: list[Path] = []
+    version = _source_version(root)
+    if version:
+        candidates.append(dist_root / f"QuickLauncher_Portable_{version}")
+    if dist_root.is_dir():
+        portable_dirs = sorted(
+            dist_root.glob("QuickLauncher_Portable_*"),
+            key=lambda path: path.stat().st_mtime if path.exists() else 0,
+            reverse=True,
+        )
+        candidates.extend(path for path in portable_dirs if path not in candidates)
+
+    for candidate in candidates:
+        if (candidate / "QuickLauncher.exe").is_file():
+            return candidate
+    if candidates:
+        return candidates[0]
+    return legacy
 
 
 def run_packaged_smoke(
@@ -133,6 +175,13 @@ def run_packaged_smoke(
             errors.extend(str(error) for error in payload_errors)
         else:
             errors.append(f"smoke test status is {payload.get('status')!r}")
+    else:
+        checks = payload.get("checks")
+        missing_checks = [
+            check for check in REQUIRED_SMOKE_CHECKS if not isinstance(checks, dict) or check not in checks
+        ]
+        if missing_checks:
+            errors.append(f"smoke test missing required checks: {', '.join(missing_checks)}")
 
     return PostPackageSmokeResult(
         ok=not errors,
@@ -148,7 +197,7 @@ def run_packaged_smoke(
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dist-dir", type=Path, default=ROOT / "dist" / "QuickLauncher")
+    parser.add_argument("--dist-dir", type=Path, default=None)
     parser.add_argument("--exe", type=Path, default=None)
     parser.add_argument("--timeout", type=float, default=30.0)
     return parser.parse_args(argv)
@@ -156,7 +205,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
-    result = run_packaged_smoke(args.dist_dir, exe=args.exe, timeout=args.timeout)
+    dist_dir = args.dist_dir or default_dist_dir(ROOT)
+    result = run_packaged_smoke(dist_dir, exe=args.exe, timeout=args.timeout)
     print(json.dumps(result.to_manifest(), ensure_ascii=False, indent=2))
     if result.ok:
         print("post-package smoke passed")

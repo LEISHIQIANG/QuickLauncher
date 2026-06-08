@@ -37,6 +37,8 @@ from ui.launcher_popup.popup_renderer import PopupRendererMixin
 from ui.launcher_popup.popup_search import PopupSearchMixin
 from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowEffectMixin
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
+from ui.utils.interruptible_animation import is_animation_running, stop_named_animations
+from ui.utils.ui_scale import sp, spf, font_px
 from ui.utils.window_effect import WindowEffect
 
 logger = logging.getLogger(__name__)
@@ -178,7 +180,10 @@ class LauncherPopup(
         self._page_position = float(self.current_page)  # 动画当前位置（浮点数）
         self._target_page = self.current_page  # 目标页面
         self._last_wheel_time = 0.0
-        self._wheel_speed = 1.0  # 滚动速度系数
+        self._last_wheel_page_time = 0.0
+        self._last_wheel_direction = 0
+        self._wheel_accumulator = 0.0
+        self._wheel_speed = 1.0  # 兼容旧状态名，滚轮翻页不再用它做加速
 
         # 动画进度 (0.0 到 1.0)
         self._reveal_progress = 0.0
@@ -244,12 +249,13 @@ class LauncherPopup(
         self._win10_fallback_bg = None  # Win10回退背景，避免重新显示时闪烁
 
         # 布局参数
-        self.padding = 8
+        self.padding = sp(8)
         self.cols = self.settings.cols
-        self.cell_size = self.settings.cell_size
-        self.icon_size = self.settings.icon_size
-        self._label_font.setPixelSize(max(10, int(self.icon_size * 0.28)))
-        self.row_spacing = 2
+        self.cell_size = sp(self.settings.cell_size)
+        self.icon_size = sp(self.settings.icon_size)
+        # Font: use unscaled settings value as input to font_px() to avoid double-scaling
+        self._label_font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.28))))
+        self.row_spacing = sp(2)
         self.cell_h = int(self.cell_size * 1.15)
 
         # Dock 高度计算
@@ -263,8 +269,8 @@ class LauncherPopup(
             actual_rows = (len(self.dock_items) + self.cols - 1) // self.cols
             # 最终显示行数，不超过设置的最大行数
             display_rows = min(max(1, actual_rows), max_rows)
-            dock_row_stride = self.icon_size + 6  # 行间距6px
-            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + 12
+            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
+            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + sp(12)
         self.window_effect = WindowEffect()
 
         # 设置窗口
@@ -311,6 +317,8 @@ class LauncherPopup(
         self._search_reveal_progress = 0.0
         self._search_target_progress = 0.0
         self._search_hide_geometry_pending = False
+        self._search_mask_cleared = True
+        self._search_mask_cache_key = None
         self._search_body_anchor_y = 0
         self._search_anim_duration_ms = 180
         self._search_anim_from_progress = 0.0
@@ -385,21 +393,9 @@ class LauncherPopup(
         """Set a deterministic hidden animation state before the native window is shown."""
         self._is_hiding = False
 
-        for group_name in ("anim_group", "hide_anim_group"):
-            group = getattr(self, group_name, None)
-            try:
-                if group and group.state() == QtCompat.QParallelAnimationGroup.State.Running:
-                    group.stop()
-            except Exception as exc:
-                logger.debug("停止动画组失败: %s", exc, exc_info=True)
+        stop_named_animations(self, "anim_group", "hide_anim_group")
 
         self._reveal_progress = 0.0
-        if hasattr(self, "anim_group"):
-            try:
-                self.anim_group.stop()
-            except Exception as exc:
-                logger.debug("停止动画组失败: %s", exc, exc_info=True)
-
         self.setWindowOpacity(0.0)
         self.update()
 
@@ -407,6 +403,12 @@ class LauncherPopup(
         """Show with a stable fade-in start state."""
         if not self.isVisible():
             self.prepare_show_animation_state()
+        elif getattr(self, "_is_hiding", False):
+            self._is_hiding = False
+            stop_named_animations(self, "hide_anim_group")
+            self._start_show_animation()
+            self.raise_()
+            return
         super().show()
 
     def showEvent(self, event):
@@ -414,8 +416,7 @@ class LauncherPopup(
         generation = self._next_lifecycle_generation()
         # 停止隐藏动画和重置状态
         self._is_hiding = False
-        if hasattr(self, "hide_anim_group"):
-            self.hide_anim_group.stop()
+        stop_named_animations(self, "hide_anim_group")
         if not self._drag_drop_compat_applied:
             self._drag_drop_compat_applied = True
             self._defer_lifecycle_callback(0, allow_drag_drop_for_widget, self, generation=generation)
@@ -449,21 +450,21 @@ class LauncherPopup(
 
     def _start_show_animation(self):
         """窗口出现动画 - 从中心向外扩散"""
-        # 重置状态
-        self._reveal_progress = 0.0
-        self.setWindowOpacity(0.0)
+        stop_named_animations(self, "anim_group", "hide_anim_group")
+        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
+        start_reveal = max(0.0, min(1.0, float(getattr(self, "_reveal_progress", 0.0))))
 
         # 透明度动画
         self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.opacity_anim.setDuration(100)
-        self.opacity_anim.setStartValue(0.0)
+        self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         # 扩散进度动画
         self.reveal_anim = QtCompat.QPropertyAnimation(self, b"revealProgress")
         self.reveal_anim.setDuration(100)
-        self.reveal_anim.setStartValue(0.0)
+        self.reveal_anim.setStartValue(start_reveal)
         self.reveal_anim.setEndValue(1.0)
         self.reveal_anim.setEasingCurve(QtCompat.OutCubic)
 
@@ -485,13 +486,14 @@ class LauncherPopup(
         self._is_hiding = True
 
         # 停止可能正在运行的显示动画
-        if hasattr(self, "anim_group") and self.anim_group.state() == QtCompat.QParallelAnimationGroup.State.Running:
+        if is_animation_running(getattr(self, "anim_group", None)):
             self.anim_group.stop()
 
         self._start_hide_animation()
 
     def _start_hide_animation(self):
         """窗口消失动画 - 从外向中心收缩"""
+        stop_named_animations(self, "hide_anim_group")
         # 透明度动画
         self.hide_opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.hide_opacity_anim.setDuration(100)
@@ -555,6 +557,10 @@ class LauncherPopup(
         self._closing = True
         self._next_lifecycle_generation()
         self._stop_lifecycle_timers()
+        try:
+            self.stop_background_threads()
+        except Exception as exc:
+            logger.debug("停止弹窗后台线程失败: %s", exc, exc_info=True)
         super().closeEvent(event)
 
     def _restore_focus_safe(self):
@@ -734,9 +740,9 @@ class LauncherPopup(
         # 更新设置参数
         self.settings = self.data_manager.get_settings()
         self.cols = self.settings.cols
-        self.cell_size = self.settings.cell_size
-        self.icon_size = self.settings.icon_size
-        self._label_font.setPixelSize(max(10, int(self.icon_size * 0.28)))
+        self.cell_size = sp(self.settings.cell_size)
+        self.icon_size = sp(self.settings.icon_size)
+        self._label_font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.28))))
         self.cell_h = int(self.cell_size * 1.15)
         if preserved_search_state is not None:
             self._ensure_search_cursor_visible()
@@ -773,9 +779,9 @@ class LauncherPopup(
             max_rows = getattr(self.settings, "dock_height_mode", 1)
             actual_rows = (len(self.dock_items) + self.cols - 1) // self.cols
             display_rows = min(max(1, actual_rows), max_rows)
-            dock_row_stride = self.icon_size + 6  # 行间距6px
+            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
             # 单行：icon_size + 16；多行：icon_size + (rows-1)*dock_row_stride + 16
-            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + 12
+            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + sp(12)
         else:
             self.dock_height = 0
 

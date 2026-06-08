@@ -46,6 +46,7 @@ from qt_compat import (
 )
 from ui.styles.style import PopupMenu, get_dialog_stylesheet
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.utils.ui_scale import sp, spf, scale_qss
 
 from .base_dialog import BaseDialog
 from .folder_panel_helpers import (
@@ -101,11 +102,11 @@ class FolderInputDialog(BaseDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(200)
+        self.setMinimumWidth(sp(200))
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(sp(10))
+        layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
 
         # 标签
         self.label = QLabel(label)
@@ -154,15 +155,15 @@ class FolderImportDialog(BaseDialog):
         super().__init__(parent)
         self.setWindowTitle(tr("导入文件夹"))
         self.setModal(True)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(sp(240))
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(sp(10))
+        layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
 
         # 标题
         title_label = QLabel(tr("将创建新分类: {folder_name}", folder_name=folder_name))
-        title_label.setStyleSheet("font-weight: 400; font-size: 14px;")
+        title_label.setStyleSheet(scale_qss("font-weight: 400; font-size: 14px;"))
         layout.addWidget(title_label)
 
         # 说明文本
@@ -218,8 +219,8 @@ class FolderItemWidget(QWidget):
 
     def sizeHint(self) -> QSize:
         fm = self.fontMetrics()
-        h = max(18, fm.height()) + 18  # 18px padding total (9px top/bottom)
-        return QSize(100, h)
+        h = max(sp(18), fm.height()) + sp(18)  # 18px padding total (9px top/bottom)
+        return QSize(sp(100), h)
 
     @pyqtProperty(float)
     def scale_factor(self) -> float:
@@ -257,13 +258,13 @@ class FolderItemWidget(QWidget):
                 hover_bg = QColor(0, 0, 0, 10)  # rgba(0, 0, 0, 0.04)
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(QRectF(self.rect()).adjusted(2, 1, -2, -1), 8, 8)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(sp(2), sp(1), sp(-2), sp(-1)), sp(8), sp(8))
 
         # Draw icon
         if self.icon:
-            pixmap = self.icon.pixmap(18, 18)
+            pixmap = self.icon.pixmap(sp(18), sp(18))
             y = (self.height() - pixmap.height()) // 2
-            painter.drawPixmap(8, y, pixmap)
+            painter.drawPixmap(sp(8), y, pixmap)
 
         # Draw text
         if self.theme == "dark":
@@ -284,7 +285,7 @@ class FolderItemWidget(QWidget):
 
         painter.setFont(get_qfont(12))
 
-        text_rect = QRectF(32, 0, self.width() - 42, self.height())
+        text_rect = QRectF(sp(32), 0, self.width() - sp(42), self.height())
         painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
 
         painter.end()
@@ -327,7 +328,7 @@ class FolderListWidget(QListWidget):
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
             # 左右各内缩 2px，防止圆角抗锯齿像素被 viewport 右边界裁剪
-            target_rect = QRectF(visual_rect).adjusted(2, 1, -2, -1)
+            target_rect = QRectF(visual_rect).adjusted(sp(2), sp(1), sp(-2), sp(-1))
 
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
@@ -382,7 +383,7 @@ class FolderListWidget(QListWidget):
         if curr_indexes and not self._pill_rect.isEmpty():
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
-            self._pill_rect = QRectF(visual_rect).adjusted(2, 1, -2, -1)
+            self._pill_rect = QRectF(visual_rect).adjusted(sp(2), sp(1), sp(-2), sp(-1))
             self.viewport().update()
 
     def paintEvent(self, event):
@@ -399,7 +400,7 @@ class FolderListWidget(QListWidget):
 
             painter.setBrush(QBrush(pill_color))
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(self._pill_rect, 8, 8)
+            painter.drawRoundedRect(self._pill_rect, sp(8), sp(8))
             painter.end()
 
         super().paintEvent(event)
@@ -425,18 +426,18 @@ class FolderPanel(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 1)
-        layout.setSpacing(8)
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(1))
+        layout.setSpacing(sp(8))
 
         self.list_frame = QFrame()
         self.list_frame.setObjectName("folderListFrame")
         list_frame_layout = QVBoxLayout(self.list_frame)
-        list_frame_layout.setContentsMargins(7, 4, 7, 7)
-        list_frame_layout.setSpacing(10)
+        list_frame_layout.setContentsMargins(sp(7), sp(4), sp(7), sp(7))
+        list_frame_layout.setSpacing(sp(10))
 
         self.folder_list = FolderListWidget(self)
         self.folder_list.setObjectName("folderList")
-        self.folder_list.setIconSize(QSize(18, 18))
+        self.folder_list.setIconSize(QSize(sp(18), sp(18)))
         # 设置自定义委托以绘制拖放提示
         self.folder_list.setItemDelegate(FolderItemDelegate(self))
         # 启用拖放，不仅支持内部移动，也支持接收外部拖放
@@ -468,7 +469,7 @@ class FolderPanel(QWidget):
         # 新建按钮 - 放在 list_frame 内部，底框包含按钮
         self.add_btn = QPushButton(tr("＋ 新建分类"))
         self.add_btn.clicked.connect(self._add_folder)
-        self.add_btn.setFixedHeight(36)
+        self.add_btn.setFixedHeight(sp(36))
         list_frame_layout.addWidget(self.add_btn)
 
         layout.addWidget(self.list_frame, 1)
@@ -495,16 +496,16 @@ class FolderPanel(QWidget):
             btn_hover_text = "rgba(28, 28, 30, 0.9)"
             btn_color = "rgba(28, 28, 30, 0.65)"
 
-        self.list_frame.setStyleSheet(f"""
+        self.list_frame.setStyleSheet(scale_qss(f"""
             QFrame#folderListFrame {{
                 background-color: {frame_bg};
                 border: 1px solid {frame_border};
                 border-radius: 10px;
             }}
-        """)
+        """))
 
         # Items are drawn by FolderItemWidget, stylesheet just resets default background
-        self.folder_list.setStyleSheet("""
+        self.folder_list.setStyleSheet(scale_qss("""
             QListWidget#folderList {
                 outline: none;
                 background: transparent;
@@ -524,7 +525,7 @@ class FolderPanel(QWidget):
                 background: transparent;
                 border: none;
             }
-        """)
+        """))
 
         # Propagate theme change to any existing FolderItemWidgets
         for i in range(self.folder_list.count()):
@@ -534,7 +535,7 @@ class FolderPanel(QWidget):
                 widget.theme = theme
                 widget.update()
 
-        self.add_btn.setStyleSheet(f"""
+        self.add_btn.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 4px 13px;
@@ -553,13 +554,31 @@ class FolderPanel(QWidget):
             QPushButton:pressed {{
                 opacity: 0.7;
             }}
-        """)
+        """))
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
         shadow.setOffset(0, 2)
         shadow.setColor(QColor(0, 0, 0, 35 if theme == "dark" else 20))
         self.add_btn.setGraphicsEffect(shadow)
+
+    def rescale_ui(self):
+        layout = self.layout()
+        if layout is not None:
+            layout.setContentsMargins(sp(8), sp(8), sp(8), sp(1))
+            layout.setSpacing(sp(8))
+        list_frame_layout = self.list_frame.layout()
+        if list_frame_layout is not None:
+            list_frame_layout.setContentsMargins(sp(7), sp(4), sp(7), sp(7))
+            list_frame_layout.setSpacing(sp(10))
+        self.folder_list.setIconSize(QSize(sp(18), sp(18)))
+        self.add_btn.setFixedHeight(sp(36))
+        for row in range(self.folder_list.count()):
+            item = self.folder_list.item(row)
+            widget = self.folder_list.itemWidget(item)
+            if isinstance(widget, FolderItemWidget):
+                item.setSizeHint(widget.sizeHint())
+        self.apply_theme(self._get_current_theme())
 
     def retranslate_ui(self):
         if hasattr(self, "add_btn"):
@@ -577,7 +596,7 @@ class FolderPanel(QWidget):
         theme = self._get_current_theme()
 
         if theme == "dark":
-            return """
+            return scale_qss("""
                 QMenu {
                     background-color: rgba(30, 30, 30, 120);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -604,9 +623,9 @@ class FolderPanel(QWidget):
                     background-color: rgba(255, 255, 255, 16);
                     margin: 6px 10px;
                 }
-            """
+            """)
         else:
-            return """
+            return scale_qss("""
                 QMenu {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -633,7 +652,7 @@ class FolderPanel(QWidget):
                     background-color: rgba(60, 60, 67, 18);
                     margin: 6px 10px;
                 }
-            """
+            """)
 
     def _load_folders(self):
         """加载文件夹列表"""

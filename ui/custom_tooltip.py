@@ -16,6 +16,7 @@ from qt_compat import (
     QWidget,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 
 
 class CustomToolTip(QWidget):
@@ -58,12 +59,12 @@ class CustomToolTip(QWidget):
                 border = QColor(0, 0, 0, 25)
 
             if is_win10():
-                paint_win10_rounded_surface(painter, self, bg, border, 6, inset=0.5, max_border_alpha=80)
+                paint_win10_rounded_surface(painter, self, bg, border, sp(6), inset=spf(0.5), max_border_alpha=80)
                 return
 
             rect = self.rect()
             path = QPainterPath()
-            path.addRoundedRect(QRectF(rect), 6, 6)
+            path.addRoundedRect(QRectF(rect), spf(6), spf(6))
 
             painter.fillPath(path, bg)
             pen = QPen(border)
@@ -84,7 +85,7 @@ class CustomToolTip(QWidget):
         else:
             color = "#1c1c1e"
 
-        self.label.setStyleSheet(f"""
+        self.label.setStyleSheet(scale_qss(f"""
             QLabel {{
                 color: {color};
                 font-size: 11px;
@@ -92,7 +93,7 @@ class CustomToolTip(QWidget):
                 background: transparent;
                 border: none;
             }}
-        """)
+        """))
         self.label.setText(text)
 
         # 强制更新布局
@@ -100,16 +101,16 @@ class CustomToolTip(QWidget):
         self.setFixedSize(self.label.sizeHint())
         self.update()
 
-        x = pos.x() + 15
-        y = pos.y() + 20
+        x = pos.x() + sp(15)
+        y = pos.y() + sp(20)
 
         screen = QApplication.screenAt(pos)
         if screen:
             geo = screen.availableGeometry()
             if x + self.width() > geo.right():
-                x = pos.x() - self.width() - 5
+                x = pos.x() - self.width() - sp(5)
             if y + self.height() > geo.bottom():
-                y = pos.y() - self.height() - 5
+                y = pos.y() - self.height() - sp(5)
 
         self.move(x, y)
         self.show()

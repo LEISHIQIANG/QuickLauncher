@@ -25,6 +25,7 @@ from ui.themed_tool_window import ThemedToolWindow
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.safe_file_dialog import get_open_file_name
+from ui.utils.ui_scale import sp, scale_qss
 
 logger = logging.getLogger(__name__)
 
@@ -46,24 +47,24 @@ class SettingsPluginsPageMixin:
         desc.setObjectName("plugins_desc")
         desc.setWordWrap(True)
         desc.setMinimumWidth(0)
-        desc.setStyleSheet(f"""
+        desc.setStyleSheet(scale_qss(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """))
         layout.addWidget(desc)
 
         # Plugin list area
         self._plugin_widgets_container = QWidget()
         self._plugin_layout = QVBoxLayout(self._plugin_widgets_container)
-        self._plugin_layout.setContentsMargins(0, 8, 0, 0)
-        self._plugin_layout.setSpacing(6)
+        self._plugin_layout.setContentsMargins(0, sp(8), 0, 0)
+        self._plugin_layout.setSpacing(sp(6))
         layout.addWidget(self._plugin_widgets_container)
 
         # Action buttons arranged in two rows to prevent horizontal overflow
         btn_layout1 = QHBoxLayout()
-        btn_layout1.setSpacing(8)
+        btn_layout1.setSpacing(sp(8))
 
         self.create_plugin_btn = QPushButton("新建开发插件...")
         self.create_plugin_btn.clicked.connect(self._on_create_plugin_clicked)
@@ -78,7 +79,7 @@ class SettingsPluginsPageMixin:
         layout.addLayout(btn_layout1)
 
         btn_layout2 = QHBoxLayout()
-        btn_layout2.setSpacing(8)
+        btn_layout2.setSpacing(sp(8))
 
         self.refresh_btn = QPushButton("刷新插件列表")
         self.refresh_btn.clicked.connect(self._on_refresh_plugins)
@@ -250,7 +251,7 @@ class SettingsPluginsPageMixin:
             text_color = "rgba(28, 28, 30, 0.9)"
             sub_text_color = "rgba(28, 28, 30, 0.65)"
 
-        card.setStyleSheet(f"""
+        card.setStyleSheet(scale_qss(f"""
             QWidget#PluginCard {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
@@ -259,17 +260,17 @@ class SettingsPluginsPageMixin:
             QWidget#PluginCard:hover {{
                 background-color: {hover_bg};
             }}
-        """)
+        """))
 
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(12, 10, 12, 10)
-        card_layout.setSpacing(6)
+        card_layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
+        card_layout.setSpacing(sp(6))
 
         # ── Top Row Layout (Status + Name + Buttons) ──
         top_layout = QGridLayout()
         top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setHorizontalSpacing(8)
-        top_layout.setVerticalSpacing(2)
+        top_layout.setHorizontalSpacing(sp(8))
+        top_layout.setVerticalSpacing(sp(2))
 
         # Status badge / indicator
         is_quarantined = getattr(plugin_info, "quarantined", False)
@@ -298,20 +299,20 @@ class SettingsPluginsPageMixin:
         )
 
         status_label = QLabel(f"● {text}")
-        status_label.setStyleSheet(f"color: {color}; font-weight: 400; font-size: 11px;")
+        status_label.setStyleSheet(scale_qss(f"color: {color}; font-weight: 400; font-size: 11px;"))
         status_label.setWordWrap(True)
         status_label.setMinimumWidth(0)
         top_layout.addWidget(status_label, 0, 0, QtCompat.AlignLeft | QtCompat.AlignVCenter)
 
         # Title: Name & Version
         name_label = QLabel(name_display)
-        name_label.setStyleSheet(f"font-weight: 400; color: {text_color}; font-size: 12px;")
+        name_label.setStyleSheet(scale_qss(f"font-weight: 400; color: {text_color}; font-size: 12px;"))
         name_label.setWordWrap(True)
         name_label.setMinimumWidth(0)
         top_layout.addWidget(name_label, 0, 1, QtCompat.AlignLeft | QtCompat.AlignVCenter)
 
         version_label = QLabel(f"v{version}")
-        version_label.setStyleSheet(f"color: {sub_text_color}; font-size: 10px; font-weight: 300;")
+        version_label.setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 10px; font-weight: 300;"))
         version_label.setWordWrap(True)
         version_label.setMinimumWidth(0)
         top_layout.addWidget(version_label, 0, 2, QtCompat.AlignLeft | QtCompat.AlignVCenter)
@@ -350,16 +351,16 @@ class SettingsPluginsPageMixin:
 
         # Fixed button size for neat alignment
         for btn in (action_btn, reload_btn, open_btn, delete_btn):
-            btn.setMinimumWidth(68)
-            btn.setMinimumHeight(20)
+            btn.setMinimumWidth(sp(68))
+            btn.setMinimumHeight(sp(20))
 
         card_layout.addLayout(top_layout)
 
         # ── Secondary Info Area (Author, Description, Commands, Permissions, Error) ──
         info_widget = QWidget()
         info_layout = QVBoxLayout(info_widget)
-        info_layout.setContentsMargins(12, 0, 0, 0)
-        info_layout.setSpacing(4)
+        info_layout.setContentsMargins(sp(12), 0, 0, 0)
+        info_layout.setSpacing(sp(4))
 
         # 1. Author and Description
         desc_parts = []
@@ -373,21 +374,21 @@ class SettingsPluginsPageMixin:
             desc_lbl = QLabel(desc_text)
             desc_lbl.setWordWrap(True)
             desc_lbl.setMinimumWidth(0)
-            desc_lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 11px; line-height: 14px;")
+            desc_lbl.setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px; line-height: 14px;"))
             info_layout.addWidget(desc_lbl)
 
         # 2. Runtime mode
         mode_lbl = QLabel("🧩 运行模式: 兼容模式 (in-process, 未强隔离)")
         mode_lbl.setWordWrap(True)
         mode_lbl.setMinimumWidth(0)
-        mode_lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 11px;")
+        mode_lbl.setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px;"))
         info_layout.addWidget(mode_lbl)
 
         # 3. Commands & Permissions
         cmd_lbl = QLabel(f"📦 包含 {cmd_count} 个命令")
         cmd_lbl.setWordWrap(True)
         cmd_lbl.setMinimumWidth(0)
-        cmd_lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 11px;")
+        cmd_lbl.setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px;"))
         info_layout.addWidget(cmd_lbl)
 
         # Permissions list
@@ -399,10 +400,10 @@ class SettingsPluginsPageMixin:
 
             if has_high_risk:
                 perm_lbl = QLabel(f"⚠️ 声明权限 (高风险提醒): {perm_text}")
-                perm_lbl.setStyleSheet("color: #ff9800; font-weight: 400; font-size: 11px;")
+                perm_lbl.setStyleSheet(scale_qss("color: #ff9800; font-weight: 400; font-size: 11px;"))
             else:
                 perm_lbl = QLabel(f"🔑 声明权限: {perm_text}")
-                perm_lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 11px;")
+                perm_lbl.setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px;"))
             perm_lbl.setWordWrap(True)
             perm_lbl.setMinimumWidth(0)
             info_layout.addWidget(perm_lbl)
@@ -422,7 +423,7 @@ class SettingsPluginsPageMixin:
             err_lbl.setWordWrap(True)
             err_lbl.setMinimumWidth(0)
             err_lbl.setStyleSheet(
-                "color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);"
+                scale_qss("color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);")
             )
             info_layout.addWidget(err_lbl)
 
@@ -430,8 +431,8 @@ class SettingsPluginsPageMixin:
             err_detail_btn = QPushButton("查看错误详情")
             err_detail_btn.setStyleSheet(common_style)
             err_detail_btn.setProperty("is_compact_btn", True)
-            err_detail_btn.setMinimumWidth(68)
-            err_detail_btn.setMinimumHeight(20)
+            err_detail_btn.setMinimumWidth(sp(68))
+            err_detail_btn.setMinimumHeight(sp(20))
             err_detail_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_view_error_details(pid))
             info_layout.addWidget(err_detail_btn)
 
@@ -441,12 +442,12 @@ class SettingsPluginsPageMixin:
         trust_lbl = QLabel(f"🔒 信任等级: {trust_display.get(trust_text, trust_text)}")
         trust_lbl.setWordWrap(True)
         trust_lbl.setMinimumWidth(0)
-        trust_lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 11px;")
+        trust_lbl.setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px;"))
         info_layout.addWidget(trust_lbl)
 
         # Add buttons layout to the bottom of the card to prevent horizontal overflow
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(12, 4, 0, 0)
+        bottom_layout.setContentsMargins(sp(12), sp(4), 0, 0)
         bottom_layout.addStretch()
         bottom_layout.addWidget(action_btn)
         bottom_layout.addWidget(reload_btn)
@@ -493,7 +494,7 @@ class SettingsPluginsPageMixin:
         if is_quarantined and failure_count:
             text = f"已隔离 ({failure_count}次失败)"
         refs["status_label"].setText(f"● {text}")
-        refs["status_label"].setStyleSheet(f"color: {color}; font-weight: 400; font-size: 11px;")
+        refs["status_label"].setStyleSheet(scale_qss(f"color: {color}; font-weight: 400; font-size: 11px;"))
 
         action_btn = refs["action_btn"]
         try:
@@ -622,7 +623,7 @@ class SettingsPluginsPageMixin:
                 lines_out.append("")
 
             dialog = ThemedToolWindow(f"错误详情 - {plugin_id}", theme=self.current_theme, parent=self)
-            dialog.resize(600, 400)
+            dialog.resize(sp(600), sp(400))
             text_edit = QTextEdit()
             text_edit.setReadOnly(True)
             text_edit.setPlainText("\n".join(lines_out))
@@ -857,7 +858,7 @@ class PluginCreateDialog(BaseDialog):
         super().__init__(parent)
         self.setWindowTitle(tr("新建开发插件"))
         self.setModal(True)
-        self.setMinimumSize(340, 320)
+        self.setMinimumSize(sp(340), sp(320))
         self.theme = theme
 
         from ui.styles.style import get_dialog_stylesheet
@@ -865,54 +866,54 @@ class PluginCreateDialog(BaseDialog):
         self.setStyleSheet(get_dialog_stylesheet(theme))
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(sp(14), sp(12), sp(14), sp(12))
+        layout.setSpacing(sp(8))
 
         title_lbl = QLabel("创建新的插件开发模板")
-        title_lbl.setStyleSheet("font-size: 13px; font-weight: 400;")
+        title_lbl.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400;"))
         layout.addWidget(title_lbl)
 
         # ID
         layout.addWidget(QLabel("插件ID (仅限小写字母、数字、下划线和减号):"))
         self.id_edit = QLineEdit()
         self.id_edit.setPlaceholderText("例如: my_plugin")
-        self.id_edit.setFixedHeight(26)
+        self.id_edit.setFixedHeight(sp(26))
         layout.addWidget(self.id_edit)
 
         # Name
         layout.addWidget(QLabel("插件显示名称:"))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("例如: 我的自定义插件")
-        self.name_edit.setFixedHeight(26)
+        self.name_edit.setFixedHeight(sp(26))
         layout.addWidget(self.name_edit)
 
         # Author
         layout.addWidget(QLabel("作者名称 (可选):"))
         self.author_edit = QLineEdit()
         self.author_edit.setPlaceholderText("例如: 开发者名字")
-        self.author_edit.setFixedHeight(26)
+        self.author_edit.setFixedHeight(sp(26))
         layout.addWidget(self.author_edit)
 
         # Description
         layout.addWidget(QLabel("插件描述 (可选):"))
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("一句话描述插件功能...")
-        self.desc_edit.setFixedHeight(26)
+        self.desc_edit.setFixedHeight(sp(26))
         layout.addWidget(self.desc_edit)
 
         btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 8, 0, 0)
-        btn_layout.setSpacing(8)
+        btn_layout.setContentsMargins(0, sp(8), 0, 0)
+        btn_layout.setSpacing(sp(8))
 
         self.cancel_btn = QPushButton("取消")
         self.cancel_btn.clicked.connect(self.reject)
-        self.cancel_btn.setFixedHeight(24)
+        self.cancel_btn.setFixedHeight(sp(24))
         btn_layout.addWidget(self.cancel_btn)
 
         self.ok_btn = QPushButton("创建")
         self.ok_btn.setDefault(True)
         self.ok_btn.clicked.connect(self._on_ok)
-        self.ok_btn.setFixedHeight(24)
+        self.ok_btn.setFixedHeight(sp(24))
         btn_layout.addWidget(self.ok_btn)
 
         layout.addLayout(btn_layout)

@@ -28,6 +28,7 @@ from qt_compat import (
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
+from ui.utils.ui_scale import sp, scale_qss
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class DragDropListWidget(QListWidget):
         self._initial_drag_row = -1
 
         # Transparent background and zero focus outlines
-        self.setStyleSheet("""
+        self.setStyleSheet(scale_qss("""
             QListWidget {
                 background: transparent;
                 border: none;
@@ -66,7 +67,7 @@ class DragDropListWidget(QListWidget):
             QListWidget::item:selected {
                 background: transparent;
             }
-        """)
+        """))
 
     def startDrag(self, supported_actions):
         item = self.currentItem()
@@ -372,12 +373,12 @@ class SettingsCommandsPageMixin:
         fav_desc.setObjectName("fav_desc")
         fav_desc.setWordWrap(True)
         fav_desc.setMinimumWidth(0)
-        fav_desc.setStyleSheet(f"""
+        fav_desc.setStyleSheet(scale_qss(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """))
         layout2.addWidget(fav_desc)
 
         # Drag & Drop list widget for favorite commands
@@ -393,12 +394,12 @@ class SettingsCommandsPageMixin:
 
         # Placeholder label when no favorites are present
         self.fav_placeholder_lbl = QLabel(tr("暂未收藏任何命令"))
-        self.fav_placeholder_lbl.setStyleSheet(f"""
+        self.fav_placeholder_lbl.setStyleSheet(scale_qss(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             font-style: italic;
             padding: 4px;
-        """)
+        """))
         layout2.addWidget(self.fav_placeholder_lbl)
 
         # ── Disabled builtin commands ──
@@ -408,19 +409,19 @@ class SettingsCommandsPageMixin:
         disable_desc.setObjectName("disable_desc")
         disable_desc.setWordWrap(True)
         disable_desc.setMinimumWidth(0)
-        disable_desc.setStyleSheet(f"""
+        disable_desc.setStyleSheet(scale_qss(f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """)
+        """))
         layout3.addWidget(disable_desc)
 
         # Search filter for built-in commands
         self.builtin_filter_edit = QLineEdit()
         self.builtin_filter_edit.setPlaceholderText(tr("搜索内置命令 (支持名称、快捷键、描述)..."))
         self.builtin_filter_edit.setClearButtonEnabled(True)
-        self.builtin_filter_edit.setFixedHeight(26)
+        self.builtin_filter_edit.setFixedHeight(sp(26))
         # Debounce search: don't rebuild 28+ widgets on every keystroke
         self._builtin_filter_timer = QTimer(self)
         self._builtin_filter_timer.setSingleShot(True)
@@ -432,8 +433,8 @@ class SettingsCommandsPageMixin:
         # Container for list of all built-in commands
         self.builtin_container = QWidget()
         self.builtin_layout = QVBoxLayout(self.builtin_container)
-        self.builtin_layout.setContentsMargins(0, 4, 0, 4)
-        self.builtin_layout.setSpacing(6)
+        self.builtin_layout.setContentsMargins(0, sp(4), 0, sp(4))
+        self.builtin_layout.setSpacing(sp(6))
         layout3.addWidget(self.builtin_container)
 
         # ── Reload current state ──
@@ -498,14 +499,14 @@ class SettingsCommandsPageMixin:
 
                     item_widget = QWidget()
                     item_widget.setObjectName("FavItem")
-                    item_widget.setStyleSheet(
+                    item_widget.setStyleSheet(scale_qss(
                         f"QWidget#FavItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
-                    )
+                    ))
 
                     item_layout = QGridLayout(item_widget)
-                    item_layout.setContentsMargins(10, 6, 10, 6)
-                    item_layout.setHorizontalSpacing(8)
-                    item_layout.setVerticalSpacing(2)
+                    item_layout.setContentsMargins(sp(10), sp(6), sp(10), sp(6))
+                    item_layout.setHorizontalSpacing(sp(8))
+                    item_layout.setVerticalSpacing(sp(2))
 
                     star_lbl = QLabel("⭐")
                     item_layout.addWidget(star_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
@@ -514,22 +515,22 @@ class SettingsCommandsPageMixin:
                     name_display = name.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
 
                     name_lbl = QLabel(name_display)
-                    name_lbl.setStyleSheet(f"font-weight: 400; color: {text_color}; font-size: 12px;")
+                    name_lbl.setStyleSheet(scale_qss(f"font-weight: 400; color: {text_color}; font-size: 12px;"))
                     name_lbl.setWordWrap(True)
                     name_lbl.setMinimumWidth(0)
                     item_layout.addWidget(name_lbl, 0, 1, 1, 1)
 
                     key_lbl = QLabel(f"/{fid_display}")
-                    key_lbl.setStyleSheet("color: rgba(10,132,255,0.85); font-size: 11px;")
+                    key_lbl.setStyleSheet(scale_qss("color: rgba(10,132,255,0.85); font-size: 11px;"))
                     key_lbl.setWordWrap(True)
                     key_lbl.setMinimumWidth(0)
                     item_layout.addWidget(key_lbl, 1, 1, 1, 1)
 
                     unfav_btn = QPushButton(tr("取消收藏"))
-                    unfav_btn.setFixedWidth(72)
-                    unfav_btn.setMinimumHeight(20)
+                    unfav_btn.setFixedWidth(sp(72))
+                    unfav_btn.setMinimumHeight(sp(20))
                     unfav_btn.setProperty("is_compact_btn", True)
-                    unfav_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px 4px; }")
+                    unfav_btn.setStyleSheet(scale_qss("QPushButton { font-size: 10px; padding: 2px 4px; }"))
                     unfav_btn.clicked.connect(lambda checked, cmd_id=fid: self._on_unfavorite_command(cmd_id))
                     item_layout.addWidget(unfav_btn, 0, 2, 2, 1, QtCompat.AlignVCenter)
 
@@ -581,9 +582,9 @@ class SettingsCommandsPageMixin:
                         item_widget.setObjectName("BuiltinItem")
 
                         item_layout = QGridLayout(item_widget)
-                        item_layout.setContentsMargins(10, 8, 10, 8)
-                        item_layout.setHorizontalSpacing(8)
-                        item_layout.setVerticalSpacing(2)
+                        item_layout.setContentsMargins(sp(10), sp(8), sp(10), sp(8))
+                        item_layout.setHorizontalSpacing(sp(8))
+                        item_layout.setVerticalSpacing(sp(2))
 
                         dot_lbl = QLabel("●")
                         item_layout.addWidget(dot_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
@@ -605,20 +606,20 @@ class SettingsCommandsPageMixin:
 
                         actions_layout = QHBoxLayout()
                         actions_layout.setContentsMargins(0, 0, 0, 0)
-                        actions_layout.setSpacing(6)
+                        actions_layout.setSpacing(sp(6))
 
                         fav_btn = QPushButton()
-                        fav_btn.setFixedWidth(60)
-                        fav_btn.setMinimumHeight(20)
+                        fav_btn.setFixedWidth(sp(60))
+                        fav_btn.setMinimumHeight(sp(20))
                         fav_btn.setProperty("is_compact_btn", True)
-                        fav_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px 4px; }")
+                        fav_btn.setStyleSheet(scale_qss("QPushButton { font-size: 10px; padding: 2px 4px; }"))
                         actions_layout.addWidget(fav_btn)
 
                         toggle_btn = QPushButton()
-                        toggle_btn.setFixedWidth(60)
-                        toggle_btn.setMinimumHeight(20)
+                        toggle_btn.setFixedWidth(sp(60))
+                        toggle_btn.setMinimumHeight(sp(20))
                         toggle_btn.setProperty("is_compact_btn", True)
-                        toggle_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px 4px; }")
+                        toggle_btn.setStyleSheet(scale_qss("QPushButton { font-size: 10px; padding: 2px 4px; }"))
                         actions_layout.addWidget(toggle_btn)
 
                         item_layout.addLayout(actions_layout, 0, 2, 2, 1, QtCompat.AlignVCenter)
@@ -728,15 +729,15 @@ class SettingsCommandsPageMixin:
                 is_fav = cmd.id in favs
 
                 entry["widget"].setStyleSheet(
-                    f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                    scale_qss(f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}")
                 )
-                entry["title_lbl"].setStyleSheet(f"font-weight: 400; color: {text_color}; font-size: 12px;")
-                entry["key_lbl"].setStyleSheet("color: rgba(10,132,255,0.85); font-size: 11px;")
+                entry["title_lbl"].setStyleSheet(scale_qss(f"font-weight: 400; color: {text_color}; font-size: 12px;"))
+                entry["key_lbl"].setStyleSheet(scale_qss("color: rgba(10,132,255,0.85); font-size: 11px;"))
                 if entry["desc_lbl"]:
-                    entry["desc_lbl"].setStyleSheet(f"color: {sub_text_color}; font-size: 11px; margin-left: 14px;")
+                    entry["desc_lbl"].setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px; margin-left: 14px;"))
 
                 dot_color = "#f44336" if is_disabled else "#4caf50"
-                entry["dot_lbl"].setStyleSheet(f"color: {dot_color}; font-size: 11px; margin-right: 2px;")
+                entry["dot_lbl"].setStyleSheet(scale_qss(f"color: {dot_color}; font-size: 11px; margin-right: 2px;"))
 
                 fav_btn = entry["fav_btn"]
                 fav_btn.setText(tr("取消收藏") if is_fav else tr("收藏"))

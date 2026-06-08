@@ -16,6 +16,7 @@ from qt_compat import (
     QWidget,
 )
 from ui.utils.safe_file_dialog import get_open_file_name
+from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,9 @@ class SettingsAppearancePageMixin:
 
         # 尺寸布局
         layout, group = page.add_group("尺寸布局")
+
         grid = QGridLayout()
-        grid.setVerticalSpacing(8)  # 减小行间距
+        grid.setVerticalSpacing(sp(8))  # 减小行间距
 
         # Row 1
         grid.addWidget(self._create_label("图标大小"), 0, 0)
@@ -100,7 +102,7 @@ class SettingsAppearancePageMixin:
         layout, group = page.add_group("透明度")
 
         grid_alpha = QGridLayout()
-        grid_alpha.setVerticalSpacing(8)
+        grid_alpha.setVerticalSpacing(sp(8))
 
         # 背景透明度
         grid_alpha.addWidget(self._create_label("背景不透明度"), 0, 0)
@@ -109,7 +111,7 @@ class SettingsAppearancePageMixin:
         self.bg_alpha_slider.valueChanged.connect(self._on_bg_alpha_changed)
         grid_alpha.addWidget(self.bg_alpha_slider, 0, 1)
         self.bg_alpha_label = QLabel("90%")
-        self.bg_alpha_label.setMinimumWidth(40)
+        self.bg_alpha_label.setMinimumWidth(sp(40))
         grid_alpha.addWidget(self.bg_alpha_label, 0, 2)
 
         # 图标透明度
@@ -119,7 +121,7 @@ class SettingsAppearancePageMixin:
         self.icon_alpha_slider.valueChanged.connect(self._on_icon_alpha_changed)
         grid_alpha.addWidget(self.icon_alpha_slider, 1, 1)
         self.icon_alpha_label = QLabel("100%")
-        self.icon_alpha_label.setMinimumWidth(40)
+        self.icon_alpha_label.setMinimumWidth(sp(40))
         grid_alpha.addWidget(self.icon_alpha_label, 1, 2)
 
         # Dock透明度
@@ -129,7 +131,7 @@ class SettingsAppearancePageMixin:
         self.dock_bg_alpha_slider.valueChanged.connect(self._on_dock_bg_alpha_changed)
         grid_alpha.addWidget(self.dock_bg_alpha_slider, 2, 1)
         self.dock_bg_alpha_label = QLabel("90%")
-        self.dock_bg_alpha_label.setMinimumWidth(40)
+        self.dock_bg_alpha_label.setMinimumWidth(sp(40))
         grid_alpha.addWidget(self.dock_bg_alpha_label, 2, 2)
 
         layout.addLayout(grid_alpha)
@@ -138,7 +140,7 @@ class SettingsAppearancePageMixin:
         layout, self.visual_effect_group = page.add_group("视觉特效")
 
         grid_effect = QGridLayout()
-        grid_effect.setVerticalSpacing(8)
+        grid_effect.setVerticalSpacing(sp(8))
 
         # 模糊度 (原模糊半径)
         grid_effect.addWidget(self._create_label("模糊度"), 0, 0)
@@ -160,7 +162,7 @@ class SettingsAppearancePageMixin:
         grid_effect.addWidget(self.edge_opacity_slider, 1, 1)
 
         self.edge_opacity_label = QLabel("0%")
-        self.edge_opacity_label.setMinimumWidth(40)
+        self.edge_opacity_label.setMinimumWidth(sp(40))
         grid_effect.addWidget(self.edge_opacity_label, 1, 2)
 
         layout.addLayout(grid_effect)

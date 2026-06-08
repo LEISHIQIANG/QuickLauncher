@@ -27,6 +27,14 @@ class _SmokeManager:
     def flush_pending_save(self):
         self.flushed = True
 
+    def update_settings(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self.data.settings, key):
+                setattr(self.data.settings, key, value)
+
+    def reload(self):
+        return None
+
     def get_config_status(self):
         return {"status": "ok", "source": "smoke", "issues": []}
 
@@ -174,3 +182,77 @@ def test_config_window_create_close_smoke(qapp, tmp_path, monkeypatch):
         qapp.processEvents()
 
     assert manager.flushed is True
+
+
+def test_settings_panel_global_scale_apply_is_explicit_and_uses_five_percent_steps(qapp, tmp_path, monkeypatch):
+    import core.auto_start_manager as auto_start_manager
+    from ui.config_window.settings_panel import SettingsPanel
+
+    monkeypatch.setattr(auto_start_manager, "get_auto_start_check_result", lambda: (False, "smoke"))
+
+    manager = _SmokeManager(tmp_path)
+    manager.data.settings.ui_scale_percent = 100
+
+    class FakeTrayApp:
+        def __init__(self):
+            self.applied = []
+
+        def apply_ui_scale_and_reopen_config(self, percent):
+            self.applied.append(percent)
+
+    tray_app = FakeTrayApp()
+    panel = SettingsPanel(manager, tray_app=tray_app)
+    try:
+        panel.ui_scale_edit.setText("127")
+        panel._on_ui_scale_text_edited("127")
+
+        assert manager.data.settings.ui_scale_percent == 100
+        assert tray_app.applied == []
+        assert panel.ui_scale_slider.value() == 125
+
+        panel._on_ui_scale_apply_clicked()
+
+        assert manager.data.settings.ui_scale_percent == 125
+        assert tray_app.applied == [125]
+        assert panel.ui_scale_edit.text() == "125"
+        assert panel.ui_scale_slider.value() == 125
+    finally:
+        panel.close()
+        qapp.processEvents()
+
+
+def test_command_dialog_line_edits_do_not_double_scale_fonts(qapp):
+    from core.data_models import ShortcutItem, ShortcutType
+    from ui.config_window.command_dialog import CommandDialog
+    from ui.utils.ui_scale import set_scale
+
+    set_scale(150)
+    dialog = CommandDialog(shortcut=ShortcutItem(type=ShortcutType.COMMAND))
+    try:
+        for widget in (dialog.name_edit, dialog.workdir_edit, dialog.test_output):
+            style = widget.styleSheet()
+            assert "font-size: 20px" in style
+            assert "font-size: 30px" not in style
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        qapp.processEvents()
+        set_scale(100)
+
+
+def test_chain_node_property_panel_styles_do_not_double_scale(qapp):
+    from ui.config_window.chain_canvas import NodePropertyPanel
+    from ui.utils.ui_scale import set_scale
+
+    set_scale(150)
+    panel = NodePropertyPanel()
+    try:
+        panel._apply_theme()
+
+        assert "font-size: 20px" in panel.group_box.styleSheet()
+        assert "font-size: 30px" not in panel.group_box.styleSheet()
+        assert "font-size: 24px" not in panel.source_btn.styleSheet()
+    finally:
+        panel.deleteLater()
+        qapp.processEvents()
+        set_scale(100)

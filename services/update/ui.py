@@ -15,6 +15,7 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
     """Lightweight GitHub-flavored markdown to HTML converter."""
     if not md:
         return ""
+    from ui.utils.ui_scale import sp
 
     text_color = "#d1d1d6" if theme == "dark" else "#3a3a3c"
     secondary_color = "#a1a1a6" if theme == "dark" else "#636366"
@@ -58,8 +59,8 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
         def code_repl(match: re.Match) -> str:
             code = html.escape(match.group(1), quote=False)
             return stash(
-                f'<code style="background:{code_bg};color:{code_color};padding:1px 5px;'
-                f'border-radius:4px;font-size:11px;">{code}</code>'
+                f'<code style="background:{code_bg};color:{code_color};padding:{sp(1)}px {sp(5)}px;'
+                f'border-radius:{sp(4)}px;font-size:{sp(11)}px;">{code}</code>'
             )
 
         def link_repl(match: re.Match) -> str:
@@ -95,8 +96,8 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             if in_code_block:
                 code_text = html.escape("\n".join(code_buf), quote=False)
                 html_parts.append(
-                    f'<pre style="background:{code_bg};padding:9px 11px;border-radius:7px;'
-                    f'font-size:11px;line-height:1.55;overflow-x:auto;margin:8px 0;">'
+                    f'<pre style="background:{code_bg};padding:{sp(9)}px {sp(11)}px;border-radius:{sp(7)}px;'
+                    f'font-size:{sp(11)}px;line-height:1.55;overflow-x:auto;margin:{sp(8)}px 0;">'
                     f'<code style="color:{code_color};">{code_text}</code></pre>'
                 )
                 code_buf = []
@@ -121,7 +122,7 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
         # Horizontal rule
         if re.match(r"^(-{3,}|\*{3,}|_{3,})$", stripped):
             close_list()
-            html_parts.append(f'<hr style="border:none;border-top:1px solid {hr_color};margin:12px 0;">')
+            html_parts.append(f'<hr style="border:none;border-top:1px solid {hr_color};margin:{sp(12)}px 0;">')
             continue
 
         # Headings
@@ -132,10 +133,10 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             text = inline_format(heading_match.group(2))
             sizes = {1: 17, 2: 15, 3: 14, 4: 13, 5: 12, 6: 12}
             weight = "500"
-            margin_top = "13px" if level <= 2 else "10px"
+            margin_top = f"{sp(13)}px" if level <= 2 else f"{sp(10)}px"
             html_parts.append(
-                f'<div style="font-size:{sizes[level]}px;font-weight:{weight};color:{heading_color};'
-                f'line-height:1.35;margin-top:{margin_top};margin-bottom:6px;">{text}</div>'
+                f'<div style="font-size:{sp(sizes[level])}px;font-weight:{weight};color:{heading_color};'
+                f'line-height:1.35;margin-top:{margin_top};margin-bottom:{sp(6)}px;">{text}</div>'
             )
             continue
 
@@ -145,13 +146,13 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             if not in_list:
                 close_list()
                 in_list = True
-                html_parts.append('<table style="border-collapse:collapse;margin:5px 0 7px 0;">')
-            indent = min(len(ul_match.group(1)) // 2, 3) * 14
+                html_parts.append(f'<table style="border-collapse:collapse;margin:{sp(5)}px 0 {sp(7)}px 0;">')
+            indent = sp(min(len(ul_match.group(1)) // 2, 3) * 14)
             text = inline_format(ul_match.group(2))
             html_parts.append(
-                f'<tr><td style="width:{12 + indent}px;padding:2px 4px 2px {indent}px;'
-                f'color:{list_bullet};font-size:14px;line-height:1.5;vertical-align:top;">&#8226;</td>'
-                f'<td style="padding:2px 0;color:{list_text_color};font-size:12px;'
+                f'<tr><td style="width:{sp(12) + indent}px;padding:{sp(2)}px {sp(4)}px {sp(2)}px {indent}px;'
+                f'color:{list_bullet};font-size:{sp(14)}px;line-height:1.5;vertical-align:top;">&#8226;</td>'
+                f'<td style="padding:{sp(2)}px 0;color:{list_text_color};font-size:{sp(12)}px;'
                 f'line-height:1.55;vertical-align:top;">{text}</td></tr>'
             )
             continue
@@ -162,15 +163,20 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             if not in_ol:
                 close_list()
                 in_ol = True
-                html_parts.append(f'<ol style="margin:5px 0 7px 20px;padding-left:12px;color:{list_text_color};">')
+                html_parts.append(
+                    f'<ol style="margin:{sp(5)}px 0 {sp(7)}px {sp(20)}px;'
+                    f'padding-left:{sp(12)}px;color:{list_text_color};">'
+                )
             text = inline_format(ol_match.group(2))
-            html_parts.append(f'<li style="margin:2px 0;font-size:12px;line-height:1.55;">{text}</li>')
+            html_parts.append(f'<li style="margin:{sp(2)}px 0;font-size:{sp(12)}px;line-height:1.55;">{text}</li>')
             continue
 
         # Regular paragraph
         close_list()
         text = inline_format(stripped)
-        html_parts.append(f'<p style="margin:4px 0;font-size:12px;line-height:1.65;color:{text_color};">{text}</p>')
+        html_parts.append(
+            f'<p style="margin:{sp(4)}px 0;font-size:{sp(12)}px;line-height:1.65;color:{text_color};">{text}</p>'
+        )
 
     close_list()
 
@@ -201,6 +207,7 @@ class UpdateDialog:
         from ui.styles.style import get_dialog_stylesheet
         from ui.utils.dialog_helper import center_dialog_on_main_window
         from ui.utils.font_manager import get_qfont, tune_font_rendering
+        from ui.utils.ui_scale import scale_qss, sp
         from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
         theme = "dark"
@@ -215,7 +222,7 @@ class UpdateDialog:
         dialog = QDialog(parent)
         dialog.setWindowTitle(tr("发现更新"))
         dialog.setModal(True)
-        dialog.setFixedSize(350, 440)
+        dialog.setFixedSize(sp(350), sp(440))
         dialog.setWindowFlags(QtCompat.FramelessWindowHint | QtCompat.Dialog)
         dialog.setAttribute(QtCompat.WA_TranslucentBackground, True)
         dialog.setFont(get_qfont(12))
@@ -238,12 +245,12 @@ class UpdateDialog:
 
         # Main layout
         layout = QVBoxLayout(dialog)
-        layout.setSpacing(8)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(sp(8))
+        layout.setContentsMargins(sp(14), sp(12), sp(14), sp(12))
 
         # Title
         title_layout = QHBoxLayout()
-        title_layout.setSpacing(8)
+        title_layout.setSpacing(sp(8))
         title_layout.setContentsMargins(0, 0, 0, 0)
 
         icon_label = QLabel()
@@ -252,7 +259,7 @@ class UpdateDialog:
 
         title_label = QLabel(tr("发现更新"))
         title_label.setFont(get_qfont(13, 400))
-        title_label.setStyleSheet(f"font-size: 13px; font-weight: 400; color: {title_color};")
+        title_label.setStyleSheet(scale_qss(f"font-size: 13px; font-weight: 400; color: {title_color};"))
         title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         title_layout.addWidget(title_label, 1)
 
@@ -263,17 +270,17 @@ class UpdateDialog:
         size_mb = update_info.file_size / 1024 / 1024
 
         version_html = (
-            f"<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: 12px; "
-            f'color: {secondary_color}; margin-bottom: 4px;">'
+            f"<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: {sp(12)}px; "
+            f'color: {secondary_color}; margin-bottom: {sp(4)}px;">'
             f'<span style="display:inline-block;background:{badge_bg};color:{badge_color};'
-            f'padding:2px 8px;border-radius:4px;font-weight:400;border:1px solid {badge_border};">'
+            f'padding:{sp(2)}px {sp(8)}px;border-radius:{sp(4)}px;font-weight:400;border:1px solid {badge_border};">'
             f"v{update_info.version}</span>"
-            f'<span style="margin-left:8px;color:{secondary_color};"> {size_mb:.1f} MB</span>'
+            f'<span style="margin-left:{sp(8)}px;color:{secondary_color};"> {size_mb:.1f} MB</span>'
         )
         if update_info.mandatory:
             version_html += (
-                f'<span style="margin-left:8px;display:inline-block;background:rgba(255,59,48,0.15);'
-                f"color:#ff3b30;padding:2px 8px;border-radius:4px;font-size:11px;"
+                f'<span style="margin-left:{sp(8)}px;display:inline-block;background:rgba(255,59,48,0.15);'
+                f"color:#ff3b30;padding:{sp(2)}px {sp(8)}px;border-radius:{sp(4)}px;font-size:{sp(11)}px;"
                 f'border:1px solid rgba(255,59,48,0.3);">{tr("强制更新")}</span>'
             )
         version_html += "</div>"
@@ -294,30 +301,30 @@ class UpdateDialog:
         html_content = _markdown_to_html(changelog, theme)
         full_html = (
             "<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; "
-            f'font-size: 12px; color: {text_color}; line-height: 1.65; padding: 6px 8px;">'
+            f'font-size: {sp(12)}px; color: {text_color}; line-height: 1.65; padding: {sp(6)}px {sp(8)}px;">'
             f"{html_content}</div>"
         )
         text_browser.setHtml(full_html)
 
-        text_browser.setStyleSheet("QTextBrowser { background: transparent; border: none; padding: 0px; }")
+        text_browser.setStyleSheet(scale_qss("QTextBrowser { background: transparent; border: none; padding: 0px; }"))
         layout.addWidget(text_browser, 1)
 
         # Buttons
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(6)
+        btn_layout.setSpacing(sp(6))
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.addStretch()
 
         skip_btn = QPushButton(tr("跳过此版本") if not update_info.mandatory else tr("稍后提醒"))
-        skip_btn.setFixedHeight(24)
-        skip_btn.setMinimumWidth(80)
+        skip_btn.setFixedHeight(sp(24))
+        skip_btn.setMinimumWidth(sp(80))
         skip_btn.clicked.connect(lambda: _on_skip_clicked())
         btn_layout.addWidget(skip_btn)
 
         download_btn = QPushButton(tr("立即下载"))
         download_btn.setDefault(True)
-        download_btn.setFixedHeight(24)
-        download_btn.setMinimumWidth(72)
+        download_btn.setFixedHeight(sp(24))
+        download_btn.setMinimumWidth(sp(72))
         download_btn.clicked.connect(lambda: _on_download_clicked())
         btn_layout.addWidget(download_btn)
 

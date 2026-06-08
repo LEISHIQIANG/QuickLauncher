@@ -21,10 +21,13 @@ from qt_compat import (
     pyqtProperty,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.interruptible_animation import stop_animation
+from ui.utils.ui_scale import sp, spf, font_px
 
 
 def _rounded_pixmap(source: QPixmap, radius: int = 20) -> QPixmap:
     """将 QPixmap 裁剪为圆角矩形。"""
+    radius = sp(radius)
     size = source.size()
     result = QPixmap(size)
     result.fill(Qt.transparent)
@@ -119,8 +122,8 @@ class SupportDialog(QDialog):
         else:
             # 动态计算收款图黄金比例，保持 100% 原图比例的同时，控制卡片精致小巧，不显得“傻大粗”
             # 限制 PC 端最大宽度 320px，最大高度 460px
-            max_w = min(320, int(self.width() * 0.82))
-            max_h = min(460, int(self.height() * 0.78))
+            max_w = min(sp(320), int(self.width() * 0.82))
+            max_h = min(sp(460), int(self.height() * 0.78))
             # 保持比例缩放
             pixmap = pixmap.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             pixmap = _rounded_pixmap(pixmap, 20)
@@ -147,9 +150,10 @@ class SupportDialog(QDialog):
         super().keyPressEvent(event)
 
     def close_with_anim(self):
-        if hasattr(self, "_exit_anim") or self._anim_progress == 0.0:
+        if self._anim_progress == 0.0:
             return
-        self._entry_anim.stop()
+        stop_animation(getattr(self, "_entry_anim", None), owner="SupportDialog.entry")
+        stop_animation(getattr(self, "_exit_anim", None), owner="SupportDialog.exit")
         self._exit_anim = QPropertyAnimation(self, b"anim_progress")
         self._exit_anim.setDuration(200)
         self._exit_anim.setStartValue(self._anim_progress)
@@ -188,7 +192,7 @@ class SupportDialog(QDialog):
         for i in range(1, 7):
             shadow_color = QColor(0, 0, 0, int((22 - i * 3) * self._anim_progress))
             shadow_path = QPainterPath()
-            shadow_path.addRoundedRect(QRectF(cx - i, cy - i, pw + i * 2, ph + i * 2), 20 + i, 20 + i)
+            shadow_path.addRoundedRect(QRectF(cx - i, cy - i, pw + i * 2, ph + i * 2), sp(20 + i), sp(20 + i))
             shadow_pen = QPen(shadow_color, 1.0)
             shadow_pen.setJoinStyle(QtCompat.RoundJoin)
             shadow_pen.setCapStyle(QtCompat.RoundCap)
@@ -206,7 +210,7 @@ class SupportDialog(QDialog):
         else:
             border_color = QColor(0, 0, 0, 22)
         border_path = QPainterPath()
-        border_path.addRoundedRect(QRectF(cx, cy, pw, ph), 20, 20)
+        border_path.addRoundedRect(QRectF(cx, cy, pw, ph), sp(20), sp(20))
         pen = QPen(border_color, 1.0)
         pen.setJoinStyle(QtCompat.RoundJoin)
         pen.setCapStyle(QtCompat.RoundCap)
@@ -215,7 +219,7 @@ class SupportDialog(QDialog):
         painter.drawPath(border_path)
 
         # 6. 绘制下方浮现的极简关闭提示文字
-        close_font = QFont("Microsoft YaHei", 9)
+        close_font = QFont("Microsoft YaHei", font_px(9))
         painter.setFont(close_font)
         if self.theme == "dark":
             text_color = QColor(255, 255, 255, 140)
@@ -223,7 +227,7 @@ class SupportDialog(QDialog):
             text_color = QColor(28, 28, 30, 140)
         painter.setPen(QPen(text_color))
         # 居中绘制在海报正下方 20px 处
-        painter.drawText(QRect(0, cy + ph + 20, self.width(), 25), Qt.AlignCenter, tr("✕ 点击空白处关闭"))
+        painter.drawText(QRect(0, cy + ph + sp(20), self.width(), sp(25)), Qt.AlignCenter, tr("✕ 点击空白处关闭"))
 
         painter.restore()
         painter.end()

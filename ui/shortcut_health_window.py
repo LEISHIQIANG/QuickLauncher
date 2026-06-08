@@ -16,6 +16,8 @@ from qt_compat import (
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.utils.ui_scale import font_px, sp
 
 
 class ShortcutHealthScanThread(QThread):
@@ -78,7 +80,7 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self.issues = []
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__(tr("图标检查"), theme=theme, parent=parent)
-        self.resize(380, 560)
+        self.resize(sp(380), sp(560))
         self._setup_ui()
         self._apply_content_theme()
         self.text.setHtml(tr("正在扫描图标、路径和命令风险..."))
@@ -89,9 +91,9 @@ class ShortcutHealthWindow(ThemedToolWindow):
 
         self.text = QTextEdit()
         self.text.setReadOnly(True)
-        font = QFont("Consolas", 9)
+        font = QFont("Consolas", font_px(9))
         if not font.exactMatch():
-            font = QFont("Courier New", 9)
+            font = QFont("Courier New", font_px(9))
         self.text.setFont(font)
         self.content_layout.addWidget(self.text)
 
@@ -270,12 +272,12 @@ class ShortcutHealthWindow(ThemedToolWindow):
 
         cache_summary = self._format_favicon_cache_summary()
         if not self.issues:
-            return f'<pre style="font-family: Consolas, Courier New, monospace; font-size: 9pt;">{tr("未发现问题。")}\n\n{cache_summary}</pre>'
+            return f'<pre style="font-family: Consolas, Courier New, monospace; font-size: {font_px(12)}px;">{tr("未发现问题。")}\n\n{cache_summary}</pre>'
 
         counts = self._count_by_severity(self.issues)
         fixable_count = sum(1 for issue in self.issues if issue.fix_action)
 
-        lines = ['<pre style="font-family: Consolas, Courier New, monospace; font-size: 9pt;">']
+        lines = [f'<pre style="font-family: Consolas, Courier New, monospace; font-size: {font_px(12)}px;">']
         lines.append(tr("<b>摘要</b>"))
         lines.append(f'  <span style="color: {severity_colors["error"]};">ERROR: {counts.get("error", 0)}</span>')
         lines.append(f'  <span style="color: {severity_colors["warn"]};">WARN : {counts.get("warn", 0)}</span>')
@@ -354,13 +356,16 @@ class ShortcutHealthWindow(ThemedToolWindow):
         return labels.get(action, action)
 
     def closeEvent(self, event):
-        if self._scan_thread and self._scan_thread.isRunning():
-            self._scan_thread.quit()
-            self._scan_thread.wait(2000)
-        if self._cache_clean_thread and self._cache_clean_thread.isRunning():
-            self._cache_clean_thread.quit()
-            self._cache_clean_thread.wait(2000)
-        if self._fix_thread and self._fix_thread.isRunning():
-            self._fix_thread.quit()
-            self._fix_thread.wait(2000)
+        for attr in ("_scan_thread", "_cache_clean_thread", "_fix_thread"):
+            thread = getattr(self, attr, None)
+            if thread is None:
+                continue
+            stopped = stop_qthread_nonblocking(
+                thread,
+                owner=f"ShortcutHealthWindow.{attr}",
+                wait_ms=0,
+                disconnect_thread_signals=("finished", "finished_signal"),
+            )
+            if stopped:
+                setattr(self, attr, None)
         super().closeEvent(event)

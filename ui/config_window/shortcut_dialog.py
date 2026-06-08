@@ -27,7 +27,9 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
+from ui.utils.ui_scale import sp, font_px, scale_qss
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -39,7 +41,7 @@ logger = logging.getLogger(__name__)
 class _IconLoadThread(QThread):
     """后台线程：提取图标，避免阻塞主线程。"""
 
-    finished = pyqtSignal(object)  # QPixmap or None
+    icon_loaded = pyqtSignal(object)  # QPixmap or None
 
     def __init__(self, custom_icon_path: str, target_path: str, parent=None):
         super().__init__(parent)
@@ -76,7 +78,7 @@ class _IconLoadThread(QThread):
                 logger.debug("提取目标文件图标失败: %s", exc, exc_info=True)
 
         if not self._stop_requested:
-            self.finished.emit(pixmap)
+            self.icon_loaded.emit(pixmap)
 
 
 class ShortcutDialog(BaseDialog):
@@ -88,7 +90,7 @@ class ShortcutDialog(BaseDialog):
         self._custom_icon_path = self.shortcut.icon_path or ""
 
         self.setWindowTitle(tr("编辑快捷方式") if shortcut else tr("添加快捷方式"))
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(sp(380))
 
         self._setup_window_icon()
         self._setup_ui()
@@ -104,7 +106,7 @@ class ShortcutDialog(BaseDialog):
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
                 painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-                font = QFont("Segoe UI Emoji", 40)
+                font = QFont("Segoe UI Emoji", font_px(40))
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
                 painter.setPen(QColor(70, 130, 180))
@@ -125,7 +127,7 @@ class ShortcutDialog(BaseDialog):
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = base_style + f"""
+        custom_style = base_style + scale_qss(f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -143,7 +145,7 @@ class ShortcutDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """
+        """)
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -167,13 +169,13 @@ class ShortcutDialog(BaseDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
-        layout.setContentsMargins(10, 10, 10, 10)  # 特殊页边距：复杂编辑窗口保持 10px
+        layout.setSpacing(sp(6))
+        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))  # 特殊页边距：复杂编辑窗口保持 10px
 
         # 顶部标题栏
         title_layout = QHBoxLayout()
         title_label = QLabel("编辑快捷方式" if self.shortcut.name else "添加快捷方式")
-        title_label.setStyleSheet("font-size: 12px; font-weight: 400; color: gray;")
+        title_label.setStyleSheet(scale_qss("font-size: 12px; font-weight: 400; color: gray;"))
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         layout.addLayout(title_layout)
@@ -181,8 +183,8 @@ class ShortcutDialog(BaseDialog):
         # 基本信息
         basic_group = QGroupBox("基本信息")
         basic_layout = QFormLayout(basic_group)
-        basic_layout.setSpacing(6)
-        basic_layout.setContentsMargins(8, 0, 8, 8)
+        basic_layout.setSpacing(sp(6))
+        basic_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         # 名称
         self.name_edit = QLineEdit()
@@ -192,7 +194,7 @@ class ShortcutDialog(BaseDialog):
 
         # 目标路径
         target_layout = QHBoxLayout()
-        target_layout.setSpacing(8)
+        target_layout.setSpacing(sp(8))
         self.target_edit = QLineEdit()
         self.target_edit.setPlaceholderText("程序或文件路径")
         target_layout.addWidget(self.target_edit)
@@ -207,8 +209,8 @@ class ShortcutDialog(BaseDialog):
 
         launch_group = QGroupBox("启动参数")
         launch_layout = QFormLayout(launch_group)
-        launch_layout.setSpacing(6)
-        launch_layout.setContentsMargins(8, 0, 8, 8)
+        launch_layout.setSpacing(sp(6))
+        launch_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         # 参数
         self.args_edit = QLineEdit()
@@ -217,7 +219,7 @@ class ShortcutDialog(BaseDialog):
 
         # 工作目录
         workdir_layout = QHBoxLayout()
-        workdir_layout.setSpacing(8)
+        workdir_layout.setSpacing(sp(8))
         self.workdir_edit = QLineEdit()
         self.workdir_edit.setPlaceholderText("可选，工作目录")
         workdir_layout.addWidget(self.workdir_edit)
@@ -237,25 +239,25 @@ class ShortcutDialog(BaseDialog):
         # 图标设置
         icon_group = QGroupBox("图标")
         icon_layout = QHBoxLayout(icon_group)
-        icon_layout.setSpacing(6)
-        icon_layout.setContentsMargins(6, 0, 6, 6)
+        icon_layout.setSpacing(sp(6))
+        icon_layout.setContentsMargins(sp(6), 0, sp(6), sp(6))
 
         # 图标预览
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet("""
+        self.icon_preview.setStyleSheet(scale_qss("""
             QLabel {
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
             }
-        """)
+        """))
         icon_layout.addWidget(self.icon_preview)
 
         # 图标路径和按钮
         icon_right_layout = QVBoxLayout()
-        icon_right_layout.setSpacing(6)
+        icon_right_layout.setSpacing(sp(6))
 
         self.icon_edit = QLineEdit()
         self.icon_edit.setPlaceholderText("留空则使用默认图标")
@@ -263,7 +265,7 @@ class ShortcutDialog(BaseDialog):
         icon_right_layout.addWidget(self.icon_edit)
 
         icon_btn_layout = QHBoxLayout()
-        icon_btn_layout.setSpacing(8)
+        icon_btn_layout.setSpacing(sp(8))
 
         browse_icon_btn = QPushButton("选择图标...")
         browse_icon_btn.clicked.connect(self._browse_icon)
@@ -290,17 +292,17 @@ class ShortcutDialog(BaseDialog):
 
         # 按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        btn_layout.setSpacing(sp(8))
         btn_layout.addStretch()
 
         cancel_btn = QPushButton("取消")
-        cancel_btn.setFixedSize(80, 32)
+        cancel_btn.setFixedSize(sp(80), sp(32))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         self._cancel_btn = cancel_btn
 
         ok_btn = QPushButton("确定")
-        ok_btn.setFixedSize(80, 32)
+        ok_btn.setFixedSize(sp(80), sp(32))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
@@ -331,15 +333,12 @@ class ShortcutDialog(BaseDialog):
         # 取消上一次未完成的加载
         thread = getattr(self, "_icon_thread", None)
         if thread is not None and thread.isRunning():
-            thread.request_stop()
-            try:
-                thread.finished.disconnect()
-            except Exception:
-                logger.debug("断开图标线程信号失败", exc_info=True)
-            thread.wait(500)
-            if thread.isRunning():
-                thread.wait(1000)  # 延长等待替代 terminate
-            thread.deleteLater()
+            stop_qthread_nonblocking(
+                thread,
+                owner="ShortcutDialog.icon_loader",
+                wait_ms=0,
+                disconnect_thread_signals=("icon_loaded",),
+            )
             self._icon_thread = None
 
         custom = self._custom_icon_path or ""
@@ -355,7 +354,7 @@ class ShortcutDialog(BaseDialog):
         self._apply_icon_to_preview(self._create_file_icon(48))
 
         thread = _IconLoadThread(custom, target, parent=None)
-        thread.finished.connect(self._on_icon_loaded)
+        thread.icon_loaded.connect(self._on_icon_loaded)
         self._icon_thread = thread
         thread.start()
 
@@ -381,7 +380,7 @@ class ShortcutDialog(BaseDialog):
 
         # 缩放到预览尺寸
         if pixmap and not pixmap.isNull():
-            pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
 
         self.icon_preview.setPixmap(pixmap)
 
@@ -477,18 +476,14 @@ class ShortcutDialog(BaseDialog):
     def done(self, result):
         thread = getattr(self, "_icon_thread", None)
         if thread is not None:
-            try:
-                thread.finished.disconnect(self._on_icon_loaded)
-            except Exception as exc:
-                logger.debug("断开图标线程信号失败: %s", exc, exc_info=True)
-            if hasattr(thread, "request_stop"):
-                thread.request_stop()
-            if thread.isRunning():
-                thread.wait(500)
-            if thread.isRunning():
-                thread.wait(1000)  # 延长等待替代 terminate
-            thread.deleteLater()
-            self._icon_thread = None
+            stopped = stop_qthread_nonblocking(
+                thread,
+                owner="ShortcutDialog.icon_loader",
+                wait_ms=0,
+                disconnect_thread_signals=("icon_loaded",),
+            )
+            if stopped:
+                self._icon_thread = None
         super().done(result)
 
     def get_shortcut(self) -> ShortcutItem:

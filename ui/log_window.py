@@ -30,6 +30,8 @@ from ui.styles.theme_controller import normalize_theme
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
+from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -71,7 +73,7 @@ class LogWindow(QDialog):
         self._full_log_content = ""  # 完整日志内容缓存
 
         self.setWindowTitle(tr("运行日志"))
-        self.resize(700, 500)
+        self.resize(sp(700), sp(500))
 
         # 无边框 + 透明背景
         apply_custom_window_chrome(self, kind="window", translucent=True)
@@ -104,31 +106,31 @@ class LogWindow(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 0, 0, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(sp(12), 0, 0, sp(12))
+        layout.setSpacing(sp(6))
 
         # 标题栏
         title_bar = QHBoxLayout()
-        title_bar.setContentsMargins(6, 0, 0, 0)
-        title_bar.setSpacing(8)
+        title_bar.setContentsMargins(sp(6), 0, 0, 0)
+        title_bar.setSpacing(sp(8))
 
         # 左侧：app图标 + 标题
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(20, 20)
+        self.icon_label.setFixedSize(sp(20), sp(20))
         self.icon_label.setStyleSheet("background: transparent;")
         self._load_title_icon()
         title_bar.addWidget(self.icon_label)
 
         self.title_label = QLabel("运行日志")
         self.title_label.setFont(get_qfont(14, 400))
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: 400;")
+        self.title_label.setStyleSheet(scale_qss("font-size: 14px; font-weight: 400;"))
         title_bar.addWidget(self.title_label)
 
         title_bar.addStretch()
 
         # 右侧：Win风格关闭按钮
         self.close_btn_top = QPushButton("✕")
-        self.close_btn_top.setFixedSize(46, 32)
+        self.close_btn_top.setFixedSize(sp(46), sp(32))
         self.close_btn_top.setCursor(QtCompat.PointingHandCursor)
         self.close_btn_top.clicked.connect(self.close)
         title_bar.addWidget(self.close_btn_top)
@@ -137,33 +139,33 @@ class LogWindow(QDialog):
 
         # 路径提示
         self.path_label = QLabel(f"{self.log_path}")
-        self.path_label.setStyleSheet("font-size: 11px;")
+        self.path_label.setStyleSheet(scale_qss("font-size: 11px;"))
         layout.addWidget(self.path_label)
 
         # 日志内容
         self.log_edit = RoundedMenuPlainTextEdit()
         self.log_edit.setReadOnly(True)
-        font = QFont("Consolas", 9)
+        font = QFont("Consolas", font_px(9))
         if not font.exactMatch():
-            font = QFont("Courier New", 9)
+            font = QFont("Courier New", font_px(9))
         self.log_edit.setFont(font)
         layout.addWidget(self.log_edit)
 
         # 底部按钮栏：左侧操作按钮 + 右侧过滤按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 0, 4, 0)
-        btn_layout.setSpacing(8)
+        btn_layout.setContentsMargins(0, 0, sp(4), 0)
+        btn_layout.setSpacing(sp(8))
 
         self.refresh_btn = QPushButton("刷新")
-        self.refresh_btn.setFixedHeight(30)
-        self.refresh_btn.setMinimumWidth(70)
+        self.refresh_btn.setFixedHeight(sp(30))
+        self.refresh_btn.setMinimumWidth(sp(70))
         self.refresh_btn.setCursor(QtCompat.PointingHandCursor)
         self.refresh_btn.clicked.connect(self.load_log)
         btn_layout.addWidget(self.refresh_btn)
 
         self.clear_btn = QPushButton("清空日志")
-        self.clear_btn.setFixedHeight(30)
-        self.clear_btn.setMinimumWidth(80)
+        self.clear_btn.setFixedHeight(sp(30))
+        self.clear_btn.setMinimumWidth(sp(80))
         self.clear_btn.setCursor(QtCompat.PointingHandCursor)
         self.clear_btn.clicked.connect(self.clear_log)
         btn_layout.addWidget(self.clear_btn)
@@ -171,8 +173,8 @@ class LogWindow(QDialog):
         btn_layout.addStretch()
 
         self.info_filter_btn = QPushButton("INFO (0)")
-        self.info_filter_btn.setFixedHeight(30)
-        self.info_filter_btn.setMinimumWidth(105)
+        self.info_filter_btn.setFixedHeight(sp(30))
+        self.info_filter_btn.setMinimumWidth(sp(105))
         self.info_filter_btn.setCursor(QtCompat.PointingHandCursor)
         self.info_filter_btn.setCheckable(True)
         self.info_filter_btn.setChecked(True)
@@ -180,8 +182,8 @@ class LogWindow(QDialog):
         btn_layout.addWidget(self.info_filter_btn)
 
         self.debug_filter_btn = QPushButton("DEBUG (0)")
-        self.debug_filter_btn.setFixedHeight(30)
-        self.debug_filter_btn.setMinimumWidth(105)
+        self.debug_filter_btn.setFixedHeight(sp(30))
+        self.debug_filter_btn.setMinimumWidth(sp(105))
         self.debug_filter_btn.setCursor(QtCompat.PointingHandCursor)
         self.debug_filter_btn.setCheckable(True)
         self.debug_filter_btn.setChecked(True)
@@ -189,8 +191,8 @@ class LogWindow(QDialog):
         btn_layout.addWidget(self.debug_filter_btn)
 
         self.error_filter_btn = QPushButton("ERROR (0)")
-        self.error_filter_btn.setFixedHeight(30)
-        self.error_filter_btn.setMinimumWidth(105)
+        self.error_filter_btn.setFixedHeight(sp(30))
+        self.error_filter_btn.setMinimumWidth(sp(105))
         self.error_filter_btn.setCursor(QtCompat.PointingHandCursor)
         self.error_filter_btn.setCheckable(True)
         self.error_filter_btn.setChecked(True)
@@ -215,7 +217,7 @@ class LogWindow(QDialog):
                         from qt_compat import QSize
 
                         self.icon_label.setPixmap(
-                            pixmap.scaled(QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                            pixmap.scaled(QSize(sp(20), sp(20)), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                         )
                         break
         except Exception as exc:
@@ -245,7 +247,7 @@ class LogWindow(QDialog):
             text_secondary = "rgba(60, 60, 67, 0.6)"
 
         # Win风格关闭按钮样式
-        close_top_style = f"""
+        close_top_style = scale_qss(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -263,30 +265,30 @@ class LogWindow(QDialog):
                 background: #C50F1F;
                 color: #ffffff;
             }}
-        """
+        """)
         self.close_btn_top.setStyleSheet(close_top_style)
 
-        self.title_label.setStyleSheet(f"""
+        self.title_label.setStyleSheet(scale_qss(f"""
             font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
-        """)
+        """))
         self.title_label.setFont(get_qfont(14, 400))
-        self.path_label.setStyleSheet(f"""
+        self.path_label.setStyleSheet(scale_qss(f"""
             font-size: 11px;
             color: {text_secondary};
             background: transparent;
             padding-left: 6px;
-        """)
+        """))
 
         # 日志文本框完全透明
-        log_edit_style = f"""
+        log_edit_style = scale_qss(f"""
             QPlainTextEdit {{
                 background: transparent;
                 border: none;
                 color: {text_primary};
             }}
-        """
+        """)
         self.log_edit.setStyleSheet(log_edit_style + scrollbar_style)
 
         # 窗口样式
@@ -306,7 +308,7 @@ class LogWindow(QDialog):
             btn_hover = "rgba(0, 122, 255, 0.8)"
             btn_text = "#1c1c1e"
 
-        action_btn_style = f"""
+        action_btn_style = scale_qss(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 4px;
@@ -320,7 +322,7 @@ class LogWindow(QDialog):
                 color: white;
                 border: 1px solid {btn_hover};
             }}
-        """
+        """)
         self.refresh_btn.setStyleSheet(action_btn_style)
         self.clear_btn.setStyleSheet(action_btn_style)
 
@@ -335,7 +337,7 @@ class LogWindow(QDialog):
                 return
 
             effect = get_window_effect()
-            radius = 8
+            radius = sp(8)
 
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
@@ -361,8 +363,8 @@ class LogWindow(QDialog):
                 painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
                 painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
 
-            radius = 8
-            inset = 1.0 if is_win10() else 0.5
+            radius = sp(8)
+            inset = spf(1.0) if is_win10() else spf(0.5)
 
             if self._theme == "dark":
                 bg = QColor(28, 28, 30, 180)
@@ -405,7 +407,7 @@ class LogWindow(QDialog):
                     effect = get_window_effect()
                     w = self.width()
                     h = self.height()
-                    radius = 12
+                    radius = sp(12)
                     if w > 0 and h > 0:
                         effect.set_window_region(hwnd, w, h, radius)
                         effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
@@ -423,16 +425,19 @@ class LogWindow(QDialog):
 
     def _start_show_animation(self):
         """窗口出现动画 (0.2s)"""
+        stop_named_animations(self, "anim_group", "opacity_anim", "pos_anim")
+        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
         self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
+        self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
         self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
+        start_pos = self.pos() if start_opacity > 0.001 else QPoint(pos.x(), pos.y() + sp(20))
+        self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
 
@@ -446,7 +451,7 @@ class LogWindow(QDialog):
         if event.button() == QtCompat.LeftButton:
             pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
             # 只允许在标题栏区域（顶部36px）拖动
-            if pos.y() <= 36:
+            if pos.y() <= sp(36):
                 self._drag_pos = (
                     event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
                 )
@@ -484,7 +489,7 @@ class LogWindow(QDialog):
             info_active_bg = "rgba(0, 122, 255, 0.15)"
             info_active_border = "rgba(0, 122, 255, 0.4)"
 
-        self.info_filter_btn.setStyleSheet(f"""
+        self.info_filter_btn.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 font-size: 11px; padding: 4px 8px;
                 background: {info_bg}; border: 1px solid {info_border};
@@ -492,7 +497,7 @@ class LogWindow(QDialog):
             }}
             QPushButton:hover {{ background: {info_active_bg}; border: 1px solid {info_active_border}; }}
             QPushButton:checked {{ background: {info_active_bg}; border: 1px solid {info_active_border}; font-weight: 400; }}
-        """)
+        """))
 
         # DEBUG 按钮 - 淡黄色（柔和）
         if is_dark:
@@ -508,7 +513,7 @@ class LogWindow(QDialog):
             debug_active_bg = "rgba(255, 214, 10, 0.10)"
             debug_active_border = "rgba(200, 170, 0, 0.22)"
 
-        self.debug_filter_btn.setStyleSheet(f"""
+        self.debug_filter_btn.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 font-size: 11px; padding: 4px 8px;
                 background: {debug_bg}; border: 1px solid {debug_border};
@@ -516,7 +521,7 @@ class LogWindow(QDialog):
             }}
             QPushButton:hover {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; }}
             QPushButton:checked {{ background: {debug_active_bg}; border: 1px solid {debug_active_border}; font-weight: 400; }}
-        """)
+        """))
 
         # ERROR 按钮 - 淡红色（柔和）
         if is_dark:
@@ -532,7 +537,7 @@ class LogWindow(QDialog):
             error_active_bg = "rgba(255, 69, 58, 0.10)"
             error_active_border = "rgba(220, 50, 40, 0.22)"
 
-        self.error_filter_btn.setStyleSheet(f"""
+        self.error_filter_btn.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 font-size: 11px; padding: 4px 8px;
                 background: {error_bg}; border: 1px solid {error_border};
@@ -540,7 +545,7 @@ class LogWindow(QDialog):
             }}
             QPushButton:hover {{ background: {error_active_bg}; border: 1px solid {error_active_border}; }}
             QPushButton:checked {{ background: {error_active_bg}; border: 1px solid {error_active_border}; font-weight: 400; }}
-        """)
+        """))
 
     def _count_log_levels(self, content: str):
         """统计日志中各级别的条数"""

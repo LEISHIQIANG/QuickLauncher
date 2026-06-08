@@ -59,6 +59,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
+from ui.utils.ui_scale import sp, spf, font_px, scale_qss
 
 from .base_dialog import BaseDialog
 
@@ -160,7 +161,7 @@ def node_output_labels(node: dict, shortcuts: dict[str, ShortcutItem] | None = N
 
 class PortItem(QGraphicsEllipseItem):
     def __init__(self, node_id: str, port_id: str, direction: str, x: float, y: float, parent=None):
-        super().__init__(-6, -6, 12, 12, parent)
+        super().__init__(-sp(6), -sp(6), sp(12), sp(12), parent)
         self.node_id = node_id
         self.port_id = port_id
         self.direction = direction
@@ -174,13 +175,13 @@ class PortItem(QGraphicsEllipseItem):
     def hoverEnterEvent(self, event):
         self.setBrush(QBrush(self.color.lighter(115)))
         self.setPen(QPen(QColor(255, 255, 255, 230), 1.8))
-        self.setRect(-7.5, -7.5, 15, 15)
+        self.setRect(-spf(7.5), -spf(7.5), spf(15), spf(15))
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
         self.setBrush(QBrush(self.color))
         self.setPen(QPen(QColor(255, 255, 255, 150), 1.2))
-        self.setRect(-6, -6, 12, 12)
+        self.setRect(-sp(6), -sp(6), sp(12), sp(12))
         super().hoverLeaveEvent(event)
 
     def boundingRect(self) -> QRectF:
@@ -208,7 +209,7 @@ class PanelTextViewportItem(QGraphicsRectItem):
         self.setAcceptedMouseButtons(Qt.NoButton)
 
         self.text_item = QGraphicsTextItem(self)
-        self.text_item.setFont(QFont("Microsoft YaHei UI", 8))
+        self.text_item.setFont(QFont("Microsoft YaHei UI", font_px(8)))
         self.text_item.setAcceptedMouseButtons(Qt.NoButton)
 
         option = self.text_item.document().defaultTextOption()
@@ -327,11 +328,11 @@ class NodeItem(QGraphicsRectItem):
         parent=None,
     ):
         self.is_panel = str(node.get("processor_id") or "") == "panel_node"
-        self.node_width = self.PANEL_WIDTH if self.is_panel else self.WIDTH
+        self.node_width = sp(self.PANEL_WIDTH) if self.is_panel else sp(self.WIDTH)
         rows = max(len(input_ports), len(output_ports), 2)
-        height = self.HEADER + rows * self.ROW + 12
+        height = sp(self.HEADER) + rows * sp(self.ROW) + sp(12)
         if self.is_panel:
-            height = max(height, self.PANEL_MIN_HEIGHT)
+            height = max(height, sp(self.PANEL_MIN_HEIGHT))
         super().__init__(0, 0, self.node_width, height, parent)
         self.node = node
         self.node_id = str(node.get("id") or "")
@@ -354,32 +355,32 @@ class NodeItem(QGraphicsRectItem):
         title = str(self.node.get("title") or self.node.get("processor_id") or self.node.get("shortcut_id") or "节点")
         self.header_item = QGraphicsSimpleTextItem(title, self)  # 取消左上角的自动编号，使界面更精简
 
-        font = QFont("Microsoft YaHei UI", 9)
+        font = QFont("Microsoft YaHei UI", font_px(9))
         font.setBold(True)
         self.header_item.setFont(font)
-        self.header_item.setPos(10, 7)
+        self.header_item.setPos(sp(10), sp(7))
         self.header_item.setAcceptedMouseButtons(Qt.NoButton)
 
         self.input_label_items = []
         for i, port in enumerate(self.input_ports):
-            y = self.HEADER + i * self.ROW + 12
+            y = sp(self.HEADER) + i * sp(self.ROW) + sp(12)
             self.port_items[("input", port)] = PortItem(self.node_id, port, "input", 0, y, self)
             self.port_items[("input", port)].setToolTip(_node_port_tooltip(self.node, "input", port))
             label = QGraphicsSimpleTextItem(self.input_labels.get(port) or _port_label(port), self)
-            label.setFont(QFont("Microsoft YaHei UI", 8))
-            label.setPos(10, y - 8)
+            label.setFont(QFont("Microsoft YaHei UI", font_px(8)))
+            label.setPos(sp(10), y - sp(8))
             label.setAcceptedMouseButtons(Qt.NoButton)
             self.input_label_items.append(label)
 
         self.output_label_items = []
         for i, port in enumerate(self.output_ports):
-            y = self.HEADER + i * self.ROW + 12
+            y = sp(self.HEADER) + i * sp(self.ROW) + sp(12)
             self.port_items[("output", port)] = PortItem(self.node_id, port, "output", self.node_width, y, self)
             self.port_items[("output", port)].setToolTip(_node_port_tooltip(self.node, "output", port))
             label = QGraphicsSimpleTextItem(self.output_labels.get(port) or _port_label(port), self)
-            label.setFont(QFont("Microsoft YaHei UI", 8))
+            label.setFont(QFont("Microsoft YaHei UI", font_px(8)))
             label_rect = label.boundingRect()
-            label.setPos(self.node_width - label_rect.width() - 10, y - 8)
+            label.setPos(self.node_width - label_rect.width() - sp(10), y - sp(8))
             label.setAcceptedMouseButtons(Qt.NoButton)
             self.output_label_items.append(label)
 
@@ -387,8 +388,8 @@ class NodeItem(QGraphicsRectItem):
         if self.is_panel:
             preview = _node_preview_text(self.node)
             rows = max(len(self.input_ports), len(self.output_ports), 2)
-            top = self.HEADER + rows * self.ROW + 8
-            rect = QRectF(12, top, self.node_width - 24, max(56.0, self.rect().height() - top - 12))
+            top = sp(self.HEADER) + rows * sp(self.ROW) + sp(8)
+            rect = QRectF(sp(12), top, self.node_width - sp(24), max(spf(56.0), self.rect().height() - top - sp(12)))
             self.preview_item = PanelTextViewportItem(rect, preview, self)
 
     def update_appearance(self):
@@ -462,7 +463,7 @@ class NodeItem(QGraphicsRectItem):
         painter.setPen(self.pen())
 
         # 5.0px 优雅圆角
-        painter.drawRoundedRect(rect, 5.0, 5.0)
+        painter.drawRoundedRect(rect, spf(5.0), spf(5.0))
         painter.restore()
 
     def itemChange(self, change, value):
@@ -663,7 +664,7 @@ class ChainCanvasScene(QGraphicsScene):
                     try:
                         self._hovered_snap_port.setBrush(QBrush(self._hovered_snap_port.color))
                         self._hovered_snap_port.setPen(QPen(QColor(255, 255, 255, 150), 1.2))
-                        self._hovered_snap_port.setRect(-6, -6, 12, 12)
+                        self._hovered_snap_port.setRect(-sp(6), -sp(6), sp(12), sp(12))
                     except Exception as exc:
                         logger.debug("恢复吸附端口样式失败: %s", exc, exc_info=True)
 
@@ -674,7 +675,7 @@ class ChainCanvasScene(QGraphicsScene):
                         # 吸附时端口变为亮色并放大，产生强烈的连接捕捉提示
                         snap_port.setBrush(QBrush(snap_port.color.lighter(125)))
                         snap_port.setPen(QPen(QColor(255, 255, 255, 240), 2.0))
-                        snap_port.setRect(-8.0, -8.0, 16, 16)
+                        snap_port.setRect(-spf(8.0), -spf(8.0), spf(16), spf(16))
                     except Exception as exc:
                         logger.debug("设置吸附端口高亮失败: %s", exc, exc_info=True)
 
@@ -702,7 +703,7 @@ class ChainCanvasScene(QGraphicsScene):
                 try:
                     self._hovered_snap_port.setBrush(QBrush(self._hovered_snap_port.color))
                     self._hovered_snap_port.setPen(QPen(QColor(255, 255, 255, 150), 1.2))
-                    self._hovered_snap_port.setRect(-6, -6, 12, 12)
+                    self._hovered_snap_port.setRect(-sp(6), -sp(6), sp(12), sp(12))
                 except Exception as exc:
                     logger.debug("释放时恢复吸附端口样式失败: %s", exc, exc_info=True)
                 self._hovered_snap_port = None
@@ -817,7 +818,7 @@ class ChainCanvasWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.scene = ChainCanvasScene(self)
-        self.scene.setSceneRect(-80, -80, 2200, 1200)
+        self.scene.setSceneRect(-sp(80), -sp(80), sp(2200), sp(1200))
         self.scene.port_clicked.connect(self._on_port_clicked)
         self.scene.port_connected.connect(self._on_port_connected)
         self.scene.node_clicked.connect(self.select_node)
@@ -1216,10 +1217,10 @@ class ChainCanvasWidget(QWidget):
             return False
         self._push_history()
         columns = 8
-        x_gap = 230.0
-        y_gap = 150.0
-        base_x = 40.0
-        base_y = 60.0
+        x_gap = spf(230.0)
+        y_gap = spf(150.0)
+        base_x = spf(40.0)
+        base_y = spf(60.0)
         for index, node in enumerate(nodes):
             row = index // columns
             col = index % columns
@@ -1283,14 +1284,14 @@ class ChainCanvasWidget(QWidget):
         order = len(self.canvas.get("nodes", [])) + 1
 
         # 始终计算视口物理中心对应的场景坐标，以实现电池节点永远在屏幕正中间出现
-        node_x = float((order - 1) * 220.0)
-        node_y = 80.0
+        node_x = float((order - 1) * spf(220.0))
+        node_y = spf(80.0)
         try:
             view_rect = self.view.viewport().rect()
             if view_rect.width() > 0 and view_rect.height() > 0:
                 scene_center = self.view.mapToScene(view_rect.center())
-                node_x = float(scene_center.x() - 178 / 2.0)
-                node_y = float(scene_center.y() - 50.0)
+                node_x = float(scene_center.x() - sp(178) / 2.0)
+                node_y = float(scene_center.y() - spf(50.0))
         except Exception as exc:
             logger.debug("计算新节点默认位置失败: %s", exc, exc_info=True)
 
@@ -1706,7 +1707,7 @@ class PythonCellSourceDialog(BaseDialog):
 
     def _adjust_size_to_content(self, source: str):
         # Use Consolas font metrics to estimate line widths and height
-        font = QFont("Consolas", 9)
+        font = QFont("Consolas", font_px(9))
         font_metrics = QFontMetrics(font)
 
         lines = source.splitlines()
@@ -1721,16 +1722,16 @@ class PythonCellSourceDialog(BaseDialog):
                 max_line_len = width
 
         # Target width: maximum line width + text padding + layout margins
-        target_width = max_line_len + 60
+        target_width = max_line_len + sp(60)
 
         # Target height: line count * line height + margins
         line_height = font_metrics.height()
-        total_line_height = max(1, len(lines)) * (line_height + 3)
-        target_height = total_line_height + 40
+        total_line_height = max(1, len(lines)) * (line_height + sp(3))
+        target_height = total_line_height + sp(40)
 
         # Enforce minimum and maximum bounds
-        min_w, max_w = 640, 1000
-        min_h, max_h = 320, 800
+        min_w, max_w = sp(640), sp(1000)
+        min_h, max_h = sp(320), sp(800)
 
         final_w = max(min_w, min(max_w, target_width))
         final_h = max(min_h, min(max_h, target_height))
@@ -1741,7 +1742,7 @@ class PythonCellSourceDialog(BaseDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
         # 留出 12 像素的精致玻璃边缘边框
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
 
         # 代码编辑器
         self.editor = QTextEdit()
@@ -1812,7 +1813,7 @@ class PythonCellSourceDialog(BaseDialog):
                 background-color: rgba(100, 181, 246, 0.3);
             }}
         """
-        self.setStyleSheet(custom_style)
+        self.setStyleSheet(scale_qss(custom_style))
 
     def source(self) -> str:
         return self.editor.toPlainText()
@@ -1835,38 +1836,38 @@ class NodePropertyPanel(QWidget):
 
     def _setup_ui(self):
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(6, 6, 6, 6)
-        self.layout.setSpacing(8)
+        self.layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
+        self.layout.setSpacing(sp(8))
 
         # 封装与 "动作链属性" 一致的 QGroupBox
         self.group_box = QGroupBox("参数设置")
         self.group_layout = QVBoxLayout(self.group_box)
-        self.group_layout.setSpacing(6)
-        self.group_layout.setContentsMargins(8, 4, 8, 6)
+        self.group_layout.setSpacing(sp(6))
+        self.group_layout.setContentsMargins(sp(8), sp(4), sp(8), sp(6))
 
         # 表单布局放置在 GroupBox 内部
         self.form = QFormLayout()
-        self.form.setVerticalSpacing(10)
-        self.form.setHorizontalSpacing(10)
-        self.form.setContentsMargins(0, 4, 0, 4)
+        self.form.setVerticalSpacing(sp(10))
+        self.form.setHorizontalSpacing(sp(10))
+        self.form.setContentsMargins(0, sp(4), 0, sp(4))
         self.group_layout.addLayout(self.form)
         self.layout.addWidget(self.group_box)
 
         self.run_box = QGroupBox("上次运行")
         self.run_layout = QVBoxLayout(self.run_box)
-        self.run_layout.setSpacing(6)
-        self.run_layout.setContentsMargins(8, 6, 8, 6)
+        self.run_layout.setSpacing(sp(6))
+        self.run_layout.setContentsMargins(sp(8), sp(6), sp(8), sp(6))
         self.run_text = QTextEdit()
         self.run_text.setReadOnly(True)
-        self.run_text.setMinimumHeight(120)
-        self.run_text.setMaximumHeight(220)
+        self.run_text.setMinimumHeight(sp(120))
+        self.run_text.setMaximumHeight(sp(220))
         self.run_layout.addWidget(self.run_text)
         self.layout.addWidget(self.run_box)
 
         # 底部操作按钮水平排列 (参考选择图标和清除按钮样式)
         self.btn_layout = QHBoxLayout()
-        self.btn_layout.setSpacing(8)
-        self.btn_layout.setContentsMargins(0, 4, 0, 4)
+        self.btn_layout.setSpacing(sp(8))
+        self.btn_layout.setContentsMargins(0, sp(4), 0, sp(4))
 
         self.source_btn = QPushButton("编辑源码")
         self.source_btn.clicked.connect(self.edit_source_requested.emit)
@@ -1896,7 +1897,7 @@ class NodePropertyPanel(QWidget):
         text_primary = "#FFFFFF" if theme == "dark" else "#1C1C1E"
         input_bg = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(255, 255, 255, 0.8)"
 
-        self.group_box.setStyleSheet(f"""
+        group_box_style = f"""
             QGroupBox {{
                 border: 1px solid {border_color};
                 border-radius: 6px;
@@ -1914,11 +1915,12 @@ class NodePropertyPanel(QWidget):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """)
-        self.run_box.setStyleSheet(self.group_box.styleSheet())
+        """
+        self.group_box.setStyleSheet(scale_qss(group_box_style))
+        self.run_box.setStyleSheet(scale_qss(group_box_style))
 
         # 统一设置表单中的 QLineEdit 样式以和动作链属性的输入框一致
-        self.setStyleSheet(f"""
+        self.setStyleSheet(scale_qss(f"""
             QLineEdit, QTextEdit, QSpinBox, QComboBox {{
                 background-color: {input_bg};
                 border: 1px solid {border_color};
@@ -1934,17 +1936,17 @@ class NodePropertyPanel(QWidget):
                 color: {text_primary};
                 font-size: 12px;
             }}
-        """)
+        """))
 
         # 按钮复用扁平操作按钮样式，使其与 "动作链属性" 的按钮视觉完全一致
-        flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + """
+        flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + scale_qss("""
             QPushButton {
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-size: 12px;
                 font-weight: 400;
                 min-height: 22px;
             }
-        """
+        """)
         self.source_btn.setStyleSheet(flat_btn_style)
         self.delete_btn.setStyleSheet(flat_btn_style)
 
@@ -1963,7 +1965,7 @@ class NodePropertyPanel(QWidget):
             self.run_box.setVisible(False)
             placeholder_color = "rgba(255, 255, 255, 0.45)" if self._get_theme() == "dark" else "rgba(0, 0, 0, 0.45)"
             placeholder = QLabel("请在左侧画布选择一个节点。")
-            placeholder.setStyleSheet(f"color: {placeholder_color}; font-size: 12px; font-weight: 400;")
+            placeholder.setStyleSheet(scale_qss(f"color: {placeholder_color}; font-size: 12px; font-weight: 400;"))
             self.form.addRow(placeholder)
             self.delete_btn.setEnabled(False)
             self.source_btn.setEnabled(False)
@@ -1989,22 +1991,22 @@ class NodePropertyPanel(QWidget):
                 lbl_text = str(param_def.get("label") or _port_label(port)) + ":"
 
                 label_widget = QLabel(lbl_text)
-                label_widget.setStyleSheet("""
+                label_widget.setStyleSheet(scale_qss("""
                     QLabel {
                         font-size: 12px;
                         font-weight: 400;
                     }
-                """)
+                """))
 
                 if port in self._connections:
                     row = QWidget()
                     row_layout = QHBoxLayout(row)
                     row_layout.setContentsMargins(0, 0, 0, 0)
-                    row_layout.setSpacing(6)
+                    row_layout.setSpacing(sp(6))
 
                     label = QLabel(self._connections[port])
                     label.setWordWrap(True)
-                    label.setStyleSheet("""
+                    label.setStyleSheet(scale_qss("""
                         QLabel {
                             background-color: rgba(100, 181, 246, 0.12);
                             border: 1px solid rgba(100, 181, 246, 0.25);
@@ -2013,13 +2015,13 @@ class NodePropertyPanel(QWidget):
                             color: #64B5F6;
                             font-size: 11px;
                         }
-                    """)
+                    """))
 
                     clear = QPushButton("断开")
-                    clear.setFixedSize(48, 22)
+                    clear.setFixedSize(sp(48), sp(22))
                     clear.setCursor(Qt.PointingHandCursor)
                     clear.clicked.connect(lambda _=False, p=port: self.disconnect_requested.emit(str(node.get("id") or ""), p))
-                    clear.setStyleSheet("""
+                    clear.setStyleSheet(scale_qss("""
                         QPushButton {
                             background-color: rgba(220, 38, 38, 0.1);
                             border: 1px solid rgba(220, 38, 38, 0.25);
@@ -2035,7 +2037,7 @@ class NodePropertyPanel(QWidget):
                             border: 1px solid rgba(220, 38, 38, 0.45);
                             color: #FF8787;
                         }
-                    """)
+                    """))
                     clear.raise_()
 
                     row_layout.addWidget(label, 1)
@@ -2100,12 +2102,12 @@ class NodePropertyPanel(QWidget):
         elif kind in {"textarea", "json", "list"} or _is_multiline_port(node, port):
             edit = QTextEdit()
             edit.setPlainText(value)
-            edit.setMinimumHeight(92 if kind in {"json", "list"} else 82)
+            edit.setMinimumHeight(sp(92) if kind in {"json", "list"} else sp(82))
             edit.textChanged.connect(self._emit_args)
         else:
             edit = QLineEdit()
             edit.setText(value)
-            edit.setMinimumHeight(28)
+            edit.setMinimumHeight(sp(28))
             edit.textChanged.connect(self._emit_args)
         if hasattr(edit, "setPlaceholderText") and placeholder:
             edit.setPlaceholderText(placeholder)
@@ -2117,13 +2119,13 @@ class NodePropertyPanel(QWidget):
         row = QWidget()
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(6)
+        row_layout.setSpacing(sp(6))
         edit = QLineEdit()
         edit.setText(value)
-        edit.setMinimumHeight(28)
+        edit.setMinimumHeight(sp(28))
         edit.textChanged.connect(self._emit_args)
         browse = QPushButton("...")
-        browse.setFixedSize(34, 26)
+        browse.setFixedSize(sp(34), sp(26))
         browse.setCursor(Qt.PointingHandCursor)
         browse.clicked.connect(lambda _=False, p=port, k=kind, e=edit: self._browse_path(p, k, e))
         row_layout.addWidget(edit, 1)

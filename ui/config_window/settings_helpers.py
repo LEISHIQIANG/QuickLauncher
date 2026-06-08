@@ -28,6 +28,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.ui_scale import sp, spf, font_px, scale_qss
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ class NumberedListDelegate(QStyledItemDelegate):
             if is_selected:
                 num_color = QColor(255, 255, 255, 200)
             painter.setPen(num_color)
-            num_rect = QRectF(option.rect.left() + 10, option.rect.top(), 24, option.rect.height())
+            num_rect = QRectF(option.rect.left() + sp(10), option.rect.top(), sp(24), option.rect.height())
             painter.drawText(num_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, num_str)
 
             text_color = QColor(255, 255, 255, 230) if theme == "dark" else QColor(28, 28, 30, 230)
@@ -136,7 +137,7 @@ class NumberedListDelegate(QStyledItemDelegate):
             font.setPointSize(10)
             painter.setFont(font)
             text_rect = QRectF(
-                option.rect.left() + 38, option.rect.top(), option.rect.width() - 44, option.rect.height()
+                option.rect.left() + sp(38), option.rect.top(), option.rect.width() - sp(44), option.rect.height()
             )
             text = index.data(QtCompat.DisplayRole)
             if text and index.row() != self.editing_row:
@@ -161,7 +162,7 @@ class NumberedListDelegate(QStyledItemDelegate):
 
     def updateEditorGeometry(self, editor, option, index):
         rect = option.rect
-        editor.setGeometry(int(rect.left() + 38), int(rect.top()), int(rect.width() - 44), int(rect.height()))
+        editor.setGeometry(int(rect.left() + sp(38)), int(rect.top()), int(rect.width() - sp(44)), int(rect.height()))
 
     def setEditorData(self, editor, index):
         text = index.data(QtCompat.DisplayRole)
@@ -181,7 +182,7 @@ class ProgressDialog(QDialog):
         self.theme = theme
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMaximumWidth(260)
+        self.setMaximumWidth(sp(260))
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
 
         self.corner_radius = 8
@@ -202,23 +203,23 @@ class ProgressDialog(QDialog):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 12, 16, 12)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(sp(16), sp(12), sp(16), sp(12))
+        main_layout.setSpacing(sp(8))
 
         self.msg_label = QLabel("正在处理...")
         self.msg_label.setWordWrap(True)
         self.msg_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
-        self.msg_label.setStyleSheet(
+        self.msg_label.setStyleSheet(scale_qss(
             f"font-size: 13px; border: none; background: transparent; color: {self.text_color};"
-        )
+        ))
         main_layout.addWidget(self.msg_label, 1)
 
         self.btn_layout = QHBoxLayout()
         self.btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_layout.addStretch()
         self.ok_btn = QPushButton("确定")
-        self.ok_btn.setFixedSize(60, 22)
-        self.ok_btn.setStyleSheet("font-size: 13px; border-radius: 4px;")
+        self.ok_btn.setFixedSize(sp(60), sp(22))
+        self.ok_btn.setStyleSheet(scale_qss("font-size: 13px; border-radius: 4px;"))
         self.ok_btn.clicked.connect(self.accept)
         self.ok_btn.setVisible(False)
         self.btn_layout.addWidget(self.ok_btn)
@@ -376,8 +377,8 @@ class SwitchButton(QCheckBox):
         )
         text_height = font_metrics.height()
 
-        w = 29 + 8 + text_width + 4
-        h = max(18, text_height) + 4
+        w = sp(29) + sp(8) + text_width + sp(4)
+        h = max(sp(18), text_height) + sp(4)
         return QSize(int(w), int(h))
 
     def minimumSizeHint(self):
@@ -390,9 +391,9 @@ class SwitchButton(QCheckBox):
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             # Switch dimensions
-            sw_width = 29
-            sw_height = 18
-            spacing = 8
+            sw_width = sp(29)
+            sw_height = sp(18)
+            spacing = sp(8)
 
             rect = self.rect()
             sw_y = (rect.height() - sw_height) / 2.0
@@ -435,9 +436,9 @@ class SwitchButton(QCheckBox):
                 painter.drawRoundedRect(track_rect.adjusted(0.5, 0.5, -0.5, -0.5), sw_height / 2.0, sw_height / 2.0)
 
             # Draw white knob
-            knob_size = sw_height - 4
-            knob_min_x = sw_x + 2.0
-            knob_max_x = sw_x + sw_width - sw_height + 2.0
+            knob_size = sw_height - sp(4)
+            knob_min_x = sw_x + spf(2.0)
+            knob_max_x = sw_x + sw_width - sw_height + spf(2.0)
             knob_current_x = knob_min_x + (knob_max_x - knob_min_x) * self._progress
 
             # Draw knob shadow
@@ -445,11 +446,11 @@ class SwitchButton(QCheckBox):
             shadow_pen.setCosmetic(True)
             painter.setPen(shadow_pen)
             painter.setBrush(QBrush(QColor("#FFFFFF")))
-            shadow_rect = QRectF(knob_current_x, sw_y + 2.5, knob_size, knob_size)
+            shadow_rect = QRectF(knob_current_x, sw_y + spf(2.5), knob_size, knob_size)
             painter.drawEllipse(shadow_rect)
 
             # Draw knob
-            knob_rect = QRectF(knob_current_x, sw_y + 2.0, knob_size, knob_size)
+            knob_rect = QRectF(knob_current_x, sw_y + spf(2.0), knob_size, knob_size)
             painter.drawEllipse(knob_rect)
 
             # Draw text

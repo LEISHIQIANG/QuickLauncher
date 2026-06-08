@@ -22,7 +22,9 @@ from qt_compat import (
 from ui.styles.style import PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.safe_file_dialog import get_save_file_name
+from ui.utils.ui_scale import font_px, sp
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +90,7 @@ class DiagnosticsWindow(ThemedToolWindow):
         self._last_scan_at = ""
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__(tr("诊断中心"), theme=theme, parent=parent)
-        self.resize(760, 560)
+        self.resize(sp(760), sp(560))
         self._setup_ui()
         self._apply_content_theme()
         self.text.setHtml(tr("正在收集诊断信息..."))
@@ -99,9 +101,9 @@ class DiagnosticsWindow(ThemedToolWindow):
 
         self.text = _DiagnosticsTextEdit()
         self.text.setReadOnly(True)
-        font = QFont("Consolas", 9)
+        font = QFont("Consolas", font_px(9))
         if not font.exactMatch():
-            font = QFont("Courier New", 9)
+            font = QFont("Courier New", font_px(9))
         self.text.setFont(font)
         self.content_layout.addWidget(self.text)
 
@@ -252,7 +254,7 @@ class DiagnosticsWindow(ThemedToolWindow):
             counts[key] = counts.get(key, 0) + 1
         repair_summary = self._shortcut_repair_summary()
 
-        lines = ['<pre style="font-family: Consolas, Courier New, monospace; font-size: 9pt;">']
+        lines = [f'<pre style="font-family: Consolas, Courier New, monospace; font-size: {font_px(12)}px;">']
 
         # 显示恢复状态横幅（如果有恢复事件）
         recovery_items = [it for it in self.items if it.title == tr("配置恢复")]
@@ -382,10 +384,16 @@ class DiagnosticsWindow(ThemedToolWindow):
         return labels.get(action, action)
 
     def closeEvent(self, event):
-        if self._collect_thread and self._collect_thread.isRunning():
-            self._collect_thread.quit()
-            self._collect_thread.wait(2000)
-        if self._fix_thread and self._fix_thread.isRunning():
-            self._fix_thread.quit()
-            self._fix_thread.wait(2000)
+        for attr in ("_collect_thread", "_fix_thread"):
+            thread = getattr(self, attr, None)
+            if thread is None:
+                continue
+            stopped = stop_qthread_nonblocking(
+                thread,
+                owner=f"DiagnosticsWindow.{attr}",
+                wait_ms=0,
+                disconnect_thread_signals=("finished", "finished_signal"),
+            )
+            if stopped:
+                setattr(self, attr, None)
         super().closeEvent(event)

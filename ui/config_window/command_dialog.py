@@ -37,6 +37,7 @@ from qt_compat import (
 from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 from ui.utils.safe_file_dialog import get_existing_directory
+from ui.utils.ui_scale import sp, scale_qss
 
 from .base_dialog import BaseDialog
 from .command_param_dialog import CommandParamDialog
@@ -204,7 +205,7 @@ class CommandDialog(BaseDialog):
             self.shortcut.command_type = "cmd"
 
         self.setWindowTitle(tr("编辑运行命令") if shortcut else tr("添加运行命令"))
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(sp(460))
 
         self._setup_window_icon()
         self._setup_ui()
@@ -266,7 +267,7 @@ class CommandDialog(BaseDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
 
-        custom_style = base_style + f"""
+        custom_style = base_style + scale_qss(f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -284,7 +285,7 @@ class CommandDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """
+        """)
         self.setStyleSheet(custom_style)
 
         # 1. 样式重置与定义
@@ -301,15 +302,15 @@ class CommandDialog(BaseDialog):
             selection-color: {selection_text};
         """
 
-        self.name_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
-        self.icon_path_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
-        self.workdir_edit.setStyleSheet(f"QLineEdit {{ {input_style} padding: 4px 8px; }}")
+        self.name_edit.setStyleSheet(scale_qss(f"QLineEdit {{ {input_style} padding: 4px 8px; }}"))
+        self.icon_path_edit.setStyleSheet(scale_qss(f"QLineEdit {{ {input_style} padding: 4px 8px; }}"))
+        self.workdir_edit.setStyleSheet(scale_qss(f"QLineEdit {{ {input_style} padding: 4px 8px; }}"))
         capture_label_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
         capture_spin_bg = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.68)"
         capture_spin_disabled_bg = "rgba(255, 255, 255, 0.035)" if theme == "dark" else "rgba(255, 255, 255, 0.38)"
         capture_spin_disabled_text = "rgba(255, 255, 255, 0.34)" if theme == "dark" else "rgba(60, 60, 67, 0.32)"
 
-        capture_option_style = f"""
+        capture_option_style = scale_qss(f"""
             QLabel#CaptureOptionLabel {{
                 color: {capture_label_color};
                 font-size: 12px;
@@ -349,7 +350,7 @@ class CommandDialog(BaseDialog):
                 width: 12px;
                 height: 12px;
             }}
-        """
+        """)
         self.capture_timeout_label.setStyleSheet(capture_option_style)
         self.command_panel_size_label.setStyleSheet(capture_option_style)
         for button in self.command_panel_size_buttons:
@@ -358,11 +359,11 @@ class CommandDialog(BaseDialog):
 
         # --- 命令输入框容器样式 ---
         # 只有容器负责背景和边框，内部编辑器完全透明
-        self.command_container.setStyleSheet(f"""
+        self.command_container.setStyleSheet(scale_qss(f"""
             #CommandContainer {{
                 {input_style}
             }}
-        """)
+        """))
 
         # 内部编辑器：透明、无边框、无背景
         editor_style = f"""
@@ -375,15 +376,15 @@ class CommandDialog(BaseDialog):
                 selection-color: {selection_text};
             }}
         """
-        self.command_edit.setStyleSheet(editor_style)
-        self.test_output.setStyleSheet(editor_style + f"""
+        self.command_edit.setStyleSheet(scale_qss(editor_style))
+        self.test_output.setStyleSheet(scale_qss(editor_style + f"""
             QPlainTextEdit {{
                 background-color: {"rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.75)"};
                 border: 1px solid {border_color};
                 border-radius: 8px;
                 padding: 4px;
             }}
-        """)
+        """))
         # 再次强制视口透明（双重保险）
         if hasattr(self.command_edit, "viewport"):
             self.command_edit.viewport().setStyleSheet("background: transparent;")
@@ -428,7 +429,7 @@ class CommandDialog(BaseDialog):
         profile_toggle_hover = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(255, 255, 255, 0.82)"
         profile_toggle_border = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(0, 0, 0, 0.08)"
         profile_toggle_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
-        self.advanced_profile_toggle.setStyleSheet(f"""
+        self.advanced_profile_toggle.setStyleSheet(scale_qss(f"""
             QPushButton#CommandProfileToggle {{
                 background-color: {profile_toggle_bg};
                 border: 1px solid {profile_toggle_border};
@@ -448,7 +449,7 @@ class CommandDialog(BaseDialog):
             QPushButton#CommandProfileToggle:checked {{
                 background-color: {profile_toggle_hover};
             }}
-        """)
+        """))
         self.advanced_profile_frame.setStyleSheet("""
             QFrame#CommandProfileFrame {
                 background: transparent;
@@ -488,7 +489,7 @@ class CommandDialog(BaseDialog):
         invert_cb_style = get_compact_checkbox_stylesheet(theme)
         self.invert_light_cb.setStyleSheet(invert_cb_style)
         self.invert_dark_cb.setStyleSheet(invert_cb_style)
-        compact_option_cb_style = cb_style + f"""
+        compact_option_cb_style = cb_style + scale_qss(f"""
             QCheckBox {{
                 font-size: 12px;
                 spacing: 6px;
@@ -501,7 +502,7 @@ class CommandDialog(BaseDialog):
                 width: 12px;
                 height: 12px;
             }}
-            """
+            """)
         self.show_window_cb.setStyleSheet(compact_option_cb_style)
         self.run_as_admin_cb.setStyleSheet(compact_option_cb_style)
         self.variable_expansion_cb.setStyleSheet(compact_option_cb_style)
@@ -511,13 +512,13 @@ class CommandDialog(BaseDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(10, 10, 10, 10)  # 特殊页边距：复杂编辑窗口保持 10px
+        layout.setSpacing(sp(8))
+        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))  # 特殊页边距：复杂编辑窗口保持 10px
 
         # 顶部标题栏
         title_layout = QHBoxLayout()
         title_label = QLabel("编辑运行命令" if self.shortcut.name else "添加运行命令")
-        title_label.setStyleSheet("font-size: 12px; font-weight: 400; color: gray;")
+        title_label.setStyleSheet(scale_qss("font-size: 12px; font-weight: 400; color: gray;"))
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         layout.addLayout(title_layout)
@@ -525,8 +526,8 @@ class CommandDialog(BaseDialog):
         # 1. 基本信息
         basic_group = QGroupBox("基本信息")
         basic_layout = QFormLayout(basic_group)
-        basic_layout.setSpacing(6)
-        basic_layout.setContentsMargins(8, 0, 8, 8)
+        basic_layout.setSpacing(sp(6))
+        basic_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
@@ -548,23 +549,23 @@ class CommandDialog(BaseDialog):
         # 2. 图标设置 (移到第二位)
         icon_group = QGroupBox("图标")
         icon_layout = QHBoxLayout(icon_group)
-        icon_layout.setSpacing(6)
-        icon_layout.setContentsMargins(6, 0, 6, 6)
+        icon_layout.setSpacing(sp(6))
+        icon_layout.setContentsMargins(sp(6), 0, sp(6), sp(6))
 
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet("""
+        self.icon_preview.setStyleSheet(scale_qss("""
             QLabel {
                 background-color: rgba(255, 255, 255, 0.2);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 10px;
             }
-        """)
+        """))
         icon_layout.addWidget(self.icon_preview)
 
         icon_path_layout = QVBoxLayout()
-        icon_path_layout.setSpacing(6)
+        icon_path_layout.setSpacing(sp(6))
 
         self.icon_path_edit = QLineEdit()
         self.icon_path_edit.setPlaceholderText("可选，自定义图标路径")
@@ -572,7 +573,7 @@ class CommandDialog(BaseDialog):
         icon_path_layout.addWidget(self.icon_path_edit)
 
         icon_btn_layout = QHBoxLayout()
-        icon_btn_layout.setSpacing(6)
+        icon_btn_layout.setSpacing(sp(6))
 
         browse_icon_btn = QPushButton("选择图标...")
         browse_icon_btn.clicked.connect(self._browse_icon)
@@ -598,24 +599,24 @@ class CommandDialog(BaseDialog):
         # 3. 命令设置 (移到第三位)
         cmd_group = QGroupBox("命令内容")
         cmd_layout = QVBoxLayout(cmd_group)
-        cmd_layout.setSpacing(4)  # 减小间距
-        cmd_layout.setContentsMargins(8, 8, 8, 8)  # 减小内部边距
+        cmd_layout.setSpacing(sp(4))  # 减小间距
+        cmd_layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))  # 减小内部边距
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(8)
+        top_row.setSpacing(sp(8))
 
         self.hint_label = QLabel("输入命令内容:")
-        self.hint_label.setStyleSheet("color: gray; font-size: 11px; margin-top: -2px;")
+        self.hint_label.setStyleSheet(scale_qss("color: gray; font-size: 11px; margin-top: -2px;"))
         top_row.addWidget(self.hint_label, 1)
 
         self.insert_var_btn = QPushButton("插入")
-        self.insert_var_btn.setFixedSize(54, 24)
+        self.insert_var_btn.setFixedSize(sp(54), sp(24))
         self.insert_var_btn.clicked.connect(self._show_insert_popup)
         top_row.addWidget(self.insert_var_btn, 0, QtCompat.AlignRight)
 
         self._test_btn = QPushButton("测试")
-        self._test_btn.setFixedSize(54, 24)
+        self._test_btn.setFixedSize(sp(54), sp(24))
         self._test_btn.clicked.connect(self._test_command)
         top_row.addWidget(self._test_btn, 0, QtCompat.AlignRight)
 
@@ -629,12 +630,12 @@ class CommandDialog(BaseDialog):
         self.command_container = QFrame()
         self.command_container.setObjectName("CommandContainer")
         container_layout = QVBoxLayout(self.command_container)
-        container_layout.setContentsMargins(4, 2, 4, 4)  # 内部留白，防止文字贴边
+        container_layout.setContentsMargins(sp(4), sp(2), sp(4), sp(4))  # 内部留白，防止文字贴边
         container_layout.setSpacing(0)
 
         # 内层编辑器：完全透明，只负责显示文字
         self.command_edit = QPlainTextEdit()
-        self.command_edit.setFixedHeight(92)
+        self.command_edit.setFixedHeight(sp(92))
         self.command_edit.setTabChangesFocus(True)
         # 关键：关闭视口背景自动填充
         if hasattr(self.command_edit, "viewport"):
@@ -653,33 +654,33 @@ class CommandDialog(BaseDialog):
 
         # 2. 内置命令下拉框
         self.builtin_combo = QComboBox()
-        self.builtin_combo.setFixedHeight(48)  # 同步高度
+        self.builtin_combo.setFixedHeight(sp(48))  # 同步高度
         for name, cmd in self._builtin_command_options():
             self.builtin_combo.addItem(name, cmd)
         self.builtin_combo.currentIndexChanged.connect(self._on_builtin_changed)
         self.builtin_combo.showPopup = lambda: self._show_builtin_popup()
 
         self.input_stack.addWidget(self.builtin_combo)
-        self.input_stack.setFixedHeight(100)
+        self.input_stack.setFixedHeight(sp(100))
 
         cmd_layout.addWidget(self.input_stack)
         self.test_output = QPlainTextEdit()
         self.test_output.setReadOnly(True)
-        self.test_output.setFixedHeight(72)
+        self.test_output.setFixedHeight(sp(72))
         self.test_output.setPlaceholderText("运行结果会显示在这里")
         self.test_output.setVisible(False)
         cmd_layout.addWidget(self.test_output)
-        cmd_layout.setContentsMargins(8, 4, 8, 8)  # 恢复适度边距，保持比例协调
+        cmd_layout.setContentsMargins(sp(8), sp(4), sp(8), sp(8))  # 恢复适度边距，保持比例协调
         layout.addWidget(cmd_group)
 
         # 4. 高级选项
         advanced_group = QGroupBox("高级选项")
         advanced_layout = QFormLayout(advanced_group)
-        advanced_layout.setSpacing(6)
-        advanced_layout.setContentsMargins(8, 0, 8, 8)
+        advanced_layout.setSpacing(sp(6))
+        advanced_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         workdir_layout = QHBoxLayout()
-        workdir_layout.setSpacing(6)
+        workdir_layout.setSpacing(sp(6))
         self.workdir_edit = QLineEdit()
         self.workdir_edit.setPlaceholderText("可选，工作目录")
         workdir_layout.addWidget(self.workdir_edit)
@@ -689,23 +690,23 @@ class CommandDialog(BaseDialog):
         advanced_layout.addRow(tr("工作目录:"), workdir_layout)
 
         option_row = QHBoxLayout()
-        option_row.setSpacing(8)
+        option_row.setSpacing(sp(8))
         self.advanced_profile_toggle = QPushButton()
         self.advanced_profile_toggle.setObjectName("CommandProfileToggle")
         self.advanced_profile_toggle.setCheckable(True)
         self.advanced_profile_toggle.setChecked(False)
-        self.advanced_profile_toggle.setFixedSize(42, 12)
+        self.advanced_profile_toggle.setFixedSize(sp(42), sp(12))
         self.advanced_profile_toggle.setToolTip(tr("高级设置"))
         self.advanced_profile_toggle.setCursor(QtCompat.PointingHandCursor)
         self.advanced_profile_toggle.clicked.connect(self._toggle_command_profile_panel)
         self.show_window_cb = QCheckBox("显示执行窗口")
-        self.show_window_cb.setFixedHeight(26)
+        self.show_window_cb.setFixedHeight(sp(26))
         self.show_window_cb.stateChanged.connect(self._update_capture_controls)
         self.run_as_admin_cb = QCheckBox("以管理员身份运行")
-        self.run_as_admin_cb.setFixedHeight(26)
+        self.run_as_admin_cb.setFixedHeight(sp(26))
         self.run_as_admin_cb.stateChanged.connect(self._update_capture_controls)
         self.variable_expansion_cb = QCheckBox("解析变量")
-        self.variable_expansion_cb.setFixedHeight(26)
+        self.variable_expansion_cb.setFixedHeight(sp(26))
         install_tooltip(self.variable_expansion_cb, "替换 {{clipboard}}、{{input}}、{{date}} 等占位符；Python 默认关闭")
         option_row.addWidget(self.show_window_cb)
         option_row.addWidget(self.run_as_admin_cb)
@@ -714,9 +715,9 @@ class CommandDialog(BaseDialog):
         advanced_layout.addRow("", option_row)
 
         capture_row = QHBoxLayout()
-        capture_row.setSpacing(8)
+        capture_row.setSpacing(sp(8))
         self.capture_output_cb = QCheckBox("捕获输出并显示在命令面板")
-        self.capture_output_cb.setFixedHeight(26)
+        self.capture_output_cb.setFixedHeight(sp(26))
         self.capture_output_cb.stateChanged.connect(self._update_capture_controls)
         capture_row.addWidget(self.capture_output_cb)
         self.command_panel_size_label = QLabel("面板大小")
@@ -729,7 +730,7 @@ class CommandDialog(BaseDialog):
             button = QCheckBox(text)
             button.setObjectName("CommandPanelSizeCheck")
             button.setProperty("panel_size", value)
-            button.setFixedHeight(26)
+            button.setFixedHeight(sp(26))
             self.command_panel_size_group.addButton(button)
             self.command_panel_size_buttons.append(button)
             capture_row.addWidget(button)
@@ -742,13 +743,13 @@ class CommandDialog(BaseDialog):
         self.capture_timeout_spin.setButtonSymbols(QSpinBox.NoButtons)
         self.capture_timeout_spin.setRange(1, 3600)
         self.capture_timeout_spin.setSuffix(" 秒")
-        self.capture_timeout_spin.setFixedSize(72, 26)
+        self.capture_timeout_spin.setFixedSize(sp(72), sp(26))
         capture_row.addWidget(self.capture_timeout_spin)
         capture_row.addStretch()
         capture_toggle_widget = QFrame()
         capture_toggle_widget.setObjectName("CommandProfileToggleCell")
         capture_toggle_cell = QHBoxLayout(capture_toggle_widget)
-        capture_toggle_cell.setContentsMargins(0, 3, 0, 0)
+        capture_toggle_cell.setContentsMargins(0, sp(3), 0, 0)
         capture_toggle_cell.addStretch()
         capture_toggle_cell.addWidget(self.advanced_profile_toggle, 0, QtCompat.AlignVCenter | QtCompat.AlignRight)
         advanced_layout.addRow(capture_toggle_widget, capture_row)
@@ -757,11 +758,11 @@ class CommandDialog(BaseDialog):
         self.advanced_profile_frame.setObjectName("CommandProfileFrame")
         self.advanced_profile_frame.setVisible(False)
         profile_layout = QFormLayout(self.advanced_profile_frame)
-        profile_layout.setSpacing(6)
-        profile_layout.setContentsMargins(0, 2, 0, 0)
+        profile_layout.setSpacing(sp(6))
+        profile_layout.setContentsMargins(0, sp(2), 0, 0)
 
         self.command_encoding_combo = QComboBox()
-        self.command_encoding_combo.setFixedHeight(32)
+        self.command_encoding_combo.setFixedHeight(sp(32))
         self.command_encoding_combo.addItem("自动识别", "auto")
         self.command_encoding_combo.addItem("UTF-8", "utf-8")
         self.command_encoding_combo.addItem("GBK", "gbk")
@@ -770,13 +771,13 @@ class CommandDialog(BaseDialog):
         profile_layout.addRow("输出编码:", self.command_encoding_combo)
 
         self.command_env_edit = QPlainTextEdit()
-        self.command_env_edit.setFixedHeight(52)
+        self.command_env_edit.setFixedHeight(sp(52))
         self.command_env_edit.setPlaceholderText("每行一个 KEY=VALUE")
         profile_layout.addRow("环境变量:", self.command_env_edit)
 
         params_layout = QVBoxLayout()
         self.command_params_edit = QPlainTextEdit()
-        self.command_params_edit.setFixedHeight(72)
+        self.command_params_edit.setFixedHeight(sp(72))
         self.command_params_edit.setPlaceholderText(
             "每行一个参数: name,type,required,default,choice1|choice2，或 JSON 参数行"
         )
@@ -800,8 +801,8 @@ class CommandDialog(BaseDialog):
         # 5. 触发模式
         trigger_group = QGroupBox("触发模式")
         trigger_layout = QHBoxLayout(trigger_group)
-        trigger_layout.setSpacing(12)
-        trigger_layout.setContentsMargins(8, 0, 8, 8)
+        trigger_layout.setSpacing(sp(12))
+        trigger_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         self.trigger_immediate_rb = QRadioButton("无延迟运行")
         install_tooltip(self.trigger_immediate_rb, "点击图标后立刻运行命令，适合打开程序、网页或执行后台命令")
@@ -827,17 +828,17 @@ class CommandDialog(BaseDialog):
 
         # 按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        btn_layout.setSpacing(sp(8))
         btn_layout.addStretch()
 
         cancel_btn = QPushButton("取消")
-        cancel_btn.setFixedSize(80, 32)
+        cancel_btn.setFixedSize(sp(80), sp(32))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         self._cancel_btn = cancel_btn
 
         ok_btn = QPushButton("确定")
-        ok_btn.setFixedSize(80, 32)
+        ok_btn.setFixedSize(sp(80), sp(32))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
@@ -847,7 +848,7 @@ class CommandDialog(BaseDialog):
 
         # 自适应大小
         self.adjustSize()
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(sp(460))
 
     def _on_type_changed(self, index):
         """类型改变"""
@@ -855,7 +856,7 @@ class CommandDialog(BaseDialog):
             self.hint_label.setText(tr("输入要执行的CMD命令（静默运行，不显示窗口）:"))
             self.command_edit.setPlaceholderText("例如: shutdown /s /t 0")
             self.input_stack.setCurrentIndex(0)
-            self.input_stack.setFixedHeight(100)
+            self.input_stack.setFixedHeight(sp(100))
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
@@ -867,7 +868,7 @@ class CommandDialog(BaseDialog):
             self.hint_label.setText(tr("输入要执行的 PowerShell 命令（静默运行，不显示窗口）:"))
             self.command_edit.setPlaceholderText("例如: Get-ChildItem {{selected_file_dir:q}}")
             self.input_stack.setCurrentIndex(0)
-            self.input_stack.setFixedHeight(100)
+            self.input_stack.setFixedHeight(sp(100))
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
@@ -879,7 +880,7 @@ class CommandDialog(BaseDialog):
             self.hint_label.setText(tr("输入要执行的 Python 代码（通过系统 Python 运行）:"))
             self.command_edit.setPlaceholderText("例如: os.system('notepad')")
             self.input_stack.setCurrentIndex(0)
-            self.input_stack.setFixedHeight(100)
+            self.input_stack.setFixedHeight(sp(100))
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
@@ -891,7 +892,7 @@ class CommandDialog(BaseDialog):
             self.hint_label.setText(tr("输入要执行的 Bash 命令（通过 Git Bash 运行）:"))
             self.command_edit.setPlaceholderText("例如: ls -la /c/Users")
             self.input_stack.setCurrentIndex(0)
-            self.input_stack.setFixedHeight(100)
+            self.input_stack.setFixedHeight(sp(100))
             self.show_window_cb.setEnabled(True)
             self._update_capture_controls()
             self.insert_var_btn.setEnabled(True)
@@ -902,7 +903,7 @@ class CommandDialog(BaseDialog):
         elif index == 4:  # Built-in
             self.hint_label.setText(tr("选择内置命令:"))
             self.input_stack.setCurrentIndex(1)
-            self.input_stack.setFixedHeight(48)
+            self.input_stack.setFixedHeight(sp(48))
             self.insert_var_btn.setEnabled(False)
             self._test_btn.setEnabled(False)
             self.variable_expansion_cb.setChecked(False)
@@ -1135,7 +1136,7 @@ class CommandDialog(BaseDialog):
         for label, text in items:
             menu.add_action(label, lambda t=text: self._insert_command_text(t))
         pos = self.insert_var_btn.mapToGlobal(self.insert_var_btn.rect().bottomLeft())
-        menu.setMinimumWidth(180)
+        menu.setMinimumWidth(sp(180))
         menu.popup(pos)
 
     def _insert_command_text(self, text: str):
@@ -1582,7 +1583,7 @@ class CommandDialog(BaseDialog):
 
             # 缩放到预览尺寸
             if pixmap and not pixmap.isNull():
-                pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                 self.icon_preview.setPixmap(pixmap)
             else:
                 self.icon_preview.clear()

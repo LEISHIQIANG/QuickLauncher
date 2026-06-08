@@ -50,6 +50,7 @@ from ui.styles.style import Colors, PopupMenu
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.themed_tool_window import ThemedToolWindow
 from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name, get_save_file_name
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +97,10 @@ class CommandHistoryDropButton(QPushButton):
             pen.setCapStyle(Qt.RoundCap)
             pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(pen)
-            cx = self.width() / 2 - 2
-            cy = self.height() / 2 + 1
-            half_w = 4.5
-            half_h = 3.0
+            cx = self.width() / 2 - spf(2)
+            cy = self.height() / 2 + spf(1)
+            half_w = spf(4.5)
+            half_h = spf(3.0)
             painter.drawLine(int(cx - half_w), int(cy - half_h), int(cx), int(cy + half_h))
             painter.drawLine(int(cx), int(cy + half_h), int(cx + half_w), int(cy - half_h))
         finally:
@@ -160,8 +161,8 @@ class CommandPanelWindow(ThemedToolWindow):
         self._connect_app_focus_changed()
 
         input_row = QHBoxLayout()
-        input_row.setContentsMargins(0, 0, 4, 0)
-        input_row.setSpacing(8)
+        input_row.setContentsMargins(0, 0, sp(4), 0)
+        input_row.setSpacing(sp(8))
 
         self.command_input_group = QWidget()
         input_group_layout = QHBoxLayout(self.command_input_group)
@@ -169,8 +170,8 @@ class CommandPanelWindow(ThemedToolWindow):
         input_group_layout.setSpacing(0)
         input_group_layout.addWidget(self.command_input, 1)
         self.history_toggle_btn = CommandHistoryDropButton()
-        self.history_toggle_btn.setFixedWidth(26)
-        self.history_toggle_btn.setFixedHeight(28)
+        self.history_toggle_btn.setFixedWidth(sp(26))
+        self.history_toggle_btn.setFixedHeight(sp(28))
         self.history_toggle_btn.setToolTip(tr("最近命令"))
         self.history_toggle_btn.setFocusPolicy(Qt.NoFocus)
         self.history_toggle_btn.clicked.connect(self._show_history_menu)
@@ -185,8 +186,8 @@ class CommandPanelWindow(ThemedToolWindow):
 
         self.param_container = QWidget()
         self.param_layout = QFormLayout(self.param_container)
-        self.param_layout.setContentsMargins(0, 0, 4, 0)
-        self.param_layout.setSpacing(6)
+        self.param_layout.setContentsMargins(0, 0, sp(4), 0)
+        self.param_layout.setSpacing(sp(6))
         self.param_container.setVisible(False)
         self.content_layout.addWidget(self.param_container)
 
@@ -205,7 +206,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.history_label = QLabel("最近命令")
         self.history_label.setVisible(False)
         self.history_list = QListWidget()
-        self.history_list.setMaximumHeight(96)
+        self.history_list.setMaximumHeight(sp(96))
         self.history_list.setVisible(False)
         self.history_list.itemClicked.connect(self._on_history_item_clicked)
         self.command_suggestion_popup = None
@@ -216,9 +217,9 @@ class CommandPanelWindow(ThemedToolWindow):
         self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         self.text.setWordWrapMode(QTextOption.WrapAnywhere)
         self.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        font = QFont("Microsoft YaHei UI", 9)
+        font = QFont("Microsoft YaHei UI", font_px(9))
         if not font.exactMatch():
-            font = QFont("Segoe UI", 9)
+            font = QFont("Segoe UI", font_px(9))
         self.text.setFont(font)
         self.content_layout.addWidget(self.text, 1)
 
@@ -250,7 +251,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.footer_button_container = QWidget()
         self.footer_button_grid = QGridLayout(self.footer_button_container)
         self.footer_button_grid.setContentsMargins(0, 0, 0, 0)
-        self.footer_button_grid.setSpacing(8)
+        self.footer_button_grid.setSpacing(sp(8))
         self.button_layout.addWidget(self.footer_button_container, 1)
 
         self.copy_btn = QPushButton("复制")
@@ -340,7 +341,7 @@ class CommandPanelWindow(ThemedToolWindow):
 
         spacing = max(0, int(grid.spacing()))
         available = max(1, int(getattr(self, "footer_button_container", self).width() or self.width() or 1))
-        min_width = max(76, max(self._button_text_width(button) for button in visible_buttons))
+        min_width = max(sp(76), max(self._button_text_width(button) for button in visible_buttons))
         one_row_width = len(visible_buttons) * min_width + max(0, len(visible_buttons) - 1) * spacing
         if one_row_width <= available:
             columns = len(visible_buttons)
@@ -356,7 +357,7 @@ class CommandPanelWindow(ThemedToolWindow):
             column = index % columns
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.setMinimumWidth(0)
-            button.setMinimumHeight(30)
+            button.setMinimumHeight(sp(30))
             if button.text():
                 button.setToolTip(button.text())
             grid.addWidget(button, row, column)
@@ -367,9 +368,9 @@ class CommandPanelWindow(ThemedToolWindow):
     def _button_text_width(button) -> int:
         text = str(button.text() or "")
         try:
-            return int(button.fontMetrics().horizontalAdvance(text) + 28)
+            return int(button.fontMetrics().horizontalAdvance(text) + sp(28))
         except Exception:
-            return max(76, len(text) * 9 + 28)
+            return max(sp(76), len(text) * sp(9) + sp(28))
 
     @staticmethod
     def _neutralize_button_default(button):
@@ -427,15 +428,15 @@ class CommandPanelWindow(ThemedToolWindow):
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
         if hasattr(self, "command_input_group"):
-            self.command_input_group.setStyleSheet(f"""
+            self.command_input_group.setStyleSheet(scale_qss(f"""
                 QWidget {{
                     min-height: 28px;
                     border: 1px solid {border};
                     border-radius: 8px;
                     background: {bg};
                 }}
-            """)
-        self.command_input.setStyleSheet(f"""
+            """))
+        self.command_input.setStyleSheet(scale_qss(f"""
             QLineEdit {{
                 min-height: 28px;
                 padding: 0 10px;
@@ -449,9 +450,9 @@ class CommandPanelWindow(ThemedToolWindow):
             QLineEdit::placeholder {{
                 color: {placeholder};
             }}
-        """)
+        """))
         if hasattr(self, "history_toggle_btn"):
-            self.history_toggle_btn.setStyleSheet(f"""
+            self.history_toggle_btn.setStyleSheet(scale_qss(f"""
                 QPushButton {{
                     min-height: 28px;
                     padding: 0;
@@ -477,16 +478,16 @@ class CommandPanelWindow(ThemedToolWindow):
                     color: rgba(128, 128, 128, 0.30);
                     background: transparent;
                 }}
-            """)
+            """))
 
     def _style_status_label(self):
         color = "rgba(255, 255, 255, 0.55)" if self._theme == "dark" else "rgba(60, 60, 67, 0.62)"
-        self.status_label.setStyleSheet(f"font-size: 11px; color: {color}; background: transparent; padding-left: 2px;")
+        self.status_label.setStyleSheet(scale_qss(f"font-size: 11px; color: {color}; background: transparent; padding-left: 2px;"))
 
     def _style_param_error_label(self):
         color = "rgba(255, 99, 99, 0.92)" if self._theme == "dark" else "rgba(190, 40, 40, 0.92)"
         self.param_error_label.setStyleSheet(
-            f"font-size: 11px; color: {color}; background: transparent; padding-left: 2px;"
+            scale_qss(f"font-size: 11px; color: {color}; background: transparent; padding-left: 2px;")
         )
 
     def _style_table(self):
@@ -502,7 +503,7 @@ class CommandPanelWindow(ThemedToolWindow):
             header = "rgba(0, 0, 0, 0.04)"
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
-        self.table.setStyleSheet(f"""
+        self.table.setStyleSheet(scale_qss(f"""
             QTableWidget {{
                 background: {bg};
                 border: 1px solid {grid};
@@ -519,7 +520,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-right: 1px solid {grid};
                 padding: 5px;
             }}
-        """)
+        """))
         self.style_scrollbars(self.table)
 
     def _style_progress(self):
@@ -531,10 +532,10 @@ class CommandPanelWindow(ThemedToolWindow):
             text = "rgba(28, 28, 30, 0.85)"
             bg = "rgba(0, 0, 0, 0.08)"
             chunk = "rgba(0, 122, 255, 0.82)"
-        label_style = f"font-size: 12px; color: {text}; background: transparent;"
+        label_style = scale_qss(f"font-size: 12px; color: {text}; background: transparent;")
         self.progress_title.setStyleSheet(label_style)
         self.progress_detail.setStyleSheet(label_style)
-        self.progress_bar.setStyleSheet(f"""
+        self.progress_bar.setStyleSheet(scale_qss(f"""
             QProgressBar {{
                 border: none;
                 border-radius: 4px;
@@ -547,7 +548,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-radius: 4px;
                 background: {chunk};
             }}
-        """)
+        """))
 
     def _style_command_suggestions(self):
         return
@@ -1093,7 +1094,7 @@ class CommandPanelWindow(ThemedToolWindow):
             return checkbox
         if param_type == "textarea" or getattr(param, "multiline", False):
             edit = QPlainTextEdit(value)
-            edit.setMinimumHeight(72)
+            edit.setMinimumHeight(sp(72))
             if getattr(param, "placeholder", ""):
                 edit.setPlaceholderText(str(param.placeholder))
             if getattr(param, "help", ""):
@@ -1103,7 +1104,7 @@ class CommandPanelWindow(ThemedToolWindow):
             row = QWidget()
             layout = QHBoxLayout(row)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(6)
+            layout.setSpacing(sp(6))
             edit = QLineEdit(value)
             edit.setCursor(Qt.IBeamCursor)
             edit.setProperty("param_editor", True)
@@ -1406,7 +1407,7 @@ class CommandPanelWindow(ThemedToolWindow):
             hover = "rgba(0,0,0,0.06)"
             pressed = "rgba(0,0,0,0.10)"
             disabled = "rgba(60,60,67,120)"
-        compact_style = (
+        compact_style = scale_qss(
             "QPushButton{background:transparent;border:none;padding:4px 10px;margin:0px;"
             f"border-radius:6px;color:{text};font-size:11px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
@@ -1415,8 +1416,8 @@ class CommandPanelWindow(ThemedToolWindow):
             f"QPushButton:disabled{{color:{disabled};}}"
         )
         try:
-            menu._layout.setContentsMargins(6, 6, 6, 6)
-            menu._layout.setSpacing(2)
+            menu._layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
+            menu._layout.setSpacing(sp(2))
             menu._btn_style_dark = compact_style
             menu._btn_style_light = compact_style
         except Exception as exc:
@@ -1424,7 +1425,7 @@ class CommandPanelWindow(ThemedToolWindow):
 
     def _history_menu_width(self) -> int:
         anchor = getattr(self, "command_input_group", self.command_input)
-        return max(220, int(anchor.width()))
+        return max(sp(220), int(anchor.width()))
 
     @staticmethod
     def _history_menu_label(item) -> str:
@@ -1526,9 +1527,9 @@ class CommandPanelWindow(ThemedToolWindow):
         self._show_widget("text")
         payload = result.payload if isinstance(result.payload, dict) else {}
         font_family = "Consolas" if display_type == "log" or payload.get("monospace") else "Microsoft YaHei UI"
-        font = QFont(font_family, 9)
+        font = QFont(font_family, font_px(9))
         if not font.exactMatch() and font_family == "Consolas":
-            font = QFont("Courier New", 9)
+            font = QFont("Courier New", font_px(9))
         self.text.setFont(font)
         self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         self.text.setWordWrapMode(QTextOption.WrapAnywhere)
@@ -1608,7 +1609,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.list_widget.clear()
         fm = self.list_widget.fontMetrics()
         line_height = fm.height()
-        vertical_padding = 17  # 8px padding top + 8px padding bottom + 1px border
+        vertical_padding = sp(17)  # 8px padding top + 8px padding bottom + 1px border
         for item in items:
             if isinstance(item, dict):
                 title = str(item.get("title") or item.get("name") or "")
@@ -1657,7 +1658,7 @@ class CommandPanelWindow(ThemedToolWindow):
             self._show_widget("qr")
             pixmap = QPixmap(str(image_path))
             if not pixmap.isNull():
-                self.qr_label.setPixmap(pixmap.scaled(QSize(220, 220), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.qr_label.setPixmap(pixmap.scaled(QSize(sp(220), sp(220)), Qt.KeepAspectRatio, Qt.SmoothTransformation))
                 self.qr_label.setText("")
                 self._rendered_text = message
                 return
@@ -1754,7 +1755,7 @@ class CommandPanelWindow(ThemedToolWindow):
             bg, hover = danger_bg, danger_hover
         else:
             bg, hover = primary_bg, primary_hover
-        button.setStyleSheet(f"""
+        button.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 10px;
@@ -1777,7 +1778,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 background: transparent;
                 border: 1px solid rgba(128, 128, 128, 0.22);
             }}
-        """)
+        """))
 
     def _show_more_actions(self):
         actions = sorted(
@@ -1950,7 +1951,7 @@ class CommandPanelWindow(ThemedToolWindow):
             width, height = COMMAND_PANEL_SIZE_PRESETS.get(size_key, COMMAND_PANEL_SIZE_PRESETS["medium"])
             self.setMinimumSize(QSize(0, 0))
             self.setMaximumSize(QSize(16777215, 16777215))
-            self.setFixedSize(width, height)
+            self.setFixedSize(sp(width), sp(height))
             return
 
         small_w, small_h = COMMAND_PANEL_SIZE_PRESETS["small"]
@@ -1958,15 +1959,15 @@ class CommandPanelWindow(ThemedToolWindow):
         text = self.text.toPlainText() if hasattr(self, "text") else ""
         line_count = max(1, len(text.splitlines()))
         longest = max([len(line) for line in text.splitlines()] or [0])
-        width = min(max_w, max(small_w, min(760, 300 + longest * 7)))
-        height = min(max_h, max(small_h, min(820, 260 + line_count * 18)))
-        self.setMinimumSize(small_w, small_h)
+        width = min(max_w, max(sp(small_w), min(sp(760), sp(300) + longest * sp(7))))
+        height = min(max_h, max(sp(small_h), min(sp(820), sp(260) + line_count * sp(18))))
+        self.setMinimumSize(sp(small_w), sp(small_h))
         self.setMaximumSize(max_w, max_h)
         self.resize(width, height)
 
     def _screen_max_size(self) -> tuple[int, int]:
         screen = self.screen() or QApplication.primaryScreen()
         if screen is None:
-            return 900, 700
+            return sp(900), sp(700)
         geo = screen.availableGeometry()
-        return max(360, int(geo.width() * 0.8)), max(420, int(geo.height() * 0.8))
+        return max(sp(360), int(geo.width() * 0.8)), max(sp(420), int(geo.height() * 0.8))

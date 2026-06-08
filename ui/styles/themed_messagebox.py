@@ -28,6 +28,8 @@ from qt_compat import (
 )
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
+from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
 from .style import get_dialog_stylesheet
@@ -103,13 +105,13 @@ class ThemedMessageBox(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(180)
-        self.setMaximumWidth(300)
+        self.setMinimumWidth(sp(180))
+        self.setMaximumWidth(sp(300))
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)  # 初始透明度为 0
 
-        self.corner_radius = 8
+        self.corner_radius = sp(8)
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self.result_value = 0
@@ -121,13 +123,13 @@ class ThemedMessageBox(QDialog):
 
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(sp(8))
+        layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
 
         # 标题栏（图标 + 标题）
         if title:
             title_layout = QHBoxLayout()
-            title_layout.setSpacing(8)
+            title_layout.setSpacing(sp(8))
             title_layout.setContentsMargins(0, 0, 0, 0)
 
             icon_label = QLabel()
@@ -139,7 +141,7 @@ class ThemedMessageBox(QDialog):
             title_label = QLabel(title)
             title_label.setObjectName("TitleLabel")
             title_label.setFont(get_qfont(13, 400))
-            title_label.setStyleSheet("font-size: 13px; font-weight: 400; margin-bottom: 4px;")
+            title_label.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400; margin-bottom: 4px;"))
             title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self._title_label = title_label
             title_layout.addWidget(title_label, 1)
@@ -150,13 +152,13 @@ class ThemedMessageBox(QDialog):
         text_label = QLabel(text)
         text_label.setWordWrap(True)
         text_label.setFont(get_qfont(12))
-        text_label.setStyleSheet("font-size: 12px; line-height: 1.4;")
+        text_label.setStyleSheet(scale_qss("font-size: 12px; line-height: 1.4;"))
         text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         layout.addWidget(text_label)
 
         # 按钮 - 紧凑样式
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(6)
+        btn_layout.setSpacing(sp(6))
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.addStretch()
 
@@ -164,16 +166,16 @@ class ThemedMessageBox(QDialog):
 
         if buttons & self.Yes:
             yes_btn = QPushButton(tr("是"))
-            yes_btn.setFixedHeight(22)
-            yes_btn.setMinimumWidth(52)
+            yes_btn.setFixedHeight(sp(22))
+            yes_btn.setMinimumWidth(sp(52))
             yes_btn.clicked.connect(lambda: self._set_result(self.Yes))
             btn_layout.addWidget(yes_btn)
             self.button_results[self.Yes] = yes_btn
 
         if buttons & self.No:
             no_btn = QPushButton(tr("否"))
-            no_btn.setFixedHeight(22)
-            no_btn.setMinimumWidth(52)
+            no_btn.setFixedHeight(sp(22))
+            no_btn.setMinimumWidth(sp(52))
             no_btn.clicked.connect(lambda: self._set_result(self.No))
             btn_layout.addWidget(no_btn)
             self.button_results[self.No] = no_btn
@@ -181,16 +183,16 @@ class ThemedMessageBox(QDialog):
         if buttons & self.Ok:
             ok_btn = QPushButton(tr("确定"))
             ok_btn.setDefault(True)
-            ok_btn.setFixedHeight(22)
-            ok_btn.setMinimumWidth(52)
+            ok_btn.setFixedHeight(sp(22))
+            ok_btn.setMinimumWidth(sp(52))
             ok_btn.clicked.connect(lambda: self._set_result(self.Ok))
             btn_layout.addWidget(ok_btn)
             self.button_results[self.Ok] = ok_btn
 
         if buttons & self.Cancel:
             cancel_btn = QPushButton(tr("取消"))
-            cancel_btn.setFixedHeight(22)
-            cancel_btn.setMinimumWidth(52)
+            cancel_btn.setFixedHeight(sp(22))
+            cancel_btn.setMinimumWidth(sp(52))
             cancel_btn.clicked.connect(lambda: self._set_result(self.Cancel))
             btn_layout.addWidget(cancel_btn)
             self.button_results[self.Cancel] = cancel_btn
@@ -209,9 +211,9 @@ class ThemedMessageBox(QDialog):
     @classmethod
     def configure_icon_label(cls, icon_label, icon_type, size=24):
         """Apply the themed PNG icon while preserving the original label size."""
-        icon_label.setFixedSize(size, size)
+        icon_label.setFixedSize(sp(size), sp(size))
         icon_label.setAlignment(Qt.AlignCenter)
-        icon_label.setStyleSheet("background: transparent;")
+        icon_label.setStyleSheet(scale_qss("background: transparent;"))
 
         pixmap = cls._get_icon_pixmap(icon_type, size)
         if pixmap and not pixmap.isNull():
@@ -219,7 +221,7 @@ class ThemedMessageBox(QDialog):
             return
 
         icon_label.setText(cls._get_icon_text(icon_type))
-        icon_label.setStyleSheet("font-size: 20px; margin-top: -3px;")
+        icon_label.setStyleSheet(scale_qss("font-size: 20px; margin-top: -3px;"))
 
     @classmethod
     def _get_icon_pixmap(cls, icon_type, size=24):
@@ -381,16 +383,19 @@ class ThemedMessageBox(QDialog):
 
     def _start_show_animation(self):
         """窗口出现动画 (0.2s)"""
+        stop_named_animations(self, "anim_group", "opacity_anim", "pos_anim")
+        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
         self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
+        self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
         self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
+        start_pos = self.pos() if start_opacity > 0.001 else QPoint(pos.x(), pos.y() + sp(20))
+        self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
 
@@ -494,13 +499,13 @@ class ThemedInputDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(240)
-        self.setMaximumWidth(380)
+        self.setMinimumWidth(sp(240))
+        self.setMaximumWidth(sp(380))
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setFont(get_qfont(12))
         self.setWindowOpacity(0)
 
-        self.corner_radius = 8
+        self.corner_radius = sp(8)
         self.bg_color = QColor(28, 28, 30, 180)
         self.border_color = QColor(190, 190, 197, 60)
         self.input_text = text
@@ -511,15 +516,15 @@ class ThemedInputDialog(QDialog):
 
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(sp(8))
+        layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
 
         # 标题
         if title:
             title_label = QLabel(title)
             title_label.setObjectName("TitleLabel")
             title_label.setFont(get_qfont(13, 400))
-            title_label.setStyleSheet("font-size: 13px; font-weight: 400; margin-bottom: 4px;")
+            title_label.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400; margin-bottom: 4px;"))
             title_label.setAlignment(Qt.AlignLeft)
             self._title_label = title_label
             layout.addWidget(title_label)
@@ -528,7 +533,7 @@ class ThemedInputDialog(QDialog):
         if label:
             label_widget = QLabel(label)
             label_widget.setFont(get_qfont(12))
-            label_widget.setStyleSheet("font-size: 12px; margin-bottom: 2px;")
+            label_widget.setStyleSheet(scale_qss("font-size: 12px; margin-bottom: 2px;"))
             label_widget.setAlignment(Qt.AlignLeft)
             layout.addWidget(label_widget)
 
@@ -537,7 +542,7 @@ class ThemedInputDialog(QDialog):
 
         self.line_edit = QLineEdit()
         self.line_edit.setText(text)
-        self.line_edit.setFixedHeight(28)
+        self.line_edit.setFixedHeight(sp(28))
 
         # 设置字体 - 垂直hinting平衡清晰度和重影
         self.line_edit.setFont(get_qfont(12))
@@ -547,20 +552,20 @@ class ThemedInputDialog(QDialog):
 
         # 按钮 - 紧凑样式
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(6)
+        btn_layout.setSpacing(sp(6))
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.addStretch()
 
         cancel_btn = QPushButton(tr("取消"))
-        cancel_btn.setFixedHeight(22)
-        cancel_btn.setMinimumWidth(52)
+        cancel_btn.setFixedHeight(sp(22))
+        cancel_btn.setMinimumWidth(sp(52))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
         ok_btn = QPushButton(tr("确定"))
         ok_btn.setDefault(True)
-        ok_btn.setFixedHeight(22)
-        ok_btn.setMinimumWidth(52)
+        ok_btn.setFixedHeight(sp(22))
+        ok_btn.setMinimumWidth(sp(52))
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
 
@@ -648,16 +653,19 @@ class ThemedInputDialog(QDialog):
 
     def _start_show_animation(self):
         """窗口出现动画 (0.2s)"""
+        stop_named_animations(self, "anim_group", "opacity_anim", "pos_anim")
+        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
         self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
+        self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
         self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
+        start_pos = self.pos() if start_opacity > 0.001 else QPoint(pos.x(), pos.y() + sp(20))
+        self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
 

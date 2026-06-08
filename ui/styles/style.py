@@ -22,6 +22,7 @@ from qt_compat import (
     QWidget,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -138,15 +139,15 @@ class PopupMenu(QWidget):
         self.setAttribute(QtCompat.WA_NoSystemBackground, True)
 
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(8, 8, 8, 8)
-        self._layout.setSpacing(3)
+        self._layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
+        self._layout.setSpacing(sp(3))
 
         # 子菜单项容器列表，用于展开/收起
         self._sub_items_widgets = []
         self._submenu_expanded = False
 
         # 按钮样式
-        self._btn_style_dark = (
+        self._btn_style_dark = scale_qss(
             "QPushButton{background:transparent;border:none;padding:7px 16px;margin:0px;"
             "border-radius:8px;color:rgba(255,255,255,0.85);font-size:11px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
@@ -154,7 +155,7 @@ class PopupMenu(QWidget):
             "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
             "QPushButton:disabled{color:rgba(255,255,255,110);}"
         )
-        self._btn_style_light = (
+        self._btn_style_light = scale_qss(
             "QPushButton{background:transparent;border:none;padding:7px 16px;margin:0px;"
             "border-radius:8px;color:rgba(28,28,30,0.85);font-size:11px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
@@ -163,14 +164,14 @@ class PopupMenu(QWidget):
             "QPushButton:disabled{color:rgba(60,60,67,120);}"
         )
         # 子菜单项缩进样式
-        self._sub_btn_style_dark = (
+        self._sub_btn_style_dark = scale_qss(
             "QPushButton{background:transparent;border:none;padding:7px 16px 7px 28px;margin:0px;"
             "border-radius:8px;color:rgba(255,255,255,0.75);font-size:11px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
             "QPushButton:hover{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.95);}"
             "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
         )
-        self._sub_btn_style_light = (
+        self._sub_btn_style_light = scale_qss(
             "QPushButton{background:transparent;border:none;padding:7px 16px 7px 28px;margin:0px;"
             "border-radius:8px;color:rgba(28,28,30,0.70);font-size:11px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
@@ -961,7 +962,7 @@ class Glassmorphism:
             btn_hover = "rgba(255,255,255,0.95)"
             text_color = "#1D1D1F"
 
-        return f"""
+        return scale_qss(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 4px 13px;
@@ -973,14 +974,14 @@ class Glassmorphism:
             QPushButton:hover {{ background-color: {btn_hover}; }}
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
             QPushButton:disabled {{ background-color: rgba(255,255,255,0.3); color: #C7C7CC; }}
-        """
+        """)
 
     @staticmethod
     def get_action_button_style(theme: str, is_compact: bool = False, is_delete: bool = False) -> str:
         """获取设置/配置窗口按钮的统一精细样式 (保证视觉 100% 一致)"""
         if is_delete:
             if theme == "dark":
-                return """
+                return scale_qss("""
                     QPushButton {
                         font-size: 10px;
                         padding: 2px 4px;
@@ -1002,9 +1003,9 @@ class Glassmorphism:
                         background: rgba(128,128,128,0.08);
                         border: 1px solid rgba(128,128,128,0.15);
                     }
-                """
+                """)
             else:
-                return """
+                return scale_qss("""
                     QPushButton {
                         font-size: 10px;
                         padding: 2px 4px;
@@ -1026,7 +1027,7 @@ class Glassmorphism:
                         background: rgba(128,128,128,0.08);
                         border: 1px solid rgba(128,128,128,0.15);
                     }
-                """
+                """)
 
         if theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
@@ -1042,7 +1043,7 @@ class Glassmorphism:
             text_color = "rgba(28,28,30,0.75)"
 
         if is_compact:
-            return f"""
+            return scale_qss(f"""
                 QPushButton {{
                     font-size: 10px;
                     padding: 2px 4px;
@@ -1068,9 +1069,9 @@ class Glassmorphism:
                     color: white;
                     border: 1px solid rgba(10,132,255,0.9);
                 }}
-            """
+            """)
         else:
-            return f"""
+            return scale_qss(f"""
                 QPushButton {{
                     font-size: 11px;
                     padding: 5px 12px;
@@ -1095,7 +1096,7 @@ class Glassmorphism:
                     color: white;
                     border: 1px solid rgba(10,132,255,0.9);
                 }}
-            """
+            """)
 
     @staticmethod
     def get_neumorphism_input_style(theme: str) -> str:
@@ -1455,7 +1456,7 @@ class Glassmorphism:
                 }
             """
 
-        return (
+        return scale_qss(
             base
             + glass.get_neumorphism_button_style(theme)
             + glass.get_neumorphism_input_style(theme)
@@ -1472,7 +1473,7 @@ def get_menu_stylesheet(theme: str) -> str:
     selection_text = Colors.get_selection_text(theme)
     """获取菜单样式表（用于 QMenu）— 半透明背景配合模糊效果"""
     if theme == "dark":
-        return """
+        css = """
             QMenu {
                 background-color: rgba(30, 30, 30, 120);
                 border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1500,7 +1501,7 @@ def get_menu_stylesheet(theme: str) -> str:
             }
         """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
     else:
-        return """
+        css = """
             QMenu {
                 background-color: rgba(255, 255, 255, 120);
                 border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1527,6 +1528,7 @@ def get_menu_stylesheet(theme: str) -> str:
                 margin: 6px 10px;
             }
         """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+    return scale_qss(css)
 
 
 def get_dialog_stylesheet(theme: str) -> str:
@@ -1600,7 +1602,7 @@ def get_dialog_stylesheet(theme: str) -> str:
         }}
     """
 
-    return (
+    return scale_qss(
         base
         + style.get_button_style(theme)
         + style.get_input_style(theme)
@@ -1613,4 +1615,4 @@ def get_dialog_stylesheet(theme: str) -> str:
 
 def get_button_stylesheet(theme: str) -> str:
     """获取按钮样式表"""
-    return StyleSheet.get_button_style(theme)
+    return scale_qss(StyleSheet.get_button_style(theme))

@@ -469,9 +469,54 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
             "plugins_loaded": len(getattr(plugin_manager, "_plugins", {})),
         }
 
+    def check_network_runtime():
+        import hashlib
+        import ssl
+
+        import core.shortcut_url_exec as url_exec
+        from core.shortcut_url_exec import UrlExecutionMixin
+
+        class FakeResponse:
+            def read(self, size=-1):
+                return b""
+
+            def close(self):
+                pass
+
+        original_safe_urlopen = url_exec.safe_urlopen
+        original_perf_counter = url_exec.time.perf_counter
+        ticks = iter([10.0, 10.123])
+
+        def fake_safe_urlopen(request, timeout=0):
+            target = getattr(request, "full_url", "")
+            if not str(target).startswith("https://"):
+                raise RuntimeError(f"unexpected URL latency target: {target}")
+            return FakeResponse()
+
+        try:
+            ssl_context = ssl.create_default_context()
+            digest = hashlib.sha256(b"quicklauncher-smoke").hexdigest()
+            url_exec.safe_urlopen = fake_safe_urlopen
+            url_exec.time.perf_counter = lambda: next(ticks)
+            latency = UrlExecutionMixin.test_url_latency("https://example.com")
+        finally:
+            url_exec.safe_urlopen = original_safe_urlopen
+            url_exec.time.perf_counter = original_perf_counter
+
+        if not latency.get("success") or latency.get("latency_ms") != 123:
+            raise RuntimeError(f"URL latency probe failed: {latency}")
+
+        return {
+            "openssl": ssl.OPENSSL_VERSION,
+            "verify_mode": int(ssl_context.verify_mode),
+            "hash_prefix": digest[:12],
+            "url_latency_ms": latency["latency_ms"],
+        }
+
     for name, callback in (
         ("version", check_version),
         ("runtime_files", check_runtime_files),
+        ("network_runtime", check_network_runtime),
         ("qt_application", check_qt_application),
         ("core_services", check_core_services),
     ):

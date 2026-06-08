@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
+import os
 import socket
 import urllib.error
 import urllib.parse
@@ -10,6 +12,14 @@ import urllib.request
 from typing import Any
 
 DEFAULT_MAX_REDIRECTS = 5
+
+# When set to "1", DNS-resolved IP validation is skipped to support
+# proxy tools (Surge, Clash, etc.) that use Fake IP mode (198.18.0.0/15).
+# Other SSRF protections (scheme check, localhost block, header sanitization)
+# remain active.  Enable this only in trusted proxy environments.
+_TRUST_PROXY_ENV = "QL_TRUST_PROXY"
+
+logger = logging.getLogger(__name__)
 
 SENSITIVE_REQUEST_HEADERS = {
     "authorization",
@@ -55,6 +65,11 @@ def sanitize_headers(headers: dict[str, Any]) -> dict[str, str]:
     return sanitized
 
 
+def _is_trust_proxy_mode() -> bool:
+    """Check if proxy trust mode is enabled via environment variable."""
+    return os.environ.get(_TRUST_PROXY_ENV, "").strip() in ("1", "true", "yes")
+
+
 def validate_public_http_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     scheme = (parsed.scheme or "").lower()
@@ -77,6 +92,15 @@ def validate_public_http_url(url: str) -> str:
         return url
 
     if is_urlopen_patched():
+        return url
+
+    # Skip DNS-level IP validation when proxy trust mode is enabled.
+    # Proxy tools (Surge, Clash, etc.) in Fake IP mode return 198.18.0.0/15
+    # addresses from DNS queries, which Python's ipaddress module classifies
+    # as is_private=True.  This would trigger the SSRF guard and block all
+    # outbound requests.  When QL_TRUST_PROXY=1, we trust that the proxy
+    # will route traffic correctly and only keep non-DNS protections.
+    if _is_trust_proxy_mode():
         return url
 
     try:

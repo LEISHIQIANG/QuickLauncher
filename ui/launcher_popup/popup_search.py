@@ -24,6 +24,7 @@ from qt_compat import (
 )
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
 from ui.utils.window_effect import is_win10
+from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ class PopupSearchMixin:
         return self._clamp_search_pos(getattr(self, "search_cursor_pos", 0))
 
     def _search_bar_full_height(self) -> int:
-        return 34
+        return sp(34)
 
     def _search_text_prefix(self) -> str:
         return "搜索: " if (getattr(self, "search_query", "") or getattr(self, "_search_preedit_text", "")) else "搜索"
@@ -144,7 +145,7 @@ class PopupSearchMixin:
     def _search_font(self) -> QFont:
         base_font = self.__dict__.get("_label_font")
         font = QFont(base_font) if base_font is not None else QFont()
-        font.setPixelSize(max(10, font.pixelSize() + 2))
+        font.setPixelSize(font_px(max(10, font.pixelSize() + sp(2))))
         return font
 
     def _search_metrics(self) -> QFontMetrics:
@@ -152,7 +153,7 @@ class PopupSearchMixin:
 
     def _search_text_width(self, value: str) -> int:
         if QApplication.instance() is None:
-            return sum(14 if ord(ch) > 127 else 7 for ch in (value or ""))
+            return sum(sp(14) if ord(ch) > 127 else sp(7) for ch in (value or ""))
         metrics = self._search_metrics()
         if hasattr(metrics, "horizontalAdvance"):
             return metrics.horizontalAdvance(value)
@@ -162,10 +163,10 @@ class PopupSearchMixin:
         full_h = self._search_bar_full_height()
         x = self.padding
         w = self.width() - self.padding * 2
-        return QRectF(x, 4, w, max(6, full_h - 8))
+        return QRectF(x, sp(4), w, max(sp(6), full_h - sp(8)))
 
     def _search_text_rect(self) -> QRectF:
-        return self._search_bar_rect().adjusted(9, 0, -9, 0)
+        return self._search_bar_rect().adjusted(sp(9), 0, -sp(9), 0)
 
     def _search_bar_contains(self, pos: QPoint) -> bool:
         try:
@@ -190,7 +191,7 @@ class PopupSearchMixin:
         preedit = getattr(self, "_search_preedit_text", "") or ""
         cursor_x = self._search_text_width(prefix + query[:cursor] + preedit)
         scroll = max(0, int(self.__dict__.get("_search_scroll_x", 0) or 0))
-        margin = 8
+        margin = sp(8)
         if cursor_x - scroll > visible_w - margin:
             scroll = cursor_x - visible_w + margin
         elif cursor_x - scroll < margin:
@@ -210,8 +211,8 @@ class PopupSearchMixin:
             + self._search_text_width(prefix + query[:cursor] + preedit)
             - int(self.__dict__.get("_search_scroll_x", 0) or 0)
         )
-        y = int(text_rect.top() + 7)
-        return QRect(x, y, 1, max(12, int(text_rect.height() - 14)))
+        y = int(text_rect.top() + sp(7))
+        return QRect(x, y, sp(1), max(sp(12), int(text_rect.height() - sp(14))))
 
     def _search_pos_from_point(self, pos: QPoint) -> int:
         text_rect = self._search_text_rect()
@@ -682,22 +683,22 @@ class PopupSearchMixin:
 
     def _current_search_bar_height(self) -> int:
         """返回搜索框高度 (常量 34)"""
-        return 34
+        return sp(34)
 
     def _search_visible_height(self) -> int:
         """返回当前动画进度下的搜索框可见高度"""
-        return int(self._search_reveal_progress * 34)
+        return int(self._search_reveal_progress * sp(34))
 
     def _body_y_offset(self) -> int:
         """返回由于搜索框显示而导致主体区域下移的Y偏移量"""
         if not hasattr(self, "_search_reveal_progress"):
             return 0
-        return int(self._search_reveal_progress * 34)
+        return int(self._search_reveal_progress * sp(34))
 
     def _search_visible_top_inset(self) -> int:
         """返回搜索框渲染所需的顶部剪切偏移 (0 代表完全可见, 34 代表完全隐藏)"""
-        progress_px = int(self._search_reveal_progress * 34)
-        return 34 - progress_px
+        progress_px = int(self._search_reveal_progress * sp(34))
+        return sp(34) - progress_px
 
     def _background_top_inset(self) -> int:
         """Return the outer background inset used only during search reveal."""
@@ -724,7 +725,7 @@ class PopupSearchMixin:
 
     def _search_animation_update_rect(self) -> QRect:
         """返回用于重绘搜索栏区域的 QRect"""
-        return QRect(0, 0, self.width(), 34 + self._get_paint_corner_radius() + 2)
+        return QRect(0, 0, self.width(), sp(34) + self._get_paint_corner_radius() + sp(2))
 
     def _remember_search_body_anchor(self):
         """记录弹窗主体的基准 Y 坐标 (无搜索状态时的窗口顶部 Y)"""
@@ -740,10 +741,6 @@ class PopupSearchMixin:
     def _set_fixed_geometry_atomically(self, left: int, top: int, width: int, height: int):
         """原子级设置窗口尺寸与位置，减少透明窗口重绘闪烁"""
         self.setGeometry(left, top, width, height)
-        try:
-            self._update_window_effect()
-        except Exception as exc:
-            logger.debug("更新窗口特效: %s", exc, exc_info=True)
 
     def _apply_search_geometry(
         self, skip_effect_update=False, repaint=True, restore_updates=True, progress_override=None
@@ -756,7 +753,7 @@ class PopupSearchMixin:
         w = geom.width()
 
         progress = self._search_reveal_progress if progress_override is None else float(progress_override)
-        y_offset = int(progress * 34)
+        y_offset = int(progress * sp(34))
 
         if hasattr(self, "_calculate_fixed_size"):
             calc_w, calc_h = self._calculate_fixed_size(y_offset_override=y_offset)
@@ -796,29 +793,40 @@ class PopupSearchMixin:
                     except Exception as exc:
                         logger.debug("更新窗口特效: %s", exc, exc_info=True)
 
-                # 启用更新并重绘
-                if restore_updates:
-                    self.setUpdatesEnabled(True)
-                    if repaint:
-                        self.repaint()
             finally:
+                if restore_updates:
+                    try:
+                        self.setUpdatesEnabled(True)
+                        if repaint:
+                            self.update()
+                    except Exception as exc:
+                        logger.debug("恢复搜索动画更新状态: %s", exc, exc_info=True)
                 self._geometry_adjusting = False
 
     def _apply_search_mask(self, force: bool = False):
         """采用遮罩掩码裁剪顶部搜索区域"""
         if is_win10():
-            self.clearMask()
+            if force or not self.__dict__.get("_search_mask_cleared", False):
+                self.clearMask()
+                self._search_mask_cleared = True
+                self._search_mask_cache_key = None
             return
 
         if not self._is_search_layout_visible() and not force:
             logger.debug(f"[SEARCH_MASK] 清除搜索遮罩: window={self.width()}x{self.height()}")
-            self.clearMask()
+            if force or not self.__dict__.get("_search_mask_cleared", False):
+                self.clearMask()
+                self._search_mask_cleared = True
+                self._search_mask_cache_key = None
             return
 
         inset = self._search_visible_top_inset()
         w = self.width()
         h = self.height()
         r = self._get_paint_corner_radius()
+        cache_key = (int(w), int(h), int(inset), int(r))
+        if not force and self.__dict__.get("_search_mask_cache_key") == cache_key:
+            return
 
         logger.debug(
             f"[SEARCH_MASK] 应用搜索遮罩: window={w}x{h}, inset={inset}, visible_y={inset}, visible_h={h - inset}, radius={r}"
@@ -841,6 +849,8 @@ class PopupSearchMixin:
         painter.end()
 
         self.setMask(mask)
+        self._search_mask_cleared = False
+        self._search_mask_cache_key = cache_key
         logger.debug("[SEARCH_MASK] 遮罩已应用")
 
     # ── Search reveal animation ──────────────────────────────────────
@@ -860,6 +870,11 @@ class PopupSearchMixin:
 
         if active:
             self._search_hide_geometry_pending = False
+            try:
+                if self._search_anim_timer.isActive():
+                    self._search_anim_timer.stop()
+            except Exception as exc:
+                logger.debug("停止搜索展开动画定时器: %s", exc, exc_info=True)
             self._search_reveal_progress = 1.0
             self._search_anim_from_progress = 1.0
             self._apply_search_geometry(repaint=False)

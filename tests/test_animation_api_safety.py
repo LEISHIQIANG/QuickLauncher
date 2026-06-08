@@ -1,6 +1,7 @@
 """Animation API safety and compatibility tests to prevent AttributeError and state-checking bugs."""
 
 import ast
+import inspect
 import os
 
 import pytest
@@ -99,6 +100,18 @@ def test_codebase_for_isactive_animation_vulnerabilities():
                             )
 
     assert not violations, "Found animation isActive vulnerabilities:\n" + "\n".join(violations)
+
+
+def test_shortcut_icon_loader_does_not_shadow_qthread_finished():
+    from ui.config_window.shortcut_dialog import ShortcutDialog, _IconLoadThread
+
+    assert "finished" not in _IconLoadThread.__dict__
+    assert "icon_loaded" in _IconLoadThread.__dict__
+
+    update_source = inspect.getsource(ShortcutDialog._update_icon_preview)
+    done_source = inspect.getsource(ShortcutDialog.done)
+    assert 'disconnect_thread_signals=("icon_loaded",)' in update_source
+    assert 'disconnect_thread_signals=("icon_loaded",)' in done_source
 
 
 def test_wobbly_coffee_cup_lifecycle_safety(qapp):

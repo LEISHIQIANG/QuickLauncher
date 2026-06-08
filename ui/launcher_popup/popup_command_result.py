@@ -27,6 +27,7 @@ from qt_compat import (
 )
 from ui.styles.style import PopupMenu
 from ui.utils.safe_file_dialog import get_save_file_name
+from ui.utils.ui_scale import sp, spf, font_px, scale_qss
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +95,10 @@ class CompactResultPopupMenu(PopupMenu):
     """Small PopupMenu variant sized for the command result panel."""
 
     def __init__(self, theme: str = "dark", parent=None):
-        super().__init__(theme=theme, radius=8, parent=parent)
-        self._layout.setContentsMargins(6, 6, 6, 6)
-        self._layout.setSpacing(2)
-        self._btn_style_dark = (
+        super().__init__(theme=theme, radius=sp(8), parent=parent)
+        self._layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
+        self._layout.setSpacing(sp(2))
+        self._btn_style_dark = scale_qss(
             "QPushButton{background:transparent;border:none;padding:5px 12px;margin:0px;"
             "border-radius:6px;color:rgba(255,255,255,0.86);font-size:10px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
@@ -105,7 +106,7 @@ class CompactResultPopupMenu(PopupMenu):
             "QPushButton:pressed{background:rgba(255,255,255,0.17);}"
             "QPushButton:disabled{color:rgba(255,255,255,95);}"
         )
-        self._btn_style_light = (
+        self._btn_style_light = scale_qss(
             "QPushButton{background:transparent;border:none;padding:5px 12px;margin:0px;"
             "border-radius:6px;color:rgba(28,28,30,0.86);font-size:10px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
@@ -231,21 +232,21 @@ class PopupCommandResultMixin:
         card_w = card_rect.width()
         card_h = card_rect.height()
 
-        table_top = card_y + 16
+        table_top = card_y + sp(16)
         if result.display_type == "table":
             rows = result.payload.get("rows", [])
             if rows:
-                row_h = 22
-                table_top += min(len(rows), 6) * row_h + 8
+                row_h = sp(22)
+                table_top += min(len(rows), 6) * row_h + sp(8)
 
         msg_y = table_top
         # Always reserve space for bottom button area (since Close button is always present)
-        btn_h = _ACTION_BTN_H + 8
-        msg_max_h = card_h - (msg_y - card_y) - btn_h - 6
-        if msg_max_h < 30:
-            msg_max_h = 60
+        btn_h = sp(_ACTION_BTN_H) + sp(8)
+        msg_max_h = card_h - (msg_y - card_y) - btn_h - sp(6)
+        if msg_max_h < sp(30):
+            msg_max_h = sp(60)
 
-        padding_left = 6
+        padding_left = sp(6)
         padding_right = 0
 
         msg_rect = QRect(card_x + padding_left, msg_y, card_w - padding_left - padding_right, msg_max_h)
@@ -263,7 +264,7 @@ class PopupCommandResultMixin:
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             _te_font = QFont(font_family)
-            _te_font.setPixelSize(12)
+            _te_font.setPixelSize(font_px(12))
             te.setFont(_te_font)
             te.setStyleSheet(
                 f"QTextEdit {{"
@@ -282,7 +283,7 @@ class PopupCommandResultMixin:
                 te.document().setDocumentMargin(0)
                 fmt = te.document().rootFrame().frameFormat()
                 fmt.setLeftMargin(0)
-                fmt.setRightMargin(12)
+                fmt.setRightMargin(sp(12))
                 fmt.setTopMargin(0)
                 fmt.setBottomMargin(0)
                 te.document().rootFrame().setFrameFormat(fmt)
@@ -290,7 +291,7 @@ class PopupCommandResultMixin:
                 logger.debug("设置文档框架格式失败: %s", exc, exc_info=True)
 
             # Apply styling directly to the vertical scrollbar child widget for bulletproof styling propagation
-            te.verticalScrollBar().setStyleSheet(
+            te.verticalScrollBar().setStyleSheet(scale_qss(
                 f"QScrollBar:vertical {{"
                 f"  border: none;"
                 f"  background: transparent;"
@@ -310,7 +311,7 @@ class PopupCommandResultMixin:
                 f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{"
                 f"  background: none;"
                 f"}}"
-            )
+            ))
         except Exception as exc:
             logger.debug("设置滚动条样式失败: %s", exc, exc_info=True)
 
@@ -423,13 +424,13 @@ class PopupCommandResultMixin:
         """Compute the card bounding rect for hit-testing."""
         if self._command_result is None:
             return QRect()
-        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else 38
-        y_bottom = getattr(self, "dock_y", self.height() - 6)
+        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
+        y_bottom = getattr(self, "dock_y", self.height() - sp(6))
         panel_h = y_bottom - y_top
-        card_x = _RESULT_PAD
-        card_y = y_top + 8
-        card_w = self.width() - _RESULT_PAD * 2
-        card_h = panel_h - 16
+        card_x = sp(_RESULT_PAD)
+        card_y = y_top + sp(8)
+        card_w = self.width() - sp(_RESULT_PAD) * 2
+        card_h = panel_h - sp(16)
         return QRect(card_x, card_y, card_w, card_h)
 
     def _close_button_rect(self):
@@ -440,13 +441,13 @@ class PopupCommandResultMixin:
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family)
-        font.setPixelSize(11)
+        font.setPixelSize(font_px(11))
         from qt_compat import QFontMetrics
 
         fm = QFontMetrics(font)
         text_w = fm.horizontalAdvance("关闭") if hasattr(fm, "horizontalAdvance") else fm.width("关闭")
-        close_w = max(40, text_w + 12)
-        return QRect(card_rect.right() - 6 - close_w, card_rect.bottom() - _ACTION_BTN_H - 6, close_w, _ACTION_BTN_H)
+        close_w = max(sp(40), text_w + sp(12))
+        return QRect(card_rect.right() - sp(6) - close_w, card_rect.bottom() - sp(_ACTION_BTN_H) - sp(6), close_w, sp(_ACTION_BTN_H))
 
     def _action_button_rects(self):
         """Return list of (QRect, action_index) for each action button."""
@@ -457,19 +458,19 @@ class PopupCommandResultMixin:
         if card_rect.isNull():
             return []
 
-        btn_y = card_rect.bottom() - _ACTION_BTN_H - 6
+        btn_y = card_rect.bottom() - sp(_ACTION_BTN_H) - sp(6)
         rects = []
 
         # Get font metrics to calculate dynamic button width
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family)
-        font.setPixelSize(11)
+        font.setPixelSize(font_px(11))
         from qt_compat import QFontMetrics
 
         fm = QFontMetrics(font)
 
-        current_x = card_rect.left() + 6
+        current_x = card_rect.left() + sp(6)
         for i, action in enumerate(result.actions[:MAX_COMMAND_RESULT_ACTIONS]):
             label = action.label or action.type
             if label == "copy":
@@ -488,9 +489,9 @@ class PopupCommandResultMixin:
                 label = "创建快捷方式"
 
             text_w = fm.horizontalAdvance(label) if hasattr(fm, "horizontalAdvance") else fm.width(label)
-            btn_w = max(40, text_w + 12)
-            rects.append((QRect(current_x, btn_y, btn_w, _ACTION_BTN_H), i))
-            current_x += btn_w + _ACTION_BTN_GAP
+            btn_w = max(sp(40), text_w + sp(12))
+            rects.append((QRect(current_x, btn_y, btn_w, sp(_ACTION_BTN_H)), i))
+            current_x += btn_w + sp(_ACTION_BTN_GAP)
 
         return rects
 
@@ -657,8 +658,8 @@ class PopupCommandResultMixin:
             return
 
         w = self.width()
-        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else 38
-        y_bottom = getattr(self, "dock_y", self.height() - 6)
+        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
+        y_bottom = getattr(self, "dock_y", self.height() - sp(6))
         panel_h = y_bottom - y_top
 
         card_rect = self._result_card_rect()
@@ -684,7 +685,7 @@ class PopupCommandResultMixin:
             QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 60 if is_dark else 40), 1
         )
         painter.setPen(border_pen)
-        painter.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), _CARD_RADIUS, _CARD_RADIUS)
+        painter.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), sp(_CARD_RADIUS), sp(_CARD_RADIUS))
 
         # Color swatch (payload.color_hex)
         color_hex = result.payload.get("color_hex", "")
@@ -692,43 +693,43 @@ class PopupCommandResultMixin:
             try:
                 swatch_color = QColor(color_hex)
                 if swatch_color.isValid():
-                    swatch_rect = QRect(card_x + 16, card_y + 16, 32, 32)
+                    swatch_rect = QRect(card_x + sp(16), card_y + sp(16), sp(32), sp(32))
                     painter.setBrush(swatch_color)
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(QRectF(swatch_rect), 6, 6)
+                    painter.drawRoundedRect(QRectF(swatch_rect), sp(6), sp(6))
             except Exception as exc:
                 logger.debug("绘制颜色色块失败: %s", exc, exc_info=True)
 
         # Table display
-        table_top = card_y + 16
+        table_top = card_y + sp(16)
         if result.display_type == "table":
             rows = result.payload.get("rows", [])
             if rows:
                 _tbl_font = QFont("Segoe UI")
-                _tbl_font.setPixelSize(13)
+                _tbl_font.setPixelSize(font_px(13))
                 painter.setFont(_tbl_font)
                 painter.setPen(text_color)
-                row_h = 22
-                col_x = card_x + 56
+                row_h = sp(22)
+                col_x = card_x + sp(56)
                 for ri, row in enumerate(rows[:6]):
                     cells = row if isinstance(row, list) else [str(row)]
                     for ci, cell in enumerate(cells):
                         cell_text = str(cell)
                         painter.drawText(
-                            QRect(col_x + ci * 120, table_top + ri * row_h, 120, row_h),
+                            QRect(col_x + ci * sp(120), table_top + ri * row_h, sp(120), row_h),
                             Qt.AlignLeft | Qt.AlignVCenter,
                             cell_text,
                         )
-                table_top += min(len(rows), 6) * row_h + 8
+                table_top += min(len(rows), 6) * row_h + sp(8)
 
         # Message text Y position and layout
         msg_y = table_top
-        btn_h = _ACTION_BTN_H + 8
+        btn_h = sp(_ACTION_BTN_H) + sp(8)
 
         # Calculate dynamic maximum height inside our generous fixed container
-        msg_max_h = card_h - (msg_y - card_y) - btn_h - 6
-        if msg_max_h < 30:
-            msg_max_h = 60  # fallback to standard size if layout squeezed
+        msg_max_h = card_h - (msg_y - card_y) - btn_h - sp(6)
+        if msg_max_h < sp(30):
+            msg_max_h = sp(60)  # fallback to standard size if layout squeezed
 
         # Message text fallback (e.g. for mock tests where QTextEdit cannot be instantiated)
         te = self._ensure_text_edit()
@@ -737,13 +738,13 @@ class PopupCommandResultMixin:
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             _msg_font = QFont(font_family)
-            _msg_font.setPixelSize(13)
+            _msg_font.setPixelSize(font_px(13))
             painter.setFont(_msg_font)
             painter.setPen(text_color)
             msg = result.message or result.error or "完成"
 
-            _CARD_PADDING_LEFT = 6
-            _CARD_PADDING_RIGHT = 6
+            _CARD_PADDING_LEFT = sp(6)
+            _CARD_PADDING_RIGHT = sp(6)
 
             msg_rect = QRect(
                 card_x + _CARD_PADDING_LEFT, msg_y, card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT, msg_max_h
@@ -752,20 +753,20 @@ class PopupCommandResultMixin:
 
         # Progress bar (display_type == "progress" or is_async)
         if result.is_async and result.progress > 0:
-            bar_y = msg_y + 40
-            bar_h = 6
-            _CARD_PADDING_LEFT = 8
-            _CARD_PADDING_RIGHT = 8
+            bar_y = msg_y + sp(40)
+            bar_h = sp(6)
+            _CARD_PADDING_LEFT = sp(8)
+            _CARD_PADDING_RIGHT = sp(8)
             bar_w = card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT
             bar_x = card_x + _CARD_PADDING_LEFT
             # Track background
             painter.setBrush(QColor(255, 255, 255, 20 if is_dark else 40))
-            painter.drawRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), 3, 3)
+            painter.drawRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), sp(3), sp(3))
             # Fill
             fill = int(bar_w * min(result.progress, 1.0))
-            if fill > 4:
+            if fill > sp(4):
                 painter.setBrush(QColor(accent_color))
-                painter.drawRoundedRect(QRectF(bar_x, bar_y, fill, bar_h), 3, 3)
+                painter.drawRoundedRect(QRectF(bar_x, bar_y, fill, bar_h), sp(3), sp(3))
 
         # QR text (painted directly since QTextEdit is hidden for QR mode)
         if result.display_type == "qr":
@@ -773,11 +774,11 @@ class PopupCommandResultMixin:
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             _qr_font = QFont(font_family)
-            _qr_font.setPixelSize(13)
+            _qr_font.setPixelSize(font_px(13))
             painter.setFont(_qr_font)
             painter.setPen(text_color)
-            _CARD_PADDING_LEFT = 6
-            _CARD_PADDING_RIGHT = 6
+            _CARD_PADDING_LEFT = sp(6)
+            _CARD_PADDING_RIGHT = sp(6)
             qr_msg = result.message or result.error or "完成"
             qr_msg_rect = QRect(
                 card_x + _CARD_PADDING_LEFT, msg_y, card_w - _CARD_PADDING_LEFT - _CARD_PADDING_RIGHT, msg_max_h
@@ -789,7 +790,7 @@ class PopupCommandResultMixin:
             qr_path = result.payload["image_path"]
             qr_img = QImage(qr_path)
             if not qr_img.isNull():
-                qr_size = min(120, card_h - 32)
+                qr_size = min(sp(120), card_h - sp(32))
                 qr_x = card_x + (card_w - qr_size) // 2
                 qr_y = card_y + (card_h - qr_size) // 2
                 qr_scaled = qr_img.scaled(qr_size, qr_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -826,7 +827,7 @@ class PopupCommandResultMixin:
                     QColor(accent_color.red(), accent_color.green(), accent_color.blue(), border_alpha), 1
                 )
                 painter.setPen(border_pen)
-                painter.drawRoundedRect(QRectF(draw_rect), 5, 5)
+                painter.drawRoundedRect(QRectF(draw_rect), sp(5), sp(5))
 
                 # Exquisite text color and modern font selection
                 btn_text_color = QColor(255, 255, 255, 220) if is_dark else QColor(accent_color).darker(150)
@@ -838,7 +839,7 @@ class PopupCommandResultMixin:
 
                 font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
                 font = QFont(font_family)
-                font.setPixelSize(11)
+                font.setPixelSize(font_px(11))
                 painter.setFont(font)
 
                 # Friendly localizations
@@ -883,7 +884,7 @@ class PopupCommandResultMixin:
         close_border_pen = QPen(QColor(text_color.red(), text_color.green(), text_color.blue(), close_border_alpha), 1)
         close_border_pen.setStyle(Qt.SolidLine)
         painter.setPen(close_border_pen)
-        painter.drawRoundedRect(QRectF(close_draw_rect), 5, 5)
+        painter.drawRoundedRect(QRectF(close_draw_rect), sp(5), sp(5))
 
         close_text_color = QColor(text_color)
         if close_hovered or close_pressed:
@@ -893,7 +894,7 @@ class PopupCommandResultMixin:
 
         font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
         font = QFont(font_family)
-        font.setPixelSize(11)
+        font.setPixelSize(font_px(11))
         painter.setFont(font)
         painter.drawText(close_rect, Qt.AlignCenter, "关闭")
 
@@ -903,11 +904,11 @@ class PopupCommandResultMixin:
 
             font_family = "Microsoft YaHei" if os.name == "nt" else "Segoe UI"
             error_font = QFont(font_family)
-            error_font.setPixelSize(11)
+            error_font.setPixelSize(font_px(11))
             painter.setFont(error_font)
             painter.setPen(QColor("#f44336"))
             painter.drawText(
-                QRect(card_x + 8, card_y + card_h - 36 if result.actions else card_y + card_h - 18, card_w - 16, 14),
+                QRect(card_x + sp(8), card_y + card_h - sp(36) if result.actions else card_y + card_h - sp(18), card_w - sp(16), sp(14)),
                 Qt.AlignLeft,
                 result.error,
             )

@@ -10,6 +10,7 @@ from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, Q
 from ui.styles.theme_controller import resolve_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
+from ui.utils.ui_scale import sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -56,7 +57,7 @@ class BaseDialog(QDialog):
         apply_custom_window_chrome(self, kind="window", translucent=True)
         self.setWindowOpacity(0)
 
-        self.corner_radius = 8
+        self.corner_radius = sp(8)
         self.theme = ""
         self._shadow_applied = False
         self._dialog_finished = False
@@ -105,7 +106,7 @@ class BaseDialog(QDialog):
                 )
                 return
 
-            inset = 1.0 if is_win10() else 0.5
+            inset = spf(1.0) if is_win10() else spf(0.5)
 
             path = QPainterPath()
             path.addRoundedRect(
@@ -147,7 +148,7 @@ class BaseDialog(QDialog):
         target_pos = self.pos()
         # 预先移到动画起点，初始设置透明度为 0
         self.setWindowOpacity(0.0)
-        self.move(target_pos.x(), target_pos.y() + 24)
+        self.move(target_pos.x(), target_pos.y() + sp(24))
 
         super().showEvent(event)
 
@@ -214,7 +215,7 @@ class BaseDialog(QDialog):
 
         # 初始状态
         self.setWindowOpacity(0.0)
-        self.move(target_pos.x(), target_pos.y() + 24)
+        self.move(target_pos.x(), target_pos.y() + sp(24))
 
         # 动画参数
         self._anim_step = 0
@@ -250,14 +251,14 @@ class BaseDialog(QDialog):
         self.setWindowOpacity(min(1.0, progress * 1.5))
 
         target_y = self._anim_target_pos.y()
-        current_y = int(target_y + (1.0 - eased) * 24)
+        current_y = int(target_y + (1.0 - eased) * sp(24))
         self.move(self._anim_target_pos.x(), current_y)
 
     def mousePressEvent(self, event):
         """鼠标按下 - 支持拖动"""
         if event.button() == QtCompat.LeftButton:
             pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
-            if pos.y() <= 50:
+            if pos.y() <= sp(50):
                 self._drag_pos = (
                     event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
                 )

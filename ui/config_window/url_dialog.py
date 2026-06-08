@@ -27,6 +27,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.utils.safe_file_dialog import get_open_file_name
+from ui.utils.ui_scale import sp, font_px, scale_qss
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -84,7 +85,7 @@ class UrlDialog(BaseDialog):
         self._dialog_finished = False
 
         self.setWindowTitle(tr("编辑打开网址") if shortcut else tr("添加打开网址"))
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(sp(420))
         self._latency_thread = None
         self._latency_request_id = 0
         self._latency_result_state = ("muted", "未测试")
@@ -110,7 +111,7 @@ class UrlDialog(BaseDialog):
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
                 painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-                font = QFont("Segoe UI Emoji", 40)
+                font = QFont("Segoe UI Emoji", font_px(40))
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
                 painter.setPen(QColor(100, 149, 237))
@@ -128,32 +129,32 @@ class UrlDialog(BaseDialog):
 
         # 预览框样式
         if theme == "dark":
-            self.icon_preview.setStyleSheet("""
+            self.icon_preview.setStyleSheet(scale_qss("""
                 QLabel {
                     background-color: rgba(255, 255, 255, 0.1);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 10px;
                 }
-            """)
+            """))
         else:
             self.bg_color = "#f2f2f7"
             self.border_color = "rgba(0, 0, 0, 0.1)"
 
             # 预览框样式
-            self.icon_preview.setStyleSheet("""
+            self.icon_preview.setStyleSheet(scale_qss("""
                 QLabel {
                     background-color: rgba(0, 0, 0, 0.05);
                     border: 1px solid rgba(0, 0, 0, 0.05);
                     border-radius: 10px;
                 }
-            """)
+            """))
 
         # 使用与主配置窗口一致的 Glassmorphism 样式
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = base_style + f"""
+        custom_style = base_style + scale_qss(f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -171,7 +172,7 @@ class UrlDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """
+        """)
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -198,13 +199,13 @@ class UrlDialog(BaseDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
-        layout.setContentsMargins(10, 10, 10, 10)  # 特殊页边距：复杂编辑窗口保持 10px
+        layout.setSpacing(sp(6))
+        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))  # 特殊页边距：复杂编辑窗口保持 10px
 
         # 顶部标题栏
         title_layout = QHBoxLayout()
         title_label = QLabel("编辑打开网址" if self.shortcut.name else "添加打开网址")
-        title_label.setStyleSheet("font-size: 12px; font-weight: 400; color: gray;")
+        title_label.setStyleSheet(scale_qss("font-size: 12px; font-weight: 400; color: gray;"))
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         layout.addLayout(title_layout)
@@ -212,8 +213,8 @@ class UrlDialog(BaseDialog):
         # 基本信息
         basic_group = QGroupBox("基本信息")
         basic_layout = QFormLayout(basic_group)
-        basic_layout.setSpacing(6)
-        basic_layout.setContentsMargins(8, 0, 8, 8)
+        basic_layout.setSpacing(sp(6))
+        basic_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
@@ -227,20 +228,20 @@ class UrlDialog(BaseDialog):
         basic_layout.addRow(tr("网址:"), self.url_edit)
 
         latency_layout = QHBoxLayout()
-        latency_layout.setSpacing(6)
+        latency_layout.setSpacing(sp(6))
         self._latency_btn = QPushButton("测试延迟")
-        self._latency_btn.setFixedHeight(26)
+        self._latency_btn.setFixedHeight(sp(26))
         self._latency_btn.clicked.connect(self._test_url_latency)
         latency_layout.addWidget(self._latency_btn)
         self._latency_result_label = QLabel("未测试")
-        self._latency_result_label.setMinimumHeight(20)
-        self._latency_result_label.setStyleSheet("font-size: 12px; color: rgba(128, 128, 128, 0.9);")
+        self._latency_result_label.setMinimumHeight(sp(20))
+        self._latency_result_label.setStyleSheet(scale_qss("font-size: 12px; color: rgba(128, 128, 128, 0.9);"))
         latency_layout.addWidget(self._latency_result_label)
         latency_layout.addStretch()
         basic_layout.addRow(tr("延迟:"), latency_layout)
 
         var_layout = QHBoxLayout()
-        var_layout.setSpacing(6)
+        var_layout.setSpacing(sp(6))
         self._url_var_buttons = []
         for text, token in (
             ("输入", "{{input}}"),
@@ -251,7 +252,7 @@ class UrlDialog(BaseDialog):
             ("公网 IP", "{{WAN_IP}}"),
         ):
             var_btn = QPushButton(text)
-            var_btn.setFixedHeight(26)
+            var_btn.setFixedHeight(sp(26))
             var_btn.clicked.connect(lambda checked=False, value=token: self._insert_url_variable(value))
             var_layout.addWidget(var_btn)
             self._url_var_buttons.append(var_btn)
@@ -262,11 +263,11 @@ class UrlDialog(BaseDialog):
 
         browser_group = QGroupBox("浏览器")
         browser_layout = QFormLayout(browser_group)
-        browser_layout.setSpacing(6)
-        browser_layout.setContentsMargins(8, 0, 8, 8)
+        browser_layout.setSpacing(sp(6))
+        browser_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
 
         browser_path_layout = QHBoxLayout()
-        browser_path_layout.setSpacing(6)
+        browser_path_layout.setSpacing(sp(6))
         self.browser_path_edit = QLineEdit()
         self.browser_path_edit.setPlaceholderText("留空使用系统默认浏览器")
         browser_path_layout.addWidget(self.browser_path_edit, 1)
@@ -288,17 +289,17 @@ class UrlDialog(BaseDialog):
         # 图标设置
         icon_group = QGroupBox("图标")
         icon_layout = QHBoxLayout(icon_group)
-        icon_layout.setSpacing(6)
-        icon_layout.setContentsMargins(6, 0, 6, 6)
+        icon_layout.setSpacing(sp(6))
+        icon_layout.setContentsMargins(sp(6), 0, sp(6), sp(6))
 
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
         # 样式在 _apply_theme 中设置
         icon_layout.addWidget(self.icon_preview)
 
         icon_path_layout = QVBoxLayout()
-        icon_path_layout.setSpacing(6)
+        icon_path_layout.setSpacing(sp(6))
 
         self.icon_path_edit = QLineEdit()
         self.icon_path_edit.setPlaceholderText("可选，自定义图标路径")
@@ -306,7 +307,7 @@ class UrlDialog(BaseDialog):
         icon_path_layout.addWidget(self.icon_path_edit)
 
         icon_btn_layout = QHBoxLayout()
-        icon_btn_layout.setSpacing(6)
+        icon_btn_layout.setSpacing(sp(6))
 
         auto_icon_btn = QPushButton("自动获取")
         auto_icon_btn.clicked.connect(self._auto_fetch_icon)
@@ -339,17 +340,17 @@ class UrlDialog(BaseDialog):
 
         # 按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        btn_layout.setSpacing(sp(8))
         btn_layout.addStretch()
 
         cancel_btn = QPushButton("取消")
-        cancel_btn.setFixedSize(80, 32)
+        cancel_btn.setFixedSize(sp(80), sp(32))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         self._cancel_btn = cancel_btn
 
         ok_btn = QPushButton("确定")
-        ok_btn.setFixedSize(80, 32)
+        ok_btn.setFixedSize(sp(80), sp(32))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
@@ -484,7 +485,7 @@ class UrlDialog(BaseDialog):
 
         self._latency_result_label.setText(display_text)
         self._latency_result_label.setStyleSheet(
-            f"font-size: 12px; color: {fg}; background-color: transparent; border: none; padding: 2px 4px;"
+            scale_qss(f"font-size: 12px; color: {fg}; background-color: transparent; border: none; padding: 2px 4px;")
         )
 
     def _normalize_latency_target(self, raw_url: str) -> tuple[str, str]:
@@ -590,7 +591,7 @@ class UrlDialog(BaseDialog):
 
         # 缩放到预览尺寸
         if pixmap and not pixmap.isNull():
-            pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
 
         self.icon_preview.setPixmap(pixmap)
 

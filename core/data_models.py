@@ -772,6 +772,9 @@ class AppSettings:
     light_acrylic: int = 30
     light_bg_alpha_filter: int = 100
 
+    # UI 全局缩放百分比 (独立于 Windows/Qt DPI)
+    ui_scale_percent: int = 100
+
     @property
     def bg_alpha_255(self) -> int:
         """将 0-100 的透明度转换为 0-255"""
@@ -861,6 +864,7 @@ class AppSettings:
             "light_temperature": self.light_temperature,
             "light_acrylic": self.light_acrylic,
             "light_bg_alpha_filter": self.light_bg_alpha_filter,
+            "ui_scale_percent": self.ui_scale_percent,
         }
 
     @classmethod

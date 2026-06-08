@@ -16,6 +16,7 @@ from qt_compat import (
     QWidget,
     pyqtProperty,
 )
+from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,7 @@ class IconFlashOverlay(QWidget):
     def _calculate_dirty_rect(self):
         dirty = QRect()
         for x, y, pixmap, _cover in self._items:
-            rect = QRect(int(x), int(y), pixmap.width(), pixmap.height()).adjusted(-2, -2, 2, 2)
+            rect = QRect(int(x), int(y), pixmap.width(), pixmap.height()).adjusted(-sp(2), -sp(2), sp(2), sp(2))
             dirty = rect if dirty.isNull() else dirty.united(rect)
         return dirty.intersected(self.rect())
 
@@ -130,14 +131,14 @@ class IconFlashOverlay(QWidget):
         cell_h = int(getattr(launcher, "cell_h", cell_size) or cell_size)
         padding = int(getattr(launcher, "padding", 0) or 0)
         text_h = QFontMetrics(getattr(launcher, "_label_font", launcher.font())).height()
-        text_spacing = 1
+        text_spacing = sp(1)
         use_card = getattr(getattr(launcher, "settings", None), "bg_mode", "theme") == "acrylic"
 
         if 0 <= current_page < len(pages):
             items = getattr(pages[current_page], "items", []) or []
-            bottom_margin = 6
-            indicator_height = 16 if len(pages) > 1 else 0
-            indicator_spacing = 4 if len(pages) > 1 else 0
+            bottom_margin = sp(6)
+            indicator_height = sp(16) if len(pages) > 1 else 0
+            indicator_spacing = sp(4) if len(pages) > 1 else 0
             dock_height = int(getattr(launcher, "dock_height", 0) or 0)
             if not (getattr(launcher, "dock_items", None) and dock_height > 0):
                 dock_height = 0
@@ -148,7 +149,7 @@ class IconFlashOverlay(QWidget):
                 x = padding + col * cell_size
                 y = icons_bottom - (fixed_rows - row) * cell_h
                 if use_card:
-                    card_pad = 2
+                    card_pad = sp(2)
                     card_size = icon_size + card_pad * 2
                     total_h = card_size + text_spacing + text_h
                     card_y = y + (cell_h - total_h) // 2
@@ -177,14 +178,14 @@ class IconFlashOverlay(QWidget):
             )
             start_x = (launcher.width() - line_width) // 2
             dock_y = int(getattr(launcher, "dock_y", 0) or 0)
-            dock_row_stride = icon_size + 6
+            dock_row_stride = icon_size + sp(6)
             for i in range(visible_count):
                 row = i // cols
                 if row >= dock_height_mode:
                     break
                 col = i % cols
                 x = start_x + col * cell_size
-                y = dock_y + 8 + row * dock_row_stride
+                y = dock_y + sp(8) + row * dock_row_stride
                 icon_x = x + (cell_size - icon_size) // 2
                 pixmap = self._icon_pixmap(dock_items[i])
                 if pixmap is not None:

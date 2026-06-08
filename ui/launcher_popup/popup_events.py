@@ -1,6 +1,7 @@
 """Mouse, keyboard, wheel events, page switching, and auto-close for LauncherPopup."""
 
 import logging
+import time
 
 from qt_compat import (
     QApplication,
@@ -10,8 +11,15 @@ from qt_compat import (
     QtCompat,
     QTimer,
 )
+from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
+
+_WHEEL_PAGE_THRESHOLD = 1.0
+_WHEEL_BURST_RESET_SECONDS = 0.28
+_WHEEL_PAGE_MIN_INTERVAL_SECONDS = 0.105
+_WHEEL_MAX_EVENT_STEPS = 1.0
+_PIXEL_DELTA_PER_PAGE = 120.0
 
 
 class PopupEventsMixin:
@@ -51,11 +59,11 @@ class PopupEventsMixin:
                 else min(visible_count, max_cols) * self.cell_size
             )
             start_x = (self.width() - line_width) // 2
-            dock_row_stride = self.icon_size + 6
+            dock_row_stride = self.icon_size + sp(6)
 
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
-                dock_row = (pos.y() - self.dock_y - 8) // dock_row_stride
+                dock_row = (pos.y() - self.dock_y - sp(8)) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
                     idx = dock_row * max_cols + dock_col
                     if 0 <= idx < visible_count:
@@ -63,9 +71,9 @@ class PopupEventsMixin:
 
         if self.padding <= pos.x() and self.padding <= pos.y() < self.content_height:
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = 6
-            indicator_height = 16 if len(self.pages) > 1 else 0
-            indicator_spacing = 4 if len(self.pages) > 1 else 0
+            bottom_margin = sp(6)
+            indicator_height = sp(16) if len(self.pages) > 1 else 0
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
             icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
 
@@ -91,10 +99,10 @@ class PopupEventsMixin:
         if self.__dict__.get("_command_result") is None:
             return False
         # 获取结果面板区域的顶部和底部
-        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else 38
+        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
         y_bottom = self.__dict__.get("dock_y")
         if y_bottom is None:
-            y_bottom = self.height() - 6
+            y_bottom = self.height() - sp(6)
         return y_top <= pos.y() < y_bottom
 
     def _search_query_matches_result_command(self) -> bool:
@@ -175,11 +183,11 @@ class PopupEventsMixin:
                 else min(visible_count, max_cols) * self.cell_size
             )
             start_x = (self.width() - line_width) // 2
-            dock_row_stride = self.icon_size + 6  # 行间距6px
+            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
 
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
-                dock_row = (pos.y() - self.dock_y - 8) // dock_row_stride
+                dock_row = (pos.y() - self.dock_y - sp(8)) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
                     idx = dock_row * max_cols + dock_col
                     if 0 <= idx < visible_count:
@@ -189,9 +197,9 @@ class PopupEventsMixin:
             if hasattr(self, "clear_result_button_feedback"):
                 self.clear_result_button_feedback()
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = 6
-            indicator_height = 16 if len(self.pages) > 1 else 0
-            indicator_spacing = 4 if len(self.pages) > 1 else 0
+            bottom_margin = sp(6)
+            indicator_height = sp(16) if len(self.pages) > 1 else 0
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
             icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
 
@@ -387,31 +395,15 @@ class PopupEventsMixin:
                 event.accept()
                 return
 
-            import time
-
-            now = time.time()
-
-            # 计算滚动速度
-            time_delta = now - self._last_wheel_time
-            if time_delta < 0.15:  # 150ms内视为快速滚动
-                self._wheel_speed = min(2.5, self._wheel_speed + 0.3)
-            else:
-                self._wheel_speed = 1.0
-            self._last_wheel_time = now
-
-            # 更新目标页面（不重置进度）
-            direction = -1 if delta > 0 else 1
-            old_page = self.current_page
-            self.current_page = (self.current_page + direction) % len(self.pages)
-
-            if self.current_page != old_page:
-                self._target_page = self.current_page
-                self.data_manager.update_settings(last_page_index=self.current_page)
-                if not self._indicator_timer.isActive():
-                    self._indicator_timer.start()
+            direction = self._consume_wheel_page_direction(event)
+            if direction:
+                self._queue_page_switch(direction)
 
             self.hover_index = -1
-            self.update()
+            if hasattr(self, "_request_page_animation_update"):
+                self._request_page_animation_update()
+            else:
+                self.update()
             event.accept()
             return
 
@@ -436,6 +428,92 @@ class PopupEventsMixin:
             return
 
         super().wheelEvent(event)
+
+    def _normalized_page_wheel_delta(self, event) -> float:
+        """Return wheel movement in page-switch units, independent of system line settings."""
+        pixel_delta = 0
+        if hasattr(event, "pixelDelta"):
+            try:
+                point = event.pixelDelta()
+                if point is not None and not point.isNull():
+                    pixel_delta = point.y()
+            except Exception as exc:
+                logger.debug("读取滚轮 pixelDelta 失败: %s", exc, exc_info=True)
+        if pixel_delta:
+            value = float(pixel_delta) / _PIXEL_DELTA_PER_PAGE
+        else:
+            angle_delta = 0
+            try:
+                angle_delta = event.angleDelta().y()
+            except Exception as exc:
+                logger.debug("读取滚轮 angleDelta 失败: %s", exc, exc_info=True)
+            value = float(angle_delta) / 120.0
+        if value > 0:
+            return min(_WHEEL_MAX_EVENT_STEPS, value)
+        if value < 0:
+            return max(-_WHEEL_MAX_EVENT_STEPS, value)
+        return 0.0
+
+    def _consume_wheel_page_direction(self, event, now: float | None = None) -> int:
+        """Accumulate wheel input and return one controlled page step when ready."""
+        value = self._normalized_page_wheel_delta(event)
+        if abs(value) < 0.001:
+            return 0
+
+        now = time.monotonic() if now is None else float(now)
+        direction = -1 if value > 0 else 1
+        last_time = float(getattr(self, "_last_wheel_time", 0.0) or 0.0)
+        last_direction = int(getattr(self, "_last_wheel_direction", 0) or 0)
+
+        if not last_time or now - last_time > _WHEEL_BURST_RESET_SECONDS or last_direction != direction:
+            self._wheel_accumulator = 0.0
+
+        self._last_wheel_time = now
+        self._last_wheel_direction = direction
+        self._wheel_accumulator = max(
+            -_WHEEL_PAGE_THRESHOLD,
+            min(_WHEEL_PAGE_THRESHOLD, float(getattr(self, "_wheel_accumulator", 0.0) or 0.0) + value),
+        )
+
+        if abs(self._wheel_accumulator) < _WHEEL_PAGE_THRESHOLD:
+            return 0
+
+        last_commit = float(getattr(self, "_last_wheel_page_time", 0.0) or 0.0)
+        if last_commit and now - last_commit < _WHEEL_PAGE_MIN_INTERVAL_SECONDS:
+            return 0
+
+        self._last_wheel_page_time = now
+        self._wheel_accumulator = 0.0
+        return direction
+
+    def _page_animation_target_base(self) -> float:
+        target = float(getattr(self, "_target_page", getattr(self, "_page_position", self.current_page)))
+        position = float(getattr(self, "_page_position", target))
+        if not getattr(self, "_indicator_timer", None) or not self._indicator_timer.isActive():
+            return round(position)
+        return target
+
+    def _queue_page_switch(self, direction: int):
+        if len(self.pages) <= 1 or direction == 0:
+            return
+
+        old_page = self.current_page
+        self.current_page = (self.current_page + direction) % len(self.pages)
+        if self.current_page != old_page:
+            self._target_page = self._page_animation_target_base() + direction
+            self.data_manager.update_settings(last_page_index=self.current_page)
+            if not self._indicator_timer.isActive():
+                self._page_anim_last_ts = 0.0
+                self._indicator_timer.start()
+
+    def _finish_page_animation(self):
+        if not self.pages:
+            return
+        page = float(self.current_page % len(self.pages))
+        self._page_position = page
+        self._page_offset = page
+        self._target_page = page
+        self._indicator_pos = page
 
     def keyPressEvent(self, event):
         """按键事件 - 支持平滑 caret、拼音搜索、以及 slash(/) 命令"""
@@ -699,13 +777,7 @@ class PopupEventsMixin:
         if len(self.pages) <= 1:
             return
 
-        old_page = self.current_page
-        self.current_page = (self.current_page + direction) % len(self.pages)
-        if self.current_page != old_page:
-            self._target_page = self.current_page
-            self.data_manager.update_settings(last_page_index=self.current_page)
-            if not self._indicator_timer.isActive():
-                self._indicator_timer.start()
+        self._queue_page_switch(direction)
         self.hover_index = -1
         self.update()
 

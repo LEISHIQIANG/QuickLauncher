@@ -38,6 +38,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Colors, Glassmorphism, PopupMenu
+from ui.utils.ui_scale import sp, scale_qss
 
 from .base_dialog import BaseDialog
 from .chain_canvas import ChainCanvasWidget, NodePropertyPanel, canvas_from_steps, processor_library_items
@@ -83,37 +84,37 @@ class StepCardWidget(QFrame):
         self._setup_ui(step, shortcut_name, shortcut_type, icon)
 
     def _setup_ui(self, step: dict, shortcut_name: str, shortcut_type: ShortcutType, icon: QPixmap | None):
-        self.setMinimumHeight(40)
+        self.setMinimumHeight(sp(40))
         self.setCursor(QtCompat.PointingHandCursor)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 3, 6, 3)
-        layout.setSpacing(4)
+        layout.setContentsMargins(sp(6), sp(3), sp(6), sp(3))
+        layout.setSpacing(sp(4))
 
         # 序号
         num_label = QLabel(f"{self.step_index + 1}")
-        num_label.setFixedWidth(18)
+        num_label.setFixedWidth(sp(18))
         num_label.setAlignment(Qt.AlignCenter)
-        num_label.setStyleSheet(
+        num_label.setStyleSheet(scale_qss(
             "color: rgba(128,128,128,180); font-size: 11px; font-weight: 400; "
             "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-        )
+        ))
         layout.addWidget(num_label)
 
         # 快捷方式图标
         icon_label = QLabel()
-        icon_label.setFixedSize(24, 24)
+        icon_label.setFixedSize(sp(24), sp(24))
         icon_label.setAlignment(Qt.AlignCenter)
         if icon and not icon.isNull():
-            icon_label.setPixmap(icon.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            icon_label.setPixmap(icon.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))
         icon_label.setStyleSheet("background: transparent;")
         layout.addWidget(icon_label)
 
         # 名称
         display_name = shortcut_name or step.get("shortcut_id", "???")
         name_label = QLabel(display_name)
-        name_label.setStyleSheet(
+        name_label.setStyleSheet(scale_qss(
             "font-size: 13px; font-weight: 400; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-        )
+        ))
         layout.addWidget(name_label, 1)
 
         # ── 内联参数控件 ──
@@ -124,14 +125,14 @@ class StepCardWidget(QFrame):
         delay_spin.setRange(0, 60000)
         delay_spin.setValue(max(0, int(step.get("delay_ms", 0) or 0)))
         delay_spin.setSuffix("ms")
-        delay_spin.setFixedWidth(70)
+        delay_spin.setFixedWidth(sp(70))
         delay_spin.setToolTip(tr("执行前延迟"))
-        delay_spin.setStyleSheet(
+        delay_spin.setStyleSheet(scale_qss(
             "QSpinBox { font-size: 11px; font-weight: 400; "
             "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; "
             "padding: 1px 3px; border-radius: 5px; }"
             "QSpinBox::up-button, QSpinBox::down-button { width: 14px; }"
-        )
+        ))
         delay_spin.valueChanged.connect(self._on_delay_changed)
         layout.addWidget(delay_spin)
         self._delay_spin = delay_spin
@@ -183,7 +184,7 @@ class StepCardWidget(QFrame):
         tip_rule = getattr(parent, "_tip_stylesheet", "") if parent else ""
         child_rules = self._checkbox_style + tip_rule
         if selected:
-            self.setStyleSheet(
+            self.setStyleSheet(scale_qss(
                 f"StepCardWidget {{"
                 f" background-color: rgba(0, 122, 255, 0.15);"
                 f" border-left: 3px solid {c};"
@@ -191,10 +192,10 @@ class StepCardWidget(QFrame):
                 f" border-right: 1px solid rgba(0, 122, 255, 0.4);"
                 f" border-bottom: 1px solid rgba(0, 122, 255, 0.4);"
                 f" border-radius: 8px;"
-                f"}}" + child_rules
-            )
+                f"}}"
+            ) + child_rules)
         else:
-            self.setStyleSheet(
+            self.setStyleSheet(scale_qss(
                 f"StepCardWidget {{"
                 f" background-color: rgba(128, 128, 128, 0.08);"
                 f" border-left: 3px solid {c};"
@@ -205,8 +206,8 @@ class StepCardWidget(QFrame):
                 f"}}"
                 f"StepCardWidget:hover {{"
                 f" background-color: rgba(128, 128, 128, 0.15);"
-                f"}}" + child_rules
-            )
+                f"}}"
+            ) + child_rules)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -230,13 +231,13 @@ class GrasshopperGroupWidget(QWidget):
 
         # 布局：垂直紧凑
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 2)
-        layout.setSpacing(2)
+        layout.setContentsMargins(sp(6), sp(4), sp(6), sp(2))
+        layout.setSpacing(sp(2))
 
         # 2行格栅布局放置电池按钮
         self.grid_layout = QGridLayout()
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setSpacing(4)
+        self.grid_layout.setSpacing(sp(4))
         layout.addLayout(self.grid_layout)
 
         # 底部小文字标题标签
@@ -255,7 +256,7 @@ class GrasshopperGroupWidget(QWidget):
             label_color = "rgba(0, 0, 0, 130)"
             line_color = "rgba(0, 0, 0, 15)"
 
-        self.label.setStyleSheet(f"""
+        self.label.setStyleSheet(scale_qss(f"""
             QLabel {{
                 color: {label_color};
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
@@ -265,17 +266,17 @@ class GrasshopperGroupWidget(QWidget):
                 padding-top: 2px;
                 border-top: 1px solid {line_color};
             }}
-        """)
+        """))
         layout.addWidget(self.label)
 
-        self.setStyleSheet(f"""
+        self.setStyleSheet(scale_qss(f"""
             QWidget#GrasshopperGroup {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
                 border-radius: 4px;
             }}
-        """)
-        self.setFixedHeight(102)
+        """))
+        self.setFixedHeight(sp(102))
 
         self._button_count = 0
 
@@ -305,7 +306,7 @@ class ChainDialog(BaseDialog):
         self._close_anim_timer = None
 
         self.setWindowTitle(tr("编辑动作链") if shortcut else tr("新建动作链"))
-        self.setMinimumSize(760, 620)
+        self.setMinimumSize(sp(760), sp(620))
 
         self._setup_ui()
         self._apply_theme()
@@ -386,7 +387,7 @@ class ChainDialog(BaseDialog):
         eased = progress * progress
         self.setWindowOpacity(max(0.0, 1.0 - progress * 1.25))
         origin = self._close_anim_origin_pos
-        self.move(origin.x(), origin.y() + int(eased * 16))
+        self.move(origin.x(), origin.y() + int(eased * sp(16)))
 
         if progress >= 1.0:
             timer = getattr(self, "_close_anim_timer", None)
@@ -399,14 +400,14 @@ class ChainDialog(BaseDialog):
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
-        root.setSpacing(4)
-        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(sp(4))
+        root.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
 
         # 顶部标题
         self.title_label = QLabel(tr("编辑动作链") if self.shortcut.name else tr("新建动作链"))
-        self.title_label.setStyleSheet(
+        self.title_label.setStyleSheet(scale_qss(
             "font-size: 12px; font-weight: 400; color: gray; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-        )
+        ))
         root.addWidget(self.title_label)
 
         self.module_tabs = self._build_module_bar()
@@ -421,7 +422,7 @@ class ChainDialog(BaseDialog):
 
         # 节点画布两栏：画布 / 属性与结果
         body = QHBoxLayout()
-        body.setSpacing(8)
+        body.setSpacing(sp(8))
         body.addLayout(self._build_canvas_panel(), 6)
         body.addLayout(self._build_right_panel(), 2)
         root.addLayout(body, 1)
@@ -429,11 +430,11 @@ class ChainDialog(BaseDialog):
         from qt_compat import QSizePolicy
 
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        btn_row.setSpacing(sp(8))
 
         # 左侧测试运行
         ops_layout = QHBoxLayout()
-        ops_layout.setSpacing(4)
+        ops_layout.setSpacing(sp(4))
         ops_layout.setContentsMargins(0, 0, 0, 0)
         self.test_btn = QPushButton(tr("测试运行"))
         self.test_btn.clicked.connect(self._run_test)
@@ -460,7 +461,7 @@ class ChainDialog(BaseDialog):
 
     def _build_quick_add_bar(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setSpacing(6)
+        row.setSpacing(sp(6))
         row.setContentsMargins(0, 0, 0, 0)
         label = QLabel(tr("搜索添加:"))
         self.quick_add_edit = QLineEdit()
@@ -468,8 +469,8 @@ class ChainDialog(BaseDialog):
         self.quick_add_edit.textChanged.connect(self._refresh_quick_add_hint)
         self.quick_add_edit.returnPressed.connect(self._quick_add_first_match)
         self.quick_add_hint = QLabel("")
-        self.quick_add_hint.setMinimumWidth(180)
-        self.quick_add_hint.setStyleSheet("color: rgba(128,128,128,180); font-size: 11px;")
+        self.quick_add_hint.setMinimumWidth(sp(180))
+        self.quick_add_hint.setStyleSheet(scale_qss("color: rgba(128,128,128,180); font-size: 11px;"))
         self.quick_add_btn = QPushButton(tr("添加"))
         self.quick_add_btn.clicked.connect(self._quick_add_first_match)
         row.addWidget(label)
@@ -480,7 +481,7 @@ class ChainDialog(BaseDialog):
 
     def _build_module_bar(self) -> QTabWidget:
         tabs = QTabWidget()
-        tabs.setFixedHeight(138)
+        tabs.setFixedHeight(sp(138))
         self._module_buttons = []
 
         theme = "dark"
@@ -586,10 +587,10 @@ class ChainDialog(BaseDialog):
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
-        bar.setFixedHeight(102)
+        bar.setFixedHeight(sp(102))
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(18)  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
+        layout.setContentsMargins(sp(12), 0, sp(12), 0)
+        layout.setSpacing(sp(18))  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
 
         # 分组组团数据提取
         urls = [it for it in self._available if it.type == ShortcutType.URL]
@@ -600,9 +601,9 @@ class ChainDialog(BaseDialog):
             sep = QFrame()
             sep.setFrameShape(QFrame.VLine)
             if theme == "dark":
-                sep.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
             else:
-                sep.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
             return sep
 
         # 1. 网址组团
@@ -612,7 +613,7 @@ class ChainDialog(BaseDialog):
             url_group.add_button(btn)
         if not urls:
             lbl = QLabel(tr("暂无网址"))
-            lbl.setStyleSheet("color: #888; font-size: 10px; padding: 4px;")
+            lbl.setStyleSheet(scale_qss("color: #888; font-size: 10px; padding: 4px;"))
             url_group.grid_layout.addWidget(lbl, 0, 0)
         layout.addWidget(url_group)
 
@@ -625,7 +626,7 @@ class ChainDialog(BaseDialog):
             cmd_group.add_button(btn)
         if not commands:
             lbl = QLabel(tr("暂无命令"))
-            lbl.setStyleSheet("color: #888; font-size: 10px; padding: 4px;")
+            lbl.setStyleSheet(scale_qss("color: #888; font-size: 10px; padding: 4px;"))
             cmd_group.grid_layout.addWidget(lbl, 0, 0)
         layout.addWidget(cmd_group)
 
@@ -638,7 +639,7 @@ class ChainDialog(BaseDialog):
             app_group.add_button(btn)
         if not apps:
             lbl = QLabel(tr("暂无快捷方式"))
-            lbl.setStyleSheet("color: #888; font-size: 10px; padding: 4px;")
+            lbl.setStyleSheet(scale_qss("color: #888; font-size: 10px; padding: 4px;"))
             app_group.grid_layout.addWidget(lbl, 0, 0)
         layout.addWidget(app_group)
 
@@ -659,15 +660,15 @@ class ChainDialog(BaseDialog):
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
-        bar.setFixedHeight(102)
+        bar.setFixedHeight(sp(102))
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(18)  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
+        layout.setContentsMargins(sp(12), 0, sp(12), 0)
+        layout.setSpacing(sp(18))  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
 
         if not processor_ids:
             # 提示无电池，契合后期补齐的设计
             lbl = QLabel(tr("暂无可添加处理器电池"))
-            lbl.setStyleSheet("color: #888; font-size: 11px; padding: 12px; font-style: italic;")
+            lbl.setStyleSheet(scale_qss("color: #888; font-size: 11px; padding: 12px; font-style: italic;"))
             layout.addWidget(lbl)
         else:
             group = GrasshopperGroupWidget(title, theme)
@@ -695,18 +696,18 @@ class ChainDialog(BaseDialog):
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
-        bar.setFixedHeight(102)
+        bar.setFixedHeight(sp(102))
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(18)
+        layout.setContentsMargins(sp(12), 0, sp(12), 0)
+        layout.setSpacing(sp(18))
 
         def create_sep():
             sep = QFrame()
             sep.setFrameShape(QFrame.VLine)
             if theme == "dark":
-                sep.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
             else:
-                sep.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }")
+                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
             return sep
 
         from core.chain_processors import processor_title
@@ -730,20 +731,20 @@ class ChainDialog(BaseDialog):
     def _make_module_button(self, title: str, callback) -> QPushButton:
         btn = QPushButton(title)
         # 草蜢式的精美小电池按纽 (固定为宽 76px，高 24px)
-        btn.setFixedSize(76, 24)
+        btn.setFixedSize(sp(76), sp(24))
         btn.clicked.connect(callback)
         self._module_buttons.append(btn)
         return btn
 
     def _build_left_panel(self) -> QVBoxLayout:
         left = QVBoxLayout()
-        left.setSpacing(4)
+        left.setSpacing(sp(4))
 
         # 基本设置
         basic = QGroupBox(tr("基本设置"))
         form = QVBoxLayout(basic)
-        form.setSpacing(4)
-        form.setContentsMargins(8, 4, 8, 6)
+        form.setSpacing(sp(4))
+        form.setContentsMargins(sp(8), sp(4), sp(8), sp(6))
 
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel(tr("名称:")))
@@ -758,7 +759,7 @@ class ChainDialog(BaseDialog):
         for key in ("none", "small", "medium", "large"):
             label_map = {"none": tr("无"), "small": tr("小"), "medium": tr("中"), "large": tr("大")}
             cb = QCheckBox(label_map[key])
-            cb.setStyleSheet("QCheckBox { font-size: 12px; spacing: 3px; }")
+            cb.setStyleSheet(scale_qss("QCheckBox { font-size: 12px; spacing: 3px; }"))
             cb.toggled.connect(lambda checked, k=key: self._on_result_check(k, checked))
             result_row.addWidget(cb)
             self._result_checks[key] = cb
@@ -772,20 +773,20 @@ class ChainDialog(BaseDialog):
         self._custom_icon_path = getattr(self.shortcut, "icon_path", "") or ""
         icon_group = QGroupBox(tr("图标"))
         icon_layout = QHBoxLayout(icon_group)
-        icon_layout.setSpacing(6)
-        icon_layout.setContentsMargins(6, 0, 6, 6)
+        icon_layout.setSpacing(sp(6))
+        icon_layout.setContentsMargins(sp(6), 0, sp(6), sp(6))
 
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(
+        self.icon_preview.setStyleSheet(scale_qss(
             "QLabel { background-color: rgba(255, 255, 255, 0.1); "
             "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
-        )
+        ))
         icon_layout.addWidget(self.icon_preview)
 
         icon_right_layout = QVBoxLayout()
-        icon_right_layout.setSpacing(6)
+        icon_right_layout.setSpacing(sp(6))
 
         self.icon_edit = QLineEdit()
         self.icon_edit.setPlaceholderText(tr("留空则使用默认图标"))
@@ -793,7 +794,7 @@ class ChainDialog(BaseDialog):
         icon_right_layout.addWidget(self.icon_edit)
 
         icon_btn_layout = QHBoxLayout()
-        icon_btn_layout.setSpacing(8)
+        icon_btn_layout.setSpacing(sp(8))
 
         browse_icon_btn = QPushButton(tr("选择图标..."))
         browse_icon_btn.clicked.connect(self._browse_icon)
@@ -821,7 +822,7 @@ class ChainDialog(BaseDialog):
         # 节点库
         library_group = QGroupBox(tr("节点库"))
         library_layout = QVBoxLayout(library_group)
-        library_layout.setContentsMargins(6, 4, 6, 6)
+        library_layout.setContentsMargins(sp(6), sp(4), sp(6), sp(6))
         type_row = QHBoxLayout()
         self.file_btn = QPushButton(tr("应用"))
         self.file_btn.clicked.connect(lambda: self._show_type_menu(ShortcutType.FILE))
@@ -854,10 +855,10 @@ class ChainDialog(BaseDialog):
 
     def _build_canvas_panel(self) -> QVBoxLayout:
         center = QVBoxLayout()
-        center.setSpacing(4)
+        center.setSpacing(sp(4))
         canvas_group = QGroupBox(tr("节点画布"))
         canvas_layout = QVBoxLayout(canvas_group)
-        canvas_layout.setContentsMargins(4, 4, 4, 4)
+        canvas_layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
         self.canvas_widget = ChainCanvasWidget(self._shortcut_map(), self)
         self.canvas_widget.canvas_changed.connect(self._on_canvas_changed)
         self.canvas_widget.selection_changed.connect(self._on_canvas_selection_changed)
@@ -867,7 +868,7 @@ class ChainDialog(BaseDialog):
 
     def _build_right_panel(self) -> QVBoxLayout:
         right = QVBoxLayout()
-        right.setSpacing(4)
+        right.setSpacing(sp(4))
 
         self.property_tabs = QTabWidget()
         self.property_panel = NodePropertyPanel(self)
@@ -881,7 +882,7 @@ class ChainDialog(BaseDialog):
 
         result_group = QGroupBox(tr("执行结果"))
         result_layout = QVBoxLayout(result_group)
-        result_layout.setContentsMargins(6, 4, 6, 6)
+        result_layout.setContentsMargins(sp(6), sp(4), sp(6), sp(6))
 
         self.result_view = QPlainTextEdit()
         self.result_view.setReadOnly(True)
@@ -894,13 +895,13 @@ class ChainDialog(BaseDialog):
     def _build_chain_property_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
+        layout.setSpacing(sp(6))
 
         basic = QGroupBox(tr("基本设置"))
         form = QVBoxLayout(basic)
-        form.setSpacing(4)
-        form.setContentsMargins(8, 4, 8, 6)
+        form.setSpacing(sp(4))
+        form.setContentsMargins(sp(8), sp(4), sp(8), sp(6))
 
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel(tr("名称:")))
@@ -926,17 +927,17 @@ class ChainDialog(BaseDialog):
         self._custom_icon_path = getattr(self.shortcut, "icon_path", "") or ""
         icon_group = QGroupBox(tr("图标"))
         icon_layout = QVBoxLayout(icon_group)
-        icon_layout.setSpacing(6)
-        icon_layout.setContentsMargins(6, 4, 6, 6)
+        icon_layout.setSpacing(sp(6))
+        icon_layout.setContentsMargins(sp(6), sp(4), sp(6), sp(6))
 
         preview_row = QHBoxLayout()
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(
+        self.icon_preview.setStyleSheet(scale_qss(
             "QLabel { background-color: rgba(255, 255, 255, 0.1); "
             "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
-        )
+        ))
         preview_row.addWidget(self.icon_preview)
         self.icon_edit = QLineEdit()
         self.icon_edit.setPlaceholderText(tr("留空则使用默认图标"))
@@ -983,7 +984,7 @@ class ChainDialog(BaseDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
 
-        custom = base_style + f"""
+        custom = base_style + scale_qss(f"""
             QDialog {{ background: transparent; border: none; }}
             QLabel, QCheckBox, QGroupBox, QLineEdit, QSpinBox, QPushButton, QTabWidget {{
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
@@ -1051,19 +1052,19 @@ class ChainDialog(BaseDialog):
             QTabBar::tab:selected {{
                 background-color: {input_bg};
             }}
-        """
-        self._tip_stylesheet = f"QToolTip {{ background: {tip_bg}; color: {tip_fg}; border: 1px solid {tip_border}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 400; }}"
+        """)
+        self._tip_stylesheet = scale_qss(f"QToolTip {{ background: {tip_bg}; color: {tip_fg}; border: 1px solid {tip_border}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 400; }}")
         self.setStyleSheet(custom)
 
         # 按钮复用扁平操作按钮样式
-        refined_button_font = """
+        refined_button_font = scale_qss("""
             QPushButton {
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-size: 12px;
                 font-weight: 400;
                 min-height: 22px;
             }
-        """
+        """)
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + refined_button_font
         for btn in (
             self.file_btn,
@@ -1083,7 +1084,7 @@ class ChainDialog(BaseDialog):
             btn.setStyleSheet(flat_btn_style)
 
         # 菜单栏按钮使用更小且更精致的文字大小以防文本截断，契合 Grasshopper 风格
-        module_button_font = """
+        module_button_font = scale_qss("""
             QPushButton {
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-size: 10px;
@@ -1092,7 +1093,7 @@ class ChainDialog(BaseDialog):
                 padding: 1px 2px;
                 margin: 0px;
             }
-        """
+        """)
         module_btn_style = Glassmorphism.get_flat_action_button_style(theme) + module_button_font
         for btn in getattr(self, "_module_buttons", []):
             btn.setStyleSheet(module_btn_style)
@@ -1106,11 +1107,11 @@ class ChainDialog(BaseDialog):
         self.invert_dark_cb.setStyleSheet(get_compact_checkbox_stylesheet(theme))
 
         # result_view 透明背景，文字直接显示在分栏框里
-        self.result_view.setStyleSheet(
+        self.result_view.setStyleSheet(scale_qss(
             f"QPlainTextEdit {{ background: transparent; border: none; "
             f"color: {text_primary}; font-size: 12px; padding: 8px; "
             f"font-family: 'Cascadia Code', 'Consolas', monospace; }}"
-        )
+        ))
         # viewport 必须用 palette 强制上色，否则 BaseDialog 透明背景会让点击时闪白
         from qt_compat import QPalette
 
@@ -1201,7 +1202,7 @@ class ChainDialog(BaseDialog):
             except Exception as exc:
                 logger.debug("反转图标失败: %s", exc, exc_info=True)
         if pixmap and not pixmap.isNull():
-            pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
         self.icon_preview.setPixmap(pixmap)
 
     def _create_chain_icon(self, size: int) -> QPixmap:
@@ -1534,7 +1535,7 @@ class ChainDialog(BaseDialog):
         nodes[self._selected_index], nodes[new_idx] = nodes[new_idx], nodes[self._selected_index]
         for index, node in enumerate(nodes, start=1):
             node["order"] = index
-            node["x"] = float((index - 1) * 220)
+            node["x"] = float((index - 1) * sp(220))
         self._selected_index = new_idx
         canvas["nodes"] = nodes
         self.canvas_widget.set_canvas(canvas)

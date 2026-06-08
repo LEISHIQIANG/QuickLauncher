@@ -7,6 +7,7 @@ from core.i18n import tr
 from qt_compat import QLabel
 from ui.themed_tool_window import ThemedToolWindow
 from ui.utils.font_manager import get_qfont
+from ui.utils.ui_scale import font_px, sp, scale_qss
 
 _ABOUT_SECTIONS = [
     (
@@ -65,14 +66,14 @@ class AboutWindow(ThemedToolWindow):
 
     def __init__(self, theme: str = "light", parent=None):
         super().__init__(tr("关于 QuickLauncher"), theme=theme, parent=parent)
-        self.setFixedWidth(560)
-        self.setMinimumWidth(400)
-        self.root_layout.setContentsMargins(12, 0, 0, 12)
-        self.content_layout.setContentsMargins(0, 0, 12, 0)
-        self.button_layout.setContentsMargins(0, 0, 12, 0)
+        self.setFixedWidth(sp(560))
+        self.setMinimumWidth(sp(400))
+        self.root_layout.setContentsMargins(sp(12), 0, 0, sp(12))
+        self.content_layout.setContentsMargins(0, 0, sp(12), 0)
+        self.button_layout.setContentsMargins(0, 0, sp(12), 0)
         self.icon_label.setVisible(False)
         self.set_subtitle("")
-        self.content_layout.setSpacing(4)
+        self.content_layout.setSpacing(sp(4))
         self._setup_about_ui()
         self._apply_content_theme()
         self._fit_to_content()
@@ -118,14 +119,14 @@ class AboutWindow(ThemedToolWindow):
             if name == "about_title":
                 widget.setStyleSheet(f"color: {title_color}; background: transparent; font-weight: 400;")
             elif name == "about_version":
-                widget.setStyleSheet(f"color: {version_color}; background: transparent; padding-left: 2px;")
+                widget.setStyleSheet(scale_qss(f"color: {version_color}; background: transparent; padding-left: 2px;"))
             elif name == "about_section":
                 widget.setStyleSheet(
-                    f"color: {section_color}; background: transparent; font-weight: 400; margin-top: 6px;"
+                    scale_qss(f"color: {section_color}; background: transparent; font-weight: 400; margin-top: 6px;")
                 )
             elif name == "about_body":
                 widget.setStyleSheet(
-                    f"color: {body_color}; background: transparent; padding-left: 4px; line-height: 1.55;"
+                    scale_qss(f"color: {body_color}; background: transparent; padding-left: 4px; line-height: 1.55;")
                 )
 
     def _fit_to_content(self):
@@ -135,7 +136,7 @@ class AboutWindow(ThemedToolWindow):
         root_margins = self.root_layout.contentsMargins()
         content_margins = self.content_layout.contentsMargins()
         available_w = (
-            560 - root_margins.left() - root_margins.right() - content_margins.left() - content_margins.right()
+            sp(560) - root_margins.left() - root_margins.right() - content_margins.left() - content_margins.right()
         )
 
         total_h = 0

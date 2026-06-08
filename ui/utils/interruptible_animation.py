@@ -1,0 +1,32 @@
+"""Small helpers for interruption-friendly Qt animations."""
+
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def stop_animation(animation, *, owner: str = "") -> None:
+    if animation is None:
+        return
+    try:
+        animation.stop()
+    except RuntimeError:
+        pass
+    except Exception as exc:
+        logger.debug("停止动画失败 [%s]: %s", owner, exc, exc_info=True)
+
+
+def is_animation_running(animation) -> bool:
+    if animation is None:
+        return False
+    try:
+        return int(animation.state()) != 0
+    except Exception:
+        return False
+
+
+def stop_named_animations(owner, *names: str) -> None:
+    for name in names:
+        stop_animation(getattr(owner, name, None), owner=f"{owner.__class__.__name__}.{name}")

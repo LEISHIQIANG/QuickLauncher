@@ -527,6 +527,47 @@ def test_search_geometry_expands_only_from_top_edge():
     assert applied == [(40, 183, 180, 137)]
 
 
+def test_search_geometry_updates_window_effect_once():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.search_query = "p"
+    popup._search_reveal_progress = 0.5
+    popup._search_target_progress = 1.0
+    popup._search_hide_geometry_pending = False
+    popup._search_body_anchor_y = 200
+
+    class _Geometry:
+        def x(self):
+            return 40
+
+        def y(self):
+            return 190
+
+        def width(self):
+            return 180
+
+        def height(self):
+            return 120
+
+    effects = []
+    updates = []
+    update_states = []
+    geometries = []
+
+    popup.geometry = lambda: _Geometry()
+    popup._calculate_fixed_size = lambda y_offset_override=None: (180, 120 + int(y_offset_override or 0))
+    popup.setGeometry = lambda left, top, width, height: geometries.append((left, top, width, height))
+    popup._update_window_effect = lambda: effects.append(True)
+    popup.setUpdatesEnabled = lambda enabled: update_states.append(enabled)
+    popup.update = lambda rect=None: updates.append(rect)
+
+    LauncherPopup._apply_search_geometry(popup)
+
+    assert geometries == [(40, 183, 180, 137)]
+    assert effects == [True]
+    assert update_states == [False, True]
+    assert updates == [None]
+
+
 def test_search_animation_updates_only_top_region():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup.settings = SimpleNamespace(corner_radius=10)
@@ -539,6 +580,35 @@ def test_search_animation_updates_only_top_region():
     assert rect.y() == 0
     assert rect.width() == 240
     assert rect.height() == 46
+
+
+def test_search_mask_reuses_current_mask_for_same_scaled_geometry(qapp, monkeypatch):
+    import ui.launcher_popup.popup_search as popup_search_mod
+
+    monkeypatch.setattr(popup_search_mod, "is_win10", lambda: False)
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.search_query = "p"
+    popup._search_reveal_progress = 0.5
+    popup._search_target_progress = 1.0
+    popup._search_hide_geometry_pending = False
+    popup.width = lambda: 240
+    popup.height = lambda: 180
+    popup._get_paint_corner_radius = lambda: 10
+    popup._search_visible_top_inset = lambda: 12
+    masks = []
+
+    popup.setMask = lambda mask: masks.append(mask)
+    popup.clearMask = lambda: None
+
+    LauncherPopup._apply_search_mask(popup)
+    LauncherPopup._apply_search_mask(popup)
+
+    assert len(masks) == 1
+
+    popup._search_visible_top_inset = lambda: 14
+    LauncherPopup._apply_search_mask(popup)
+
+    assert len(masks) == 2
 
 
 def test_finishing_search_hide_shrinks_after_visual_edge_is_hidden():

@@ -23,6 +23,26 @@ class WindowsMixin:
 
                 self.config_window = ConfigWindow(self.data_manager, tray_app=self)
                 self.config_window.settings_changed.connect(self._on_settings_changed)
+                pending_center = getattr(self, "_pending_config_window_center", None)
+                pending_pos = getattr(self, "_pending_config_window_pos", None)
+                pending_view_state = getattr(self, "_pending_config_window_view_state", None)
+                if pending_center is not None:
+                    rect = self.config_window.frameGeometry()
+                    rect.moveCenter(pending_center)
+                    self.config_window.move(rect.topLeft())
+                    self.config_window._centered_show_animation = True
+                    self._pending_config_window_center = None
+                    self._pending_config_window_pos = None
+                elif pending_pos is not None:
+                    self.config_window.move(pending_pos)
+                    self._pending_config_window_pos = None
+                if pending_view_state is not None:
+                    try:
+                        self.config_window.restore_view_state(pending_view_state)
+                    except Exception as exc:
+                        logger.debug("恢复配置窗口页面状态失败: %s", exc, exc_info=True)
+                    finally:
+                        self._pending_config_window_view_state = None
 
             if not getattr(self, "_hotkey_signal_connected", False):
                 try:
@@ -96,6 +116,68 @@ class WindowsMixin:
         self._mark_activity("settings_changed")
         if not self._settings_sync_timer.isActive():
             self._settings_sync_timer.start()
+
+    def apply_ui_scale_and_reopen_config(self, percent: int):
+        """Apply global UI scale by recreating the config window with animations."""
+        try:
+            percent = int(percent)
+        except (TypeError, ValueError):
+            percent = 100
+
+        old_window = getattr(self, "config_window", None)
+        old_center = None
+        old_view_state = None
+        try:
+            if old_window is not None:
+                old_center = old_window.frameGeometry().center()
+                if hasattr(old_window, "capture_view_state"):
+                    old_view_state = old_window.capture_view_state()
+        except RuntimeError:
+            old_window = None
+
+        def reopen():
+            try:
+                from ui.utils.font_manager import apply_app_font
+                from ui.utils.ui_scale import set_scale
+
+                set_scale(percent)
+                apply_app_font(13)
+            except Exception as exc:
+                logger.debug("应用全局缩放失败: %s", exc, exc_info=True)
+
+            try:
+                self.data_manager.reload()
+            except Exception as exc:
+                logger.debug("重载设置数据失败: %s", exc, exc_info=True)
+
+            self.config_window = None
+            self._hotkey_signal_connected = False
+            self._special_apps_signal_connected = False
+            if old_center is not None:
+                self._pending_config_window_center = old_center
+            if old_view_state is not None:
+                self._pending_config_window_view_state = old_view_state
+
+            self._show_config()
+            self._on_settings_changed()
+
+        if old_window is None:
+            reopen()
+            return
+
+        try:
+            from qt_compat import QTimer
+
+            if hasattr(old_window, "animate_close_then"):
+                old_window.animate_close_then(reopen)
+            else:
+                old_window.close()
+                QTimer.singleShot(0, reopen)
+        except RuntimeError:
+            reopen()
+        except Exception as exc:
+            logger.debug("缩放重开设置窗口失败: %s", exc, exc_info=True)
+            reopen()
 
     def _on_hotkey_recording_changed(self, recording: bool):
         try:

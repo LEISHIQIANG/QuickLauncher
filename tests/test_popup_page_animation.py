@@ -22,12 +22,20 @@ def _popup_for_animation():
     ]
     popup.current_page = 0
     popup._page_position = 0.0
+    popup._target_page = 0.0
+    popup._indicator_pos = 0.0
     popup._page_target_position = 1.0
+    popup._last_wheel_time = 0.0
+    popup._last_wheel_page_time = 0.0
+    popup._last_wheel_direction = 0
+    popup._wheel_accumulator = 0.0
     popup._page_icon_warm_queue = []
     popup._page_icon_warm_keys = set()
     popup._page_icon_warm_timer = None
     popup._page_render_cache = {}
     popup._preload_batch_timer = None
+    popup._settings_updates = []
+    popup.data_manager = SimpleNamespace(update_settings=lambda **kwargs: popup._settings_updates.append(kwargs))
     popup.settings = SimpleNamespace(theme="dark", sort_mode="custom")
     popup._model_revision = 1
     popup.cols = 1
@@ -40,7 +48,45 @@ def _popup_for_animation():
     popup.width = lambda: 240
     popup.height = lambda: 220
     popup._get_display_items = lambda page: page.items
+
+    class _Timer:
+        def __init__(self):
+            self.active = False
+
+        def isActive(self):
+            return self.active
+
+        def start(self):
+            self.active = True
+
+        def stop(self):
+            self.active = False
+
+    popup._indicator_timer = _Timer()
     return popup
+
+
+class _WheelPoint:
+    def __init__(self, y=0):
+        self._y = y
+
+    def y(self):
+        return self._y
+
+    def isNull(self):
+        return self._y == 0
+
+
+class _WheelEvent:
+    def __init__(self, angle_y=0, pixel_y=0):
+        self._angle = _WheelPoint(angle_y)
+        self._pixel = _WheelPoint(pixel_y)
+
+    def angleDelta(self):
+        return self._angle
+
+    def pixelDelta(self):
+        return self._pixel
 
 
 def test_preload_animation_pages_queues_incremental_work(monkeypatch):
@@ -87,6 +133,63 @@ def test_page_animation_update_area_stays_above_dock():
     assert updates
     assert updates[0].top() == 0
     assert updates[0].bottom() < popup.dock_y
+
+
+def test_wheel_page_delta_clamps_large_angle_steps():
+    popup = _popup_for_animation()
+
+    assert LauncherPopup._normalized_page_wheel_delta(popup, _WheelEvent(angle_y=360)) == 1.0
+    assert LauncherPopup._normalized_page_wheel_delta(popup, _WheelEvent(angle_y=-360)) == -1.0
+
+
+def test_high_resolution_wheel_deltas_accumulate_before_page_step():
+    popup = _popup_for_animation()
+    event = _WheelEvent(angle_y=30)
+
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=10.00) == 0
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=10.02) == 0
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=10.04) == 0
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=10.06) == -1
+
+
+def test_wheel_page_steps_are_rate_limited_during_bursts():
+    popup = _popup_for_animation()
+    event = _WheelEvent(angle_y=120)
+
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=20.00) == -1
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=20.03) == 0
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=20.06) == 0
+    assert LauncherPopup._consume_wheel_page_direction(popup, event, now=20.12) == -1
+
+
+def test_page_switch_uses_continuous_targets_when_wrapping():
+    popup = _popup_for_animation()
+    popup.current_page = 2
+    popup._page_position = 2.0
+    popup._target_page = 2.0
+
+    LauncherPopup._queue_page_switch(popup, 1)
+
+    assert popup.current_page == 0
+    assert popup._target_page == 3.0
+    assert popup._indicator_timer.isActive()
+    assert popup._settings_updates[-1] == {"last_page_index": 0}
+
+
+def test_page_animation_finish_normalizes_continuous_position():
+    popup = _popup_for_animation()
+    popup.current_page = 0
+    popup._page_position = 3.0
+    popup._page_offset = 3.0
+    popup._target_page = 3.0
+    popup._indicator_pos = 3.0
+
+    LauncherPopup._finish_page_animation(popup)
+
+    assert popup._page_position == 0.0
+    assert popup._page_offset == 0.0
+    assert popup._target_page == 0.0
+    assert popup._indicator_pos == 0.0
 
 
 def test_page_animation_pixmap_not_cached_until_icons_are_ready():

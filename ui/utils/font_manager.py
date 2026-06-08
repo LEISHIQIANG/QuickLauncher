@@ -2,6 +2,8 @@
 
 import logging
 
+from ui.utils.ui_scale import font_px as _font_px
+
 logger = logging.getLogger(__name__)
 
 FALLBACK_FONT_FAMILIES = (
@@ -40,20 +42,31 @@ def get_font_css():
 
 
 def get_font_css_with_size(size: int, weight: int = 400):
-    return f"{get_font_css()} font-size: {size}px; font-weight: {weight};"
+    scaled_size = _font_px(size)
+    return f"{get_font_css()} font-size: {scaled_size}px; font-weight: {weight};"
 
 
 def get_qfont(pixel_size: int = 14, weight: int = 400):
     from qt_compat import QFont
 
+    scaled_px = _font_px(pixel_size)
     font = QFont(_available_font_family())
-    font.setPixelSize(pixel_size)
+    font.setPixelSize(scaled_px)
     font.setWeight(QFont.Weight.Normal if weight <= 500 else QFont.Weight.Medium)
     font.setStyleHint(QFont.StyleHint.SansSerif)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     font.setKerning(True)
     return font
+
+
+def apply_app_font(pixel_size: int = 13, weight: int = 400) -> None:
+    """Apply the current UI scale to QApplication's inherited default font."""
+    from qt_compat import QApplication
+
+    app = QApplication.instance()
+    if app is not None:
+        app.setFont(get_qfont(pixel_size, weight))
 
 
 def tune_font_rendering(widget, pixel_size: int | None = None, weight: int | None = None, recursive: bool = False):
@@ -69,7 +82,7 @@ def tune_font_rendering(widget, pixel_size: int | None = None, weight: int | Non
             font = target.font()
             font.setFamily(_available_font_family())
             if pixel_size is not None:
-                font.setPixelSize(pixel_size)
+                font.setPixelSize(_font_px(pixel_size))
             if weight is not None:
                 font.setWeight(QFont.Weight.Normal if weight <= 500 else QFont.Weight.Medium)
             font.setStyleHint(QFont.StyleHint.SansSerif)

@@ -19,7 +19,9 @@ from qt_compat import (
 )
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.window_effect import is_win11
+from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +65,9 @@ class PopupDataRefreshMixin:
             prev_blur = 0
 
         self.cols = self.settings.cols
-        self.cell_size = self.settings.cell_size
-        self.icon_size = self.settings.icon_size
-        self._label_font.setPixelSize(max(10, int(self.icon_size * 0.28)))
+        self.cell_size = sp(self.settings.cell_size)
+        self.icon_size = sp(self.settings.icon_size)
+        self._label_font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.28))))
         self.cell_h = int(self.cell_size * 1.15)
 
         layout_changed = (
@@ -105,9 +107,9 @@ class PopupDataRefreshMixin:
             actual_rows = (len(self.dock_items) + self.cols - 1) // self.cols
             # 最终显示行数，不超过设置的最大行数
             display_rows = min(max(1, actual_rows), max_rows)
-            dock_row_stride = self.icon_size + 6  # 行间距6px
+            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
             # 单行：icon_size + 16；多行：icon_size + (rows-1)*dock_row_stride + 16
-            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + 12
+            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + sp(12)
         else:
             self.dock_height = 0
 
@@ -267,6 +269,7 @@ class PopupDataRefreshMixin:
             context,
         )
         thread.files_found.connect(self._on_files_found)
+        thread.finished.connect(lambda current=thread: setattr(self, "_file_thread", None) if self._file_thread is current else None)
         thread.finished.connect(thread.deleteLater)
         thread.start()
         # 保存引用防止被 GC
@@ -502,5 +505,19 @@ class PopupDataRefreshMixin:
         except Exception as e:
             logger.error(f"启动同步线程失败: {e}")
             self._blank_refresh_in_progress = False
+
+    def stop_background_threads(self):
+        for attr in ("_file_thread", "_sync_worker"):
+            thread = getattr(self, attr, None)
+            if thread is None:
+                continue
+            stopped = stop_qthread_nonblocking(
+                thread,
+                owner=f"LauncherPopup.{attr}",
+                wait_ms=0,
+                disconnect_thread_signals=("finished", "files_found"),
+            )
+            if stopped:
+                setattr(self, attr, None)
 
     # ===== 拖放事件处理结束 =====

@@ -22,6 +22,7 @@ from qt_compat import (
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class ToastNotification(QWidget):
         layout.addWidget(self.label)
 
         # 设置固定高度
-        self.setFixedHeight(40)
+        self.setFixedHeight(sp(40))
 
     def paintEvent(self, event):
         """绘制圆角矩形背景 - 与主配置窗口完全一致"""
@@ -80,7 +81,7 @@ class ToastNotification(QWidget):
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-            radius = 8
+            radius = sp(8)
 
             if self._theme == "error":
                 bg_color = QColor(229, 57, 53, 210)
@@ -96,7 +97,7 @@ class ToastNotification(QWidget):
                 paint_win10_rounded_surface(painter, self, bg_color, border_color, radius, max_border_alpha=80)
                 return
 
-            inset = 0.5
+            inset = spf(0.5)
             path = QPainterPath()
             path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
 
@@ -150,7 +151,7 @@ class ToastNotification(QWidget):
         else:
             color = "#1c1c1e"
 
-        self.label.setStyleSheet(f"""
+        self.label.setStyleSheet(scale_qss(f"""
             QLabel {{
                 color: {color};
                 font-size: 13px;
@@ -158,14 +159,14 @@ class ToastNotification(QWidget):
                 padding: 0 24px;
                 background: transparent;
             }}
-        """)
+        """))
         self.label.setFont(get_qfont(13, 400))
         self.label.setText(text)
 
         # 根据文字长度调整宽度
         fm = self.label.fontMetrics()
         text_width = fm.horizontalAdvance(text) if hasattr(fm, "horizontalAdvance") else fm.width(text)
-        self.setFixedWidth(max(text_width + 60, 180))
+        self.setFixedWidth(max(text_width + sp(60), sp(180)))
 
         # 定位逻辑：有挂接控件定位右下角，无则居中
         positioned = False
@@ -174,8 +175,8 @@ class ToastNotification(QWidget):
                 target_window = target_widget.window()
                 geo = target_window.geometry()
                 # 动作链窗口右下角弹窗提示，保留一些边距（24px）
-                x = geo.right() - self.width() - 24
-                y = geo.bottom() - self.height() - 24
+                x = geo.right() - self.width() - sp(24)
+                y = geo.bottom() - self.height() - sp(24)
                 self.move(x, y)
                 positioned = True
             except Exception as exc:
@@ -229,7 +230,7 @@ class ToastNotification(QWidget):
             if not hwnd:
                 return
             effect = get_window_effect()
-            radius = 8
+            radius = sp(8)
 
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)

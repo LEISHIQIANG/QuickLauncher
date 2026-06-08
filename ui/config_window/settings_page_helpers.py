@@ -8,6 +8,7 @@ from qt_compat import (
     QSpinBox,
     QtCompat,
 )
+from ui.utils.ui_scale import sp
 
 
 class SettingsPageHelpersMixin:
@@ -37,8 +38,8 @@ class SettingsPageHelpersMixin:
         spinbox.setRange(min_val, max_val)
         spinbox.setSuffix(tr(suffix) if suffix else "")
         spinbox.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        spinbox.setFixedWidth(60)
-        spinbox.setMinimumHeight(24)
+        spinbox.setFixedWidth(sp(60))
+        spinbox.setMinimumHeight(sp(24))
         spinbox.setAlignment(QtCompat.AlignCenter)
         return spinbox
 

@@ -21,6 +21,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.ui_scale import sp, sqsize
 
 from .base_dialog import BaseDialog
 
@@ -43,7 +44,7 @@ class IconPickerDialog(BaseDialog):
         self._selection_finishing = False
 
         self.setWindowTitle(f"选择图标 - {os.path.basename(file_path)}")
-        self.resize(600, 400)
+        self.resize(sp(600), sp(400))
         self.setModal(True)
 
         self._setup_ui()
@@ -53,8 +54,8 @@ class IconPickerDialog(BaseDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(sp(18), sp(18), sp(18), sp(16))
+        layout.setSpacing(sp(10))
 
         self.info_label = QLabel("正在读取图标...")
         layout.addWidget(self.info_label)
@@ -68,8 +69,8 @@ class IconPickerDialog(BaseDialog):
             self.list_widget.setViewMode(QListWidget.IconMode)
             self.list_widget.setResizeMode(QListWidget.Adjust)
             self.list_widget.setMovement(QListWidget.Static)
-        self.list_widget.setSpacing(10)
-        self.list_widget.setIconSize(QSize(48, 48))
+        self.list_widget.setSpacing(sp(10))
+        self.list_widget.setIconSize(sqsize(48, 48))
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.list_widget)
 

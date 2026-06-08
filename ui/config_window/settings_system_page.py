@@ -15,6 +15,7 @@ from qt_compat import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QParallelAnimationGroup,
     QPropertyAnimation,
     QPushButton,
@@ -27,9 +28,11 @@ from qt_compat import (
 )
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
+from ui.utils.interruptible_animation import stop_animation
 from ui.utils.window_effect import is_win11
 
 from .settings_helpers import SwitchButton
+from ui.utils.ui_scale import DEFAULT_SCALE_PERCENT, MAX_SCALE_PERCENT, MIN_SCALE_PERCENT, set_scale, sp, scale_qss
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,41 @@ class SettingsSystemPageMixin:
         install_tooltip(self.auto_update_cb, tr("开启后仅在每次启动软件时检查一次新版本，其他时间不自动检查"))
         self.auto_update_cb.stateChanged.connect(self._on_auto_update_changed)
         layout.addWidget(self.auto_update_cb)
+
+        # 全局缩放
+        layout, group = page.add_group("全局缩放")
+        scale_layout = QHBoxLayout()
+        scale_layout.setSpacing(sp(8))
+
+        self.ui_scale_slider = QSlider(QtCompat.Horizontal)
+        self.ui_scale_slider.setRange(MIN_SCALE_PERCENT, MAX_SCALE_PERCENT)
+        self.ui_scale_slider.setSingleStep(5)
+        self.ui_scale_slider.setPageStep(5)
+        self.ui_scale_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.ui_scale_slider.setTickInterval(5)
+        self.ui_scale_slider.valueChanged.connect(self._on_ui_scale_slider_changed)
+        scale_layout.addWidget(self.ui_scale_slider, 1)
+
+        self.ui_scale_edit = QLineEdit()
+        self.ui_scale_edit.setFixedWidth(sp(54))
+        self.ui_scale_edit.setMaxLength(3)
+        self.ui_scale_edit.setAlignment(QtCompat.AlignCenter)
+        self.ui_scale_edit.setPlaceholderText("100")
+        self.ui_scale_edit.textEdited.connect(self._on_ui_scale_text_edited)
+        self.ui_scale_edit.returnPressed.connect(self._on_ui_scale_apply_clicked)
+        scale_layout.addWidget(self.ui_scale_edit)
+
+        scale_suffix = QLabel("%")
+        scale_suffix.setStyleSheet(scale_qss("background: transparent; border: none;"))
+        scale_layout.addWidget(scale_suffix)
+
+        self.ui_scale_apply_btn = QPushButton(tr("应用"))
+        self.ui_scale_apply_btn.setFixedHeight(sp(26))
+        self.ui_scale_apply_btn.setMinimumWidth(sp(62))
+        self.ui_scale_apply_btn.clicked.connect(self._on_ui_scale_apply_clicked)
+        scale_layout.addWidget(self.ui_scale_apply_btn)
+
+        layout.addLayout(scale_layout)
 
         # 排序模式
         layout, group = page.add_group("排序方式")
@@ -142,7 +180,7 @@ class SettingsSystemPageMixin:
         # 日志修复
         layout, group = page.add_group("日志修复")
         tools_layout = QHBoxLayout()
-        tools_layout.setSpacing(8)
+        tools_layout.setSpacing(sp(8))
 
         tool_buttons = [
             ("运行日志", "查看 error.log，排查最近运行异常", self._on_runtime_log_clicked),
@@ -229,30 +267,56 @@ class SettingsSystemPageMixin:
 
     # === Settings Load ===
 
-    def _load_system_settings(self, settings):
+    def _schedule_auto_start_status_check(self):
+        timer = getattr(self, "_auto_start_check_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._refresh_auto_start_status)
+            self._auto_start_check_timer = timer
+        if timer.isActive():
+            return
+        timer.start(350)
+
+    def _refresh_auto_start_status(self):
+        auto_start_cb = getattr(self, "auto_start_cb", None)
+        if auto_start_cb is None:
+            return
+
+        old_updating = getattr(self, "_updating", False)
         try:
             from core.auto_start_manager import get_auto_start_check_result
 
+            settings = self.data_manager.get_settings()
             actual_enabled, auto_start_reason = get_auto_start_check_result()
             desired_enabled = bool(settings.auto_start)
 
+            self._updating = True
             if actual_enabled:
                 if not desired_enabled:
                     self.data_manager.update_settings(auto_start=True)
-                self.auto_start_cb.setToolTip("")
-                self.auto_start_cb.setChecked(True)
+                auto_start_cb.setToolTip("")
+                auto_start_cb.setChecked(True)
             elif desired_enabled:
                 logger.warning("配置要求开机自启，但任务缺失或定义已过期；设置页已同步为关闭: %s", auto_start_reason)
                 self.data_manager.update_settings(auto_start=False)
-                self.auto_start_cb.setToolTip(f"开机自启任务缺失或定义已过期，已切换为关闭。原因: {auto_start_reason}")
-                self.auto_start_cb.setChecked(False)
+                auto_start_cb.setToolTip(f"开机自启任务缺失或定义已过期，已切换为关闭。原因: {auto_start_reason}")
+                auto_start_cb.setChecked(False)
             else:
-                self.auto_start_cb.setToolTip("")
-                self.auto_start_cb.setChecked(False)
+                auto_start_cb.setToolTip("")
+                auto_start_cb.setChecked(False)
         except Exception as e:
             logger.debug("Failed to load auto-start state: %s", e, exc_info=True)
-            self.auto_start_cb.setToolTip(tr("检测开机自启状态失败，请查看日志。"))
-            self.auto_start_cb.setChecked(False)
+            self._updating = True
+            auto_start_cb.setToolTip(tr("检测开机自启状态失败，请查看日志。"))
+            auto_start_cb.setChecked(False)
+        finally:
+            self._updating = old_updating
+
+    def _load_system_settings(self, settings):
+        self.auto_start_cb.setToolTip("")
+        self.auto_start_cb.setChecked(bool(settings.auto_start))
+        self._schedule_auto_start_status_check()
 
         self.show_on_startup_cb.setChecked(settings.show_on_startup)
         self.hw_accel_cb.setChecked(settings.hardware_acceleration)
@@ -261,6 +325,15 @@ class SettingsSystemPageMixin:
         self.debug_log_cb.setChecked(getattr(settings, "enable_debug_log", False))
         self.auto_update_cb.setChecked(getattr(settings, "auto_update_enabled", False))
         self.sleep_mode_cb.setChecked(getattr(settings, "sleep_mode_enabled", True))
+
+        # 全局缩放
+        scale_val = self._normalize_ui_scale(getattr(settings, "ui_scale_percent", DEFAULT_SCALE_PERCENT))
+        self.ui_scale_slider.blockSignals(True)
+        self.ui_scale_slider.setValue(scale_val)
+        self.ui_scale_slider.blockSignals(False)
+        self.ui_scale_edit.blockSignals(True)
+        self.ui_scale_edit.setText(str(scale_val))
+        self.ui_scale_edit.blockSignals(False)
 
         # 排序方式
         sort_mode = getattr(settings, "sort_mode", "custom")
@@ -291,6 +364,70 @@ class SettingsSystemPageMixin:
         self._load_color_filter_sliders_from_settings()
 
     # === Event Handlers ===
+
+    def _normalize_ui_scale(self, value) -> int:
+        try:
+            percent = int(str(value).strip().rstrip("%"))
+        except (TypeError, ValueError):
+            percent = DEFAULT_SCALE_PERCENT
+        percent = max(MIN_SCALE_PERCENT, min(MAX_SCALE_PERCENT, percent))
+        return int(round(percent / 5) * 5)
+
+    def _sync_ui_scale_controls(self, value: int) -> None:
+        value = self._normalize_ui_scale(value)
+        self.ui_scale_slider.blockSignals(True)
+        self.ui_scale_slider.setValue(value)
+        self.ui_scale_slider.blockSignals(False)
+        self.ui_scale_edit.blockSignals(True)
+        self.ui_scale_edit.setText(str(value))
+        self.ui_scale_edit.blockSignals(False)
+
+    def _on_ui_scale_slider_changed(self, value: int):
+        if self._updating:
+            return
+        self._sync_ui_scale_controls(value)
+
+    def _on_ui_scale_text_edited(self, text: str):
+        if self._updating:
+            return
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if digits != text:
+            self.ui_scale_edit.blockSignals(True)
+            self.ui_scale_edit.setText(digits[:3])
+            self.ui_scale_edit.blockSignals(False)
+            return
+        if not digits:
+            return
+        raw_value = int(digits)
+        if MIN_SCALE_PERCENT <= raw_value <= MAX_SCALE_PERCENT:
+            self.ui_scale_slider.blockSignals(True)
+            self.ui_scale_slider.setValue(self._normalize_ui_scale(raw_value))
+            self.ui_scale_slider.blockSignals(False)
+
+    def _on_ui_scale_apply_clicked(self):
+        if self._updating:
+            return
+
+        percent = self._normalize_ui_scale(self.ui_scale_edit.text())
+        self._sync_ui_scale_controls(percent)
+        current = self._normalize_ui_scale(getattr(self.data_manager.get_settings(), "ui_scale_percent", DEFAULT_SCALE_PERCENT))
+        if percent == current:
+            return
+
+        self.data_manager.update_settings(ui_scale_percent=percent)
+        tray_app = getattr(self, "tray_app", None)
+        if tray_app and hasattr(tray_app, "apply_ui_scale_and_reopen_config"):
+            tray_app.apply_ui_scale_and_reopen_config(percent)
+            return
+
+        set_scale(percent)
+        try:
+            from ui.utils.font_manager import apply_app_font
+
+            apply_app_font(13)
+        except Exception as exc:
+            logger.debug("应用 UI 缩放字体失败: %s", exc, exc_info=True)
+        self.settings_changed.emit()
 
     def _on_auto_start_changed(self, state):
         if self._updating:
@@ -552,8 +689,8 @@ fso.DeleteFile WScript.ScriptFullName
         """创建高级颜色滤镜滑块面板 (深色 + 浅色两组)"""
         panel = QWidget()
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(0, 4, 0, 0)
-        panel_layout.setSpacing(8)
+        panel_layout.setContentsMargins(0, sp(4), 0, 0)
+        panel_layout.setSpacing(sp(8))
 
         # 深色组
         self._dark_group_widget, self._dark_sliders = self._create_filter_slider_group(tr("深色参数"), "dark")
@@ -574,14 +711,14 @@ fso.DeleteFile WScript.ScriptFullName
 
         group_widget = QWidget()
         layout = QGridLayout(group_widget)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setVerticalSpacing(4)
-        layout.setHorizontalSpacing(6)
+        layout.setContentsMargins(sp(4), sp(2), sp(4), sp(2))
+        layout.setVerticalSpacing(sp(4))
+        layout.setHorizontalSpacing(sp(6))
 
         # 标题标签
         title_label = QLabel(title)
         title_label.setFont(get_qfont(11))
-        title_label.setStyleSheet("color: #888; padding-bottom: 2px;")
+        title_label.setStyleSheet(scale_qss("color: #888; padding-bottom: 2px;"))
         layout.addWidget(title_label, 0, 0, 1, 4)
 
         slider_defs = [
@@ -599,9 +736,9 @@ fso.DeleteFile WScript.ScriptFullName
             val_attr = f"_{prefix}_{key}_label"
 
             lbl = QLabel(tr(label_text))
-            lbl.setFixedWidth(36)
+            lbl.setFixedWidth(sp(36))
             lbl.setAlignment(QtCompat.AlignRight | QtCompat.AlignVCenter)
-            lbl.setStyleSheet("font-size: 11px;")
+            lbl.setStyleSheet(scale_qss("font-size: 11px;"))
             layout.addWidget(lbl, row, 0)
 
             slider = QSlider(QtCompat.Horizontal)
@@ -611,9 +748,9 @@ fso.DeleteFile WScript.ScriptFullName
             layout.addWidget(slider, row, 1)
 
             val_label = QLabel(self._desc_text(key, default, descs))
-            val_label.setFixedWidth(48)
+            val_label.setFixedWidth(sp(48))
             val_label.setAlignment(QtCompat.AlignCenter)
-            val_label.setStyleSheet("font-size: 10px; color: #999;")
+            val_label.setStyleSheet(scale_qss("font-size: 10px; color: #999;"))
             layout.addWidget(val_label, row, 2)
 
             setattr(self, attr_name, slider)
@@ -790,6 +927,16 @@ fso.DeleteFile WScript.ScriptFullName
                 widget.setGraphicsEffect(effect)
             effect.setOpacity(opacity)
 
+    def _current_language_fade_opacity(self) -> float:
+        values = []
+        for widget in self._language_fade_targets():
+            effect = widget.graphicsEffect()
+            if isinstance(effect, QGraphicsOpacityEffect):
+                values.append(float(effect.opacity()))
+        if not values:
+            return 1.0
+        return max(0.0, min(1.0, sum(values) / len(values)))
+
     def _clear_language_fade_effects(self):
         for widget in self._language_fade_targets():
             try:
@@ -815,17 +962,21 @@ fso.DeleteFile WScript.ScriptFullName
 
     def _switch_language_with_animation(self, language: str):
         """Fade text out, switch language, then fade text back in without movement."""
-        if getattr(self, "_language_animating", False):
-            return
-
+        generation = int(getattr(self, "_language_anim_generation", 0) or 0) + 1
+        self._language_anim_generation = generation
+        stop_animation(getattr(self, "_language_fade_out", None), owner="SettingsPanel.language.fade_out")
+        stop_animation(getattr(self, "_language_fade_in", None), owner="SettingsPanel.language.fade_in")
         current_index = self.content_stack.currentIndex()
         scroll_value = self._current_page_scroll_value(current_index)
         self._language_animating = True
 
-        self._set_language_fade_opacity(1.0)
-        fade_out = self._build_language_fade_group(1.0, 0.0, 240, QEasingCurve.InOutQuart)
+        start_opacity = self._current_language_fade_opacity()
+        self._set_language_fade_opacity(start_opacity)
+        fade_out = self._build_language_fade_group(start_opacity, 0.0, 180, QEasingCurve.InOutQuart)
 
         def apply_language():
+            if generation != int(getattr(self, "_language_anim_generation", 0) or 0):
+                return
             try:
                 self.data_manager.set_language(language)
                 self._rebuild_pages_for_language(current_index, scroll_value)
@@ -837,6 +988,8 @@ fso.DeleteFile WScript.ScriptFullName
                 fade_in = self._build_language_fade_group(0.0, 1.0, 280, QEasingCurve.OutCubic)
 
                 def finish():
+                    if generation != int(getattr(self, "_language_anim_generation", 0) or 0):
+                        return
                     self._language_animating = False
                     self._language_fade_out = None
                     self._language_fade_in = None

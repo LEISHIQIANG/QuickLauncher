@@ -50,6 +50,8 @@ from ui.styles.style import Glassmorphism, PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.smooth_scroll import SmoothScrollArea
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.utils.ui_scale import sp, spf, font_px, scale_qss
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
@@ -66,7 +68,7 @@ class SimpleStatusDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setFixedSize(220, 80)
+        self.setFixedSize(sp(220), sp(80))
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
@@ -77,12 +79,12 @@ class SimpleStatusDialog(QDialog):
         self._dialog_finished = False
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(sp(8))
+        layout.setContentsMargins(sp(16), sp(16), sp(16), sp(16))
 
         self.label = QLabel()
         self.label.setAlignment(QtCompat.AlignCenter)
-        self.label.setStyleSheet("font-size: 13px; background: transparent;")
+        self.label.setStyleSheet(scale_qss("font-size: 13px; background: transparent;"))
         layout.addWidget(self.label)
 
         self._apply_theme()
@@ -182,7 +184,7 @@ class MoveFolderDialog(BaseDialog):
         self.folders = folders
         self.selected_folder = None
         self.setWindowTitle(tr("移动到文件夹"))
-        self.setFixedSize(240, 135)
+        self.setFixedSize(sp(240), sp(135))
         self._setup_ui()
         self._apply_theme_colors()
 
@@ -190,31 +192,31 @@ class MoveFolderDialog(BaseDialog):
         from qt_compat import QComboBox
 
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(sp(16), sp(16), sp(16), sp(16))
+        main_layout.setSpacing(sp(10))
 
         label = QLabel(tr("目标文件夹:"))
-        label.setStyleSheet("font-size: 11px;")
+        label.setStyleSheet(scale_qss("font-size: 11px;"))
         main_layout.addWidget(label)
 
         self.combo = QComboBox()
-        self.combo.setFixedHeight(30)
+        self.combo.setFixedHeight(sp(30))
         for folder in self.folders:
             self.combo.addItem(folder.name, folder)
         self.combo.showPopup = lambda: self._show_folder_popup()
         main_layout.addWidget(self.combo)
 
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        btn_layout.setSpacing(sp(8))
 
         self.cancel_btn = QPushButton(tr("取消"))
-        self.cancel_btn.setFixedHeight(28)
-        self.cancel_btn.setMinimumWidth(60)
+        self.cancel_btn.setFixedHeight(sp(28))
+        self.cancel_btn.setMinimumWidth(sp(60))
         self.cancel_btn.clicked.connect(self.reject)
 
         self.ok_btn = QPushButton(tr("确定"))
-        self.ok_btn.setFixedHeight(28)
-        self.ok_btn.setMinimumWidth(60)
+        self.ok_btn.setFixedHeight(sp(28))
+        self.ok_btn.setMinimumWidth(sp(60))
         self.ok_btn.setDefault(True)
         self.ok_btn.clicked.connect(self._on_ok)
 
@@ -246,6 +248,9 @@ class MoveFolderDialog(BaseDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(self.theme)
         self.setStyleSheet(base_style + "QDialog { background: transparent; border: none; }")
 
+        if not hasattr(self, "cancel_btn") or not hasattr(self, "ok_btn"):
+            return
+
         if self.theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
             btn_hover = "rgba(255,255,255,0.28)"
@@ -257,7 +262,7 @@ class MoveFolderDialog(BaseDialog):
             btn_border = "rgba(255,255,255,0.35)"
             btn_text = "#1D1D1F"
 
-        btn_style = f"""
+        btn_style = scale_qss(f"""
             QPushButton {{
                 background-color: {btn_bg};
                 border: 1px solid {btn_border};
@@ -268,7 +273,7 @@ class MoveFolderDialog(BaseDialog):
             }}
             QPushButton:hover {{ background-color: {btn_hover}; }}
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
-        """
+        """)
         self.cancel_btn.setStyleSheet(btn_style)
         self.ok_btn.setStyleSheet(btn_style)
 
@@ -513,14 +518,14 @@ class IconWidget(QFrame):
         self.setCursor(QtCompat.PointingHandCursor)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(2)
+        layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
+        layout.setSpacing(sp(2))
         layout.setAlignment(QtCompat.AlignCenter)
 
         # 图标底框：图标四周各大7px — 使用 RoundedFrame 替代 QSS border-radius
         # 以消除深色模式下圆角边缘的锯齿和泛白
-        icon_frame_h = self.icon_size + 14
-        icon_frame_w = self.icon_size + 14
+        icon_frame_h = self.icon_size + sp(14)
+        icon_frame_w = self.icon_size + sp(14)
         self.icon_frame = RoundedFrame()
         self.icon_frame.setFixedSize(icon_frame_w, icon_frame_h)
         self._apply_icon_frame_style()
@@ -541,7 +546,7 @@ class IconWidget(QFrame):
 
         self.name_label = QLabel(self.shortcut.name[:6] if self.shortcut.name else tr("未命名"))
         self.name_label.setAlignment(QtCompat.AlignCenter)
-        self.name_label.setStyleSheet("font-size: 11px; background: transparent; border: none;")
+        self.name_label.setStyleSheet(scale_qss("font-size: 11px; background: transparent; border: none;"))
         self.name_label.setWordWrap(True)
         self.name_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.name_label)
@@ -577,14 +582,14 @@ class IconWidget(QFrame):
 
     def _icon_frame_style(self, hover=False, drop=False):
         if self._is_selected:
-            return "QFrame { background-color: rgba(100,181,246,26); border-radius: 9px; border: 1px solid rgba(100,181,246,170); }"
+            return scale_qss("QFrame { background-color: rgba(100,181,246,26); border-radius: 9px; border: 1px solid rgba(100,181,246,170); }")
         if drop:
             if self.theme == "dark":
-                return "QFrame { background-color: rgba(168, 230, 207, 45); border-radius: 9px; border: 2px dashed rgba(168, 230, 207, 180); }"
+                return scale_qss("QFrame { background-color: rgba(168, 230, 207, 45); border-radius: 9px; border: 2px dashed rgba(168, 230, 207, 180); }")
             else:
-                return "QFrame { background-color: rgba(168, 230, 207, 75); border-radius: 9px; border: 2px dashed rgba(70, 180, 140, 200); }"
+                return scale_qss("QFrame { background-color: rgba(168, 230, 207, 75); border-radius: 9px; border: 2px dashed rgba(70, 180, 140, 200); }")
         bg = self._hover_bg if hover else self._normal_bg
-        return f"QFrame {{ background-color: {bg}; border-radius: 9px; border: {self._border}; }}"
+        return scale_qss(f"QFrame {{ background-color: {bg}; border-radius: 9px; border: {self._border}; }}")
 
     def _load_icon(self):
         """设置占位图标（实际图标由 IconGrid 异步加载）"""
@@ -622,7 +627,8 @@ class IconWidget(QFrame):
 
         first_char = self.shortcut.name[0] if self.shortcut.name else "?"
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI", int(size * 0.4))
+        font = QFont("Segoe UI")
+        font.setPixelSize(max(1, int(size * 0.4)))
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
@@ -645,7 +651,8 @@ class IconWidget(QFrame):
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI Symbol", size // 3)
+        font = QFont("Segoe UI Symbol")
+        font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌨")
 
@@ -667,7 +674,8 @@ class IconWidget(QFrame):
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI Symbol", size // 3)
+        font = QFont("Segoe UI Symbol")
+        font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "🌐")
 
@@ -689,7 +697,8 @@ class IconWidget(QFrame):
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(0, 255, 0))
-        font = QFont("Consolas", size // 3)
+        font = QFont("Consolas")
+        font.setPixelSize(max(1, size // 3))
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, ">_")
@@ -712,7 +721,8 @@ class IconWidget(QFrame):
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI Symbol", size // 3)
+        font = QFont("Segoe UI Symbol")
+        font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⛓")
 
@@ -734,7 +744,8 @@ class IconWidget(QFrame):
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI Symbol", size // 3)
+        font = QFont("Segoe UI Symbol")
+        font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "▶")
 
@@ -968,8 +979,8 @@ class IconGrid(QWidget):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
+        main_layout.setSpacing(sp(8))
 
         # 使用堆叠容器来叠加显示提示和图标网格
         from qt_compat import QStackedLayout, Qt  # noqa: F811
@@ -977,7 +988,7 @@ class IconGrid(QWidget):
         # 滚动区域容器
         scroll_container = QWidget()
         scroll_container_layout = QVBoxLayout(scroll_container)
-        scroll_container_layout.setContentsMargins(0, 0, 0, 8)
+        scroll_container_layout.setContentsMargins(0, 0, 0, sp(8))
         scroll_container_layout.setSpacing(0)
 
         # 滚动区域
@@ -988,7 +999,7 @@ class IconGrid(QWidget):
         # 隐藏垂直滚动条，但仍可通过鼠标滚轮滚动
         scroll.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         scroll.setStyleSheet("background: transparent;")
-        scroll.setViewportMargins(0, 0, 0, 12)
+        scroll.setViewportMargins(0, 0, 0, sp(12))
 
         # 图标容器 - 使用手动定位
         self.container = IconContainer()
@@ -1015,7 +1026,7 @@ class IconGrid(QWidget):
 
         self.hint_label = QLabel(tr("拖拽文件到此处添加\n或点击下方按钮新建\n\n拖拽图标可调整顺序"))
         self.hint_label.setAlignment(QtCompat.AlignCenter)
-        self.hint_label.setStyleSheet("color: #8e8e93; font-size: 13px; line-height: 1.6;")
+        self.hint_label.setStyleSheet(scale_qss("color: #8e8e93; font-size: 13px; line-height: 1.6;"))
         from qt_compat import Qt
 
         if hasattr(Qt, "WidgetAttribute"):
@@ -1043,27 +1054,27 @@ class IconGrid(QWidget):
         # 下方按钮区域 - 1U=16px，胶囊圆角
         btn_container = QWidget()
         btn_layout = QHBoxLayout(btn_container)
-        btn_layout.setContentsMargins(0, 5, 0, 0)
-        btn_layout.setSpacing(12)
+        btn_layout.setContentsMargins(0, sp(5), 0, 0)
+        btn_layout.setSpacing(sp(12))
         btn_layout.setAlignment(QtCompat.AlignHCenter)
 
         self.add_file_btn = QPushButton(tr("快捷方式"))
-        self.add_file_btn.setFixedHeight(36)
+        self.add_file_btn.setFixedHeight(sp(36))
         self.add_file_btn.clicked.connect(self.add_file_requested.emit)
         btn_layout.addWidget(self.add_file_btn, 1)
 
         self.add_hotkey_btn = QPushButton(tr("快捷键"))
-        self.add_hotkey_btn.setFixedHeight(36)
+        self.add_hotkey_btn.setFixedHeight(sp(36))
         self.add_hotkey_btn.clicked.connect(self.add_hotkey_requested.emit)
         btn_layout.addWidget(self.add_hotkey_btn, 1)
 
         self.add_url_btn = QPushButton(tr("打开网址"))
-        self.add_url_btn.setFixedHeight(36)
+        self.add_url_btn.setFixedHeight(sp(36))
         self.add_url_btn.clicked.connect(self.add_url_requested.emit)
         btn_layout.addWidget(self.add_url_btn, 1)
 
         self.add_command_btn = QPushButton(tr("运行命令"))
-        self.add_command_btn.setFixedHeight(36)
+        self.add_command_btn.setFixedHeight(sp(36))
         self.add_command_btn.clicked.connect(self.add_command_requested.emit)
         btn_layout.addWidget(self.add_command_btn, 1)
 
@@ -1092,13 +1103,13 @@ class IconGrid(QWidget):
             grid_bg = "rgba(255, 255, 255, 0.20)"
             grid_border = "rgba(0, 0, 0, 0.06)"
 
-        self.grid_area.setStyleSheet(f"""
+        self.grid_area.setStyleSheet(scale_qss(f"""
             QWidget#iconGridArea {{
                 background-color: {grid_bg};
                 border: 1px solid {grid_border};
                 border-radius: 10px;
             }}
-        """)
+        """))
 
         if theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
@@ -1113,7 +1124,7 @@ class IconGrid(QWidget):
             btn_text = "#1D1D1F"
             shadow_color = QColor(0, 0, 0, 20)
 
-        btn_style = f"""
+        btn_style = scale_qss(f"""
             QPushButton {{
                 background-color: {btn_bg};
                 border: 1px solid {btn_border};
@@ -1126,7 +1137,7 @@ class IconGrid(QWidget):
             QPushButton:hover {{ background-color: {btn_hover}; }}
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
             QPushButton:disabled {{ background-color: rgba(255,255,255,0.3); color: #C7C7CC; }}
-        """
+        """)
 
         self.add_file_btn.setStyleSheet(btn_style)
         self.add_hotkey_btn.setStyleSheet(btn_style)
@@ -1140,8 +1151,8 @@ class IconGrid(QWidget):
             (self.add_command_btn, "command"),
         )
         for btn, kind in action_buttons:
-            btn.setIcon(create_action_button_icon(kind, theme, 18))
-            btn.setIconSize(QSize(18, 18))
+            btn.setIcon(create_action_button_icon(kind, theme, sp(18)))
+            btn.setIconSize(QSize(sp(18), sp(18)))
             shadow = QGraphicsDropShadowEffect()
             shadow.setBlurRadius(10)
             shadow.setOffset(0, 2)
@@ -1149,8 +1160,22 @@ class IconGrid(QWidget):
             btn.setGraphicsEffect(shadow)
 
         self.hint_label.setStyleSheet(
-            f"color: {theme == 'dark' and '#8e8e93' or '#8e8e93'}; font-size: 13px; line-height: 1.6;"
+            scale_qss(f"color: {theme == 'dark' and '#8e8e93' or '#8e8e93'}; font-size: 13px; line-height: 1.6;")
         )
+
+    def rescale_ui(self):
+        layout = self.layout()
+        if layout is not None:
+            layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
+            layout.setSpacing(sp(8))
+        if self.current_folder_id:
+            self.load_folder(self.current_folder_id)
+        else:
+            self._place_icons()
+        try:
+            self.apply_theme(self.data_manager.get_settings().theme)
+        except Exception as exc:
+            logger.debug("刷新图标网格缩放失败: %s", exc, exc_info=True)
 
     def retranslate_ui(self):
         if hasattr(self, "hint_label"):
@@ -1178,7 +1203,7 @@ class IconGrid(QWidget):
             parent = parent.parent()
 
         if theme == "dark":
-            return """
+            return scale_qss("""
                 QMenu {
                     background-color: rgba(30, 30, 30, 120);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1205,9 +1230,9 @@ class IconGrid(QWidget):
                     background-color: rgba(255, 255, 255, 16);
                     margin: 6px 10px;
                 }
-            """
+            """)
         else:
-            return """
+            return scale_qss("""
                 QMenu {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1234,7 +1259,7 @@ class IconGrid(QWidget):
                     background-color: rgba(60, 60, 67, 18);
                     margin: 6px 10px;
                 }
-            """
+            """)
 
     def _get_cell_size(self):
         # 分栏框宽度减去左右各10px边距，除以6列
@@ -1251,8 +1276,8 @@ class IconGrid(QWidget):
         if len(live_widgets) != len(self.icon_widgets):
             self.icon_widgets = live_widgets
         cell = self._get_cell_size()
-        pad_x = 10
-        pad_top = 14
+        pad_x = sp(10)
+        pad_top = sp(14)
         for i, widget in enumerate(self.icon_widgets):
             col = i % 6
             row = i // 6
@@ -1329,7 +1354,7 @@ class IconGrid(QWidget):
         self.hint_container.hide()
 
         cell_size = self._get_cell_size()
-        icon_size = 26  # 固定图标大小
+        icon_size = sp(26)
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
@@ -1414,21 +1439,20 @@ class IconGrid(QWidget):
 
     def _stop_icon_thread(self):
         worker = getattr(self, "_icon_worker", None)
-        if worker is not None:
-            try:
-                worker.cancel()
-            except RuntimeError:
-                logger.debug("取消图标加载worker失败", exc_info=True)
-            except Exception as exc:
-                logger.debug("取消图标加载任务失败: %s", exc, exc_info=True)
-
         thread = getattr(self, "_icon_thread", None)
-        if thread is not None:
-            try:
-                thread.quit()
-                thread.wait(2000)
-            except RuntimeError:
-                logger.debug("停止图标加载线程失败", exc_info=True)
+        if thread is None:
+            self._icon_worker = None
+            return
+
+        stopped = stop_qthread_nonblocking(
+            thread,
+            worker=worker,
+            owner="IconGrid.icon_loader",
+            wait_ms=0,
+            disconnect_thread_signals=("finished",),
+            disconnect_worker_signals=("finished",),
+        )
+        if stopped:
             self._icon_thread = None
             self._icon_worker = None
 
@@ -1441,8 +1465,24 @@ class IconGrid(QWidget):
         self._icon_thread = QThread()
         self._icon_worker.moveToThread(self._icon_thread)
         self._icon_worker.finished.connect(lambda sid, image, gen=generation: self._on_icon_loaded(gen, sid, image))
+        self._icon_worker.completed.connect(self._icon_thread.quit)
+        self._icon_thread.finished.connect(self._icon_worker.deleteLater)
+        self._icon_thread.finished.connect(self._icon_thread.deleteLater)
+        self._icon_thread.finished.connect(
+            lambda gen=generation, thread=self._icon_thread, worker=self._icon_worker: self._on_icon_thread_finished(
+                gen, thread, worker
+            )
+        )
         self._icon_thread.started.connect(self._icon_worker.run)
         self._icon_thread.start()
+
+    def _on_icon_thread_finished(self, generation: int, thread, worker):
+        if generation != getattr(self, "_icon_load_generation", generation):
+            return
+        if getattr(self, "_icon_thread", None) is thread:
+            self._icon_thread = None
+        if getattr(self, "_icon_worker", None) is worker:
+            self._icon_worker = None
 
     def _on_icon_loaded(self, *args):
         if len(args) == 3:
@@ -1506,7 +1546,7 @@ class IconGrid(QWidget):
         try:
             from core.icon_extractor import IconExtractor
 
-            size = 26
+            size = sp(26)
             for widget in self.icon_widgets:
                 if widget.shortcut.id == item.id:
                     size = widget.icon_size
@@ -1823,8 +1863,8 @@ class IconGrid(QWidget):
             return base
 
         visible_count = min(len(widgets), 4)
-        offset = 7
-        badge_size = 18
+        offset = sp(7)
+        badge_size = sp(18)
         width = base.width() + offset * (visible_count - 1) + badge_size // 2
         height = base.height() + offset * (visible_count - 1) + badge_size // 2
         pixmap = QPixmap(width, height)
@@ -1844,7 +1884,8 @@ class IconGrid(QWidget):
         painter.setBrush(QColor(0, 122, 255, 230))
         painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI", 9)
+        font = QFont("Segoe UI")
+        font.setPixelSize(font_px(9))
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(QRect(badge_x, badge_y, badge_size, badge_size), QtCompat.AlignCenter, str(len(widgets)))
@@ -2149,13 +2190,13 @@ class IconGrid(QWidget):
                 bg = "rgba(224, 250, 240, 200)"
                 border = "2px dashed rgba(70, 180, 140, 180)"
 
-            self.grid_area.setStyleSheet(f"""
+            self.grid_area.setStyleSheet(scale_qss(f"""
                 QWidget#iconGridArea {{
                     background-color: {bg};
                     border: {border};
                     border-radius: 10px;
                 }}
-            """)
+            """))
         else:
             event.ignore()
 
@@ -2190,8 +2231,8 @@ class IconGrid(QWidget):
 
             # Calculate the closest grid slot
             cell = self._get_cell_size()
-            pad_x = 10
-            pad_top = 14
+            pad_x = sp(10)
+            pad_top = sp(14)
 
             col = max(0, min(5, (pos_in_container.x() - pad_x) // cell))
             row = max(0, (pos_in_container.y() - pad_top) // cell)

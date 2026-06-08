@@ -7,7 +7,7 @@ import pytest
 import ui.config_window.icon_grid as grid_mod
 from core import ShortcutItem, ShortcutType
 from qt_compat import QPoint, Qt
-from ui.config_window.icon_grid import IconContainer, IconGrid, IconWidget
+from ui.config_window.icon_grid import IconContainer, IconGrid, IconWidget, MoveFolderDialog
 
 pytestmark = pytest.mark.ui
 
@@ -42,6 +42,18 @@ def _data_with_folders(folders):
         folders=folders,
         get_folder_by_id=lambda folder_id: next((folder for folder in folders if folder.id == folder_id), None),
     )
+
+
+def test_move_folder_dialog_constructs_before_child_buttons_exist(qapp):
+    from core import Folder
+
+    dialog = MoveFolderDialog([Folder(id="target", name="Target")])
+    try:
+        assert dialog.combo.count() == 1
+        assert dialog.cancel_btn is not None
+        assert dialog.ok_btn is not None
+    finally:
+        dialog.deleteLater()
 
 
 def test_ctrl_and_shift_click_update_selection(monkeypatch):

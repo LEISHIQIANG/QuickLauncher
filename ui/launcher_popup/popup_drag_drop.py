@@ -5,6 +5,7 @@ import os
 
 from core import ShortcutItem, ShortcutType
 from qt_compat import QTimer
+from ui.utils.ui_scale import sp, spf, font_px
 
 try:
     from core import ShortcutExecutor
@@ -54,11 +55,11 @@ class PopupDragDropMixin:
                 else min(visible_count, max_cols) * self.cell_size
             )
             start_x = (self.width() - line_width) // 2
-            dock_row_stride = self.icon_size + 6  # 行间距6px
+            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
 
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
-                dock_row = (pos.y() - self.dock_y - 8) // dock_row_stride
+                dock_row = (pos.y() - self.dock_y - sp(8)) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
                     idx = dock_row * max_cols + dock_col
                     if 0 <= idx < visible_count:
@@ -70,9 +71,9 @@ class PopupDragDropMixin:
         # 检查主图标区域
         elif self.padding <= pos.x() and self.padding <= pos.y() < self.content_height:
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = 6
-            indicator_height = 16 if len(self.pages) > 1 else 0
-            indicator_spacing = 4 if len(self.pages) > 1 else 0
+            bottom_margin = sp(6)
+            indicator_height = sp(16) if len(self.pages) > 1 else 0
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
             icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from core.version import APP_ID, APP_PUBLISHER, APP_VERSION, RELEASE_STATUS
 from scripts.check_release_artifacts import check_release_artifacts, check_source_metadata
-from scripts.post_package_smoke import run_packaged_smoke
+from scripts.post_package_smoke import default_dist_dir, run_packaged_smoke
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -208,7 +208,7 @@ def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
     fake_smoke.write_text(
         "import json\n"
         "print('starting fake smoke')\n"
-        "print(json.dumps({'status': 'ok', 'checks': {'fake': True}, 'errors': []}))\n",
+        "print(json.dumps({'status': 'ok', 'checks': {'fake': True, 'network_runtime': {}}, 'errors': []}))\n",
         encoding="utf-8",
     )
 
@@ -229,6 +229,29 @@ def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
     assert result.manifest["post_package_smoke"]["smoke_payload"]["checks"]["fake"] is True
 
 
+def test_post_package_smoke_default_dist_dir_uses_versioned_portable(tmp_path):
+    root = tmp_path / "root"
+    (root / "core").mkdir(parents=True)
+    (root / "dist" / f"QuickLauncher_Portable_{APP_VERSION}").mkdir(parents=True)
+    (root / "core" / "version.py").write_text(f'APP_VERSION = "{APP_VERSION}"\n', encoding="utf-8")
+    exe = root / "dist" / f"QuickLauncher_Portable_{APP_VERSION}" / "QuickLauncher.exe"
+    exe.write_bytes(b"exe")
+
+    assert default_dist_dir(root) == exe.parent
+
+
+def test_post_package_smoke_default_dist_dir_prefers_staged_dist(tmp_path):
+    root = tmp_path / "root"
+    staged = root / "dist" / "QuickLauncher"
+    portable = root / "dist" / f"QuickLauncher_Portable_{APP_VERSION}"
+    staged.mkdir(parents=True)
+    portable.mkdir(parents=True)
+    (staged / "QuickLauncher.exe").write_bytes(b"exe")
+    (portable / "QuickLauncher.exe").write_bytes(b"exe")
+
+    assert default_dist_dir(root) == staged
+
+
 def test_post_package_smoke_rejects_failed_payload(tmp_path):
     dist = tmp_path / "QuickLauncher"
     dist.mkdir()
@@ -243,6 +266,21 @@ def test_post_package_smoke_rejects_failed_payload(tmp_path):
     assert not result.ok
     assert "boom" in result.errors
     assert result.smoke_payload == {"status": "failed", "errors": ["boom"]}
+
+
+def test_post_package_smoke_requires_network_runtime_check(tmp_path):
+    dist = tmp_path / "QuickLauncher"
+    dist.mkdir()
+    fake_smoke = tmp_path / "fake_smoke.py"
+    fake_smoke.write_text(
+        "import json\nprint(json.dumps({'status': 'ok', 'checks': {}, 'errors': []}))\n",
+        encoding="utf-8",
+    )
+
+    result = run_packaged_smoke(dist, exe=Path(sys.executable), smoke_args=[str(fake_smoke)])
+
+    assert not result.ok
+    assert any("network_runtime" in error for error in result.errors)
 
 
 def test_release_artifact_checker_fails_missing_hooks(tmp_path):

@@ -22,6 +22,7 @@ from qt_compat import (
 from ui.custom_tooltip import CustomToolTip
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 
 class ConfigHistoryWindow(ThemedToolWindow):
@@ -31,7 +32,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
         self.data_manager = data_manager
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__(tr("配置历史"), theme=theme, parent=parent)
-        self.resize(700, 480)
+        self.resize(sp(700), sp(480))
         self._setup_ui()
         self._apply_content_theme()
         self.refresh()
@@ -45,7 +46,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
 
         # Recovery action buttons
         recovery_btn_layout = QHBoxLayout()
-        recovery_btn_layout.setSpacing(8)
+        recovery_btn_layout.setSpacing(sp(8))
 
         self.open_recovery_dir_btn = QPushButton(tr("打开恢复目录"))
         self.open_recovery_dir_btn.clicked.connect(self._open_recovery_dir)
@@ -66,9 +67,9 @@ class ConfigHistoryWindow(ThemedToolWindow):
         self.list_widget.setWordWrap(False)
         self.list_widget.setSpacing(0)
         self.list_widget.setUniformItemSizes(True)
-        font = QFont("Microsoft YaHei UI", 9)
+        font = QFont("Microsoft YaHei UI", font_px(9))
         if not font.exactMatch():
-            font = QFont("Segoe UI", 9)
+            font = QFont("Segoe UI", font_px(9))
         self.list_widget.setFont(font)
         self.content_layout.addWidget(self.list_widget)
 
@@ -132,7 +133,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
             color = (
                 "rgba(255, 255, 255, 0.62)" if getattr(self, "_theme", "light") == "dark" else "rgba(60, 60, 67, 0.72)"
             )
-            self.recovery_label.setStyleSheet(f"font-size: 11px; color: {color}; background: transparent;")
+            self.recovery_label.setStyleSheet(scale_qss(f"font-size: 11px; color: {color}; background: transparent;"))
         buttons = [
             getattr(self, "refresh_btn", None),
             getattr(self, "restore_btn", None),
@@ -148,7 +149,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
         self.snapshots = self.data_manager.list_config_history()
         if not self.snapshots:
             item = QListWidgetItem(tr("暂无历史快照。重要配置变更后会自动保存最近 20 次快照"))
-            item.setSizeHint(QSize(0, 32))
+            item.setSizeHint(QSize(0, sp(32)))
             self.list_widget.addItem(item)
             return
         for snapshot in self.snapshots:
@@ -162,7 +163,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
                 text = f"{ts}  {action}"
                 tip = f"{ts}\n{action}"
             item = QListWidgetItem(text)
-            item.setSizeHint(QSize(0, 32))
+            item.setSizeHint(QSize(0, sp(32)))
             item.setData(Qt.UserRole, tip)
             item.setData(32, snapshot.id)
             self.list_widget.addItem(item)

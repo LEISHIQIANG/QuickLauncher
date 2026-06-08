@@ -33,6 +33,8 @@ from qt_compat import (
 from ui.config_window.support_dialog import _rounded_pixmap, _support_image_path
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.interruptible_animation import stop_animation, stop_named_animations
+from ui.utils.ui_scale import sp, scale_qss
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +62,14 @@ class FloatingEmoji(QLabel):
 
         # 区分自动气泡与手动连击的物理参数
         if is_auto:
-            self.setStyleSheet("font-size: 16px; background: transparent; border: none;")
+            self.setStyleSheet(scale_qss("font-size: 16px; background: transparent; border: none;"))
             initial_opacity = 0.70
             duration = 1800  # 升起得更慢、更轻
             max_dy = -120
             min_dy = -80
             max_dx = 20
         else:
-            self.setStyleSheet("font-size: 26px; background: transparent; border: none; font-weight: 400;")
+            self.setStyleSheet(scale_qss("font-size: 26px; background: transparent; border: none; font-weight: 400;"))
             initial_opacity = 1.0
             duration = 1200  # 点击时爆发力强
             max_dy = -200
@@ -122,7 +124,7 @@ class WobblyCoffeeCup(QLabel):
     def __init__(self, text="☕", parent=None):
         super().__init__(text, parent)
         self.setCursor(QtCompat.PointingHandCursor)
-        self.setFixedSize(120, 120)
+        self.setFixedSize(sp(120), sp(120))
         self.setAlignment(QtCompat.AlignCenter)
 
         self.theme = "dark"
@@ -220,8 +222,7 @@ class WobblyCoffeeCup(QLabel):
             self.auto_timer.setInterval(self.current_interval)
 
     def wobble(self):
-        self._offset = QPoint(0, 0)
-        self._angle = 0.0
+        stop_animation(getattr(self, "_wobble_group", None), owner="WobblyCoffeeCup.wobble")
 
         from qt_compat import QParallelAnimationGroup
 
@@ -229,7 +230,7 @@ class WobblyCoffeeCup(QLabel):
 
         anim_angle = QtCompat.QPropertyAnimation(self, b"angle")
         anim_angle.setDuration(500)
-        anim_angle.setStartValue(0.0)
+        anim_angle.setStartValue(self._angle)
         anim_angle.setKeyValueAt(0.15, -18.0)
         anim_angle.setKeyValueAt(0.3, 14.0)
         anim_angle.setKeyValueAt(0.45, -10.0)
@@ -240,7 +241,7 @@ class WobblyCoffeeCup(QLabel):
 
         anim_pos = QtCompat.QPropertyAnimation(self, b"offset")
         anim_pos.setDuration(500)
-        anim_pos.setStartValue(QPoint(0, 0))
+        anim_pos.setStartValue(self._offset)
         anim_pos.setKeyValueAt(0.25, QPoint(0, -15))
         anim_pos.setKeyValueAt(0.45, QPoint(0, 4))
         anim_pos.setKeyValueAt(0.65, QPoint(0, -4))
@@ -254,16 +255,19 @@ class WobblyCoffeeCup(QLabel):
 
     def flash_halo(self):
         """点击时呼吸灯微亮一下，展现轻微点击回馈。"""
+        stop_animation(getattr(self, "_flash_anim", None), owner="WobblyCoffeeCup.flash_halo")
         self._breathing_anim.stop()
 
         flash = QtCompat.QPropertyAnimation(self, b"halo_opacity")
         flash.setDuration(350)
-        flash.setStartValue(0.65)  # 闪烁峰值
+        flash.setStartValue(max(self._halo_opacity, 0.65))  # 闪烁峰值
         flash.setEndValue(0.15)
         flash.setEasingCurve(QtCompat.OutCubic)
 
         def restart_breath():
             self._breathing_anim.start()
+            if getattr(self, "_flash_anim", None) is flash:
+                self._flash_anim = None
 
         flash.finished.connect(restart_breath)
         flash.start()
@@ -349,8 +353,8 @@ class DrinkCard(QFrame):
 
         self.setCursor(QtCompat.PointingHandCursor)
         self.setMouseTracking(True)
-        self.setFixedWidth(100)
-        self.setFixedHeight(110)
+        self.setFixedWidth(sp(100))
+        self.setFixedHeight(sp(110))
 
         self._hover_progress = 0.0
         self._scale = 1.0
@@ -394,6 +398,7 @@ class DrinkCard(QFrame):
         super().mouseMoveEvent(event)
 
     def enterEvent(self, event):
+        stop_animation(self._hover_anim, owner="DrinkCard.hover")
         anim = QtCompat.QPropertyAnimation(self, b"hover_progress")
         anim.setDuration(220)
         anim.setStartValue(self._hover_progress)
@@ -404,6 +409,7 @@ class DrinkCard(QFrame):
         super().enterEvent(event)
 
     def leaveEvent(self, event):
+        stop_animation(self._hover_anim, owner="DrinkCard.hover")
         anim = QtCompat.QPropertyAnimation(self, b"hover_progress")
         anim.setDuration(180)
         anim.setStartValue(self._hover_progress)
@@ -415,9 +421,10 @@ class DrinkCard(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == QtCompat.LeftButton:
+            stop_named_animations(self, "_click_anim", "_sweep_anim")
             anim = QtCompat.QPropertyAnimation(self, b"scale")
             anim.setDuration(200)
-            anim.setStartValue(1.0)
+            anim.setStartValue(self._scale)
             anim.setKeyValueAt(0.4, 0.9)
             anim.setEndValue(1.0)
             anim.setEasingCurve(QtCompat.InOutQuart)
@@ -539,7 +546,7 @@ class DrinkCard(QFrame):
         emoji_font.setPointSize(emoji_size)
         painter.setFont(emoji_font)
         painter.setPen(QPen(text_color))  # 改用实体画笔绘制，确保表情 100% 渲染显示
-        painter.drawText(QRect(0, 10, rect.width(), 42), QtCompat.AlignCenter, self.emoji)
+        painter.drawText(QRect(0, sp(10), rect.width(), sp(42)), QtCompat.AlignCenter, self.emoji)
 
         # 6. 绘制标题
         name_font = painter.font()
@@ -547,7 +554,7 @@ class DrinkCard(QFrame):
         name_font.setBold(False)
         painter.setFont(name_font)
         painter.setPen(QPen(text_color))
-        painter.drawText(QRect(0, 56, rect.width(), 20), QtCompat.AlignCenter, self.name)
+        painter.drawText(QRect(0, sp(56), rect.width(), sp(20)), QtCompat.AlignCenter, self.name)
 
         # 7. 绘制价格
         price_font = painter.font()
@@ -555,7 +562,7 @@ class DrinkCard(QFrame):
         price_font.setBold(False)
         painter.setFont(price_font)
         painter.setPen(QPen(sub_color))
-        painter.drawText(QRect(0, 76, rect.width(), 20), QtCompat.AlignCenter, f"¥{self.price:.2f}")
+        painter.drawText(QRect(0, sp(76), rect.width(), sp(20)), QtCompat.AlignCenter, f"¥{self.price:.2f}")
 
         painter.end()
 
@@ -570,15 +577,15 @@ class SettingsSupportPageMixin:
         container.setStyleSheet("background: transparent; border: none;")
 
         v_layout = QVBoxLayout(container)
-        v_layout.setContentsMargins(0, 5, 0, 5)
-        v_layout.setSpacing(15)
+        v_layout.setContentsMargins(0, sp(5), 0, sp(5))
+        v_layout.setSpacing(sp(15))
 
         # 头部说明区域
         header_widget = QFrame(container)
         header_widget.setStyleSheet("background: transparent; border: none;")
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(8)
+        header_layout.setSpacing(sp(8))
         header_layout.setAlignment(QtCompat.AlignCenter)
 
         # 咖啡杯互动挂件
@@ -606,7 +613,7 @@ class SettingsSupportPageMixin:
         drink_bar_widget.setStyleSheet("background: transparent; border: none;")
         drink_grid = QGridLayout(drink_bar_widget)
         drink_grid.setContentsMargins(0, 0, 0, 0)
-        drink_grid.setSpacing(12)
+        drink_grid.setSpacing(sp(12))
         drink_grid.setAlignment(QtCompat.AlignCenter)
 
         drinks_data = [
@@ -632,7 +639,7 @@ class SettingsSupportPageMixin:
         # 3. 折叠式二维码容器 (默认隐藏，小巧美观)
         self._qr_container = QFrame(container)
         self._qr_container.setObjectName("QRContainer")
-        self._qr_container.setFixedWidth(280)
+        self._qr_container.setFixedWidth(sp(280))
 
         qr_outer_layout = QHBoxLayout()
         qr_outer_layout.addStretch()  # 左侧拉伸，使二维码卡片在整个配置页面绝对水平居中
@@ -640,13 +647,13 @@ class SettingsSupportPageMixin:
         qr_outer_layout.addStretch()  # 右侧拉伸，使二维码卡片在整个配置页面绝对水平居中
 
         qr_layout = QVBoxLayout(self._qr_container)
-        qr_layout.setContentsMargins(12, 12, 12, 12)
-        qr_layout.setSpacing(10)
+        qr_layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
+        qr_layout.setSpacing(sp(10))
         qr_layout.setAlignment(QtCompat.AlignCenter)
 
         # 二维码图片标签 (130x130)
         self._qr_image_label = QLabel(self._qr_container)
-        self._qr_image_label.setFixedSize(130, 130)
+        self._qr_image_label.setFixedSize(sp(130), sp(130))
         self._qr_image_label.setAlignment(QtCompat.AlignCenter)
         self._qr_image_label.setStyleSheet("background: transparent; border: none;")
 
@@ -656,7 +663,7 @@ class SettingsSupportPageMixin:
             pixmap = QPixmap(130, 130)
             pixmap.fill(QColor(128, 128, 128))
         else:
-            pixmap = pixmap.scaled(120, 120, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = pixmap.scaled(sp(120), sp(120), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
             pixmap = _rounded_pixmap(pixmap, 10)
 
         self._qr_image_label.setPixmap(pixmap)
@@ -664,7 +671,7 @@ class SettingsSupportPageMixin:
 
         # 二维码操作按钮 (换用极简现代的 unicode 标识符 ⛶ 和 ✕ 代替普通 emoji)
         qr_btn_layout = QHBoxLayout()
-        qr_btn_layout.setSpacing(8)
+        qr_btn_layout.setSpacing(sp(8))
         qr_btn_layout.addStretch()  # 左侧拉伸，使按钮组在容器内完美水平居中
 
         self._view_fullscreen_btn = QPushButton(tr("⛶ 放大查看"), self._qr_container)
@@ -687,8 +694,8 @@ class SettingsSupportPageMixin:
         footer_widget = QFrame(container)
         footer_widget.setStyleSheet("background: transparent; border: none;")
         footer_layout = QHBoxLayout(footer_widget)
-        footer_layout.setContentsMargins(0, 10, 0, 0)
-        footer_layout.setSpacing(12)
+        footer_layout.setContentsMargins(0, sp(10), 0, 0)
+        footer_layout.setSpacing(sp(12))
         footer_layout.setAlignment(QtCompat.AlignCenter)
 
         self._star_btn = QPushButton(tr("⭐ 点个 Star 鼓励一下"), footer_widget)
@@ -757,31 +764,31 @@ class SettingsSupportPageMixin:
 
         if hasattr(self, "_support_title_lbl"):
             self._support_title_lbl.setStyleSheet(
-                f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none;"
+                scale_qss(f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none;")
             )
         if hasattr(self, "_support_desc_lbl"):
             self._support_desc_lbl.setStyleSheet(
-                f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none;"
+                scale_qss(f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none;")
             )
         if hasattr(self, "_reaction_label"):
             self._reaction_label.setStyleSheet(
-                f"font-size: 11px; color: {desc_color}; background: transparent; border: none;"
+                scale_qss(f"font-size: 11px; color: {desc_color}; background: transparent; border: none;")
             )
 
         if hasattr(self, "_qr_container"):
             card_bg = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
             card_border = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
-            self._qr_container.setStyleSheet(f"""
+            self._qr_container.setStyleSheet(scale_qss(f"""
                 QFrame#QRContainer {{
                     background-color: {card_bg};
                     border: 1px solid {card_border};
                     border-radius: 16px;
                 }}
-            """)
+            """))
 
             # 动态应用精致的、独立于全局 Compact 按钮的高对比度微章按钮样式表
             if theme == "dark":
-                btn_style_fullscreen = """
+                btn_style_fullscreen = scale_qss("""
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -799,8 +806,8 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(255, 255, 255, 0.05);
                     }
-                """
-                btn_style_close = """
+                """)
+                btn_style_close = scale_qss("""
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -818,9 +825,9 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(255, 82, 82, 0.05);
                     }
-                """
+                """)
             else:
-                btn_style_fullscreen = """
+                btn_style_fullscreen = scale_qss("""
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -838,8 +845,8 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(0, 0, 0, 0.02);
                     }
-                """
-                btn_style_close = """
+                """)
+                btn_style_close = scale_qss("""
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -857,7 +864,7 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(211, 47, 47, 0.03);
                     }
-                """
+                """)
             self._view_fullscreen_btn.setStyleSheet(btn_style_fullscreen)
             self._close_qr_btn.setStyleSheet(btn_style_close)
 

@@ -28,6 +28,8 @@ from ui.styles.style import Colors, StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
+from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -56,15 +58,15 @@ class ThemedToolWindow(QDialog):
 
     def _setup_shell(self, title: str):
         self.root_layout = QVBoxLayout(self)
-        self.root_layout.setContentsMargins(12, 0, 0, 12)
-        self.root_layout.setSpacing(6)
+        self.root_layout.setContentsMargins(sp(12), 0, 0, sp(12))
+        self.root_layout.setSpacing(sp(6))
 
         title_bar = QHBoxLayout()
-        title_bar.setContentsMargins(6, 0, 0, 0)
-        title_bar.setSpacing(8)
+        title_bar.setContentsMargins(sp(6), 0, 0, 0)
+        title_bar.setSpacing(sp(8))
 
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(20, 20)
+        self.icon_label.setFixedSize(sp(20), sp(20))
         self.icon_label.setStyleSheet("background: transparent;")
         self._load_title_icon()
         title_bar.addWidget(self.icon_label)
@@ -75,7 +77,7 @@ class ThemedToolWindow(QDialog):
         title_bar.addStretch()
 
         self.close_btn_top = QPushButton("✕")
-        self.close_btn_top.setFixedSize(46, 32)
+        self.close_btn_top.setFixedSize(sp(46), sp(32))
         self.close_btn_top.setCursor(QtCompat.PointingHandCursor)
         self.close_btn_top.clicked.connect(self.close)
         title_bar.addWidget(self.close_btn_top)
@@ -86,13 +88,13 @@ class ThemedToolWindow(QDialog):
         self.root_layout.addWidget(self.subtitle_label)
 
         self.content_layout = QVBoxLayout()
-        self.content_layout.setContentsMargins(0, 0, 4, 0)
-        self.content_layout.setSpacing(6)
+        self.content_layout.setContentsMargins(0, 0, sp(4), 0)
+        self.content_layout.setSpacing(sp(6))
         self.root_layout.addLayout(self.content_layout, 1)
 
         self.button_layout = QHBoxLayout()
-        self.button_layout.setContentsMargins(0, 0, 4, 0)
-        self.button_layout.setSpacing(8)
+        self.button_layout.setContentsMargins(0, 0, sp(4), 0)
+        self.button_layout.setSpacing(sp(8))
         self.root_layout.addLayout(self.button_layout)
 
     def set_subtitle(self, text: str):
@@ -115,20 +117,20 @@ class ThemedToolWindow(QDialog):
             text_primary = "rgba(28, 28, 30, 0.9)"
             text_secondary = "rgba(60, 60, 67, 0.6)"
 
-        self.setStyleSheet("QDialog { background: transparent; }")
-        self.title_label.setStyleSheet(f"""
+        self.setStyleSheet(scale_qss("QDialog { background: transparent; }"))
+        self.title_label.setStyleSheet(scale_qss(f"""
             font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
-        """)
+        """))
         self.title_label.setFont(get_qfont(14, 400))
-        self.subtitle_label.setStyleSheet(f"""
+        self.subtitle_label.setStyleSheet(scale_qss(f"""
             font-size: 11px;
             color: {text_secondary};
             background: transparent;
             padding-left: 6px;
-        """)
-        self.close_btn_top.setStyleSheet(f"""
+        """))
+        self.close_btn_top.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -146,7 +148,7 @@ class ThemedToolWindow(QDialog):
                 background: #C50F1F;
                 color: #ffffff;
             }}
-        """)
+        """))
         tune_font_rendering(self, recursive=True)
         self.title_label.setFont(get_qfont(14, 400))
 
@@ -163,7 +165,7 @@ class ThemedToolWindow(QDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(f"""
+        widget.setStyleSheet(scale_qss(f"""
             QPlainTextEdit {{
                 background: transparent;
                 border: none;
@@ -171,7 +173,7 @@ class ThemedToolWindow(QDialog):
                 selection-background-color: {selection_bg};
                 selection-color: {selection_text};
             }}
-        """ + scrollbar_style)
+        """ + scrollbar_style))
         self.style_scrollbars(widget)
 
     def style_list_widget(self, widget: QListWidget):
@@ -196,7 +198,7 @@ class ThemedToolWindow(QDialog):
         padding = "4px 7px" if compact else "8px 10px"
         radius = "4px" if compact else "6px"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(f"""
+        widget.setStyleSheet(scale_qss(f"""
             QListWidget {{
                 background: transparent;
                 border: 1px solid {border};
@@ -218,7 +220,7 @@ class ThemedToolWindow(QDialog):
                 color: {selected_text};
                 border: 1px solid {selected_border};
             }}
-        """ + scrollbar_style)
+        """ + scrollbar_style))
         self.style_scrollbars(widget)
 
     def style_scrollbars(self, widget):
@@ -245,7 +247,7 @@ class ThemedToolWindow(QDialog):
             btn_hover = "rgba(0, 122, 255, 0.8)"
             btn_text = "#1c1c1e"
             disabled = "rgba(60, 60, 67, 0.35)"
-        style = f"""
+        style = scale_qss(f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 10px;
@@ -268,9 +270,9 @@ class ThemedToolWindow(QDialog):
                 background: transparent;
                 border: 1px solid {btn_border};
             }}
-        """
+        """)
         for button in buttons:
-            button.setFixedHeight(30)
+            button.setFixedHeight(sp(30))
             button.setCursor(QtCompat.PointingHandCursor)
             button.setStyleSheet(style)
 
@@ -292,7 +294,7 @@ class ThemedToolWindow(QDialog):
                     pixmap = QPixmap(icon_path)
                     if not pixmap.isNull():
                         self.icon_label.setPixmap(
-                            pixmap.scaled(QSize(20, 20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                            pixmap.scaled(QSize(sp(20), sp(20)), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                         )
                         return
         except Exception as exc:
@@ -330,7 +332,7 @@ class ThemedToolWindow(QDialog):
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-            radius = 8
+            radius = sp(8)
             if self._theme == "dark":
                 bg = QColor(28, 28, 30, 180)
                 border = QColor(190, 190, 197, 60)
@@ -342,7 +344,7 @@ class ThemedToolWindow(QDialog):
                 paint_win10_rounded_surface(painter, self, bg, border, radius)
                 return
 
-            inset = 0.5
+            inset = spf(0.5)
             path = QPainterPath()
             path.addRoundedRect(
                 inset,
@@ -373,7 +375,7 @@ class ThemedToolWindow(QDialog):
                 hwnd = int(self.winId())
                 if hwnd:
                     effect = get_window_effect()
-                    effect.set_window_region(hwnd, self.width(), self.height(), 12)
+                    effect.set_window_region(hwnd, self.width(), self.height(), sp(12))
                     effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
         except Exception as exc:
             logger.debug("调整窗口区域失败: %s", exc, exc_info=True)
@@ -386,16 +388,19 @@ class ThemedToolWindow(QDialog):
         self._start_show_animation()
 
     def _start_show_animation(self):
+        stop_named_animations(self, "anim_group", "opacity_anim", "pos_anim")
+        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
         self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
+        self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
         self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
+        start_pos = self.pos() if start_opacity > 0.001 else QPoint(pos.x(), pos.y() + sp(20))
+        self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
 
@@ -409,7 +414,7 @@ class ThemedToolWindow(QDialog):
             pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
             self._drag_pos = (
                 (event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos())
-                if pos.y() <= 36
+                if pos.y() <= sp(36)
                 else None
             )
         super().mousePressEvent(event)

@@ -6,6 +6,7 @@ import sys
 
 from core import ShortcutItem, ShortcutType
 from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QRectF, Qt, QtCompat
+from ui.utils.ui_scale import sp, spf, font_px
 
 try:
     from core import IconExtractor
@@ -319,7 +320,8 @@ class PopupIconMixin:
         first_char = item.name[0] if item.name else "?"
         painter.setPen(QPen(QColor(255, 255, 255)))
         font = QFont("Segoe UI")
-        font.setPixelSize(max(10, int(size * 0.4)))
+        # Use unscaled settings value as input to font_px() to avoid double-scaling
+        font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.4))))
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)

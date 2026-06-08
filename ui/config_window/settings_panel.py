@@ -38,6 +38,8 @@ from qt_compat import (
 from ui.styles.style import StyleSheet
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.utils.ui_scale import sp, spf, font_px, scale_qss
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 from .settings_about_page import SettingsAboutPageMixin
@@ -62,9 +64,9 @@ class CompactProgressDialog(QDialog):
         self.theme = theme
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(240)
-        self.setMaximumWidth(400)
-        self.setMinimumHeight(90)
+        self.setMinimumWidth(sp(240))
+        self.setMaximumWidth(sp(400))
+        self.setMinimumHeight(sp(90))
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
@@ -86,18 +88,18 @@ class CompactProgressDialog(QDialog):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 10, 12, 10)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
+        main_layout.setSpacing(sp(8))
 
         # 标题栏（图标 + 标题）
         self.title_layout = QHBoxLayout()
-        self.title_layout.setSpacing(8)
+        self.title_layout.setSpacing(sp(8))
         self.title_layout.setContentsMargins(0, 0, 0, 0)
 
         # 图标
         self.icon_label = QLabel()
-        self.icon_label.setStyleSheet("font-size: 20px; margin-top: -3px;")
-        self.icon_label.setFixedSize(24, 24)
+        self.icon_label.setStyleSheet(scale_qss("font-size: 20px; margin-top: -3px;"))
+        self.icon_label.setFixedSize(sp(24), sp(24))
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setVisible(False)
         self.title_layout.addWidget(self.icon_label)
@@ -105,7 +107,7 @@ class CompactProgressDialog(QDialog):
         # 标题
         self.title_label = QLabel()
         self.title_label.setFont(get_qfont(13, 400))
-        self.title_label.setStyleSheet("font-size: 13px; font-weight: 400;")
+        self.title_label.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400;"))
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.title_layout.addWidget(self.title_label, 1)
 
@@ -124,13 +126,13 @@ class CompactProgressDialog(QDialog):
 
         # 按钮
         self.btn_layout = QHBoxLayout()
-        self.btn_layout.setSpacing(6)
+        self.btn_layout.setSpacing(sp(6))
         self.btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_layout.addStretch()
         self.ok_btn = QPushButton(tr("确定"))
         self.ok_btn.setDefault(True)
-        self.ok_btn.setFixedHeight(22)
-        self.ok_btn.setMinimumWidth(52)
+        self.ok_btn.setFixedHeight(sp(22))
+        self.ok_btn.setMinimumWidth(sp(52))
         self.ok_btn.clicked.connect(self.accept)
         self.ok_btn.setVisible(False)
         self.btn_layout.addWidget(self.ok_btn)
@@ -205,7 +207,7 @@ class CompactProgressDialog(QDialog):
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
         self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
+        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + sp(20)))
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
 
@@ -276,7 +278,7 @@ class NavigationItem(QListWidgetItem):
         super().__init__(text)
         self.icon_name = icon_name or ""
         self.setTextAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
-        self.setSizeHint(QSize(0, 40))
+        self.setSizeHint(QSize(0, sp(40)))
 
 
 class NavigationItemWidget(QWidget):
@@ -292,8 +294,8 @@ class NavigationItemWidget(QWidget):
 
     def sizeHint(self) -> QSize:
         fm = self.fontMetrics()
-        h = max(19, fm.height()) + 22  # 22px padding total (11px top/bottom), scales perfectly with high-DPI
-        return QSize(100, h)
+        h = max(sp(19), fm.height()) + sp(22)  # 22px padding total (11px top/bottom), scales perfectly with high-DPI
+        return QSize(sp(100), h)
 
     def update_icon(self, new_icon):
         self.icon = new_icon
@@ -326,13 +328,13 @@ class NavigationItemWidget(QWidget):
                 hover_bg = QColor(0, 0, 0, 8)  # rgba(0, 0, 0, 0.03)
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(QRectF(self.rect()).adjusted(8, 2, -8, -2), 6, 6)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(sp(8), sp(2), sp(-8), sp(-2)), sp(6), sp(6))
 
         # Draw icon
         if self.icon:
-            pixmap = self.icon.pixmap(19, 19)
+            pixmap = self.icon.pixmap(sp(19), sp(19))
             y = (self.height() - pixmap.height()) // 2
-            painter.drawPixmap(14, y, pixmap)
+            painter.drawPixmap(sp(14), y, pixmap)
 
         # Draw text
         if self.theme == "dark":
@@ -351,7 +353,7 @@ class NavigationItemWidget(QWidget):
 
         painter.setFont(get_qfont(12))
 
-        text_rect = QRectF(38, 0, self.width() - 48, self.height())
+        text_rect = QRectF(sp(38), 0, self.width() - sp(48), self.height())
         painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
 
         painter.end()
@@ -360,12 +362,12 @@ class NavigationItemWidget(QWidget):
 class NavigationWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(140)
+        self.setFixedWidth(sp(140))
         self.setFrameShape(QFrame.NoFrame)
         self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
-        self.setSpacing(4)
-        self.setIconSize(QSize(19, 19))
+        self.setSpacing(sp(4))
+        self.setIconSize(QSize(sp(19), sp(19)))
         from ui.utils.font_manager import get_qfont
 
         self.setFont(get_qfont(13))
@@ -377,6 +379,21 @@ class NavigationWidget(QListWidget):
         self._pill_opacity_anim = None
 
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
+
+    def rescale_ui(self):
+        self.setFixedWidth(sp(140))
+        self.setSpacing(sp(4))
+        self.setIconSize(QSize(sp(19), sp(19)))
+        for row in range(self.count()):
+            item = self.item(row)
+            if item is None:
+                continue
+            widget = self.itemWidget(item)
+            if isinstance(widget, NavigationItemWidget):
+                item.setSizeHint(widget.sizeHint())
+                widget.update()
+        self._apply_nav_icons(self.theme)
+        self.viewport().update()
 
     @pyqtProperty(QRectF)
     def pill_rect(self) -> QRectF:
@@ -401,7 +418,7 @@ class NavigationWidget(QListWidget):
         if curr_indexes:
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
-            target_rect = QRectF(visual_rect).adjusted(8, 2, -8, -2)
+            target_rect = QRectF(visual_rect).adjusted(sp(8), sp(2), sp(-8), sp(-2))
 
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
@@ -438,27 +455,27 @@ class NavigationWidget(QListWidget):
         self.theme = theme
         self._apply_nav_icons(theme)
 
-        self.setStyleSheet("""
-            QListWidget {
+        self.setStyleSheet(f"""
+            QListWidget {{
                 background-color: transparent;
                 border: none;
                 outline: none;
-                padding-top: 10px;
-            }
-            QListWidget::item {
+                padding-top: {sp(10)}px;
+            }}
+            QListWidget::item {{
                 background-color: transparent;
                 border: none;
                 padding: 0px;
-                margin: 2px 8px;
-            }
-            QListWidget::item:selected {
+                margin: {sp(2)}px {sp(8)}px;
+            }}
+            QListWidget::item:selected {{
                 background-color: transparent;
                 border: none;
-            }
-            QListWidget::item:hover {
+            }}
+            QListWidget::item:hover {{
                 background-color: transparent;
                 border: none;
-            }
+            }}
         """)
 
     def _apply_nav_icons(self, theme: str):
@@ -471,7 +488,7 @@ class NavigationWidget(QListWidget):
                 widget.theme = theme
                 icon_name = getattr(item, "icon_name", "")
                 if icon_name:
-                    new_icon = create_action_button_icon(icon_name, theme, 19)
+                    new_icon = create_action_button_icon(icon_name, theme, sp(19))
                     widget.update_icon(new_icon)
                 widget.update()
 
@@ -488,7 +505,7 @@ class NavigationWidget(QListWidget):
 
             painter.setBrush(QBrush(pill_color))
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(self._pill_rect, 6, 6)
+            painter.drawRoundedRect(self._pill_rect, sp(6), sp(6))
             painter.end()
 
         super().paintEvent(event)
@@ -509,8 +526,8 @@ class BaseSettingPage(SmoothScrollArea):
         self.setWidget(self.content_widget)
 
         self.layout = QVBoxLayout(self.content_widget)
-        self.layout.setContentsMargins(10, 5, 10, 5)
-        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(sp(10), sp(5), sp(10), sp(5))
+        self.layout.setSpacing(sp(10))
 
     def add_group(self, title):
         from ui.utils.font_manager import get_qfont
@@ -519,7 +536,7 @@ class BaseSettingPage(SmoothScrollArea):
         group.setFont(get_qfont(14))
         group.setProperty("settingsGroupTitle", title)
 
-        group.setStyleSheet("""
+        group.setStyleSheet(scale_qss("""
             QGroupBox {
                 border: none;
                 padding-top: 5px;
@@ -532,21 +549,21 @@ class BaseSettingPage(SmoothScrollArea):
                 padding-left: 18px;
                 color: white;
             }
-        """)
+        """))
 
         icon_label = QLabel()
         icon_label.setObjectName("SettingsGroupIcon")
         icon_label.setProperty("settingsGroupIconTitle", title)
         icon_label.setParent(group)
-        icon_label.setFixedSize(14, 14)
+        icon_label.setFixedSize(sp(14), sp(14))
         icon_label.setAlignment(QtCompat.AlignCenter)
         icon_label.setStyleSheet("background: transparent; border: none;")
-        icon_label.setPixmap(self._create_group_icon(title, "dark", 14))
+        icon_label.setPixmap(self._create_group_icon(title, "dark", sp(14)))
         icon_label.raise_()
 
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))
+        layout.setSpacing(sp(8))
         self.layout.addWidget(group)
         self._position_group_icon(group)
         return layout, group
@@ -898,7 +915,7 @@ class BaseSettingPage(SmoothScrollArea):
 
         for label in self.findChildren(QLabel, "SettingsGroupIcon"):
             title = label.property("settingsGroupIconTitle") or ""
-            label.setPixmap(self._create_group_icon(str(title), theme, 14))
+            label.setPixmap(self._create_group_icon(str(title), theme, sp(14)))
             parent = label.parent()
             if parent:
                 self._position_group_icon(parent)
@@ -976,21 +993,21 @@ class SettingsPanel(
 
         # 分栏容器圆角矩形样式
         if theme == "dark":
-            container_style = """
+            container_style = scale_qss("""
                 QWidget#NavContainer, QWidget#ContentContainer {
                     background-color: rgba(255, 255, 255, 0.06);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 10px;
                 }
-            """
+            """)
         else:
-            container_style = """
+            container_style = scale_qss("""
                 QWidget#NavContainer, QWidget#ContentContainer {
                     background-color: rgba(255, 255, 255, 0.20);
                     border: 1px solid rgba(0, 0, 0, 0.06);
                     border-radius: 10px;
                 }
-            """
+            """)
         self.nav_container.setStyleSheet(container_style)
         self.content_container.setStyleSheet(container_style)
 
@@ -1073,10 +1090,65 @@ class SettingsPanel(
             finally:
                 self._command_refresh_apply_theme = True
 
+    def rescale_ui(self):
+        main_layout = self.layout()
+        if main_layout is not None:
+            main_layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
+            main_layout.setSpacing(sp(8))
+
+        self.nav_widget.rescale_ui()
+        for container in (self.nav_container, self.content_container):
+            container_layout = container.layout()
+            if container_layout is not None:
+                container_layout.setContentsMargins(0, 0, 0, 0)
+                container_layout.setSpacing(0)
+
+        for page in self._pages.values():
+            if hasattr(page, "apply_theme"):
+                page.apply_theme(self.current_theme)
+
+        self.apply_theme(self.current_theme)
+        self.updateGeometry()
+        self.update()
+
+    def capture_view_state(self) -> dict:
+        index = 0
+        scroll = 0
+        try:
+            index = int(self.content_stack.currentIndex())
+            scroll = self._current_page_scroll_value(index)
+        except Exception as exc:
+            logger.debug("捕获设置页状态失败: %s", exc, exc_info=True)
+        return {"settings_page_index": index, "settings_page_scroll": scroll}
+
+    def restore_view_state(self, state: dict | None):
+        if not isinstance(state, dict):
+            return
+        try:
+            index = int(state.get("settings_page_index", 0) or 0)
+        except (TypeError, ValueError):
+            index = 0
+        if index not in self._pages:
+            index = 0
+        self._ensure_page_built(index)
+
+        for row in range(self.nav_widget.count()):
+            item = self.nav_widget.item(row)
+            if item is not None and item.data(QtCompat.UserRole) == index:
+                self.nav_widget.setCurrentRow(row)
+                break
+        self.content_stack.setCurrentIndex(index)
+
+        try:
+            scroll = int(state.get("settings_page_scroll", 0) or 0)
+        except (TypeError, ValueError):
+            scroll = 0
+        QTimer.singleShot(0, lambda idx=index, value=scroll: self._restore_page_scroll_value(idx, value))
+
     def _setup_ui(self):
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
+        main_layout.setSpacing(sp(8))
 
         # 1. 左侧导航栏圆角容器
         self.nav_container = QWidget()
@@ -1144,10 +1216,10 @@ class SettingsPanel(
             self._pages[i] = page
             self.content_stack.addWidget(page)
 
-        # 只立即构建第一个页面（系统设置），其余延迟
-        self._ensure_page_built(0)
+        # 只立即构建第一个页面（系统设置），其余延迟；设置值和主题由 _load_settings 统一填充。
+        self._ensure_page_built(0, load_settings=False, apply_theme=False)
 
-    def _ensure_page_built(self, index):
+    def _ensure_page_built(self, index, *, settings=None, load_settings=True, apply_theme=True):
         """延迟构建页面，首次访问时才初始化"""
         if index in self._initialized_pages:
             return
@@ -1160,14 +1232,20 @@ class SettingsPanel(
             page.layout.addStretch()
         self._initialized_pages.add(index)
         # 加载该页面的设置数据
-        self._load_settings_for_page(index)
+        if load_settings:
+            if settings is None:
+                settings = self.data_manager.get_settings()
+            self._load_settings_for_page(index, settings)
         # 应用当前主题
-        try:
-            theme = self.data_manager.get_settings().theme
-            if hasattr(page, "apply_theme"):
-                page.apply_theme(theme)
-        except Exception as exc:
-            logger.debug("应用页面主题失败: %s", exc, exc_info=True)
+        if apply_theme:
+            try:
+                if settings is None:
+                    settings = self.data_manager.get_settings()
+                theme = settings.theme
+                if hasattr(page, "apply_theme"):
+                    page.apply_theme(theme)
+            except Exception as exc:
+                logger.debug("应用页面主题失败: %s", exc, exc_info=True)
 
     def _init_nav_items(self):
         items = [
@@ -1189,7 +1267,7 @@ class SettingsPanel(
             # Create Custom NavigationItemWidget
             from .action_button_icons import create_action_button_icon
 
-            icon = create_action_button_icon(icon_name, self.current_theme, 19)
+            icon = create_action_button_icon(icon_name, self.current_theme, sp(19))
 
             widget = NavigationItemWidget(tr(text), icon, self.current_theme, self.nav_widget)
             widget.item = item
@@ -1225,8 +1303,15 @@ class SettingsPanel(
         items = self.nav_widget.selectedItems()
         if items:
             index = items[0].data(QtCompat.UserRole)
-            self._ensure_page_built(index)
-            self.content_stack.setCurrentIndex(index)
+            if self.content_stack.currentIndex() == index and index in self._initialized_pages:
+                return
+            self.setUpdatesEnabled(False)
+            try:
+                self._ensure_page_built(index)
+                self.content_stack.setCurrentIndex(index)
+            finally:
+                self.setUpdatesEnabled(True)
+                self.update()
 
     def _load_settings(self):
         self._updating = True
@@ -1285,7 +1370,7 @@ class SettingsPanel(
 
     def stop_background_timers(self):
         """Stop debounced settings timers before the owning window closes."""
-        for timer_name in ("_slider_debounce_timer",):
+        for timer_name in ("_slider_debounce_timer", "_auto_start_check_timer"):
             timer = getattr(self, timer_name, None)
             if timer is None:
                 continue
@@ -1296,5 +1381,29 @@ class SettingsPanel(
         stop_command_timers = getattr(self, "_stop_command_page_timers", None)
         if callable(stop_command_timers):
             stop_command_timers()
+        stop_threads = getattr(self, "stop_background_threads", None)
+        if callable(stop_threads):
+            stop_threads()
+
+    def stop_background_threads(self):
+        """Detach long-running settings workers so window teardown stays smooth."""
+        for attr in (
+            "export_thread",
+            "import_thread",
+            "_backup_thread",
+            "_restore_thread",
+            "_factory_reset_thread",
+        ):
+            thread = getattr(self, attr, None)
+            if thread is None:
+                continue
+            stopped = stop_qthread_nonblocking(
+                thread,
+                owner=f"SettingsPanel.{attr}",
+                wait_ms=0,
+                disconnect_thread_signals=("finished", "finished_signal", "progress_signal"),
+            )
+            if stopped:
+                setattr(self, attr, None)
 
     # Import/Export

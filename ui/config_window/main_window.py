@@ -35,6 +35,8 @@ from qt_compat import (
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.ui_scale import sp, spf, font_px, scale_qss
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -49,7 +51,7 @@ from .window_lifecycle import WindowLifecycleController
 class DotWidget(QWidget):
     def __init__(self, color: str, tooltip: str, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(14)
+        self.setFixedWidth(sp(14))
         self._color = QColor(color)
         self.setToolTip(tooltip)
 
@@ -60,7 +62,7 @@ class DotWidget(QWidget):
         p.setPen(QtCompat.NoPen)
         p.setBrush(self._color)
         cy = self.height() // 2 + 1
-        p.drawEllipse(3, cy - 4, 8, 8)
+        p.drawEllipse(sp(3), cy - sp(4), sp(8), sp(8))
         p.end()
 
 
@@ -76,22 +78,23 @@ class TitleBar(QWidget):
         self.parent_window = parent
         self._drag_pos = None
         self._in_settings_mode = False
+        self._app_icon_path = None
 
-        self.setFixedHeight(36)
+        self.setFixedHeight(sp(36))
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 0, 1, 0)
-        layout.setSpacing(4)
+        layout.setContentsMargins(sp(8), 0, sp(1), 0)
+        layout.setSpacing(sp(4))
 
         # 返回按钮 (默认隐藏)
         self.back_btn = QPushButton("‹")
-        self.back_btn.setFixedSize(32, 32)
+        self.back_btn.setFixedSize(sp(32), sp(32))
         self.back_btn.setCursor(QtCompat.PointingHandCursor)
         self.back_btn.clicked.connect(self._on_back)
         self.back_btn.setVisible(False)
-        self.back_btn.setStyleSheet("""
+        self.back_btn.setStyleSheet(scale_qss("""
             QPushButton {
                 background: transparent;
                 border: none;
@@ -106,11 +109,11 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #007aff;
             }
-        """)
+        """))
         layout.addWidget(self.back_btn)
 
         # 图标 (默认显示)
-        icon_size = 25
+        icon_size = sp(25)
         # 兼容打包环境
         if getattr(sys, "frozen", False):
             base_dir = os.path.dirname(sys.executable)
@@ -129,6 +132,7 @@ class TitleBar(QWidget):
                 icon_path = os.path.join(base_dir, "app.ico")
 
             if os.path.exists(icon_path):
+                self._app_icon_path = icon_path
                 if self.parent_window:
                     self.parent_window.setWindowIcon(QIcon(icon_path))
 
@@ -140,13 +144,13 @@ class TitleBar(QWidget):
         except Exception as exc:
             logger.debug("加载窗口图标失败: %s", exc, exc_info=True)
         layout.addWidget(self.icon_label, alignment=QtCompat.AlignVCenter)
-        layout.addSpacing(6)
+        layout.addSpacing(sp(6))
 
         # 标题
         self.title_label = QLabel(f"QuickLauncher {APP_VERSION}")
         self.title_label.setCursor(QtCompat.PointingHandCursor)
         self.title_label.mousePressEvent = self._on_update_click
-        self.title_label.setStyleSheet("font-size: 13px; font-weight: 400; background: transparent;")
+        self.title_label.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400; background: transparent;"))
         self.title_label.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.title_label)
 
@@ -154,7 +158,7 @@ class TitleBar(QWidget):
 
         # 设置按钮
         self.settings_btn = QPushButton()
-        self.settings_btn.setFixedSize(32, 32)
+        self.settings_btn.setFixedSize(sp(32), sp(32))
         self._settings_icon_path = None
 
         # 尝试加载设置图标
@@ -166,7 +170,7 @@ class TitleBar(QWidget):
             if os.path.exists(setting_icon_path):
                 self._settings_icon_path = setting_icon_path
                 self.settings_btn.setIcon(QIcon(setting_icon_path))
-                self.settings_btn.setIconSize(QSize(20, 20))
+                self.settings_btn.setIconSize(QSize(sp(20), sp(20)))
             else:
                 self.settings_btn.setText("⚙")
         except Exception as exc:
@@ -176,7 +180,7 @@ class TitleBar(QWidget):
         self.settings_btn.setCursor(QtCompat.PointingHandCursor)
         self.settings_btn.clicked.connect(self._on_settings)
 
-        self.settings_btn.setStyleSheet("""
+        self.settings_btn.setStyleSheet(scale_qss("""
             QPushButton {
                 background: transparent;
                 border: none;
@@ -188,15 +192,15 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #ffffff;
             }
-        """)
+        """))
         layout.addWidget(self.settings_btn)
 
         # 关闭按钮
         self.close_btn = QPushButton("✕")
-        self.close_btn.setFixedSize(32, 32)
+        self.close_btn.setFixedSize(sp(32), sp(32))
         self.close_btn.setCursor(QtCompat.PointingHandCursor)
         self.close_btn.clicked.connect(self._on_close)
-        self.close_btn.setStyleSheet("""
+        self.close_btn.setStyleSheet(scale_qss("""
             QPushButton {
                 background: transparent;
                 border: none;
@@ -208,7 +212,7 @@ class TitleBar(QWidget):
                 background-color: #e81123;
                 color: white;
             }
-        """)
+        """))
         layout.addWidget(self.close_btn)
 
     def set_theme(self, theme: str):
@@ -224,11 +228,11 @@ class TitleBar(QWidget):
             btn_hover_bg = "rgba(0, 0, 0, 0.05)"
 
         self.title_label.setStyleSheet(
-            f"font-size: 13px; font-weight: 400; background: transparent; color: {text_color};"
+            scale_qss(f"font-size: 13px; font-weight: 400; background: transparent; color: {text_color};")
         )
 
         # 更新按钮样式
-        btn_base_style = f"""
+        btn_base_style = scale_qss(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -241,13 +245,13 @@ class TitleBar(QWidget):
                 background-color: {btn_hover_bg};
                 color: {text_color};
             }}
-        """
+        """)
 
-        self.back_btn.setStyleSheet(btn_base_style + "QPushButton { font-size: 24px; padding-bottom: 8px; }")
-        self.settings_btn.setStyleSheet(btn_base_style + "QPushButton { font-size: 18px; }")
+        self.back_btn.setStyleSheet(btn_base_style + scale_qss("QPushButton { font-size: 24px; padding-bottom: 8px; }"))
+        self.settings_btn.setStyleSheet(btn_base_style + scale_qss("QPushButton { font-size: 18px; }"))
 
         # 关闭按钮特殊处理 hover 颜色
-        self.close_btn.setStyleSheet(f"""
+        self.close_btn.setStyleSheet(scale_qss(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -261,7 +265,7 @@ class TitleBar(QWidget):
                 background-color: #e81123;
                 color: white;
             }}
-        """)
+        """))
 
         if not self._settings_icon_path:
             return
@@ -277,7 +281,7 @@ class TitleBar(QWidget):
                     return
 
                 # 缩放到需要的大小
-                pixmap = pixmap.scaled(20, 20, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                pixmap = pixmap.scaled(sp(20), sp(20), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
 
                 # 转换为 QImage 进行像素操作
                 image = pixmap.toImage()
@@ -297,15 +301,39 @@ class TitleBar(QWidget):
                 # 亮主题使用原始图标
                 self.settings_btn.setIcon(QIcon(self._settings_icon_path))
 
-            self.settings_btn.setIconSize(QSize(20, 20))
+            self.settings_btn.setIconSize(QSize(sp(20), sp(20)))
         except Exception as exc:
             logger.debug("应用主题到设置图标失败: %s", exc, exc_info=True)
 
     def set_mode(self, is_settings):
+        if self._in_settings_mode == is_settings:
+            return
         self._in_settings_mode = is_settings
         self.back_btn.setVisible(is_settings)
         self.icon_label.setVisible(not is_settings)
         self.settings_btn.setVisible(not is_settings)
+        self.retranslate_ui()
+
+    def rescale_ui(self):
+        self.setFixedHeight(sp(36))
+        layout = self.layout()
+        if layout is not None:
+            layout.setContentsMargins(sp(8), 0, sp(1), 0)
+            layout.setSpacing(sp(4))
+
+        self.back_btn.setFixedSize(sp(32), sp(32))
+        self.icon_label.setFixedSize(sp(25), sp(25))
+        if self._app_icon_path and os.path.exists(self._app_icon_path):
+            pixmap = QIcon(self._app_icon_path).pixmap(sp(25), sp(25))
+            if pixmap and not pixmap.isNull():
+                self.icon_label.setPixmap(
+                    pixmap.scaled(sp(25), sp(25), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                )
+
+        self.settings_btn.setFixedSize(sp(32), sp(32))
+        self.settings_btn.setIconSize(QSize(sp(20), sp(20)))
+        self.close_btn.setFixedSize(sp(32), sp(32))
+        self.set_theme(getattr(self, "_theme", "dark"))
         self.retranslate_ui()
 
     def retranslate_ui(self):
@@ -538,7 +566,7 @@ class ConfigWindow(QMainWindow):
     settings_changed = pyqtSignal()
 
     # 布局常量
-    FOLDER_PANEL_WIDTH = 160
+    FOLDER_PANEL_WIDTH = 160  # base value, scaled at usage
     # SETTINGS_PANEL_WIDTH = 220  # Removed
     ICON_WIDGET_SIZE = 65  # 调整为 65，对应 IconWidget 的正方形尺寸
     ICON_COLS = 6
@@ -552,7 +580,8 @@ class ConfigWindow(QMainWindow):
         self._drag_drop_compat_applied = False
         self._shortcut_edit_active = False
         self._shortcut_dialog_release_delay_ms = 250
-        self._lifecycle = WindowLifecycleController(self, ("_anim_timer",))
+        self._settings_panel_preload_scheduled = False
+        self._lifecycle = WindowLifecycleController(self, ("_anim_timer", "_hide_anim_timer"))
 
         # 对话框实例引用（防止多实例冲突）
         self._active_file_dialog = None
@@ -568,16 +597,8 @@ class ConfigWindow(QMainWindow):
         self.setWindowOpacity(0)  # 初始透明度为 0
 
         # 计算固定窗口大小 - 增加宽度使左右边距一致
-        icon_grid_width = (
-            self.ICON_GRID_PADDING * 2
-            + self.ICON_COLS * self.ICON_WIDGET_SIZE
-            + (self.ICON_COLS - 1) * self.ICON_GRID_SPACING
-        )
-        # total_width = self.FOLDER_PANEL_WIDTH + icon_grid_width + self.SETTINGS_PANEL_WIDTH + 8
-        # Remove settings panel width, add some padding
-        total_width = self.FOLDER_PANEL_WIDTH + icon_grid_width
-
-        self.setFixedSize(total_width, 560)
+        total_width, total_height = self._calculate_window_size()
+        self.setFixedSize(total_width, total_height)
 
         self._setup_ui()
         self._apply_theme()
@@ -589,6 +610,15 @@ class ConfigWindow(QMainWindow):
 
         # 新手引导标记
         self._guide_shown = False
+
+    def _calculate_window_size(self) -> tuple[int, int]:
+        icon_grid_width = (
+            sp(self.ICON_GRID_PADDING) * 2
+            + self.ICON_COLS * sp(self.ICON_WIDGET_SIZE)
+            + (self.ICON_COLS - 1) * sp(self.ICON_GRID_SPACING)
+        )
+        total_width = sp(self.FOLDER_PANEL_WIDTH) + icon_grid_width
+        return total_width, sp(560)
 
     def _show_welcome_guide(self):
         """显示新手引导"""
@@ -604,10 +634,12 @@ class ConfigWindow(QMainWindow):
     def showEvent(self, event):
         """窗口显示事件 - 首次运行显示引导、应用阴影效果"""
         generation = self._lifecycle.open_generation()
+        centered_show = bool(getattr(self, "_centered_show_animation", False))
         # 预先将窗口移动到偏移起点并设置为全透明，避免任何初始抖动
         pos = self.pos()
         self.setWindowOpacity(0.0)
-        self.move(pos.x(), pos.y() + 16)
+        if not centered_show:
+            self.move(pos.x(), pos.y() + sp(16))
 
         # 每次重新打开时重置高级模式复选框（纯 UI 状态，不持久化）
         panel = getattr(self, "settings_panel", None)
@@ -621,6 +653,7 @@ class ConfigWindow(QMainWindow):
         # 立即应用阴影和亚克力效果（去掉延迟，确保窗口零延迟渲染）
         self._apply_window_shadow()
         self._start_show_animation()
+        self._schedule_settings_panel_preload(generation)
 
     def _setup_ui(self):
         """设置UI"""
@@ -629,7 +662,7 @@ class ConfigWindow(QMainWindow):
         self.setCentralWidget(self.rounded_container)
 
         main_layout = QVBoxLayout(self.rounded_container)
-        main_layout.setContentsMargins(1, 1, 1, 1)
+        main_layout.setContentsMargins(sp(1), sp(1), sp(1), sp(1))
         main_layout.setSpacing(0)
 
         # 自定义标题栏
@@ -655,7 +688,7 @@ class ConfigWindow(QMainWindow):
         from .folder_panel import FolderPanel
 
         self.folder_panel = FolderPanel(self.data_manager)
-        self.folder_panel.setFixedWidth(self.FOLDER_PANEL_WIDTH)
+        self.folder_panel.setFixedWidth(sp(self.FOLDER_PANEL_WIDTH))
         self.folder_panel.folder_selected.connect(self._on_folder_selected)
         launcher_layout.addWidget(self.folder_panel)
 
@@ -684,10 +717,10 @@ class ConfigWindow(QMainWindow):
 
         # 状态栏
         self.status_bar = QStatusBar()
-        self.status_bar.setFixedHeight(22)
+        self.status_bar.setFixedHeight(sp(22))
         self.status_bar.setSizeGripEnabled(False)
-        self.status_bar.setStyleSheet("font-size: 11px; background: transparent; QStatusBar::item { border: none; }")
-        self.status_bar.setContentsMargins(self.FOLDER_PANEL_WIDTH + 4, 0, 0, 0)
+        self.status_bar.setStyleSheet(scale_qss("font-size: 11px; background: transparent; QStatusBar::item { border: none; }"))
+        self.status_bar.setContentsMargins(sp(self.FOLDER_PANEL_WIDTH) + sp(4), 0, 0, 0)
 
         # 右侧版本信息 - 纯文本QLabel
         import platform
@@ -722,6 +755,35 @@ class ConfigWindow(QMainWindow):
         main_layout.addWidget(self.status_bar)
         self.status_bar.showMessage(tr("就绪"))
 
+    def rescale_ui(self):
+        """Re-apply geometry that depends on the current global UI scale."""
+        total_width, total_height = self._calculate_window_size()
+        self.setFixedSize(total_width, total_height)
+
+        main_layout = self.rounded_container.layout()
+        if main_layout is not None:
+            main_layout.setContentsMargins(sp(1), sp(1), sp(1), sp(1))
+            main_layout.setSpacing(0)
+
+        if hasattr(self, "title_bar"):
+            self.title_bar.rescale_ui()
+        if hasattr(self, "folder_panel"):
+            self.folder_panel.setFixedWidth(sp(self.FOLDER_PANEL_WIDTH))
+            if hasattr(self.folder_panel, "rescale_ui"):
+                self.folder_panel.rescale_ui()
+        if hasattr(self, "status_bar"):
+            self.status_bar.setFixedHeight(sp(22))
+            self.status_bar.setContentsMargins(sp(self.FOLDER_PANEL_WIDTH) + sp(4), 0, 0, 0)
+        if hasattr(self, "icon_grid") and hasattr(self.icon_grid, "rescale_ui"):
+            self.icon_grid.rescale_ui()
+        if hasattr(self, "settings_panel") and self.settings_panel is not None:
+            if hasattr(self.settings_panel, "rescale_ui"):
+                self.settings_panel.rescale_ui()
+
+        self._apply_theme()
+        self.updateGeometry()
+        self.update()
+
     def _ensure_settings_panel(self):
         """确保设置面板已创建（延迟初始化）"""
         if self.settings_panel is not None:
@@ -752,7 +814,8 @@ class ConfigWindow(QMainWindow):
 
             # 应用当前主题
             theme = self.data_manager.get_settings().theme
-            if hasattr(self.settings_panel, "apply_theme"):
+            panel_theme = getattr(self.settings_panel, "current_theme", None)
+            if panel_theme != theme and hasattr(self.settings_panel, "apply_theme"):
                 self.settings_panel.apply_theme(theme)
 
             logger.info("设置面板创建成功")
@@ -767,12 +830,30 @@ class ConfigWindow(QMainWindow):
                 logger.debug("显示错误对话框失败: %s", exc, exc_info=True)
             raise
 
+    def _schedule_settings_panel_preload(self, generation: int | None = None):
+        """Pre-create the heavy settings panel while the window is idle."""
+        if self.settings_panel is not None or self._settings_panel_preload_scheduled:
+            return
+        self._settings_panel_preload_scheduled = True
+        lifecycle = getattr(self, "_lifecycle", None)
+        if lifecycle is not None:
+            lifecycle.defer(450, self._preload_settings_panel, generation=generation)
+        else:
+            QTimer.singleShot(450, self._preload_settings_panel)
+
+    def _preload_settings_panel(self):
+        self._settings_panel_preload_scheduled = False
+        if self.settings_panel is not None or not self.isVisible():
+            return
+        try:
+            self._ensure_settings_panel()
+        except Exception:
+            logger.debug("预加载设置面板失败", exc_info=True)
+
     def _show_settings(self):
         try:
             self._ensure_settings_panel()
-            self._slide_to_page(1, direction="left")
-            self.title_bar.set_mode(True)
-            self.status_bar.setVisible(False)
+            self._set_main_page(1, is_settings=True, direction="left")
         except Exception as e:
             import logging
 
@@ -796,13 +877,67 @@ class ConfigWindow(QMainWindow):
             ThemedMessageBox.warning(self, tr("检查更新失败"), tr("无法检查更新:\n{error}", error=e))
 
     def _show_launcher(self):
-        self._slide_to_page(0, direction="right")
-        self.title_bar.set_mode(False)
-        self.status_bar.setVisible(True)
+        self._set_main_page(0, is_settings=False, direction="right")
+
+    def _set_main_page(self, index: int, *, is_settings: bool, direction: str = "left"):
+        current_index = self.stack.currentIndex()
+        current_mode = getattr(self.title_bar, "_in_settings_mode", False)
+        status_visible = self.status_bar.isVisible()
+        if current_index == index and current_mode == is_settings and status_visible == (not is_settings):
+            return
+
+        self.setUpdatesEnabled(False)
+        try:
+            self._slide_to_page(index, direction=direction)
+            self.title_bar.set_mode(is_settings)
+            self.status_bar.setVisible(not is_settings)
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def _slide_to_page(self, index, direction="left"):
         """切换页面"""
+        if self.stack.currentIndex() == index:
+            return
         self.stack.setCurrentIndex(index)
+
+    def capture_view_state(self) -> dict:
+        state = {"stack_index": 0}
+        try:
+            state["stack_index"] = int(self.stack.currentIndex())
+        except Exception as exc:
+            logger.debug("捕获配置窗口页面状态失败: %s", exc, exc_info=True)
+        settings_panel = getattr(self, "settings_panel", None)
+        if settings_panel is not None and hasattr(settings_panel, "capture_view_state"):
+            try:
+                state.update(settings_panel.capture_view_state())
+            except Exception as exc:
+                logger.debug("捕获设置页面状态失败: %s", exc, exc_info=True)
+        try:
+            state["folder_id"] = getattr(self.icon_grid, "current_folder_id", None)
+        except Exception:
+            pass
+        return state
+
+    def restore_view_state(self, state: dict | None):
+        if not isinstance(state, dict):
+            return
+        try:
+            stack_index = int(state.get("stack_index", 0) or 0)
+        except (TypeError, ValueError):
+            stack_index = 0
+
+        if stack_index == 1:
+            self._ensure_settings_panel()
+            if self.settings_panel is not None and hasattr(self.settings_panel, "restore_view_state"):
+                self.settings_panel.restore_view_state(state)
+            self._set_main_page(1, is_settings=True)
+            return
+
+        self._set_main_page(0, is_settings=False)
+        folder_id = state.get("folder_id")
+        if folder_id:
+            QTimer.singleShot(0, lambda fid=folder_id: self._on_folder_selected(fid))
 
     def _load_initial_folder(self):
         """加载初始文件夹"""
@@ -840,7 +975,7 @@ class ConfigWindow(QMainWindow):
         theme = self.data_manager.get_settings().theme
 
         if theme == "dark":
-            return """
+            return scale_qss("""
                 QMenu {
                     background-color: rgba(30, 30, 30, 120);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -863,9 +998,9 @@ class ConfigWindow(QMainWindow):
                     background-color: rgba(255, 255, 255, 0.12);
                     margin: 6px 10px;
                 }
-            """
+            """)
         else:
-            return """
+            return scale_qss("""
                 QMenu {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -888,7 +1023,7 @@ class ConfigWindow(QMainWindow):
                     background-color: #e5e5ea;
                     margin: 6px 10px;
                 }
-            """
+            """)
 
     def get_menu_stylesheet(self) -> str:
         """公开方法供子组件调用"""
@@ -926,9 +1061,9 @@ class ConfigWindow(QMainWindow):
         # 设置状态栏颜色
         status_color = "rgba(255, 255, 255, 0.5)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
         self.status_bar.setStyleSheet(
-            f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}"
+            scale_qss(f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}")
         )
-        self.version_label.setStyleSheet(f"font-size: 11px; color: {status_color}; padding: 0; margin-right: 10px;")
+        self.version_label.setStyleSheet(scale_qss(f"font-size: 11px; color: {status_color}; padding: 0; margin-right: 10px;"))
 
         # 设置标题栏和设置面板主题
         self.title_bar.set_theme(theme)
@@ -1292,7 +1427,7 @@ class ConfigWindow(QMainWindow):
         # 重新加载数据
         self.data_manager.reload()
 
-        self._apply_theme()
+        self.rescale_ui()
 
         # 刷新文件夹列表（不触发选中事件）
         if hasattr(self.folder_panel, "_load_folders"):
@@ -1343,12 +1478,19 @@ class ConfigWindow(QMainWindow):
         if lifecycle is not None:
             lifecycle.close_generation()
             lifecycle.stop_timers()
+        self._settings_panel_preload_scheduled = False
         settings_panel = getattr(self, "settings_panel", None)
         if settings_panel is not None and hasattr(settings_panel, "stop_background_timers"):
             try:
                 settings_panel.stop_background_timers()
             except Exception as exc:
                 logger.debug("停止后台定时器失败: %s", exc, exc_info=True)
+        icon_grid = getattr(self, "icon_grid", None)
+        if icon_grid is not None and hasattr(icon_grid, "_stop_icon_thread"):
+            try:
+                icon_grid._stop_icon_thread()
+            except Exception as exc:
+                logger.debug("停止图标加载线程失败: %s", exc, exc_info=True)
         try:
             # 强制保存所有待保存的数据
             self.data_manager.flush_pending_save()
@@ -1359,9 +1501,11 @@ class ConfigWindow(QMainWindow):
     def _start_show_animation(self):
         """苹果风格的高质感弹性滑入动画 - 100% 兼容编译及免崩溃设计"""
         pos = self.pos()
+        offset_px = 0 if bool(getattr(self, "_centered_show_animation", False)) else sp(16)
         # 窗口当前在偏移点 (pos.y() 处)，目标点是向上 16 像素
-        target_pos = QPoint(pos.x(), pos.y() - 16)
+        target_pos = QPoint(pos.x(), pos.y() - offset_px)
         self._anim_target_pos = target_pos
+        self._anim_offset_px = offset_px
 
         # 动画参数
         self._anim_step = 0
@@ -1392,8 +1536,65 @@ class ConfigWindow(QMainWindow):
         self.setWindowOpacity(min(1.0, progress * 1.5))
 
         target_y = self._anim_target_pos.y()
-        current_y = int(target_y + (1.0 - eased) * 16)
+        current_y = int(target_y + (1.0 - eased) * getattr(self, "_anim_offset_px", sp(16)))
         self.move(self._anim_target_pos.x(), current_y)
+        if progress >= 1.0:
+            self._centered_show_animation = False
+
+    def animate_close_then(self, callback=None, *, callback_delay_ms: int | None = None):
+        """Play a short disappearance animation and optionally overlap the callback."""
+        for timer_name in ("_anim_timer", "_hide_anim_timer"):
+            try:
+                timer = getattr(self, timer_name, None)
+                if timer is not None and timer.isActive():
+                    timer.stop()
+            except Exception as exc:
+                logger.debug("停止窗口动画定时器失败: %s", exc, exc_info=True)
+        stop_named_animations(self, "anim_group", "hide_anim_group")
+
+        if callback and callback_delay_ms is not None:
+            QTimer.singleShot(max(0, int(callback_delay_ms)), callback)
+            callback = None
+
+        start_pos = self.pos()
+        self._hide_anim_callback = callback
+        self._hide_anim_start_pos = start_pos
+        self._hide_anim_target_pos = QPoint(start_pos.x(), start_pos.y())
+        self._hide_anim_start_opacity = float(self.windowOpacity())
+        self._hide_anim_step = 0
+        self._hide_anim_duration_ms = 180
+        self._hide_anim_interval_ms = 16
+        self._hide_anim_total_steps = max(1, self._hide_anim_duration_ms // self._hide_anim_interval_ms)
+
+        self._hide_anim_timer = QTimer(self)
+        self._hide_anim_timer.setInterval(self._hide_anim_interval_ms)
+        self._hide_anim_timer.timeout.connect(self._on_hide_animation_tick)
+        self._hide_anim_timer.start()
+
+    def _on_hide_animation_tick(self):
+        self._hide_anim_step += 1
+        progress = min(1.0, self._hide_anim_step / self._hide_anim_total_steps)
+        eased = 1.0 - (1.0 - progress) * (1.0 - progress) * (1.0 - progress)
+
+        start = self._hide_anim_start_pos
+        target = self._hide_anim_target_pos
+        current_y = int(start.y() + (target.y() - start.y()) * eased)
+        self.move(start.x(), current_y)
+        start_opacity = float(getattr(self, "_hide_anim_start_opacity", 1.0))
+        self.setWindowOpacity(max(0.0, start_opacity * (1.0 - progress)))
+
+        if progress < 1.0:
+            return
+
+        try:
+            self._hide_anim_timer.stop()
+        except Exception as exc:
+            logger.debug("停止隐藏动画失败: %s", exc, exc_info=True)
+
+        callback = getattr(self, "_hide_anim_callback", None)
+        self.close()
+        if callback:
+            QTimer.singleShot(0, callback)
 
     def _apply_color_filter(self):
         """读取设置并通过修改 Acrylic 底色参数来应用颜色滤镜 (仅 Win11)"""

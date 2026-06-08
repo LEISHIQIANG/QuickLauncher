@@ -14,6 +14,7 @@ from qt_compat import (
     QWidget,
     pyqtProperty,
 )
+from ui.utils.ui_scale import sp
 
 
 def _clamp(value, low, high):
@@ -71,7 +72,7 @@ class _EdgeFeedbackOverlay(QWidget):
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-            height = max(32, min(72, int(self.height() * 0.14)))
+            height = max(sp(32), min(sp(72), int(self.height() * 0.14)))
             width = self.width()
 
             if self._top_opacity > 0.001:
@@ -100,14 +101,15 @@ class SmoothScrollArea(QScrollArea):
 
     def __init__(self, parent=None, scroll_step=126, duration=260):
         super().__init__(parent)
-        self._scroll_step = int(scroll_step)
+        self._scroll_step_base = int(scroll_step)
+        self._scroll_step = sp(self._scroll_step_base)
         self._duration = int(duration)
         self._scroll_pos = 0.0
         self._velocity = 0.0
         self._last_tick = 0.0
 
         self._scroll_timer = QTimer(self)
-        self._scroll_timer.setInterval(8)
+        self._scroll_timer.setInterval(16)
         self._scroll_timer.setTimerType(Qt.PreciseTimer)
         self._scroll_timer.timeout.connect(self._tick_scroll)
 
@@ -118,6 +120,10 @@ class SmoothScrollArea(QScrollArea):
         super().setWidget(widget)
         self._scroll_pos = float(self.verticalScrollBar().value())
         self._velocity = 0.0
+
+    def setScrollStep(self, scroll_step):
+        self._scroll_step_base = int(scroll_step)
+        self._scroll_step = sp(self._scroll_step_base)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -148,7 +154,8 @@ class SmoothScrollArea(QScrollArea):
 
         if minimum < maximum and (target != current or abs(self._velocity) > 0.01):
             self._velocity += movement * 0.18
-            self._velocity = _clamp(self._velocity, -64.0, 64.0)
+            max_velocity = max(48.0, float(sp(64)))
+            self._velocity = _clamp(self._velocity, -max_velocity, max_velocity)
             if not self._scroll_timer.isActive():
                 self._last_tick = time.monotonic()
                 self._scroll_timer.start()

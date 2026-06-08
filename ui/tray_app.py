@@ -23,6 +23,7 @@ from qt_compat import (
 from ui.styles.style import PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tray_mixins import HooksMixin, PopupMixin, SleepMixin, StartupMixin, UpdateMixin, WindowsMixin
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,17 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
         self.data_manager = DataManager()
         logger.info("数据管理器初始化成功")
+
+        # 初始化 UI 缩放（从配置中读取，在创建任何 UI 之前设置）
+        from ui.utils.ui_scale import set_scale as _set_ui_scale
+        _init_scale = getattr(self.data_manager.get_settings(), "ui_scale_percent", 100)
+        _set_ui_scale(_init_scale)
+        try:
+            from ui.utils.font_manager import apply_app_font
+
+            apply_app_font(13)
+        except Exception as exc:
+            logger.debug("应用启动 UI 缩放字体失败: %s", exc, exc_info=True)
 
         # 注册 data_manager 引用到 core 模块
         from core import set_data_manager
@@ -335,6 +347,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             "edge_highlight_color": str(getattr(settings, "edge_highlight_color", "#ffffff") or "#ffffff"),
             "edge_highlight_opacity": float(getattr(settings, "edge_highlight_opacity", 0.0) or 0.0),
             "double_click_interval": int(getattr(settings, "double_click_interval", 300) or 300),
+            "ui_scale_percent": int(getattr(settings, "ui_scale_percent", 100) or 100),
             # 布局参数（用于检测变更后刷新弹窗）
             "cols": int(getattr(settings, "cols", 4) or 4),
             "cell_size": int(getattr(settings, "cell_size", 72) or 72),
@@ -521,11 +534,14 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         except Exception:
             _thread = None
         if _thread is not None:
-            try:
-                _thread.quit()
-                _thread.wait(2000)
-            except Exception as exc:
-                logger.debug("退出图标缓存清理线程失败: %s", exc, exc_info=True)
+            stopped = stop_qthread_nonblocking(
+                _thread,
+                owner="TrayApp.icon_cache_clean",
+                wait_ms=0,
+                disconnect_thread_signals=("finished", "finished_signal"),
+            )
+            if stopped:
+                self._icon_cache_clean_thread = None
 
         for timer_name in (
             "_settings_sync_timer",

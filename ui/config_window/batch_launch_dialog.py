@@ -38,6 +38,9 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.utils.smooth_scroll import SmoothScrollArea
+from ui.utils.interruptible_animation import stop_animation
+from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.utils.ui_scale import sp, scale_qss
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -153,14 +156,14 @@ class BatchLaunchCard(QFrame):
         self._apply_theme()
 
     def _setup_ui(self):
-        self.setFixedHeight(52)
+        self.setFixedHeight(sp(52))
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(8)
+        layout.setContentsMargins(sp(8), sp(6), sp(8), sp(6))
+        layout.setSpacing(sp(8))
 
         # 图标
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(self.ICON_LABEL_SIZE, self.ICON_LABEL_SIZE)
+        self.icon_label.setFixedSize(sp(self.ICON_LABEL_SIZE), sp(self.ICON_LABEL_SIZE))
         self.icon_label.setAlignment(QtCompat.AlignCenter)
         self.icon_label.setStyleSheet("background: transparent; border: none;")
         self.icon_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -168,7 +171,7 @@ class BatchLaunchCard(QFrame):
 
         # 名称
         self.name_label = QLabel(self.shortcut.name or tr("未命名"))
-        self.name_label.setStyleSheet("font-size: 13px; background: transparent; border: none;")
+        self.name_label.setStyleSheet(scale_qss("font-size: 13px; background: transparent; border: none;"))
         self.name_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.name_label, 1)
 
@@ -180,20 +183,20 @@ class BatchLaunchCard(QFrame):
 
         # 延迟输入框
         delay_layout = QHBoxLayout()
-        delay_layout.setSpacing(4)
+        delay_layout.setSpacing(sp(4))
         delay_label = QLabel(tr("延迟"))
-        delay_label.setStyleSheet("font-size: 12px; background: transparent; border: none;")
+        delay_label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
         delay_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         delay_layout.addWidget(delay_label)
 
         self.delay_input = QLineEdit()
         self.delay_input.setText("0")
-        self.delay_input.setFixedWidth(50)
+        self.delay_input.setFixedWidth(sp(50))
         self.delay_input.setPlaceholderText("0")
         delay_layout.addWidget(self.delay_input)
 
         delay_unit = QLabel("s")
-        delay_unit.setStyleSheet("font-size: 12px; background: transparent; border: none;")
+        delay_unit.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
         delay_unit.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         delay_layout.addWidget(delay_unit)
 
@@ -201,7 +204,7 @@ class BatchLaunchCard(QFrame):
 
         # 删除按钮
         remove_btn = QPushButton("×")
-        remove_btn.setFixedSize(24, 24)
+        remove_btn.setFixedSize(sp(24), sp(24))
         remove_btn.setCursor(QtCompat.PointingHandCursor)
         remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.shortcut.id))
         layout.addWidget(remove_btn)
@@ -216,12 +219,12 @@ class BatchLaunchCard(QFrame):
         else:
             border = "1px solid rgba(255, 255, 255, 0.08)" if self.theme == "dark" else "1px solid rgba(0, 0, 0, 0.06)"
             bg = "rgba(255, 255, 255, 0.04)" if self.theme == "dark" else "rgba(0, 0, 0, 0.02)"
-        self.setStyleSheet(f"QFrame {{ background: {bg}; border: {border}; border-radius: 6px; }}")
+        self.setStyleSheet(scale_qss(f"QFrame {{ background: {bg}; border: {border}; border-radius: 6px; }}"))
 
     def set_icon(self, pixmap: QPixmap):
         if pixmap and not pixmap.isNull():
             self.icon_label.setPixmap(
-                pixmap.scaled(self.ICON_PIXMAP_SIZE, self.ICON_PIXMAP_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pixmap.scaled(sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             )
 
     def get_config(self):
@@ -288,29 +291,29 @@ class CompactIconWidget(QFrame):
         self._apply_theme()
 
     def _setup_ui(self):
-        self.setFixedSize(70, 70)
+        self.setFixedSize(sp(70), sp(70))
         self.setCursor(QtCompat.PointingHandCursor)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(2)
+        layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
+        layout.setSpacing(sp(2))
 
         # 复选框在左上角
         self.checkbox = QCheckBox()
-        self.checkbox.setFixedSize(16, 16)
+        self.checkbox.setFixedSize(sp(16), sp(16))
         self.checkbox.setStyleSheet(get_small_checkbox_stylesheet(self.theme))
         self.checkbox.stateChanged.connect(self._on_check_changed)
 
         # 图标
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(24, 24)
+        self.icon_label.setFixedSize(sp(24), sp(24))
         self.icon_label.setAlignment(QtCompat.AlignCenter)
         self.icon_label.setStyleSheet("background: transparent; border: none;")
 
         # 名称
         self.name_label = QLabel(self.shortcut.name[:8] if self.shortcut.name else tr("未命名"))
         self.name_label.setAlignment(QtCompat.AlignCenter)
-        self.name_label.setStyleSheet("font-size: 11px; background: transparent; border: none;")
+        self.name_label.setStyleSheet(scale_qss("font-size: 11px; background: transparent; border: none;"))
         self.name_label.setWordWrap(True)
 
         layout.addWidget(self.checkbox, 0, QtCompat.AlignLeft | QtCompat.AlignTop)
@@ -369,7 +372,7 @@ class CompactIconWidget(QFrame):
 
     def set_icon(self, pixmap: QPixmap):
         if pixmap and not pixmap.isNull():
-            self.icon_label.setPixmap(pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.icon_label.setPixmap(pixmap.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def set_checked(self, checked: bool):
         self._checked = bool(checked)
@@ -407,7 +410,7 @@ class IconSelectorWidget(QFrame):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(sp(8))
 
         # 搜索框
         self.search_box = QLineEdit()
@@ -446,9 +449,9 @@ class IconSelectorWidget(QFrame):
     def _place_icons(self):
         text = self._current_filter_text
         container_width = max(1, self.grid_container.width())
-        cell_width = max(76, container_width // self.COLUMN_COUNT)
-        cell_height = 76
-        spacing_y = 4
+        cell_width = max(sp(76), container_width // self.COLUMN_COUNT)
+        cell_height = sp(76)
+        spacing_y = sp(4)
         visible_index = 0
 
         self.scroll_area.setUpdatesEnabled(False)
@@ -550,7 +553,7 @@ class BatchLaunchDialog(BaseDialog):
         super().__init__(parent)
         self._apply_theme_colors()  # 先应用主题颜色
         self.setWindowTitle(tr("批量启动"))
-        self.setFixedSize(700, 500)
+        self.setFixedSize(sp(700), sp(500))
         self._setup_ui()
         self._apply_theme()
         self._prime_icon_cache_from_parent()
@@ -573,17 +576,17 @@ class BatchLaunchDialog(BaseDialog):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(sp(16), sp(16), sp(16), sp(16))
+        main_layout.setSpacing(sp(12))
 
         # 标题
         title = QLabel(tr("批量启动配置"))
-        title.setStyleSheet("font-size: 13px; font-weight: 400; background: transparent; border: none;")
+        title.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400; background: transparent; border: none;"))
         main_layout.addWidget(title)
 
         # 左右分栏
         content_layout = QHBoxLayout()
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(sp(12))
 
         # 左侧：已选图标列表
         left_panel = self._create_left_panel()
@@ -600,12 +603,12 @@ class BatchLaunchDialog(BaseDialog):
         btn_layout.addStretch()
 
         cancel_btn = QPushButton(tr("取消"))
-        cancel_btn.setFixedSize(80, 32)
+        cancel_btn.setFixedSize(sp(80), sp(32))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
         ok_btn = QPushButton(tr("确定"))
-        ok_btn.setFixedSize(80, 32)
+        ok_btn.setFixedSize(sp(80), sp(32))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._save_batch_launch)
         btn_layout.addWidget(ok_btn)
@@ -617,28 +620,28 @@ class BatchLaunchDialog(BaseDialog):
         panel = QFrame()
         panel.setStyleSheet("QFrame { background: transparent; border: none; }")
         layout = QHBoxLayout(panel)
-        layout.setSpacing(8)
+        layout.setSpacing(sp(8))
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.batch_icon_preview = QLabel()
-        self.batch_icon_preview.setFixedSize(32, 32)
+        self.batch_icon_preview.setFixedSize(sp(32), sp(32))
         self.batch_icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.batch_icon_preview.setStyleSheet("""
+        self.batch_icon_preview.setStyleSheet(scale_qss("""
             QLabel {
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
             }
-        """)
+        """))
         layout.addWidget(self.batch_icon_preview)
 
         right = QVBoxLayout()
-        right.setSpacing(6)
+        right.setSpacing(sp(6))
 
         name_row = QHBoxLayout()
-        name_row.setSpacing(6)
+        name_row.setSpacing(sp(6))
         name_label = QLabel(tr("名称:"))
-        name_label.setStyleSheet("font-size: 12px; background: transparent; border: none;")
+        name_label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
         self.batch_name_edit = QLineEdit()
         self.batch_name_edit.setMaxLength(6)
         self.batch_name_edit.setText((getattr(self.shortcut, "name", "") or tr("批量启动"))[:6])
@@ -649,7 +652,7 @@ class BatchLaunchDialog(BaseDialog):
         right.addLayout(name_row)
 
         icon_row = QHBoxLayout()
-        icon_row.setSpacing(6)
+        icon_row.setSpacing(sp(6))
         self.batch_icon_edit = QLineEdit()
         self.batch_icon_edit.setPlaceholderText(tr("留空则使用默认图标"))
         self.batch_icon_edit.setReadOnly(True)
@@ -688,12 +691,12 @@ class BatchLaunchDialog(BaseDialog):
         panel.setStyleSheet("QFrame { background: transparent; border: none; }")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(sp(8))
 
         layout.addWidget(self._create_batch_info_panel())
 
         label = QLabel(tr("启动列表（从上到下执行）"))
-        label.setStyleSheet("font-size: 12px; background: transparent; border: none;")
+        label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
         layout.addWidget(label)
 
         self.cards_scroll = SmoothScrollArea()
@@ -703,7 +706,7 @@ class BatchLaunchDialog(BaseDialog):
         self.cards_container = QWidget()
         self.cards_layout = QVBoxLayout(self.cards_container)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
-        self.cards_layout.setSpacing(4)
+        self.cards_layout.setSpacing(sp(4))
         self.cards_layout.addStretch()
 
         self.cards_scroll.setWidget(self.cards_container)
@@ -717,10 +720,10 @@ class BatchLaunchDialog(BaseDialog):
         panel.setStyleSheet("QFrame { background: transparent; border: none; }")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(sp(8))
 
         label = QLabel(tr("可选图标"))
-        label.setStyleSheet("font-size: 12px; background: transparent; border: none;")
+        label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
         layout.addWidget(label)
 
         self.icon_selector = IconSelectorWidget(self.theme)
@@ -827,12 +830,19 @@ class BatchLaunchDialog(BaseDialog):
             from ui.config_window.icon_grid import _IconLoadWorker
 
             self._icon_worker = _IconLoadWorker(tasks)
-            self._icon_thread = QThread(self)
+            self._icon_thread = QThread()
             self._icon_worker.moveToThread(self._icon_thread)
             self._icon_worker.finished.connect(
                 lambda sid, image, gen=generation: self._on_async_icon_loaded(gen, sid, image)
             )
-            self._icon_worker.completed.connect(self._on_async_icon_load_completed)
+            self._icon_worker.completed.connect(self._icon_thread.quit)
+            self._icon_thread.finished.connect(self._icon_worker.deleteLater)
+            self._icon_thread.finished.connect(self._icon_thread.deleteLater)
+            self._icon_thread.finished.connect(
+                lambda gen=generation, thread=self._icon_thread, worker=self._icon_worker: self._on_async_icon_thread_finished(
+                    gen, thread, worker
+                )
+            )
             self._icon_thread.started.connect(self._icon_worker.run)
             self._icon_thread.start()
         except Exception as exc:
@@ -870,39 +880,38 @@ class BatchLaunchDialog(BaseDialog):
 
     def _on_async_icon_load_completed(self):
         thread = self._icon_thread
-        worker = self._icon_worker
-        self._icon_thread = None
-        self._icon_worker = None
         if thread is not None:
             try:
                 thread.quit()
-                thread.wait(500)
-                thread.deleteLater()
             except RuntimeError:
-                logger.debug("清理批量启动图标线程失败", exc_info=True)
-        if worker is not None:
-            try:
-                worker.deleteLater()
-            except RuntimeError:
-                logger.debug("清理批量启动图标 worker 失败", exc_info=True)
+                logger.debug("退出批量启动图标线程失败", exc_info=True)
+
+    def _on_async_icon_thread_finished(self, generation: int, thread, worker):
+        if generation != getattr(self, "_icon_load_generation", generation):
+            return
+        if getattr(self, "_icon_thread", None) is thread:
+            self._icon_thread = None
+        if getattr(self, "_icon_worker", None) is worker:
+            self._icon_worker = None
 
     def _stop_icon_thread(self):
         self._icon_load_generation += 1
         worker = self._icon_worker
-        if worker is not None:
-            try:
-                worker.cancel()
-            except RuntimeError:
-                logger.debug("取消批量启动图标 worker 失败", exc_info=True)
         thread = self._icon_thread
-        if thread is not None:
-            try:
-                thread.quit()
-                thread.wait(1000)
-            except RuntimeError:
-                logger.debug("停止批量启动图标线程失败", exc_info=True)
-        self._icon_worker = None
-        self._icon_thread = None
+        if thread is None:
+            self._icon_worker = None
+            return
+        stopped = stop_qthread_nonblocking(
+            thread,
+            worker=worker,
+            owner="BatchLaunchDialog.icon_loader",
+            wait_ms=0,
+            disconnect_thread_signals=("finished",),
+            disconnect_worker_signals=("finished",),
+        )
+        if stopped:
+            self._icon_worker = None
+            self._icon_thread = None
 
     def _on_icon_checked(self, shortcut_id: str, checked: bool):
         """图标勾选状态改变"""
@@ -1023,21 +1032,25 @@ class BatchLaunchDialog(BaseDialog):
             end_pos = QPoint(card.pos())
             if start_pos is None or start_pos == end_pos:
                 continue
+            stop_animation(getattr(card, "_pos_anim", None), owner="BatchLaunchDialog.card_reflow")
             card.move(start_pos)
             anim = QPropertyAnimation(card, b"pos", card)
             anim.setDuration(130)
             anim.setEasingCurve(QEasingCurve.OutCubic)
             anim.setStartValue(start_pos)
             anim.setEndValue(end_pos)
-            anim.finished.connect(lambda animation=anim: self._forget_card_animation(animation))
+            card._pos_anim = anim
+            anim.finished.connect(lambda animation=anim, card=card: self._forget_card_animation(animation, card))
             self._card_animations.append(anim)
             anim.start()
 
-    def _forget_card_animation(self, animation):
+    def _forget_card_animation(self, animation, card=None):
         try:
             self._card_animations.remove(animation)
         except ValueError as exc:
             logger.debug("批量启动卡片动画已被移除: %s", exc, exc_info=True)
+        if card is not None and getattr(card, "_pos_anim", None) is animation:
+            card._pos_anim = None
 
     def _browse_batch_icon(self):
         file_path = choose_custom_icon(self, tr("选择图标"))
@@ -1078,7 +1091,7 @@ class BatchLaunchDialog(BaseDialog):
             except Exception as exc:
                 logger.debug("反转批量启动图标失败: %s", exc, exc_info=True)
         if pixmap and not pixmap.isNull():
-            pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
         self.batch_icon_preview.setPixmap(pixmap)
 
     def _build_batch_launch_steps(self):
@@ -1165,6 +1178,11 @@ class BatchLaunchDialog(BaseDialog):
         self._dialog_finished = True
         self._stop_icon_thread()
         super().done(result)
+
+    def deleteLater(self):
+        self._dialog_finished = True
+        self._stop_icon_thread()
+        super().deleteLater()
 
     def _apply_theme(self):
         """应用主题"""

@@ -20,6 +20,7 @@ from qt_compat import (
     QtCompat,
 )
 from ui.utils.window_effect import is_win10
+from ui.utils.ui_scale import sp, spf, font_px
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +250,7 @@ class PopupRendererMixin:
 
         body_bottom = max(
             int(getattr(self, "content_height", self.height()) or self.height()),
-            int(getattr(self, "indicator_y", 0) or 0) + 16,
+            int(getattr(self, "indicator_y", 0) or 0) + sp(16),
         )
         body_rect = QRect(0, 0, self.width(), min(self.height(), max(1, body_bottom)))
         content_dirty = dirty_rect.intersects(body_rect)
@@ -265,25 +266,25 @@ class PopupRendererMixin:
                 # During search reveal animation, still draw icons underneath
                 self._draw_icons(painter, text_color, hover_color, drop_highlight_color, bg_mode)
 
-        indicator_rect = QRect(0, max(0, int(getattr(self, "indicator_y", 0) or 0) - 6), self.width(), 24)
+        indicator_rect = QRect(0, max(0, int(getattr(self, "indicator_y", 0) or 0) - sp(6)), self.width(), sp(24))
         if len(self.pages) > 1 and dirty_rect.intersects(indicator_rect):
             self._draw_indicator(painter, text_color, self._indicator_accent_color(accent_color))
 
         dock_rect = QRect(
             0,
-            max(0, int(getattr(self, "dock_y", self.height()) or self.height()) - 8),
+            max(0, int(getattr(self, "dock_y", self.height()) or self.height()) - sp(8)),
             self.width(),
-            max(0, int(getattr(self, "dock_height", 0) or 0) + 16),
+            max(0, int(getattr(self, "dock_height", 0) or 0) + sp(16)),
         )
         if self.dock_items and dirty_rect.intersects(dock_rect):
             self._draw_dock(painter, text_color, hover_color, dock_bg, drop_highlight_color, bg_mode, border_color)
 
         pin_y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else 0
-        pinned_rect = QRect(max(0, self.width() - 18), pin_y_offset, 18, 18)
+        pinned_rect = QRect(max(0, self.width() - sp(18)), pin_y_offset, sp(18), sp(18))
         if self.is_pinned and dirty_rect.intersects(pinned_rect):
             painter.setBrush(QBrush(accent_color))
             painter.setPen(QtCompat.NoPen)
-            painter.drawEllipse(self.width() - 14, pin_y_offset + 6, 8, 8)
+            painter.drawEllipse(self.width() - sp(14), pin_y_offset + sp(6), sp(8), sp(8))
 
     def _draw_icons(
         self,
@@ -561,8 +562,8 @@ class PopupRendererMixin:
         progress = max(0.0, min(1.0, float(getattr(self, "_search_reveal_progress", 1.0))))
         x = self.padding
         w = self.width() - self.padding * 2
-        rect_h = max(6, full_h - 8)
-        rect_y = 4
+        rect_h = max(sp(6), full_h - sp(8))
+        rect_y = sp(4)
         rect = QRectF(x, rect_y, w, rect_h)
         bg = QColor(255, 255, 255, 34 if self.settings.theme == "dark" else 150)
         painter.save()
@@ -570,16 +571,16 @@ class PopupRendererMixin:
         painter.setOpacity(progress)
         painter.setBrush(QBrush(bg))
         painter.setPen(QPen(accent_color, 1))
-        painter.drawRoundedRect(rect, 8, 8)
+        painter.drawRoundedRect(rect, sp(8), sp(8))
         painter.setPen(text_color)
         font = QFont(self._label_font)
-        font.setPixelSize(max(10, font.pixelSize() + 2))
+        font.setPixelSize(font_px(max(10, font.pixelSize() + sp(2))))
         painter.setFont(font)
         preedit = getattr(self, "_search_preedit_text", "") or ""
         prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ("搜索: " if query else "搜索")
         cursor = self._get_search_cursor_pos() if hasattr(self, "_get_search_cursor_pos") else len(query)
         label = f"{prefix}{query[:cursor]}{preedit}{query[cursor:]}"
-        text_rect = rect.adjusted(9, 0, -9, 0)
+        text_rect = rect.adjusted(sp(9), 0, -sp(9), 0)
         scroll_x = int(getattr(self, "__dict__", {}).get("_search_scroll_x", 0) or 0)
         draw_text_rect = QRectF(text_rect)
         draw_text_rect.moveLeft(text_rect.left() - scroll_x)
@@ -595,12 +596,12 @@ class PopupRendererMixin:
             sel_start, sel_end = selection
             sel_x = int(text_rect.left() + text_width(prefix + query[:sel_start]) - scroll_x)
             sel_w = max(1, int(text_width(query[sel_start:sel_end])))
-            sel_rect = QRectF(sel_x, text_rect.top() + 5, sel_w, max(12, text_rect.height() - 10))
+            sel_rect = QRectF(sel_x, text_rect.top() + sp(5), sel_w, max(sp(12), text_rect.height() - sp(10)))
             sel_rect = sel_rect.intersected(text_rect)
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 95)))
             if sel_rect.width() > 0:
-                painter.drawRoundedRect(sel_rect, 3, 3)
+                painter.drawRoundedRect(sel_rect, sp(3), sp(3))
             painter.setPen(text_color)
 
         painter.save()
@@ -611,7 +612,7 @@ class PopupRendererMixin:
         if preedit:
             underline_x = int(text_rect.left() + text_width(prefix + query[:cursor]) - scroll_x)
             underline_w = max(1, int(text_width(preedit)))
-            underline_y = int(text_rect.center().y() + metrics.ascent() / 2 + 2)
+            underline_y = int(text_rect.center().y() + metrics.ascent() / 2 + sp(2))
             painter.setPen(QPen(accent_color, 1))
             painter.save()
             painter.setClipRect(text_rect)
@@ -645,7 +646,7 @@ class PopupRendererMixin:
             else:
                 action_hint = "无匹配结果"
             y_offset = (
-                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", 30)
+                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(30))
             )
             painter.drawText(
                 QRect(0, self.padding + y_offset, self.width(), self.content_height), QtCompat.AlignCenter, action_hint
@@ -671,7 +672,7 @@ class PopupRendererMixin:
             drop_highlight_color,
             bg_mode,
             y_offset=(
-                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", 30)
+                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(30))
             ),
             selected_index=selected,
         )
@@ -719,7 +720,7 @@ class PopupRendererMixin:
 
         fm = painter.fontMetrics()
         text_h = fm.height()
-        text_spacing = 1
+        text_spacing = sp(1)
         is_dark = self.settings.theme == "dark"
         use_card = bg_mode == "acrylic"
         icon_alpha = self.settings.icon_alpha
@@ -743,9 +744,9 @@ class PopupRendererMixin:
             x = self.padding + col * self.cell_size
 
             # 从窗口底部算起，避免与窗口几何变化的同步问题
-            bottom_margin = 6
-            indicator_height = 16 if len(self.pages) > 1 else 0
-            indicator_spacing = 4 if len(self.pages) > 1 else 0
+            bottom_margin = sp(6)
+            indicator_height = sp(16) if len(self.pages) > 1 else 0
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
             icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
             y = icons_bottom - (self.fixed_rows - row) * self.cell_h
@@ -762,12 +763,12 @@ class PopupRendererMixin:
             painter.setOpacity(opacity)
 
             if use_card:
-                card_pad = 2
+                card_pad = sp(2)
                 card_size = self.icon_size + card_pad * 2
                 card_x = x + (self.cell_size - card_size) // 2
                 total_h = card_size + text_spacing + text_h
                 card_y = y + (self.cell_h - total_h) // 2
-                card_r = 6
+                card_r = sp(6)
 
                 if not is_prev and i == self._drag_hover_index:
                     highlight = QColor(drop_highlight_color)
@@ -790,11 +791,11 @@ class PopupRendererMixin:
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 2))
-                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), 6, 6)
+                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), sp(6), sp(6))
                 elif not is_prev and (i == self.hover_index or i == selected_index):
                     painter.setBrush(QBrush(hover_color))
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), 6, 6)
+                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), sp(6), sp(6))
                 total_h = self.icon_size + text_spacing + text_h
                 icon_x = x + (self.cell_size - self.icon_size) // 2
                 icon_y = y + (self.cell_h - total_h) // 2
@@ -855,9 +856,9 @@ class PopupRendererMixin:
 
     def _draw_indicator(self, painter: QPainter, text_color: QColor, accent_color: QColor):
         """绘制页面指示器"""
-        dot_size = 5
-        active_w = 14
-        spacing = 10
+        dot_size = sp(5)
+        active_w = sp(14)
+        spacing = sp(10)
         n = len(self.pages)
         pos = float(getattr(self, "_indicator_pos", self.current_page)) % max(1, n)
 
@@ -869,7 +870,7 @@ class PopupRendererMixin:
 
         total_width = sum(dot_w(i) for i in range(n)) + spacing * (n - 1)
         cx = (self.width() - total_width) / 2
-        y = self.indicator_y + 1
+        y = self.indicator_y + sp(1)
 
         dim_color = QColor(text_color)
         dim_color.setAlpha(70)
@@ -931,8 +932,8 @@ class PopupRendererMixin:
         dock_bg.setAlpha(self.settings.dock_bg_alpha_255)
         painter.setBrush(QBrush(dock_bg))
         painter.setPen(QtCompat.NoPen)
-        radius = getattr(self.settings, "dock_corner_radius", 10)
-        painter.drawRoundedRect(QRectF(6, dock_y, self.width() - 12, self.dock_height), radius, radius)
+        radius = sp(getattr(self.settings, "dock_corner_radius", 10))
+        painter.drawRoundedRect(QRectF(sp(6), dock_y, self.width() - sp(12), self.dock_height), radius, radius)
 
         # 顶部分隔线 — 极细纯黑（关闭抗锯齿保证清晰）
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
@@ -977,23 +978,23 @@ class PopupRendererMixin:
             # - 单行(row=0)：y = dock_y + 8（与原来完全一致）
             # - 多行(row>0)：y = dock_y + 8 + row * dock_row_stride
             #   dock_row_stride = icon_size + 6（行间距6px，上下边距保持 8px 不变）
-            dock_row_stride = self.icon_size + 6
-            y = dock_y + 8 + row * dock_row_stride
+            dock_row_stride = self.icon_size + sp(6)
+            y = dock_y + sp(8) + row * dock_row_stride
 
-            hover_x = x + (self.cell_size - self.icon_size) // 2 - 4
-            hover_y = y - 4
-            hover_size = self.icon_size + 9
+            hover_x = x + (self.cell_size - self.icon_size) // 2 - sp(4)
+            hover_y = y - sp(4)
+            hover_size = self.icon_size + sp(9)
 
             # ===== 绘制背景 =====
             is_dark = self.settings.theme == "dark"
             use_card = bg_mode == "acrylic"
 
             if use_card:
-                card_pad = 2
+                card_pad = sp(2)
                 card_size = self.icon_size + card_pad * 2
                 card_x = x + (self.cell_size - card_size) // 2
                 card_y = y - card_pad
-                card_r = 6
+                card_r = sp(6)
                 if i == self._drag_dock_hover_index:
                     highlight = QColor(drop_highlight_color)
                     highlight.setAlpha(80)
@@ -1014,13 +1015,13 @@ class PopupRendererMixin:
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 2))
-                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), 6, 6)
+                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), sp(6), sp(6))
                 elif i == self.dock_hover_index:
                     hover = QColor(hover_color)
                     hover.setAlpha(180)
                     painter.setBrush(QBrush(hover))
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), 6, 6)
+                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), sp(6), sp(6))
                 icon_x = x + (self.cell_size - self.icon_size) // 2
                 icon_y = y
             # ===== 背景绘制结束 =====

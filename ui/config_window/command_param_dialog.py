@@ -8,6 +8,7 @@ from ui.config_window.base_dialog import BaseDialog
 from ui.config_window.theme_helper import get_checkbox_stylesheet
 from ui.styles.style import Glassmorphism
 from ui.styles.theme_controller import resolve_theme
+from ui.utils.ui_scale import sp
 
 
 class CommandParamDialog(BaseDialog):
@@ -30,7 +31,7 @@ class CommandParamDialog(BaseDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        form.setSpacing(6)
+        form.setSpacing(sp(6))
 
         self.name_edit = QLineEdit()
         self.label_edit = QLineEdit()

@@ -6,6 +6,7 @@ from core.i18n import tr
 from core.slash_commands import SLASH_COMMANDS
 from qt_compat import QApplication, QFont, QHBoxLayout, QPlainTextEdit, QPushButton
 from ui.themed_tool_window import ThemedToolWindow
+from ui.utils.ui_scale import font_px, sp
 
 
 class SlashHelpWindow(ThemedToolWindow):
@@ -15,7 +16,7 @@ class SlashHelpWindow(ThemedToolWindow):
         self.data_manager = data_manager
         theme = getattr(data_manager.get_settings(), "theme", "light")
         super().__init__(tr("斜杠命令帮助"), theme=theme, parent=parent)
-        self.resize(560, 520)
+        self.resize(sp(560), sp(520))
         self._setup_ui()
         self._apply_content_theme()
         self.refresh()
@@ -26,9 +27,9 @@ class SlashHelpWindow(ThemedToolWindow):
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
         self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-        font = QFont("Microsoft YaHei UI", 9)
+        font = QFont("Microsoft YaHei UI", font_px(9))
         if not font.exactMatch():
-            font = QFont("Segoe UI", 9)
+            font = QFont("Segoe UI", font_px(9))
         self.text.setFont(font)
         self.content_layout.addWidget(self.text)
 

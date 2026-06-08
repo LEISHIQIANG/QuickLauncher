@@ -7,6 +7,7 @@ import os
 import tempfile
 
 from qt_compat import QBrush, QColor, QPainter, QPen, QPixmap, QRectF, QtCompat
+from ui.utils.ui_scale import sp, scale_qss
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +48,11 @@ def _set_cached_icon_path(cache_key: str, path: str):
 def create_ios_radio_icon(checked: bool, theme: str) -> str:
     """创建 iOS 风格单选图标"""
     try:
-        # 尺寸缩小为原来的 0.8 倍 (18x18 -> 14x14)
-        s = 14
-        # 使用新文件名 (thick border version)
-        filename = f"ios_radio_thick_v6_{theme}_{'on' if checked else 'off'}.png"
+        # 基础尺寸 14x14，应用缩放
+        base_s = 14
+        s = sp(base_s)
+        scale_tag = f"s{s}"
+        filename = f"ios_radio_thick_v6_{theme}_{'on' if checked else 'off'}_{scale_tag}.png"
         cache_key = f"radio_{filename}"
 
         # 先检查内存缓存
@@ -90,8 +92,8 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
                 painter.drawEllipse(0, 0, s, s)
 
                 painter.setBrush(QBrush(QColor("#FFFFFF")))
-                # 调整中间白点大小
-                dot_s = 6
+                # 调整中间白点大小 (proportional to base)
+                dot_s = max(4, sp(6))
                 painter.drawEllipse(QRectF((s - dot_s) / 2, (s - dot_s) / 2, dot_s, dot_s))
             else:
                 # High contrast off state
@@ -131,10 +133,11 @@ def create_ios_radio_icon(checked: bool, theme: str) -> str:
 def create_ios_switch_icon(checked: bool, theme: str) -> str:
     """创建 iOS 风格开关图标"""
     try:
-        # 尺寸缩小为原来的 0.8 倍 (36x22 -> 29x18)
-        w, h = 29, 18
-        # 使用新文件名 (thick border version)
-        filename = f"ios_switch_thick_v6_{theme}_{'on' if checked else 'off'}.png"
+        # 基础尺寸 29x18，应用缩放
+        base_w, base_h = 29, 18
+        w, h = sp(base_w), sp(base_h)
+        scale_tag = f"s{w}x{h}"
+        filename = f"ios_switch_thick_v6_{theme}_{'on' if checked else 'off'}_{scale_tag}.png"
         cache_key = f"switch_{filename}"
 
         # 先检查内存缓存
@@ -221,8 +224,10 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
 def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
     """创建 iOS 风格复选框图标 (圆角矩形)"""
     try:
-        s = 14
-        filename = f"ios_check_thick_v7_{theme}_{'on' if checked else 'off'}.png"
+        base_s = 14
+        s = sp(base_s)
+        scale_tag = f"s{s}"
+        filename = f"ios_check_thick_v7_{theme}_{'on' if checked else 'off'}_{scale_tag}.png"
         cache_key = f"checkbox_{filename}"
 
         # 先检查内存缓存
@@ -258,17 +263,18 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
                 # Blue fill with checkmark
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(QColor("#007AFF")))
-                painter.drawRoundedRect(QRectF(0, 0, s, s), 3, 3)
+                cr = max(2, sp(3))
+                painter.drawRoundedRect(QRectF(0, 0, s, s), cr, cr)
 
-                # Draw checkmark
+                # Draw checkmark (scaled proportionally from base 14)
                 painter.setPen(QPen(QColor("#FFFFFF"), 1.5))
                 painter.setBrush(QtCompat.NoBrush)
-                # Checkmark coordinates (approx)
-                path = [(3, 7), (6, 10), (11, 4)]
+                ratio = s / 14.0 if s != 14 else 1.0
+                path = [(3 * ratio, 7 * ratio), (6 * ratio, 10 * ratio), (11 * ratio, 4 * ratio)]
                 for i in range(len(path) - 1):
                     p1 = path[i]
                     p2 = path[i + 1]
-                    painter.drawLine(p1[0], p1[1], p2[0], p2[1])
+                    painter.drawLine(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1]))
             else:
                 # High contrast off state
                 if theme == "dark":
@@ -279,16 +285,18 @@ def create_ios_checkbox_icon(checked: bool, theme: str) -> str:
                     fill_color = "#FFFFFF"
 
                 # 濉厖瀹屾暣涓渾瑙掔煩褰紙瑕嗙洊鍏ㄩ儴鍍忕礌锛屾秷闄ゅ洓瑙掗€忔槑锛?
+                # 填充完整圆角矩形（覆盖全部像素，消除四角透明）
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(QColor(fill_color)))
-                painter.drawRoundedRect(QRectF(0, 0, s, s), 3, 3)
+                cr = max(2, sp(3))
+                painter.drawRoundedRect(QRectF(0, 0, s, s), cr, cr)
                 # 再画边框
                 pen = QPen(QColor(border_color), 1.5)
                 pen.setJoinStyle(QtCompat.RoundJoin)
                 pen.setCapStyle(QtCompat.RoundCap)
                 painter.setPen(pen)
                 painter.setBrush(QtCompat.NoBrush)
-                painter.drawRoundedRect(QRectF(1, 1, s - 2, s - 2), 3, 3)  # inset
+                painter.drawRoundedRect(QRectF(1, 1, s - 2, s - 2), cr, cr)  # inset
         finally:
             painter.end()
 
@@ -309,7 +317,7 @@ def get_radio_stylesheet(theme: str) -> str:
     radio_on = create_ios_radio_icon(True, theme)
     radio_off = create_ios_radio_icon(False, theme)
 
-    return f"""
+    return scale_qss(f"""
         QRadioButton {{
             font-size: 12px;
             spacing: 8px;
@@ -327,7 +335,7 @@ def get_radio_stylesheet(theme: str) -> str:
         QRadioButton::indicator:checked {{
             image: url("{radio_on}");
         }}
-    """
+    """)
 
 
 def get_checkbox_stylesheet(theme: str) -> str:
@@ -335,7 +343,7 @@ def get_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return f"""
+    return scale_qss(f"""
         QCheckBox {{
             font-size: 12px;
             spacing: 8px;
@@ -353,7 +361,7 @@ def get_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """
+    """)
 
 
 def get_small_checkbox_stylesheet(theme: str) -> str:
@@ -361,7 +369,7 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return f"""
+    return scale_qss(f"""
         QCheckBox {{
             font-size: 10px;
             spacing: 4px;
@@ -379,7 +387,7 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """
+    """)
 
 
 def get_compact_checkbox_stylesheet(theme: str) -> str:
@@ -387,7 +395,7 @@ def get_compact_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return f"""
+    return scale_qss(f"""
         QCheckBox {{
             font-size: 11px;
             spacing: 6px;
@@ -405,7 +413,7 @@ def get_compact_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """
+    """)
 
 
 def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
@@ -413,7 +421,7 @@ def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return f"""
+    return scale_qss(f"""
         QCheckBox::indicator {{
             width: 11px;
             height: 11px;
@@ -425,14 +433,14 @@ def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """
+    """)
 
 
 def get_switch_stylesheet(theme: str) -> str:
     switch_on = create_ios_switch_icon(True, theme)
     switch_off = create_ios_switch_icon(False, theme)
 
-    return f"""
+    return scale_qss(f"""
         QCheckBox {{
             font-size: 12px;
             spacing: 8px;
@@ -450,7 +458,7 @@ def get_switch_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{switch_on}");
         }}
-    """
+    """)
 
 
 def get_dialog_stylesheet(theme: str) -> str:

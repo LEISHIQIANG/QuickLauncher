@@ -13,6 +13,7 @@ from qt_compat import (
     QtCompat,
     QWidget,
 )
+from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +42,22 @@ class InputTriggerRecorderWidget(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(sp(6))
 
         self.display = QLineEdit()
         self.display.setReadOnly(True)
         self.display.setPlaceholderText(tr("点击开始录制"))
-        self.display.setMinimumWidth(180)
+        self.display.setMinimumWidth(sp(180))
         self.display.setContextMenuPolicy(Qt.NoContextMenu)
         layout.addWidget(self.display, 1)
 
         self.record_btn = QPushButton(tr("录制"))
-        self.record_btn.setFixedHeight(26)
+        self.record_btn.setFixedHeight(sp(26))
         self.record_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_btn)
 
         self.clear_btn = QPushButton(tr("清空"))
-        self.clear_btn.setFixedHeight(26)
+        self.clear_btn.setFixedHeight(sp(26))
         self.clear_btn.clicked.connect(self.clear)
         layout.addWidget(self.clear_btn)
 
@@ -78,7 +79,7 @@ class InputTriggerRecorderWidget(QWidget):
                 )
                 self._mouse_hook_pause_scope.__enter__()
             self.display.setPlaceholderText(tr("录制中，按键盘或鼠标..."))
-            self.display.setStyleSheet("border: 2px solid #4A9EFF; background: rgba(74, 158, 255, 0.1);")
+            self.display.setStyleSheet(f"border: {sp(2)}px solid #4A9EFF; background: rgba(74, 158, 255, 0.1);")
             self.record_btn.setText(tr("停止"))
             self.display.setFocus()
         else:

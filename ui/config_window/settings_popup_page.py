@@ -22,6 +22,7 @@ from qt_compat import (
 from ui.config_window.input_trigger_recorder import InputTriggerRecorderWidget
 from ui.config_window.settings_helpers import NumberedListDelegate
 from ui.tooltip_helper import install_tooltip
+from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class SettingsPopupPageMixin:
         self.auto_close_group.buttonClicked.connect(self._on_auto_close_changed)
         auto_close_row.addWidget(self.auto_close_yes)
         auto_close_row.addWidget(self.auto_close_no)
-        auto_close_row.addSpacing(22)
+        auto_close_row.addSpacing(sp(22))
         auto_close_row.addWidget(self._create_label("固定时多开"))
         self.multi_open_pinned_group = QButtonGroup(self)
         self.multi_open_pinned_yes = QRadioButton(tr("是"))
@@ -148,7 +149,7 @@ class SettingsPopupPageMixin:
 
         # 按钮控制区 (置于列表上方，始终显示)
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        btn_layout.setSpacing(sp(8))
 
         self.special_add_btn = QPushButton(tr("新建"))
         self.special_add_btn.clicked.connect(self._add_special_app)
@@ -180,7 +181,7 @@ class SettingsPopupPageMixin:
         self.special_apps_list.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.special_apps_list.setItemDelegate(NumberedListDelegate(self.special_apps_list))
         self.special_apps_list.setStyleSheet(
-            "QListWidget { background: transparent; outline: none; border: none; } QListWidget::item { border: none; background: transparent; min-height: 24px; margin: 1px 0px; padding: 2px 6px; }"
+            f"QListWidget {{ background: transparent; outline: none; border: none; }} QListWidget::item {{ border: none; background: transparent; min-height: {sp(24)}px; margin: {sp(1)}px 0px; padding: {sp(2)}px {sp(6)}px; }}"
         )
         self.special_apps_list.itemDoubleClicked.connect(self._edit_special_app_item)
 

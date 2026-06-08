@@ -31,6 +31,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.tooltip_helper import install_tooltip
+from ui.utils.ui_scale import sp, font_px, scale_qss
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -72,7 +73,7 @@ class HotkeyRecorderWidget(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(sp(6))
 
         self.display = QLineEdit()
         self.display.setReadOnly(True)
@@ -81,7 +82,7 @@ class HotkeyRecorderWidget(QWidget):
         layout.addWidget(self.display, 1)
 
         self.clear_btn = QPushButton("清空")
-        self.clear_btn.setFixedHeight(26)
+        self.clear_btn.setFixedHeight(sp(26))
         self.clear_btn.clicked.connect(self.clear_hotkey)
         layout.addWidget(self.clear_btn)
 
@@ -262,7 +263,7 @@ class HotkeyDialog(BaseDialog):
         self._custom_icon_path = self.shortcut.icon_path or ""
 
         self.setWindowTitle(tr("编辑快捷键") if shortcut else tr("添加快捷键"))
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(sp(420))
 
         self._setup_window_icon()
         self._setup_ui()
@@ -281,7 +282,7 @@ class HotkeyDialog(BaseDialog):
             try:
                 painter.setRenderHint(QtCompat.Antialiasing)
                 painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-                painter.setFont(QFont("Segoe UI Symbol", 38))
+                painter.setFont(QFont("Segoe UI Symbol", font_px(38)))
                 painter.setPen(QColor(144, 238, 144))
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌘")
             finally:
@@ -292,17 +293,17 @@ class HotkeyDialog(BaseDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(sp(6))
+        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))
 
         title_label = QLabel("编辑快捷键" if self.shortcut.name else "添加快捷键")
-        title_label.setStyleSheet("font-size: 12px; font-weight: 400; color: gray;")
+        title_label.setStyleSheet(scale_qss("font-size: 12px; font-weight: 400; color: gray;"))
         layout.addWidget(title_label)
 
         basic_group = QGroupBox("基本信息")
         basic_layout = QFormLayout(basic_group)
-        basic_layout.setSpacing(6)
-        basic_layout.setContentsMargins(8, 0, 8, 8)
+        basic_layout.setSpacing(sp(6))
+        basic_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(6)
         self.name_edit.setPlaceholderText("最多6个字符")
@@ -311,13 +312,13 @@ class HotkeyDialog(BaseDialog):
 
         hotkey_group = QGroupBox("快捷键")
         hotkey_layout = QVBoxLayout(hotkey_group)
-        hotkey_layout.setSpacing(6)
-        hotkey_layout.setContentsMargins(8, 0, 8, 8)
+        hotkey_layout.setSpacing(sp(6))
+        hotkey_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
         self.hotkey_input = HotkeyRecorderWidget()
         hotkey_layout.addWidget(self.hotkey_input)
 
         option_row = QHBoxLayout()
-        option_row.setSpacing(8)
+        option_row.setSpacing(sp(8))
         self.advanced_sides_cb = QCheckBox("区分左右修饰键")
         self.advanced_sides_cb.stateChanged.connect(lambda state: self.hotkey_input.set_advanced_sides(bool(state)))
         option_row.addWidget(self.advanced_sides_cb)
@@ -331,8 +332,8 @@ class HotkeyDialog(BaseDialog):
 
         trigger_group = QGroupBox("触发模式")
         trigger_layout = QHBoxLayout(trigger_group)
-        trigger_layout.setSpacing(12)
-        trigger_layout.setContentsMargins(8, 0, 8, 8)
+        trigger_layout.setSpacing(sp(12))
+        trigger_layout.setContentsMargins(sp(8), 0, sp(8), sp(8))
         self.trigger_immediate_rb = QRadioButton("无延迟发送")
         install_tooltip(self.trigger_immediate_rb, "点击图标后立刻发送这组按键，适合不需要回到原窗口的操作")
         self.trigger_after_close_rb = QRadioButton("窗口淡出后发送")
@@ -348,7 +349,7 @@ class HotkeyDialog(BaseDialog):
         layout.addWidget(trigger_group)
 
         test_row = QHBoxLayout()
-        test_row.setSpacing(6)
+        test_row.setSpacing(sp(6))
         self._test_btn = QPushButton("测试发送")
         self._test_btn.clicked.connect(self._test_hotkey)
         test_row.addWidget(self._test_btn)
@@ -358,22 +359,22 @@ class HotkeyDialog(BaseDialog):
 
         icon_group = QGroupBox("图标")
         icon_layout = QHBoxLayout(icon_group)
-        icon_layout.setSpacing(6)
-        icon_layout.setContentsMargins(6, 0, 6, 6)
+        icon_layout.setSpacing(sp(6))
+        icon_layout.setContentsMargins(sp(6), 0, sp(6), sp(6))
         self.icon_preview = QLabel()
-        self.icon_preview.setFixedSize(32, 32)
+        self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
         icon_layout.addWidget(self.icon_preview)
 
         icon_right_layout = QVBoxLayout()
-        icon_right_layout.setSpacing(6)
+        icon_right_layout.setSpacing(sp(6))
         self.icon_path_edit = QLineEdit()
         self.icon_path_edit.setPlaceholderText("可选，自定义图标路径")
         self.icon_path_edit.setReadOnly(True)
         icon_right_layout.addWidget(self.icon_path_edit)
 
         icon_btn_layout = QHBoxLayout()
-        icon_btn_layout.setSpacing(6)
+        icon_btn_layout.setSpacing(sp(6))
         self._browse_icon_btn = QPushButton("选择图标...")
         self._browse_icon_btn.clicked.connect(self._browse_icon)
         icon_btn_layout.addWidget(self._browse_icon_btn)
@@ -390,14 +391,14 @@ class HotkeyDialog(BaseDialog):
         layout.addWidget(icon_group)
 
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        btn_layout.setSpacing(sp(8))
         btn_layout.addStretch()
         self._cancel_btn = QPushButton("取消")
-        self._cancel_btn.setFixedSize(80, 32)
+        self._cancel_btn.setFixedSize(sp(80), sp(32))
         self._cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self._cancel_btn)
         self._ok_btn = QPushButton("确定")
-        self._ok_btn.setFixedSize(80, 32)
+        self._ok_btn.setFixedSize(sp(80), sp(32))
         self._ok_btn.setDefault(True)
         self._ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(self._ok_btn)
@@ -412,7 +413,7 @@ class HotkeyDialog(BaseDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
-        self.setStyleSheet(base_style + f"""
+        self.setStyleSheet(base_style + scale_qss(f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -430,7 +431,7 @@ class HotkeyDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """)
+        """))
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
         for btn in [
             self.hotkey_input.clear_btn,
@@ -453,17 +454,17 @@ class HotkeyDialog(BaseDialog):
         self.invert_dark_cb.setStyleSheet(invert_cb_style)
 
         if theme == "dark":
-            self.icon_preview.setStyleSheet(
+            self.icon_preview.setStyleSheet(scale_qss(
                 "QLabel { background-color: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; }"
-            )
-            self.conflict_label.setStyleSheet("color: rgba(255,255,255,0.62); font-size: 11px;")
-            self.test_result_label.setStyleSheet("color: rgba(255,255,255,0.62); font-size: 11px;")
+            ))
+            self.conflict_label.setStyleSheet(scale_qss("color: rgba(255,255,255,0.62); font-size: 11px;"))
+            self.test_result_label.setStyleSheet(scale_qss("color: rgba(255,255,255,0.62); font-size: 11px;"))
         else:
-            self.icon_preview.setStyleSheet(
+            self.icon_preview.setStyleSheet(scale_qss(
                 "QLabel { background-color: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; }"
-            )
-            self.conflict_label.setStyleSheet("color: rgba(0,0,0,0.55); font-size: 11px;")
-            self.test_result_label.setStyleSheet("color: rgba(0,0,0,0.55); font-size: 11px;")
+            ))
+            self.conflict_label.setStyleSheet(scale_qss("color: rgba(0,0,0,0.55); font-size: 11px;"))
+            self.test_result_label.setStyleSheet(scale_qss("color: rgba(0,0,0,0.55); font-size: 11px;"))
 
     def _load_data(self):
         self.name_edit.setText(self.shortcut.name or "")
@@ -563,7 +564,7 @@ class HotkeyDialog(BaseDialog):
 
             pixmap = IconExtractor.invert_pixmap(pixmap)
         if pixmap and not pixmap.isNull():
-            pixmap = pixmap.scaled(32, 32, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
         self.icon_preview.setPixmap(pixmap)
 
     def _create_hotkey_icon(self, size: int) -> QPixmap:

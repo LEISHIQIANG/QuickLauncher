@@ -26,6 +26,8 @@ from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
+from ui.utils.interruptible_animation import stop_animation
+from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
     get_window_effect,
@@ -45,14 +47,14 @@ class WelcomeGuide(QDialog):
         self.setWindowTitle(tr("欢迎使用 QuickLauncher"))
         self.setModal(True)
         self._theme = normalize_theme(theme)
-        self.corner_radius = 8
+        self.corner_radius = sp(8)
         self.current_step = 0
         self._shadow_applied = False
 
         apply_custom_window_chrome(self, kind="window", translucent=True)
         self.setWindowOpacity(0)
 
-        self.resize(500, 350)
+        self.resize(sp(500), sp(350))
 
         self.steps = [
             {
@@ -99,18 +101,18 @@ class WelcomeGuide(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(sp(24), sp(24), sp(24), sp(24))
+        layout.setSpacing(sp(16))
 
         # 图标和标题
         header_layout = QHBoxLayout()
         self.icon_label = QLabel("🚀")
-        self.icon_label.setStyleSheet("font-size: 48px;")
+        self.icon_label.setStyleSheet(scale_qss("font-size: 48px;"))
         header_layout.addWidget(self.icon_label)
 
         self.title_label = QLabel()
         self.title_label.setFont(get_qfont(16, 400))
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: 400;")
+        self.title_label.setStyleSheet(scale_qss("font-size: 16px; font-weight: 400;"))
         self.title_label.setWordWrap(True)
         header_layout.addWidget(self.title_label, 1)
         layout.addLayout(header_layout)
@@ -119,40 +121,40 @@ class WelcomeGuide(QDialog):
         self.content_label = QLabel()
         self.content_label.setWordWrap(True)
         self.content_label.setFont(get_qfont(13, 400))
-        self.content_label.setStyleSheet("font-size: 13px; line-height: 1.5;")
-        self.content_label.setMinimumHeight(150)
+        self.content_label.setStyleSheet(scale_qss("font-size: 13px; line-height: 1.5;"))
+        self.content_label.setMinimumHeight(sp(150))
         layout.addWidget(self.content_label, 1)
 
         # 进度指示
         self.progress_label = QLabel("1 / 5")
         self.progress_label.setAlignment(QtCompat.AlignCenter)
-        self.progress_label.setStyleSheet("font-size: 11px;")
+        self.progress_label.setStyleSheet(scale_qss("font-size: 11px;"))
         layout.addWidget(self.progress_label)
 
         # 按钮
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(12)
+        btn_layout.setSpacing(sp(12))
 
         # 左下角：不再显示复选框
         self.dont_show_cb = QCheckBox(tr("不再显示"))
-        self.dont_show_cb.setStyleSheet("font-size: 12px;")
+        self.dont_show_cb.setStyleSheet(scale_qss("font-size: 12px;"))
         btn_layout.addWidget(self.dont_show_cb)
 
         btn_layout.addStretch()
 
         self.skip_btn = QPushButton(tr("跳过"))
-        self.skip_btn.setFixedSize(80, 32)
+        self.skip_btn.setFixedSize(sp(80), sp(32))
         self.skip_btn.clicked.connect(lambda: logger.info("skip_btn clicked") or self.reject())
         btn_layout.addWidget(self.skip_btn)
 
         self.prev_btn = QPushButton(tr("上一步"))
-        self.prev_btn.setFixedSize(80, 32)
+        self.prev_btn.setFixedSize(sp(80), sp(32))
         self.prev_btn.clicked.connect(lambda: logger.info("prev_btn clicked") or self._prev_step())
         self.prev_btn.setEnabled(False)
         btn_layout.addWidget(self.prev_btn)
 
         self.next_btn = QPushButton(tr("下一步"))
-        self.next_btn.setFixedSize(90, 32)
+        self.next_btn.setFixedSize(sp(90), sp(32))
         self.next_btn.setDefault(True)
         self.next_btn.clicked.connect(lambda: logger.info("next_btn clicked") or self._next_step())
         btn_layout.addWidget(self.next_btn)
@@ -288,13 +290,19 @@ class WelcomeGuide(QDialog):
     def _start_show_animation(self):
         """窗口出现动画 (0.2s)"""
         logger.info("Starting show animation")
+        stop_animation(getattr(self, "_show_anim", None), owner="WelcomeGuide.show")
         pos = self.pos()
         anim = QtCompat.QPropertyAnimation(self, b"pos")
         anim.setDuration(200)
-        anim.setStartValue(QPoint(pos.x(), pos.y() + 20))
+        start_pos = self.pos()
+        if getattr(self, "_show_anim", None) is None:
+            start_pos = QPoint(pos.x(), pos.y() + sp(20))
+        anim.setStartValue(start_pos)
         anim.setEndValue(pos)
         anim.setEasingCurve(QtCompat.OutCubic)
         anim.finished.connect(lambda: logger.info("Animation finished"))
-        anim.finished.connect(lambda: anim.deleteLater())
+        anim.finished.connect(lambda animation=anim: setattr(self, "_show_anim", None) if self._show_anim is animation else None)
+        anim.finished.connect(anim.deleteLater)
         anim.start()
+        self._show_anim = anim
         logger.info(f"Animation started, moving from {pos.y() + 20} to {pos.y()}")
