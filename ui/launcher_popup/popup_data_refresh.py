@@ -13,6 +13,7 @@ except ImportError:
 
 from core.window_detection import _is_desktop_window, _is_explorer_like_window
 from qt_compat import (
+    QCursor,
     QPixmap,
     QtCompat,
     QTimer,
@@ -455,7 +456,83 @@ class PopupDataRefreshMixin:
 
     def _on_folder_sync_finished(self):
         """Handle completed folder sync on the GUI thread."""
-        self._refresh_after_folder_sync(sync_first=False)
+        self._schedule_folder_sync_refresh()
+
+    def _is_cursor_inside_popup(self) -> bool:
+        try:
+            return bool(self.rect().contains(self.mapFromGlobal(QCursor.pos())))
+        except Exception as exc:
+            logger.debug("检查鼠标是否在弹窗内失败: %s", exc, exc_info=True)
+            return True
+
+    def _folder_sync_refresh_delay_ms(self) -> int:
+        """Delay the GUI refresh just enough to keep hover/auto-hide responsive."""
+        idle_delay = 16
+        try:
+            if not self.isVisible():
+                return idle_delay
+        except RuntimeError:
+            return idle_delay
+        except Exception as exc:
+            logger.debug("检查弹窗可见状态失败: %s", exc, exc_info=True)
+            return idle_delay
+
+        if (
+            self.__dict__.get("is_pinned", False)
+            or self.__dict__.get("_executing", False)
+            or self.__dict__.get("_is_dragging", False)
+        ):
+            return idle_delay
+
+        settings = self.__dict__.get("settings", None)
+        if not bool(getattr(settings, "popup_auto_close", True)):
+            return idle_delay
+        if self._is_cursor_inside_popup():
+            return idle_delay
+
+        delay = max(0, int(getattr(settings, "hover_leave_delay", 200) or 0))
+        hide_timer = self.__dict__.get("_hide_timer")
+        if hide_timer is not None:
+            try:
+                if not hide_timer.isActive():
+                    hide_timer.start(delay)
+            except Exception as exc:
+                logger.debug("启动刷新前隐藏定时器失败: %s", exc, exc_info=True)
+        return delay + 140
+
+    def _schedule_folder_sync_refresh(self):
+        seq = int(getattr(self, "_folder_sync_refresh_seq", 0) or 0) + 1
+        self._folder_sync_refresh_seq = seq
+        delay = self._folder_sync_refresh_delay_ms()
+        logger.debug("同步线程结束，延迟 %s ms 执行弹窗刷新", delay)
+        QTimer.singleShot(delay, lambda seq=seq: self._finish_folder_sync_refresh(seq))
+
+    def _finish_folder_sync_refresh(self, seq: int):
+        if seq != int(getattr(self, "_folder_sync_refresh_seq", -1) or -1):
+            return
+
+        try:
+            if bool(getattr(self, "_closing", False)):
+                self._blank_refresh_in_progress = False
+                return
+
+            try:
+                visible = bool(self.isVisible())
+            except RuntimeError:
+                visible = False
+            if not visible:
+                logger.info("同步完成，弹窗已隐藏，跳过即时重绘，下次唤出时刷新")
+                self._blank_refresh_in_progress = False
+                return
+
+            if bool(getattr(self, "_is_hiding", False)):
+                QTimer.singleShot(140, lambda seq=seq: self._finish_folder_sync_refresh(seq))
+                return
+
+            self._refresh_after_folder_sync(sync_first=False)
+        except Exception as e:
+            logger.error(f"同步刷新收尾失败: {e}")
+            self._blank_refresh_in_progress = False
 
     def _refresh_after_folder_sync(self, sync_first: bool = True):
         """Refresh after folder sync while preserving transient search state."""
@@ -500,7 +577,11 @@ class PopupDataRefreshMixin:
             self._sync_worker = FolderSyncWorker(self)
             self._sync_worker.finished.connect(self.folder_sync_finished.emit)
             self._sync_worker.finished.connect(self._sync_worker.deleteLater)
-            self._sync_worker.finished.connect(lambda: setattr(self, "_sync_worker", None))
+            self._sync_worker.finished.connect(
+                lambda worker=self._sync_worker: setattr(self, "_sync_worker", None)
+                if getattr(self, "_sync_worker", None) is worker
+                else None
+            )
             self._sync_worker.start()
         except Exception as e:
             logger.error(f"启动同步线程失败: {e}")

@@ -29,9 +29,9 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
     list_text_color = "#e5e5ea" if theme == "dark" else "#2c2c2e"
 
     lines = md.split("\n")
-    html_parts = []
+    html_parts: list[str] = []
     in_code_block = False
-    code_buf = []
+    code_buf: list[str] = []
     in_list = False
     in_ol = False
 
@@ -450,7 +450,7 @@ class UpdateDialog:
         pct = current / total * 100 if total > 0 else 0
         mb_done = current / 1024 / 1024
         mb_total = total / 1024 / 1024
-        return tr("正在下载更新... {done:.1f}/{total:.1f} MB ({pct:.0f}%)", done=mb_done, total=mb_total, pct=pct)
+        return str(tr("正在下载更新... {done:.1f}/{total:.1f} MB ({pct:.0f}%)", done=mb_done, total=mb_total, pct=pct))
 
     @staticmethod
     def show_download_failed(error: str, parent=None):

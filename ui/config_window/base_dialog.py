@@ -10,6 +10,7 @@ from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, Q
 from ui.styles.theme_controller import resolve_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
+from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -22,8 +23,16 @@ from ui.utils.window_effect import (
 logger = logging.getLogger(__name__)
 
 
+def _is_debug_trace_enabled() -> bool:
+    value = os.environ.get("QL_TRACE_DIALOG_CRASH", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _trace_to_crash_log(msg: str):
     """写一条时间戳追踪到 crash.log，用于定位闪退发生在哪个操作。"""
+    if not _is_debug_trace_enabled():
+        return
+
     try:
         import sys
         from pathlib import Path
@@ -62,6 +71,7 @@ class BaseDialog(QDialog):
         self._shadow_applied = False
         self._dialog_finished = False
         self._drag_pos = None
+        self._dialog_animation_generation = 0
 
         # 使用 QColor 对象存储颜色（与主配置窗口一致）
         self.bg_color = QColor(28, 28, 30, 180)
@@ -92,6 +102,23 @@ class BaseDialog(QDialog):
             except Exception:
                 break
         return resolve_theme(self)
+
+    def _next_dialog_animation_generation(self) -> int:
+        self._dialog_animation_generation = int(getattr(self, "_dialog_animation_generation", 0) or 0) + 1
+        return self._dialog_animation_generation
+
+    def _is_dialog_animation_current(self, generation: int) -> bool:
+        return generation == int(getattr(self, "_dialog_animation_generation", -1) or -1)
+
+    def _stop_dialog_animation_timer(self) -> None:
+        anim_timer = getattr(self, "_anim_timer", None)
+        if anim_timer is None:
+            return
+        try:
+            if anim_timer.isActive():
+                anim_timer.stop()
+        except Exception as exc:
+            logger.debug("停止对话框动画定时器失败: %s", exc, exc_info=True)
 
     def paintEvent(self, event):
         _trace_to_crash_log(f"paintEvent.0: {type(self).__name__}")
@@ -190,32 +217,28 @@ class BaseDialog(QDialog):
     def done(self, result):
         _trace_to_crash_log(f"done: {type(self).__name__} result={result}")
         self._dialog_finished = True
+        self._next_dialog_animation_generation()
         effects_timer = getattr(self, "_effects_timer", None)
         if effects_timer is not None:
             try:
                 effects_timer.stop()
             except Exception as exc:
                 logger.debug("停止特效定时器失败: %s", exc, exc_info=True)
-        anim_timer = getattr(self, "_anim_timer", None)
-        if anim_timer is not None:
-            try:
-                anim_timer.stop()
-            except Exception as exc:
-                logger.debug("停止动画定时器失败: %s", exc, exc_info=True)
+        self._stop_dialog_animation_timer()
         super().done(result)
 
     def _start_show_animation(self, target_pos=None):
         """苹果风格的高质感弹性滑入动画 - 100% 兼容编译及免崩溃设计"""
         if self._dialog_finished:
             return
+        generation = self._next_dialog_animation_generation()
+        self._stop_dialog_animation_timer()
 
         if target_pos is None:
             target_pos = self.pos()
+        self._anim_start_pos = self.pos()
         self._anim_target_pos = target_pos
-
-        # 初始状态
-        self.setWindowOpacity(0.0)
-        self.move(target_pos.x(), target_pos.y() + sp(24))
+        self._anim_start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
 
         # 动画参数
         self._anim_step = 0
@@ -226,10 +249,13 @@ class BaseDialog(QDialog):
         # 创建并启动定时器
         self._anim_timer = QTimer(self)
         self._anim_timer.setInterval(self._anim_interval_ms)
-        self._anim_timer.timeout.connect(self._on_animation_tick)
+        set_precise_timer(self._anim_timer, owner=f"{type(self).__name__}._anim_timer")
+        self._anim_timer.timeout.connect(lambda generation=generation: self._on_animation_tick(generation))
         self._anim_timer.start()
 
-    def _on_animation_tick(self):
+    def _on_animation_tick(self, generation: int | None = None):
+        if generation is not None and not self._is_dialog_animation_current(generation):
+            return
         if self._dialog_finished:
             if hasattr(self, "_anim_timer"):
                 self._anim_timer.stop()
@@ -248,11 +274,14 @@ class BaseDialog(QDialog):
         eased = t * t * t + 1.0
 
         # 加速透明度淡入：在 67% 的进度时透明度就达到 1.0，从而提前关闭 DWM 混合层以消除卡顿
-        self.setWindowOpacity(min(1.0, progress * 1.5))
+        start_opacity = float(getattr(self, "_anim_start_opacity", 0.0))
+        self.setWindowOpacity(min(1.0, start_opacity + (1.0 - start_opacity) * progress * 1.5))
 
-        target_y = self._anim_target_pos.y()
-        current_y = int(target_y + (1.0 - eased) * sp(24))
-        self.move(self._anim_target_pos.x(), current_y)
+        start_pos = getattr(self, "_anim_start_pos", self.pos())
+        target_pos = self._anim_target_pos
+        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)
+        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)
+        self.move(current_x, current_y)
 
     def mousePressEvent(self, event):
         """鼠标按下 - 支持拖动"""

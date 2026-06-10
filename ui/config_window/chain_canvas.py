@@ -1509,9 +1509,13 @@ class ChainCanvasWidget(QWidget):
         # 确保同一个电池不要打开多个重复的源码卡片
         if hasattr(self, "_active_dialog") and self._active_dialog:
             try:
-                self._active_dialog.reject()
+                if self._active_dialog.isVisible():
+                    self._active_dialog.reject()
+                else:
+                    self._active_dialog = None
             except Exception as exc:
                 logger.debug("关闭已有 Python 电池源码对话框失败: %s", exc, exc_info=True)
+                self._active_dialog = None
 
         dialog = PythonCellSourceDialog(source, self)
         # 设为 modeless 非模态！这样用户可以自由点击“动作链”父窗口的一切内容！
@@ -1520,9 +1524,11 @@ class ChainCanvasWidget(QWidget):
 
         # 极客全息虚线引线初始化
         node_item = self.node_items.get(node_id)
+        leader_lines = None
         if node_item:
-            self._leader_lines = QGraphicsPathItem()
-            self._leader_lines.setZValue(10)
+            leader_lines = QGraphicsPathItem()
+            leader_lines.setZValue(10)
+            self._leader_lines = leader_lines
 
             # 提取主题
             theme = "dark"
@@ -1540,9 +1546,9 @@ class ChainCanvasWidget(QWidget):
             pen = QPen(line_color, 1.2)
             pen.setStyle(Qt.DashLine)
             pen.setDashPattern([5, 4])
-            self._leader_lines.setPen(pen)
+            leader_lines.setPen(pen)
 
-            self.scene.addItem(self._leader_lines)
+            self.scene.addItem(leader_lines)
 
             # 实时运动与滑入动画坐标同步绑定
             dialog.moved.connect(lambda: self._update_editor_leader_lines(dialog, node_item))
@@ -1550,14 +1556,15 @@ class ChainCanvasWidget(QWidget):
 
         def on_finished(result):
             # 安全释放清除引线，防止任何悬空对象
-            if hasattr(self, "_leader_lines") and self._leader_lines:
+            if leader_lines is not None and getattr(self, "_leader_lines", None) is leader_lines:
                 try:
-                    self.scene.removeItem(self._leader_lines)
+                    self.scene.removeItem(leader_lines)
                 except Exception as exc:
                     logger.debug("移除 Python 电池引线失败: %s", exc, exc_info=True)
                 self._leader_lines = None
 
-            self._active_dialog = None
+            if getattr(self, "_active_dialog", None) is dialog:
+                self._active_dialog = None
 
             if result == QDialog.Accepted:
                 self._push_history()

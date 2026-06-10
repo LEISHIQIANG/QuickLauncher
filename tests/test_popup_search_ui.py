@@ -8,7 +8,7 @@ from core.data_models import Folder, ShortcutItem, ShortcutType
 logger = logging.getLogger(__name__)
 import pytest
 
-from qt_compat import QPoint, QRect, Qt, QtCompat
+from qt_compat import QFont, QPoint, QRect, Qt, QtCompat
 from ui.launcher_popup.popup_window import LauncherPopup
 
 pytestmark = pytest.mark.ui
@@ -51,10 +51,12 @@ class _FakeInputMethodEvent:
 
 
 class _FakeMouseEvent:
-    def __init__(self, pos, button=QtCompat.LeftButton, modifiers=0):
+    def __init__(self, pos, button=QtCompat.LeftButton, modifiers=0, global_pos=None, buttons=None):
         self._pos = pos
         self._button = button
         self._modifiers = modifiers
+        self._global_pos = global_pos if global_pos is not None else pos
+        self._buttons = buttons if buttons is not None else button
         self.accepted = False
 
     def pos(self):
@@ -66,8 +68,11 @@ class _FakeMouseEvent:
     def modifiers(self):
         return self._modifiers
 
+    def buttons(self):
+        return self._buttons
+
     def globalPos(self):
-        return self._pos
+        return self._global_pos
 
     def accept(self):
         self.accepted = True
@@ -146,6 +151,23 @@ def test_first_space_opens_search_without_querying():
     assert popup.search_query == ""
     assert popup.search_results == []
     assert popup.search_cursor_pos == 0
+
+
+def test_search_font_uses_scaled_label_font_without_second_scaling(qapp):
+    from ui.utils.ui_scale import font_px, set_scale, sp
+
+    set_scale(150)
+    popup = _popup_with_items([])
+    popup._label_font = QFont()
+    popup._label_font.setPixelSize(font_px(10))
+
+    try:
+        font = LauncherPopup._search_font(popup)
+
+        assert font.pixelSize() == font_px(10) + sp(2)
+        assert font.pixelSize() != font_px(font_px(10) + sp(2))
+    finally:
+        set_scale(100)
 
 
 def test_space_before_slash_enters_command_mode(monkeypatch):
@@ -296,6 +318,100 @@ def test_mouse_drag_selects_search_text():
     assert popup._selected_search_text() == "abc"
 
 
+def test_pinned_popup_left_drag_moves_window():
+    popup = _popup_with_items([])
+    popup.is_pinned = True
+    popup._executing = False
+    popup._command_result = None
+    popup._search_bar_contains = lambda pos: False
+    popup._is_click_on_result_panel = lambda pos: False
+    popup.hover_index = 2
+    popup.dock_hover_index = 1
+    popup._window_pos = QPoint(100, 80)
+    moved = []
+    popup.pos = lambda: popup._window_pos
+
+    def move(pos):
+        moved.append(pos)
+        popup._window_pos = pos
+
+    popup.move = move
+    popup.setCursor = lambda cursor: None
+
+    press = _FakeMouseEvent(QPoint(10, 10), global_pos=QPoint(110, 90))
+    move_event = _FakeMouseEvent(
+        QPoint(30, 35),
+        global_pos=QPoint(150, 130),
+        buttons=QtCompat.LeftButton,
+    )
+    release = _FakeMouseEvent(QPoint(30, 35), global_pos=QPoint(150, 130))
+
+    LauncherPopup.mousePressEvent(popup, press)
+    LauncherPopup.mouseMoveEvent(popup, move_event)
+    LauncherPopup.mouseReleaseEvent(popup, release)
+
+    assert press.accepted
+    assert move_event.accepted
+    assert release.accepted
+    assert moved == [QPoint(140, 120)]
+    assert popup.hover_index == -1
+    assert popup.dock_hover_index == -1
+    assert popup._pinned_window_drag_active is False
+    assert popup._pinned_window_drag_pending is False
+
+
+def test_unpinned_popup_left_drag_does_not_move_window():
+    popup = _popup_with_items([])
+    popup.is_pinned = False
+    popup._executing = False
+    popup._command_result = None
+    popup._search_bar_contains = lambda pos: False
+    popup._is_click_on_result_panel = lambda pos: False
+    popup.pos = lambda: QPoint(100, 80)
+    moved = []
+    popup.move = moved.append
+    popup.setCursor = lambda cursor: None
+
+    press = _FakeMouseEvent(QPoint(10, 10), global_pos=QPoint(110, 90))
+    move_event = _FakeMouseEvent(
+        QPoint(30, 35),
+        global_pos=QPoint(150, 130),
+        buttons=QtCompat.LeftButton,
+    )
+
+    started = LauncherPopup._begin_pinned_window_drag(popup, press, press.pos())
+    updated = LauncherPopup._update_pinned_window_drag(popup, move_event)
+
+    assert started is False
+    assert updated is False
+    assert moved == []
+
+
+def test_pinned_popup_icon_click_still_executes_without_dragging():
+    item = ShortcutItem(id="app", name="App")
+    popup = _popup_with_items([item])
+    popup.is_pinned = True
+    popup._executing = False
+    popup._command_result = None
+    popup._search_bar_contains = lambda pos: False
+    popup._is_click_on_result_panel = lambda pos: False
+    popup._get_clicked_item_at = lambda pos: item
+    popup.pos = lambda: QPoint(100, 80)
+    popup.setCursor = lambda cursor: None
+    executed = []
+    popup._execute_item = lambda clicked, force_new=False: executed.append((clicked, force_new))
+
+    press = _FakeMouseEvent(QPoint(10, 10), global_pos=QPoint(110, 90))
+    release = _FakeMouseEvent(QPoint(10, 10), global_pos=QPoint(110, 90))
+
+    LauncherPopup.mousePressEvent(popup, press)
+    LauncherPopup.mouseReleaseEvent(popup, release)
+
+    assert press.accepted
+    assert release.accepted
+    assert executed == [(item, False)]
+
+
 def test_blank_area_refresh_preserves_awakened_search_state():
     popup = LauncherPopup.__new__(LauncherPopup)
     calls = []
@@ -319,6 +435,62 @@ def test_blank_area_refresh_preserves_awakened_search_state():
             },
         ),
     ]
+
+
+def test_folder_sync_refresh_waits_for_auto_hide_when_cursor_left():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.settings = SimpleNamespace(popup_auto_close=True, hover_leave_delay=125)
+    popup.isVisible = lambda: True
+    popup._is_cursor_inside_popup = lambda: False
+    popup.is_pinned = False
+    popup._executing = False
+    popup._is_dragging = False
+
+    class _HideTimer:
+        def __init__(self):
+            self.started_with = []
+
+        def isActive(self):
+            return False
+
+        def start(self, delay):
+            self.started_with.append(delay)
+
+    popup._hide_timer = _HideTimer()
+
+    delay = LauncherPopup._folder_sync_refresh_delay_ms(popup)
+
+    assert popup._hide_timer.started_with == [125]
+    assert delay == 265
+
+
+def test_folder_sync_finish_skips_immediate_repaint_when_popup_hidden():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup._folder_sync_refresh_seq = 3
+    popup._blank_refresh_in_progress = True
+    popup._closing = False
+    popup.isVisible = lambda: False
+    calls = []
+    popup._refresh_after_folder_sync = lambda **kwargs: calls.append(kwargs)
+
+    LauncherPopup._finish_folder_sync_refresh(popup, 3)
+
+    assert calls == []
+    assert popup._blank_refresh_in_progress is False
+
+
+def test_folder_sync_finish_refreshes_when_popup_stays_visible():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup._folder_sync_refresh_seq = 4
+    popup._closing = False
+    popup._is_hiding = False
+    popup.isVisible = lambda: True
+    calls = []
+    popup._refresh_after_folder_sync = lambda **kwargs: calls.append(kwargs)
+
+    LauncherPopup._finish_folder_sync_refresh(popup, 4)
+
+    assert calls == [{"sync_first": False}]
 
 
 def test_hide_reset_clears_stale_search_query_and_cursor_state():
@@ -382,6 +554,28 @@ def test_dock_click_still_works_while_search_is_active():
     popup.width = lambda: 60
 
     assert popup._get_clicked_item_at(QPoint(30, 112)) is dock_item
+
+
+def test_hover_change_repaints_only_changed_grid_region():
+    popup = _popup_with_items([ShortcutItem(id="normal", name="Normal")])
+    popup.padding = 8
+    popup.cell_size = 44
+    popup.cell_h = 50
+    popup.icon_size = 24
+    popup.fixed_rows = 2
+    popup.dock_items = []
+    popup.dock_height = 0
+    popup.width = lambda: 120
+    popup.height = lambda: 140
+    popup.rect = lambda: QRect(0, 0, 120, 140)
+    updates = []
+    popup.update = lambda rect=None: updates.append(rect)
+
+    LauncherPopup._update_hover_regions(popup, -1, -1, 0, -1)
+
+    assert len(updates) == 1
+    assert updates[0].width() < popup.width()
+    assert updates[0].height() < popup.height()
 
 
 def test_search_reveal_height_tracks_animation_progress():
@@ -453,7 +647,7 @@ def test_background_inset_only_applies_while_search_is_visible():
     assert LauncherPopup._background_top_inset(popup) == 17
 
 
-def test_search_start_shows_final_search_geometry_immediately():
+def test_search_start_expands_final_geometry_then_animates_reveal():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup._search_reveal_progress = 0.25
     popup._search_target_progress = 0.0
@@ -467,11 +661,14 @@ def test_search_start_shows_final_search_geometry_immediately():
     repaints = []
 
     class _Timer:
+        def __init__(self):
+            self.started = False
+
         def isActive(self):
-            return False
+            return self.started
 
         def start(self):
-            pass
+            self.started = True
 
     popup._search_anim_timer = _Timer()
     popup._apply_search_geometry = lambda **kwargs: geometry_calls.append(kwargs)
@@ -482,11 +679,54 @@ def test_search_start_shows_final_search_geometry_immediately():
 
     LauncherPopup._start_search_reveal_animation(popup, True)
 
-    assert geometry_calls == [{"repaint": False}]
-    assert popup._search_reveal_progress == 1.0
+    assert geometry_calls == [{"progress_override": 1.0, "repaint": False}]
+    assert popup._search_reveal_progress == 0.25
+    assert popup._search_target_progress == 1.0
+    assert popup._search_anim_timer.started is True
     assert masks == [True]
     assert updates == ["search-rect"]
-    assert repaints == [True]
+    assert repaints == []
+
+
+def test_search_reveal_tick_updates_visual_progress_without_geometry():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup._search_reveal_progress = 0.0
+    popup._search_target_progress = 1.0
+    popup._search_anim_from_progress = 0.0
+    popup._search_anim_started_at = 10.0
+    popup._search_anim_duration_ms = 100
+    popup._search_hide_geometry_pending = False
+    popup._search_animation_update_rect = lambda: "search-rect"
+    masks = []
+    updates = []
+    geometry_calls = []
+
+    class _Timer:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    popup._search_anim_timer = _Timer()
+    popup._apply_search_mask = lambda force=False: masks.append(force)
+    popup.update = lambda rect=None: updates.append(rect)
+    popup.repaint = lambda: None
+    popup._apply_search_geometry = lambda **kwargs: geometry_calls.append(kwargs)
+
+    import ui.launcher_popup.popup_search as popup_search_mod
+
+    original = popup_search_mod.time.perf_counter
+    try:
+        popup_search_mod.time.perf_counter = lambda: 10.05
+        LauncherPopup._tick_search_reveal(popup)
+    finally:
+        popup_search_mod.time.perf_counter = original
+
+    assert 0.0 < popup._search_reveal_progress < 1.0
+    assert masks == [False]
+    assert updates == ["search-rect"]
+    assert geometry_calls == []
 
 
 def test_search_geometry_expands_only_from_top_edge():

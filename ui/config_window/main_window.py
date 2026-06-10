@@ -5,6 +5,7 @@
 import logging
 import os
 import sys
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ from qt_compat import (
 from ui.styles.style import Glassmorphism
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.interruptible_animation import set_precise_timer, stop_named_animations
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -108,6 +109,10 @@ class TitleBar(QWidget):
             QPushButton:hover {
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #007aff;
+            }
+            QPushButton:pressed {
+                background-color: rgba(128, 128, 128, 0.18);
+                color: #006fd6;
             }
         """))
         layout.addWidget(self.back_btn)
@@ -192,6 +197,10 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.1);
                 color: #ffffff;
             }
+            QPushButton:pressed {
+                background-color: rgba(128, 128, 128, 0.18);
+                color: #ffffff;
+            }
         """))
         layout.addWidget(self.settings_btn)
 
@@ -210,6 +219,10 @@ class TitleBar(QWidget):
             }
             QPushButton:hover {
                 background-color: #e81123;
+                color: white;
+            }
+            QPushButton:pressed {
+                background-color: #c50f1f;
                 color: white;
             }
         """))
@@ -245,6 +258,10 @@ class TitleBar(QWidget):
                 background-color: {btn_hover_bg};
                 color: {text_color};
             }}
+            QPushButton:pressed {{
+                background-color: rgba(128, 128, 128, 0.18);
+                color: {text_color};
+            }}
         """)
 
         self.back_btn.setStyleSheet(btn_base_style + scale_qss("QPushButton { font-size: 24px; padding-bottom: 8px; }"))
@@ -263,6 +280,10 @@ class TitleBar(QWidget):
             }}
             QPushButton:hover {{
                 background-color: #e81123;
+                color: white;
+            }}
+            QPushButton:pressed {{
+                background-color: #c50f1f;
                 color: white;
             }}
         """))
@@ -579,9 +600,17 @@ class ConfigWindow(QMainWindow):
         self.tray_app = tray_app
         self._drag_drop_compat_applied = False
         self._shortcut_edit_active = False
+        self._shortcut_action_last_trigger_at = {}
+        self._shortcut_action_debounce_ms = 250
         self._shortcut_dialog_release_delay_ms = 250
         self._settings_panel_preload_scheduled = False
         self._lifecycle = WindowLifecycleController(self, ("_anim_timer", "_hide_anim_timer"))
+        self._window_shadow_state = None
+        self._resize_region_pending_state = None
+        self._resize_region_last_state = None
+        self._window_animation_generation = 0
+        self._interrupted_show_target_pos = None
+        self._pending_show_target_pos = None
 
         # 对话框实例引用（防止多实例冲突）
         self._active_file_dialog = None
@@ -636,10 +665,14 @@ class ConfigWindow(QMainWindow):
         generation = self._lifecycle.open_generation()
         centered_show = bool(getattr(self, "_centered_show_animation", False))
         # 预先将窗口移动到偏移起点并设置为全透明，避免任何初始抖动
-        pos = self.pos()
+        pos = QPoint(self.pos())
+        interrupted_target = getattr(self, "_interrupted_show_target_pos", None)
+        target_pos = QPoint(interrupted_target) if interrupted_target is not None and not centered_show else pos
+        self._interrupted_show_target_pos = None
+        self._pending_show_target_pos = QPoint(target_pos)
         self.setWindowOpacity(0.0)
         if not centered_show:
-            self.move(pos.x(), pos.y() + sp(16))
+            self.move(target_pos.x(), target_pos.y() + sp(16))
 
         # 每次重新打开时重置高级模式复选框（纯 UI 状态，不持久化）
         panel = getattr(self, "settings_panel", None)
@@ -654,6 +687,40 @@ class ConfigWindow(QMainWindow):
         self._apply_window_shadow()
         self._start_show_animation()
         self._schedule_settings_panel_preload(generation)
+
+    def _next_window_animation_generation(self) -> int:
+        self._window_animation_generation = int(getattr(self, "_window_animation_generation", 0) or 0) + 1
+        return self._window_animation_generation
+
+    def _is_window_animation_current(self, generation: int) -> bool:
+        return generation == int(getattr(self, "_window_animation_generation", -1) or -1)
+
+    def _stop_window_animation_timer(self, name: str) -> None:
+        timer = getattr(self, name, None)
+        if timer is None:
+            return
+        try:
+            if timer.isActive():
+                timer.stop()
+        except Exception as exc:
+            logger.debug("停止窗口动画定时器失败: %s", exc, exc_info=True)
+
+    def hide(self):
+        """Hide immediately while preserving a half-finished show target."""
+        timer = getattr(self, "_anim_timer", None)
+        try:
+            show_anim_active = bool(timer is not None and timer.isActive())
+        except Exception as exc:
+            logger.debug("检查显示动画定时器失败: %s", exc, exc_info=True)
+            show_anim_active = False
+        if show_anim_active:
+            target = getattr(self, "_anim_target_pos", None)
+            if target is not None:
+                self._interrupted_show_target_pos = QPoint(target)
+            self._next_window_animation_generation()
+            self._stop_window_animation_timer("_anim_timer")
+        self._stop_window_animation_timer("_hide_anim_timer")
+        super().hide()
 
     def _setup_ui(self):
         """设置UI"""
@@ -1122,7 +1189,14 @@ class ConfigWindow(QMainWindow):
                 )
             )
 
-    def _begin_shortcut_dialog_action(self) -> bool:
+    def _begin_shortcut_dialog_action(self, action_key: str | None = None) -> bool:
+        if action_key:
+            now = time.monotonic()
+            last = float(getattr(self, "_shortcut_action_last_trigger_at", {}).get(action_key, 0.0))
+            debounce_s = max(0.0, float(getattr(self, "_shortcut_action_debounce_ms", 250)) / 1000.0)
+            if last > 0.0 and now - last < debounce_s:
+                return False
+            self._shortcut_action_last_trigger_at[action_key] = now
         if self._shortcut_edit_active:
             return False
         self._shortcut_edit_active = True
@@ -1149,7 +1223,26 @@ class ConfigWindow(QMainWindow):
                 except RuntimeError:
                     logger.debug("设置按钮启用状态失败", exc_info=True)
 
-    def _run_shortcut_dialog(self, dialog, on_accept):
+    def _clear_active_dialog_if_current(self, attr_name: str, dialog) -> None:
+        if getattr(self, attr_name, None) is dialog:
+            setattr(self, attr_name, None)
+
+    def _activate_existing_dialog(self, attr_name: str) -> bool:
+        dialog = getattr(self, attr_name, None)
+        if dialog is None:
+            return False
+        try:
+            if not dialog.isVisible():
+                setattr(self, attr_name, None)
+                return False
+            dialog.activateWindow()
+            dialog.raise_()
+            return True
+        except RuntimeError:
+            setattr(self, attr_name, None)
+            return False
+
+    def _run_shortcut_dialog(self, dialog, on_accept, active_attr_name: str | None = None):
         # 记录到对话框历史中保持强引用，防止因局部垃圾回收触发闪退
         if hasattr(self, "_dialog_history"):
             self._dialog_history.append(dialog)
@@ -1161,6 +1254,10 @@ class ConfigWindow(QMainWindow):
 
             logging.getLogger(__name__).error(f"对话框执行失败: {e}", exc_info=True)
         finally:
+            if hasattr(self, "_dialog_history"):
+                self._dialog_history = [item for item in self._dialog_history if item is not dialog]
+            if active_attr_name:
+                self._clear_active_dialog_if_current(active_attr_name, dialog)
             self._end_shortcut_dialog_action()
 
     def _on_shortcut_edit(self, shortcut: ShortcutItem):
@@ -1238,15 +1335,10 @@ class ConfigWindow(QMainWindow):
     def _on_add_file(self):
         """添加文件快捷方式"""
         # 检查是否已有实例
-        if self._active_file_dialog is not None:
-            try:
-                self._active_file_dialog.activateWindow()
-                self._active_file_dialog.raise_()
-                return
-            except RuntimeError:
-                self._active_file_dialog = None
+        if self._activate_existing_dialog("_active_file_dialog"):
+            return
 
-        if not self._begin_shortcut_dialog_action():
+        if not self._begin_shortcut_dialog_action("file"):
             return
         folder_id = self.icon_grid.current_folder_id
         if not folder_id:
@@ -1258,32 +1350,28 @@ class ConfigWindow(QMainWindow):
 
             dialog = ShortcutDialog(self)
             self._active_file_dialog = dialog
-            dialog.finished.connect(lambda: setattr(self, "_active_file_dialog", None))
+            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_file_dialog", dialog))
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
                 self.icon_grid.load_folder(folder_id)
                 self.settings_changed.emit()
 
-            self._run_shortcut_dialog(dialog, _apply_add)
+            self._run_shortcut_dialog(dialog, _apply_add, "_active_file_dialog")
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).error(f"创建文件对话框失败: {e}")
+            self._clear_active_dialog_if_current("_active_file_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
     def _on_add_hotkey(self):
         """添加快捷键"""
         # 检查是否已有实例
-        if self._active_hotkey_dialog is not None:
-            try:
-                self._active_hotkey_dialog.activateWindow()
-                self._active_hotkey_dialog.raise_()
-                return
-            except RuntimeError:
-                self._active_hotkey_dialog = None
+        if self._activate_existing_dialog("_active_hotkey_dialog"):
+            return
 
-        if not self._begin_shortcut_dialog_action():
+        if not self._begin_shortcut_dialog_action("hotkey"):
             return
         folder_id = self.icon_grid.current_folder_id
         if not folder_id:
@@ -1295,32 +1383,28 @@ class ConfigWindow(QMainWindow):
 
             dialog = HotkeyDialog(self)
             self._active_hotkey_dialog = dialog
-            dialog.finished.connect(lambda: setattr(self, "_active_hotkey_dialog", None))
+            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_hotkey_dialog", dialog))
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
                 self.icon_grid.load_folder(folder_id)
                 self.settings_changed.emit()
 
-            self._run_shortcut_dialog(dialog, _apply_add)
+            self._run_shortcut_dialog(dialog, _apply_add, "_active_hotkey_dialog")
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).error(f"创建快捷键对话框失败: {e}")
+            self._clear_active_dialog_if_current("_active_hotkey_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
     def _on_add_url(self):
         """添加URL"""
         # 检查是否已有实例
-        if self._active_url_dialog is not None:
-            try:
-                self._active_url_dialog.activateWindow()
-                self._active_url_dialog.raise_()
-                return
-            except RuntimeError:
-                self._active_url_dialog = None
+        if self._activate_existing_dialog("_active_url_dialog"):
+            return
 
-        if not self._begin_shortcut_dialog_action():
+        if not self._begin_shortcut_dialog_action("url"):
             return
         folder_id = self.icon_grid.current_folder_id
         if not folder_id:
@@ -1332,32 +1416,28 @@ class ConfigWindow(QMainWindow):
 
             dialog = UrlDialog(self)
             self._active_url_dialog = dialog
-            dialog.finished.connect(lambda: setattr(self, "_active_url_dialog", None))
+            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_url_dialog", dialog))
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
                 self.icon_grid.load_folder(folder_id)
                 self.settings_changed.emit()
 
-            self._run_shortcut_dialog(dialog, _apply_add)
+            self._run_shortcut_dialog(dialog, _apply_add, "_active_url_dialog")
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).error(f"创建URL对话框失败: {e}")
+            self._clear_active_dialog_if_current("_active_url_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
     def _on_add_command(self):
         """添加命令"""
         # 检查是否已有实例
-        if self._active_command_dialog is not None:
-            try:
-                self._active_command_dialog.activateWindow()
-                self._active_command_dialog.raise_()
-                return
-            except RuntimeError:
-                self._active_command_dialog = None
+        if self._activate_existing_dialog("_active_command_dialog"):
+            return
 
-        if not self._begin_shortcut_dialog_action():
+        if not self._begin_shortcut_dialog_action("command"):
             return
         folder_id = self.icon_grid.current_folder_id
         if not folder_id:
@@ -1369,31 +1449,27 @@ class ConfigWindow(QMainWindow):
 
             dialog = CommandDialog(self)
             self._active_command_dialog = dialog
-            dialog.finished.connect(lambda: setattr(self, "_active_command_dialog", None))
+            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_command_dialog", dialog))
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
                 self.icon_grid.load_folder(folder_id)
                 self.settings_changed.emit()
 
-            self._run_shortcut_dialog(dialog, _apply_add)
+            self._run_shortcut_dialog(dialog, _apply_add, "_active_command_dialog")
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).error(f"创建命令对话框失败: {e}")
+            self._clear_active_dialog_if_current("_active_command_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
     def _on_add_chain(self):
         """Create an action chain."""
-        if self._active_chain_dialog is not None:
-            try:
-                self._active_chain_dialog.activateWindow()
-                self._active_chain_dialog.raise_()
-                return
-            except RuntimeError:
-                self._active_chain_dialog = None
+        if self._activate_existing_dialog("_active_chain_dialog"):
+            return
 
-        if not self._begin_shortcut_dialog_action():
+        if not self._begin_shortcut_dialog_action("chain"):
             return
         folder_id = self.icon_grid.current_folder_id
         if not folder_id:
@@ -1405,18 +1481,19 @@ class ConfigWindow(QMainWindow):
 
             dialog = ChainDialog(self)
             self._active_chain_dialog = dialog
-            dialog.finished.connect(lambda: setattr(self, "_active_chain_dialog", None))
+            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_chain_dialog", dialog))
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
                 self.icon_grid.load_folder(folder_id)
                 self.settings_changed.emit()
 
-            self._run_shortcut_dialog(dialog, _apply_add)
+            self._run_shortcut_dialog(dialog, _apply_add, "_active_chain_dialog")
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).error(f"Create chain dialog failed: {e}", exc_info=True)
+            self._clear_active_dialog_if_current("_active_chain_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
     def _on_settings_panel_changed(self):
@@ -1479,6 +1556,12 @@ class ConfigWindow(QMainWindow):
             lifecycle.close_generation()
             lifecycle.stop_timers()
         self._settings_panel_preload_scheduled = False
+        resize_region_timer = getattr(self, "_resize_region_timer", None)
+        if resize_region_timer is not None:
+            try:
+                resize_region_timer.stop()
+            except Exception as exc:
+                logger.debug("停止窗口区域更新定时器失败: %s", exc, exc_info=True)
         settings_panel = getattr(self, "settings_panel", None)
         if settings_panel is not None and hasattr(settings_panel, "stop_background_timers"):
             try:
@@ -1491,6 +1574,11 @@ class ConfigWindow(QMainWindow):
                 icon_grid._stop_icon_thread()
             except Exception as exc:
                 logger.debug("停止图标加载线程失败: %s", exc, exc_info=True)
+        if icon_grid is not None and hasattr(icon_grid, "_stop_favicon_fetch_thread"):
+            try:
+                icon_grid._stop_favicon_fetch_thread()
+            except Exception as exc:
+                logger.debug("停止批量 favicon 线程失败: %s", exc, exc_info=True)
         try:
             # 强制保存所有待保存的数据
             self.data_manager.flush_pending_save()
@@ -1500,12 +1588,20 @@ class ConfigWindow(QMainWindow):
 
     def _start_show_animation(self):
         """苹果风格的高质感弹性滑入动画 - 100% 兼容编译及免崩溃设计"""
-        pos = self.pos()
+        generation = self._next_window_animation_generation()
+        self._stop_window_animation_timer("_anim_timer")
+        self._stop_window_animation_timer("_hide_anim_timer")
+        start_pos = QPoint(self.pos())
         offset_px = 0 if bool(getattr(self, "_centered_show_animation", False)) else sp(16)
-        # 窗口当前在偏移点 (pos.y() 处)，目标点是向上 16 像素
-        target_pos = QPoint(pos.x(), pos.y() - offset_px)
+        target_pos = getattr(self, "_pending_show_target_pos", None)
+        if target_pos is None:
+            target_pos = QPoint(start_pos.x(), start_pos.y() - offset_px)
+        else:
+            target_pos = QPoint(target_pos)
+        self._pending_show_target_pos = None
+        self._anim_start_pos = start_pos
         self._anim_target_pos = target_pos
-        self._anim_offset_px = offset_px
+        self._anim_start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
 
         # 动画参数
         self._anim_step = 0
@@ -1516,10 +1612,13 @@ class ConfigWindow(QMainWindow):
         # 创建并启动定时器
         self._anim_timer = QTimer(self)
         self._anim_timer.setInterval(self._anim_interval_ms)
-        self._anim_timer.timeout.connect(self._on_main_animation_tick)
+        set_precise_timer(self._anim_timer, owner="ConfigWindow._anim_timer")
+        self._anim_timer.timeout.connect(lambda generation=generation: self._on_main_animation_tick(generation))
         self._anim_timer.start()
 
-    def _on_main_animation_tick(self):
+    def _on_main_animation_tick(self, generation: int | None = None):
+        if generation is not None and not self._is_window_animation_current(generation):
+            return
         self._anim_step += 1
         progress = self._anim_step / self._anim_total_steps
 
@@ -1533,27 +1632,31 @@ class ConfigWindow(QMainWindow):
         eased = t * t * t + 1.0
 
         # 加速透明度淡入：在 67% 的进度时透明度就达到 1.0，从而提前关闭 DWM 混合层以消除卡顿
-        self.setWindowOpacity(min(1.0, progress * 1.5))
+        start_opacity = float(getattr(self, "_anim_start_opacity", 0.0))
+        self.setWindowOpacity(min(1.0, start_opacity + (1.0 - start_opacity) * progress * 1.5))
 
-        target_y = self._anim_target_pos.y()
-        current_y = int(target_y + (1.0 - eased) * getattr(self, "_anim_offset_px", sp(16)))
-        self.move(self._anim_target_pos.x(), current_y)
+        start_pos = getattr(self, "_anim_start_pos", self.pos())
+        target_pos = self._anim_target_pos
+        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)
+        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)
+        self.move(current_x, current_y)
         if progress >= 1.0:
             self._centered_show_animation = False
 
     def animate_close_then(self, callback=None, *, callback_delay_ms: int | None = None):
         """Play a short disappearance animation and optionally overlap the callback."""
+        generation = self._next_window_animation_generation()
         for timer_name in ("_anim_timer", "_hide_anim_timer"):
-            try:
-                timer = getattr(self, timer_name, None)
-                if timer is not None and timer.isActive():
-                    timer.stop()
-            except Exception as exc:
-                logger.debug("停止窗口动画定时器失败: %s", exc, exc_info=True)
+            self._stop_window_animation_timer(timer_name)
         stop_named_animations(self, "anim_group", "hide_anim_group")
 
         if callback and callback_delay_ms is not None:
-            QTimer.singleShot(max(0, int(callback_delay_ms)), callback)
+            QTimer.singleShot(
+                max(0, int(callback_delay_ms)),
+                lambda generation=generation, callback=callback: self._run_window_animation_callback(
+                    generation, callback
+                ),
+            )
             callback = None
 
         start_pos = self.pos()
@@ -1568,10 +1671,21 @@ class ConfigWindow(QMainWindow):
 
         self._hide_anim_timer = QTimer(self)
         self._hide_anim_timer.setInterval(self._hide_anim_interval_ms)
-        self._hide_anim_timer.timeout.connect(self._on_hide_animation_tick)
+        set_precise_timer(self._hide_anim_timer, owner="ConfigWindow._hide_anim_timer")
+        self._hide_anim_timer.timeout.connect(lambda generation=generation: self._on_hide_animation_tick(generation))
         self._hide_anim_timer.start()
 
-    def _on_hide_animation_tick(self):
+    def _run_window_animation_callback(self, generation: int, callback) -> None:
+        if not self._is_window_animation_current(generation):
+            return
+        try:
+            callback()
+        except Exception as exc:
+            logger.debug("窗口动画回调执行失败: %s", exc, exc_info=True)
+
+    def _on_hide_animation_tick(self, generation: int | None = None):
+        if generation is not None and not self._is_window_animation_current(generation):
+            return
         self._hide_anim_step += 1
         progress = min(1.0, self._hide_anim_step / self._hide_anim_total_steps)
         eased = 1.0 - (1.0 - progress) * (1.0 - progress) * (1.0 - progress)
@@ -1594,7 +1708,12 @@ class ConfigWindow(QMainWindow):
         callback = getattr(self, "_hide_anim_callback", None)
         self.close()
         if callback:
-            QTimer.singleShot(0, callback)
+            QTimer.singleShot(
+                0,
+                lambda generation=generation, callback=callback: self._run_window_animation_callback(
+                    generation, callback
+                ),
+            )
 
     def _apply_color_filter(self):
         """读取设置并通过修改 Acrylic 底色参数来应用颜色滤镜 (仅 Win11)"""
@@ -1639,12 +1758,16 @@ class ConfigWindow(QMainWindow):
             effect = get_window_effect()
             radius = 8
             theme = self.data_manager.get_settings().theme
+            is_win11_platform = is_win11()
+            state = (theme, is_win11_platform, self.width(), self.height(), radius)
+            if state == getattr(self, "_window_shadow_state", None):
+                return
 
             # 强制刷新效果状态
             # self._shadow_applied = True # Removed this flag check logic
 
             # Win11 使用 DWM 原生圆角 + 阴影 + Acrylic 效果
-            if is_win11():
+            if is_win11_platform:
                 effect.set_round_corners(hwnd, enable=True)
                 effect.enable_window_shadow(hwnd, radius)
                 # 启用磨砂玻璃效果 - 使用更低的 alpha (10) 获得极度透明的模糊
@@ -1652,24 +1775,49 @@ class ConfigWindow(QMainWindow):
             else:
                 # Win10: 只做区域裁剪，背景由 Qt 自绘，避免 DWM/Acrylic 黑色遮罩。
                 enable_acrylic_for_config_window(self, theme, blur_amount=8, radius=radius)
+            self._window_shadow_state = state
         except Exception as exc:
             logger.debug("应用窗口阴影失败: %s", exc, exc_info=True)
+
+    def _schedule_resize_region_update(self):
+        if is_win11():
+            return
+        state = (self.width(), self.height(), 12)
+        if state == getattr(self, "_resize_region_last_state", None):
+            return
+        self._resize_region_pending_state = state
+        timer = getattr(self, "_resize_region_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._apply_pending_resize_region)
+            self._resize_region_timer = timer
+        if not timer.isActive():
+            timer.start(50)
+
+    def _apply_pending_resize_region(self):
+        """合并 Win10 resize 期间的 region/DWM 调用。"""
+        state = getattr(self, "_resize_region_pending_state", None)
+        if state is None or state == getattr(self, "_resize_region_last_state", None):
+            return
+        w, h, radius = state
+        if w <= 0 or h <= 0:
+            return
+        try:
+            hwnd = int(self.winId())
+            if not hwnd:
+                return
+            effect = get_window_effect()
+            effect.set_window_region(hwnd, w, h, radius)
+            effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
+            self._resize_region_last_state = state
+        except Exception as exc:
+            logger.debug("调整窗口大小时更新圆角失败: %s", exc, exc_info=True)
 
     def resizeEvent(self, event):
         """窗口大小变化时更新圆角区域（仅 Win10 需要）"""
         super().resizeEvent(event)
         try:
-            if not is_win11():
-                hwnd = int(self.winId())
-                if hwnd:
-                    effect = get_window_effect()
-                    w = self.width()
-                    h = self.height()
-                    radius = 12
-                    if w > 0 and h > 0:
-                        # Win10 Resize 时需要同时更新两个区域以保持一致
-                        # 使用与初始化时相同的逻辑
-                        effect.set_window_region(hwnd, w, h, radius)
-                        effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
+            self._schedule_resize_region_update()
         except Exception as exc:
             logger.debug("调整窗口大小时更新圆角失败: %s", exc, exc_info=True)

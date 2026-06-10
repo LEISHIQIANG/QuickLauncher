@@ -50,7 +50,7 @@ QuickLauncher is a **Windows desktop quick launcher** built with **Python + PyQt
 | **Data** | Atomic save, auto-backup, configuration history (20 snapshots), full backup/restore ZIP, shareable config export, automatic config corruption recovery |
 | **Security** | 5-layer command preprocessing pipeline, path boundary validation for directory traversal prevention, SSRF protection (Favicon fetching), command variable injection protection, ZIP bomb protection, symbolic link rejection |
 | **Multilingual** | Chinese (Simplified) / English bilingual, runtime switching |
-| **Auto-Update** | GitHub Releases source, SHA-256 verification, background download, skip version, silent install |
+| **Auto-Update** | GitHub Releases source, Ed25519 release signatures, SHA-256 verification, background download, skip version, silent install |
 
 ---
 
@@ -830,6 +830,7 @@ Automatic sorting based on `use_count` (usage count) and `last_used_at` (recent 
 - **Primary**: GitHub Releases API (`LEISHIQIANG/QuickLauncher`)
 - **Fallback**: Generic API endpoint
 - Automatically extracts SHA-256 hash from Release Body or Asset Digest
+- Ed25519 release signatures are required by default; missing public keys make update validation fail closed
 
 ### 14.2 Update Flow
 
@@ -837,6 +838,8 @@ Automatic sorting based on `use_count` (usage count) and `last_used_at` (recent 
 Startup -> UpdateChecker background check (enabled by default)
          ↓
     New version found -> Pop up UpdateNotification dialog
+         ↓
+    Release signature verification -> URL and hash validation
          ↓
     User choice: Download / Skip this version
          ↓
@@ -853,6 +856,7 @@ Startup -> UpdateChecker background check (enabled by default)
 |---------|-------------|
 | HTTPS Enforcement | Only HTTPS downloads allowed |
 | Allowed Host Whitelist | Validates download URL host |
+| Ed25519 Release Signature | Verifies release signatures with configured public keys; empty keys fail closed |
 | SHA-256 Verification | Verify file hash after download |
 | Size Validation | Content-Length check + max 200MB limit |
 | Temporary Files | Uses temporary files + atomic rename |
@@ -862,6 +866,7 @@ Startup -> UpdateChecker background check (enabled by default)
 
 - Auto-update toggle (System settings page)
 - Skip version record (`.update_state.json`)
+- Signature public keys (an empty configuration disables updates instead of bypassing verification)
 - Checks once per startup after enabled (not continuous polling)
 
 ---

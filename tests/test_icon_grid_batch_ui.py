@@ -374,6 +374,104 @@ def test_batch_actions_refresh_folder_and_emit_signal():
     assert emits == [True, True]
 
 
+def test_batch_fetch_icons_starts_worker_without_blocking(monkeypatch):
+    grid = IconGrid.__new__(IconGrid)
+    url_shortcut = ShortcutItem(
+        id="url",
+        name="URL",
+        type=ShortcutType.URL,
+        url="https://example.com",
+    )
+    file_shortcut = ShortcutItem(id="file", name="File", type=ShortcutType.FILE)
+    grid._shortcut_map = {"url": url_shortcut, "file": file_shortcut}
+    grid.current_folder_id = "source"
+    grid._favicon_fetch_generation = 0
+    grid._favicon_fetch_thread = None
+    grid._favicon_fetch_worker = None
+    grid._favicon_fetch_status_dialog = None
+    grid._favicon_fetch_shortcuts = {}
+    snapshots = []
+    started = []
+    grid._take_batch_snapshot = lambda: snapshots.append(True)
+    grid._start_favicon_fetch_worker = (
+        lambda tasks, dialog, shortcuts: started.append((tasks, dialog, shortcuts))
+    )
+
+    class _StatusDialog:
+        def __init__(self, title, parent=None):
+            self.title = title
+            self.parent = parent
+            self.texts = []
+            self.shown = False
+
+        def update_text(self, text):
+            self.texts.append(text)
+
+        def show(self):
+            self.shown = True
+
+    warnings = []
+    monkeypatch.setattr(grid_mod, "SimpleStatusDialog", _StatusDialog)
+    monkeypatch.setattr(grid_mod.ThemedMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    IconGrid._batch_fetch_icons(grid, ["url", "file"])
+
+    assert snapshots == [True]
+    assert warnings == []
+    assert len(started) == 1
+    tasks, dialog, shortcuts = started[0]
+    assert tasks == [("url", "URL", "https://example.com")]
+    assert shortcuts == {"url": url_shortcut}
+    assert dialog.shown is True
+    assert dialog.texts == ["正在获取图标... 0/1"]
+
+
+def test_favicon_fetch_completion_updates_data_and_refreshes(monkeypatch):
+    grid = IconGrid.__new__(IconGrid)
+    shortcut = ShortcutItem(
+        id="url",
+        name="URL",
+        type=ShortcutType.URL,
+        url="https://example.com",
+    )
+    grid._favicon_fetch_generation = 3
+    grid._favicon_fetch_shortcuts = {"url": shortcut}
+    grid._favicon_fetch_success_count = 0
+    grid.current_folder_id = "source"
+
+    class _StatusDialog:
+        def __init__(self):
+            self.texts = []
+            self.closed = False
+
+        def update_text(self, text):
+            self.texts.append(text)
+
+        def close(self):
+            self.closed = True
+
+    status_dialog = _StatusDialog()
+    grid._favicon_fetch_status_dialog = status_dialog
+    calls = []
+    emits = []
+    infos = []
+    grid.data_manager = SimpleNamespace(save=lambda immediate=False: calls.append(("save", immediate)))
+    grid.load_folder = lambda folder_id: calls.append(("load", folder_id))
+    grid.shortcut_added = SimpleNamespace(emit=lambda: emits.append(True))
+    monkeypatch.setattr(grid_mod.ThemedMessageBox, "information", lambda *args, **kwargs: infos.append(args))
+
+    IconGrid._on_favicon_fetch_result(grid, 3, "url", "icon.ico", None)
+    IconGrid._on_favicon_fetch_progress(grid, 3, 1, 1)
+    IconGrid._on_favicon_fetch_completed(grid, 3, 0, 1)
+
+    assert shortcut.icon_path == "icon.ico"
+    assert status_dialog.texts == ["正在获取图标... 1/1"]
+    assert status_dialog.closed is True
+    assert calls == [("save", True), ("load", "source")]
+    assert emits == [True]
+    assert infos
+
+
 def test_drag_ids_follow_current_selection_order():
     grid = _grid_with_widgets()
     grid.selected_shortcut_ids = {"three", "one"}

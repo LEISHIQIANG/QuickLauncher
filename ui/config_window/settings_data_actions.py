@@ -28,9 +28,28 @@ class SettingsDataActionsMixin:
     def _is_progress_dialog_alive(self, progress) -> bool:
         return not getattr(progress, "_dialog_finished", False) and progress.isVisible()
 
+    def _is_thread_running(self, attr_name: str) -> bool:
+        thread = getattr(self, attr_name, None)
+        if thread is None:
+            return False
+        try:
+            running = bool(thread.isRunning())
+        except RuntimeError:
+            setattr(self, attr_name, None)
+            return False
+        if not running:
+            setattr(self, attr_name, None)
+        return running
+
+    def _clear_thread_if_current(self, attr_name: str, thread) -> None:
+        if getattr(self, attr_name, None) is thread:
+            setattr(self, attr_name, None)
+
     def _on_export_clicked(self):
         # Same as old settings
         logger.info(f"[导出配置] 按钮被点击, frozen={getattr(sys, 'frozen', False)}")
+        if self._is_thread_running("export_thread"):
+            return
         try:
             file_path, _ = get_save_file_name(self, "导出配置", "", "QuickLauncher 配置包 (*.qlpack)")
             if not file_path:
@@ -43,7 +62,9 @@ class SettingsDataActionsMixin:
 
             self.export_thread = ExportThread(self.data_manager, file_path)
             self.export_thread.finished.connect(self.export_thread.deleteLater)
-            self.export_thread.finished.connect(lambda: setattr(self, "export_thread", None))
+            self.export_thread.finished.connect(
+                lambda thread=self.export_thread: self._clear_thread_if_current("export_thread", thread)
+            )
 
             def on_finished(success, msg):
                 if not self._is_progress_dialog_alive(progress):
@@ -57,6 +78,8 @@ class SettingsDataActionsMixin:
 
     def _on_import_clicked(self):
         logger.info(f"[导入配置] 按钮被点击, frozen={getattr(sys, 'frozen', False)}")
+        if self._is_thread_running("import_thread"):
+            return
         try:
             file_path, _ = get_open_file_name(self, "导入配置", "", "QuickLauncher 配置包 (*.qlpack)")
             if not file_path:
@@ -67,7 +90,9 @@ class SettingsDataActionsMixin:
 
             self.import_thread = ImportThread(self.data_manager, file_path)
             self.import_thread.finished.connect(self.import_thread.deleteLater)
-            self.import_thread.finished.connect(lambda: setattr(self, "import_thread", None))
+            self.import_thread.finished.connect(
+                lambda thread=self.import_thread: self._clear_thread_if_current("import_thread", thread)
+            )
 
             def on_finished(success, count, msg):
                 if not self._is_progress_dialog_alive(progress):
@@ -93,6 +118,8 @@ class SettingsDataActionsMixin:
             ThemedMessageBox.critical(self, "错误", str(e))
 
     def _on_backup_full_clicked(self):
+        if self._is_thread_running("_backup_thread"):
+            return
         try:
             from datetime import datetime
 
@@ -118,16 +145,20 @@ class SettingsDataActionsMixin:
 
             QApplication.setOverrideCursor(QtCompat.WaitCursor)
             self._backup_thread = _BackupThread(self.data_manager, path)
+            backup_thread = self._backup_thread
 
             def on_backup_done(success):
                 QApplication.restoreOverrideCursor()
-                self._backup_thread = None
+                self._clear_thread_if_current("_backup_thread", backup_thread)
                 if success:
                     ThemedMessageBox.information(self, tr("备份成功"), tr("全量备份已保存至:\n{path}", path=path))
                 else:
                     ThemedMessageBox.warning(self, tr("备份失败"), tr("无法创建备份文件，请检查日志。"))
 
             self._backup_thread.finished_signal.connect(on_backup_done)
+            self._backup_thread.finished.connect(
+                lambda thread=backup_thread: self._clear_thread_if_current("_backup_thread", thread)
+            )
             self._backup_thread.start()
 
         except Exception as e:
@@ -135,6 +166,8 @@ class SettingsDataActionsMixin:
             ThemedMessageBox.critical(self, "错误", str(e))
 
     def _on_restore_full_clicked(self):
+        if self._is_thread_running("_restore_thread"):
+            return
         path, _ = get_open_file_name(self, "选择全量备份文件", "", "Zip Files (*.zip)")
         if not path:
             return
@@ -168,10 +201,11 @@ class SettingsDataActionsMixin:
 
             QApplication.setOverrideCursor(QtCompat.WaitCursor)
             self._restore_thread = _RestoreThread(self.data_manager, path)
+            restore_thread = self._restore_thread
 
             def on_restore_done(success):
                 QApplication.restoreOverrideCursor()
-                self._restore_thread = None
+                self._clear_thread_if_current("_restore_thread", restore_thread)
                 if success:
                     report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
                     if report.get("has_warnings"):
@@ -182,6 +216,9 @@ class SettingsDataActionsMixin:
                     ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复备份，文件可能已损坏或格式不正确。"))
 
             self._restore_thread.finished_signal.connect(on_restore_done)
+            self._restore_thread.finished.connect(
+                lambda thread=restore_thread: self._clear_thread_if_current("_restore_thread", thread)
+            )
             self._restore_thread.start()
 
     def _on_export_shareable_clicked(self):
@@ -234,17 +271,26 @@ class SettingsDataActionsMixin:
         try:
             from ui.config_history_window import ConfigHistoryWindow
 
-            if not hasattr(self, "_config_history_window") or self._config_history_window is None:
-                self._config_history_window = ConfigHistoryWindow(self.data_manager, parent=self)
+            window = getattr(self, "_config_history_window", None)
+            if window is not None:
+                try:
+                    window.isVisible()
+                except RuntimeError:
+                    window = None
+                    self._config_history_window = None
+
+            if window is None:
+                window = ConfigHistoryWindow(self.data_manager, parent=self)
+                self._config_history_window = window
             else:
                 try:
-                    self._config_history_window.set_theme(self.data_manager.get_settings().theme)
+                    window.set_theme(self.data_manager.get_settings().theme)
                 except Exception as exc:
                     logger.debug("设置配置历史窗口主题失败: %s", exc, exc_info=True)
-                self._config_history_window.refresh()
-            self._config_history_window.show()
-            self._config_history_window.raise_()
-            self._config_history_window.activateWindow()
+                window.refresh()
+            window.show()
+            window.raise_()
+            window.activateWindow()
         except Exception as e:
             ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开配置历史:\n{error}", error=e))
 

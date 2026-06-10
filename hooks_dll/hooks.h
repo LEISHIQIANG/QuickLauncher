@@ -10,6 +10,7 @@ extern "C" {
     // 回调函数类型
     typedef void (*MouseCallback)(int x, int y);
     typedef void (*KeyboardCallback)();
+    typedef void (*HotkeyCaptureCallback)(int vkCode, int modifiers, int sideModifiers);
 
     // 鼠标钩子
     HOOKS_API bool InstallMouseHook(MouseCallback callback);
@@ -27,6 +28,9 @@ extern "C" {
     HOOKS_API bool IsKeyboardHookInstalled();
     HOOKS_API bool SetGlobalHotkey(const char* hotkeyStr, KeyboardCallback callback);
     HOOKS_API void ClearGlobalHotkey();
+    HOOKS_API bool StartHotkeyCapture(HotkeyCaptureCallback callback, int timeoutMs);
+    HOOKS_API void StopHotkeyCapture();
+    HOOKS_API bool IsHotkeyCaptureActive();
 
     // 特殊应用列表
     HOOKS_API void SetSpecialApps(const char** apps, int count);

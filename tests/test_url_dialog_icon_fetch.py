@@ -1,4 +1,5 @@
 from core.data_models import ShortcutItem, ShortcutType
+from qt_compat import QColor, QWidget
 
 
 def test_url_icon_fetch_task_forces_refresh(monkeypatch, qapp):
@@ -56,3 +57,34 @@ def test_url_dialog_exposes_ip_variable_buttons(qapp):
         assert dialog.url_edit.text() == "{{LAN_IP}}{{WAN_IP}}"
     finally:
         dialog.deleteLater()
+
+
+def test_url_dialog_keeps_base_dialog_window_border_colors(qapp):
+    from ui.config_window.url_dialog import UrlDialog
+
+    dialog = UrlDialog(shortcut=ShortcutItem(type=ShortcutType.URL))
+    try:
+        dialog._apply_theme()
+
+        assert isinstance(dialog.bg_color, QColor)
+        assert isinstance(dialog.border_color, QColor)
+        assert dialog.border_color.isValid()
+    finally:
+        dialog.deleteLater()
+
+
+def test_url_dialog_light_theme_border_matches_base_dialog(qapp):
+    from ui.config_window.url_dialog import UrlDialog
+
+    parent = QWidget()
+    parent.theme = "light"
+    dialog = UrlDialog(parent=parent, shortcut=ShortcutItem(type=ShortcutType.URL))
+    try:
+        assert dialog.theme == "light"
+        assert isinstance(dialog.bg_color, QColor)
+        assert isinstance(dialog.border_color, QColor)
+        assert dialog.bg_color == QColor(242, 242, 247, 160)
+        assert dialog.border_color == QColor(229, 229, 234, 150)
+    finally:
+        dialog.deleteLater()
+        parent.deleteLater()

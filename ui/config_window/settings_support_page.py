@@ -10,7 +10,6 @@ from qt_compat import (
     QEasingCurve,
     QFrame,
     QGraphicsOpacityEffect,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLinearGradient,
@@ -24,6 +23,8 @@ from qt_compat import (
     QRadialGradient,
     QRect,
     QRectF,
+    QSize,
+    QSizePolicy,
     Qt,
     QtCompat,
     QTimer,
@@ -37,6 +38,10 @@ from ui.utils.interruptible_animation import stop_animation, stop_named_animatio
 from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
+
+_DRINK_CARD_MIN_WIDTH = 72
+_DRINK_CARD_MAX_WIDTH = 100
+_DRINK_CARD_HEIGHT = 114
 
 
 class FloatingEmoji(QLabel):
@@ -133,6 +138,7 @@ class WobblyCoffeeCup(QLabel):
         self._halo_opacity = 0.0  # 默认关闭，由 showEvent 激活
 
         self._wobble_group = None
+        self._flash_generation = 0
 
         # 1. 初始化呼吸动画，但并不立即启动
         self._breathing_anim = QtCompat.QPropertyAnimation(self, b"halo_opacity")
@@ -255,6 +261,8 @@ class WobblyCoffeeCup(QLabel):
 
     def flash_halo(self):
         """点击时呼吸灯微亮一下，展现轻微点击回馈。"""
+        self._flash_generation = int(getattr(self, "_flash_generation", 0) or 0) + 1
+        generation = self._flash_generation
         stop_animation(getattr(self, "_flash_anim", None), owner="WobblyCoffeeCup.flash_halo")
         self._breathing_anim.stop()
 
@@ -265,6 +273,8 @@ class WobblyCoffeeCup(QLabel):
         flash.setEasingCurve(QtCompat.OutCubic)
 
         def restart_breath():
+            if generation != int(getattr(self, "_flash_generation", -1) or -1):
+                return
             self._breathing_anim.start()
             if getattr(self, "_flash_anim", None) is flash:
                 self._flash_anim = None
@@ -342,9 +352,9 @@ class DrinkCard(QFrame):
 
     clicked = pyqtSignal(str, float)
 
-    def __init__(self, emoji, name, price, color_hex, theme="dark", parent=None):
+    def __init__(self, icon_key, name, price, color_hex, theme="dark", parent=None):
         super().__init__(parent)
-        self.emoji = emoji
+        self.icon_key = icon_key
         self.name = name
         self.price = price
         self.color_hex = color_hex
@@ -353,17 +363,25 @@ class DrinkCard(QFrame):
 
         self.setCursor(QtCompat.PointingHandCursor)
         self.setMouseTracking(True)
-        self.setFixedWidth(sp(100))
-        self.setFixedHeight(sp(110))
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumSize(sp(_DRINK_CARD_MIN_WIDTH), sp(_DRINK_CARD_HEIGHT))
+        self.setMaximumSize(sp(_DRINK_CARD_MAX_WIDTH), sp(_DRINK_CARD_HEIGHT))
+        self.resize(self.sizeHint())
 
         self._hover_progress = 0.0
         self._scale = 1.0
         self._sweep_progress = 0.0
-        self._mouse_pos = QPoint(50, 55)
+        self._mouse_pos = QPoint(self.width() // 2, self.height() // 2)
 
         self._hover_anim = None
         self._click_anim = None
         self._sweep_anim = None
+
+    def sizeHint(self):  # noqa: N802 - Qt API
+        return QSize(sp(_DRINK_CARD_MAX_WIDTH), sp(_DRINK_CARD_HEIGHT))
+
+    def minimumSizeHint(self):  # noqa: N802 - Qt API
+        return QSize(sp(_DRINK_CARD_MIN_WIDTH), sp(_DRINK_CARD_HEIGHT))
 
     @pyqtProperty(float)
     def hover_progress(self):
@@ -445,6 +463,119 @@ class DrinkCard(QFrame):
     def update_style(self, theme):
         self.theme = theme
         self.update()
+
+    def _icon_rect(self, card_rect):
+        return QRectF(sp(23), sp(10), card_rect.width() - sp(46), sp(44))
+
+    def _paint_drink_icon(self, painter, icon_rect):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        def color(hex_value, alpha=255):
+            value = QColor(hex_value)
+            value.setAlpha(alpha)
+            return value
+
+        pen_width = max(1.0, float(sp(1)))
+
+        key = self.icon_key
+        cx = icon_rect.center().x()
+        cy = icon_rect.center().y()
+        w = icon_rect.width()
+        h = icon_rect.height()
+
+        if key == "water":
+            top = icon_rect.top() + h * 0.04
+            bottom = icon_rect.bottom() - h * 0.04
+            drop = QPainterPath()
+            drop.moveTo(cx, top)
+            drop.cubicTo(cx + w * 0.36, cy - h * 0.04, cx + w * 0.28, bottom - h * 0.02, cx, bottom)
+            drop.cubicTo(cx - w * 0.28, bottom - h * 0.02, cx - w * 0.36, cy - h * 0.04, cx, top)
+            fill = QLinearGradient(cx, top, cx, bottom)
+            fill.setColorAt(0.0, color("#6BE6FF"))
+            fill.setColorAt(1.0, color("#168BFF"))
+            painter.fillPath(drop, QBrush(fill))
+            painter.setPen(QPen(color("#0C6DCE"), pen_width))
+            painter.drawPath(drop)
+            highlight = QPainterPath()
+            highlight.moveTo(cx - w * 0.1, cy - h * 0.22)
+            highlight.cubicTo(cx - w * 0.22, cy - h * 0.02, cx - w * 0.16, cy + h * 0.18, cx - w * 0.03, cy + h * 0.28)
+            painter.setPen(QPen(color("#FFFFFF", 150), pen_width))
+            painter.drawPath(highlight)
+
+        elif key == "latte":
+            cup = QRectF(cx - w * 0.3, cy - h * 0.03, w * 0.58, h * 0.36)
+            handle = QRectF(cup.right() - w * 0.03, cup.top() + h * 0.07, w * 0.18, h * 0.19)
+            painter.setBrush(QBrush(color("#FFE1A8")))
+            painter.setPen(QPen(color("#B86A28"), pen_width))
+            painter.drawEllipse(handle)
+            painter.setBrush(QBrush(color("#FFF3DC")))
+            painter.setPen(QPen(color("#8E5426"), pen_width))
+            painter.drawRoundedRect(cup, sp(5), sp(5))
+            painter.setBrush(QBrush(color("#C47A35")))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawRoundedRect(QRectF(cup.left() + w * 0.06, cup.top() + h * 0.1, cup.width() - w * 0.12, h * 0.11), sp(3), sp(3))
+            painter.setBrush(QBrush(color("#FFB34D")))
+            painter.drawRoundedRect(QRectF(cup.left() + w * 0.07, cup.top() + h * 0.2, cup.width() - w * 0.14, h * 0.1), sp(3), sp(3))
+            painter.setPen(QPen(color("#8E5426", 190), pen_width))
+            painter.drawLine(QPointF(cx - w * 0.36, cup.bottom() + h * 0.08), QPointF(cx + w * 0.36, cup.bottom() + h * 0.08))
+            painter.setPen(QPen(color("#D47A2C", 190), pen_width))
+            for offset in (-0.16, 0.0, 0.16):
+                steam = QPainterPath()
+                x = cx + w * offset
+                steam.moveTo(x, icon_rect.top() + h * 0.26)
+                steam.cubicTo(x - w * 0.08, icon_rect.top() + h * 0.15, x + w * 0.08, icon_rect.top() + h * 0.1, x, icon_rect.top() + h * 0.02)
+                painter.drawPath(steam)
+
+        elif key == "tea":
+            bowl = QPainterPath()
+            bowl.moveTo(cx - w * 0.38, cy - h * 0.01)
+            bowl.cubicTo(cx - w * 0.32, cy + h * 0.32, cx + w * 0.32, cy + h * 0.32, cx + w * 0.38, cy - h * 0.01)
+            bowl.closeSubpath()
+            painter.fillPath(bowl, QBrush(color("#D8FFF2")))
+            painter.setPen(QPen(color("#087F6E"), pen_width))
+            painter.drawPath(bowl)
+            painter.setBrush(QBrush(color("#00BFA5")))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawEllipse(QRectF(cx - w * 0.28, cy - h * 0.05, w * 0.56, h * 0.12))
+            painter.setPen(QPen(color("#087F6E", 180), pen_width))
+            painter.drawLine(QPointF(cx - w * 0.43, cy + h * 0.34), QPointF(cx + w * 0.43, cy + h * 0.34))
+            leaf = QPainterPath()
+            leaf.moveTo(cx, icon_rect.top() + h * 0.08)
+            leaf.cubicTo(cx + w * 0.24, icon_rect.top() + h * 0.04, cx + w * 0.28, icon_rect.top() + h * 0.29, cx + w * 0.04, icon_rect.top() + h * 0.33)
+            leaf.cubicTo(cx - w * 0.04, icon_rect.top() + h * 0.23, cx - w * 0.03, icon_rect.top() + h * 0.13, cx, icon_rect.top() + h * 0.08)
+            painter.setBrush(QBrush(color("#68D391")))
+            painter.setPen(QPen(color("#2F9E44"), pen_width))
+            painter.drawPath(leaf)
+
+        else:
+            glass = QPainterPath()
+            glass.moveTo(cx - w * 0.33, cy - h * 0.24)
+            glass.lineTo(cx + w * 0.33, cy - h * 0.24)
+            glass.lineTo(cx + w * 0.22, cy + h * 0.32)
+            glass.lineTo(cx - w * 0.22, cy + h * 0.32)
+            glass.closeSubpath()
+            painter.setBrush(QBrush(color("#FFE1EC")))
+            painter.setPen(QPen(color("#B81B4A"), pen_width))
+            painter.drawPath(glass)
+            liquid = QPainterPath()
+            liquid.moveTo(cx - w * 0.25, cy - h * 0.05)
+            liquid.lineTo(cx + w * 0.25, cy - h * 0.05)
+            liquid.lineTo(cx + w * 0.17, cy + h * 0.22)
+            liquid.lineTo(cx - w * 0.17, cy + h * 0.22)
+            liquid.closeSubpath()
+            painter.setBrush(QBrush(color("#FF3B6B")))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawPath(liquid)
+            painter.setPen(QPen(color("#B81B4A"), pen_width))
+            painter.drawPath(glass)
+            painter.drawLine(QPointF(cx + w * 0.05, cy - h * 0.2), QPointF(cx + w * 0.27, icon_rect.top() + h * 0.0))
+            painter.setBrush(QBrush(color("#FF5C8A")))
+            painter.drawEllipse(QRectF(cx - w * 0.09, icon_rect.top() + h * 0.0, w * 0.18, h * 0.18))
+            painter.setPen(QPen(color("#FFFFFF", 170), pen_width))
+            painter.drawLine(QPointF(cx - w * 0.13, cy - h * 0.02), QPointF(cx + w * 0.09, cy - h * 0.02))
+
+        painter.restore()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -540,31 +671,105 @@ class DrinkCard(QFrame):
             painter.drawPath(path)
             painter.restore()
 
-        # 5. 绘制 Emoji (已修复: 使用标准画笔 QPen(text_color) 绘制，杜绝 NoPen 导致的 Emoji 完全隐身)
-        emoji_font = painter.font()
-        emoji_size = int(28 + p * 4)
-        emoji_font.setPointSize(emoji_size)
-        painter.setFont(emoji_font)
-        painter.setPen(QPen(text_color))  # 改用实体画笔绘制，确保表情 100% 渲染显示
-        painter.drawText(QRect(0, sp(10), rect.width(), sp(42)), QtCompat.AlignCenter, self.emoji)
+        # 5. 绘制自绘饮品图标，避免依赖系统 Emoji 字体造成视觉偏移。
+        self._paint_drink_icon(painter, self._icon_rect(rect))
 
         # 6. 绘制标题
         name_font = painter.font()
-        name_font.setPointSize(10)
+        name_font.setFamily("Microsoft YaHei UI")
+        name_font.setPixelSize(sp(12))
         name_font.setBold(False)
         painter.setFont(name_font)
         painter.setPen(QPen(text_color))
-        painter.drawText(QRect(0, sp(56), rect.width(), sp(20)), QtCompat.AlignCenter, self.name)
+        painter.drawText(QRect(sp(5), sp(60), rect.width() - sp(10), sp(22)), QtCompat.AlignCenter, self.name)
 
         # 7. 绘制价格
         price_font = painter.font()
-        price_font.setPointSize(9)
+        price_font.setFamily("Microsoft YaHei UI")
+        price_font.setPixelSize(sp(11))
         price_font.setBold(False)
         painter.setFont(price_font)
         painter.setPen(QPen(sub_color))
-        painter.drawText(QRect(0, sp(76), rect.width(), sp(20)), QtCompat.AlignCenter, f"¥{self.price:.2f}")
+        painter.drawText(QRect(sp(5), sp(82), rect.width() - sp(10), sp(22)), QtCompat.AlignCenter, f"¥{self.price:.2f}")
 
         painter.end()
+
+
+class SupportDrinkBar(QFrame):
+    """横向饮品卡容器，按滚动区域的实际可视宽度压缩四个卡片。"""
+
+    def __init__(self, scroll_area=None, parent=None):
+        super().__init__(parent)
+        self._scroll_area = scroll_area
+        self._cards = []
+        self.setStyleSheet("background: transparent; border: none;")
+
+        self.drink_layout = QHBoxLayout(self)
+        self.drink_layout.setContentsMargins(0, 0, 0, 0)
+        self.drink_layout.setSpacing(sp(12))
+        self.drink_layout.setAlignment(QtCompat.AlignCenter)
+
+    def add_card(self, card: DrinkCard) -> None:
+        self._cards.append(card)
+        self.drink_layout.addWidget(card)
+        self.sync_card_widths()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.sync_card_widths()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self.sync_card_widths)
+
+    def _scroll_viewport_width(self) -> int:
+        """返回扣掉右侧滚动条和外层边距后的可用宽度。"""
+        scroll_area = self._scroll_area
+        if scroll_area is None or not hasattr(scroll_area, "viewport"):
+            return 0
+
+        viewport = scroll_area.viewport()
+        width = viewport.width() if viewport is not None else 0
+        if width <= 0:
+            return 0
+
+        content_layout = getattr(scroll_area, "layout", None)
+        if content_layout is not None:
+            margins = content_layout.contentsMargins()
+            width -= margins.left() + margins.right()
+
+        content_widget = getattr(scroll_area, "content_widget", None)
+        widget = self.parentWidget()
+        while widget is not None and widget is not content_widget and widget is not scroll_area:
+            layout_accessor = getattr(widget, "layout", None)
+            widget_layout = layout_accessor() if callable(layout_accessor) else layout_accessor
+            if widget_layout is not None:
+                margins = widget_layout.contentsMargins()
+                width -= margins.left() + margins.right()
+            widget = widget.parentWidget()
+
+        return max(0, width)
+
+    def _available_width(self) -> int:
+        own_width = self.contentsRect().width()
+        viewport_width = self._scroll_viewport_width()
+        if own_width > 0 and viewport_width > 0:
+            return min(own_width, viewport_width)
+        return max(own_width, viewport_width)
+
+    def sync_card_widths(self) -> None:
+        count = len(self._cards)
+        if count == 0:
+            return
+
+        margins = self.drink_layout.contentsMargins()
+        available = self._available_width() - margins.left() - margins.right()
+        total_spacing = max(0, self.drink_layout.spacing()) * max(0, count - 1)
+        raw_width = int((available - total_spacing) / count) if available > total_spacing else 0
+
+        card_width = max(sp(_DRINK_CARD_MIN_WIDTH), min(sp(_DRINK_CARD_MAX_WIDTH), raw_width))
+        for card in self._cards:
+            card.setFixedSize(card_width, sp(_DRINK_CARD_HEIGHT))
 
 
 class SettingsSupportPageMixin:
@@ -608,25 +813,20 @@ class SettingsSupportPageMixin:
 
         v_layout.addWidget(header_widget)
 
-        # 2. 虚拟饮品吧 (2x2 网格)
-        drink_bar_widget = QFrame(container)
-        drink_bar_widget.setStyleSheet("background: transparent; border: none;")
-        drink_grid = QGridLayout(drink_bar_widget)
-        drink_grid.setContentsMargins(0, 0, 0, 0)
-        drink_grid.setSpacing(sp(12))
-        drink_grid.setAlignment(QtCompat.AlignCenter)
+        # 2. 虚拟饮品吧 (四个饮品横向并排)
+        drink_bar_widget = SupportDrinkBar(page, container)
 
         drinks_data = [
-            ("💧", tr("纯净矿泉水"), 2.00, "#34C759", 0, 0),
-            ("☕", tr("香浓拿铁"), 5.19, "#FF9500", 0, 1),
-            ("🍵", tr("沁心绿茶"), 9.90, "#00C7BE", 1, 0),
-            ("🍹", tr("芝芝莓莓"), 15.00, "#FF2D55", 1, 1),
+            ("water", tr("纯净矿泉水"), 2.00, "#2DA8FF"),
+            ("latte", tr("香浓拿铁"), 5.19, "#FF9500"),
+            ("tea", tr("沁心绿茶"), 9.90, "#00C7BE"),
+            ("berry", tr("芝芝莓莓"), 15.00, "#FF2D55"),
         ]
 
-        for emoji, name, price, color, row, col in drinks_data:
-            card = DrinkCard(emoji, name, price, color, "dark", container)
+        for icon_key, name, price, color in drinks_data:
+            card = DrinkCard(icon_key, name, price, color, "dark", drink_bar_widget)
             card.clicked.connect(self._on_drink_clicked)
-            drink_grid.addWidget(card, row, col)
+            drink_bar_widget.add_card(card)
 
         v_layout.addWidget(drink_bar_widget)
 
@@ -719,6 +919,8 @@ class SettingsSupportPageMixin:
         page._qr_container = self._qr_container
         page._view_fullscreen_btn = self._view_fullscreen_btn
         page._close_qr_btn = self._close_qr_btn
+        page._drink_bar_widget = drink_bar_widget
+        page._drink_cards = list(drink_bar_widget._cards)
         page._cup_widget = self._cup_widget  # 将咖啡杯引用存于 page，以便 apply_theme 时找到它
 
         # 主题与休眠/唤醒钩子修补，实现动态主题适配及绝对的节电/零占用休眠
@@ -898,6 +1100,8 @@ class SettingsSupportPageMixin:
         self._reaction_label.setText(msg)
 
         # 3. 平滑渐显主页面里的折叠式二维码卡片
+        self._qr_anim_generation = int(getattr(self, "_qr_anim_generation", 0) or 0) + 1
+        generation = self._qr_anim_generation
         if hasattr(self, "_qr_anim") and self._qr_anim:
             self._qr_anim.stop()
             self._qr_anim = None
@@ -919,6 +1123,10 @@ class SettingsSupportPageMixin:
         anim.setEndValue(1.0)
 
         def cleanup_effect():
+            if generation != int(getattr(self, "_qr_anim_generation", -1) or -1):
+                return
+            if getattr(self, "_qr_anim", None) is not anim:
+                return
             if self._qr_container.graphicsEffect():
                 self._qr_container.setGraphicsEffect(None)
 
@@ -928,6 +1136,8 @@ class SettingsSupportPageMixin:
 
     def _close_qr(self):
         """渐隐折叠隐藏二维码，并在淡出前重新挂载 graphicsEffect 以保证渐变顺滑，带状态打断支持。"""
+        self._qr_anim_generation = int(getattr(self, "_qr_anim_generation", 0) or 0) + 1
+        generation = self._qr_anim_generation
         if hasattr(self, "_qr_anim") and self._qr_anim:
             self._qr_anim.stop()
             self._qr_anim = None
@@ -943,10 +1153,17 @@ class SettingsSupportPageMixin:
             anim.setDuration(250)
             anim.setStartValue(curr_opacity)
             anim.setEndValue(0.0)
-            anim.finished.connect(self._qr_container.hide)
+            anim.finished.connect(lambda generation=generation, anim=anim: self._finish_close_qr(generation, anim))
             anim.start()
             self._qr_anim = anim
             self._reaction_label.setText(tr("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)"))
+
+    def _finish_close_qr(self, generation: int, anim) -> None:
+        if generation != int(getattr(self, "_qr_anim_generation", -1) or -1):
+            return
+        if getattr(self, "_qr_anim", None) is not anim:
+            return
+        self._qr_container.hide()
 
     def _on_support(self):
         """触发全新全屏玻璃拟态收款弹窗，并智能携带当前点击的饮料数据。"""

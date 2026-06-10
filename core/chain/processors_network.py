@@ -17,6 +17,7 @@ from core.network_security import (
     safe_urlopen,
     sanitize_headers,
 )
+from core.path_security import assert_safe_user_path, resolve_under
 
 HTTP_RESPONSE_MAX_BYTES = 5 * 1024 * 1024
 
@@ -79,7 +80,10 @@ def http_post(values: dict[str, str]) -> CommandResult:
 
 def http_download(values: dict[str, str]) -> str:
     url = normalize_http_url(values.get("url", ""))
-    save_dir = values.get("save_dir", "").strip() or os.getcwd()
+    save_dir_value = values.get("save_dir", "").strip()
+    if not save_dir_value:
+        raise ValueError("缺少保存目录")
+    save_dir = assert_safe_user_path(save_dir_value, operation="download directory")
 
     parsed_url = urllib.parse.urlparse(url)
     filename = os.path.basename(parsed_url.path) or "downloaded_file"
@@ -87,13 +91,13 @@ def http_download(values: dict[str, str]) -> str:
     if not os.path.exists(save_dir):
         os.makedirs(save_dir, exist_ok=True)
 
-    filepath = os.path.join(save_dir, filename)
+    filepath = resolve_under(save_dir, save_dir / filename)
     request = urllib.request.Request(url, method="GET")
     with safe_urlopen(request, timeout=10) as response:
         content = read_limited_response(response, HTTP_RESPONSE_MAX_BYTES)
     with open(filepath, "wb") as handle:
         handle.write(content)
-    return filepath
+    return str(filepath)
 
 
 def _ok_outputs(outputs: dict[str, Any]) -> CommandResult:

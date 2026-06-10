@@ -796,7 +796,11 @@ fso.DeleteFile WScript.ScriptFullName
             self._show_toast(tr("正在清理图标缓存..."), theme)
             self._icon_cache_clean_thread = IconCacheCleanThread(self.data_manager)
             self._icon_cache_clean_thread.finished_signal.connect(self._on_icon_cache_clean_finished)
-            self._icon_cache_clean_thread.finished.connect(lambda: setattr(self, "_icon_cache_clean_thread", None))
+            self._icon_cache_clean_thread.finished.connect(
+                lambda thread=self._icon_cache_clean_thread: setattr(self, "_icon_cache_clean_thread", None)
+                if getattr(self, "_icon_cache_clean_thread", None) is thread
+                else None
+            )
             self._icon_cache_clean_thread.finished.connect(self._icon_cache_clean_thread.deleteLater)
             self._icon_cache_clean_thread.start()
             return True

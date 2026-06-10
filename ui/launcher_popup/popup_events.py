@@ -7,6 +7,7 @@ from qt_compat import (
     QApplication,
     QCursor,
     QPoint,
+    QRect,
     Qt,
     QtCompat,
     QTimer,
@@ -41,6 +42,100 @@ class PopupEventsMixin:
         if hasattr(event, "globalPos"):
             return event.globalPos()
         return self.mapToGlobal(self._get_event_pos(event))
+
+    def _reset_pinned_window_drag(self, *, restore_cursor: bool = False) -> None:
+        """清理固定窗口拖动状态。"""
+        self._pinned_window_drag_pending = False
+        self._pinned_window_drag_active = False
+        self._pinned_window_drag_start_global = None
+        self._pinned_window_drag_window_pos = None
+        self._pinned_window_drag_offset = None
+        if restore_cursor:
+            try:
+                self.setCursor(QtCompat.ArrowCursor)
+            except Exception as exc:
+                logger.debug("恢复固定窗口拖动光标失败: %s", exc, exc_info=True)
+
+    def _begin_pinned_window_drag(self, event, pos: QPoint) -> bool:
+        """在固定状态下准备通过左键拖动窗口。"""
+        if event.button() != QtCompat.LeftButton:
+            return False
+        if not self.__dict__.get("is_pinned", False) or self.__dict__.get("_executing", False):
+            return False
+        if self._search_bar_contains(pos) or self._is_click_on_result_panel(pos):
+            return False
+
+        global_pos = self._get_event_global_pos(event)
+        try:
+            window_pos = self.pos()
+        except Exception as exc:
+            logger.debug("获取固定窗口位置失败: %s", exc, exc_info=True)
+            window_pos = QPoint(0, 0)
+
+        self._pinned_window_drag_pending = True
+        self._pinned_window_drag_active = False
+        self._pinned_window_drag_start_global = global_pos
+        self._pinned_window_drag_window_pos = window_pos
+        self._pinned_window_drag_offset = global_pos - window_pos
+        return True
+
+    def _event_left_button_held(self, event) -> bool:
+        if not hasattr(event, "buttons"):
+            return True
+        try:
+            return bool(event.buttons() & QtCompat.LeftButton)
+        except Exception as exc:
+            logger.debug("检查鼠标左键状态失败: %s", exc, exc_info=True)
+            return True
+
+    def _update_pinned_window_drag(self, event) -> bool:
+        """如果正在拖动固定窗口，则移动窗口并消费事件。"""
+        if not (
+            self.__dict__.get("_pinned_window_drag_pending", False)
+            or self.__dict__.get("_pinned_window_drag_active", False)
+        ):
+            return False
+
+        if not self._event_left_button_held(event):
+            self._reset_pinned_window_drag(restore_cursor=True)
+            return False
+
+        global_pos = self._get_event_global_pos(event)
+        start_global = self.__dict__.get("_pinned_window_drag_start_global", None)
+        if start_global is None:
+            self._reset_pinned_window_drag(restore_cursor=True)
+            return False
+
+        if not self.__dict__.get("_pinned_window_drag_active", False):
+            try:
+                drag_distance = QApplication.startDragDistance()
+            except Exception as exc:
+                logger.debug("获取拖动阈值失败: %s", exc, exc_info=True)
+                drag_distance = 4
+            if (global_pos - start_global).manhattanLength() < drag_distance:
+                return False
+
+            self._pinned_window_drag_active = True
+            self.hover_index = -1
+            self.dock_hover_index = -1
+            try:
+                self.setCursor(Qt.SizeAllCursor)
+            except Exception as exc:
+                logger.debug("设置固定窗口拖动光标失败: %s", exc, exc_info=True)
+
+        offset = self.__dict__.get("_pinned_window_drag_offset", None)
+        if offset is None:
+            self._reset_pinned_window_drag(restore_cursor=True)
+            return False
+
+        try:
+            self.move(global_pos - offset)
+        except Exception as exc:
+            logger.debug("移动固定窗口失败: %s", exc, exc_info=True)
+            return False
+
+        event.accept()
+        return True
 
     def _get_clicked_item_at(self, pos: QPoint):
         """返回指定位置命中的项目，没有命中则返回 None"""
@@ -94,6 +189,81 @@ class PopupEventsMixin:
 
         return None
 
+    def _main_item_update_rect(self, index: int):
+        """Return a conservative repaint rect for a main/search grid item."""
+        try:
+            index = int(index)
+            if index < 0:
+                return None
+            cols = max(1, int(self.cols))
+            row = index // cols
+            if row >= int(self.fixed_rows):
+                return None
+            col = index % cols
+            bottom_margin = sp(6)
+            indicator_height = sp(16) if len(self.pages) > 1 else 0
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
+            dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
+            icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+            x = int(self.padding + col * self.cell_size)
+            y = int(icons_bottom - (self.fixed_rows - row) * self.cell_h)
+            pad = sp(3)
+            return QRect(x - pad, y - pad, int(self.cell_size) + pad * 2, int(self.cell_h) + pad * 2).intersected(
+                self.rect()
+            )
+        except Exception as exc:
+            logger.debug("计算主网格刷新区域失败: %s", exc, exc_info=True)
+            return None
+
+    def _dock_item_update_rect(self, index: int):
+        """Return a conservative repaint rect for a dock item."""
+        try:
+            index = int(index)
+            if index < 0 or not self.dock_items:
+                return None
+            dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
+            visible_count = len(self.dock_items)
+            if dock_height_mode == 1:
+                visible_count = min(visible_count, self.cols)
+            if index >= visible_count:
+                return None
+            max_cols = max(1, int(self.cols))
+            line_width = (
+                max_cols * self.cell_size
+                if (dock_height_mode > 1 and visible_count > max_cols)
+                else min(visible_count, max_cols) * self.cell_size
+            )
+            start_x = (self.width() - line_width) // 2
+            row = index // max_cols
+            col = index % max_cols
+            if row >= dock_height_mode:
+                return None
+            x = int(start_x + col * self.cell_size)
+            y = int(self.dock_y + sp(8) + row * (self.icon_size + sp(6)) - sp(6))
+            pad = sp(6)
+            return QRect(x - pad, y - pad, int(self.cell_size) + pad * 2, int(self.icon_size) + pad * 2).intersected(
+                self.rect()
+            )
+        except Exception as exc:
+            logger.debug("计算Dock刷新区域失败: %s", exc, exc_info=True)
+            return None
+
+    def _update_hover_regions(self, old_hover: int, old_dock_hover: int, new_hover: int, new_dock_hover: int):
+        """Repaint only hover regions that changed; fall back to a full update on unusual geometry."""
+        rects = []
+        if old_hover != new_hover:
+            rects.extend((self._main_item_update_rect(old_hover), self._main_item_update_rect(new_hover)))
+        if old_dock_hover != new_dock_hover:
+            rects.extend((self._dock_item_update_rect(old_dock_hover), self._dock_item_update_rect(new_dock_hover)))
+
+        applied = False
+        for rect in rects:
+            if rect is not None and not rect.isNull():
+                self.update(rect)
+                applied = True
+        if not applied:
+            self.update()
+
     def _is_click_on_result_panel(self, pos) -> bool:
         """判断鼠标位置是否在命令结果展示面板内"""
         if self.__dict__.get("_command_result") is None:
@@ -144,6 +314,9 @@ class PopupEventsMixin:
     def mouseMoveEvent(self, event):
         """鼠标移动"""
         pos = self._get_event_pos(event)
+        if self._update_pinned_window_drag(event):
+            return
+
         if getattr(self, "_search_drag_selecting", False):
             cursor = self._search_pos_from_point(pos)
             self.search_cursor_pos = cursor
@@ -219,9 +392,11 @@ class PopupEventsMixin:
                             new_hover = index
 
         if new_hover != self.hover_index or new_dock_hover != self.dock_hover_index:
+            old_hover = self.hover_index
+            old_dock_hover = self.dock_hover_index
             self.hover_index = new_hover
             self.dock_hover_index = new_dock_hover
-            self.update()
+            self._update_hover_regions(old_hover, old_dock_hover, new_hover, new_dock_hover)
 
     def mousePressEvent(self, event):
         """鼠标按下"""
@@ -260,11 +435,23 @@ class PopupEventsMixin:
             self.update()
             event.accept()
             return
+        if self._begin_pinned_window_drag(event, pos):
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         """鼠标释放"""
         pos = self._get_event_pos(event)
+
+        # ===== 固定窗口拖动释放 =====
+        if event.button() == QtCompat.LeftButton:
+            if self.__dict__.get("_pinned_window_drag_active", False):
+                self._reset_pinned_window_drag(restore_cursor=True)
+                event.accept()
+                return
+            if self.__dict__.get("_pinned_window_drag_pending", False):
+                self._reset_pinned_window_drag()
 
         # ===== 结果面板区域处理 (不穿透至底层图标) =====
         if self._is_click_on_result_panel(pos):
@@ -788,9 +975,11 @@ class PopupEventsMixin:
 
     def leaveEvent(self, event):
         """鼠标离开"""
+        old_hover = self.hover_index
+        old_dock_hover = self.dock_hover_index
         self.hover_index = -1
         self.dock_hover_index = -1
-        self.update()
+        self._update_hover_regions(old_hover, old_dock_hover, -1, -1)
 
     def _check_close(self):
         """检查是否应该关闭 (Fallback)"""

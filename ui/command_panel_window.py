@@ -1274,6 +1274,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 menu,
                 kind="tooltip",
                 translucent=False,
+                no_shadow=not menu._uses_win10_companion_shadow(),
                 extra_flags=no_focus_flag or 0,
             )
             menu.setAttribute(Qt.WA_ShowWithoutActivating, True)

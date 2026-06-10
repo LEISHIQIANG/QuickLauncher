@@ -5,6 +5,8 @@ verifies that ``_execute_extra_processor()`` correctly delegates to them.
 Pure unit tests -- no Qt/GUI required.
 """
 
+from pathlib import Path
+
 import pytest
 
 from core.chain.processors_data import execute_extra_data_processor
@@ -13,7 +15,7 @@ from core.chain.processors_encoding import execute_extra_encoding_processor, exe
 from core.chain.processors_math import execute_extra_list_processor, execute_extra_math_processor
 from core.chain.processors_text import execute_extra_text_processor
 from core.chain.processors_validation import execute_extra_validation_processor
-from core.chain.registry import _execute_extra_processor
+from core.chain.registry import _execute_extra_processor, execute_chain_processor
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -588,6 +590,63 @@ class TestDataProcessors:
         assert result.success is True
         # md5 of empty string
         assert _output(result) == "d41d8cd98f00b204e9800998ecf8427e"
+
+
+# ---------------------------------------------------------------------------
+# processors_network  --  http_download path boundaries
+# ---------------------------------------------------------------------------
+
+class TestNetworkProcessors:
+    """Tests for network processor safety boundaries."""
+
+    def test_http_download_rejects_empty_save_dir(self, monkeypatch):
+        def fail_urlopen(*args, **kwargs):
+            raise AssertionError("invalid save_dir must not reach the network")
+
+        monkeypatch.setattr("core.chain.processors_network.safe_urlopen", fail_urlopen)
+
+        result = execute_chain_processor("http_download", {"url": "https://example.com/file.txt", "save_dir": ""})
+
+        assert result.success is False
+        assert "保存目录" in result.message
+
+    def test_http_download_rejects_app_root_save_dir(self, monkeypatch):
+        def fail_urlopen(*args, **kwargs):
+            raise AssertionError("protected save_dir must not reach the network")
+
+        monkeypatch.setattr("core.chain.processors_network.safe_urlopen", fail_urlopen)
+        protected_dir = Path(__file__).resolve().parents[1] / "download-target"
+
+        result = execute_chain_processor(
+            "http_download",
+            {"url": "https://example.com/file.txt", "save_dir": str(protected_dir)},
+        )
+
+        assert result.success is False
+        assert "protected path" in result.message
+
+    def test_http_download_writes_inside_safe_temp_dir(self, tmp_path, monkeypatch):
+        class _FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, _limit):
+                return b"downloaded"
+
+        monkeypatch.setattr("core.chain.processors_network.safe_urlopen", lambda *args, **kwargs: _FakeResponse())
+
+        result = execute_chain_processor(
+            "http_download",
+            {"url": "https://example.com/archive/file.txt", "save_dir": str(tmp_path)},
+        )
+
+        target = tmp_path / "file.txt"
+        assert result.success is True
+        assert _output(result) == str(target.resolve(strict=False))
+        assert target.read_bytes() == b"downloaded"
 
 
 # ---------------------------------------------------------------------------

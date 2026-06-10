@@ -573,8 +573,9 @@ class PopupRendererMixin:
         painter.setPen(QPen(accent_color, 1))
         painter.drawRoundedRect(rect, sp(8), sp(8))
         painter.setPen(text_color)
-        font = QFont(self._label_font)
-        font.setPixelSize(font_px(max(10, font.pixelSize() + sp(2))))
+        font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)
+        if font.pixelSize() <= 0:
+            font.setPixelSize(font_px(10))
         painter.setFont(font)
         preedit = getattr(self, "_search_preedit_text", "") or ""
         prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ("搜索: " if query else "搜索")
@@ -653,17 +654,23 @@ class PopupRendererMixin:
             )
             return
 
-        items = [
-            {"item": result.shortcut, "text": (getattr(result.shortcut, "name", "") or "")[:6]} for result in results
-        ]
-        selected = -1
+        max_visible = max(0, int(getattr(self, "cols", 0) or 0) * int(getattr(self, "fixed_rows", 0) or 0))
+        visible_results = results[:max_visible] if max_visible else []
+        cache_key = tuple(
+            (id(result.shortcut), getattr(result.shortcut, "name", "") or "") for result in visible_results
+        )
+        cached_items = getattr(self, "_search_draw_items_cache", None)
+        if cached_items is not None and cached_items[0] == cache_key:
+            items = cached_items[1]
+        else:
+            items = [
+                {"item": result.shortcut, "text": (getattr(result.shortcut, "name", "") or "")[:6]}
+                for result in visible_results
+            ]
+            self._search_draw_items_cache = (cache_key, items)
+
         selected_index = getattr(self, "search_selected_index", -1)
-        if 0 <= selected_index < len(all_results):
-            selected_result = all_results[selected_index]
-            try:
-                selected = results.index(selected_result)
-            except ValueError:
-                selected = -1
+        selected = selected_index if 0 <= selected_index < len(visible_results) else -1
         self._draw_items_grid(
             painter,
             items,
@@ -724,6 +731,18 @@ class PopupRendererMixin:
         is_dark = self.settings.theme == "dark"
         use_card = bg_mode == "acrylic"
         icon_alpha = self.settings.icon_alpha
+        cols = self.cols
+        cell_size = self.cell_size
+        cell_h = self.cell_h
+        icon_size = self.icon_size
+        fixed_rows = self.fixed_rows
+        padding = self.padding
+        bottom_margin = sp(6)
+        has_indicator = len(self.pages) > 1
+        indicator_height = sp(16) if has_indicator else 0
+        indicator_spacing = sp(4) if has_indicator else 0
+        dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
+        icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
 
         for i, entry in enumerate(items):
             if isinstance(entry, dict):
@@ -735,21 +754,14 @@ class PopupRendererMixin:
             if item is None:
                 continue
 
-            col = i % self.cols
-            row = i // self.cols
+            col = i % cols
+            row = i // cols
 
-            if row >= self.fixed_rows:
+            if row >= fixed_rows:
                 break
 
-            x = self.padding + col * self.cell_size
-
-            # 从窗口底部算起，避免与窗口几何变化的同步问题
-            bottom_margin = sp(6)
-            indicator_height = sp(16) if len(self.pages) > 1 else 0
-            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
-            dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
-            icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
-            y = icons_bottom - (self.fixed_rows - row) * self.cell_h
+            x = padding + col * cell_size
+            y = icons_bottom - (fixed_rows - row) * cell_h
 
             # 只记录第一个图标的位置
             if i == 0:
@@ -764,10 +776,10 @@ class PopupRendererMixin:
 
             if use_card:
                 card_pad = sp(2)
-                card_size = self.icon_size + card_pad * 2
-                card_x = x + (self.cell_size - card_size) // 2
+                card_size = icon_size + card_pad * 2
+                card_x = x + (cell_size - card_size) // 2
                 total_h = card_size + text_spacing + text_h
-                card_y = y + (self.cell_h - total_h) // 2
+                card_y = y + (cell_h - total_h) // 2
                 card_r = sp(6)
 
                 if not is_prev and i == self._drag_hover_index:
@@ -791,18 +803,18 @@ class PopupRendererMixin:
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 2))
-                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), sp(6), sp(6))
+                    painter.drawRoundedRect(QRectF(x, y, cell_size, cell_h), sp(6), sp(6))
                 elif not is_prev and (i == self.hover_index or i == selected_index):
                     painter.setBrush(QBrush(hover_color))
                     painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(QRectF(x, y, self.cell_size, self.cell_h), sp(6), sp(6))
-                total_h = self.icon_size + text_spacing + text_h
-                icon_x = x + (self.cell_size - self.icon_size) // 2
-                icon_y = y + (self.cell_h - total_h) // 2
+                    painter.drawRoundedRect(QRectF(x, y, cell_size, cell_h), sp(6), sp(6))
+                total_h = icon_size + text_spacing + text_h
+                icon_x = x + (cell_size - icon_size) // 2
+                icon_y = y + (cell_h - total_h) // 2
                 card_y = icon_y
-                card_size = self.icon_size
+                card_size = icon_size
 
-            pixmap = self._get_icon(item)
+            pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)
             if pixmap:
                 painter.setOpacity(icon_alpha * opacity)
                 painter.setPen(QtCompat.NoPen)
@@ -814,7 +826,7 @@ class PopupRendererMixin:
             painter.setOpacity(opacity)
             painter.setPen(QPen(text_color))
             text_y = card_y + card_size + text_spacing
-            painter.drawText(x, text_y, self.cell_size, text_h, QtCompat.AlignHCenter | QtCompat.AlignTop, name_str)
+            painter.drawText(x, text_y, cell_size, text_h, QtCompat.AlignHCenter | QtCompat.AlignTop, name_str)
 
             painter.restore()
 
@@ -961,6 +973,16 @@ class PopupRendererMixin:
             line_width = min(visible_count, max_cols) * self.cell_size
 
         start_x = (self.width() - line_width) // 2
+        cell_size = self.cell_size
+        icon_size = self.icon_size
+        dock_row_stride = icon_size + sp(6)
+        is_dark = self.settings.theme == "dark"
+        use_card = bg_mode == "acrylic"
+        card_pad = sp(2)
+        card_r = sp(6)
+        hover_pad = sp(4)
+        hover_size_extra = sp(9)
+        dock_top_padding = sp(8)
 
         for i in range(visible_count):
             item = self.dock_items[i]
@@ -978,23 +1000,17 @@ class PopupRendererMixin:
             # - 单行(row=0)：y = dock_y + 8（与原来完全一致）
             # - 多行(row>0)：y = dock_y + 8 + row * dock_row_stride
             #   dock_row_stride = icon_size + 6（行间距6px，上下边距保持 8px 不变）
-            dock_row_stride = self.icon_size + sp(6)
-            y = dock_y + sp(8) + row * dock_row_stride
+            y = dock_y + dock_top_padding + row * dock_row_stride
 
-            hover_x = x + (self.cell_size - self.icon_size) // 2 - sp(4)
-            hover_y = y - sp(4)
-            hover_size = self.icon_size + sp(9)
+            hover_x = x + (cell_size - icon_size) // 2 - hover_pad
+            hover_y = y - hover_pad
+            hover_size = icon_size + hover_size_extra
 
             # ===== 绘制背景 =====
-            is_dark = self.settings.theme == "dark"
-            use_card = bg_mode == "acrylic"
-
             if use_card:
-                card_pad = sp(2)
-                card_size = self.icon_size + card_pad * 2
-                card_x = x + (self.cell_size - card_size) // 2
+                card_size = icon_size + card_pad * 2
+                card_x = x + (cell_size - card_size) // 2
                 card_y = y - card_pad
-                card_r = sp(6)
                 if i == self._drag_dock_hover_index:
                     highlight = QColor(drop_highlight_color)
                     highlight.setAlpha(80)
@@ -1022,11 +1038,11 @@ class PopupRendererMixin:
                     painter.setBrush(QBrush(hover))
                     painter.setPen(QtCompat.NoPen)
                     painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), sp(6), sp(6))
-                icon_x = x + (self.cell_size - self.icon_size) // 2
+                icon_x = x + (cell_size - icon_size) // 2
                 icon_y = y
             # ===== 背景绘制结束 =====
 
-            pixmap = self._get_icon(item)
+            pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)
             if pixmap:
                 painter.setOpacity(self.settings.icon_alpha)
                 painter.drawPixmap(icon_x, icon_y, pixmap)

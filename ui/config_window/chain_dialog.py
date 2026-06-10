@@ -38,6 +38,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Colors, Glassmorphism, PopupMenu
+from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
@@ -304,6 +305,7 @@ class ChainDialog(BaseDialog):
         self._closing_with_animation = False
         self._pending_done_result = None
         self._close_anim_timer = None
+        self._close_anim_generation = 0
 
         self.setWindowTitle(tr("编辑动作链") if shortcut else tr("新建动作链"))
         self.setMinimumSize(sp(760), sp(620))
@@ -339,6 +341,7 @@ class ChainDialog(BaseDialog):
 
     def closeEvent(self, event):
         """Clean up background threads and timers on close."""
+        self._close_anim_generation = int(getattr(self, "_close_anim_generation", 0) or 0) + 1
         self._cleanup_chain_test_thread()
         # Stop close-animation timer
         close_anim_timer = getattr(self, "_close_anim_timer", None)
@@ -359,6 +362,8 @@ class ChainDialog(BaseDialog):
 
         self._closing_with_animation = True
         self._pending_done_result = result
+        self._close_anim_generation = int(getattr(self, "_close_anim_generation", 0) or 0) + 1
+        generation = self._close_anim_generation
 
         anim_timer = getattr(self, "_anim_timer", None)
         if anim_timer is not None:
@@ -375,10 +380,13 @@ class ChainDialog(BaseDialog):
 
         self._close_anim_timer = QTimer(self)
         self._close_anim_timer.setInterval(self._close_anim_interval_ms)
-        self._close_anim_timer.timeout.connect(self._on_close_animation_tick)
+        set_precise_timer(self._close_anim_timer, owner="ChainDialog._close_anim_timer")
+        self._close_anim_timer.timeout.connect(lambda generation=generation: self._on_close_animation_tick(generation))
         self._close_anim_timer.start()
 
-    def _on_close_animation_tick(self):
+    def _on_close_animation_tick(self, generation: int | None = None):
+        if generation is not None and generation != int(getattr(self, "_close_anim_generation", -1) or -1):
+            return
         self._close_anim_step += 1
         progress = self._close_anim_step / self._close_anim_total_steps
         if progress >= 1.0:
@@ -390,6 +398,8 @@ class ChainDialog(BaseDialog):
         self.move(origin.x(), origin.y() + int(eased * sp(16)))
 
         if progress >= 1.0:
+            if generation is not None and generation != int(getattr(self, "_close_anim_generation", -1) or -1):
+                return
             timer = getattr(self, "_close_anim_timer", None)
             if timer is not None:
                 timer.stop()
@@ -1399,7 +1409,7 @@ class ChainDialog(BaseDialog):
         filtered = [it for it in self._available if it.type == stype]
         if not filtered:
             return
-        menu = PopupMenu(self)
+        menu = PopupMenu(theme=getattr(self, "theme", "dark"), parent=self)
         for item in filtered:
             menu.add_action(item.name or item.id, lambda it=item: self._add_step(it))
         # 定位到对应按钮下方
@@ -1546,7 +1556,7 @@ class ChainDialog(BaseDialog):
         if not (0 <= index < len(self._steps)):
             return
         step = self._steps[index]
-        menu = PopupMenu(self)
+        menu = PopupMenu(theme=getattr(self, "theme", "dark"), parent=self)
         enabled = step.get("enabled", True)
         menu.add_action(tr("禁用") if enabled else tr("启用"), lambda: self._toggle_step_enabled(index))
         menu.add_separator()

@@ -30,3 +30,15 @@ def is_animation_running(animation) -> bool:
 def stop_named_animations(owner, *names: str) -> None:
     for name in names:
         stop_animation(getattr(owner, name, None), owner=f"{owner.__class__.__name__}.{name}")
+
+
+def set_precise_timer(timer, *, owner: str = "") -> None:
+    """Prefer precise timing for visual animations without making callers Qt-version aware."""
+    if timer is None:
+        return
+    try:
+        from qt_compat import Qt
+
+        timer.setTimerType(Qt.PreciseTimer)
+    except (AttributeError, RuntimeError, TypeError) as exc:
+        logger.debug("设置精确定时器失败 [%s]: %s", owner, exc, exc_info=True)

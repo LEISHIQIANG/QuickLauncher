@@ -23,6 +23,7 @@ from qt_compat import (
     QTimer,
 )
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
+from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import font_px, sp
 from ui.utils.window_effect import is_win10
 
@@ -144,20 +145,62 @@ class PopupSearchMixin:
 
     def _search_font(self) -> QFont:
         base_font = self.__dict__.get("_label_font")
+        base_pixel_size = base_font.pixelSize() if base_font is not None else -1
+        if base_pixel_size <= 0:
+            base_pixel_size = font_px(10)
+        target_pixel_size = max(font_px(10), base_pixel_size + sp(2))
+        cache_key = (base_pixel_size, target_pixel_size)
+        cached = self.__dict__.get("_search_font_cache")
+        if cached is not None and cached[0] == cache_key:
+            return QFont(cached[1])
+
         font = QFont(base_font) if base_font is not None else QFont()
-        font.setPixelSize(font_px(max(10, font.pixelSize() + sp(2))))
+        font.setPixelSize(target_pixel_size)
+        self._search_font_cache = (cache_key, QFont(font))
+        self.__dict__.pop("_search_metrics_cache", None)
+        self.__dict__.pop("_search_text_width_cache", None)
         return font
 
     def _search_metrics(self) -> QFontMetrics:
-        return QFontMetrics(self._search_font())
+        font = self._search_font()
+        cache_key = (
+            font.family(),
+            font.pixelSize(),
+            font.weight(),
+            font.italic(),
+            font.bold(),
+        )
+        cached = self.__dict__.get("_search_metrics_cache")
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
+        metrics = QFontMetrics(font)
+        self._search_metrics_cache = (cache_key, metrics)
+        self.__dict__.pop("_search_text_width_cache", None)
+        return metrics
 
     def _search_text_width(self, value: str) -> int:
+        value = value or ""
         if QApplication.instance() is None:
-            return sum(sp(14) if ord(ch) > 127 else sp(7) for ch in (value or ""))
+            return sum(sp(14) if ord(ch) > 127 else sp(7) for ch in value)
         metrics = self._search_metrics()
+        font_key = self.__dict__.get("_search_metrics_cache", (None,))[0]
+        cache = self.__dict__.get("_search_text_width_cache")
+        if cache is None or cache[0] != font_key:
+            cache = (font_key, {})
+            self._search_text_width_cache = cache
+        widths = cache[1]
+        cached = widths.get(value)
+        if cached is not None:
+            return cached
         if hasattr(metrics, "horizontalAdvance"):
-            return metrics.horizontalAdvance(value)
-        return metrics.width(value)
+            width = metrics.horizontalAdvance(value)
+        else:
+            width = metrics.width(value)
+        widths[value] = width
+        if len(widths) > 256:
+            widths.clear()
+            widths[value] = width
+        return width
 
     def _search_bar_rect(self) -> QRectF:
         full_h = self._search_bar_full_height()
@@ -860,37 +903,53 @@ class PopupSearchMixin:
         self._remember_search_body_anchor()
         target = 1.0 if active else 0.0
 
-        if abs(self._search_target_progress - target) < 1e-9 and abs(self._search_reveal_progress - target) < 1e-9:
+        timer = self.__dict__.get("_search_anim_timer")
+        same_target = abs(self._search_target_progress - target) < 1e-9
+        if same_target and abs(self._search_reveal_progress - target) < 1e-9:
             return
+        if same_target and timer is not None:
+            try:
+                if timer.isActive():
+                    return
+            except Exception as exc:
+                logger.debug("检查搜索动画定时器失败: %s", exc, exc_info=True)
 
-        self._search_target_progress = target
-        self._search_anim_from_progress = self._search_reveal_progress
-        self._search_anim_started_at = time.time()
-        self._search_anim_last_ts = self._search_anim_started_at
+        if timer is None:
+            return
 
         if active:
+            # Expand the native window to its final size once, then animate only
+            # the reveal progress. This keeps the body visually anchored while
+            # avoiding DWM/region rebuilds on every frame.
             self._search_hide_geometry_pending = False
-            try:
-                if self._search_anim_timer.isActive():
-                    self._search_anim_timer.stop()
-            except Exception as exc:
-                logger.debug("停止搜索展开动画定时器: %s", exc, exc_info=True)
-            self._search_reveal_progress = 1.0
-            self._search_anim_from_progress = 1.0
-            self._apply_search_geometry(repaint=False)
-            # 立即调整窗口到最终位置
-            # 重置进度开始动画
-            self._apply_search_mask(force=True)
-            self.update(self._search_animation_update_rect())
-            self.repaint()
+            self._apply_search_geometry(progress_override=target, repaint=False)
+        else:
+            self._search_hide_geometry_pending = True
+
+        self._search_target_progress = target
+        if abs(self._search_reveal_progress - target) < 1e-9:
+            self._search_reveal_progress = target
+            if not active:
+                self._finish_search_hide_geometry()
             return
 
-        if not self._search_anim_timer.isActive():
-            self._search_anim_timer.start()
+        self._search_anim_from_progress = self._search_reveal_progress
+        self._search_anim_started_at = time.perf_counter()
+        self._search_anim_last_ts = self._search_anim_started_at
+
+        self._apply_search_mask(force=active)
+        self.update(self._search_animation_update_rect())
+
+        try:
+            if not timer.isActive():
+                set_precise_timer(timer, owner="LauncherPopup._search_anim_timer")
+                timer.start()
+        except Exception as exc:
+            logger.debug("启动搜索展开动画定时器失败: %s", exc, exc_info=True)
 
     def _tick_search_reveal(self):
         """处理动画每帧更新"""
-        now = time.time()
+        now = time.perf_counter()
         elapsed_ms = (now - self._search_anim_started_at) * 1000.0
         duration = self._search_anim_duration_ms
 
@@ -902,8 +961,9 @@ class PopupSearchMixin:
                 self._finish_search_hide_geometry()
                 return
             else:
+                self._search_hide_geometry_pending = False
                 self._apply_search_mask()
-                self.update()
+                self.update(self._search_animation_update_rect())
         else:
             t = elapsed_ms / duration
             ease_t = 1.0 - (1.0 - t) ** 3
@@ -950,6 +1010,12 @@ class PopupSearchMixin:
         self._search_drag_anchor = 0
         self._search_scroll_x = 0
         self._search_cursor_visible = True
+        try:
+            timer = self.__dict__.get("_search_anim_timer")
+            if timer is not None:
+                timer.stop()
+        except Exception as exc:
+            logger.debug("停止搜索展开动画失败: %s", exc, exc_info=True)
         self._search_reveal_progress = 0.0
         self._search_target_progress = 0.0
         self._search_hide_geometry_pending = False
@@ -975,9 +1041,9 @@ class PopupSearchMixin:
         if not self.pages:
             return
         # 停止已有的预加载定时器（如果有）
-        old_timer = getattr(self, "_preload_batch_timer", None)
-        if old_timer is not None:
-            old_timer.stop()
+        timer = getattr(self, "_preload_batch_timer", None)
+        if timer is not None:
+            timer.stop()
 
         # 构建待加载的 item 列表（优先当前页和相邻页）
         items_list = []
@@ -1002,14 +1068,27 @@ class PopupSearchMixin:
                 if item is not None:
                     items_list.append(item)
 
+        dock_items = self.__dict__.get("dock_items", None)
+        if dock_items:
+            settings = self.__dict__.get("settings", None)
+            dock_rows = max(1, int(getattr(settings, "dock_height_mode", 1) or 1))
+            max_dock_items = self.cols * dock_rows
+            for item in (dock_items or [])[:max_dock_items]:
+                if item is not None:
+                    items_list.append(item)
+
         self._preload_items_list = items_list
         self._preload_icon_idx = 0
         self._preload_page_queue = list(priority_order)
+        self._preload_page_idx = 0
 
-        self._preload_batch_timer = QTimer(self)
-        self._preload_batch_timer.setInterval(1)
-        self._preload_batch_timer.timeout.connect(self._preload_next_batch)
-        self._preload_batch_timer.start()
+        if timer is None:
+            timer = QTimer(self)
+            timer.setInterval(1)
+            set_precise_timer(timer, owner="LauncherPopup._preload_batch_timer")
+            timer.timeout.connect(self._preload_next_batch)
+            self._preload_batch_timer = timer
+        timer.start()
 
     def _preload_next_batch(self):
         """每帧处理一小批图标加载，8ms 预算内完成后让出事件循环"""
@@ -1031,8 +1110,10 @@ class PopupSearchMixin:
 
         # 阶段2：预渲染 page pixmap（每帧渲染一页）
         page_queue = getattr(self, "_preload_page_queue", None)
-        if page_queue:
-            page_idx = page_queue.pop(0)
+        page_idx_cursor = int(getattr(self, "_preload_page_idx", 0) or 0)
+        if page_queue and page_idx_cursor < len(page_queue):
+            page_idx = page_queue[page_idx_cursor]
+            self._preload_page_idx = page_idx_cursor + 1
             theme = getattr(self.settings, "theme", "dark")
             text_color = QColor(255, 255, 255) if theme == "dark" else QColor(0, 0, 0)
             hover_color = QColor(255, 255, 255, 20) if theme == "dark" else QColor(0, 0, 0, 20)
@@ -1042,7 +1123,7 @@ class PopupSearchMixin:
                 self._get_page_animation_pixmap(page_idx, text_color, hover_color, drop_highlight_color, bg_mode)
             except Exception as exc:
                 logger.debug("预渲染页面动画缓存: %s", exc, exc_info=True)
-            if page_queue:
+            if self._preload_page_idx < len(page_queue):
                 return  # 还有页面未渲染，下一帧继续
 
         # 全部完成，停止定时器并清理
@@ -1051,6 +1132,7 @@ class PopupSearchMixin:
             timer.stop()
         self._preload_items_list = None
         self._preload_page_queue = None
+        self._preload_page_idx = 0
 
     def _warm_page_pixmap_cache(self, pages):
         """预热指定页面的绘图缓存"""

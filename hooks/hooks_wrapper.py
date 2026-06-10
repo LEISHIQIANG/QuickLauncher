@@ -14,12 +14,13 @@ from datetime import datetime
 # 回调函数类型
 MOUSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
 KEYBOARD_CALLBACK = ctypes.CFUNCTYPE(None)
+HOTKEY_CAPTURE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 logger = logging.getLogger(__name__)
 
 
 class HooksDLL:
-    EXPECTED_VERSION = 4
-    EXPECTED_DLL_SHA256 = "2533e2767b0aee9c0b18870ef53e5c631663ab67def0e85679b3960b90e646f8"
+    EXPECTED_VERSION = 5
+    EXPECTED_DLL_SHA256 = "e261000005adde2fc4cd418cd9997ad69c0c79169474f8f3df6d4a37ca603222"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -32,6 +33,9 @@ class HooksDLL:
         "IsCtrlHeld",
         "SetGlobalHotkey",
         "ClearGlobalHotkey",
+        "StartHotkeyCapture",
+        "StopHotkeyCapture",
+        "IsHotkeyCaptureActive",
         "ReleaseAllModifierKeys",
     )
     _last_probe = {}
@@ -84,6 +88,7 @@ class HooksDLL:
         self._has_special_apps = False
         self._has_last_error = False
         self._has_hook_health = False
+        self._has_hotkey_capture = False
         integrity_error = self._validate_integrity()
         if integrity_error:
             self.load_error = integrity_error
@@ -114,6 +119,7 @@ class HooksDLL:
         self._alt_dclick_callback_ref = None
         self._keyboard_callback_ref = None
         self._hotkey_callback_ref = None
+        self._hotkey_capture_callback_ref = None
 
     @classmethod
     def _default_dll_path(cls) -> str:
@@ -210,6 +216,17 @@ class HooksDLL:
         except AttributeError:
             self._has_hook_health = False
 
+        try:
+            self.dll.StartHotkeyCapture.argtypes = [HOTKEY_CAPTURE_CALLBACK, ctypes.c_int]
+            self.dll.StartHotkeyCapture.restype = ctypes.c_bool
+            self.dll.StopHotkeyCapture.argtypes = []
+            self.dll.StopHotkeyCapture.restype = None
+            self.dll.IsHotkeyCaptureActive.argtypes = []
+            self.dll.IsHotkeyCaptureActive.restype = ctypes.c_bool
+            self._has_hotkey_capture = True
+        except AttributeError:
+            self._has_hotkey_capture = False
+
         # 触发配置支持（可选）
         try:
             self.dll.SetTriggerConfig.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
@@ -242,7 +259,8 @@ class HooksDLL:
             return False
         try:
             return bool(self.dll.IsMouseHookInstalled())
-        except Exception:
+        except Exception as exc:
+            logger.debug("hooks.dll IsMouseHookInstalled failed: %s", exc, exc_info=True)
             return False
 
     def is_keyboard_hook_installed(self) -> bool:
@@ -250,7 +268,8 @@ class HooksDLL:
             return False
         try:
             return bool(self.dll.IsKeyboardHookInstalled())
-        except Exception:
+        except Exception as exc:
+            logger.debug("hooks.dll IsHotkeyCaptureActive failed: %s", exc, exc_info=True)
             return False
 
     def get_diagnostics(self) -> dict:
@@ -271,6 +290,7 @@ class HooksDLL:
             "expected_version": self.EXPECTED_VERSION,
             "capabilities": self.capabilities,
             "has_hook_health": bool(getattr(self, "_has_hook_health", False)),
+            "has_hotkey_capture": bool(getattr(self, "_has_hotkey_capture", False)),
             "mouse_hook_installed": self.is_mouse_hook_installed(),
             "keyboard_hook_installed": self.is_keyboard_hook_installed(),
             "missing_exports": list(self.missing_exports),
@@ -292,7 +312,7 @@ class HooksDLL:
     def shutdown_hooks(self) -> None:
         """Uninstall native hooks before dropping the DLL reference."""
         if self.dll is not None:
-            for func_name in ("UninstallMouseHook", "UninstallKeyboardHook", "ClearGlobalHotkey"):
+            for func_name in ("StopHotkeyCapture", "UninstallMouseHook", "UninstallKeyboardHook", "ClearGlobalHotkey"):
                 try:
                     func = getattr(self.dll, func_name, None)
                     if func is not None:
@@ -381,6 +401,28 @@ class HooksDLL:
         """清除全局热键"""
         if self._ready():
             self.dll.ClearGlobalHotkey()
+
+    def start_hotkey_capture(self, callback: Callable[[int, int, int], None], timeout_ms: int = 10000) -> bool:
+        """启动受保护快捷键录制，录制期间 DLL 会吞掉所有键盘事件。"""
+        if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:
+            return False
+        self._hotkey_capture_callback_ref = HOTKEY_CAPTURE_CALLBACK(callback)
+        return bool(self.dll.StartHotkeyCapture(self._hotkey_capture_callback_ref, int(timeout_ms)))
+
+    def stop_hotkey_capture(self):
+        """停止受保护快捷键录制。"""
+        if self._ready() and getattr(self, "_has_hotkey_capture", False):
+            self.dll.StopHotkeyCapture()
+        self._hotkey_capture_callback_ref = None
+
+    def is_hotkey_capture_active(self) -> bool:
+        """返回 DLL 当前是否处于快捷键录制模式。"""
+        if not self._ready() or not getattr(self, "_has_hotkey_capture", False):
+            return False
+        try:
+            return bool(self.dll.IsHotkeyCaptureActive())
+        except Exception:
+            return False
 
     def release_all_modifier_keys(self):
         """释放所有修饰键"""

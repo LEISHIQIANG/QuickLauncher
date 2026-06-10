@@ -14,10 +14,12 @@ from qt_compat import (
     QPainter,
     QPainterPath,
     QPen,
+    QPoint,
     QPushButton,
     QRectF,
     Qt,
     QtCompat,
+    QTimer,
     QVBoxLayout,
     QWidget,
 )
@@ -128,19 +130,31 @@ class PopupMenu(QWidget):
     - 内联展开式子菜单
     """
 
+    _active_popups = set()
+
     def __init__(self, theme: str = "dark", radius: int = 12, parent=None):
+        if parent is None and not isinstance(theme, str):
+            parent = theme
+            theme = getattr(parent, "theme", "dark")
+        if theme not in ("dark", "light"):
+            theme = "dark"
         super().__init__(parent)
-        apply_custom_window_chrome(self, kind="popup", translucent=True, no_shadow=True)
+        apply_custom_window_chrome(
+            self,
+            kind="popup",
+            translucent=True,
+            no_shadow=not self._uses_win10_companion_shadow(),
+        )
         self._theme = theme
-        self._radius = radius
+        self._radius = self._effective_radius(radius)
         self._blur_applied = False
 
         self.setAutoFillBackground(False)
         self.setAttribute(QtCompat.WA_NoSystemBackground, True)
 
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
-        self._layout.setSpacing(sp(3))
+        self._layout.setContentsMargins(sp(7), sp(7), sp(7), sp(7))
+        self._layout.setSpacing(sp(2))
 
         # 子菜单项容器列表，用于展开/收起
         self._sub_items_widgets = []
@@ -148,35 +162,35 @@ class PopupMenu(QWidget):
 
         # 按钮样式
         self._btn_style_dark = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:7px 16px;margin:0px;"
-            "border-radius:8px;color:rgba(255,255,255,0.85);font-size:11px;text-align:left;"
-            "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.95);}"
+            "QPushButton{background:transparent;border:none;padding:6px 14px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(255,255,255,0.88);font-size:12px;text-align:left;"
+            "font-family:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.98);}"
             "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
-            "QPushButton:disabled{color:rgba(255,255,255,110);}"
+            "QPushButton:disabled{color:rgba(255,255,255,0.42);}"
         )
         self._btn_style_light = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:7px 16px;margin:0px;"
-            "border-radius:8px;color:rgba(28,28,30,0.85);font-size:11px;text-align:left;"
-            "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(0,0,0,0.06);color:rgba(28,28,30,0.95);}"
-            "QPushButton:pressed{background:rgba(0,0,0,0.10);}"
-            "QPushButton:disabled{color:rgba(60,60,67,120);}"
+            "QPushButton{background:transparent;border:none;padding:6px 14px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(28,28,30,0.88);font-size:12px;text-align:left;"
+            "font-family:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.96);}"
+            "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
+            "QPushButton:disabled{color:rgba(60,60,67,0.42);}"
         )
         # 子菜单项缩进样式
         self._sub_btn_style_dark = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:7px 16px 7px 28px;margin:0px;"
-            "border-radius:8px;color:rgba(255,255,255,0.75);font-size:11px;text-align:left;"
-            "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.95);}"
+            "QPushButton{background:transparent;border:none;padding:6px 14px 6px 30px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(255,255,255,0.74);font-size:12px;text-align:left;"
+            "font-family:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.96);}"
             "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
         )
         self._sub_btn_style_light = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:7px 16px 7px 28px;margin:0px;"
-            "border-radius:8px;color:rgba(28,28,30,0.70);font-size:11px;text-align:left;"
-            "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(0,0,0,0.06);color:rgba(28,28,30,0.95);}"
-            "QPushButton:pressed{background:rgba(0,0,0,0.10);}"
+            "QPushButton{background:transparent;border:none;padding:6px 14px 6px 30px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(28,28,30,0.68);font-size:12px;text-align:left;"
+            "font-family:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.95);}"
+            "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
         )
         self._sep_style_dark = "background-color: rgba(255, 255, 255, 16);"
         self._sep_style_light = "background-color: rgba(60, 60, 67, 18);"
@@ -263,6 +277,8 @@ class PopupMenu(QWidget):
         for w in self._sub_items_widgets:
             w.show()
         self.adjustSize()
+        self._move_into_screen(self.pos())
+        self._apply_blur_effect()
 
     def _collapse_submenu(self):
         """收起子菜单项"""
@@ -272,6 +288,8 @@ class PopupMenu(QWidget):
         for w in self._sub_items_widgets:
             w.hide()
         self.adjustSize()
+        self._move_into_screen(self.pos())
+        self._apply_blur_effect()
 
     def add_separator(self):
         """添加分隔线"""
@@ -295,7 +313,10 @@ class PopupMenu(QWidget):
         """在指定位置显示菜单"""
         self.adjustSize()
         self._move_into_screen(global_pos)
+        self._retain_until_hidden()
         self.show()
+        self.adjustSize()
+        self._move_into_screen(self.pos())
         self.raise_()
         try:
             self.activateWindow()
@@ -304,25 +325,110 @@ class PopupMenu(QWidget):
             logger.debug("激活菜单窗口失败: %s", exc, exc_info=True)
         # 窗口显示后应用模糊效果和圆角裁剪
         self._apply_blur_effect()
+        QTimer.singleShot(0, self._reposition_after_show)
+
+    def _retain_until_hidden(self):
+        """Keep parentless popup widgets alive while native effects settle."""
+        try:
+            PopupMenu._active_popups.add(self)
+        except Exception as exc:
+            logger.debug("保持弹出菜单生命周期失败: %s", exc, exc_info=True)
+
+    @classmethod
+    def _release_popup(cls, menu):
+        try:
+            cls._active_popups.discard(menu)
+        except Exception as exc:
+            logger.debug("释放弹出菜单生命周期失败: %s", exc, exc_info=True)
+
+    @staticmethod
+    def _uses_win10_companion_shadow() -> bool:
+        try:
+            from ui.utils.window_effect import is_win10
+
+            return is_win10()
+        except Exception as exc:
+            logger.debug("判断菜单阴影策略失败: %s", exc, exc_info=True)
+            return False
+
+    @staticmethod
+    def _effective_radius(radius: int) -> int:
+        requested = max(0, int(radius))
+        try:
+            from ui.utils.window_effect import is_win11
+
+            if is_win11() and requested > 0:
+                return min(requested, 8)
+        except Exception as exc:
+            logger.debug("计算菜单圆角失败: %s", exc, exc_info=True)
+        return requested
 
     def _move_into_screen(self, global_pos):
         """确保菜单在屏幕内"""
-        try:
-            screen = QApplication.primaryScreen()
-            geo = screen.availableGeometry() if screen else None
-        except Exception:
-            geo = None
+        pos = self._as_point(global_pos)
+        geo = self._available_geometry_for_pos(pos)
 
-        x = int(global_pos.x())
-        y = int(global_pos.y())
+        x = int(pos.x())
+        y = int(pos.y())
 
         if geo is not None:
-            if x + self.width() > geo.right():
-                x = max(int(geo.left()), int(geo.right() - self.width()))
-            if y + self.height() > geo.bottom():
-                y = max(int(geo.top()), int(geo.bottom() - self.height()))
+            margin = sp(4)
+            width = max(1, int(self.width()))
+            height = max(1, int(self.height()))
+            min_x = int(geo.left()) + margin
+            min_y = int(geo.top()) + margin
+            max_x = int(geo.right()) - width - margin + 1
+            max_y = int(geo.bottom()) - height - margin + 1
+            x = max(min_x, min(x, max_x))
+            y = max(min_y, min(y, max_y))
 
         self.move(x, y)
+
+    def _reposition_after_show(self):
+        """Native window metrics may settle after show() on Win10; clamp once more."""
+        try:
+            self.adjustSize()
+            self._move_into_screen(self.pos())
+            self._apply_blur_effect()
+        except RuntimeError:
+            return
+        except Exception as exc:
+            logger.debug("菜单显示后二次定位失败: %s", exc, exc_info=True)
+
+    @staticmethod
+    def _as_point(global_pos):
+        if isinstance(global_pos, QPoint):
+            return QPoint(global_pos)
+        if hasattr(global_pos, "toPoint"):
+            return global_pos.toPoint()
+        try:
+            return QPoint(int(global_pos.x()), int(global_pos.y()))
+        except Exception:
+            return QPoint(0, 0)
+
+    @staticmethod
+    def _available_geometry_for_pos(pos):
+        try:
+            screen = QApplication.screenAt(pos)
+        except Exception:
+            screen = None
+        if screen is None:
+            try:
+                for candidate in QApplication.screens():
+                    if candidate.geometry().contains(pos):
+                        screen = candidate
+                        break
+            except Exception:
+                screen = None
+        if screen is None:
+            try:
+                screen = QApplication.primaryScreen()
+            except Exception:
+                screen = None
+        try:
+            return screen.availableGeometry() if screen else None
+        except Exception:
+            return None
 
     def focusOutEvent(self, event):
         """失去焦点时隐藏"""
@@ -331,6 +437,14 @@ class PopupMenu(QWidget):
         except Exception as exc:
             logger.debug("隐藏菜单失败: %s", exc, exc_info=True)
         return super().focusOutEvent(event)
+
+    def hideEvent(self, event):
+        PopupMenu._release_popup(self)
+        return super().hideEvent(event)
+
+    def closeEvent(self, event):
+        PopupMenu._release_popup(self)
+        return super().closeEvent(event)
 
     def keyPressEvent(self, event):
         """按 ESC 隐藏"""
@@ -346,7 +460,13 @@ class PopupMenu(QWidget):
     def _apply_blur_effect(self):
         """应用磨砂玻璃模糊效果 + 圆角裁剪（与主配置窗口风格一致）"""
         try:
-            from ui.utils.window_effect import get_window_effect, is_win10, is_win11
+            from ui.utils.window_effect import (
+                get_window_effect,
+                install_win10_window_shadow,
+                is_win10,
+                is_win11,
+                remove_win10_window_shadow,
+            )
 
             hwnd = int(self.winId())
             if not hwnd:
@@ -358,17 +478,25 @@ class PopupMenu(QWidget):
             r = self._radius
 
             if is_win11():
-                # Win11: DWM 原生圆角 + Acrylic 模糊
-                effect.set_round_corners(hwnd, enable=True)
-                # DWM DWMWCP_ROUND 圆角约 8px，同步 paintEvent 圆角半径以完美重合
+                remove_win10_window_shadow(self)
+                effect.clear_window_region(hwnd)
+                effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
+
+                # Win11: context-menu sized DWM corners + Acrylic tint.
                 self._radius = 8
-                if self._theme == "dark":
-                    gradient_color = "c81c1c1e"  # alpha=200, 深灰
+                corner_pref = getattr(effect, "DWMWCP_ROUNDSMALL", None)
+                if corner_pref is not None:
+                    effect.set_round_corners(hwnd, preference=corner_pref)
                 else:
-                    gradient_color = "c8f2f2f7"  # alpha=200, 浅灰
+                    effect.set_round_corners(hwnd, enable=True)
+                if self._theme == "dark":
+                    gradient_color = "d81f1f23"
+                else:
+                    gradient_color = "e8f7f7fb"
                 effect.set_acrylic(hwnd, gradient_color, enable=True, blur=True)
             else:
                 # Win10: 使用窗口区域裁剪，背景由 Qt 自绘
+                install_win10_window_shadow(self, r)
                 if w > 0 and h > 0:
                     effect.set_window_region(hwnd, w, h, r)
                 if is_win10():
@@ -409,20 +537,22 @@ class PopupMenu(QWidget):
 
         # 主题颜色：当模糊效果生效时降低不透明度以显示模糊
         win10_qt_fallback = False
+        win11_native = False
         try:
-            from ui.utils.window_effect import is_win10
+            from ui.utils.window_effect import is_win10, is_win11
 
             win10_qt_fallback = is_win10()
+            win11_native = is_win11()
         except Exception as exc:
             logger.debug("检测Win10菜单绘制模式失败: %s", exc, exc_info=True)
 
         if self._blur_applied:
             if self._theme == "dark":
-                bg = QColor(30, 30, 30, 220 if win10_qt_fallback else 120)
-                border = QColor(255, 255, 255, 38)
+                bg = QColor(31, 31, 35, 220 if win10_qt_fallback else (150 if win11_native else 120))
+                border = QColor(255, 255, 255, 46 if win11_native else 38)
             else:
-                bg = QColor(255, 255, 255, 235 if win10_qt_fallback else 120)
-                border = QColor(0, 0, 0, 20)
+                bg = QColor(255, 255, 255, 235 if win10_qt_fallback else (188 if win11_native else 120))
+                border = QColor(0, 0, 0, 24 if win11_native else 20)
         else:
             if self._theme == "dark":
                 bg = QColor(30, 30, 30, 220)
@@ -478,8 +608,12 @@ class StyleSheet:
                     background-color: rgba(255, 255, 255, 0.20);
                     border: 1px solid rgba(255, 255, 255, 0.25);
                 }
+                QPushButton:focus {
+                    border: 1px solid rgba(10, 132, 255, 0.78);
+                }
                 QPushButton:pressed {
                     background-color: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.14);
                 }
                 QPushButton:default {
                     background-color: #0A84FF;
@@ -488,6 +622,10 @@ class StyleSheet:
                 }
                 QPushButton:default:hover {
                     background-color: #0077EA;
+                }
+                QPushButton:default:pressed {
+                    background-color: #006FD6;
+                    border: 1px solid #006FD6;
                 }
                 QPushButton:disabled {
                     background-color: rgba(255, 255, 255, 0.06);
@@ -510,8 +648,12 @@ class StyleSheet:
                     background-color: rgba(255, 255, 255, 0.95);
                     border: 1px solid rgba(0, 0, 0, 0.10);
                 }
+                QPushButton:focus {
+                    border: 1px solid rgba(0, 122, 255, 0.55);
+                }
                 QPushButton:pressed {
                     background-color: rgba(240, 240, 245, 0.90);
+                    border: 1px solid rgba(0, 0, 0, 0.12);
                 }
                 QPushButton:default {
                     background-color: #007AFF;
@@ -520,6 +662,10 @@ class StyleSheet:
                 }
                 QPushButton:default:hover {
                     background-color: #0A84FF;
+                }
+                QPushButton:default:pressed {
+                    background-color: #006FD6;
+                    border: 1px solid #006FD6;
                 }
                 QPushButton:disabled {
                     background-color: rgba(0, 0, 0, 0.04);
@@ -893,6 +1039,9 @@ class Glassmorphism:
                         stop:1 rgba(75, 75, 80, 0.95));
                     border: 1px solid rgba(255, 255, 255, 0.25);
                 }
+                QPushButton:focus {
+                    border: 1px solid rgba(10, 132, 255, 0.78);
+                }
                 QPushButton:pressed {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 rgba(55, 55, 60, 0.9),
@@ -930,10 +1079,14 @@ class Glassmorphism:
                         stop:1 rgba(245, 245, 250, 0.9));
                     border: 1px solid rgba(0, 0, 0, 0.1);
                 }
+                QPushButton:focus {
+                    border: 1px solid rgba(0, 122, 255, 0.55);
+                }
                 QPushButton:pressed {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 rgba(235, 235, 240, 0.9),
                         stop:1 rgba(245, 245, 250, 0.9));
+                    border: 1px solid rgba(0, 0, 0, 0.12);
                 }
                 QPushButton:default {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,

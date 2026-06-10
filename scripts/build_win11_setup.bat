@@ -15,10 +15,15 @@ echo.
 
 REM === Version configuration ===
 set "APP_PUBLISHER=Layton"
-set "DEFAULT_APP_VERSION=1.6.3.0"
-for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
+set "APP_VERSION="
+for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "APP_VERSION=%%v"
 for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
-set "APP_VERSION=%DEFAULT_APP_VERSION%"
+if not defined APP_VERSION (
+    echo.
+    echo   [ERROR] Unable to read APP_VERSION from core\version.py.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
 
 REM === Build log: wrap with PowerShell Tee-Object to record all output ===
 REM Skipped on second entry (QL_LOGGING=1), runs build directly

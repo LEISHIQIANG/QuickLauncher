@@ -23,7 +23,7 @@ class _FakeDLL:
         for name in hooks_wrapper.HooksDLL.REQUIRED_EXPORTS:
             setattr(self, name, _FakeFunc(True))
         self.GetHooksVersion = _FakeFunc(hooks_wrapper.HooksDLL.EXPECTED_VERSION)
-        self.GetHooksCapabilities = _FakeFunc(0x3F)
+        self.GetHooksCapabilities = _FakeFunc(0x7F)
         self.GetLastHookError = _FakeFunc(0)
         self.IsMouseHookInstalled = _FakeFunc(True)
         self.IsKeyboardHookInstalled = _FakeFunc(False)
@@ -40,10 +40,54 @@ def test_hooks_wrapper_reports_version_and_capabilities(monkeypatch):
     assert diagnostics["loaded"] is True
     assert diagnostics["compatible"] is True
     assert diagnostics["version"] == hooks_wrapper.HooksDLL.EXPECTED_VERSION
-    assert diagnostics["capabilities"] == 0x3F
+    assert diagnostics["capabilities"] == 0x7F
     assert diagnostics["has_hook_health"] is True
+    assert diagnostics["has_hotkey_capture"] is True
     assert diagnostics["mouse_hook_installed"] is True
     assert diagnostics["keyboard_hook_installed"] is False
+
+
+def test_hooks_wrapper_binds_hotkey_capture_exports(monkeypatch):
+    class _StartCaptureFunc(_FakeFunc):
+        def __init__(self, owner):
+            super().__init__(True)
+            self.owner = owner
+
+        def __call__(self, callback, timeout_ms):
+            self.owner.start_calls.append((callback, timeout_ms))
+            return True
+
+    class _StopCaptureFunc(_FakeFunc):
+        def __init__(self, owner):
+            super().__init__(None)
+            self.owner = owner
+
+        def __call__(self):
+            self.owner.stopped = True
+            return None
+
+    class CaptureDLL(_FakeDLL):
+        def __init__(self):
+            super().__init__()
+            self.start_calls = []
+            self.stopped = False
+            self.active = True
+            self.StartHotkeyCapture = _StartCaptureFunc(self)
+            self.StopHotkeyCapture = _StopCaptureFunc(self)
+            self.IsHotkeyCaptureActive = _FakeFunc(True)
+
+    fake = CaptureDLL()
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+
+    dll = hooks_wrapper.HooksDLL("capture.dll")
+
+    assert dll.get_diagnostics()["has_hotkey_capture"] is True
+    assert dll.start_hotkey_capture(lambda vk, mods, sides: None, timeout_ms=1234) is True
+    assert fake.start_calls and fake.start_calls[-1][1] == 1234
+    assert dll.is_hotkey_capture_active() is True
+
+    dll.stop_hotkey_capture()
+    assert fake.stopped is True
 
 
 def test_hooks_wrapper_tolerates_older_dll_without_health_exports(monkeypatch):

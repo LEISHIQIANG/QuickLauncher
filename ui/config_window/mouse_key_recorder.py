@@ -13,6 +13,7 @@ from qt_compat import (
     QtCompat,
     QWidget,
 )
+from ui.config_window.hotkey_capture_helpers import apply_recorder_display_style
 from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
@@ -55,10 +56,13 @@ class MouseKeyRecorderWidget(QWidget):
         self.display.setReadOnly(True)
         self.display.setPlaceholderText(tr("点击开始录制"))
         self.display.setMinimumWidth(sp(180))
+        self.display.setFixedHeight(sp(26))
         self.display.setContextMenuPolicy(Qt.NoContextMenu)  # 禁用右键菜单
+        apply_recorder_display_style(self.display, False)
         layout.addWidget(self.display, 1)
 
         self.record_btn = QPushButton(tr("录制"))
+        self.record_btn.setFixedWidth(sp(52))
         self.record_btn.setFixedHeight(sp(26))
         self.record_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_btn)
@@ -82,7 +86,7 @@ class MouseKeyRecorderWidget(QWidget):
                 )
                 self._mouse_hook_pause_scope.__enter__()
             self.display.setPlaceholderText(tr("录制中，请按下鼠标按键..."))
-            self.display.setStyleSheet(f"border: {sp(2)}px solid #4A9EFF; background: rgba(74, 158, 255, 0.1);")
+            apply_recorder_display_style(self.display, True)
             self.record_btn.setText(tr("停止"))
             self.display.setFocus()
         else:
@@ -100,7 +104,7 @@ class MouseKeyRecorderWidget(QWidget):
                 self._mouse_hook_pause_scope = None
                 self._previous_mouse_paused = None
         self.display.setPlaceholderText(tr("点击开始录制"))
-        self.display.setStyleSheet("")
+        apply_recorder_display_style(self.display, False)
         self.record_btn.setText(tr("录制"))
         self._refresh_display()
 

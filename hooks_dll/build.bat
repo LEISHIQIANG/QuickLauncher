@@ -1,10 +1,33 @@
 @echo off
 setlocal
+pushd "%~dp0" || exit /b 1
 
 echo Checking MSVC environment...
 
 set "VCPATH="
-for %%r in ("E:\Visual Studio 2026" "D:\Visual Studio3" "C:\Program Files\Microsoft Visual Studio\2026\Community" "C:\Program Files\Microsoft Visual Studio\2022\Community" "C:\Program Files\Microsoft Visual Studio\2022\BuildTools") do (
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "%VSWHERE%" (
+    for /f "usebackq delims=" %%r in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+        if not defined VCPATH (
+            for /f "delims=" %%i in ('dir /b /ad /o-n "%%~r\VC\Tools\MSVC" 2^>nul') do (
+                if not defined VCPATH if exist "%%~r\VC\Tools\MSVC\%%i\bin\Hostx64\x64\cl.exe" (
+                    set "VCPATH=%%~r\VC\Tools\MSVC\%%i"
+                )
+            )
+        )
+    )
+    for /f "usebackq delims=" %%r in (`"%VSWHERE%" -latest -products * -property installationPath`) do (
+        if not defined VCPATH (
+            for /f "delims=" %%i in ('dir /b /ad /o-n "%%~r\VC\Tools\MSVC" 2^>nul') do (
+                if not defined VCPATH if exist "%%~r\VC\Tools\MSVC\%%i\bin\Hostx64\x64\cl.exe" (
+                    set "VCPATH=%%~r\VC\Tools\MSVC\%%i"
+                )
+            )
+        )
+    )
+)
+
+for %%r in ("E:\Visual Studio 2026" "D:\Visual Studio3" "C:\Program Files\Microsoft Visual Studio\18\Community" "C:\Program Files\Microsoft Visual Studio\18\BuildTools" "C:\Program Files\Microsoft Visual Studio\2026\Community" "C:\Program Files\Microsoft Visual Studio\2022\Community" "C:\Program Files\Microsoft Visual Studio\2022\BuildTools") do (
     if not defined VCPATH (
         for /f "delims=" %%i in ('dir /b /ad /o-n "%%~r\VC\Tools\MSVC" 2^>nul') do (
             if not defined VCPATH if exist "%%~r\VC\Tools\MSVC\%%i\bin\Hostx64\x64\cl.exe" (
@@ -56,4 +79,5 @@ del hooks.obj hooks.exp hooks.lib 2>nul
 del ..\hooks\hooks.exp ..\hooks\hooks.lib 2>nul
 
 echo Build succeeded: ..\hooks\hooks.dll
+popd
 exit /b 0

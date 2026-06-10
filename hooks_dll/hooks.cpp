@@ -46,6 +46,7 @@ static MouseCallback g_mouseCallback = nullptr;
 static MouseCallback g_altDoubleClickCallback = nullptr;
 static KeyboardCallback g_altDoubleTapCallback = nullptr;
 static KeyboardCallback g_hotkeyCallback = nullptr;
+static HotkeyCaptureCallback g_hotkeyCaptureCallback = nullptr;
 
 // 状态
 static std::atomic<bool> g_mousePaused(false);
@@ -69,6 +70,15 @@ static int g_hotkeyModifiers = 0;
 static int g_hotkeyVk = 0;
 static bool g_hotkeyEnabled = false;
 static double g_lastHotkeyTime = 0.0;
+
+// 快捷键录制模式：启用后吞掉所有键盘事件，只把最终组合回调给 UI。
+static std::atomic<bool> g_hotkeyCaptureEnabled(false);
+static bool g_hotkeyCaptureCompleted = false;
+static DWORD g_hotkeyCaptureStartedTick = 0;
+static DWORD g_hotkeyCaptureTimeoutMs = 10000;
+static bool g_hotkeyCapturePressed[256] = {false};
+static int g_hotkeyCaptureSideModifiers = 0;
+static std::mutex g_hotkeyCaptureMutex;
 
 // 特殊应用列表
 static std::vector<std::string> g_specialApps;
@@ -113,11 +123,15 @@ static HANDLE g_callbackThread = NULL;
 static HANDLE g_callbackEvent = NULL;
 static std::atomic<bool> g_callbackThreadRunning(false);
 struct CallbackEvent {
-    enum Type { Keyboard, Mouse } type;
+    enum Type { Keyboard, Mouse, HotkeyCapture } type;
     KeyboardCallback keyboardCallback;
     MouseCallback mouseCallback;
     int x;
     int y;
+    HotkeyCaptureCallback hotkeyCaptureCallback;
+    int vkCode;
+    int modifiers;
+    int sideModifiers;
 };
 static std::deque<CallbackEvent> g_pendingCallbacks;
 static std::mutex g_callbackMutex;
@@ -131,15 +145,30 @@ constexpr double ALT_DOUBLE_TAP_COOLDOWN = 0.50;
 constexpr double ALT_LCLICK_DOUBLE_INTERVAL = 0.40;
 constexpr double ALT_LCLICK_COOLDOWN = 0.50;
 constexpr double BLOCKED_STATE_TIMEOUT = 2.0;  // 2秒超时自动释放
-constexpr int HOOKS_VERSION = 4;
+constexpr int HOOKS_VERSION = 5;
 constexpr unsigned int HOOKS_CAP_MOUSE = 0x0001;
 constexpr unsigned int HOOKS_CAP_KEYBOARD = 0x0002;
 constexpr unsigned int HOOKS_CAP_GLOBAL_HOTKEY = 0x0004;
 constexpr unsigned int HOOKS_CAP_SPECIAL_APPS = 0x0008;
 constexpr unsigned int HOOKS_CAP_DIAGNOSTICS = 0x0010;
 constexpr unsigned int HOOKS_CAP_HEALTH_STATUS = 0x0020;
+constexpr unsigned int HOOKS_CAP_HOTKEY_CAPTURE = 0x0040;
 constexpr size_t CALLBACK_QUEUE_LIMIT = 64;
 constexpr DWORD THREAD_JOIN_TIMEOUT_MS = 500;
+
+constexpr int HOTKEY_MOD_ALT = 1;
+constexpr int HOTKEY_MOD_CTRL = 2;
+constexpr int HOTKEY_MOD_SHIFT = 4;
+constexpr int HOTKEY_MOD_WIN = 8;
+
+constexpr int HOTKEY_SIDE_LSHIFT = 0x0001;
+constexpr int HOTKEY_SIDE_RSHIFT = 0x0002;
+constexpr int HOTKEY_SIDE_LCTRL = 0x0004;
+constexpr int HOTKEY_SIDE_RCTRL = 0x0008;
+constexpr int HOTKEY_SIDE_LALT = 0x0010;
+constexpr int HOTKEY_SIDE_RALT = 0x0020;
+constexpr int HOTKEY_SIDE_LWIN = 0x0040;
+constexpr int HOTKEY_SIDE_RWIN = 0x0080;
 
 static HANDLE EnsureManualResetEvent(HANDLE& eventHandle, BOOL initialState) {
     if (eventHandle == NULL) {
@@ -194,6 +223,139 @@ static bool IsModifierPressedNow(int bit) {
     return false;
 }
 
+static void InvokeHotkeyCaptureCallbackAsync(HotkeyCaptureCallback callback, int vkCode, int modifiers, int sideModifiers);
+
+static bool IsHotkeyModifierVk(int vk) {
+    switch (vk) {
+        case VK_SHIFT:
+        case VK_LSHIFT:
+        case VK_RSHIFT:
+        case VK_CONTROL:
+        case VK_LCONTROL:
+        case VK_RCONTROL:
+        case VK_MENU:
+        case VK_LMENU:
+        case VK_RMENU:
+        case VK_LWIN:
+        case VK_RWIN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static int NormalizeModifierVk(int vk, const KBDLLHOOKSTRUCT* pKbd) {
+    if (!pKbd) return vk;
+    if (vk == VK_SHIFT) {
+        UINT mapped = MapVirtualKeyA(pKbd->scanCode, MAPVK_VSC_TO_VK_EX);
+        return mapped == VK_RSHIFT ? VK_RSHIFT : VK_LSHIFT;
+    }
+    if (vk == VK_CONTROL) {
+        return (pKbd->flags & LLKHF_EXTENDED) ? VK_RCONTROL : VK_LCONTROL;
+    }
+    if (vk == VK_MENU) {
+        return (pKbd->flags & LLKHF_EXTENDED) ? VK_RMENU : VK_LMENU;
+    }
+    return vk;
+}
+
+static int HotkeySideBitForVk(int vk) {
+    switch (vk) {
+        case VK_LSHIFT: return HOTKEY_SIDE_LSHIFT;
+        case VK_RSHIFT: return HOTKEY_SIDE_RSHIFT;
+        case VK_LCONTROL: return HOTKEY_SIDE_LCTRL;
+        case VK_RCONTROL: return HOTKEY_SIDE_RCTRL;
+        case VK_LMENU: return HOTKEY_SIDE_LALT;
+        case VK_RMENU: return HOTKEY_SIDE_RALT;
+        case VK_LWIN: return HOTKEY_SIDE_LWIN;
+        case VK_RWIN: return HOTKEY_SIDE_RWIN;
+        default: return 0;
+    }
+}
+
+static int HotkeyModifiersFromSides(int sideModifiers) {
+    int modifiers = 0;
+    if (sideModifiers & (HOTKEY_SIDE_LALT | HOTKEY_SIDE_RALT)) modifiers |= HOTKEY_MOD_ALT;
+    if (sideModifiers & (HOTKEY_SIDE_LCTRL | HOTKEY_SIDE_RCTRL)) modifiers |= HOTKEY_MOD_CTRL;
+    if (sideModifiers & (HOTKEY_SIDE_LSHIFT | HOTKEY_SIDE_RSHIFT)) modifiers |= HOTKEY_MOD_SHIFT;
+    if (sideModifiers & (HOTKEY_SIDE_LWIN | HOTKEY_SIDE_RWIN)) modifiers |= HOTKEY_MOD_WIN;
+    return modifiers;
+}
+
+static void ResetHotkeyCaptureStateLocked() {
+    std::fill(g_hotkeyCapturePressed, g_hotkeyCapturePressed + 256, false);
+    g_hotkeyCaptureSideModifiers = 0;
+    g_hotkeyCaptureCompleted = false;
+}
+
+static bool AnyHotkeyCaptureKeyPressedLocked() {
+    for (bool pressed : g_hotkeyCapturePressed) {
+        if (pressed) return true;
+    }
+    return false;
+}
+
+static bool HandleHotkeyCapture(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* pKbd) {
+    if (!g_hotkeyCaptureEnabled.load()) return false;
+
+    HotkeyCaptureCallback callback = nullptr;
+    int callbackVk = 0;
+    int callbackModifiers = 0;
+    int callbackSideModifiers = 0;
+    bool captureWasActive = false;
+
+    {
+        std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
+        if (!g_hotkeyCaptureEnabled.load()) return false;
+        captureWasActive = true;
+
+        if (g_hotkeyCaptureTimeoutMs > 0) {
+            DWORD elapsed = GetTickCount() - g_hotkeyCaptureStartedTick;
+            if (elapsed > g_hotkeyCaptureTimeoutMs) {
+                g_hotkeyCaptureEnabled = false;
+                g_hotkeyCaptureCallback = nullptr;
+                ResetHotkeyCaptureStateLocked();
+                return true;
+            }
+        }
+
+        int normalizedVk = NormalizeModifierVk(vk, pKbd);
+        bool isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+        bool isUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
+
+        if (normalizedVk >= 0 && normalizedVk < 256) {
+            if (isDown) {
+                g_hotkeyCapturePressed[normalizedVk] = true;
+                int sideBit = HotkeySideBitForVk(normalizedVk);
+                if (sideBit) g_hotkeyCaptureSideModifiers |= sideBit;
+
+                if (!g_hotkeyCaptureCompleted && !IsHotkeyModifierVk(normalizedVk)) {
+                    g_hotkeyCaptureCompleted = true;
+                    callback = g_hotkeyCaptureCallback;
+                    callbackVk = normalizedVk;
+                    callbackSideModifiers = g_hotkeyCaptureSideModifiers;
+                    callbackModifiers = HotkeyModifiersFromSides(callbackSideModifiers);
+                }
+            } else if (isUp) {
+                g_hotkeyCapturePressed[normalizedVk] = false;
+                int sideBit = HotkeySideBitForVk(normalizedVk);
+                if (sideBit) g_hotkeyCaptureSideModifiers &= ~sideBit;
+
+                if (g_hotkeyCaptureCompleted && !AnyHotkeyCaptureKeyPressedLocked()) {
+                    g_hotkeyCaptureEnabled = false;
+                    g_hotkeyCaptureCallback = nullptr;
+                    ResetHotkeyCaptureStateLocked();
+                }
+            }
+        }
+    }
+
+    if (callback) {
+        InvokeHotkeyCaptureCallbackAsync(callback, callbackVk, callbackModifiers, callbackSideModifiers);
+    }
+    return captureWasActive;
+}
+
 // ============================================================
 // 回调线程 - 单线程排队执行，避免每次 CreateThread
 // ============================================================
@@ -210,6 +372,8 @@ static void SafeInvokeAny(const CallbackEvent& ev) {
         SAFE_INVOKE_CALLBACK(ev.keyboardCallback())
     } else if (ev.type == CallbackEvent::Mouse && ev.mouseCallback) {
         SAFE_INVOKE_CALLBACK(ev.mouseCallback(ev.x, ev.y))
+    } else if (ev.type == CallbackEvent::HotkeyCapture && ev.hotkeyCaptureCallback) {
+        SAFE_INVOKE_CALLBACK(ev.hotkeyCaptureCallback(ev.vkCode, ev.modifiers, ev.sideModifiers))
     }
 }
 
@@ -268,6 +432,15 @@ static void StopCallbackThread() {
     }
 }
 
+static void StopCallbackThreadIfIdle() {
+    if (!g_mouseRunning.load() &&
+        !g_keyboardRunning.load() &&
+        !g_mouseThreadAlive.load() &&
+        !g_keyboardThreadAlive.load()) {
+        StopCallbackThread();
+    }
+}
+
 static void EnqueueCallbackEvent(const CallbackEvent& event) {
     EnsureCallbackThread();
     {
@@ -283,12 +456,27 @@ static void EnqueueCallbackEvent(const CallbackEvent& event) {
 // 统一回调入队 — 替代原先的两个独立函数
 static void InvokeKeyboardCallbackAsync(KeyboardCallback callback) {
     if (!callback) return;
-    EnqueueCallbackEvent(CallbackEvent{CallbackEvent::Keyboard, callback, nullptr, 0, 0});
+    EnqueueCallbackEvent(CallbackEvent{CallbackEvent::Keyboard, callback, nullptr, 0, 0, nullptr, 0, 0, 0});
 }
 
 static void InvokeMouseCallbackAsync(MouseCallback callback, int x, int y) {
     if (!callback) return;
-    EnqueueCallbackEvent(CallbackEvent{CallbackEvent::Mouse, nullptr, callback, x, y});
+    EnqueueCallbackEvent(CallbackEvent{CallbackEvent::Mouse, nullptr, callback, x, y, nullptr, 0, 0, 0});
+}
+
+static void InvokeHotkeyCaptureCallbackAsync(HotkeyCaptureCallback callback, int vkCode, int modifiers, int sideModifiers) {
+    if (!callback) return;
+    EnqueueCallbackEvent(CallbackEvent{
+        CallbackEvent::HotkeyCapture,
+        nullptr,
+        nullptr,
+        0,
+        0,
+        callback,
+        vkCode,
+        modifiers,
+        sideModifiers,
+    });
 }
 
 // ============================================================
@@ -296,11 +484,11 @@ static void InvokeMouseCallbackAsync(MouseCallback callback, int x, int y) {
 // ============================================================
 
 struct HookContext {
-    HHOOK              hook           = NULL;
-    DWORD              threadId       = 0;
-    HANDLE             threadHandle   = NULL;
-    HANDLE             readyEvent     = NULL;
-    HANDLE             exitedEvent    = NULL;
+    HHOOK&             hook;
+    DWORD&             threadId;
+    HANDLE&            threadHandle;
+    HANDLE&            readyEvent;
+    HANDLE&            exitedEvent;
     std::atomic<bool>& running;
     std::atomic<bool>& installing;
     std::atomic<bool>& threadAlive;
@@ -813,6 +1001,11 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     int vk = pKbd->vkCode;
     double now = GetTime();
 
+    // 快捷键录制模式拥有最高优先级：录制期间所有键盘事件都不继续传给系统或其它程序。
+    if (HandleHotkeyCapture(vk, wParam, pKbd)) {
+        return 1;
+    }
+
     bool isAlt = (vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU);
     bool isCtrl = (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL);
 
@@ -1005,10 +1198,6 @@ bool InstallMouseHook(MouseCallback callback) {
         g_mouseRunning, g_mouseInstalling, g_mouseThreadAlive
     };
     bool result = InstallHookGeneric(ctx, MouseHookThread, callback, nullptr);
-    // 同步结构体字段回全局变量
-    g_mouseHook = ctx.hook; g_mouseThreadId = ctx.threadId;
-    g_mouseThreadHandle = ctx.threadHandle;
-    g_mouseReadyEvent = ctx.readyEvent; g_mouseExitedEvent = ctx.exitedEvent;
     return result;
 }
 
@@ -1019,10 +1208,8 @@ void UninstallMouseHook() {
         g_mouseRunning, g_mouseInstalling, g_mouseThreadAlive
     };
     UninstallHookGeneric(ctx);
-    g_mouseHook = ctx.hook; g_mouseThreadId = ctx.threadId;
-    g_mouseThreadHandle = ctx.threadHandle;
-    g_mouseReadyEvent = ctx.readyEvent; g_mouseExitedEvent = ctx.exitedEvent;
     StopDebugLogThread();
+    StopCallbackThreadIfIdle();
 }
 
 void SetMousePaused(bool paused) {
@@ -1049,9 +1236,6 @@ bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
         g_keyboardRunning, g_keyboardInstalling, g_keyboardThreadAlive
     };
     bool result = InstallHookGeneric(ctx, KeyboardHookThread, nullptr, altDoubleTapCallback);
-    g_keyboardHook = ctx.hook; g_keyboardThreadId = ctx.threadId;
-    g_keyboardThreadHandle = ctx.threadHandle;
-    g_keyboardReadyEvent = ctx.readyEvent; g_keyboardExitedEvent = ctx.exitedEvent;
     return result;
 }
 
@@ -1062,13 +1246,17 @@ void UninstallKeyboardHook() {
         g_keyboardRunning, g_keyboardInstalling, g_keyboardThreadAlive
     };
     UninstallHookGeneric(ctx);
-    g_keyboardHook = ctx.hook; g_keyboardThreadId = ctx.threadId;
-    g_keyboardThreadHandle = ctx.threadHandle;
-    g_keyboardReadyEvent = ctx.readyEvent; g_keyboardExitedEvent = ctx.exitedEvent;
     g_altHeld = false;
     g_ctrlHeld = false;
     g_altTapCount = 0;
     g_otherKeyPressed = false;
+    {
+        std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
+        g_hotkeyCaptureEnabled = false;
+        g_hotkeyCaptureCallback = nullptr;
+        ResetHotkeyCaptureStateLocked();
+    }
+    StopCallbackThreadIfIdle();
 }
 
 bool IsAltHeld() {
@@ -1236,27 +1424,56 @@ void ClearGlobalHotkey() {
     g_hotkeyCallback = nullptr;
 }
 
+HOOKS_API bool StartHotkeyCapture(HotkeyCaptureCallback callback, int timeoutMs) {
+    if (!callback) {
+        g_lastHookError = ERROR_INVALID_PARAMETER;
+        return false;
+    }
+    if (!IsKeyboardHookInstalled()) {
+        g_lastHookError = ERROR_NOT_READY;
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
+    ResetHotkeyCaptureStateLocked();
+    g_hotkeyCaptureCallback = callback;
+    g_hotkeyCaptureTimeoutMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : 10000;
+    g_hotkeyCaptureStartedTick = GetTickCount();
+    g_hotkeyCaptureEnabled = true;
+    return true;
+}
+
+HOOKS_API void StopHotkeyCapture() {
+    std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
+    g_hotkeyCaptureEnabled = false;
+    g_hotkeyCaptureCallback = nullptr;
+    ResetHotkeyCaptureStateLocked();
+}
+
+HOOKS_API bool IsHotkeyCaptureActive() {
+    return g_hotkeyCaptureEnabled.load();
+}
+
 void ReleaseAllModifierKeys() {
     // 只释放修饰键，不影响其他键
-    INPUT inputs[4] = {0};
+    const WORD keys[] = {
+        VK_SHIFT, VK_LSHIFT, VK_RSHIFT,
+        VK_CONTROL, VK_LCONTROL, VK_RCONTROL,
+        VK_MENU, VK_LMENU, VK_RMENU,
+        VK_LWIN, VK_RWIN,
+    };
+    INPUT inputs[sizeof(keys) / sizeof(keys[0])] = {0};
 
-    inputs[0].type = INPUT_KEYBOARD;
-    inputs[0].ki.wVk = VK_MENU;
-    inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+        inputs[i].type = INPUT_KEYBOARD;
+        inputs[i].ki.wVk = keys[i];
+        inputs[i].ki.dwFlags = KEYEVENTF_KEYUP;
+        if (keys[i] == VK_RCONTROL || keys[i] == VK_RMENU || keys[i] == VK_LWIN || keys[i] == VK_RWIN) {
+            inputs[i].ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+        }
+    }
 
-    inputs[1].type = INPUT_KEYBOARD;
-    inputs[1].ki.wVk = VK_CONTROL;
-    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-
-    inputs[2].type = INPUT_KEYBOARD;
-    inputs[2].ki.wVk = VK_SHIFT;
-    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-
-    inputs[3].type = INPUT_KEYBOARD;
-    inputs[3].ki.wVk = VK_LWIN;
-    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-
-    SendInput(4, inputs, sizeof(INPUT));
+    SendInput(static_cast<UINT>(sizeof(inputs) / sizeof(inputs[0])), inputs, sizeof(INPUT));
 }
 
 HOOKS_API void SetSpecialApps(const char** apps, int count) {
@@ -1339,7 +1556,8 @@ HOOKS_API unsigned int GetHooksCapabilities() {
            HOOKS_CAP_GLOBAL_HOTKEY |
            HOOKS_CAP_SPECIAL_APPS |
            HOOKS_CAP_DIAGNOSTICS |
-           HOOKS_CAP_HEALTH_STATUS;
+           HOOKS_CAP_HEALTH_STATUS |
+           HOOKS_CAP_HOTKEY_CAPTURE;
 }
 
 HOOKS_API unsigned long GetLastHookError() {

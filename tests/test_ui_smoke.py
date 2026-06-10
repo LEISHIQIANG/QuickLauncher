@@ -65,6 +65,25 @@ class _SmokeManager:
         return None
 
 
+def test_base_dialog_crash_trace_disabled_by_default(monkeypatch):
+    import builtins
+
+    import ui.config_window.base_dialog as base_dialog
+
+    calls = []
+
+    def fail_open(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("crash trace should not write unless explicitly enabled")
+
+    monkeypatch.delenv("QL_TRACE_DIALOG_CRASH", raising=False)
+    monkeypatch.setattr(builtins, "open", fail_open)
+
+    base_dialog._trace_to_crash_log("paintEvent.0: Smoke")
+
+    assert calls == []
+
+
 def test_diagnostics_window_create_format_close_smoke(qapp, tmp_path, monkeypatch):
     import ui.diagnostics_window as diagnostics_mod
     from ui.diagnostics_window import DiagnosticsWindow
@@ -182,6 +201,215 @@ def test_config_window_create_close_smoke(qapp, tmp_path, monkeypatch):
         qapp.processEvents()
 
     assert manager.flushed is True
+
+
+def test_config_window_animation_callback_is_generation_guarded():
+    from ui.config_window.main_window import ConfigWindow
+
+    window = ConfigWindow.__new__(ConfigWindow)
+    window._window_animation_generation = 2
+    calls = []
+
+    ConfigWindow._run_window_animation_callback(window, 1, lambda: calls.append("stale"))
+    ConfigWindow._run_window_animation_callback(window, 2, lambda: calls.append("current"))
+
+    assert calls == ["current"]
+
+
+def test_config_window_shortcut_dialog_history_is_released():
+    from ui.config_window.main_window import ConfigWindow
+
+    window = ConfigWindow.__new__(ConfigWindow)
+    window._dialog_history = []
+    window._active_file_dialog = None
+    ended = []
+    accepted = []
+    window._end_shortcut_dialog_action = lambda: ended.append(True)
+    window._clear_active_dialog_if_current = lambda attr, current: ConfigWindow._clear_active_dialog_if_current(
+        window, attr, current
+    )
+
+    class _Dialog:
+        def exec_(self):
+            return 1
+
+        def get_shortcut(self):
+            return "shortcut"
+
+    dialog = _Dialog()
+    window._active_file_dialog = dialog
+
+    ConfigWindow._run_shortcut_dialog(window, dialog, accepted.append, "_active_file_dialog")
+
+    assert accepted == ["shortcut"]
+    assert ended == [True]
+    assert window._dialog_history == []
+    assert window._active_file_dialog is None
+
+
+def test_config_window_hidden_active_shortcut_dialog_does_not_block_reopen():
+    from ui.config_window.main_window import ConfigWindow
+
+    class HiddenDialog:
+        def isVisible(self):
+            return False
+
+        def activateWindow(self):
+            raise AssertionError("hidden stale dialog should not be activated")
+
+        def raise_(self):
+            raise AssertionError("hidden stale dialog should not be raised")
+
+    window = SimpleNamespace(_active_file_dialog=HiddenDialog())
+
+    assert ConfigWindow._activate_existing_dialog(window, "_active_file_dialog") is False
+    assert window._active_file_dialog is None
+
+
+def test_config_window_same_shortcut_button_is_briefly_debounced(monkeypatch):
+    import ui.config_window.main_window as main_window_mod
+    from ui.config_window.main_window import ConfigWindow
+
+    now = [10.0]
+    enabled_states = []
+    monkeypatch.setattr(main_window_mod.time, "monotonic", lambda: now[0])
+    window = SimpleNamespace(
+        _shortcut_edit_active=False,
+        _shortcut_action_last_trigger_at={},
+        _shortcut_action_debounce_ms=250,
+        _set_shortcut_action_buttons_enabled=lambda enabled: enabled_states.append(enabled),
+    )
+
+    assert ConfigWindow._begin_shortcut_dialog_action(window, "file") is True
+    ConfigWindow._release_shortcut_dialog_action(window)
+
+    now[0] += 0.10
+    assert ConfigWindow._begin_shortcut_dialog_action(window, "file") is False
+
+    now[0] += 0.20
+    assert ConfigWindow._begin_shortcut_dialog_action(window, "file") is True
+    assert enabled_states == [False, True, False]
+
+
+def test_config_window_bottom_action_buttons_can_reopen_after_dialog_closes(monkeypatch):
+    import ui.config_window.command_dialog as command_dialog_mod
+    import ui.config_window.hotkey_dialog as hotkey_dialog_mod
+    import ui.config_window.main_window as main_window_mod
+    import ui.config_window.shortcut_dialog as shortcut_dialog_mod
+    import ui.config_window.url_dialog as url_dialog_mod
+    from ui.config_window.main_window import ConfigWindow
+
+    class Signal:
+        def __init__(self):
+            self.callbacks = []
+
+        def connect(self, callback):
+            self.callbacks.append(callback)
+
+        def emit(self):
+            for callback in list(self.callbacks):
+                callback()
+
+    created = []
+
+    class FakeDialog:
+        def __init__(self, *args, **kwargs):
+            self.finished = Signal()
+            created.append(type(self).__name__)
+
+        def exec_(self):
+            self.finished.emit()
+            return 0
+
+        def isVisible(self):
+            return False
+
+    class FakeShortcutDialog(FakeDialog):
+        pass
+
+    class FakeHotkeyDialog(FakeDialog):
+        pass
+
+    class FakeUrlDialog(FakeDialog):
+        pass
+
+    class FakeCommandDialog(FakeDialog):
+        pass
+
+    monkeypatch.setattr(shortcut_dialog_mod, "ShortcutDialog", FakeShortcutDialog)
+    monkeypatch.setattr(hotkey_dialog_mod, "HotkeyDialog", FakeHotkeyDialog)
+    monkeypatch.setattr(url_dialog_mod, "UrlDialog", FakeUrlDialog)
+    monkeypatch.setattr(command_dialog_mod, "CommandDialog", FakeCommandDialog)
+    now = [20.0]
+    monkeypatch.setattr(main_window_mod.time, "monotonic", lambda: now[0])
+
+    window = ConfigWindow.__new__(ConfigWindow)
+    window._active_file_dialog = None
+    window._active_hotkey_dialog = None
+    window._active_url_dialog = None
+    window._active_command_dialog = None
+    window._shortcut_edit_active = False
+    window._shortcut_action_last_trigger_at = {}
+    window._shortcut_action_debounce_ms = 250
+    window._dialog_history = []
+    window.icon_grid = SimpleNamespace(current_folder_id="folder", load_folder=lambda _folder_id: None)
+    window.data_manager = SimpleNamespace(add_shortcut=lambda *_args: None)
+    window.settings_changed = SimpleNamespace(emit=lambda: None)
+    window._set_shortcut_action_buttons_enabled = lambda _enabled: None
+
+    actions = (
+        ("file", ConfigWindow._on_add_file, FakeShortcutDialog),
+        ("hotkey", ConfigWindow._on_add_hotkey, FakeHotkeyDialog),
+        ("url", ConfigWindow._on_add_url, FakeUrlDialog),
+        ("command", ConfigWindow._on_add_command, FakeCommandDialog),
+    )
+
+    for _name, action, dialog_type in actions:
+        action(window)
+        now[0] += 0.30
+        action(window)
+        now[0] += 0.30
+        assert created.count(dialog_type.__name__) == 2
+
+
+def test_launcher_popup_initializes_without_dock_items(qapp, tmp_path, monkeypatch):
+    import ui.launcher_popup.popup_window as popup_window_mod
+    from ui.launcher_popup.popup_window import LauncherPopup
+
+    monkeypatch.setattr(popup_window_mod, "HAS_EXECUTOR", False)
+    monkeypatch.setattr(popup_window_mod, "HAS_WIN32_SHELL", False)
+
+    manager = _SmokeManager(tmp_path)
+    manager.data.settings.dock_enabled = False
+
+    popup = LauncherPopup(manager, 100, 100, capture_selection=False)
+    try:
+        assert popup.dock_items == []
+        assert popup.dock_height == 0
+        assert popup.width() > 0
+        assert popup.height() > 0
+    finally:
+        popup.close()
+        qapp.processEvents()
+
+
+def test_base_dialog_stale_animation_tick_does_not_stop_current_timer():
+    from ui.config_window.base_dialog import BaseDialog
+
+    dialog = BaseDialog.__new__(BaseDialog)
+    dialog._dialog_animation_generation = 2
+    dialog._dialog_finished = False
+    stopped = []
+
+    class _Timer:
+        def stop(self):
+            stopped.append(True)
+
+    dialog._anim_timer = _Timer()
+
+    BaseDialog._on_animation_tick(dialog, generation=1)
+
+    assert stopped == []
 
 
 def test_settings_panel_global_scale_apply_is_explicit_and_uses_five_percent_steps(qapp, tmp_path, monkeypatch):

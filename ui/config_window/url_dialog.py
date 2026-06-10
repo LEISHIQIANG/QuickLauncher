@@ -137,9 +137,6 @@ class UrlDialog(BaseDialog):
                 }
             """))
         else:
-            self.bg_color = "#f2f2f7"
-            self.border_color = "rgba(0, 0, 0, 0.1)"
-
             # 预览框样式
             self.icon_preview.setStyleSheet(scale_qss("""
                 QLabel {

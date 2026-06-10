@@ -5,8 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 import ui.launcher_popup.popup_search as popup_search_mod
+import ui.launcher_popup.popup_window_effect as popup_effect_mod
 from core.data_models import Folder, ShortcutItem
-from qt_compat import QFont, QPixmap, QWidget
+from qt_compat import QFont, QPixmap, QPoint, QRect, QWidget
 from ui.launcher_popup.popup_window import LauncherPopup
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
 
@@ -261,6 +262,61 @@ def test_popup_stop_lifecycle_timers_stops_known_timers():
     LauncherPopup._stop_lifecycle_timers(popup)
 
     assert all(timer.stopped for timer in timers.values())
+
+
+def test_popup_visibility_animation_ignores_stale_finish_callbacks():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup._visibility_animation_generation = 2
+    popup._is_hiding = True
+    popup._reveal_progress = 0.4
+    opacity = []
+    updates = []
+    popup.setWindowOpacity = lambda value: opacity.append(value)
+    popup.update = lambda: updates.append(True)
+
+    LauncherPopup._finish_show_animation(popup, generation=1)
+    LauncherPopup._on_hide_finished(popup, generation=1)
+
+    assert popup._is_hiding is True
+    assert popup._reveal_progress == 0.4
+    assert opacity == []
+    assert updates == []
+
+
+def test_popup_effect_snapshot_separates_native_windows(monkeypatch):
+    class _Screen:
+        def name(self):
+            return "screen-a"
+
+        def devicePixelRatio(self):
+            return 1.25
+
+        def geometry(self):
+            return QRect(0, 0, 1600, 900)
+
+        def availableGeometry(self):
+            return QRect(0, 0, 1600, 860)
+
+    monkeypatch.setattr(popup_effect_mod, "QApplication", SimpleNamespace(screenAt=lambda _pos: _Screen()))
+    monkeypatch.setattr(popup_effect_mod, "is_win10", lambda: False)
+    monkeypatch.setattr(popup_effect_mod, "is_win11", lambda: True)
+
+    def make_popup(hwnd: int):
+        popup = LauncherPopup.__new__(LauncherPopup)
+        popup.settings = SimpleNamespace(theme="dark", bg_mode="theme", corner_radius=8, bg_alpha=90, bg_blur_radius=0)
+        popup.width = lambda: 240
+        popup.height = lambda: 180
+        popup.winId = lambda: hwnd
+        popup.frameGeometry = lambda: QRect(20, 30, 240, 180)
+        popup.pos = lambda: QPoint(20, 30)
+        return popup
+
+    first = LauncherPopup._snapshot_effect_state(make_popup(101))
+    second = LauncherPopup._snapshot_effect_state(make_popup(202))
+
+    assert first != second
+    assert first[0] == 101
+    assert second[0] == 202
 
 
 def test_icon_flash_overlay_uses_short_dirty_pulse(qapp):

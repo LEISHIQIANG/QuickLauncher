@@ -93,6 +93,7 @@ class SupportDialog(QDialog):
         self.showFullScreen()
 
         self._anim_progress = 0.0
+        self._anim_generation = 0
         self._qr_pixmap = QPixmap()
         self._setup_ui()
 
@@ -103,6 +104,13 @@ class SupportDialog(QDialog):
         self._entry_anim.setEndValue(1.0)
         self._entry_anim.setEasingCurve(QEasingCurve.OutCubic)
         self._entry_anim.start()
+
+    def _next_anim_generation(self) -> int:
+        self._anim_generation = int(getattr(self, "_anim_generation", 0) or 0) + 1
+        return self._anim_generation
+
+    def _is_anim_generation_current(self, generation: int) -> bool:
+        return generation == int(getattr(self, "_anim_generation", -1) or -1)
 
     @pyqtProperty(float)
     def anim_progress(self):
@@ -152,6 +160,7 @@ class SupportDialog(QDialog):
     def close_with_anim(self):
         if self._anim_progress == 0.0:
             return
+        generation = self._next_anim_generation()
         stop_animation(getattr(self, "_entry_anim", None), owner="SupportDialog.entry")
         stop_animation(getattr(self, "_exit_anim", None), owner="SupportDialog.exit")
         self._exit_anim = QPropertyAnimation(self, b"anim_progress")
@@ -159,8 +168,13 @@ class SupportDialog(QDialog):
         self._exit_anim.setStartValue(self._anim_progress)
         self._exit_anim.setEndValue(0.0)
         self._exit_anim.setEasingCurve(QEasingCurve.OutQuad)
-        self._exit_anim.finished.connect(super().accept)
+        self._exit_anim.finished.connect(lambda generation=generation: self._finish_close_anim(generation))
         self._exit_anim.start()
+
+    def _finish_close_anim(self, generation: int) -> None:
+        if not self._is_anim_generation_current(generation):
+            return
+        super().accept()
 
     def paintEvent(self, event):
         painter = QPainter(self)

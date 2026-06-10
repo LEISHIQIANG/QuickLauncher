@@ -150,12 +150,12 @@ class SettingsSystemPageMixin:
         theme_layout.addStretch()
 
         # 高级颜色滤镜复选框 (仅Win11) — 同一排末尾
+        is_win11_platform = is_win11()
         self.advanced_mode_cb = QCheckBox(tr("高级模式"))
         self.advanced_mode_cb.setToolTip(tr("调节窗口颜色滤镜效果 (黑场/白场/中间调/色温/Acrylic/底色α)"))
         self.advanced_mode_cb.stateChanged.connect(self._on_advanced_mode_changed)
-        if not is_win11():
-            self.advanced_mode_cb.setEnabled(False)
-            self.advanced_mode_cb.setToolTip(tr("高级模式仅支持 Windows 11"))
+        if not is_win11_platform:
+            self.advanced_mode_cb.setVisible(False)
         theme_layout.addWidget(self.advanced_mode_cb)
         layout.addLayout(theme_layout)
 
@@ -790,6 +790,12 @@ fso.DeleteFile WScript.ScriptFullName
 
     def _on_advanced_mode_changed(self, state):
         """高级模式复选框切换"""
+        if not is_win11():
+            self.color_filter_panel.setVisible(False)
+            if self.advanced_mode_cb.isChecked():
+                self.advanced_mode_cb.setChecked(False)
+            return
+
         checked = state == 2  # Qt.Checked
         self.color_filter_panel.setVisible(checked)
         if not checked:
@@ -982,7 +988,12 @@ fso.DeleteFile WScript.ScriptFullName
                 self._rebuild_pages_for_language(current_index, scroll_value)
                 self._load_settings()
                 self._restore_page_scroll_value(current_index, scroll_value)
-                QTimer.singleShot(0, lambda: self._restore_page_scroll_value(current_index, scroll_value))
+                QTimer.singleShot(
+                    0,
+                    lambda generation=generation: self._restore_language_scroll_if_current(
+                        generation, current_index, scroll_value
+                    ),
+                )
                 self.settings_changed.emit()
             finally:
                 fade_in = self._build_language_fade_group(0.0, 1.0, 280, QEasingCurve.OutCubic)
@@ -1002,3 +1013,8 @@ fso.DeleteFile WScript.ScriptFullName
         fade_out.finished.connect(apply_language)
         self._language_fade_out = fade_out
         fade_out.start()
+
+    def _restore_language_scroll_if_current(self, generation: int, page_index: int, scroll_value: int):
+        if generation != int(getattr(self, "_language_anim_generation", 0) or 0):
+            return
+        self._restore_page_scroll_value(page_index, scroll_value)

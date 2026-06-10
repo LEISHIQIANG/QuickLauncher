@@ -38,6 +38,7 @@ from qt_compat import (
 from ui.styles.style import StyleSheet
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
+from ui.utils.interruptible_animation import stop_named_animations
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
@@ -198,16 +199,19 @@ class CompactProgressDialog(QDialog):
 
     def _start_show_animation(self):
         """窗口出现动画 (0.2s)"""
+        stop_named_animations(self, "anim_group", "opacity_anim", "pos_anim")
+        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
         self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.opacity_anim.setDuration(200)
-        self.opacity_anim.setStartValue(0.0)
+        self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
         self.pos_anim.setDuration(200)
-        self.pos_anim.setStartValue(QPoint(pos.x(), pos.y() + sp(20)))
+        start_pos = self.pos() if start_opacity > 0.001 else QPoint(pos.x(), pos.y() + sp(20))
+        self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
 
@@ -977,8 +981,14 @@ class SettingsPanel(
         self._slider_debounce_timer.timeout.connect(self._emit_slider_settings_changed)
         self._pending_slider_change = False
 
+        self._lazy_page_prewarm_timer = QTimer(self)
+        self._lazy_page_prewarm_timer.setSingleShot(True)
+        self._lazy_page_prewarm_timer.setInterval(650)
+        self._lazy_page_prewarm_timer.timeout.connect(self._prewarm_heavy_pages)
+
         self._setup_ui()
         self._load_settings()
+        self._schedule_heavy_page_prewarm()
 
     def _get_desc_color(self):
         """获取描述文字颜色"""
@@ -1247,6 +1257,29 @@ class SettingsPanel(
             except Exception as exc:
                 logger.debug("应用页面主题失败: %s", exc, exc_info=True)
 
+    def _schedule_heavy_page_prewarm(self):
+        """Prebuild heavy lazy pages while the settings panel is idle."""
+        if 5 in self._initialized_pages:
+            return
+        try:
+            self._lazy_page_prewarm_timer.start()
+        except Exception as exc:
+            logger.debug("调度设置页预热失败: %s", exc, exc_info=True)
+
+    def _prewarm_heavy_pages(self):
+        """Move first-hit work for command management out of the user's click path."""
+        if 5 in self._initialized_pages:
+            return
+        was_updates_enabled = self.updatesEnabled()
+        try:
+            settings = self.data_manager.get_settings()
+            self.setUpdatesEnabled(False)
+            self._ensure_page_built(5, settings=settings)
+        except Exception as exc:
+            logger.debug("预热命令管理页失败: %s", exc, exc_info=True)
+        finally:
+            self.setUpdatesEnabled(was_updates_enabled)
+
     def _init_nav_items(self):
         items = [
             ("系统设置", 0, "system"),
@@ -1370,7 +1403,7 @@ class SettingsPanel(
 
     def stop_background_timers(self):
         """Stop debounced settings timers before the owning window closes."""
-        for timer_name in ("_slider_debounce_timer", "_auto_start_check_timer"):
+        for timer_name in ("_slider_debounce_timer", "_auto_start_check_timer", "_lazy_page_prewarm_timer"):
             timer = getattr(self, timer_name, None)
             if timer is None:
                 continue

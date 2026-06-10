@@ -1,9 +1,8 @@
-"""Update signature verification — public key pinning and Ed25519 signature validation.
+"""Deprecated update manifest trust compatibility helpers.
 
-This module provides the trust root for update integrity that is independent
-of the download channel.  The public key is pinned in the source tree so that
-even if GitHub release metadata is compromised, a malicious installer must
-also produce a valid signature to be accepted.
+Runtime update checks use :mod:`services.update.trust`.  This legacy manifest
+verifier is kept for old imports only, and it fails closed when no source-tree
+public key is pinned.
 """
 
 from __future__ import annotations
@@ -40,8 +39,7 @@ def verify_manifest_signature(manifest_path: str | Path) -> bool:
     Raises ``SignatureVerificationError`` with a descriptive message on failure.
     """
     if not _PINNED_PUBLIC_KEY_B64:
-        logger.warning("No public key pinned — signature verification is disabled")
-        return True
+        raise SignatureVerificationError("no update signature public key pinned; use services.update.trust")
 
     manifest_path = Path(manifest_path)
     if not manifest_path.is_file():
@@ -129,8 +127,7 @@ def _verify_ed25519(pub_key: bytes, message: bytes, signature: bytes) -> bool:
         verify_key.verify(signature, message)
         return True
     except ImportError:
-        logger.warning("cryptography library not available — falling back to hash-only verification")
-        return True
+        raise SignatureVerificationError("cryptography library not available for legacy manifest verification") from None
     except InvalidSignature:
         raise SignatureVerificationError("Ed25519 signature does not match manifest content") from None
     except Exception as exc:

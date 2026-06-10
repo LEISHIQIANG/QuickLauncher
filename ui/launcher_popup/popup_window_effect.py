@@ -22,9 +22,6 @@ logger = logging.getLogger(__name__)
 class PopupWindowEffectMixin:
     """Win10/Win11 window effects: corner radius, acrylic, blur."""
 
-    # 效果参数缓存，用于避免重复的 DWM 重建（showEvent 等场景）
-    _last_effect_state = None
-
     def _get_win11_corner_preference(self, desired_radius: int):
         r = max(0, int(desired_radius))
         if r <= 0:
@@ -87,10 +84,38 @@ class PopupWindowEffectMixin:
         s = getattr(self, "settings", None)
         if s is None:
             return None
+        try:
+            hwnd = int(self.winId())
+        except Exception:
+            hwnd = 0
+        screen_state = None
+        try:
+            screen = QApplication.screenAt(self.frameGeometry().center()) or QApplication.screenAt(self.pos())
+            if screen is not None:
+                geometry = screen.geometry()
+                available = screen.availableGeometry()
+                screen_state = (
+                    screen.name(),
+                    round(float(screen.devicePixelRatio()), 3),
+                    geometry.x(),
+                    geometry.y(),
+                    geometry.width(),
+                    geometry.height(),
+                    available.x(),
+                    available.y(),
+                    available.width(),
+                    available.height(),
+                )
+        except Exception as exc:
+            logger.debug("采集窗口特效屏幕状态失败: %s", exc, exc_info=True)
         theme = getattr(s, "theme", "dark")
         bg_mode = getattr(s, "bg_mode", "theme")
         # 颜色滤镜参数（当前主题）
         return (
+            hwnd,
+            bool(is_win10()),
+            bool(is_win11()),
+            screen_state,
             bg_mode,
             getattr(s, "corner_radius", 8),
             getattr(s, "bg_alpha", 90),
@@ -106,24 +131,48 @@ class PopupWindowEffectMixin:
             self.height(),
         )
 
+    def _schedule_window_effect_update(self, delay_ms: int = 0):
+        delay_ms = max(0, int(delay_ms))
+        timer = getattr(self, "_window_effect_update_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._run_scheduled_window_effect_update)
+            self._window_effect_update_timer = timer
+
+        if timer.isActive():
+            current_delay = int(getattr(self, "_window_effect_update_delay_ms", delay_ms) or 0)
+            if delay_ms >= current_delay:
+                return
+            timer.stop()
+
+        self._window_effect_update_delay_ms = delay_ms
+        timer.start(delay_ms)
+
+    def _run_scheduled_window_effect_update(self):
+        self._window_effect_update_delay_ms = None
+        self._update_window_effect()
+
     def _update_window_effect(self):
         """更新窗口特效 (Acrylic / Blur)"""
         try:
             # 参数快照缓存：如果效果参数未变化则跳过 DWM 重建，
             # 避免 showEvent 等场景重复调用导致的视觉闪烁
             current_state = self._snapshot_effect_state()
-            if current_state is not None and current_state == self._last_effect_state:
+            if current_state is not None and current_state == getattr(self, "_last_effect_state", None):
                 logger.debug("[EFFECT] 参数未变化，跳过 DWM 重建")
                 return
 
             bg_mode = getattr(self.settings, "bg_mode", "theme")
             desired_radius = getattr(self.settings, "corner_radius", 8)
+            blur_radius = getattr(self.settings, "bg_blur_radius", 0)
 
             hwnd = int(self.winId())
             if not hwnd:
                 return
 
             logger.debug(f"[EFFECT] 更新窗口效果: mode={bg_mode}, size={self.width()}x{self.height()}")
+            self.window_effect.enable_window_shadow(hwnd, self._get_paint_corner_radius(bg_mode, blur_radius))
 
             if bg_mode == "acrylic":
                 # ===== 亚克力模式：使用与配置窗口完全相同的磨砂玻璃效果 =====
@@ -303,7 +352,7 @@ class PopupLayoutMixin:
         if overlay is not None:
             overlay.setGeometry(self.rect())
         if not getattr(self, "_geometry_adjusting", False):
-            QTimer.singleShot(0, self._update_window_effect)
+            self._schedule_window_effect_update(0)
         super().resizeEvent(event)
 
     def moveEvent(self, event):
@@ -319,9 +368,9 @@ class PopupLayoutMixin:
                 self._bg_cache = None
                 self._last_bg_params = None
                 logger.debug(f"屏幕切换，清空背景缓存: {old_screen.name()} -> {new_screen.name()}")
-                QTimer.singleShot(50, self._update_window_effect)
+                self._schedule_window_effect_update(50)
             else:
-                self._update_window_effect()
+                self._schedule_window_effect_update(0)
         except Exception as exc:
             logger.debug("处理窗口移动事件失败: %s", exc, exc_info=True)
         super().moveEvent(event)

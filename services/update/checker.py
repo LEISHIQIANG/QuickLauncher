@@ -5,7 +5,9 @@ import logging
 import os
 import re
 import threading
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
 from urllib.parse import urlparse
 
 from core.background_tasks import start_background_thread
@@ -44,15 +46,15 @@ class UpdateChecker:
         self._timer: threading.Thread | None = None
         self._timer_cancel_event: threading.Event | None = None
         self._timer_lock = threading.Lock()
-        self._listeners = []
+        self._listeners: list[Callable[[str, Any], None]] = []
         self._running = False
         self._last_check_status = ""
         self._last_check_error = ""
 
-    def add_listener(self, callback):
+    def add_listener(self, callback: Callable[[str, Any], None]) -> None:
         self._listeners.append(callback)
 
-    def _notify(self, event: str, data=None):
+    def _notify(self, event: str, data: Any = None) -> None:
         for callback in list(self._listeners):
             try:
                 callback(event, data)
@@ -180,9 +182,11 @@ class UpdateChecker:
             self._last_check_error = ""
             return info
         except UpdateCheckError as exc:
-            return self._fail_check(exc.event, str(exc))
+            self._fail_check(exc.event, str(exc))
+            return None
         except (ApiError, OSError, RuntimeError, TypeError, ValueError) as exc:
-            return self._fail_check("check_failed", str(exc))
+            self._fail_check("check_failed", str(exc))
+            return None
 
     def _fail_check(self, event: str, message: str) -> None:
         self._last_check_status = "failed"

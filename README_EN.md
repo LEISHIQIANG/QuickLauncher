@@ -63,7 +63,7 @@ py -3.12 main.py
 | Appearance | Dark/light themes, acrylic background, custom images, free layout configuration |
 | Plugin System | Permission management, hot-loading, `.qlzip` packaging, custom commands & search sources |
 | Data Safety | Atomic saves, auto-backup, 20 config snapshots, corrupted-config auto-recovery |
-| Auto-Update | GitHub Releases source, SHA-256 verification, silent install |
+| Auto-Update | GitHub Releases source, Ed25519 release signatures, SHA-256 verification, silent install |
 
 ## Use With Confidence
 
@@ -73,6 +73,7 @@ py -3.12 main.py
 | Writes files to C drive? | All data lives in the app directory — no system drive pollution |
 | Writes to registry? | No. Auto-start uses Task Scheduler — easy to disable |
 | Phones home? | No network activity except auto-update checks |
+| Auto-update trust chain | Release signatures are required by default; missing public keys make update validation fail closed |
 | Resource hog at idle? | CPU 0-2%, RAM < 100MB when idle |
 | Clean uninstall? | Just delete the app folder — no registry or system file residue |
 

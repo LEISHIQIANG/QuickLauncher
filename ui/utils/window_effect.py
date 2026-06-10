@@ -2,7 +2,8 @@ import ctypes
 import logging
 import sys
 from ctypes import POINTER, Structure, byref, c_bool, c_int, c_void_p, sizeof, windll
-from ctypes.wintypes import DWORD, HWND, ULONG
+from ctypes.wintypes import DWORD, HWND, ULONG, WCHAR
+from weakref import ref
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,48 @@ HRGN = c_void_p
 
 # Windows 版本缓存
 _windows_version_cache = None
+_WIN10_SHADOW_ATTR = "_quicklauncher_win10_shadow"
+_WINDOW_EFFECT_ERRORS = (
+    AttributeError,
+    ImportError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    ctypes.ArgumentError,
+)
+
+
+class _RTL_OSVERSIONINFOW(Structure):
+    _fields_ = [
+        ("dwOSVersionInfoSize", DWORD),
+        ("dwMajorVersion", DWORD),
+        ("dwMinorVersion", DWORD),
+        ("dwBuildNumber", DWORD),
+        ("dwPlatformId", DWORD),
+        ("szCSDVersion", WCHAR * 128),
+    ]
+
+
+def _classify_windows_build(build: int) -> str:
+    if build >= 22000:
+        return "win11"
+    if build >= 10240:
+        return "win10"
+    return "win7"
+
+
+def _get_windows_build_from_rtl() -> int | None:
+    """Return the real NT build number without compatibility virtualization."""
+    try:
+        version = _RTL_OSVERSIONINFOW()
+        version.dwOSVersionInfoSize = sizeof(version)
+        status = windll.ntdll.RtlGetVersion(byref(version))
+        if status == 0 and version.dwBuildNumber:
+            return int(version.dwBuildNumber)
+    except _WINDOW_EFFECT_ERRORS:
+        logger.debug("RtlGetVersion failed", exc_info=True)
+    return None
 
 
 def get_windows_version():
@@ -20,16 +63,12 @@ def get_windows_version():
         return _windows_version_cache
 
     try:
-        version = sys.getwindowsversion()
-        build = version.build
-
-        if build >= 22000:
-            _windows_version_cache = "win11"
-        elif build >= 10240:
-            _windows_version_cache = "win10"
-        else:
-            _windows_version_cache = "win7"
-    except Exception:
+        build = _get_windows_build_from_rtl()
+        if build is None:
+            version = sys.getwindowsversion()
+            build = int(version.build)
+        _windows_version_cache = _classify_windows_build(build)
+    except _WINDOW_EFFECT_ERRORS:
         logger.debug("get_windows_version failed", exc_info=True)
         _windows_version_cache = "win10"
 
@@ -59,7 +98,7 @@ def _qpaint_composition_mode(name: str):
             if value is not None:
                 return value
         return getattr(QPainter, f"CompositionMode_{name}", None)
-    except Exception:
+    except _WINDOW_EFFECT_ERRORS:
         logger.debug("_qpaint_composition_mode failed", exc_info=True)
         return None
 
@@ -115,9 +154,548 @@ def paint_win10_rounded_surface(
         painter.setBrush(QtCompat.NoBrush)
         painter.drawPath(path)
         return True
-    except Exception as exc:
+    except _WINDOW_EFFECT_ERRORS as exc:
         logger.debug("绘制 Win10 圆角背景失败: %s", exc, exc_info=True)
         return False
+
+
+class _Win10ShadowWindow:
+    """Transparent companion window that paints a Win10-like rounded shadow."""
+
+    def __init__(self, target, radius: int):
+        from qt_compat import QColor, QEvent, QPainter, QPainterPath, QRectF, Qt, QWidget
+
+        self._QColor = QColor
+        self._QEvent = QEvent
+        self._QPainter = QPainter
+        self._QPainterPath = QPainterPath
+        self._QRectF = QRectF
+        self._Qt = Qt
+        self._target_ref = ref(target)
+        self._radius = max(0, int(radius))
+        self._sync_pending = False
+        self._attached = False
+        self._window_handle = None
+        self._last_shadow_state = None
+        self._last_paint_state = None
+        self._event_hooks_installed = False
+        self._method_hooks_installed = False
+        self.widget = None
+
+        class ShadowWidget(QWidget):
+            def __init__(inner_self, owner):
+                super().__init__(None)
+                inner_self._owner = owner
+
+            def paintEvent(inner_self, event):
+                inner_self._owner._paint(inner_self)
+
+            def event(inner_self, event):
+                if event.type() == owner._QEvent.WindowActivate:
+                    target_widget = owner._target()
+                    if target_widget is not None:
+                        target_widget.activateWindow()
+                return super().event(event)
+
+        owner = self
+        self._shadow_widget_cls = ShadowWidget
+        self._sync_timer = None
+        self.attach(target)
+
+    def _target(self):
+        try:
+            return self._target_ref()
+        except _WINDOW_EFFECT_ERRORS:
+            return None
+
+    def _configure_shadow_window(self, target):
+        from qt_compat import QtCompat
+
+        if self.widget is None:
+            return
+        Qt = self._Qt
+        flags = Qt.Tool | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint
+        if target.windowFlags() & QtCompat.WindowStaysOnTopHint:
+            flags |= QtCompat.WindowStaysOnTopHint
+        transparent_input = getattr(Qt, "WindowTransparentForInput", None)
+        if transparent_input is not None:
+            flags |= transparent_input
+        self.widget.setWindowFlags(flags)
+        self.widget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.widget.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.widget.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.widget.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.widget.setFocusPolicy(Qt.NoFocus)
+        self.widget.setAutoFillBackground(False)
+        self._apply_win32_input_styles()
+
+    def _apply_win32_input_styles(self):
+        try:
+            if self.widget is None:
+                return
+            hwnd = int(self.widget.winId())
+            if not hwnd:
+                return
+            GWL_EXSTYLE = -20
+            WS_EX_TRANSPARENT = 0x00000020
+            WS_EX_NOACTIVATE = 0x08000000
+            WS_EX_TOOLWINDOW = 0x00000080
+            user32 = windll.user32
+            style = user32.GetWindowLongW(HWND(hwnd), c_int(GWL_EXSTYLE))
+            style |= WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
+            user32.SetWindowLongW(HWND(hwnd), c_int(GWL_EXSTYLE), c_int(style))
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("设置 Win10 阴影窗口输入样式失败", exc_info=True)
+
+    def attach(self, target):
+        if self._attached:
+            return
+        try:
+            from qt_compat import QTimer
+
+            self._sync_timer = QTimer(target)
+            self._sync_timer.setInterval(50)
+            self._sync_timer.timeout.connect(self.sync)
+            target.destroyed.connect(self._on_target_destroyed)
+            self._install_target_event_hooks(target)
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("启动 Win10 阴影同步定时器失败", exc_info=True)
+        self._attached = True
+        try:
+            if target.isVisible():
+                self._set_sync_timer_active(True)
+                self.sync_later()
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("检查目标窗口可见性失败", exc_info=True)
+
+    def _set_sync_timer_active(self, active: bool) -> None:
+        timer = self._sync_timer
+        if timer is None:
+            return
+        try:
+            if active:
+                if not timer.isActive():
+                    timer.start()
+            elif timer.isActive():
+                timer.stop()
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("切换 Win10 阴影同步定时器失败", exc_info=True)
+
+    def _hide_shadow_widget(self) -> None:
+        self._set_sync_timer_active(False)
+        if self.widget is not None:
+            self.widget.hide()
+
+    def detach(self):
+        self._attached = False
+        self._window_handle = None
+        self._last_shadow_state = None
+        self._last_paint_state = None
+        self._event_hooks_installed = False
+        self._method_hooks_installed = False
+        try:
+            if self._sync_timer is not None:
+                self._sync_timer.stop()
+                self._sync_timer = None
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("停止 Win10 阴影同步定时器失败", exc_info=True)
+        try:
+            if self.widget is not None:
+                self.widget.hide()
+                self.widget.deleteLater()
+                self.widget = None
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("销毁 Win10 阴影窗口失败", exc_info=True)
+
+    def _on_target_destroyed(self):
+        self._attached = False
+        self._target_ref = lambda: None
+        self._window_handle = None
+        self._last_shadow_state = None
+        self._last_paint_state = None
+        self._event_hooks_installed = False
+        self._method_hooks_installed = False
+        self._sync_timer = None
+        try:
+            if self.widget is not None:
+                self.widget.hide()
+                self.widget.deleteLater()
+                self.widget = None
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("目标销毁时清理 Win10 阴影失败", exc_info=True)
+
+    def set_radius(self, radius: int):
+        radius = max(0, int(radius))
+        if radius == self._radius:
+            return
+        self._radius = radius
+        self._last_shadow_state = None
+        self._last_paint_state = None
+        if self.widget is not None:
+            self.widget.update()
+        self.sync_later()
+
+    def sync_later(self):
+        if self._sync_pending:
+            return
+        self._sync_pending = True
+        try:
+            from qt_compat import QTimer
+
+            target = self._target()
+            if target is not None and target.isVisible():
+                self._set_sync_timer_active(True)
+            QTimer.singleShot(0, self.sync)
+        except _WINDOW_EFFECT_ERRORS:
+            self._sync_pending = False
+            logger.debug("调度 Win10 阴影同步失败", exc_info=True)
+
+    def sync(self):
+        self._sync_pending = False
+        target = self._target()
+        if target is None:
+            self.detach()
+            return
+        try:
+            opacity = float(target.windowOpacity())
+        except _WINDOW_EFFECT_ERRORS:
+            opacity = 1.0
+        try:
+            should_hide = (
+                not target.isVisible()
+                or target.isMinimized()
+                or target.isMaximized()
+                or target.isFullScreen()
+                or opacity <= 0.01
+            )
+        except _WINDOW_EFFECT_ERRORS:
+            should_hide = True
+        if should_hide:
+            self._hide_shadow_widget()
+            return
+        self._set_sync_timer_active(True)
+
+        try:
+            if not self._ensure_widget(target):
+                return
+            self._connect_target_window_signals(target)
+            margin, bottom_extra = self._shadow_margins(target)
+            frame = target.frameGeometry()
+            widget_geometry = (
+                int(frame.x()) - margin,
+                int(frame.y()) - margin,
+                int(frame.width()) + margin * 2,
+                int(frame.height()) + margin * 2 + bottom_extra,
+            )
+            shadow_state = (
+                widget_geometry,
+                int(frame.width()),
+                int(frame.height()),
+                int(round(opacity * 1000)),
+                int(self._radius),
+                margin,
+                bottom_extra,
+            )
+            if shadow_state == self._last_shadow_state and self.widget.isVisible():
+                self._sync_z_order(target)
+                return
+            was_visible = self.widget.isVisible()
+            paint_state = (
+                int(frame.width()),
+                int(frame.height()),
+                int(self._radius),
+                margin,
+                bottom_extra,
+            )
+            needs_repaint = paint_state != self._last_paint_state or not was_visible
+            self._last_shadow_state = shadow_state
+            self._last_paint_state = paint_state
+            self._content_x = margin
+            self._content_y = margin
+            self._content_w = max(1, int(frame.width()))
+            self._content_h = max(1, int(frame.height()))
+            self._shadow_margin = margin
+            self._shadow_bottom_extra = bottom_extra
+            self.widget.setGeometry(*widget_geometry)
+            self.widget.setWindowOpacity(max(0.0, min(0.95, opacity)))
+            self.widget.show()
+            self._sync_z_order(target)
+            if needs_repaint:
+                self.widget.update()
+        except RuntimeError:
+            self.detach()
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("同步 Win10 阴影窗口失败", exc_info=True)
+
+    def _connect_target_window_signals(self, target):
+        try:
+            handle = target.windowHandle()
+            if handle is None:
+                return
+            if handle is self._window_handle:
+                return
+            self._window_handle = handle
+            for signal_name in (
+                "xChanged",
+                "yChanged",
+                "widthChanged",
+                "heightChanged",
+            ):
+                signal = getattr(handle, signal_name, None)
+                if signal is not None:
+                    signal.connect(lambda *_args: self.sync_later())
+            for signal_name in (
+                "visibleChanged",
+                "screenChanged",
+                "activeChanged",
+            ):
+                signal = getattr(handle, signal_name, None)
+                if signal is not None:
+                    signal.connect(self._sync_z_order_later)
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("连接 Win10 阴影窗口几何信号失败", exc_info=True)
+
+    def _install_target_event_hooks(self, target):
+        if self._event_hooks_installed:
+            return
+        self._event_hooks_installed = True
+
+        def wrap_event(name, after):
+            original = getattr(target, name, None)
+            if original is None:
+                return
+
+            def wrapped(event, original=original, after=after):
+                result = original(event)
+                try:
+                    after()
+                except _WINDOW_EFFECT_ERRORS:
+                    logger.debug("Win10 阴影事件同步失败: %s", name, exc_info=True)
+                return result
+
+            setattr(target, name, wrapped)
+
+        wrap_event("moveEvent", self.sync_later)
+        wrap_event("resizeEvent", self.sync_later)
+        wrap_event("showEvent", self.sync_later)
+        wrap_event("hideEvent", self._hide_shadow_widget)
+        wrap_event("closeEvent", self.detach)
+        self._install_target_method_hooks(target)
+
+    def _install_target_method_hooks(self, target):
+        if self._method_hooks_installed:
+            return
+        self._method_hooks_installed = True
+
+        def wrap_method(name, after):
+            original = getattr(target, name, None)
+            if original is None:
+                return
+
+            def wrapped(*args, original=original, after=after, **kwargs):
+                result = original(*args, **kwargs)
+                try:
+                    after()
+                except _WINDOW_EFFECT_ERRORS:
+                    logger.debug("Win10 阴影方法同步失败: %s", name, exc_info=True)
+                return result
+
+            setattr(target, name, wrapped)
+
+        wrap_method("raise_", self._sync_z_order_later)
+        wrap_method("activateWindow", self._sync_z_order_later)
+        wrap_method("show", self.sync_later)
+        wrap_method("showNormal", self.sync_later)
+        wrap_method("showFullScreen", self.sync_later)
+        wrap_method("showMaximized", self.sync_later)
+
+    def _ensure_widget(self, target):
+        if self.widget is not None:
+            return True
+        try:
+            self.widget = self._shadow_widget_cls(self)
+            self._configure_shadow_window(target)
+            return True
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("创建 Win10 阴影窗口失败", exc_info=True)
+            self.widget = None
+            return False
+
+    def _shadow_margins(self, target):
+        scale = 1.0
+        try:
+            handle = target.windowHandle()
+            screen = handle.screen() if handle is not None else None
+            if screen is not None:
+                scale = max(1.0, float(screen.logicalDotsPerInchX()) / 96.0)
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("计算 Win10 阴影 DPI 失败", exc_info=True)
+        margin = max(10, int(round(13 * scale)))
+        bottom_extra = max(1, int(round(1.5 * scale)))
+        return margin, bottom_extra
+
+    def _sync_z_order_later(self):
+        try:
+            from qt_compat import QTimer
+
+            QTimer.singleShot(0, lambda: self._sync_z_order(self._target()))
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("调度 Win10 阴影层级同步失败", exc_info=True)
+
+    def _sync_z_order(self, target):
+        try:
+            if target is None or self.widget is None or not self.widget.isVisible():
+                return
+            shadow_hwnd = int(self.widget.winId())
+            target_hwnd = int(target.winId())
+            if not shadow_hwnd or not target_hwnd:
+                return
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            SWP_NOOWNERZORDER = 0x0200
+            windll.user32.SetWindowPos(
+                HWND(shadow_hwnd),
+                HWND(target_hwnd),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            )
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("设置 Win10 阴影窗口层级失败", exc_info=True)
+
+    def _paint(self, widget):
+        QColor = self._QColor
+        QPainter = self._QPainter
+        QPainterPath = self._QPainterPath
+        QRectF = self._QRectF
+        Qt = self._Qt
+
+        painter = QPainter(widget)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
+            painter.setCompositionMode(QPainter.CompositionMode_Source)
+            painter.fillRect(widget.rect(), QColor(0, 0, 0, 0))
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+            content = QRectF(
+                getattr(self, "_content_x", 18),
+                getattr(self, "_content_y", 18),
+                getattr(self, "_content_w", max(1, widget.width() - 36)),
+                getattr(self, "_content_h", max(1, widget.height() - 43)),
+            )
+            radius = max(0.0, float(self._radius))
+            margin = max(1, int(getattr(self, "_shadow_margin", 18)))
+            bottom_extra = max(0, int(getattr(self, "_shadow_bottom_extra", 7)))
+
+            painter.setPen(Qt.NoPen)
+            for i in range(margin, 0, -1):
+                t = i / float(margin)
+                spread = float(i)
+                strength = (1.0 - t) * (1.0 - t)
+                alpha = int(1 + 5 * strength)
+                shadow_rect = content.adjusted(
+                    -spread,
+                    -spread * 0.88,
+                    spread,
+                    spread * 0.88 + bottom_extra * strength,
+                ).translated(0, bottom_extra * 0.35)
+                path = QPainterPath()
+                path.addRoundedRect(shadow_rect, radius + spread, radius + spread)
+                painter.fillPath(path, QColor(0, 0, 0, alpha))
+
+            contact_margin = max(4, int(round(margin * 0.38)))
+            for i in range(contact_margin, 0, -1):
+                t = i / float(contact_margin)
+                spread = float(i)
+                strength = (1.0 - t) * (1.0 - t)
+                alpha = int(1 + 3 * strength)
+                shadow_rect = content.adjusted(
+                    -spread * 0.36,
+                    0,
+                    spread * 0.36,
+                    spread * 0.36 + bottom_extra,
+                ).translated(0, 0.75 + bottom_extra * 0.10)
+                path = QPainterPath()
+                path.addRoundedRect(shadow_rect, radius + spread * 0.36, radius + spread * 0.36)
+                painter.fillPath(path, QColor(0, 0, 0, alpha))
+
+            inner = QPainterPath()
+            inner.addRoundedRect(content, radius, radius)
+            painter.setCompositionMode(QPainter.CompositionMode_Clear)
+            painter.fillPath(inner, QColor(0, 0, 0, 0))
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+        except _WINDOW_EFFECT_ERRORS:
+            logger.debug("绘制 Win10 阴影失败", exc_info=True)
+        finally:
+            painter.end()
+
+
+def _find_qt_widget_for_hwnd(hwnd: int):
+    try:
+        from qt_compat import QApplication
+
+        hwnd_int = int(hwnd)
+        for widget in QApplication.topLevelWidgets():
+            try:
+                if int(widget.winId()) == hwnd_int:
+                    return widget
+            except _WINDOW_EFFECT_ERRORS:
+                continue
+    except _WINDOW_EFFECT_ERRORS:
+        logger.debug("查找 HWND 对应 Qt 窗口失败", exc_info=True)
+    return None
+
+
+def install_win10_window_shadow(widget, radius: int = 12):
+    """Install or update the custom Win10 rounded shadow for a frameless widget."""
+    if widget is None:
+        return False
+    if not is_win10():
+        remove_win10_window_shadow(widget)
+        return False
+    try:
+        shadow = getattr(widget, _WIN10_SHADOW_ATTR, None)
+        if shadow is None:
+            shadow = _Win10ShadowWindow(widget, radius)
+            setattr(widget, _WIN10_SHADOW_ATTR, shadow)
+        else:
+            shadow.set_radius(radius)
+            shadow.sync_later()
+        return True
+    except RuntimeError:
+        return False
+    except _WINDOW_EFFECT_ERRORS:
+        logger.debug("安装 Win10 阴影失败", exc_info=True)
+        return False
+
+
+def remove_win10_window_shadow(widget):
+    """Detach a previously installed Win10 companion shadow, if present."""
+    if widget is None:
+        return False
+    try:
+        shadow = getattr(widget, _WIN10_SHADOW_ATTR, None)
+        if shadow is None:
+            return False
+        shadow.detach()
+        try:
+            delattr(widget, _WIN10_SHADOW_ATTR)
+        except AttributeError:
+            setattr(widget, _WIN10_SHADOW_ATTR, None)
+        return True
+    except RuntimeError:
+        return False
+    except _WINDOW_EFFECT_ERRORS:
+        logger.debug("移除 Win10 阴影失败", exc_info=True)
+        return False
+
+
+def install_win10_window_shadow_for_hwnd(hwnd: int, radius: int = 12):
+    return install_win10_window_shadow(_find_qt_widget_for_hwnd(hwnd), radius)
 
 
 class WindowCompositionAttributeData(Structure):
@@ -171,37 +749,37 @@ class WindowEffect:
         try:
             self.user32.IsWindow.argtypes = [HWND]
             self.user32.IsWindow.restype = BOOL
-        except Exception as e:
+        except _WINDOW_EFFECT_ERRORS as e:
             logger.debug("设置 IsWindow argtypes 失败: %s", e)
 
         try:
             self.user32.GetDpiForWindow.argtypes = [HWND]
             self.user32.GetDpiForWindow.restype = ctypes.c_uint
-        except Exception as e:
+        except _WINDOW_EFFECT_ERRORS as e:
             logger.debug("设置 GetDpiForWindow argtypes 失败: %s", e)
 
         try:
             self.gdi32.CreateRoundRectRgn.argtypes = [c_int, c_int, c_int, c_int, c_int, c_int]
             self.gdi32.CreateRoundRectRgn.restype = HRGN
-        except Exception as e:
+        except _WINDOW_EFFECT_ERRORS as e:
             logger.debug("设置 CreateRoundRectRgn argtypes 失败: %s", e)
 
         try:
             self.gdi32.DeleteObject.argtypes = [c_void_p]
             self.gdi32.DeleteObject.restype = BOOL
-        except Exception as e:
+        except _WINDOW_EFFECT_ERRORS as e:
             logger.debug("设置 DeleteObject argtypes 失败: %s", e)
 
         try:
             self.user32.SetWindowRgn.argtypes = [HWND, HRGN, BOOL]
             self.user32.SetWindowRgn.restype = c_int
-        except Exception as e:
+        except _WINDOW_EFFECT_ERRORS as e:
             logger.debug("设置 SetWindowRgn argtypes 失败: %s", e)
 
         try:
             self.user32.MonitorFromWindow.argtypes = [HWND, DWORD]
             self.user32.MonitorFromWindow.restype = c_void_p
-        except Exception as e:
+        except _WINDOW_EFFECT_ERRORS as e:
             logger.debug("设置 MonitorFromWindow argtypes 失败: %s", e)
 
     def is_win11(self):
@@ -215,7 +793,7 @@ class WindowEffect:
     def _is_window(self, hwnd: int) -> bool:
         try:
             return bool(self.user32.IsWindow(HWND(int(hwnd))))
-        except Exception:
+        except _WINDOW_EFFECT_ERRORS:
             logger.debug("_is_window check failed", exc_info=True)
             return bool(hwnd)
 
@@ -243,12 +821,12 @@ class WindowEffect:
                         windll.shcore.GetDpiForMonitor(h_monitor, 0, byref(dpi_x), byref(dpi_y))
                         if dpi_x.value > 0:
                             dpi = dpi_x.value
-                    except Exception as exc:
+                    except _WINDOW_EFFECT_ERRORS as exc:
                         logger.debug("获取显示器DPI失败: %s", exc, exc_info=True)
 
             if dpi > 0:
                 return float(dpi) / 96.0
-        except Exception as exc:
+        except _WINDOW_EFFECT_ERRORS as exc:
             logger.debug("计算DPI缩放失败: %s", exc, exc_info=True)
         return 1.0
 
@@ -347,7 +925,7 @@ class WindowEffect:
             dwmapi.DwmSetWindowAttribute(
                 HWND(int(hwnd)), DWORD(DWMWA_WINDOW_CORNER_PREFERENCE), byref(pref), sizeof(pref)
             )
-        except Exception as exc:
+        except _WINDOW_EFFECT_ERRORS as exc:
             logger.debug("设置窗口圆角偏好失败: %s", exc, exc_info=True)
 
     def set_window_region(self, hwnd: int, w: int, h: int, r: int, x: int = 0, y: int = 0):
@@ -399,9 +977,9 @@ class WindowEffect:
                 # 如果失败，删除区域句柄
                 try:
                     self.gdi32.DeleteObject(HRGN(hrgn))
-                except Exception as exc:
+                except _WINDOW_EFFECT_ERRORS as exc:
                     logger.debug("删除GDI对象失败: %s", exc, exc_info=True)
-        except Exception as exc:
+        except _WINDOW_EFFECT_ERRORS as exc:
             logger.debug("设置窗口区域失败: %s", exc, exc_info=True)
 
     def clear_window_region(self, hwnd: int):
@@ -410,7 +988,7 @@ class WindowEffect:
             if not self._is_window(hwnd):
                 return
             self.user32.SetWindowRgn(HWND(int(hwnd)), HRGN(0), BOOL(1))
-        except Exception as exc:
+        except _WINDOW_EFFECT_ERRORS as exc:
             logger.debug("清除窗口区域失败: %s", exc, exc_info=True)
 
     def set_aero_blur(self, hwnd: int, enable: bool = True):
@@ -487,7 +1065,7 @@ class WindowEffect:
             if bb.hRgnBlur:
                 self.gdi32.DeleteObject(bb.hRgnBlur)
 
-        except Exception as exc:
+        except _WINDOW_EFFECT_ERRORS as exc:
             logger.debug("设置DWM模糊失败: %s", exc, exc_info=True)
 
     def apply_unified_round_corners(self, hwnd: int, w: int, h: int, r: int = 12):
@@ -534,7 +1112,9 @@ class WindowEffect:
         """
         为无边框窗口启用原生窗口阴影（自动适配 Win10/Win11）
 
-        通过 DwmExtendFrameIntoClientArea 扩展边框来实现阴影效果。
+        Win11 使用 DwmExtendFrameIntoClientArea。Win10 的透明无边框
+        Qt 窗口无法稳定拿到 DWM 阴影，因此使用一个跟随目标窗口的
+        透明影子窗口，视觉上贴近原生 Win10 阴影并匹配圆角半径。
 
         Args:
             hwnd: 窗口句柄
@@ -544,7 +1124,7 @@ class WindowEffect:
             if not self._is_window(hwnd):
                 return False
             if is_win10():
-                return False
+                return install_win10_window_shadow_for_hwnd(hwnd, radius)
 
             dwmapi = windll.dwmapi
 
@@ -573,7 +1153,7 @@ class WindowEffect:
                 self.set_round_corners(hwnd, enable=True)
 
             return True
-        except Exception:
+        except _WINDOW_EFFECT_ERRORS:
             logger.debug("enable_window_shadow failed", exc_info=True)
             return False
 
@@ -594,7 +1174,7 @@ class WindowEffect:
             if not self._is_window(hwnd):
                 return False
             if is_win10():
-                return False
+                return install_win10_window_shadow_for_hwnd(hwnd, radius)
 
             dwmapi = windll.dwmapi
 
@@ -622,7 +1202,7 @@ class WindowEffect:
                 self.set_round_corners(hwnd, enable=True)
 
             return True
-        except Exception:
+        except _WINDOW_EFFECT_ERRORS:
             logger.debug("enable_shadow_for_dialog failed", exc_info=True)
             return False
 
@@ -692,14 +1272,15 @@ def enable_window_shadow_and_round_corners(widget, radius: int = 12, force_regio
                 w = widget.width()
                 h = widget.height()
                 if w > 0 and h > 0:
+                    install_win10_window_shadow(widget, radius)
                     # Win10 仅使用 SetWindowRgn 裁剪形状，背景由 Qt 自绘。
                     effect.set_window_region(hwnd, w, h, radius)
                     effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=False)
                     return True
-            except Exception as exc:
+            except _WINDOW_EFFECT_ERRORS as exc:
                 logger.debug("应用Win10窗口区域裁剪失败: %s", exc, exc_info=True)
             return False
-    except Exception:
+    except _WINDOW_EFFECT_ERRORS:
         logger.debug("enable_window_shadow_and_round_corners failed", exc_info=True)
         return False
 
@@ -746,6 +1327,7 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
         else:
             # Win10: 只保留窗口区域裁剪。原生 DWM blur/accent 会在 Qt 透明
             # 无边框窗口上产生黑色遮罩或 DPI 错位，底色交给 paintEvent 自绘。
+            install_win10_window_shadow(widget, radius)
             w = widget.width()
             h = widget.height()
             if w > 0 and h > 0:
@@ -753,11 +1335,11 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
             effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
             try:
                 widget.update()
-            except Exception as exc:
+            except _WINDOW_EFFECT_ERRORS as exc:
                 logger.debug("刷新窗口区域失败: %s", exc, exc_info=True)
 
         return True
-    except Exception:
+    except _WINDOW_EFFECT_ERRORS:
         logger.exception("应用窗口效果失败")
         return False
 
@@ -819,6 +1401,6 @@ def force_activate_window(hwnd: int):
         user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)  # HWND_TOP
 
         return user32.GetForegroundWindow() == hwnd
-    except Exception:
+    except _WINDOW_EFFECT_ERRORS:
         logger.debug("force_activate_window failed", exc_info=True)
         return False

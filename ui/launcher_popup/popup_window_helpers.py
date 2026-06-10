@@ -51,16 +51,19 @@ class IconFlashOverlay(QWidget):
         self._peak_opacity = 0.38
         self._items = []
         self._dirty_rect = QRect()
-        self._animation = QtCompat.QPropertyAnimation(self, b"flashOpacity", self)
-        self._animation.setDuration(self._duration_ms)
-        self._animation.setStartValue(self._peak_opacity)
-        self._animation.setEndValue(0.0)
-        self._animation.setEasingCurve(QtCompat.OutCubic)
-        self._animation.finished.connect(self._finish)
+        self._animation = None
+        self._flash_generation = 0
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.hide()
+
+    def _next_flash_generation(self) -> int:
+        self._flash_generation = int(getattr(self, "_flash_generation", 0) or 0) + 1
+        return self._flash_generation
+
+    def _is_flash_current(self, generation: int) -> bool:
+        return generation == int(getattr(self, "_flash_generation", -1) or -1)
 
     def _get_flash_opacity(self):
         return self._opacity
@@ -85,20 +88,27 @@ class IconFlashOverlay(QWidget):
         self._opacity = self._peak_opacity
         self.show()
         self.update(self._dirty_rect)
-        self._animation.stop()
+        generation = self._next_flash_generation()
+        self._animation = QtCompat.QPropertyAnimation(self, b"flashOpacity", self)
         self._animation.setStartValue(self._peak_opacity)
         self._animation.setEndValue(0.0)
         self._animation.setDuration(self._duration_ms)
+        self._animation.setEasingCurve(QtCompat.OutCubic)
+        self._animation.finished.connect(lambda generation=generation: self._finish(generation))
         self._animation.start()
 
     def stop(self):
+        generation = self._next_flash_generation()
         try:
-            self._animation.stop()
+            if self._animation is not None:
+                self._animation.stop()
         except Exception as exc:
             logger.debug("停止图标闪烁动画失败: %s", exc, exc_info=True)
-        self._finish()
+        self._finish(generation)
 
-    def _finish(self):
+    def _finish(self, generation: int | None = None):
+        if generation is not None and not self._is_flash_current(generation):
+            return
         self._opacity = 0.0
         self._items = []
         dirty_rect = QRect(self._dirty_rect)

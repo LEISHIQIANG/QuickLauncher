@@ -9,7 +9,9 @@ This module provides:
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
+import pkgutil
 from pathlib import Path
 from typing import Any
 
@@ -112,10 +114,11 @@ class ProcessorLoader:
                 return self.discover_from_module(package_name)
 
             total = 0
-            for module_info in sorted(package_path):
+            for module_info in sorted(pkgutil.iter_modules(package_path), key=lambda info: info.name):
+                if module_info.ispkg or module_info.name.startswith("_"):
+                    continue
                 module_name = f"{package_name}.{module_info.name}"
-                if module_info.ismodule and not module_info.name.startswith('_'):
-                    total += self.discover_from_module(module_name)
+                total += self.discover_from_module(module_name)
 
             return total
         except Exception as e:

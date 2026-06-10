@@ -19,9 +19,10 @@
 
 ## 检查清单
 - [ ] 代码遵循项目规范
-- [ ] 已运行 `ruff check . --fix`
-- [ ] 已运行 `black .`
-- [ ] 已运行 `mypy core ui bootstrap`
+- [ ] 已运行 `python -m pytest -q` 或 CI 高风险专项测试
+- [ ] 已运行 `python -m ruff check .`
+- [ ] 已运行 `python scripts/audit_broad_exceptions.py --exclude-dir plugins --exclude-dir tools --max-total 1325 --max-unlogged 290`
+- [ ] 已运行 `python -m mypy --follow-imports=skip services/update`
 - [ ] 已更新文档
 - [ ] 已更新 CHANGELOG.md
 

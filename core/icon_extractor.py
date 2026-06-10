@@ -993,6 +993,25 @@ class IconExtractor:
         if not QT_AVAILABLE or not pixmap or pixmap.isNull():
             return pixmap
         image = pixmap.toImage()
+        IconExtractor._invert_image_rgb_in_place(image)
+        return QPixmap.fromImage(image)
+
+    @staticmethod
+    def invert_image(image):
+        if not QT_AVAILABLE or not image or image.isNull():
+            return image
+        result = image.copy()
+        IconExtractor._invert_image_rgb_in_place(result)
+        return result
+
+    @staticmethod
+    def _invert_image_rgb_in_place(image):
+        try:
+            image.invertPixels(QImage.InvertRgb)
+            return
+        except Exception:
+            logger.debug("QImage.invertPixels unavailable; falling back to pixel loop", exc_info=True)
+
         for y in range(image.height()):
             for x in range(image.width()):
                 pixel = image.pixelColor(x, y)
@@ -1003,24 +1022,6 @@ class IconExtractor:
                     pixel.alpha(),
                 )
                 image.setPixelColor(x, y, inverted)
-        return QPixmap.fromImage(image)
-
-    @staticmethod
-    def invert_image(image):
-        if not QT_AVAILABLE or not image or image.isNull():
-            return image
-        result = image.copy()
-        for y in range(result.height()):
-            for x in range(result.width()):
-                pixel = result.pixelColor(x, y)
-                inverted = QColor(
-                    255 - pixel.red(),
-                    255 - pixel.green(),
-                    255 - pixel.blue(),
-                    pixel.alpha(),
-                )
-                result.setPixelColor(x, y, inverted)
-        return result
 
     @classmethod
     def clear_cache(cls):

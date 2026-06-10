@@ -335,10 +335,25 @@ class PopupBackgroundMixin:
 
     def _release_background_cache(self):
         """Release instance background pixmaps when the popup is hidden."""
+        self._pending_bg_params = None
+        try:
+            timer = getattr(self, "_bg_load_timer", None)
+            if timer is not None:
+                timer.stop()
+        except Exception as exc:
+            logger.debug("停止背景加载定时器失败: %s", exc, exc_info=True)
+        try:
+            next_seq = int(getattr(self, "_bg_load_seq", 0) or 0) + 1
+            self._bg_load_seq = next_seq
+            self._bg_loading_seq = next_seq
+        except Exception as exc:
+            logger.debug("作废背景加载序列失败: %s", exc, exc_info=True)
+
         # Win10: 保留最后一个有效的背景作为回退，避免重新显示时闪烁
         if self._bg_cache:
             try:
                 from ui.utils.window_effect import is_win10
+
                 if is_win10():
                     self._win10_fallback_bg = self._bg_cache
             except Exception as exc:

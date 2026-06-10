@@ -126,8 +126,10 @@ def mark_latest_session_first_start_confirmed(base_dir: str | os.PathLike) -> di
         state = read_session_state(path)
         if not state:
             continue
-        first_start = state.get("first_start") if isinstance(state.get("first_start"), dict) else {}
-        install = state.get("install") if isinstance(state.get("install"), dict) else {}
+        first_start_value = state.get("first_start")
+        install_value = state.get("install")
+        first_start = first_start_value if isinstance(first_start_value, dict) else {}
+        install = install_value if isinstance(install_value, dict) else {}
         if install.get("status") == "started" and not first_start.get("confirmed"):
             return update_session_state(
                 path,

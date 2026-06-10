@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.6.3.1] - 2026-06-09
+
+### Added
+
+- 新增全局 UI 缩放功能，可在"弹窗交互"中修改并应用。
+- 新增悬浮窗固定后的拖拽移动功能，可按住鼠标左键拖拽移动悬浮窗。
+
+### Changed
+
+- 优化快捷键录入时会直接触发按键功能的问题。
+- 优化快捷键录入功能。
+- 优化中键弹窗滚轮翻页的流畅度。
+- 优化项目的打断动画。
+
+### Fixed
+
+- 修复"浏览"按钮打开的资源管理器显示异常及同类问题。
+- 修复 Windows 10 部分 UI 显示遮挡裁剪问题。
+- 修复多屏不同分辨率、不同缩放情况下的 UI 显示问题。
+
 ## [1.6.3.0] - 2026-06-06
 
 ### Added

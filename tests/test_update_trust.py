@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from services.update.config import UpdateConfig, UpdateInfo
-from services.update.trust import update_signature_payload, verify_update_signature
+from services.update.trust import UpdateSignatureError, update_signature_payload, verify_update_signature
 
 RFC8032_PUBLIC_KEY = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
 RFC8032_EMPTY_SIGNATURE = (
@@ -17,6 +19,11 @@ def test_verify_update_signature_ed25519_rfc8032_vector():
 
 def test_update_config_requires_signature_by_default():
     assert UpdateConfig().require_signature is True
+
+
+def test_verify_update_signature_requires_public_keys():
+    with pytest.raises(UpdateSignatureError, match="public keys"):
+        verify_update_signature(b"", RFC8032_EMPTY_SIGNATURE, ())
 
 
 def test_update_signature_payload_is_canonical():
@@ -50,3 +57,37 @@ def test_update_checker_requires_signature_when_configured(monkeypatch):
     info.file_signature = "ed25519:" + RFC8032_EMPTY_SIGNATURE
 
     assert checker._validate_update_info(info) == ""
+
+
+def test_update_checker_reports_missing_signature_public_keys():
+    from services.update.checker import UpdateChecker
+
+    checker = UpdateChecker(
+        UpdateConfig(
+            require_signature=True,
+            signature_public_keys=(),
+            allowed_download_hosts=("example.com",),
+        )
+    )
+    info = UpdateInfo(
+        has_update=True,
+        version="1.2.3",
+        download_url="https://example.com/a.exe",
+        file_hash="sha256:" + "a" * 64,
+        file_signature="ed25519:" + RFC8032_EMPTY_SIGNATURE,
+        file_size=123,
+    )
+
+    error = checker._validate_update_info(info)
+
+    assert "public keys" in error
+
+
+def test_legacy_core_update_trust_fails_closed_without_pinned_public_key(tmp_path):
+    from core.update import trust as legacy_trust
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"version":"1.2.3","signature":{"scheme":"ed25519","value":""}}', encoding="utf-8")
+
+    with pytest.raises(legacy_trust.SignatureVerificationError, match="public key"):
+        legacy_trust.verify_manifest_signature(manifest)

@@ -16,8 +16,6 @@ except ImportError:
 from core import DataManager
 from core.windows_uipi import allow_drag_drop_for_widget
 from qt_compat import (
-    QCoreApplication,
-    QEventLoop,
     QFont,
     QImage,
     QtCompat,
@@ -37,7 +35,7 @@ from ui.launcher_popup.popup_renderer import PopupRendererMixin
 from ui.launcher_popup.popup_search import PopupSearchMixin
 from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowEffectMixin
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
-from ui.utils.interruptible_animation import is_animation_running, stop_named_animations
+from ui.utils.interruptible_animation import is_animation_running, set_precise_timer, stop_named_animations
 from ui.utils.ui_scale import font_px, sp, spf
 from ui.utils.window_effect import WindowEffect
 
@@ -114,6 +112,7 @@ class LauncherPopup(
         self.tray_app = tray_app
         self._lifecycle_generation = 0
         self._closing = False
+        self._visibility_animation_generation = 0
 
         # 连接信号
         self.bg_loaded_signal.connect(self._on_bg_loaded)
@@ -196,6 +195,7 @@ class LauncherPopup(
         self._blank_refresh_in_progress = False
         self._icon_flash_overlay = IconFlashOverlay(self)
         self._sync_worker = None
+        self._folder_sync_refresh_seq = 0
         # 使用全局字体
         self._label_font = QFont()
         self._label_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
@@ -239,6 +239,14 @@ class LauncherPopup(
         self._is_dragging = False  # 是否正在拖放
         # ===== 拖放状态结束 =====
 
+        # ===== 固定窗口拖动状态 =====
+        self._pinned_window_drag_pending = False
+        self._pinned_window_drag_active = False
+        self._pinned_window_drag_start_global = None
+        self._pinned_window_drag_window_pos = None
+        self._pinned_window_drag_offset = None
+        # ===== 固定窗口拖动状态结束 =====
+
         # ===== 双击检测相关状态 =====
         # ===== 双击检测状态结束 =====
 
@@ -247,6 +255,7 @@ class LauncherPopup(
         self._last_bg_params = None
         self._cached_bg_path = None
         self._win10_fallback_bg = None  # Win10回退背景，避免重新显示时闪烁
+        self._last_effect_state = None
 
         # 布局参数
         self.padding = sp(8)
@@ -262,6 +271,7 @@ class LauncherPopup(
         # 单行：icon_size + 16（与原来保持完全一致）
         # 多行：icon_size + (display_rows-1)*dock_row_stride + 16
         # dock_row_stride = icon_size + 6 --- 行间距6px，上下边距保持 8px 不变
+        self.dock_height = 0
         dock_enabled = getattr(self.settings, "dock_enabled", True)
         if dock_enabled and self.dock_items:
             max_rows = getattr(self.settings, "dock_height_mode", 1)
@@ -287,6 +297,7 @@ class LauncherPopup(
 
         self._indicator_timer = QTimer(self)
         self._indicator_timer.setInterval(16)
+        set_precise_timer(self._indicator_timer, owner="LauncherPopup._indicator_timer")
         self._indicator_timer.timeout.connect(self._tick_indicator)
 
         self._auto_close_timer = QTimer(self)
@@ -326,6 +337,7 @@ class LauncherPopup(
         self._search_anim_last_ts = 0.0
         self._search_anim_timer = QTimer(self)
         self._search_anim_timer.setInterval(16)
+        set_precise_timer(self._search_anim_timer, owner="LauncherPopup._search_anim_timer")
         self._search_anim_timer.timeout.connect(self._tick_search_reveal)
         self._page_icon_warm_queue = []
         self._page_icon_warm_keys = set()
@@ -348,6 +360,13 @@ class LauncherPopup(
     def _next_lifecycle_generation(self) -> int:
         self._lifecycle_generation = int(getattr(self, "_lifecycle_generation", 0) or 0) + 1
         return self._lifecycle_generation
+
+    def _next_visibility_animation_generation(self) -> int:
+        self._visibility_animation_generation = int(getattr(self, "_visibility_animation_generation", 0) or 0) + 1
+        return self._visibility_animation_generation
+
+    def _is_visibility_animation_current(self, generation: int) -> bool:
+        return generation == int(getattr(self, "_visibility_animation_generation", -1) or -1)
 
     def _run_if_lifecycle_current(self, generation: int, callback, *args) -> bool:
         if generation != int(getattr(self, "_lifecycle_generation", -1) or -1):
@@ -451,6 +470,7 @@ class LauncherPopup(
     def _start_show_animation(self):
         """窗口出现动画 - 从中心向外扩散"""
         stop_named_animations(self, "anim_group", "hide_anim_group")
+        generation = self._next_visibility_animation_generation()
         start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
         start_reveal = max(0.0, min(1.0, float(getattr(self, "_reveal_progress", 0.0))))
 
@@ -471,10 +491,14 @@ class LauncherPopup(
         self.anim_group = QtCompat.QParallelAnimationGroup()
         self.anim_group.addAnimation(self.opacity_anim)
         self.anim_group.addAnimation(self.reveal_anim)
-        self.anim_group.finished.connect(self._finish_show_animation)
+        self.anim_group.finished.connect(lambda generation=generation: self._finish_show_animation(generation))
         self.anim_group.start()
 
-    def _finish_show_animation(self):
+    def _finish_show_animation(self, generation: int | None = None):
+        if generation is not None and not self._is_visibility_animation_current(generation):
+            return
+        if getattr(self, "_is_hiding", False):
+            return
         self._reveal_progress = 1.0
         self.setWindowOpacity(1.0)
         self.update()
@@ -494,6 +518,7 @@ class LauncherPopup(
     def _start_hide_animation(self):
         """窗口消失动画 - 从外向中心收缩"""
         stop_named_animations(self, "hide_anim_group")
+        generation = self._next_visibility_animation_generation()
         # 透明度动画
         self.hide_opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
         self.hide_opacity_anim.setDuration(100)
@@ -511,17 +536,21 @@ class LauncherPopup(
         self.hide_anim_group = QtCompat.QParallelAnimationGroup()
         self.hide_anim_group.addAnimation(self.hide_opacity_anim)
         self.hide_anim_group.addAnimation(self.hide_reveal_anim)
-        self.hide_anim_group.finished.connect(self._on_hide_finished)
+        self.hide_anim_group.finished.connect(lambda generation=generation: self._on_hide_finished(generation))
         self.hide_anim_group.start()
 
-    def _on_hide_finished(self):
+    def _on_hide_finished(self, generation: int | None = None):
         """动画结束后真正隐藏窗口"""
+        if generation is not None and not self._is_visibility_animation_current(generation):
+            return
+        if not getattr(self, "_is_hiding", False):
+            return
         self._is_hiding = False
         self._reveal_progress = 0.0
         super().hide()
 
     def hideEvent(self, event):
-        self._next_lifecycle_generation()
+        generation = self._next_lifecycle_generation()
         overlay = getattr(self, "_icon_flash_overlay", None)
         if overlay is not None:
             overlay.stop()
@@ -545,7 +574,7 @@ class LauncherPopup(
         try:
             if HAS_EXECUTOR and not self._launched_app:
                 # 延迟一小段时间再恢复焦点，确保隐藏动画完成
-                QTimer.singleShot(50, self._restore_focus_safe)
+                self._defer_lifecycle_callback(50, self._restore_focus_safe, generation=generation)
             self._launched_app = False
         except Exception as exc:
             logger.debug("恢复焦点失败: %s", exc, exc_info=True)
@@ -557,6 +586,10 @@ class LauncherPopup(
         self._closing = True
         self._next_lifecycle_generation()
         self._stop_lifecycle_timers()
+        try:
+            self._release_background_cache()
+        except Exception as exc:
+            logger.debug("释放背景缓存失败: %s", exc, exc_info=True)
         try:
             self.stop_background_threads()
         except Exception as exc:
@@ -660,11 +693,13 @@ class LauncherPopup(
             logger.debug("清除窗口遮罩失败: %s", exc, exc_info=True)
 
         current_revision = self.data_manager.get_runtime_revision()
-        revision_changed = force or current_revision != getattr(self, "_model_revision", -1)
+        model_revision_changed = current_revision != getattr(self, "_model_revision", -1)
+        revision_changed = force or model_revision_changed
         self._model_revision = current_revision
         if revision_changed:
-            self._icon_pixmap_cache.clear()
-            self._default_icon_cache.clear()
+            page_cache = getattr(self, "_page_pixmap_cache", None)
+            if page_cache is not None:
+                page_cache.clear()
             self._visible_icons_preloaded = False
             self._first_show_ready = False
             self._cached_bg_path = None
@@ -767,8 +802,14 @@ class LauncherPopup(
             except Exception:
                 self.move(x, y)
 
-            # 2. 处理系统事件以完成 DPI 同步，但排除用户输入事件防止重入
-            QCoreApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
+            # 2. 让 Qt 在下一轮事件循环完成 DPI/窗口状态同步，避免打开路径阻塞 UI。
+            try:
+                if hasattr(self, "_schedule_window_effect_update"):
+                    self._schedule_window_effect_update(0)
+                else:
+                    QTimer.singleShot(0, self._update_window_effect)
+            except Exception as exc:
+                logger.debug("调度窗口特效刷新失败: %s", exc, exc_info=True)
 
         # 更新 Dock 高度
         # 单行：icon_size + 16（与原来保持完全一致）
@@ -797,7 +838,12 @@ class LauncherPopup(
             self._center_to(x, y, calculated_width, calculated_height)
 
         self.updateGeometry()
-        self.repaint()  # 强制立即重绘，确保不出现视觉残留
+        self.update()
+        try:
+            if self.isVisible() and hasattr(self, "_preload_animation_pages"):
+                QTimer.singleShot(0, self._preload_animation_pages)
+        except Exception as exc:
+            logger.debug("调度刷新后图标预热失败: %s", exc, exc_info=True)
 
         # 保存前台窗口 (如果需要)
         if HAS_EXECUTOR:

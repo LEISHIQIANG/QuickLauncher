@@ -35,3 +35,12 @@ jobs:
           tests/test_shortcut_health.py
           tests/test_ui_smoke.py
           tests/test_pinyin_search.py
+          tests/test_exception_logging_policy.py
+          tests/test_popup_search_ui.py
+          tests/test_chain_registry_processors.py
+          tests/test_processor_loader.py
+          tests/test_path_security.py
+          tests/test_update_trust.py
+
+      - name: Focused mypy subset
+        run: python -m mypy --follow-imports=skip services/update

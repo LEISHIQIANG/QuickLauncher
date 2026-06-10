@@ -6,6 +6,7 @@ import logging
 import re
 import time
 import unicodedata
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -33,6 +34,8 @@ def _text(value) -> str:
 
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _TOKEN_SPLIT_RE = re.compile(r"[\s,;，；、|]+")
+_ORDERED_INDEX_CACHE_MAX = 64
+_ordered_index_cache: OrderedDict[tuple[str, tuple[tuple[int, int], ...]], tuple[int, ...]] = OrderedDict()
 
 
 @lru_cache(maxsize=2048)
@@ -362,6 +365,32 @@ def _order_value(shortcut, sort_mode: str, original_index: int) -> int:
         return int(original_index)
 
 
+def _ordered_shortcuts(items, sort_mode: str):
+    signature = []
+    decorated = []
+    for idx, shortcut in enumerate(items):
+        order = _order_value(shortcut, sort_mode, idx)
+        signature.append((id(shortcut), order))
+        decorated.append((order, idx, shortcut))
+
+    if not decorated:
+        return ()
+
+    cache_key = (sort_mode, tuple(signature))
+    cached_indexes = _ordered_index_cache.get(cache_key)
+    if cached_indexes is not None:
+        _ordered_index_cache.move_to_end(cache_key)
+        return tuple(items[idx] for idx in cached_indexes)
+
+    decorated.sort()
+    indexes = tuple(idx for _order, idx, _shortcut in decorated)
+    _ordered_index_cache[cache_key] = indexes
+    _ordered_index_cache.move_to_end(cache_key)
+    while len(_ordered_index_cache) > _ORDERED_INDEX_CACHE_MAX:
+        _ordered_index_cache.popitem(last=False)
+    return tuple(shortcut for _order, _idx, shortcut in decorated)
+
+
 def search_shortcuts(
     pages, query: str, *, sort_mode: str = "custom", limit: int | None = None
 ) -> list[FuzzyMatchResult]:
@@ -374,13 +403,8 @@ def search_shortcuts(
     for folder in pages or []:
         folder_id = _text(getattr(folder, "id", ""))
         folder_name = _text(getattr(folder, "name", ""))
-        raw_items = list(getattr(folder, "items", []) or [])
-        # Optimize sorting using Schwartzian transform to avoid O(N log N) dynamic reflection and try-except overhead
-        decorated = []
-        for idx, shortcut in enumerate(raw_items):
-            decorated.append((_order_value(shortcut, sort_mode, idx), idx, shortcut))
-        decorated.sort()
-        for _, _, shortcut in decorated:
+        raw_items = getattr(folder, "items", ()) or ()
+        for shortcut in _ordered_shortcuts(raw_items, sort_mode):
             if hasattr(shortcut, "is_enabled") and not shortcut.is_enabled():
                 original_index += 1
                 continue

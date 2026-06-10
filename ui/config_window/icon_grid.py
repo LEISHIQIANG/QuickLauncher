@@ -6,6 +6,7 @@ import copy
 import logging
 import os
 import time
+from collections import OrderedDict
 
 from core import AppData, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
@@ -173,7 +174,7 @@ class SimpleStatusDialog(QDialog):
 
     def update_text(self, text):
         self.label.setText(text)
-        self.label.repaint()
+        self.label.update()
 
 
 class MoveFolderDialog(BaseDialog):
@@ -415,6 +416,60 @@ class _IconLoadWorker(QObject):
         return None
 
 
+class _BatchFaviconFetchWorker(QObject):
+    """后台批量 favicon 获取 worker，避免 UI 线程等待网络结果。"""
+
+    result = pyqtSignal(object, object, object)  # (shortcut_id, icon_path, error)
+    progress = pyqtSignal(int, int)  # (completed, total)
+    completed = pyqtSignal(int, int)  # (success, total)
+
+    def __init__(self, tasks):
+        super().__init__()
+        self._tasks = list(tasks or [])
+        self._cancel_requested = False
+
+    def cancel(self):
+        self._cancel_requested = True
+
+    def run(self):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        total = len(self._tasks)
+        success_count = 0
+        completed_count = 0
+        executor = ThreadPoolExecutor(max_workers=5)
+
+        def fetch_one(task):
+            sid, name, url = task
+            if self._cancel_requested:
+                return sid, None, None
+            try:
+                from core.favicon_cache import fetch_favicon
+
+                icon_path = fetch_favicon(url, force_refresh=True)
+                return sid, icon_path, None
+            except Exception as exc:
+                return sid, None, (name, exc)
+
+        try:
+            futures = [executor.submit(fetch_one, task) for task in self._tasks]
+            for future in as_completed(futures):
+                if self._cancel_requested:
+                    break
+                sid, icon_path, error = future.result()
+                completed_count += 1
+                if icon_path:
+                    success_count += 1
+                self.result.emit(sid, icon_path, error)
+                self.progress.emit(completed_count, total)
+        finally:
+            try:
+                executor.shutdown(wait=not self._cancel_requested, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=not self._cancel_requested)
+            self.completed.emit(success_count, total)
+
+
 class RoundedFrame(QFrame):
     """High-quality antialiased rounded frame using QPainter.
 
@@ -484,6 +539,8 @@ class IconWidget(QFrame):
     double_clicked = pyqtSignal()
     context_menu_requested = pyqtSignal(QPoint)
     drag_started = pyqtSignal(str)
+    _placeholder_icon_cache = OrderedDict()
+    _MAX_PLACEHOLDER_ICON_CACHE = 80
 
     LIGHT_NORMAL_BG = "rgba(255, 255, 255, 100)"
     LIGHT_HOVER_BG = "rgba(255, 255, 255, 160)"
@@ -593,6 +650,13 @@ class IconWidget(QFrame):
 
     def _load_icon(self):
         """设置占位图标（实际图标由 IconGrid 异步加载）"""
+        cache_key = self._placeholder_icon_cache_key()
+        cached = self._placeholder_icon_cache.get(cache_key)
+        if cached is not None and not cached.isNull():
+            self._placeholder_icon_cache.move_to_end(cache_key)
+            self.icon_label.setPixmap(cached)
+            return
+
         if self.shortcut.type == ShortcutType.HOTKEY:
             pixmap = self._create_hotkey_icon()
         elif self.shortcut.type == ShortcutType.URL:
@@ -609,7 +673,24 @@ class IconWidget(QFrame):
         if not pixmap:
             pixmap = self._create_default_icon()
 
+        self._placeholder_icon_cache[cache_key] = pixmap
+        self._placeholder_icon_cache.move_to_end(cache_key)
+        while len(self._placeholder_icon_cache) > self._MAX_PLACEHOLDER_ICON_CACHE:
+            self._placeholder_icon_cache.popitem(last=False)
         self.icon_label.setPixmap(pixmap)
+
+    def _placeholder_icon_cache_key(self):
+        item_type = getattr(self.shortcut, "type", None)
+        first_char = self.shortcut.name[0] if getattr(self.shortcut, "name", "") else "?"
+        if item_type in {
+            ShortcutType.HOTKEY,
+            ShortcutType.URL,
+            ShortcutType.COMMAND,
+            ShortcutType.BATCH_LAUNCH,
+            ShortcutType.CHAIN,
+        }:
+            first_char = ""
+        return (item_type, int(self.icon_size), first_char)
 
     def _create_default_icon(self) -> QPixmap:
         size = self.icon_size
@@ -973,6 +1054,12 @@ class IconGrid(QWidget):
         self._icon_size = 24
         self._cell_size = self._icon_size + 8 + 8  # icon_frame = icon+8, widget padding
         self._icon_load_generation = 0
+        self._favicon_fetch_generation = 0
+        self._favicon_fetch_success_count = 0
+        self._favicon_fetch_shortcuts = {}
+        self._favicon_fetch_status_dialog = None
+        self._favicon_fetch_thread = None
+        self._favicon_fetch_worker = None
 
         self._setup_ui()
         self.setAcceptDrops(True)
@@ -1484,6 +1571,119 @@ class IconGrid(QWidget):
         if getattr(self, "_icon_worker", None) is worker:
             self._icon_worker = None
 
+    def _stop_favicon_fetch_thread(self):
+        self._favicon_fetch_generation = getattr(self, "_favicon_fetch_generation", 0) + 1
+        worker = getattr(self, "_favicon_fetch_worker", None)
+        thread = getattr(self, "_favicon_fetch_thread", None)
+        dialog = getattr(self, "_favicon_fetch_status_dialog", None)
+        if dialog is not None:
+            try:
+                dialog.close()
+            except RuntimeError:
+                logger.debug("关闭 favicon 状态对话框失败", exc_info=True)
+            self._favicon_fetch_status_dialog = None
+        self._favicon_fetch_shortcuts = {}
+        self._favicon_fetch_success_count = 0
+
+        if thread is None:
+            self._favicon_fetch_worker = None
+            return
+
+        stopped = stop_qthread_nonblocking(
+            thread,
+            worker=worker,
+            owner="IconGrid.favicon_fetch",
+            wait_ms=0,
+            disconnect_thread_signals=("finished",),
+            disconnect_worker_signals=("result", "progress", "completed"),
+        )
+        if stopped:
+            self._favicon_fetch_thread = None
+            self._favicon_fetch_worker = None
+
+    def _start_favicon_fetch_worker(self, tasks, status_dialog, shortcuts=None):
+        self._stop_favicon_fetch_thread()
+        self._favicon_fetch_generation = getattr(self, "_favicon_fetch_generation", 0) + 1
+        generation = self._favicon_fetch_generation
+        self._favicon_fetch_success_count = 0
+        self._favicon_fetch_shortcuts = dict(shortcuts or {})
+        self._favicon_fetch_status_dialog = status_dialog
+
+        worker = _BatchFaviconFetchWorker(tasks)
+        thread = QThread()
+        worker.moveToThread(thread)
+        worker.result.connect(
+            lambda sid, icon_path, error, gen=generation: self._on_favicon_fetch_result(gen, sid, icon_path, error)
+        )
+        worker.progress.connect(
+            lambda completed, total, gen=generation: self._on_favicon_fetch_progress(gen, completed, total)
+        )
+        worker.completed.connect(
+            lambda success, total, gen=generation: self._on_favicon_fetch_completed(gen, success, total)
+        )
+        worker.completed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(
+            lambda gen=generation, qthread=thread, qworker=worker: self._on_favicon_fetch_thread_finished(
+                gen, qthread, qworker
+            )
+        )
+        thread.started.connect(worker.run)
+        self._favicon_fetch_worker = worker
+        self._favicon_fetch_thread = thread
+        thread.start()
+
+    def _on_favicon_fetch_result(self, generation: int, shortcut_id, icon_path, error):
+        if generation != getattr(self, "_favicon_fetch_generation", generation):
+            return
+        shortcut = getattr(self, "_favicon_fetch_shortcuts", {}).get(shortcut_id)
+        if icon_path and shortcut is not None:
+            shortcut.icon_path = icon_path
+            self._favicon_fetch_success_count = int(getattr(self, "_favicon_fetch_success_count", 0) or 0) + 1
+            return
+        if error:
+            name, exc = error if isinstance(error, tuple) and len(error) == 2 else (shortcut_id, error)
+            logger.debug("获取图标失败 %s: %s", name, exc, exc_info=True)
+
+    def _on_favicon_fetch_progress(self, generation: int, completed_count: int, total: int):
+        if generation != getattr(self, "_favicon_fetch_generation", generation):
+            return
+        dialog = getattr(self, "_favicon_fetch_status_dialog", None)
+        if dialog is not None:
+            dialog.update_text(tr("正在获取图标... {current}/{total}", current=completed_count, total=total))
+
+    def _on_favicon_fetch_completed(self, generation: int, worker_success: int, total: int):
+        if generation != getattr(self, "_favicon_fetch_generation", generation):
+            return
+
+        dialog = getattr(self, "_favicon_fetch_status_dialog", None)
+        if dialog is not None:
+            try:
+                dialog.close()
+            except RuntimeError:
+                logger.debug("关闭 favicon 状态对话框失败", exc_info=True)
+        self._favicon_fetch_status_dialog = None
+
+        success_count = max(int(worker_success or 0), int(getattr(self, "_favicon_fetch_success_count", 0) or 0))
+        self.data_manager.save(immediate=True)
+        self.load_folder(self.current_folder_id)
+        self.shortcut_added.emit()
+
+        ThemedMessageBox.information(
+            self, tr("批量获取图标"), tr("成功获取 {success}/{total} 个图标", success=success_count, total=total)
+        )
+
+    def _on_favicon_fetch_thread_finished(self, generation: int, thread, worker):
+        if generation != getattr(self, "_favicon_fetch_generation", generation):
+            return
+        if getattr(self, "_favicon_fetch_thread", None) is thread:
+            self._favicon_fetch_thread = None
+        if getattr(self, "_favicon_fetch_worker", None) is worker:
+            self._favicon_fetch_worker = None
+        self._favicon_fetch_shortcuts = {}
+        self._favicon_fetch_success_count = 0
+
     def _on_icon_loaded(self, *args):
         if len(args) == 3:
             generation, shortcut_id, image = args
@@ -1701,45 +1901,11 @@ class IconGrid(QWidget):
         status_dialog = SimpleStatusDialog(tr("批量获取图标"), self)
         status_dialog.update_text(tr("正在获取图标... 0/{total}", total=len(url_shortcuts)))
         status_dialog.show()
-        status_dialog.repaint()
 
         self._take_batch_snapshot()
-        success_count = 0
-        completed_count = 0
-        total = len(url_shortcuts)
-
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        def fetch_one(shortcut):
-            try:
-                from core.favicon_cache import fetch_favicon
-
-                icon_path = fetch_favicon(shortcut.url, force_refresh=True)
-                return (shortcut, icon_path, None)
-            except Exception as e:
-                return (shortcut, None, e)
-
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(fetch_one, s): s for s in url_shortcuts}
-            for future in as_completed(futures):
-                shortcut, icon_path, error = future.result()
-                completed_count += 1
-                if icon_path:
-                    shortcut.icon_path = icon_path
-                    success_count += 1
-                elif error:
-                    logger.debug("获取图标失败 %s: %s", shortcut.name, error, exc_info=True)
-                status_dialog.update_text(tr("正在获取图标... {current}/{total}", current=completed_count, total=total))
-
-        status_dialog.close()
-
-        self.data_manager.save(immediate=True)
-        self.load_folder(self.current_folder_id)
-        self.shortcut_added.emit()
-
-        ThemedMessageBox.information(
-            self, tr("批量获取图标"), tr("成功获取 {success}/{total} 个图标", success=success_count, total=total)
-        )
+        shortcut_lookup = {shortcut.id: shortcut for shortcut in url_shortcuts}
+        tasks = [(shortcut.id, shortcut.name, shortcut.url) for shortcut in url_shortcuts]
+        self._start_favicon_fetch_worker(tasks, status_dialog, shortcut_lookup)
 
     def _show_context_menu(self, pos: QPoint, shortcut: ShortcutItem):
         theme = "dark"
