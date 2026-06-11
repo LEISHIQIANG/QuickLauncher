@@ -101,7 +101,7 @@ from PyQt5.QtWidgets import (
     QMenu,
     QMenuBar,
     QMessageBox,
-    QPlainTextEdit,
+    QPlainTextEdit as _QPlainTextEdit,
     QProgressDialog,
     QScrollArea,
     QSizePolicy,
@@ -115,8 +115,8 @@ from PyQt5.QtWidgets import (
     QSystemTrayIcon,
     QTableWidget,
     QTabWidget,
-    QTextBrowser,
-    QTextEdit,
+    QTextBrowser as _QTextBrowser,
+    QTextEdit as _QTextEdit,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -238,7 +238,76 @@ class QTableWidgetItem(_QTableWidgetItem):
         return super().setText(text)
 
 
-class QLineEdit(_QLineEdit):
+class _ThemedTextContextMenuMixin:
+    """Replace Qt's native text menu with the shared rounded PopupMenu."""
+
+    def _context_menu_theme(self):
+        from ui.styles.theme_controller import resolve_theme
+
+        return resolve_theme(self)
+
+    def _has_selected_text(self):
+        if isinstance(self, _QLineEdit):
+            return self.hasSelectedText()
+        return self.textCursor().hasSelection()
+
+    def _has_text(self):
+        return bool(self.text() if isinstance(self, _QLineEdit) else self.toPlainText())
+
+    def _is_editable(self):
+        return not self.isReadOnly()
+
+    def _can_copy_selection(self):
+        if isinstance(self, _QLineEdit) and self.echoMode() != _QLineEdit.Normal:
+            return False
+        return self._has_selected_text()
+
+    def _can_paste_text(self):
+        if not self._is_editable():
+            return False
+        clipboard = QApplication.clipboard()
+        return bool(clipboard and clipboard.text())
+
+    def _undo_available(self):
+        if isinstance(self, _QLineEdit):
+            return self.isUndoAvailable()
+        return self.document().isUndoAvailable()
+
+    def _redo_available(self):
+        if isinstance(self, _QLineEdit):
+            return self.isRedoAvailable()
+        return self.document().isRedoAvailable()
+
+    def _delete_selection(self):
+        if isinstance(self, _QLineEdit):
+            self.insert("")
+            return
+        cursor = self.textCursor()
+        cursor.removeSelectedText()
+        self.setTextCursor(cursor)
+
+    def contextMenuEvent(self, event):  # noqa: N802 - Qt API name
+        from ui.styles.style import PopupMenu
+
+        editable = self._is_editable()
+        has_selection = self._has_selected_text()
+        menu = PopupMenu(theme=self._context_menu_theme(), radius=12, parent=None)
+        if editable:
+            menu.add_action("撤销", self.undo, enabled=self._undo_available())
+            menu.add_action("重做", self.redo, enabled=self._redo_available())
+            menu.add_separator()
+            menu.add_action("剪切", self.cut, enabled=self._can_copy_selection())
+        menu.add_action("复制", self.copy, enabled=self._can_copy_selection())
+        if editable:
+            menu.add_action("粘贴", self.paste, enabled=self._can_paste_text())
+            menu.add_action("删除", self._delete_selection, enabled=has_selection)
+            menu.add_separator()
+        menu.add_action("全选", self.selectAll, enabled=self._has_text())
+        menu.popup(event.globalPos())
+        event.accept()
+
+
+class QLineEdit(_ThemedTextContextMenuMixin, _QLineEdit):
     def setPlaceholderText(self, text):  # noqa: N802 - Qt API name
         if isinstance(text, str):
             text = tr(text)
@@ -248,6 +317,18 @@ class QLineEdit(_QLineEdit):
         if isinstance(text, str):
             text = tr(text)
         return super().setToolTip(text)
+
+
+class QTextEdit(_ThemedTextContextMenuMixin, _QTextEdit):
+    pass
+
+
+class QPlainTextEdit(_ThemedTextContextMenuMixin, _QPlainTextEdit):
+    pass
+
+
+class QTextBrowser(_ThemedTextContextMenuMixin, _QTextBrowser):
+    pass
 
 
 class QSlider(_QSlider):

@@ -8,6 +8,8 @@ import time
 
 logger = logging.getLogger(__name__)
 
+_COMMAND_PANEL_FIRST_SHOW_DELAY_MS = 100
+
 
 class WindowsMixin:
     """各窗口的 show 方法。"""
@@ -354,6 +356,7 @@ class WindowsMixin:
         self._wake_from_sleep("command_panel")
         try:
             theme = self.data_manager.get_settings().theme
+            created_window = False
             if getattr(self, "command_result_store", None) is None:
                 from core.command_results import CommandResultStore
 
@@ -362,6 +365,7 @@ class WindowsMixin:
                 from ui.command_panel_window import CommandPanelWindow
 
                 self.command_panel_window = CommandPanelWindow(self.data_manager, self.command_result_store)
+                created_window = True
             else:
                 self.command_panel_window.set_theme(theme)
 
@@ -381,32 +385,44 @@ class WindowsMixin:
                     context_meta=context_meta or {},
                 )
 
-            self.command_panel_window.show()
-            self.command_panel_window.raise_()
-            self.command_panel_window.activateWindow()
+            window = self.command_panel_window
+            if created_window and not result_id and bool(getattr(window, "_running", False)):
+                from qt_compat import QTimer
 
-            try:
-                hwnd = int(self.command_panel_window.winId())
-                self._command_panel_hwnd = hwnd
-                from ui.utils.window_effect import force_activate_window
-
-                force_activate_window(hwnd)
-            except Exception as exc:
-                logger.debug("激活命令面板窗口失败: %s", exc, exc_info=True)
+                QTimer.singleShot(
+                    _COMMAND_PANEL_FIRST_SHOW_DELAY_MS,
+                    lambda panel=window: self._present_command_panel_window(panel),
+                )
+            else:
+                self._present_command_panel_window(window)
             return True
         except RuntimeError:
             from ui.command_panel_window import CommandPanelWindow
 
             self.command_panel_window = CommandPanelWindow(self.data_manager, self.command_result_store)
-            self.command_panel_window.show()
-            try:
-                self._command_panel_hwnd = int(self.command_panel_window.winId())
-            except Exception as exc:
-                logger.debug("获取命令面板窗口ID失败: %s", exc, exc_info=True)
+            self._present_command_panel_window(self.command_panel_window)
             return True
         except Exception as e:
             logger.error("显示命令面板失败: %s", e, exc_info=True)
             return False
+
+    def _present_command_panel_window(self, window):
+        """Show the current command panel only after its first layout is ready."""
+        if window is not getattr(self, "command_panel_window", None):
+            return
+        try:
+            window.show()
+            window.raise_()
+            window.activateWindow()
+            hwnd = int(window.winId())
+            self._command_panel_hwnd = hwnd
+            from ui.utils.window_effect import force_activate_window
+
+            force_activate_window(hwnd)
+        except RuntimeError:
+            logger.debug("命令面板在延迟显示前已销毁", exc_info=True)
+        except Exception as exc:
+            logger.debug("激活命令面板窗口失败: %s", exc, exc_info=True)
 
     def _show_config_history(self):
         """显示配置历史窗口。"""

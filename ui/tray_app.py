@@ -127,6 +127,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             logger.info("插件系统已通过功能开关禁用")
 
         plugin_manager = core.plugin_manager
+        self._pending_startup_plugin_ids = []
         if plugin_manager is not None:
 
             def _save_enabled_plugins(enabled_ids: list[str]):
@@ -155,9 +156,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
                 return reply == ThemedMessageBox.Yes
 
             plugin_manager.set_confirm_high_risk_callback(_confirm_high_risk)
-            enabled = list(self.data_manager.get_settings().enabled_plugins)
-            if enabled:
-                plugin_manager.auto_enable(enabled)
+            self._pending_startup_plugin_ids = list(self.data_manager.get_settings().enabled_plugins)
 
         self.config_window = None
         self.popup_window = None
@@ -242,8 +241,11 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._icon_preload_started = False
         self._deferred_startup_timer = QTimer(self)
         self._deferred_startup_timer.setSingleShot(True)
-        self._deferred_startup_timer.setInterval(10)  # 极速启动预加载
+        self._deferred_startup_timer.setInterval(750)
         self._deferred_startup_timer.timeout.connect(self._run_deferred_startup_tasks)
+        self._plugin_startup_timer = QTimer(self)
+        self._plugin_startup_timer.setInterval(25)
+        self._plugin_startup_timer.timeout.connect(self._enable_next_startup_plugin)
 
         # 内存保护
         from core.memory_guard import MemoryGuard
@@ -298,6 +300,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._started = True
 
         self._deferred_startup_timer.start()
+        if self._pending_startup_plugin_ids:
+            self._plugin_startup_timer.start()
         self._memory_check_timer.start()
 
         # 延迟注册全局快捷键 Ctrl+Shift+L（等待事件循环就绪）
@@ -640,6 +644,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             "_settings_sync_timer",
             "_sleep_timer",
             "_deferred_startup_timer",
+            "_plugin_startup_timer",
             "_memory_check_timer",
             "_process_check_timer",
             "_hook_health_timer",

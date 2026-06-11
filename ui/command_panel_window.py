@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 
@@ -35,6 +36,7 @@ from qt_compat import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QRectF,
     QSize,
     QSizePolicy,
     Qt,
@@ -103,6 +105,79 @@ class CommandHistoryDropButton(QPushButton):
             half_h = spf(3.0)
             painter.drawLine(int(cx - half_w), int(cy - half_h), int(cx), int(cy + half_h))
             painter.drawLine(int(cx), int(cy + half_h), int(cx + half_w), int(cy - half_h))
+        finally:
+            painter.end()
+
+
+class CommandStatusIndicator(QWidget):
+    """Small status dot with a breathing ripple while a command is running."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._kind = "neutral"
+        self._theme = "light"
+        self._phase = 0.0
+        self._timer = QTimer(self)
+        self._timer.setInterval(45)
+        self._timer.timeout.connect(self._advance_ripple)
+        self.setFixedSize(sp(18), sp(18))
+
+    def set_status(self, kind: str, theme: str):
+        self._kind = str(kind or "neutral")
+        self._theme = str(theme or "light")
+        self._phase = 0.0
+        if self._kind == "running":
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._timer.stop()
+        self.update()
+
+    def is_ripple_active(self) -> bool:
+        return self._timer.isActive()
+
+    def _advance_ripple(self):
+        self._phase = (self._phase + 0.18) % (math.pi * 2)
+        self.update()
+
+    def paintEvent(self, event):
+        del event
+        colors = {
+            "running": QColor(10, 132, 255),
+            "success": QColor(48, 209, 88),
+            "failure": QColor(255, 69, 58),
+            "warning": QColor(255, 159, 10),
+            "neutral": QColor(142, 142, 147),
+        }
+        color = QColor(colors.get(self._kind, colors["neutral"]))
+        if self._theme == "light":
+            color = color.darker(112)
+
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+            center_x = self.width() / 2
+            center_y = self.height() / 2
+            if self._kind == "running":
+                wave = (math.sin(self._phase) + 1.0) / 2.0
+                radius = spf(4.3) + wave * spf(3.0)
+                ring = QColor(color)
+                ring.setAlpha(int(105 - wave * 62))
+                painter.setBrush(Qt.NoBrush)
+                painter.setPen(QPen(ring, spf(1.2)))
+                painter.drawEllipse(QRectF(center_x - radius, center_y - radius, radius * 2, radius * 2))
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
+            core_radius = spf(2.8 if self._kind == "running" else 3.5)
+            painter.drawEllipse(
+                QRectF(
+                    center_x - core_radius,
+                    center_y - core_radius,
+                    core_radius * 2,
+                    core_radius * 2,
+                )
+            )
         finally:
             painter.end()
 
@@ -184,6 +259,25 @@ class CommandPanelWindow(ThemedToolWindow):
         self.cancel_btn = None
         self.content_layout.addLayout(input_row)
 
+        self.status_badge = QWidget()
+        self.status_badge.setObjectName("CommandStatusBadge")
+        badge_layout = QHBoxLayout(self.status_badge)
+        badge_layout.setContentsMargins(sp(7), sp(2), sp(9), sp(2))
+        badge_layout.setSpacing(sp(3))
+        self.status_indicator = CommandStatusIndicator(self.status_badge)
+        badge_layout.addWidget(self.status_indicator)
+        self.status_label = QLabel("")
+        badge_layout.addWidget(self.status_label)
+        self.status_badge.setVisible(False)
+
+        self.root_layout.removeWidget(self.subtitle_label)
+        summary_row = QHBoxLayout()
+        summary_row.setContentsMargins(0, 0, sp(4), 0)
+        summary_row.setSpacing(sp(8))
+        summary_row.addWidget(self.subtitle_label, 1)
+        summary_row.addWidget(self.status_badge)
+        self.root_layout.insertLayout(1, summary_row)
+
         self.param_container = QWidget()
         self.param_layout = QFormLayout(self.param_container)
         self.param_layout.setContentsMargins(0, 0, sp(4), 0)
@@ -201,8 +295,6 @@ class CommandPanelWindow(ThemedToolWindow):
         self.param_error_label.setVisible(False)
         self.content_layout.addWidget(self.param_error_label)
 
-        self.status_label = QLabel("")
-        self.status_label.setVisible(False)
         self.history_label = QLabel("最近命令")
         self.history_label.setVisible(False)
         self.history_list = QListWidget()
@@ -481,8 +573,37 @@ class CommandPanelWindow(ThemedToolWindow):
             """))
 
     def _style_status_label(self):
-        color = "rgba(255, 255, 255, 0.55)" if self._theme == "dark" else "rgba(60, 60, 67, 0.62)"
-        self.status_label.setStyleSheet(scale_qss(f"font-size: 11px; color: {color}; background: transparent; padding-left: 2px;"))
+        kind = str(self.status_label.property("status_kind") or "neutral")
+        if self._theme == "dark":
+            palette = {
+                "running": ("rgba(105, 190, 255, 0.98)", "rgba(10, 132, 255, 0.16)", "rgba(10, 132, 255, 0.42)"),
+                "success": ("rgba(91, 214, 135, 0.98)", "rgba(48, 209, 88, 0.14)", "rgba(48, 209, 88, 0.38)"),
+                "failure": ("rgba(255, 112, 112, 0.98)", "rgba(255, 69, 58, 0.15)", "rgba(255, 69, 58, 0.42)"),
+                "warning": ("rgba(255, 204, 92, 0.98)", "rgba(255, 159, 10, 0.15)", "rgba(255, 159, 10, 0.38)"),
+                "neutral": ("rgba(255, 255, 255, 0.66)", "rgba(255, 255, 255, 0.08)", "rgba(255, 255, 255, 0.15)"),
+            }
+        else:
+            palette = {
+                "running": ("rgba(0, 102, 204, 0.96)", "rgba(0, 122, 255, 0.10)", "rgba(0, 122, 255, 0.30)"),
+                "success": ("rgba(24, 128, 56, 0.96)", "rgba(40, 167, 69, 0.10)", "rgba(40, 167, 69, 0.28)"),
+                "failure": ("rgba(190, 40, 40, 0.96)", "rgba(220, 53, 69, 0.10)", "rgba(220, 53, 69, 0.30)"),
+                "warning": ("rgba(156, 92, 0, 0.96)", "rgba(255, 159, 10, 0.11)", "rgba(214, 126, 0, 0.28)"),
+                "neutral": ("rgba(60, 60, 67, 0.72)", "rgba(60, 60, 67, 0.07)", "rgba(60, 60, 67, 0.14)"),
+            }
+        color, background, border = palette.get(kind, palette["neutral"])
+        self.status_badge.setStyleSheet(
+            scale_qss(
+                f"QWidget#CommandStatusBadge {{ background: {background}; border: 1px solid {border};"
+                " border-radius: 9px; }"
+            )
+        )
+        self.status_label.setStyleSheet(
+            scale_qss(
+                f"QLabel {{ font-size: 11px; font-weight: 500; color: {color};"
+                " background: transparent; border: none; padding: 0; }"
+            )
+        )
+        self.status_indicator.set_status(kind, self._theme)
 
     def _style_param_error_label(self):
         color = "rgba(255, 99, 99, 0.92)" if self._theme == "dark" else "rgba(190, 40, 40, 0.92)"
@@ -778,7 +899,7 @@ class CommandPanelWindow(ThemedToolWindow):
         else:
             self._render_params(self._current_definition)
         self._render_result(stored.result)
-        self._update_subtitle("完成")
+        self._update_subtitle("完成" if stored.result.success else "失败")
         self._refresh_history()
 
     def run_command(
@@ -1806,12 +1927,28 @@ class CommandPanelWindow(ThemedToolWindow):
     def _update_subtitle(self, state: str):
         title = self._current_command_title or self._current_command_id or "命令"
         metadata = self._command_metadata_summary(getattr(self, "_current_definition", None))
-        subtitle_parts = [title, state]
+        subtitle_parts = [title]
         if metadata:
             subtitle_parts.append(metadata)
         self.set_subtitle(" / ".join(subtitle_parts))
-        self.status_label.setText(state)
-        self.status_label.setVisible(False)
+        display_state, status_kind = self._status_display(state)
+        self.status_label.setProperty("status_kind", status_kind)
+        self.status_label.setText(display_state)
+        self._style_status_label()
+        self.status_badge.setVisible(bool(display_state))
+
+    @staticmethod
+    def _status_display(state: str) -> tuple[str, str]:
+        normalized = str(state or "").strip()
+        if normalized in {"执行中", "运行中"}:
+            return "运行中", "running"
+        if normalized in {"完成", "成功", "已完成"}:
+            return "完成", "success"
+        if normalized in {"失败", "执行失败"}:
+            return "失败", "failure"
+        if normalized in {"已取消", "参数不完整"}:
+            return normalized, "warning"
+        return normalized, "neutral"
 
     def _command_metadata_summary(self, command_def) -> str:
         metadata = getattr(command_def, "metadata", None)

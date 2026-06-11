@@ -11,6 +11,8 @@ import logging
 from qt_compat import (
     QApplication,
     QColor,
+    QCursor,
+    QEvent,
     QPainter,
     QPainterPath,
     QPen,
@@ -132,7 +134,7 @@ class PopupMenu(QWidget):
 
     _active_popups = set()
 
-    def __init__(self, theme: str = "dark", radius: int = 12, parent=None, native_effects: bool = False):
+    def __init__(self, theme: str = "dark", radius: int = 12, parent=None, native_effects: bool = True):
         if parent is None and not isinstance(theme, str):
             parent = theme
             theme = getattr(parent, "theme", "dark")
@@ -150,6 +152,10 @@ class PopupMenu(QWidget):
         self._blur_applied = False
         self._native_effects_enabled = bool(native_effects)
         self._effect_generation = 0
+        self._leave_timer = QTimer(self)
+        self._leave_timer.setSingleShot(True)
+        self._leave_timer.setInterval(220)
+        self._leave_timer.timeout.connect(self._hide_if_pointer_outside)
 
         self.setAutoFillBackground(False)
         self.setAttribute(QtCompat.WA_NoSystemBackground, True)
@@ -212,15 +218,8 @@ class PopupMenu(QWidget):
             logger.debug("设置按钮焦点策略失败: %s", exc, exc_info=True)
         btn.setStyleSheet(self._btn_style_dark if self._theme == "dark" else self._btn_style_light)
         btn.clicked.connect(lambda checked=False, cb=callback, label=text: self._trigger(cb, label))
-        # 悬停到普通菜单项时收起子菜单
-        original_enter = btn.enterEvent
-
-        def _on_enter(e):
-            self._collapse_submenu()
-            if original_enter and callable(original_enter):
-                original_enter(e)
-
-        btn.enterEvent = _on_enter
+        btn.setProperty("popup_menu_role", "action")
+        btn.installEventFilter(self)
         self._layout.addWidget(btn)
         return btn
 
@@ -243,6 +242,8 @@ class PopupMenu(QWidget):
         except Exception as exc:
             logger.debug("设置按钮焦点策略失败: %s", exc, exc_info=True)
         btn.setStyleSheet(self._btn_style_dark if self._theme == "dark" else self._btn_style_light)
+        btn.setProperty("popup_menu_role", "submenu")
+        btn.installEventFilter(self)
         self._layout.addWidget(btn)
 
         # 创建子菜单项（初始隐藏）
@@ -253,21 +254,13 @@ class PopupMenu(QWidget):
             sub_btn.setCursor(QtCompat.PointingHandCursor)
             sub_btn.setStyleSheet(sub_style)
             sub_btn.clicked.connect(lambda checked=False, cb=callback, label=label: self._trigger(cb, label))
+            sub_btn.setProperty("popup_menu_role", "sub_action")
+            sub_btn.installEventFilter(self)
             sub_btn.hide()
             self._layout.addWidget(sub_btn)
             sub_widgets.append(sub_btn)
 
         self._sub_items_widgets = sub_widgets
-
-        # 悬停展开
-        original_enter = btn.enterEvent
-
-        def _on_enter(e):
-            self._expand_submenu()
-            if original_enter and callable(original_enter):
-                original_enter(e)
-
-        btn.enterEvent = _on_enter
 
         return btn
 
@@ -343,7 +336,7 @@ class PopupMenu(QWidget):
             self.setFocus()
         except Exception as exc:
             logger.debug("激活菜单窗口失败: %s", exc, exc_info=True)
-        # Native blur/acrylic is opt-in and delayed; common context menus stay Qt-painted.
+        # Apply the same OS-specific surface treatment as the owning window.
         self._schedule_blur_effect()
         QTimer.singleShot(0, self._reposition_after_show)
 
@@ -481,7 +474,69 @@ class PopupMenu(QWidget):
             logger.debug("隐藏菜单失败: %s", exc, exc_info=True)
         return super().focusOutEvent(event)
 
+    def enterEvent(self, event):
+        self._leave_timer.stop()
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Allow brief pointer slips, then dismiss when it stays outside."""
+        if self.isVisible():
+            self._leave_timer.start()
+        return super().leaveEvent(event)
+
+    def _hide_if_pointer_outside(self):
+        try:
+            local_pos = self.mapFromGlobal(QCursor.pos())
+            if self.isVisible() and not self.rect().contains(local_pos):
+                self.hide()
+        except RuntimeError:
+            return
+        except Exception as exc:
+            logger.debug("检查菜单鼠标位置失败: %s", exc, exc_info=True)
+
+    def event(self, event):
+        if event.type() == QEvent.WindowDeactivate:
+            self.hide()
+        return super().event(event)
+
+    def eventFilter(self, obj, event):
+        role = obj.property("popup_menu_role") if isinstance(obj, QPushButton) else None
+        event_type = event.type()
+        if role and event_type == QEvent.Enter:
+            if role == "submenu":
+                self._expand_submenu()
+            elif role == "action":
+                self._collapse_submenu()
+            self._refresh_action_hover(obj)
+        elif role and event_type == QEvent.Leave:
+            self._refresh_action_hover(obj)
+        return super().eventFilter(obj, event)
+
+    def _refresh_action_hover(self, button):
+        """Repaint the parent surface so transparent hover fills cannot linger."""
+        try:
+            button.update()
+            dirty_rect = button.geometry().adjusted(-sp(2), -sp(2), sp(2), sp(2))
+            self.update(dirty_rect)
+            self.repaint(dirty_rect)
+            QTimer.singleShot(0, self.update)
+        except RuntimeError:
+            return
+        except Exception as exc:
+            logger.debug("刷新菜单悬停样式失败: %s", exc, exc_info=True)
+
+    def mousePressEvent(self, event):
+        try:
+            if not self.rect().contains(event.pos()):
+                self.hide()
+                event.accept()
+                return
+        except Exception as exc:
+            logger.debug("处理菜单外部点击失败: %s", exc, exc_info=True)
+        return super().mousePressEvent(event)
+
     def hideEvent(self, event):
+        self._leave_timer.stop()
         PopupMenu._release_popup(self)
         return super().hideEvent(event)
 
@@ -557,6 +612,24 @@ class PopupMenu(QWidget):
         except Exception as e:
             logging.getLogger(__name__).debug(f"菜单模糊效果失败: {e}")
 
+    @staticmethod
+    def _surface_colors(theme: str, blur_applied: bool, *, win10: bool, win11: bool):
+        """Match the menu tint to the themed tool-window surface on each OS."""
+        if blur_applied and (win10 or win11):
+            if theme == "dark":
+                return QColor(28, 28, 30, 180 if win10 else 100), QColor(190, 190, 197, 60)
+            return (
+                QColor(242, 242, 247, 160 if win10 else 100),
+                QColor(229, 229, 234, 150 if win10 else 120),
+            )
+        if blur_applied:
+            if theme == "dark":
+                return QColor(31, 31, 35, 120), QColor(255, 255, 255, 38)
+            return QColor(255, 255, 255, 120), QColor(0, 0, 0, 20)
+        if theme == "dark":
+            return QColor(30, 30, 30, 220), QColor(255, 255, 255, int(0.1 * 255))
+        return QColor(255, 255, 255, 220), QColor(0, 0, 0, int(0.08 * 255))
+
     def paintEvent(self, event):
         """绘制圆角背景（模糊层之上的半透明着色）"""
         painter = QPainter(self)
@@ -589,20 +662,12 @@ class PopupMenu(QWidget):
         except Exception as exc:
             logger.debug("检测Win10菜单绘制模式失败: %s", exc, exc_info=True)
 
-        if self._blur_applied:
-            if self._theme == "dark":
-                bg = QColor(31, 31, 35, 220 if win10_qt_fallback else (150 if win11_native else 120))
-                border = QColor(255, 255, 255, 46 if win11_native else 38)
-            else:
-                bg = QColor(255, 255, 255, 235 if win10_qt_fallback else (188 if win11_native else 120))
-                border = QColor(0, 0, 0, 24 if win11_native else 20)
-        else:
-            if self._theme == "dark":
-                bg = QColor(30, 30, 30, 220)
-                border = QColor(255, 255, 255, int(0.1 * 255))
-            else:
-                bg = QColor(255, 255, 255, 220)
-                border = QColor(0, 0, 0, int(0.08 * 255))
+        bg, border = self._surface_colors(
+            self._theme,
+            self._blur_applied,
+            win10=win10_qt_fallback,
+            win11=win11_native,
+        )
 
         if win10_qt_fallback:
             paint_win10_rounded_surface(painter, self, bg, border, self._radius)

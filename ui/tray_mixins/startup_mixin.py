@@ -24,11 +24,54 @@ atexit.register(_join_startup_threads)
 class StartupMixin:
     """延迟启动、预加载、图标缓存清理相关方法。"""
 
+    def _enable_next_startup_plugin(self):
+        pending = getattr(self, "_pending_startup_plugin_ids", None)
+        if not pending:
+            self._stop_timer_if_active("_plugin_startup_timer")
+            return
+
+        plugin_id = pending.pop(0)
+        plugin_manager = None
+        load_start = time.perf_counter()
+        try:
+            import core
+
+            plugin_manager = core.plugin_manager
+            if plugin_manager is None:
+                pending.clear()
+                return
+            loaded = plugin_manager.load_plugin(plugin_id)
+            logger.info(
+                "启动插件%s: %s，耗时 %.1f ms",
+                "加载完成" if loaded else "加载失败",
+                plugin_id,
+                (time.perf_counter() - load_start) * 1000,
+            )
+        except Exception:
+            logger.exception("启动插件加载失败: %s", plugin_id)
+
+        if pending:
+            return
+
+        self._stop_timer_if_active("_plugin_startup_timer")
+        try:
+            if plugin_manager is not None:
+                plugin_manager.save_enabled_state()
+        except Exception:
+            logger.exception("保存启动插件状态失败")
+
     def _run_deferred_startup_tasks(self):
         if self._sleeping:
             return
         if self._has_shown_popup:
             return
+        config_window = getattr(self, "config_window", None)
+        try:
+            if config_window is not None and config_window.isVisible():
+                self._deferred_startup_timer.start(1000)
+                return
+        except (AttributeError, RuntimeError):
+            logger.debug("config_window visibility check skipped", exc_info=True)
 
         self._preinit_popup()
         self._preload_icons()

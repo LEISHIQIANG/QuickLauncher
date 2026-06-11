@@ -7,6 +7,7 @@ from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem, ShortcutType
 from qt_compat import QEvent, QPixmap, QPlainTextEdit, Qt, QTextOption, QTimer
 from ui.command_panel_window import COMMAND_PANEL_SIZE_PRESETS, CommandPanelWindow
+from ui.tray_mixins.windows_mixin import WindowsMixin
 
 pytestmark = pytest.mark.ui
 
@@ -22,6 +23,57 @@ class FakeDataManager:
 
 def _window(qapp):
     return CommandPanelWindow(FakeDataManager(), CommandResultStore())
+
+
+def test_first_running_command_panel_waits_for_initial_result_layout(monkeypatch):
+    import qt_compat
+    import ui.command_panel_window as panel_mod
+    import ui.utils.window_effect as window_effect
+
+    callbacks = []
+
+    class FakePanel:
+        def __init__(self, _data_manager, _result_store):
+            self._running = False
+            self.show_calls = 0
+
+        def run_command(self, **_kwargs):
+            self._running = True
+
+        def show(self):
+            self.show_calls += 1
+
+        def raise_(self):
+            return None
+
+        def activateWindow(self):
+            return None
+
+        def winId(self):
+            return 123
+
+    class Tray(WindowsMixin):
+        def __init__(self):
+            self.data_manager = FakeDataManager()
+            self.command_result_store = None
+            self.command_panel_window = None
+
+        def _wake_from_sleep(self, _source):
+            return None
+
+    monkeypatch.setattr(panel_mod, "CommandPanelWindow", FakePanel)
+    monkeypatch.setattr(qt_compat.QTimer, "singleShot", lambda _delay, callback: callbacks.append(callback))
+    monkeypatch.setattr(window_effect, "force_activate_window", lambda _hwnd: None)
+
+    tray = Tray()
+    assert tray.show_command_panel(command_id="test") is True
+    assert tray.command_panel_window.show_calls == 0
+    assert len(callbacks) == 1
+
+    callbacks[0]()
+
+    assert tray.command_panel_window.show_calls == 1
+    assert tray._command_panel_hwnd == 123
 
 
 def test_command_panel_renders_text_and_log(qapp):
@@ -208,17 +260,46 @@ def test_command_panel_does_not_auto_focus_input_on_show(qapp):
     assert not win._command_suggestions_visible()
 
 
-def test_command_panel_hides_inline_status_and_renames_history(qapp):
+def test_command_panel_shows_distinct_status_and_renames_history(qapp):
     store = CommandResultStore()
     store.add(CommandResult(message="old"), command_id="old", command_title="Old", raw_input="/old")
     win = CommandPanelWindow(FakeDataManager(), store)
 
-    win._update_subtitle("成功")
+    expected = {
+        "执行中": ("运行中", "running"),
+        "完成": ("完成", "success"),
+        "失败": ("失败", "failure"),
+    }
+    styles = set()
+    for state, (label, kind) in expected.items():
+        win._update_subtitle(state)
+        assert not win.status_badge.isHidden()
+        assert win.status_label.text() == label
+        assert win.status_label.property("status_kind") == kind
+        assert win.status_indicator.is_ripple_active() is (kind == "running")
+        styles.add(win.status_badge.styleSheet())
+
     win._refresh_history()
 
-    assert not win.status_label.isVisible()
+    assert len(styles) == 3
     assert win.history_toggle_btn.text() == ""
     assert win.history_toggle_btn.toolTip() == "最近命令"
+
+
+def test_showing_failed_stored_result_keeps_failure_status(qapp):
+    store = CommandResultStore()
+    result_id = store.add(
+        CommandResult(success=False, message="failed", error="boom"),
+        command_id="broken",
+        command_title="Broken",
+        raw_input="/broken",
+    )
+    win = CommandPanelWindow(FakeDataManager(), store)
+
+    win.show_result(result_id)
+
+    assert win.status_label.text() == "失败"
+    assert win.status_label.property("status_kind") == "failure"
 
 
 def test_payload_window_size_overrides_definition_default(qapp):

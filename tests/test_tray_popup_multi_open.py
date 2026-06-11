@@ -127,6 +127,7 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
     tray._settings_sync_timer = FakeTimer()
     tray._sleep_timer = FakeTimer()
     tray._deferred_startup_timer = FakeTimer()
+    tray._plugin_startup_timer = FakeTimer()
     tray._memory_check_timer = FakeTimer()
     tray._process_check_timer = FakeTimer()
     tray._update_checker = FakeRuntimeComponent()
@@ -161,6 +162,8 @@ def test_start_defers_runtime_components_until_called(monkeypatch):
     tray._started = False
     tray._safe_mode = False
     tray._deferred_startup_timer = FakeTimer()
+    tray._plugin_startup_timer = FakeTimer()
+    tray._pending_startup_plugin_ids = ["sample"]
     tray._memory_check_timer = FakeTimer()
     tray._process_check_timer = FakeTimer()
     tray._hook_health_timer = FakeTimer()
@@ -189,5 +192,45 @@ def test_start_defers_runtime_components_until_called(monkeypatch):
     assert tray._deferred_startup_timer.start_count == 1
     assert tray._memory_check_timer.start_count == 1
     assert tray._hook_health_timer.start_count == 1
+    assert tray._plugin_startup_timer.start_count == 1
     assert [delay for delay, _callback in scheduled] == [200, 0, 0, 5000]
     assert activity == ["startup"]
+
+
+def test_startup_plugins_load_one_per_timer_tick(monkeypatch):
+    tray = _tray_like(multi_open=True)
+    tray._pending_startup_plugin_ids = ["first", "second"]
+    tray._plugin_startup_timer = FakeTimer()
+    loaded = []
+    saved = []
+    manager = SimpleNamespace(
+        load_plugin=lambda plugin_id: loaded.append(plugin_id) or True,
+        save_enabled_state=lambda: saved.append(True),
+    )
+    monkeypatch.setattr("core.plugin_manager", manager)
+
+    tray._enable_next_startup_plugin()
+    assert loaded == ["first"]
+    assert saved == []
+    assert tray._pending_startup_plugin_ids == ["second"]
+
+    tray._enable_next_startup_plugin()
+    assert loaded == ["first", "second"]
+    assert saved == [True]
+    assert tray._plugin_startup_timer.stopped is True
+
+
+def test_deferred_popup_preinit_waits_while_config_is_visible():
+    tray = _tray_like(multi_open=True)
+    tray._sleeping = False
+    tray._has_shown_popup = False
+    tray.config_window = FakePopup(visible=True)
+    tray._deferred_startup_timer = FakeTimer()
+    calls = []
+    tray._preinit_popup = lambda: calls.append("popup")
+    tray._preload_icons = lambda: calls.append("icons")
+
+    tray._run_deferred_startup_tasks()
+
+    assert calls == []
+    assert tray._deferred_startup_timer.start_count == 1

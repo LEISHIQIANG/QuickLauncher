@@ -1,4 +1,4 @@
-from qt_compat import QColor, QImage, QPainter, QPoint, QRect, Qt, QtCompat, QWidget
+from qt_compat import QColor, QEvent, QImage, QPainter, QPoint, QRect, Qt, QtCompat, QWidget
 
 
 def test_drink_card_self_painted_icons_are_horizontally_centered(qapp):
@@ -127,13 +127,22 @@ def test_popup_menu_retains_until_hidden(monkeypatch, qapp):
     menu.deleteLater()
 
 
-def test_popup_menu_does_not_apply_native_blur_by_default(monkeypatch, qapp):
+def test_popup_menu_applies_native_blur_by_default(monkeypatch, qapp):
+    from ui.styles.style import PopupMenu
+
+    menu = PopupMenu(theme="dark")
+    assert menu._native_effects_enabled is True
+
+    menu.deleteLater()
+
+
+def test_popup_menu_native_blur_can_be_disabled(monkeypatch, qapp):
     from ui.styles.style import PopupMenu
 
     calls = []
     monkeypatch.setattr(PopupMenu, "_apply_blur_effect", lambda self: calls.append(True))
 
-    menu = PopupMenu(theme="dark")
+    menu = PopupMenu(theme="dark", native_effects=False)
     menu.add_action("one", lambda: None)
     menu.popup(QPoint(-10000, -10000))
     qapp.processEvents()
@@ -144,7 +153,7 @@ def test_popup_menu_does_not_apply_native_blur_by_default(monkeypatch, qapp):
     menu.deleteLater()
 
 
-def test_popup_menu_native_blur_is_opt_in_and_delayed(monkeypatch, qapp):
+def test_popup_menu_native_blur_is_delayed(monkeypatch, qapp):
     import ui.styles.style as style_mod
     from ui.styles.style import PopupMenu
 
@@ -153,7 +162,7 @@ def test_popup_menu_native_blur_is_opt_in_and_delayed(monkeypatch, qapp):
     monkeypatch.setattr(PopupMenu, "_apply_blur_effect", lambda self: calls.append(True))
     monkeypatch.setattr(style_mod.QTimer, "singleShot", lambda delay, callback: scheduled.append((delay, callback)))
 
-    menu = PopupMenu(theme="dark", native_effects=True)
+    menu = PopupMenu(theme="dark")
     menu.add_action("one", lambda: None)
     menu.popup(QPoint(-10000, -10000))
 
@@ -166,6 +175,112 @@ def test_popup_menu_native_blur_is_opt_in_and_delayed(monkeypatch, qapp):
     assert calls == [True]
 
     menu.hide()
+    menu.deleteLater()
+
+
+def test_popup_menu_surface_matches_tool_window_on_win10_and_win11(qapp):
+    from ui.styles.style import PopupMenu
+
+    win10_dark, win10_dark_border = PopupMenu._surface_colors("dark", True, win10=True, win11=False)
+    win11_dark, win11_dark_border = PopupMenu._surface_colors("dark", True, win10=False, win11=True)
+    win10_light, win10_light_border = PopupMenu._surface_colors("light", True, win10=True, win11=False)
+    win11_light, win11_light_border = PopupMenu._surface_colors("light", True, win10=False, win11=True)
+
+    assert win10_dark.getRgb() == (28, 28, 30, 180)
+    assert win10_dark_border.getRgb() == (190, 190, 197, 60)
+    assert win11_dark.getRgb() == (28, 28, 30, 100)
+    assert win11_dark_border.getRgb() == (190, 190, 197, 60)
+    assert win10_light.getRgb() == (242, 242, 247, 160)
+    assert win10_light_border.getRgb() == (229, 229, 234, 150)
+    assert win11_light.getRgb() == (242, 242, 247, 100)
+    assert win11_light_border.getRgb() == (229, 229, 234, 120)
+
+
+def test_popup_menu_leave_delay_is_cancelled_when_pointer_returns(qapp):
+    from ui.styles.style import PopupMenu
+
+    menu = PopupMenu(theme="dark", native_effects=False)
+    menu.add_action("one", lambda: None)
+    menu.show()
+    qapp.processEvents()
+
+    menu.leaveEvent(QEvent(QEvent.Leave))
+    assert menu._leave_timer.isActive()
+
+    menu.enterEvent(QEvent(QEvent.Enter))
+    assert not menu._leave_timer.isActive()
+    assert menu.isVisible()
+
+    menu.hide()
+    menu.deleteLater()
+
+
+def test_popup_menu_hides_when_pointer_stays_outside(monkeypatch, qapp):
+    import ui.styles.style as style_mod
+    from ui.styles.style import PopupMenu
+
+    class OutsideCursor:
+        @staticmethod
+        def pos():
+            return QPoint(-10000, -10000)
+
+    monkeypatch.setattr(style_mod, "QCursor", OutsideCursor)
+    menu = PopupMenu(theme="dark", native_effects=False)
+    menu.add_action("one", lambda: None)
+    menu.show()
+    qapp.processEvents()
+
+    menu._hide_if_pointer_outside()
+
+    assert not menu.isVisible()
+    menu.deleteLater()
+
+
+def test_popup_menu_hides_when_window_deactivates(qapp):
+    from ui.styles.style import PopupMenu
+
+    menu = PopupMenu(theme="dark", native_effects=False)
+    menu.add_action("one", lambda: None)
+    menu.show()
+    qapp.processEvents()
+
+    menu.event(QEvent(QEvent.WindowDeactivate))
+
+    assert not menu.isVisible()
+    menu.deleteLater()
+
+
+def test_popup_menu_repaints_parent_when_action_hover_moves(monkeypatch, qapp):
+    from ui.styles.style import PopupMenu
+
+    menu = PopupMenu(theme="dark", native_effects=False)
+    first = menu.add_action("first", lambda: None)
+    second = menu.add_action("second", lambda: None)
+    updates = []
+    monkeypatch.setattr(menu, "update", lambda *args: updates.append(args))
+
+    menu.eventFilter(first, QEvent(QEvent.Enter))
+    menu.eventFilter(first, QEvent(QEvent.Leave))
+    menu.eventFilter(second, QEvent(QEvent.Enter))
+
+    assert first.property("popup_menu_role") == "action"
+    assert second.property("popup_menu_role") == "action"
+    assert len(updates) >= 3
+    menu.deleteLater()
+
+
+def test_popup_menu_uses_event_filter_for_submenu_hover(qapp):
+    from ui.styles.style import PopupMenu
+
+    menu = PopupMenu(theme="dark", native_effects=False)
+    submenu = menu.add_submenu("more", [("child", lambda: None)])
+    action = menu.add_action("plain", lambda: None)
+
+    menu.eventFilter(submenu, QEvent(QEvent.Enter))
+    assert menu._submenu_expanded is True
+
+    menu.eventFilter(action, QEvent(QEvent.Enter))
+    assert menu._submenu_expanded is False
     menu.deleteLater()
 
 

@@ -824,6 +824,7 @@ class CommandExecutionMixin:
                 text=True,
                 timeout=2.0,
                 shell=False,
+                **ShortcutExecutor._capture_popen_platform_kwargs(),
             )
             return completed.returncode == 0
         except Exception:

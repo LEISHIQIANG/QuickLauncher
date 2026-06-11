@@ -901,6 +901,29 @@ def test_frozen_python_launcher_requires_successful_probe(monkeypatch, tmp_path)
     assert probed == [str(python_exe)]
 
 
+def test_python_launcher_probe_uses_hidden_process_options(monkeypatch):
+    captured = {}
+    hidden_options = {"creationflags": 0x08000000, "startupinfo": object()}
+
+    class FakeExecutor(command_exec.CommandExecutionMixin):
+        @staticmethod
+        def _capture_popen_platform_kwargs():
+            return hidden_options
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
+    monkeypatch.setattr(command_exec.subprocess, "run", fake_run)
+
+    assert command_exec.CommandExecutionMixin._probe_python_launcher("python.exe") is True
+    assert captured["argv"][0] == "python.exe"
+    assert captured["kwargs"]["creationflags"] == hidden_options["creationflags"]
+    assert captured["kwargs"]["startupinfo"] is hidden_options["startupinfo"]
+
+
 def test_frozen_visible_python_without_system_launcher_returns_clear_error(monkeypatch):
     writes = []
 

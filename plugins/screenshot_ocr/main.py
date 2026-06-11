@@ -14,9 +14,11 @@ from core.command_registry import COMMAND_INTERACTION_DIRECT, CommandAction, Com
 SENTINEL = "QL_SCREENSHOT_OCR_RESULT="
 HELPER_TIMEOUT_SECONDS = 300
 _TASK_LOCK = threading.Lock()
+_HELPER_CMD_LOCK = threading.Lock()
 _PLUGIN_API = None
 _INJECTED_SITE: str | None = None
 _CACHED_HELPER_CMD: list[str] | None = None
+_WARMUP_TIMER: threading.Timer | None = None
 
 
 def _runtime_site() -> Path | None:
@@ -25,7 +27,7 @@ def _runtime_site() -> Path | None:
 
 
 def register(api):
-    global _PLUGIN_API, _INJECTED_SITE
+    global _PLUGIN_API, _INJECTED_SITE, _WARMUP_TIMER
     _PLUGIN_API = api
     site = _runtime_site()
     if site is not None:
@@ -62,12 +64,17 @@ def register(api):
             CommandParam(name="capture_output", type="bool", required=False, default="true", label="捕获输出", advanced=True),
         ],
     )
-    # 后台提前检测并缓存命令路径
-    threading.Thread(target=_warmup_cmd, daemon=True).start()
+    # Avoid competing with QuickLauncher's first paint and popup preparation.
+    _WARMUP_TIMER = threading.Timer(2.0, _warmup_cmd)
+    _WARMUP_TIMER.daemon = True
+    _WARMUP_TIMER.start()
 
 
 def dispose(api=None):
-    global _INJECTED_SITE, _CACHED_HELPER_CMD
+    global _INJECTED_SITE, _CACHED_HELPER_CMD, _WARMUP_TIMER
+    if _WARMUP_TIMER is not None:
+        _WARMUP_TIMER.cancel()
+        _WARMUP_TIMER = None
     _CACHED_HELPER_CMD = None
     if _INJECTED_SITE:
         wx_str = str(Path(_INJECTED_SITE) / "wx")
@@ -181,36 +188,38 @@ def _payload_to_result(payload: dict) -> CommandResult:
 
 def _find_helper_command(helper: Path) -> list[str]:
     global _CACHED_HELPER_CMD
-    if _CACHED_HELPER_CMD is not None:
-        return _CACHED_HELPER_CMD
+    with _HELPER_CMD_LOCK:
+        if _CACHED_HELPER_CMD is not None:
+            return _CACHED_HELPER_CMD
 
-    site_packages = Path(__file__).resolve().parent / "runtime" / "site-packages"
-    current = Path(sys.executable or "")
-    runtime_tag = _bundled_wx_python_tag(site_packages)
+        site_packages = Path(__file__).resolve().parent / "runtime" / "site-packages"
+        current = Path(sys.executable or "")
+        runtime_tag = _bundled_wx_python_tag(site_packages)
 
-    if (
-        current.exists()
-        and current.name.lower().startswith("python")
-        and _current_python_matches(runtime_tag)
-        and _python_has_wx([str(current)])
-    ):
-        _inject_site_to_env(site_packages)
-        _CACHED_HELPER_CMD = [str(current), str(helper)]
-        return _CACHED_HELPER_CMD
+        if (
+            current.exists()
+            and current.name.lower().startswith("python")
+            and _current_python_matches(runtime_tag)
+            and _python_has_wx([str(current)])
+        ):
+            _inject_site_to_env(site_packages)
+            _CACHED_HELPER_CMD = [str(current), str(helper)]
+            return _CACHED_HELPER_CMD
 
-    if current.exists() and not current.name.lower().startswith("python"):
-        cmd = [str(current), "--plugin-helper", str(helper)]
-        if site_packages.is_dir():
-            cmd.extend(["--plugin-site", str(site_packages)])
-        cmd.append("--")
-        _CACHED_HELPER_CMD = cmd
-        return _CACHED_HELPER_CMD
+        if current.exists() and not current.name.lower().startswith("python"):
+            cmd = [str(current), "--plugin-helper", str(helper)]
+            if site_packages.is_dir():
+                cmd.extend(["--plugin-site", str(site_packages)])
+            cmd.append("--")
+            _CACHED_HELPER_CMD = cmd
+            return _CACHED_HELPER_CMD
 
-    cmd = _find_system_python_command()
-    if cmd:
-        _CACHED_HELPER_CMD = [*cmd, str(helper)]
+        cmd = _find_system_python_command()
+        if cmd:
+            _CACHED_HELPER_CMD = [*cmd, str(helper)]
+        else:
+            _CACHED_HELPER_CMD = []
         return _CACHED_HELPER_CMD
-    return []
 
 
 def _inject_site_to_env(site_packages: Path) -> None:
