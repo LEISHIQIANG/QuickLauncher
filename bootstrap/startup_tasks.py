@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-import sys
+
+from runtime_paths import is_packaged_runtime
 
 
 def cleanup_stale_command_cache(logger) -> None:
@@ -20,7 +21,7 @@ def cleanup_stale_command_cache(logger) -> None:
 
 
 def sync_frozen_autostart_from_config(root_dir: str, logger) -> None:
-    if not getattr(sys, "frozen", False):
+    if not is_packaged_runtime():
         return
 
     cfg_path = os.path.join(root_dir, "config", "data.json")
@@ -44,7 +45,7 @@ def sync_frozen_autostart_from_config(root_dir: str, logger) -> None:
 def process_startup_events(app, logger) -> None:
     try:
         app.processEvents()
-        if getattr(sys, "frozen", False):
+        if is_packaged_runtime():
             import time
 
             time.sleep(0.05)
@@ -90,7 +91,7 @@ def merge_default_special_apps(tray_app, logger) -> None:
 
 
 def sync_autostart_setting_from_task(tray_app, logger) -> None:
-    if not getattr(sys, "frozen", False):
+    if not is_packaged_runtime():
         return
 
     try:

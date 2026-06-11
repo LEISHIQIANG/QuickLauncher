@@ -9,6 +9,7 @@ import os
 from core import DataManager, ShortcutItem, ShortcutType
 from core.data_models import BATCH_LAUNCH_MODULE_ID, BATCH_LAUNCH_MODULE_VERSION
 from core.i18n import tr
+from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
 from qt_compat import (
     QApplication,
     QCheckBox,
@@ -110,6 +111,10 @@ def _load_shortcut_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
         pixmap = None
         icon_path = getattr(shortcut, "icon_path", "") or ""
         target_path = getattr(shortcut, "target_path", "") or ""
+
+        if not icon_path and shortcut_uses_folder_icon(getattr(shortcut, "type", None), target_path):
+            icon_path = default_folder_icon_path() or ""
+            target_path = ""
 
         if icon_path:
             pixmap = IconExtractor.from_file(icon_path, size, return_image=False)

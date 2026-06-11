@@ -50,6 +50,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert "plugin-bundled wxPython is cp312" in script
     assert "--include-data-dir=plugins=plugins" not in script
     assert "--include-data-files=plugins\\PLUGIN_DEV.md=PLUGIN_DEV.md" in script
+    assert "--include-data-files=modules\\action_chain\\module.json=modules\\action_chain\\module.json" in script
     assert "wxPython==" not in script
     assert "--include-module=wx" not in script
     assert "--include-package=wx" not in script
@@ -67,17 +68,34 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert "Failed to stage dist\\main.dist into dist\\QuickLauncher" in script
     assert 'if exist "dist\\QuickLauncher\\QuickLauncher.exe"' in script
     assert 'if not defined QL_UPX_EXE set "QL_UPX_EXE=0"' in script
+    assert script.count('if not defined QL_UPX_EXE set "QL_UPX_EXE=0"') >= 2
     assert 'if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"' in script
+    assert "pillow watchdog qrcode" in script
+    assert "--include-package=watchdog" in script
+    assert "--include-package=PIL" not in script
+    assert "--include-module=PIL.ImageDraw" in script
+    assert "--include-module=PIL.ImageFont" in script
+    assert "--report=dist\\nuitka-report.xml" in script
+    assert "PIL\\_avif.pyd" in script
     assert "scripts\\check_release_artifacts.py" in script
     assert "--allow-source-runtime-plugins" in script
     assert "--run-smoke" in script
     assert "QuickLauncher_Setup_%APP_VERSION%.sha256" in script
+    assert '--portable-zip "dist\\%PORTABLE_NAME%.zip"' in script
+    assert "QuickLauncher_Portable_%APP_VERSION%.sha256" not in script
+    assert 'dist\\%PORTABLE_NAME%.sha256' in script
+    assert script.index("Compress-Archive") < script.index("scripts\\check_release_artifacts.py")
 
 
 def test_installer_preserves_user_plugins_on_upgrade():
     installer = (ROOT / "scripts" / "installer.iss").read_text(encoding="utf-8")
 
     assert "(FindRec.Name <> 'plugins')" in installer
+    assert "(FindRec.Name <> 'icons')" in installer
+    assert 'Excludes: "icons\\*,icons\\*.*,' in installer
+    assert 'Name: "{app}\\plugins"; Permissions: users-modify' in installer
+    assert "if CopyFile(SourcePath, DestPath, False) then" in installer
+    assert "Config migration incomplete; source files were preserved" in installer
 
 
 def test_release_source_gate_passes_current_tree():
@@ -100,9 +118,11 @@ def test_release_artifact_checker_validates_dist_tree(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
+    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -120,12 +140,43 @@ def test_release_artifact_checker_validates_dist_tree(tmp_path):
     assert result.manifest["artifacts"]["installer"]["sha256"]
 
 
+def test_release_artifact_checker_hashes_final_portable_zip(tmp_path):
+    dist = tmp_path / f"QuickLauncher_Portable_{APP_VERSION}"
+    (dist / "hooks").mkdir(parents=True)
+    (dist / "assets").mkdir()
+    (dist / "plugins").mkdir()
+    (dist / "modules" / "action_chain").mkdir(parents=True)
+    (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
+    (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
+    installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
+    installer.write_bytes(b"setup")
+    portable_zip = tmp_path / f"QuickLauncher_Portable_{APP_VERSION}.zip"
+    portable_zip.write_bytes(b"portable")
+
+    result = check_release_artifacts(
+        ROOT,
+        dist_dir=dist,
+        installer=installer,
+        portable_zip=portable_zip,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
+    )
+
+    assert result.ok, result.errors
+    assert result.manifest["artifacts"]["portable_zip"]["sha256"]
+    assert result.manifest["artifacts"]["portable_zip"]["path"] == str(portable_zip)
+
+
 def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_path):
     root = tmp_path / "release-root"
     (root / "core").mkdir(parents=True)
     (root / "scripts").mkdir()
     (root / "assets").mkdir()
     (root / "hooks").mkdir()
+    (root / "modules" / "action_chain").mkdir(parents=True)
     (root / "plugins" / "screenshot_ocr").mkdir(parents=True)
     (root / ".plugins").mkdir()
 
@@ -149,6 +200,7 @@ def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_pa
     )
     (root / "assets" / "app.ico").write_bytes(b"ico")
     (root / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (root / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     (root / "plugins" / "PLUGIN_DEV.md").write_text("plugin docs\n", encoding="utf-8")
     (root / "plugins" / "screenshot_ocr" / "plugin.json").write_text(
         '{"id": "screenshot_ocr"}\n',
@@ -172,9 +224,11 @@ def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_pa
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
+    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -199,16 +253,19 @@ def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
+    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
     fake_smoke = tmp_path / "fake_smoke.py"
     fake_smoke.write_text(
         "import json\n"
         "print('starting fake smoke')\n"
-        "print(json.dumps({'status': 'ok', 'checks': {'fake': True, 'network_runtime': {}}, 'errors': []}))\n",
+        "print(json.dumps({'status': 'ok', 'checks': {'fake': True, 'network_runtime': {}, "
+        "'dialog_runtime': {}, 'image_runtime': {}, 'folder_watch_runtime': {}}, 'errors': []}))\n",
         encoding="utf-8",
     )
 
@@ -281,14 +338,47 @@ def test_post_package_smoke_requires_network_runtime_check(tmp_path):
 
     assert not result.ok
     assert any("network_runtime" in error for error in result.errors)
+    assert any("dialog_runtime" in error for error in result.errors)
+    assert any("image_runtime" in error for error in result.errors)
+    assert any("folder_watch_runtime" in error for error in result.errors)
+
+
+def test_release_artifact_checker_rejects_unused_avif_runtime(tmp_path):
+    dist = tmp_path / "QuickLauncher"
+    (dist / "hooks").mkdir(parents=True)
+    (dist / "assets").mkdir()
+    (dist / "plugins").mkdir()
+    (dist / "modules" / "action_chain").mkdir(parents=True)
+    (dist / "PIL").mkdir()
+    (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
+    (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
+    (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
+    (dist / "PIL" / "_avif.pyd").write_bytes(b"unused")
+    installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
+    installer.write_bytes(b"setup")
+
+    result = check_release_artifacts(
+        ROOT,
+        dist_dir=dist,
+        installer=installer,
+        version=APP_VERSION,
+        min_exe_bytes=1,
+        allow_source_runtime_plugins=True,
+    )
+
+    assert not result.ok
+    assert any("_avif.pyd" in error for error in result.errors)
 
 
 def test_release_artifact_checker_fails_missing_hooks(tmp_path):
     dist = tmp_path / "QuickLauncher"
     (dist / "assets").mkdir(parents=True)
     (dist / "plugins").mkdir()
+    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -310,9 +400,11 @@ def test_release_artifact_checker_rejects_pycache(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins" / "sample").mkdir(parents=True)
+    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
+    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     # Simulate __pycache__ debris that should be caught
     pycache = dist / "plugins" / "sample" / "__pycache__"
     pycache.mkdir()

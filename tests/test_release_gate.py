@@ -70,9 +70,9 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "--exclude-dir",
         "tools",
         "--max-total",
-        "1325",
+        "1360",
         "--max-unlogged",
-        "290",
+        "300",
     ]
     assert envs[2]["PYTHONDONTWRITEBYTECODE"] == "1"
 

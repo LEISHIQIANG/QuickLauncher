@@ -5,10 +5,10 @@
 import atexit
 import logging
 import os
-import sys
 import time
 
 from core.background_tasks import join_background_tasks, start_background_thread
+from runtime_paths import is_packaged_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class StartupMixin:
         QTimer.singleShot(3000, self._clean_icon_cache_async)
 
     def _clean_icon_cache_async(self):
-        """异步清理图标缓存"""
+        """Audit icon cache state without deleting user icon files on startup."""
         if self._sleeping:
             return
 
@@ -53,7 +53,6 @@ class StartupMixin:
 
                 marker_file = self.data_manager.app_dir / ".icon_cache_cleaned"
 
-                need_deep_clean = False
                 last_cleaned_version = ""
 
                 if marker_file.exists():
@@ -63,50 +62,24 @@ class StartupMixin:
                         logger.debug("读取图标缓存清理标记失败", exc_info=True)
 
                 if last_cleaned_version != APP_VERSION:
-                    need_deep_clean = True
                     logger.info(
-                        f"检测到版本升级 ({last_cleaned_version or '未知'} -> {APP_VERSION})，执行图标缓存深度清理..."
+                        "检测到版本升级 (%s -> %s)，跳过自动图标缓存清理以保留用户图标目录",
+                        last_cleaned_version or "未知",
+                        APP_VERSION,
                     )
 
                 cache_stats = self.data_manager.get_icon_cache_stats()
 
                 if cache_stats.get("invalid_size_mb", 0) > 10:
-                    need_deep_clean = True
-                    logger.info(f"检测到 {cache_stats['invalid_size_mb']:.1f} MB 无效缓存文件，执行清理...")
+                    logger.info(
+                        "检测到 %.1f MB 无效图标缓存文件；自动启动不清理用户图标目录，可手动执行清理图标缓存",
+                        cache_stats["invalid_size_mb"],
+                    )
 
-                if need_deep_clean:
-                    stats = self.data_manager.clean_icon_cache(dry_run=False)
-
-                    if stats["total_removed"] > 0:
-                        parts = []
-                        if stats["exe_files_removed"] > 0:
-                            parts.append(
-                                f"可执行文件 {stats['exe_files_removed']} 个 ({stats['exe_files_size_mb']:.1f} MB)"
-                            )
-                        if stats["large_files_removed"] > 0:
-                            parts.append(
-                                f"过大文件 {stats['large_files_removed']} 个 ({stats['large_files_size_mb']:.1f} MB)"
-                            )
-                        if stats["orphan_files_removed"] > 0:
-                            parts.append(
-                                f"孤儿文件 {stats['orphan_files_removed']} 个 ({stats['orphan_files_size_mb']:.1f} MB)"
-                            )
-                        if stats["duplicate_files_removed"] > 0:
-                            parts.append(
-                                f"重复文件 {stats['duplicate_files_removed']} 个 ({stats['duplicate_files_size_mb']:.1f} MB)"
-                            )
-
-                        logger.info(
-                            f"图标缓存升级清理完成: 共删除 {stats['total_removed']} 个文件, "
-                            f"释放 {stats['total_size_freed_mb']:.1f} MB\n  - " + "\n  - ".join(parts)
-                        )
-                    else:
-                        logger.info("图标缓存已是最新，无需清理")
-
-                    try:
-                        marker_file.write_text(APP_VERSION, encoding="utf-8")
-                    except Exception as e:
-                        logger.debug(f"无法写入版本标记: {e}")
+                try:
+                    marker_file.write_text(APP_VERSION, encoding="utf-8")
+                except Exception as e:
+                    logger.debug(f"无法写入版本标记: {e}")
 
             except Exception as e:
                 logger.debug(f"图标缓存清理失败: {e}")
@@ -129,13 +102,8 @@ class StartupMixin:
             self.popup_window.refresh_data(refresh_selection=False, reposition=False)
             if not os.environ.get("QL_SAFE_MODE"):
                 self.popup_window.preload_background()
-            self.popup_window.preload_visible_icons()
-            packaged_runtime = (
-                bool(getattr(sys, "frozen", False))
-                or "__compiled__" in dir(__builtins__)
-                or os.path.basename(sys.executable).lower() == "quicklauncher.exe"
-            )
-            self.popup_window.prepare_first_show(create_native_window=packaged_runtime)
+            self.popup_window.preload_visible_icons(force=True, all_pages=True)
+            self.popup_window.prepare_first_show(create_native_window=is_packaged_runtime())
             logger.info("预初始化弹窗完成，耗时 %.1f ms", (time.perf_counter() - preinit_start) * 1000)
         except Exception as e:
             logger.error(f"  预初始化弹窗失败: {e}")
@@ -194,10 +162,15 @@ class StartupMixin:
         except Exception:
             return
 
-        from core.data_models import ShortcutType
+        from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
 
         settings = self.data_manager.get_settings()
-        icon_size = settings.icon_size
+        # 使用与弹窗 _get_icon() 完全一致的 DPI 缩放后 source_size，
+        # 确保预加载的缓存 key 能被弹窗命中，避免重复提取图标
+        from ui.utils.ui_scale import sp as _sp
+
+        scaled_icon_size = _sp(settings.icon_size)
+        source_size = max(48, scaled_icon_size * 2)
 
         tasks = []
 
@@ -224,7 +197,10 @@ class StartupMixin:
 
             from qt_compat import QTimer
 
-            end = min(len(tasks), i + 24)
+            # Shell icon extraction can take several milliseconds per item.
+            # Keep each GUI-thread slice small so background warming never
+            # turns into a visible input stall.
+            end = min(len(tasks), i + 4)
             for idx in range(i, end):
                 item = tasks[idx]
                 try:
@@ -232,33 +208,19 @@ class StartupMixin:
                     target_path = getattr(item, "target_path", None)
                     item_type = getattr(item, "type", None)
 
-                    is_folder_type = item_type == ShortcutType.FOLDER
-                    if item_type == ShortcutType.FILE and target_path and os.path.isdir(target_path):
-                        is_folder_type = True
-
-                    if not icon_path and is_folder_type:
-                        possible_paths = [
-                            os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico"),
-                            os.path.join(
-                                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "Folder.ico"
-                            ),
-                        ]
-                        if hasattr(sys, "_MEIPASS"):
-                            possible_paths.insert(0, os.path.join(sys._MEIPASS, "assets", "Folder.ico"))
-                        for p in possible_paths:
-                            if os.path.exists(p):
-                                icon_path = p
-                                target_path = None
-                                break
+                    if not icon_path and shortcut_uses_folder_icon(item_type, target_path):
+                        icon_path = default_folder_icon_path()
+                        if icon_path:
+                            target_path = None
 
                     if icon_path:
-                        IconExtractor.from_file(icon_path, icon_size)
+                        IconExtractor.from_file(icon_path, source_size)
                         state["count"] += 1
                     elif target_path:
                         IconExtractor.extract(
                             target_path,
                             target_path,
-                            icon_size,
+                            source_size,
                             fallback_to_default=False,
                         )
                         state["count"] += 1
@@ -266,7 +228,7 @@ class StartupMixin:
                     continue
 
             state["i"] = end
-            QTimer.singleShot(1, step)
+            QTimer.singleShot(8, step)
 
         from qt_compat import QTimer
 

@@ -50,6 +50,28 @@ class _SleepHarness(SleepMixin):
         return None
 
 
+class _VisiblePopup:
+    def __init__(self):
+        self._icon_pixmap_cache = {"icon": object()}
+        self._icon_miss_cache = {"missing"}
+        self._default_icon_cache = {"default": object()}
+        self.background_released = False
+
+    def isVisible(self):
+        return False
+
+    def _release_background_cache(self):
+        self.background_released = True
+
+
+class _CleanupHarness(SleepMixin):
+    def __init__(self):
+        self.popup_window = _VisiblePopup()
+        self._extra_popup_windows = []
+        self.hotkey_manager = type("Hotkey", (), {"stop": lambda self: None})()
+        self.memory_guard = type("MemoryGuard", (), {"check_and_optimize": lambda self: False})()
+
+
 def test_mark_activity_does_not_run_sleep_cleanup():
     harness = _SleepHarness()
 
@@ -66,6 +88,17 @@ def test_enter_light_sleep_runs_cleanup_once():
 
     assert harness._sleeping is True
     assert harness.cleanup_calls == 1
+
+
+def test_light_sleep_preserves_popup_icon_caches():
+    harness = _CleanupHarness()
+
+    harness._perform_sleep_cleanup()
+
+    assert harness.popup_window.background_released is True
+    assert list(harness.popup_window._icon_pixmap_cache) == ["icon"]
+    assert harness.popup_window._icon_miss_cache == {"missing"}
+    assert list(harness.popup_window._default_icon_cache) == ["default"]
 
 
 def test_chain_http_get_blocks_private_ip(monkeypatch):

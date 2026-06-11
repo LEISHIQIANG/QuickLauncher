@@ -21,6 +21,7 @@ from io import BytesIO
 from urllib.parse import unquote_to_bytes, urljoin, urlparse
 
 from core.network_security import UnsafeUrlError, safe_urlopen
+from runtime_paths import app_root
 
 _CACHE_SIZE = 512
 _MAX_ICON_BYTES = 5 * 1024 * 1024
@@ -317,7 +318,7 @@ def clean_unused_favicon_cache(data, dry_run: bool = False) -> dict:
 
 
 def _cache_dir() -> str:
-    cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "temp_icons", "favicons")
+    cache_dir = str(app_root() / "temp_icons" / "favicons")
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
 

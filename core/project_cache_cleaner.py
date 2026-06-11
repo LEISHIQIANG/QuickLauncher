@@ -6,6 +6,8 @@ import logging
 import os
 from pathlib import Path
 
+from runtime_paths import app_root
+
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 
 logger = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ def get_project_cache_stats(data_manager=None) -> dict:
 def _get_install_dir(data_manager) -> Path:
     if data_manager is not None and getattr(data_manager, "install_dir", None):
         return Path(data_manager.install_dir).resolve(strict=False)
-    return Path(__file__).resolve(strict=False).parent.parent
+    return app_root()
 
 
 def _collect_protected_paths(data) -> set[str]:

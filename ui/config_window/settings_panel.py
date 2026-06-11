@@ -988,7 +988,6 @@ class SettingsPanel(
 
         self._setup_ui()
         self._load_settings()
-        self._schedule_heavy_page_prewarm()
 
     def _get_desc_color(self):
         """获取描述文字颜色"""

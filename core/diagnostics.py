@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from runtime_paths import is_packaged_runtime
+
 from .config_validation import validate_app_data
 
 logger = logging.getLogger(__name__)
@@ -116,7 +118,7 @@ def _collect_environment_diagnostics() -> list[DiagnosticItem]:
 
     try:
         process_info = {
-            "frozen": bool(getattr(sys, "frozen", False)),
+            "frozen": is_packaged_runtime(),
             "executable": sys.executable,
             "python_version": platform.python_version(),
             "python_implementation": platform.python_implementation(),

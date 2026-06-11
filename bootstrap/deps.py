@@ -3,26 +3,14 @@ import os
 import subprocess
 import sys
 
+from runtime_paths import is_packaged_runtime
+
 logger = logging.getLogger(__name__)
 
 
 def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_box):
     try:
-        is_compiled = (
-            getattr(sys, "frozen", False)
-            or getattr(sys, "_MEIPASS", False)
-            or ("__compiled__" in sys.builtin_module_names)
-        )
-        if not is_compiled:
-            try:
-                import builtins
-
-                if hasattr(builtins, "__compiled__"):
-                    is_compiled = True
-            except (ImportError, AttributeError):
-                logger.debug("检测编译状态失败", exc_info=True)
-
-        if is_compiled:
+        if is_packaged_runtime():
             return
         req = os.path.join(root_dir, "requirements.txt")
         if not os.path.exists(req):

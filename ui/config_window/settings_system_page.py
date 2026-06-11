@@ -26,6 +26,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from runtime_paths import app_executable, app_root, is_packaged_runtime
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tooltip_helper import install_tooltip
 from ui.utils.interruptible_animation import stop_animation
@@ -579,15 +580,10 @@ class SettingsSystemPageMixin:
         logger.info("用户请求重启应用...")
 
         try:
-            exe = sys.executable
-            is_frozen = getattr(sys, "frozen", False)
+            packaged = is_packaged_runtime()
+            exe = str(app_executable() if packaged else sys.executable)
 
-            if not is_frozen and "python" in os.path.basename(exe).lower():
-                if sys.argv[0].lower().endswith(".exe"):
-                    exe = os.path.abspath(sys.argv[0])
-                    is_frozen = True
-
-            if is_frozen:
+            if packaged:
                 if not os.path.isabs(exe):
                     exe = os.path.abspath(exe)
                 cwd = os.path.dirname(exe)
@@ -604,13 +600,7 @@ fso.DeleteFile WScript.ScriptFullName
 
                 subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
             else:
-                cwd = os.path.dirname(os.path.abspath(__file__))
-                while cwd and not os.path.exists(os.path.join(cwd, "main.py")):
-                    parent = os.path.dirname(cwd)
-                    if parent == cwd:
-                        break
-                    cwd = parent
-
+                cwd = str(app_root())
                 main_py = os.path.join(cwd, "main.py")
 
                 vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")

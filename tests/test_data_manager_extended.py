@@ -236,10 +236,11 @@ class TestBatchUpdate:
     def test_batch_defers_save(self):
         dm = _manager_with_data()
         dm._do_save = MagicMock(return_value=True)
+        dm.save = MagicMock(return_value=True)
         with dm.batch_update():
             dm._batch_dirty = True
-        # After exiting batch, save is triggered (via save() which uses timer)
-        # Force immediate was not set, so _do_save might not be called directly
+        dm.save.assert_called_once_with(immediate=False)
+        dm._do_save.assert_not_called()
         assert dm._batch_depth == 0
 
     def test_batch_immediate_triggers_save(self):
@@ -500,6 +501,15 @@ class TestSettings:
         dm._do_save = MagicMock(return_value=True)
         dm.update_settings(icon_size=dm.data.settings.icon_size)
         dm._do_save.assert_not_called()
+
+    def test_update_settings_can_defer_save(self):
+        dm = _manager_with_data()
+        dm.save = MagicMock(return_value=True)
+
+        dm.update_settings(icon_size=48, immediate=False)
+
+        assert dm.data.settings.icon_size == 48
+        dm.save.assert_called_once_with(immediate=False)
 
     def test_get_settings_returns_copy(self):
         dm = _manager_with_data()

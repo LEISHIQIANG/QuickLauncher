@@ -9,13 +9,12 @@ import os
 import re
 import socket
 import subprocess
-import sys
 import urllib.request
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 
 from core.network_security import read_limited_response, safe_urlopen
+from runtime_paths import app_root
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +147,7 @@ def quote_powershell_arg(value: str) -> str:
 
 
 def get_app_dir() -> str:
-    if getattr(sys, "frozen", False):
-        return str(Path(sys.executable).parent)
-    return str(Path(__file__).resolve().parent.parent)
+    return str(app_root())
 
 
 def get_config_dir() -> str:

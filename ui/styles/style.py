@@ -24,7 +24,7 @@ from qt_compat import (
     QWidget,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.utils.ui_scale import scale_qss, sp
+from ui.utils.ui_scale import get_scale_percent, scale_qss, sp
 from ui.utils.window_effect import paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ class PopupMenu(QWidget):
 
     _active_popups = set()
 
-    def __init__(self, theme: str = "dark", radius: int = 12, parent=None):
+    def __init__(self, theme: str = "dark", radius: int = 12, parent=None, native_effects: bool = False):
         if parent is None and not isinstance(theme, str):
             parent = theme
             theme = getattr(parent, "theme", "dark")
@@ -148,6 +148,8 @@ class PopupMenu(QWidget):
         self._theme = theme
         self._radius = self._effective_radius(radius)
         self._blur_applied = False
+        self._native_effects_enabled = bool(native_effects)
+        self._effect_generation = 0
 
         self.setAutoFillBackground(False)
         self.setAttribute(QtCompat.WA_NoSystemBackground, True)
@@ -209,7 +211,7 @@ class PopupMenu(QWidget):
         except Exception as exc:
             logger.debug("设置按钮焦点策略失败: %s", exc, exc_info=True)
         btn.setStyleSheet(self._btn_style_dark if self._theme == "dark" else self._btn_style_light)
-        btn.clicked.connect(lambda: self._trigger(callback))
+        btn.clicked.connect(lambda checked=False, cb=callback, label=text: self._trigger(cb, label))
         # 悬停到普通菜单项时收起子菜单
         original_enter = btn.enterEvent
 
@@ -250,7 +252,7 @@ class PopupMenu(QWidget):
             sub_btn = QPushButton(label, self)
             sub_btn.setCursor(QtCompat.PointingHandCursor)
             sub_btn.setStyleSheet(sub_style)
-            sub_btn.clicked.connect(lambda checked=False, cb=callback: self._trigger(cb))
+            sub_btn.clicked.connect(lambda checked=False, cb=callback, label=label: self._trigger(cb, label))
             sub_btn.hide()
             self._layout.addWidget(sub_btn)
             sub_widgets.append(sub_btn)
@@ -278,7 +280,7 @@ class PopupMenu(QWidget):
             w.show()
         self.adjustSize()
         self._move_into_screen(self.pos())
-        self._apply_blur_effect()
+        self._schedule_blur_effect()
 
     def _collapse_submenu(self):
         """收起子菜单项"""
@@ -289,7 +291,7 @@ class PopupMenu(QWidget):
             w.hide()
         self.adjustSize()
         self._move_into_screen(self.pos())
-        self._apply_blur_effect()
+        self._schedule_blur_effect()
 
     def add_separator(self):
         """添加分隔线"""
@@ -299,15 +301,33 @@ class PopupMenu(QWidget):
         self._layout.addWidget(sep)
         return sep
 
-    def _trigger(self, callback):
+    def _trigger(self, callback, action_label: str = ""):
         """触发回调并关闭菜单"""
         try:
             self.hide()
+        except Exception as exc:
+            logger.debug("隐藏菜单失败: %s", exc, exc_info=True)
+
+        # Run menu actions after Qt has processed the popup hide/focus release.
+        # Several actions open modal dialogs or rebuild the icon grid; doing that
+        # inside the QPushButton click stack can leave the native popup grab in an
+        # unstable state on packaged Windows builds.
+        self._retain_until_hidden()
+        QTimer.singleShot(0, lambda cb=callback, label=action_label: self._run_deferred_action(cb, label))
+
+    def _run_deferred_action(self, callback, action_label: str = ""):
+        try:
+            if action_label:
+                logger.debug("执行菜单动作: %s", action_label)
+            callback()
+        except Exception as e:
+            logging.getLogger(__name__).exception("菜单动作执行失败 action=%s error=%s", action_label, e)
         finally:
+            PopupMenu._release_popup(self)
             try:
-                callback()
-            except Exception as e:
-                logging.getLogger(__name__).error(f"菜单动作执行失败: {e}")
+                self.deleteLater()
+            except RuntimeError:
+                logger.debug("延迟删除菜单失败", exc_info=True)
 
     def popup(self, global_pos):
         """在指定位置显示菜单"""
@@ -323,8 +343,8 @@ class PopupMenu(QWidget):
             self.setFocus()
         except Exception as exc:
             logger.debug("激活菜单窗口失败: %s", exc, exc_info=True)
-        # 窗口显示后应用模糊效果和圆角裁剪
-        self._apply_blur_effect()
+        # Native blur/acrylic is opt-in and delayed; common context menus stay Qt-painted.
+        self._schedule_blur_effect()
         QTimer.singleShot(0, self._reposition_after_show)
 
     def _retain_until_hidden(self):
@@ -350,6 +370,29 @@ class PopupMenu(QWidget):
         except Exception as exc:
             logger.debug("判断菜单阴影策略失败: %s", exc, exc_info=True)
             return False
+
+    def _next_effect_generation(self) -> int:
+        self._effect_generation = int(getattr(self, "_effect_generation", 0) or 0) + 1
+        return self._effect_generation
+
+    def _schedule_blur_effect(self, delay_ms: int = 40):
+        if not bool(getattr(self, "_native_effects_enabled", False)):
+            return
+        generation = self._next_effect_generation()
+        QTimer.singleShot(
+            max(0, int(delay_ms)),
+            lambda generation=generation: self._apply_blur_effect_if_current(generation),
+        )
+
+    def _apply_blur_effect_if_current(self, generation: int):
+        if generation != int(getattr(self, "_effect_generation", -1) or -1):
+            return
+        try:
+            if not self.isVisible():
+                return
+        except RuntimeError:
+            return
+        self._apply_blur_effect()
 
     @staticmethod
     def _effective_radius(radius: int) -> int:
@@ -389,7 +432,7 @@ class PopupMenu(QWidget):
         try:
             self.adjustSize()
             self._move_into_screen(self.pos())
-            self._apply_blur_effect()
+            self._schedule_blur_effect()
         except RuntimeError:
             return
         except Exception as exc:
@@ -581,7 +624,7 @@ class PopupMenu(QWidget):
         """窗口大小变化时重新应用模糊和圆角裁剪"""
         super().resizeEvent(event)
         if self._blur_applied and self.isVisible():
-            self._apply_blur_effect()
+            self._schedule_blur_effect()
 
 
 class StyleSheet:
@@ -998,6 +1041,14 @@ class Glassmorphism:
     磨砂玻璃拟态样式生成器
     提供 Glassmorphism + Neumorphism 混合效果
     """
+
+    # 样式表缓存：避免每次调用都重新生成大量字符串拼接
+    _full_stylesheet_cache: dict[tuple[str, int], str] = {}
+
+    @classmethod
+    def clear_stylesheet_cache(cls) -> None:
+        """清除缓存的样式表（DPI 缩放变化时调用）"""
+        cls._full_stylesheet_cache.clear()
 
     @staticmethod
     def get_glassmorphism_container_style(theme: str) -> str:
@@ -1490,7 +1541,10 @@ class Glassmorphism:
 
     @staticmethod
     def get_full_glassmorphism_stylesheet(theme: str) -> str:
-        """获取完整的磨砂玻璃拟态样式表"""
+        """获取完整的磨砂玻璃拟态样式表（带缓存）"""
+        cache_key = (theme, get_scale_percent())
+        if cache_key in Glassmorphism._full_stylesheet_cache:
+            return Glassmorphism._full_stylesheet_cache[cache_key]
         glass = Glassmorphism
         scrollbar = StyleSheet.get_scrollbar_style(theme)
         slider = StyleSheet.get_slider_style(theme)
@@ -1609,7 +1663,7 @@ class Glassmorphism:
                 }
             """
 
-        return scale_qss(
+        result = scale_qss(
             base
             + glass.get_neumorphism_button_style(theme)
             + glass.get_neumorphism_input_style(theme)
@@ -1619,6 +1673,8 @@ class Glassmorphism:
             + slider
             + combobox
         )
+        Glassmorphism._full_stylesheet_cache[cache_key] = result
+        return result
 
 
 def get_menu_stylesheet(theme: str) -> str:

@@ -20,6 +20,7 @@ from qt_compat import (
     get_standard_icon,
     pyqtSignal,
 )
+from runtime_paths import app_executable, app_root, is_packaged_runtime
 from ui.styles.style import PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tray_mixins import HooksMixin, PopupMixin, SleepMixin, StartupMixin, UpdateMixin, WindowsMixin
@@ -224,6 +225,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         except Exception as exc:
             logger.debug("注册退出清理失败: %s", exc, exc_info=True)
         self._last_synced_settings_snapshot = self._make_settings_snapshot()
+        self._last_synced_popup_model_snapshot = self._make_popup_model_snapshot()
         self._pending_settings_sync = False
         self._settings_sync_timer = QTimer(self)
         self._settings_sync_timer.setSingleShot(True)
@@ -247,7 +249,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         from core.memory_guard import MemoryGuard
 
         self.memory_guard = MemoryGuard(critical_mb=200)  # 提高阈值到200MB
-        self.memory_guard.register_cleanup_callback(self._cleanup_icon_cache)
         self.memory_guard.register_cleanup_callback(
             lambda level: (
                 None
@@ -354,6 +355,99 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             "icon_size": int(getattr(settings, "icon_size", 48) or 48),
         }
 
+    def _make_popup_model_snapshot(self) -> tuple:
+        """Snapshot launcher folders/items so settings-only changes can avoid full data refresh."""
+        try:
+            folders = []
+            for folder in list(getattr(getattr(self.data_manager, "data", None), "folders", []) or []):
+                if bool(getattr(folder, "is_icon_repo", False)) or getattr(folder, "id", "") == "icon_repo":
+                    continue
+                items = []
+                for item in list(getattr(folder, "items", []) or []):
+                    tags = tuple(getattr(item, "tags", []) or [])
+                    items.append(
+                        (
+                            getattr(item, "id", ""),
+                            getattr(item, "name", ""),
+                            getattr(item, "type", ""),
+                            getattr(item, "order", 0),
+                            bool(getattr(item, "enabled", True)),
+                            getattr(item, "icon_path", ""),
+                            getattr(item, "target_path", ""),
+                            getattr(item, "target_args", ""),
+                            getattr(item, "working_dir", ""),
+                            getattr(item, "url", ""),
+                            getattr(item, "command", ""),
+                            getattr(item, "command_type", ""),
+                            getattr(item, "trigger_mode", ""),
+                            getattr(item, "alias", ""),
+                            tags,
+                        )
+                    )
+                folders.append(
+                    (
+                        getattr(folder, "id", ""),
+                        getattr(folder, "name", ""),
+                        getattr(folder, "order", 0),
+                        bool(getattr(folder, "is_dock", False)),
+                        getattr(folder, "linked_path", ""),
+                        tuple(items),
+                    )
+                )
+            return tuple(folders)
+        except Exception as exc:
+            logger.debug("创建弹窗数据快照失败: %s", exc, exc_info=True)
+            return ()
+
+    def _apply_win10_shadow_settings(self, source=None):
+        try:
+            if source is None:
+                source = self.data_manager.get_settings()
+            if isinstance(source, dict):
+                shadow_size = source.get("shadow_size", 0)
+                shadow_distance = source.get("shadow_distance", 0)
+            else:
+                shadow_size = getattr(source, "shadow_size", 0)
+                shadow_distance = getattr(source, "shadow_distance", 0)
+
+            from ui.utils.window_effect import configure_win10_window_shadow
+
+            configure_win10_window_shadow(shadow_size=shadow_size, shadow_distance=shadow_distance)
+        except Exception as exc:
+            logger.debug("同步 Win10 全局阴影设置失败: %s", exc, exc_info=True)
+
+    def _refresh_popup_after_settings_change(self, *, model_changed: bool, preload_icons: bool = False):
+        popup = getattr(self, "popup_window", None)
+        if popup is None:
+            return
+
+        try:
+            _ = popup.width()
+        except RuntimeError:
+            self.popup_window = None
+            return
+        except Exception:
+            self.popup_window = None
+            return
+
+        try:
+            if model_changed:
+                pos = popup.geometry().center()
+                popup.refresh_data(pos.x(), pos.y(), refresh_selection=False, reposition=False)
+            else:
+                signal = getattr(popup, "settings_updated", None)
+                if signal is not None and callable(getattr(signal, "emit", None)):
+                    signal.emit()
+                elif hasattr(popup, "_on_settings_updated"):
+                    popup._on_settings_updated()
+
+            if preload_icons and hasattr(popup, "preload_visible_icons"):
+                popup.preload_visible_icons(force=True, all_pages=True)
+        except RuntimeError:
+            self.popup_window = None
+        except Exception as e:
+            logger.error("刷新弹窗失败: %s", e)
+
     def _apply_pending_settings_changes(self):
         if not self._pending_settings_sync:
             return
@@ -362,6 +456,10 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         prev = self._last_synced_settings_snapshot or {}
         cur = self._make_settings_snapshot()
         self._last_synced_settings_snapshot = cur
+        prev_popup_model = getattr(self, "_last_synced_popup_model_snapshot", None)
+        cur_popup_model = self._make_popup_model_snapshot()
+        self._last_synced_popup_model_snapshot = cur_popup_model
+        popup_model_changed = prev_popup_model is not None and cur_popup_model != prev_popup_model
 
         if cur.get("special_apps") != prev.get("special_apps"):
             self._sync_special_apps_to_hook()
@@ -381,26 +479,23 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         if cur.get("theme") != prev.get("theme"):
             self._create_menu()  # 重建托盘菜单以应用新主题
 
-        if self.popup_window:
-            try:
-                # 如果窗口对象已被销毁，置为 None
-                try:
-                    _ = self.popup_window.width()
-                except RuntimeError:
-                    self.popup_window = None
-            except Exception:
-                self.popup_window = None
+        shadow_changed = (
+            cur.get("shadow_size") != prev.get("shadow_size")
+            or cur.get("shadow_distance") != prev.get("shadow_distance")
+        )
+        if shadow_changed:
+            self._apply_win10_shadow_settings(cur)
 
-        if self.popup_window:
-            try:
-                pos = self.popup_window.geometry().center()
-                self.popup_window.refresh_data(pos.x(), pos.y(), refresh_selection=False, reposition=False)
-            except Exception as e:
-                logger.error(f"刷新弹窗失败: {e}")
+        ui_scale_changed = cur.get("ui_scale_percent") != prev.get("ui_scale_percent")
+        self._refresh_popup_after_settings_change(
+            model_changed=popup_model_changed,
+            preload_icons=ui_scale_changed,
+        )
 
     def _apply_initial_settings(self):
         """应用初始设置"""
         settings = self.data_manager.get_settings()
+        self._apply_win10_shadow_settings(settings)
 
         # 1. 托盘图标可见性
         if getattr(settings, "hide_tray_icon", False):
@@ -457,15 +552,13 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
     def _load_icon(self) -> QIcon:
         """加载图标"""
+        root_dir = str(app_root())
+        exe_dir = str(app_executable().parent)
         possible_paths = [
-            os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "app.ico"),  # exe所在目录
-            os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "app.ico"),  # exe/assets
-            os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "app.ico"
-            ),  # 根目录/assets/app.ico
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.ico"),  # 根目录 app.ico
-            os.path.join(os.path.dirname(__file__), "..", "resources", "app.ico"),
-            os.path.join(os.path.dirname(__file__), "resources", "app.ico"),
+            os.path.join(root_dir, "assets", "app.ico"),
+            os.path.join(root_dir, "app.ico"),
+            os.path.join(exe_dir, "assets", "app.ico"),
+            os.path.join(exe_dir, "app.ico"),
             "assets/app.ico",
             "resources/app.ico",
         ]
@@ -485,9 +578,9 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
     def _create_menu(self):
         """创建托盘菜单"""
-        # 使用 PopupMenu 实现磨砂质感（模糊效果在 popup() 中自动应用）
+        # 托盘右键是高频入口，使用 Qt 自绘菜单，避免同步 DWM/Acrylic 导致卡顿或 native 崩溃。
         theme = self.data_manager.get_settings().theme
-        self.tray_menu = PopupMenu(theme=theme, radius=12)
+        self.tray_menu = PopupMenu(theme=theme, radius=12, native_effects=False)
 
         # 添加菜单项
         self.tray_menu.add_action("设置", self._show_config)
@@ -657,27 +750,15 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             import subprocess
             import tempfile
 
-            # 获取当前进程的可执行文件路径
-            # 对于 Nuitka 打包，需要查找 QuickLauncher.exe
-            exe = sys.executable
+            packaged = is_packaged_runtime()
+            exe = str(app_executable() if packaged else sys.executable)
             logger.info(f"sys.executable = {exe}")
-            logger.info(f"sys.frozen = {getattr(sys, 'frozen', False)}")
+            logger.info(f"packaged_runtime = {packaged}")
             logger.info(f"sys.argv[0] = {sys.argv[0]}")
 
-            # 判断是否为打包版本
-            is_frozen = getattr(sys, "frozen", False)
+            logger.info(f"最终检测: packaged={packaged}, exe={exe}")
 
-            # 如果是打包版本，查找真正的 QuickLauncher.exe
-            if not is_frozen and "python" in os.path.basename(exe).lower():
-                # 可能是 Nuitka 打包，检查 sys.argv[0]
-                if sys.argv[0].lower().endswith(".exe"):
-                    exe = os.path.abspath(sys.argv[0])
-                    is_frozen = True
-                    logger.info(f"从 sys.argv[0] 检测到打包版本: {exe}")
-
-            logger.info(f"最终检测: is_frozen={is_frozen}, exe={exe}")
-
-            if is_frozen:
+            if packaged:
                 # 打包模式：使用 VBScript 无窗口延迟启动
                 if not os.path.isabs(exe):
                     exe = os.path.abspath(exe)
@@ -702,13 +783,7 @@ fso.DeleteFile WScript.ScriptFullName
 
             else:
                 # 开发模式：使用 VBScript 无窗口延迟启动
-                cwd = os.path.dirname(os.path.abspath(__file__))
-                while cwd and not os.path.exists(os.path.join(cwd, "main.py")):
-                    parent = os.path.dirname(cwd)
-                    if parent == cwd:
-                        break
-                    cwd = parent
-
+                cwd = str(app_root())
                 main_py = os.path.join(cwd, "main.py")
                 if not os.path.exists(main_py):
                     logger.error(f"找不到 main.py: {main_py}")

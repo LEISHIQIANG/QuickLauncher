@@ -4,7 +4,6 @@
 
 import logging
 import os
-import sys
 import time
 
 from core import DataManager
@@ -44,6 +43,7 @@ from qt_compat import (
     pyqtProperty,
     pyqtSignal,
 )
+from runtime_paths import app_root
 from ui.styles.style import PopupMenu, get_dialog_stylesheet
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.ui_scale import scale_qss, sp
@@ -659,10 +659,7 @@ class FolderPanel(QWidget):
         self.folder_list.clear()
 
         # 加载文件夹图标 (从 assets/Folder.ico 读取蓝色图标)
-        if getattr(sys, "frozen", False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        base_dir = str(app_root())
 
         icon_path = os.path.join(base_dir, "assets", "Folder.ico")
         if not os.path.exists(icon_path):
@@ -1215,8 +1212,23 @@ class FolderPanel(QWidget):
         if dialog.exec_():
             name = dialog.get_text()
             if name:
-                self.data_manager.rename_folder(folder_id, name)
-                self._load_folders()
+                QTimer.singleShot(0, lambda fid=folder_id, new_name=name: self._rename_folder_after_dialog(fid, new_name))
+
+    def _rename_folder_after_dialog(self, folder_id: str, name: str):
+        try:
+            logger.info("确认重命名文件夹: folder_id=%s name=%s", folder_id, name)
+            self.data_manager.rename_folder(folder_id, name)
+            self._load_folders()
+        except Exception as exc:
+            logger.exception("重命名文件夹失败: folder_id=%s", folder_id)
+            try:
+                ThemedMessageBox.warning(
+                    self,
+                    tr("重命名失败"),
+                    tr("重命名文件夹失败，请查看运行日志。\n{error}", error=str(exc)),
+                )
+            except Exception:
+                logger.debug("显示重命名失败提示失败", exc_info=True)
 
     def _delete_folder(self, folder_id: str):
         """删除文件夹 - 使用主题化对话框"""
@@ -1237,8 +1249,24 @@ class FolderPanel(QWidget):
         )
 
         if confirmed:
-            self.data_manager.delete_folder(folder_id)
+            QTimer.singleShot(0, lambda fid=folder_id, name=folder.name: self._delete_folder_after_confirm(fid, name))
+
+    def _delete_folder_after_confirm(self, folder_id: str, folder_name: str):
+        try:
+            logger.info("确认删除文件夹: folder_id=%s name=%s", folder_id, folder_name)
+            deleted = self.data_manager.delete_folder(folder_id)
+            logger.info("删除文件夹完成: folder_id=%s deleted=%s", folder_id, deleted)
             self._load_folders()
+        except Exception as exc:
+            logger.exception("删除文件夹失败: folder_id=%s", folder_id)
+            try:
+                ThemedMessageBox.warning(
+                    self,
+                    tr("删除失败"),
+                    tr("删除文件夹失败，请查看运行日志。\n{error}", error=str(exc)),
+                )
+            except Exception:
+                logger.debug("显示删除文件夹失败提示失败", exc_info=True)
 
     def _import_folder(self, folder_path: str):
         """导入文件夹并创建绑定分类
@@ -1359,6 +1387,10 @@ class FolderPanel(QWidget):
         )
 
         if reply == ThemedMessageBox.Yes:
+            QTimer.singleShot(0, lambda fid=folder_id: self._unlink_folder_after_confirm(fid))
+
+    def _unlink_folder_after_confirm(self, folder_id: str):
+        try:
             folder = self.data_manager.data.get_folder_by_id(folder_id)
             if folder:
                 folder.linked_path = ""
@@ -1371,6 +1403,16 @@ class FolderPanel(QWidget):
 
                 self.data_manager.save()
                 self._load_folders()
+        except Exception as exc:
+            logger.exception("解除文件夹绑定失败: folder_id=%s", folder_id)
+            try:
+                ThemedMessageBox.warning(
+                    self,
+                    tr("解除绑定失败"),
+                    tr("解除文件夹绑定失败，请查看运行日志。\n{error}", error=str(exc)),
+                )
+            except Exception:
+                logger.debug("显示解除绑定失败提示失败", exc_info=True)
 
     def _start_folder_watch(self, folder_id: str):
         """启动文件夹监听"""

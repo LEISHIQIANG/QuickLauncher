@@ -123,30 +123,11 @@ class SleepMixin:
         logger.info("进入轻睡眠模式：保留键盘 Hook 用于 Alt 双击切换中键")
 
         try:
-            self._cleanup_icon_cache()
-        except _SLEEP_MIXIN_ERRORS as exc:
-            logger.debug("清理图标缓存: %s", exc, exc_info=True)
-
-        try:
-            from core import IconExtractor
-
-            if hasattr(IconExtractor, "clear_cache"):
-                IconExtractor.clear_cache()
-        except _SLEEP_MIXIN_ERRORS as exc:
-            logger.debug("清理图标提取器缓存: %s", exc, exc_info=True)
-
-        try:
             if self.popup_window:
                 try:
                     self.popup_window._release_background_cache()
                 except _SLEEP_MIXIN_ERRORS as exc:
                     logger.debug("释放背景缓存: %s", exc, exc_info=True)
-                try:
-                    self.popup_window._icon_pixmap_cache.clear()
-                    self.popup_window._icon_miss_cache.clear()
-                    self.popup_window._default_icon_cache.clear()
-                except _SLEEP_MIXIN_ERRORS as exc:
-                    logger.debug("清理图标缓存: %s", exc, exc_info=True)
                 try:
                     type(self.popup_window)._global_bg_cache.clear()
                 except _SLEEP_MIXIN_ERRORS as exc:
@@ -156,14 +137,8 @@ class SleepMixin:
                     popup._release_background_cache()
                 except _SLEEP_MIXIN_ERRORS as exc:
                     logger.debug("释放背景缓存: %s", exc, exc_info=True)
-                try:
-                    popup._icon_pixmap_cache.clear()
-                    popup._icon_miss_cache.clear()
-                    popup._default_icon_cache.clear()
-                except _SLEEP_MIXIN_ERRORS as exc:
-                    logger.debug("清理图标缓存: %s", exc, exc_info=True)
         except _SLEEP_MIXIN_ERRORS as exc:
-            logger.debug("清理图标缓存: %s", exc, exc_info=True)
+            logger.debug("释放弹窗背景缓存: %s", exc, exc_info=True)
 
         try:
             self.memory_guard.check_and_optimize()
@@ -242,18 +217,17 @@ class SleepMixin:
         except _SLEEP_MIXIN_ERRORS as exc:
             logger.debug("内存检查与优化: %s", exc, exc_info=True)
 
-    def _cleanup_icon_cache(self):
-        """清理图标缓存以释放内存"""
+    def _cleanup_icon_cache(self, level: str = "manual"):
+        """手动清理图标提取缓存；常规内存检查不再调用此方法。"""
         try:
             from core import IconExtractor
 
-            if hasattr(IconExtractor, "_cache"):
-                cache_size = len(IconExtractor._cache)
-                if cache_size > 50:
-                    items = list(IconExtractor._cache.items())
-                    IconExtractor._cache.clear()
-                    for k, v in items[-50:]:
-                        IconExtractor._cache[k] = v
-                    logger.info(f"清理图标缓存: {cache_size} -> 50")
+            if level == "critical":
+                IconExtractor.clear_cache()
+            elif level == "manual":
+                cache_size = len(getattr(IconExtractor, "_cache", {}))
+                IconExtractor.clear_cache()
+                if cache_size:
+                    logger.info("手动清理内存图标缓存: %s -> 0", cache_size)
         except _SLEEP_MIXIN_ERRORS as e:
             logger.debug(f"清理图标缓存失败: {e}")

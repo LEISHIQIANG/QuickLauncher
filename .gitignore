@@ -37,6 +37,9 @@ venv/
 ENV/
 env/
 
+# Reasonix AI config
+.reasonix/
+
 # IDE
 .vscode/
 .idea/

@@ -374,7 +374,29 @@ def test_batch_actions_refresh_folder_and_emit_signal():
     assert emits == [True, True]
 
 
-def test_batch_fetch_icons_starts_worker_without_blocking(monkeypatch):
+def test_batch_move_reports_dialog_failure(monkeypatch):
+    from core import Folder
+
+    grid = IconGrid.__new__(IconGrid)
+    grid.current_folder_id = "source"
+    source = Folder(id="source", name="Source")
+    target = Folder(id="target", name="Target")
+    grid.data_manager = SimpleNamespace(data=_data_with_folders([source, target]))
+    warnings = []
+
+    def fail_dialog(*_args, **_kwargs):
+        raise RuntimeError("dialog boom")
+
+    monkeypatch.setattr(grid_mod, "MoveFolderDialog", fail_dialog)
+    monkeypatch.setattr(grid_mod.ThemedMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    IconGrid._batch_move(grid, ["one"])
+
+    assert warnings
+    assert "dialog boom" in warnings[0][2]
+
+
+def test_batch_fetch_icons_starts_worker_without_blocking(monkeypatch, qapp):
     grid = IconGrid.__new__(IconGrid)
     url_shortcut = ShortcutItem(
         id="url",
@@ -415,6 +437,7 @@ def test_batch_fetch_icons_starts_worker_without_blocking(monkeypatch):
     monkeypatch.setattr(grid_mod.ThemedMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
 
     IconGrid._batch_fetch_icons(grid, ["url", "file"])
+    qapp.processEvents()
 
     assert snapshots == [True]
     assert warnings == []

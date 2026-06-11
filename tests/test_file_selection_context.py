@@ -311,6 +311,40 @@ def test_selection_sensitive_command_defers_while_probe_is_pending(monkeypatch):
     assert scheduled and scheduled[0][0] == 35
 
 
+def test_selection_sensitive_retry_uses_popup_lifecycle_defer():
+    popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
+    popup._selected_files_status = "pending"
+    popup._lifecycle_generation = 7
+    deferred = []
+
+    def defer(delay, callback, *args, generation=None):
+        deferred.append((delay, callback, args, generation))
+
+    popup._defer_lifecycle_callback = defer
+    item = ShortcutItem(type=ShortcutType.COMMAND, command_type="cmd", command="echo {{selected_file:q}}")
+
+    assert popup_window.LauncherPopup._should_wait_for_selection(popup, item) is True
+
+    delay, callback, args, generation = deferred[0]
+    assert delay == 35
+    assert callback == popup._execute_item_after_selection_probe
+    assert args == (item, False)
+    assert generation == 7
+
+
+def test_selection_probe_retry_skips_hidden_popup():
+    popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
+    popup._closing = False
+    popup.isVisible = lambda: False
+    executed = []
+    popup._execute_item = lambda item, force_new=False: executed.append((item, force_new))
+    item = ShortcutItem(type=ShortcutType.COMMAND, command_type="cmd", command="echo {{selected_file:q}}")
+
+    popup_window.LauncherPopup._execute_item_after_selection_probe(popup, item)
+
+    assert executed == []
+
+
 def test_invalid_selection_context_does_not_start_worker(monkeypatch):
     popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
     popup._file_check_seq = 0
@@ -338,6 +372,74 @@ def test_invalid_selection_context_does_not_start_worker(monkeypatch):
 
     assert popup._selected_files_status == "empty"
     assert popup._selected_files == []
+
+
+def test_file_selection_probe_queues_latest_request_while_thread_running(monkeypatch):
+    popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
+    popup._file_check_seq = 0
+    popup._file_thread = None
+    popup._pending_file_check_context = None
+    popup._closing = False
+    popup._selected_files_trigger_pos = (10, 10)
+
+    captured = []
+
+    def capture(**kwargs):
+        context = SimpleNamespace(
+            request_id=kwargs["request_id"],
+            target_kind="explorer",
+            target_root_hwnd=100,
+            foreground_root_hwnd=100,
+            cursor_root_hwnd=100,
+            trigger_pos=(10, 10),
+            ignore_reason="",
+            started_at=kwargs["started_at"],
+        )
+        captured.append(context)
+        return context
+
+    class _Signal:
+        def __init__(self):
+            self.callbacks = []
+
+        def connect(self, callback):
+            self.callbacks.append(callback)
+
+    created_threads = []
+
+    class _Thread:
+        def __init__(self, context):
+            self.context = context
+            self.request_id = context.request_id
+            self.files_found = _Signal()
+            self.finished = _Signal()
+            self.running = False
+            created_threads.append(self)
+
+        def start(self):
+            self.running = True
+
+        def isRunning(self):
+            return self.running
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(popup_data_refresh.SelectionTriggerContext, "capture", capture)
+    monkeypatch.setattr(popup_data_refresh, "FileSelectionThread", _Thread)
+
+    popup_window.LauncherPopup._start_file_check(popup, hwnd=100)
+    popup_window.LauncherPopup._start_file_check(popup, hwnd=100)
+
+    assert len(created_threads) == 1
+    assert popup._pending_file_check_context is captured[1]
+
+    created_threads[0].running = False
+    popup_window.LauncherPopup._on_file_check_thread_finished(popup, created_threads[0])
+
+    assert len(created_threads) == 2
+    assert created_threads[1].context is captured[1]
+    assert popup._pending_file_check_context is None
 
 
 def test_indicator_turns_orange_only_for_valid_ready_selection_in_dark_theme():

@@ -26,6 +26,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from runtime_paths import app_root
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
@@ -251,7 +252,7 @@ class ThemedMessageBox(QDialog):
         roots.extend(
             [
                 os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets"),
-                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets"),
+                str(app_root() / "assets"),
                 os.path.join(os.getcwd(), "assets"),
             ]
         )

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REQUIRED_SMOKE_CHECKS = ("network_runtime",)
+REQUIRED_SMOKE_CHECKS = ("network_runtime", "dialog_runtime", "image_runtime", "folder_watch_runtime")
 
 
 @dataclass

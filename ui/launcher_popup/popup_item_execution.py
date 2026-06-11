@@ -477,8 +477,31 @@ class PopupItemExecutionMixin:
             self.__dict__.pop("_selection_defer_started_at", None)
             return False
 
-        QTimer.singleShot(35, lambda: self._execute_item(item, force_new))
+        if "_lifecycle_generation" in self.__dict__ and hasattr(self, "_defer_lifecycle_callback"):
+            generation = int(self.__dict__.get("_lifecycle_generation", 0) or 0)
+            self._defer_lifecycle_callback(
+                35,
+                self._execute_item_after_selection_probe,
+                item,
+                force_new,
+                generation=generation,
+            )
+        else:
+            QTimer.singleShot(35, lambda: self._execute_item_after_selection_probe(item, force_new))
         return True
+
+    def _execute_item_after_selection_probe(self, item: ShortcutItem, force_new: bool = False):
+        if bool(getattr(self, "_closing", False)):
+            return
+        try:
+            if not self.isVisible():
+                return
+        except RuntimeError:
+            return
+        except Exception as exc:
+            logger.debug("检查弹窗可见状态失败: %s", exc, exc_info=True)
+            return
+        self._execute_item(item, force_new)
 
     def _on_execution_error(self, name: str, error: str):
         """启动失败的处理"""

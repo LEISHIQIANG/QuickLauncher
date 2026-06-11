@@ -244,19 +244,19 @@ class SettingsPopupPageMixin:
         pos = "mouse_center"
         if button == self.pos_mouse_tl:
             pos = "mouse_top_left"
-        self.data_manager.update_settings(popup_align_mode=pos)
+        self.data_manager.update_settings(immediate=False, popup_align_mode=pos)
 
     def _on_delay_changed(self, value):
         self.delay_label.setText(f"{value}ms")
         if self._updating:
             return
-        self.data_manager.update_settings(hover_leave_delay=value)
+        self.data_manager.update_settings(immediate=False, hover_leave_delay=value)
 
     def _on_double_click_interval_changed(self, value):
         self.double_click_label.setText(f"{value}ms")
         if self._updating:
             return
-        self.data_manager.update_settings(double_click_interval=value)
+        self.data_manager.update_settings(immediate=False, double_click_interval=value)
 
     def _on_auto_close_changed(self, button):
         if self._updating:

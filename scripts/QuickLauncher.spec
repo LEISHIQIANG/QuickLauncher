@@ -17,13 +17,16 @@ hiddenimports = [
     'ui.config_window.folder_panel',
     'ui.config_window.icon_grid',
     'ui.config_window.theme_helper',
+    'modules.action_chain.entry',
+    'modules.action_chain.api',
+    'modules.action_chain.host_contracts',
 ]
 tmp_ret = collect_all('PyQt5')
 
 _UNWANTED_DLLS = {
     'qt5printsupport.dll', 'qxdgdesktopportal.dll',
 }
-_UNWANTED_PYD = {'PyQt5.QtPrintSupport.pyd'}
+_UNWANTED_PYD = {'PyQt5.QtPrintSupport.pyd', '_avif.pyd'}
 
 _filtered_datas = []
 for entry in tmp_ret[0]:
@@ -55,13 +58,17 @@ a = Analysis(
     datas=datas + [
         ('../assets', 'assets'),
         ('../plugins', 'plugins'),
+        ('../modules/action_chain/module.json', 'modules/action_chain'),
         ('../qt_compat.py', '.')
     ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'IPython', 'jupyter', 'pypinyin'],
+    excludes=[
+        'tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'IPython', 'jupyter', 'pypinyin',
+        'PIL.AvifImagePlugin',
+    ],
     noarchive=False,
     optimize=2,
 )

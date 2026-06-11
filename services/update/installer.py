@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from core.path_security import UnsafePathError, resolve_under
+from runtime_paths import app_root, is_packaged_runtime
 from services.update.session import find_session_for_installer, update_session_state, utc_now_text
 from services.update.trust import UpdateSignatureError, verify_update_signature
 
@@ -87,7 +88,7 @@ class UpdateInstaller:
                 self._fail_session(session_dir, "failed to create pre-install configuration backup")
                 return
 
-        current_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.getcwd()
+        current_dir = str(app_root()) if is_packaged_runtime() else os.getcwd()
         log_path = os.path.join(session_dir, "update_install.log") if session_dir else ""
         if session_dir:
             update_session_state(

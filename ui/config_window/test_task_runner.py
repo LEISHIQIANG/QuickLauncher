@@ -17,6 +17,7 @@ class DialogTestTask(QObject):
     """Run a cancellable test callback in a registered background thread."""
 
     result_ready = pyqtSignal(object)
+    finished = pyqtSignal()
 
     def __init__(
         self,
@@ -54,9 +55,17 @@ class DialogTestTask(QObject):
     def suppress_result_signal(self) -> None:
         self._suppress_signal = True
 
+    def delete_when_finished(self) -> None:
+        try:
+            self.finished.connect(self.deleteLater)
+        except RuntimeError as exc:
+            logger.debug("Dialog test task already deleted: %s", exc, exc_info=True)
+        except TypeError as exc:
+            logger.debug("Dialog test task cleanup already connected: %s", exc, exc_info=True)
+
     def isRunning(self) -> bool:  # noqa: N802 - mirrors existing caller API
         thread = self._thread
-        return bool(thread and thread.is_alive() and not self._done_event.is_set())
+        return bool(thread and thread.is_alive())
 
     def wait(self, timeout_ms: int) -> bool:
         thread = self._thread
@@ -82,3 +91,4 @@ class DialogTestTask(QObject):
             self._done_event.set()
         if not self._suppress_signal:
             self.result_ready.emit(result)
+        self.finished.emit()

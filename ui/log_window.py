@@ -25,6 +25,7 @@ from qt_compat import (
     QtCompat,
     QVBoxLayout,
 )
+from runtime_paths import app_root
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.themed_messagebox import ThemedMessageBox
@@ -89,7 +90,7 @@ class LogWindow(QDialog):
     def _load_window_icon(self):
         """加载窗口图标"""
         try:
-            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            root_dir = str(app_root())
             possible_paths = [
                 os.path.join(root_dir, "assets", "app.ico"),
                 os.path.join(root_dir, "app.ico"),
@@ -204,7 +205,7 @@ class LogWindow(QDialog):
     def _load_title_icon(self):
         """加载标题栏app图标"""
         try:
-            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            root_dir = str(app_root())
             possible_paths = [
                 os.path.join(root_dir, "assets", "app.ico"),
                 os.path.join(root_dir, "app.ico"),

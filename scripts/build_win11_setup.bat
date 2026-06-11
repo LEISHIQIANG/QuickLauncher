@@ -66,7 +66,7 @@ if /I "%QL_BUILD_PROFILE%"=="small" (
     if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"
 ) else (
     set "QL_BUILD_PROFILE=balanced"
-    if not defined QL_UPX_EXE set "QL_UPX_EXE=1"
+    if not defined QL_UPX_EXE set "QL_UPX_EXE=0"
     if not defined QL_UPX_RUNTIME set "QL_UPX_RUNTIME=0"
     if not defined QL_KEEP_GRAPHICS_RUNTIME set "QL_KEEP_GRAPHICS_RUNTIME=0"
     if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=0"
@@ -166,7 +166,7 @@ REM set "HTTP_PROXY="
 REM set "HTTPS_PROXY="
 
 echo   Installing/updating PyQt5, Nuitka and other dependencies...
-!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 echo.
@@ -222,6 +222,7 @@ REM no-UPX default and explicit manifest embedding below.
     --lto=yes ^
     --remove-output ^
     --no-pyi-file ^
+    --report=dist\nuitka-report.xml ^
     --windows-icon-from-ico="assets\app.ico" ^
     --enable-plugin=pyqt5 ^
     --include-qt-plugins=platforms ^
@@ -244,13 +245,14 @@ REM no-UPX default and explicit manifest embedding below.
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
     --include-data-files=plugins\PLUGIN_DEV.md=PLUGIN_DEV.md ^
+    --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^
     --include-package=bootstrap ^
     --include-package=services ^
-    --include-package=PIL ^
+    --include-package=watchdog ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^
     --include-module=win32gui ^
@@ -264,6 +266,8 @@ REM no-UPX default and explicit manifest embedding below.
     --include-module=win32com.shell.shell ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
+    --include-module=PIL.ImageDraw ^
+    --include-module=PIL.ImageFont ^
     --include-module=PIL.BmpImagePlugin ^
     --include-module=PIL.GifImagePlugin ^
     --include-module=PIL.IcoImagePlugin ^
@@ -398,7 +402,7 @@ if exist "PyQt5\qt-plugins\platformthemes" (
 REM Remove unnecessary PIL submodules
 echo   Cleaning unnecessary PIL submodules...
 if exist "PIL" (
-    del /f /q PIL\_imagingcms.pyd PIL\_imagingtk.pyd PIL\_imagingmath.pyd 2>nul
+    del /f /q PIL\_avif.pyd PIL\_imagingcms.pyd PIL\_imagingtk.pyd 2>nul
 )
 
 REM Clean runtime files from config directory
@@ -474,11 +478,19 @@ if not defined QL_STAGE_OK (
 
 REM UPX compression. Disabled by default because UPX decompression can make the
 REM first visible Qt/DWM frame noticeably worse in the packaged build.
-if "%QL_UPX_EXE%"=="1" (
-    echo   UPX compressing executable...
-    if exist "upx.exe" (
-        upx.exe --best --lzma dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
-        if "%QL_UPX_RUNTIME%"=="1" (
+if not "%QL_UPX_EXE%"=="1" (
+    echo   [Info] UPX skipped for smoother popup first-frame rendering. Set QL_UPX_EXE=1 to enable.
+    goto :after_upx
+)
+
+echo   UPX compressing executable...
+if not exist "upx.exe" (
+    echo   [Warning] upx.exe not found, skipping compression
+    goto :after_upx
+)
+
+upx.exe --best --lzma dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
+if "%QL_UPX_RUNTIME%"=="1" (
         upx.exe --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
         upx.exe --best --lzma dist\QuickLauncher\qt5*.dll >nul 2>&1
         upx.exe --best --lzma dist\QuickLauncher\*.pyd >nul 2>&1
@@ -486,17 +498,12 @@ if "%QL_UPX_EXE%"=="1" (
         if exist "dist\QuickLauncher\PIL" upx.exe --best --lzma dist\QuickLauncher\PIL\*.pyd >nul 2>&1
         if exist "dist\QuickLauncher\psutil" upx.exe --best --lzma dist\QuickLauncher\psutil\*.pyd >nul 2>&1
         if exist "dist\QuickLauncher\win32com\shell" upx.exe --best --lzma dist\QuickLauncher\win32com\shell\*.pyd >nul 2>&1
-            echo   [OK] UPX compression completed (executable + runtime binaries)
-        ) else (
-            echo   [OK] UPX compression completed (executable only)
-            echo   [Info] Runtime DLL/PYD UPX skipped for smoother first-use animations. Set QL_UPX_RUNTIME=1 to enable.
-        )
-    ) else (
-        echo   [Warning] upx.exe not found, skipping compression
-    )
+    echo   [OK] UPX compression completed (executable + runtime binaries)
 ) else (
-    echo   [Info] UPX skipped for smoother popup first-frame rendering. Set QL_UPX_EXE=1 to enable.
+    echo   [OK] UPX compression completed (executable only)
+    echo   [Info] Runtime DLL/PYD UPX skipped for smoother first-use animations. Set QL_UPX_RUNTIME=1 to enable.
 )
+:after_upx
 
 REM Copy required resources
 echo   Copying resource files...
@@ -568,13 +575,6 @@ if !ERRORLEVEL! NEQ 0 (
 
 if exist "%SETUP_STAGE_DIR%" rmdir /s /q "%SETUP_STAGE_DIR%" >nul 2>&1
 
-!PYTHON_CMD! scripts\check_release_artifacts.py --version "%APP_VERSION%" --dist-dir "dist\QuickLauncher" --installer "dist\QuickLauncher_Setup_%APP_VERSION%.exe" --allow-source-runtime-plugins --run-smoke --write-manifest "dist\QuickLauncher_release_%APP_VERSION%.json" --write-installer-sha256 "dist\QuickLauncher_Setup_%APP_VERSION%.sha256"
-if !ERRORLEVEL! NEQ 0 (
-    echo   [!] Release artifact verification failed.
-    if "%QL_NO_PAUSE%"=="" pause
-    exit /b 1
-)
-
 REM Create portable zip package
 echo.
 echo [5/5] Creating portable zip package...
@@ -627,6 +627,15 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 echo   [OK] Portable zip created: dist\%PORTABLE_NAME%.zip
+
+echo.
+echo   Verifying final installer and portable artifacts...
+!PYTHON_CMD! scripts\check_release_artifacts.py --version "%APP_VERSION%" --dist-dir "dist\%PORTABLE_NAME%" --installer "dist\QuickLauncher_Setup_%APP_VERSION%.exe" --portable-zip "dist\%PORTABLE_NAME%.zip" --allow-source-runtime-plugins --run-smoke --write-manifest "dist\QuickLauncher_release_%APP_VERSION%.json" --write-installer-sha256 "dist\QuickLauncher_Setup_%APP_VERSION%.sha256" --write-portable-sha256 "dist\%PORTABLE_NAME%.sha256"
+if !ERRORLEVEL! NEQ 0 (
+    echo   [!] Final release artifact verification failed.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
 
 echo.
 echo ========================================

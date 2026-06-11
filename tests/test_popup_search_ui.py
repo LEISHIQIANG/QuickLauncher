@@ -8,8 +8,10 @@ from core.data_models import Folder, ShortcutItem, ShortcutType
 logger = logging.getLogger(__name__)
 import pytest
 
-from qt_compat import QFont, QPoint, QRect, Qt, QtCompat
+import ui.launcher_popup.popup_data_refresh as popup_refresh_mod
+from qt_compat import QColor, QFont, QPoint, QRect, Qt, QtCompat
 from ui.launcher_popup.popup_window import LauncherPopup
+from ui.utils.ui_scale import sp
 
 pytestmark = pytest.mark.ui
 
@@ -78,6 +80,33 @@ class _FakeMouseEvent:
         self.accepted = True
 
 
+class _FakePainter:
+    def __init__(self):
+        self.rounded_rects = []
+
+    def setBrush(self, *_args, **_kwargs):
+        pass
+
+    def setPen(self, *_args, **_kwargs):
+        pass
+
+    def setRenderHint(self, *_args, **_kwargs):
+        pass
+
+    def drawLine(self, *_args, **_kwargs):
+        pass
+
+    def drawRoundedRect(self, rect, *_args, **_kwargs):
+        self.rounded_rects.append(
+            (
+                round(float(rect.x()), 3),
+                round(float(rect.y()), 3),
+                round(float(rect.width()), 3),
+                round(float(rect.height()), 3),
+            )
+        )
+
+
 def _popup_with_items(items):
     popup = LauncherPopup.__new__(LauncherPopup)
     popup.search_query = ""
@@ -103,6 +132,93 @@ def _popup_with_items(items):
     popup.isVisible = lambda: True
     popup.update = lambda: None
     return popup
+
+
+def _dock_frame_rect_for_mode(bg_mode: str, state: str):
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.settings = SimpleNamespace(
+        theme="dark",
+        dock_bg_alpha_255=90,
+        dock_corner_radius=10,
+        dock_enabled=True,
+        dock_height_mode=1,
+        icon_alpha=1.0,
+    )
+    popup.dock_items = [ShortcutItem(id="dock", name="Dock")]
+    popup.dock_y = 100
+    popup.cols = 1
+    popup.cell_size = 44
+    popup.icon_size = 24
+    popup.dock_height = LauncherPopup._calculate_dock_height(popup)
+    popup.dock_hover_index = 0 if state == "hover" else -1
+    popup._drag_dock_hover_index = 0 if state == "drag" else -1
+    popup.width = lambda: 100
+    popup._get_icon_for_paint = lambda _item: None
+
+    painter = _FakePainter()
+    LauncherPopup._draw_dock(
+        popup,
+        painter,
+        QColor(255, 255, 255),
+        QColor(255, 255, 255, 50),
+        QColor(255, 255, 255, 18),
+        QColor(10, 132, 255),
+        bg_mode,
+        QColor(255, 255, 255, 40),
+    )
+
+    # First rounded rect is the Dock background; second is the icon card/frame.
+    return painter.rounded_rects[0], painter.rounded_rects[1], popup.dock_y, popup.dock_height
+
+
+def test_dock_hover_and_drag_frames_match_acrylic_across_background_modes():
+    for state in ("hover", "drag"):
+        acrylic_bg_rect, acrylic_rect, dock_y, dock_height = _dock_frame_rect_for_mode("acrylic", state)
+        assert acrylic_bg_rect[1] > dock_y
+        assert acrylic_bg_rect[3] < dock_height
+        for bg_mode in ("theme", "image"):
+            bg_rect, rect, _, _ = _dock_frame_rect_for_mode(bg_mode, state)
+            assert bg_rect == acrylic_bg_rect
+            assert rect == acrylic_rect
+
+        _, y, _, height = acrylic_rect
+        assert y + height <= acrylic_bg_rect[1] + acrylic_bg_rect[3] - sp(6)
+
+
+def test_dock_height_leaves_bottom_padding_for_shared_card_frame():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.settings = SimpleNamespace(dock_enabled=True, dock_height_mode=1)
+    popup.dock_items = [ShortcutItem(id="dock", name="Dock")]
+    popup.cols = 1
+    popup.icon_size = 24
+
+    dock_height = LauncherPopup._calculate_dock_height(popup)
+    popup.dock_height = dock_height
+
+    card_block_height = LauncherPopup._dock_card_block_height(popup, 1)
+    assert dock_height - card_block_height >= sp(16)
+    assert LauncherPopup._dock_background_height(popup) - card_block_height >= sp(12)
+
+
+def test_dock_hover_update_rect_covers_shared_card_frame_bottom():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.settings = SimpleNamespace(dock_height_mode=1)
+    popup.dock_items = [ShortcutItem(id="dock", name="Dock")]
+    popup.dock_y = 100
+    popup.cols = 1
+    popup.cell_size = 44
+    popup.icon_size = 24
+    popup.dock_height = LauncherPopup._calculate_dock_height(popup)
+    popup.width = lambda: 100
+    popup.rect = lambda: QRect(0, 0, 100, 180)
+
+    update_rect = LauncherPopup._dock_item_update_rect(popup, 0)
+
+    icon_y = LauncherPopup._dock_first_icon_y(popup, 1)
+    card_y = icon_y - sp(2)
+    card_bottom = card_y + popup.icon_size + sp(2) * 2
+    assert update_rect.top() <= card_y
+    assert update_rect.bottom() + 1 >= card_bottom
 
 
 def test_typing_starts_search_escape_clears_and_arrows_select():
@@ -493,6 +609,35 @@ def test_folder_sync_finish_refreshes_when_popup_stays_visible():
     assert calls == [{"sync_first": False}]
 
 
+def test_blank_area_refresh_waits_for_page_animation_before_worker(monkeypatch):
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup._blank_refresh_pending = True
+    popup._blank_refresh_generation = 8
+    popup._blank_refresh_not_before = 0.0
+    popup._closing = False
+    popup._sync_worker = None
+    starts = []
+    scheduled = []
+    popup._start_folder_sync_worker = lambda: starts.append("start")
+
+    class _IndicatorTimer:
+        def isActive(self):
+            return True
+
+    popup._indicator_timer = _IndicatorTimer()
+    monkeypatch.setattr(
+        popup_refresh_mod,
+        "QTimer",
+        SimpleNamespace(singleShot=lambda delay, callback: scheduled.append((delay, callback))),
+    )
+
+    LauncherPopup._maybe_start_folder_sync_worker(popup, 8)
+
+    assert starts == []
+    assert scheduled
+    assert scheduled[0][0] >= 90
+
+
 def test_hide_reset_clears_stale_search_query_and_cursor_state():
     popup = _popup_with_items([ShortcutItem(id="abc", name="abc")])
     popup._set_search_query("abc", cursor_pos=1, selection_anchor=3)
@@ -656,7 +801,7 @@ def test_search_start_expands_final_geometry_then_animates_reveal():
     popup._remember_search_body_anchor = lambda: None
     popup._search_animation_update_rect = lambda: "search-rect"
     geometry_calls = []
-    masks = []
+    clears = []
     updates = []
     repaints = []
 
@@ -672,7 +817,7 @@ def test_search_start_expands_final_geometry_then_animates_reveal():
 
     popup._search_anim_timer = _Timer()
     popup._apply_search_geometry = lambda **kwargs: geometry_calls.append(kwargs)
-    popup._apply_search_mask = lambda force=False: masks.append(force)
+    popup._clear_search_mask_for_animation = lambda: clears.append(True)
     popup.setUpdatesEnabled = lambda enabled: None
     popup.update = lambda rect=None: updates.append(rect)
     popup.repaint = lambda: repaints.append(True)
@@ -683,7 +828,7 @@ def test_search_start_expands_final_geometry_then_animates_reveal():
     assert popup._search_reveal_progress == 0.25
     assert popup._search_target_progress == 1.0
     assert popup._search_anim_timer.started is True
-    assert masks == [True]
+    assert clears == [True]
     assert updates == ["search-rect"]
     assert repaints == []
 
@@ -697,7 +842,6 @@ def test_search_reveal_tick_updates_visual_progress_without_geometry():
     popup._search_anim_duration_ms = 100
     popup._search_hide_geometry_pending = False
     popup._search_animation_update_rect = lambda: "search-rect"
-    masks = []
     updates = []
     geometry_calls = []
 
@@ -709,7 +853,9 @@ def test_search_reveal_tick_updates_visual_progress_without_geometry():
             self.stopped = True
 
     popup._search_anim_timer = _Timer()
-    popup._apply_search_mask = lambda force=False: masks.append(force)
+    popup._apply_search_mask = lambda force=False: (_ for _ in ()).throw(
+        AssertionError("native search mask should settle only at animation boundaries")
+    )
     popup.update = lambda rect=None: updates.append(rect)
     popup.repaint = lambda: None
     popup._apply_search_geometry = lambda **kwargs: geometry_calls.append(kwargs)
@@ -724,7 +870,6 @@ def test_search_reveal_tick_updates_visual_progress_without_geometry():
         popup_search_mod.time.perf_counter = original
 
     assert 0.0 < popup._search_reveal_progress < 1.0
-    assert masks == [False]
     assert updates == ["search-rect"]
     assert geometry_calls == []
 
@@ -767,7 +912,7 @@ def test_search_geometry_expands_only_from_top_edge():
     assert applied == [(40, 183, 180, 137)]
 
 
-def test_search_geometry_updates_window_effect_once():
+def test_search_geometry_schedules_window_effect_once():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup.search_query = "p"
     popup._search_reveal_progress = 0.5
@@ -789,6 +934,7 @@ def test_search_geometry_updates_window_effect_once():
             return 120
 
     effects = []
+    scheduled = []
     updates = []
     update_states = []
     geometries = []
@@ -797,13 +943,15 @@ def test_search_geometry_updates_window_effect_once():
     popup._calculate_fixed_size = lambda y_offset_override=None: (180, 120 + int(y_offset_override or 0))
     popup.setGeometry = lambda left, top, width, height: geometries.append((left, top, width, height))
     popup._update_window_effect = lambda: effects.append(True)
+    popup._schedule_window_effect_update = lambda delay=0: scheduled.append(delay)
     popup.setUpdatesEnabled = lambda enabled: update_states.append(enabled)
     popup.update = lambda rect=None: updates.append(rect)
 
     LauncherPopup._apply_search_geometry(popup)
 
     assert geometries == [(40, 183, 180, 137)]
-    assert effects == [True]
+    assert effects == []
+    assert scheduled == [0]
     assert update_states == [False, True]
     assert updates == [None]
 

@@ -116,14 +116,17 @@ class IconExtractor:
             height = image.height()
             if width <= 0 or height <= 0:
                 return True
-            checked = 0
+            # 使用像素采样代替逐像素遍历，大幅减少 pixelColor() 调用次数
+            # 对于 64x64 图标：原来 4096 次 → 采样约 64 次（64 倍加速）
+            step = max(2, min(width, height) // 8)
             visible = 0
-            for y in range(height):
-                for x in range(width):
+            checked = 0
+            for y in range(0, height, step):
+                for x in range(0, width, step):
                     checked += 1
                     if image.pixelColor(x, y).alpha() > 2:
                         visible += 1
-                        if visible >= 4:
+                        if visible >= 2:
                             return False
             return checked > 0
         except Exception:

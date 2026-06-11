@@ -150,6 +150,13 @@ class WindowsMixin:
             except Exception as exc:
                 logger.debug("重载设置数据失败: %s", exc, exc_info=True)
 
+            try:
+                refresh_popup = getattr(self, "_refresh_popup_after_settings_change", None)
+                if callable(refresh_popup):
+                    refresh_popup(model_changed=False, preload_icons=True)
+            except Exception as exc:
+                logger.debug("全局缩放后预热弹窗图标失败: %s", exc, exc_info=True)
+
             self.config_window = None
             self._hotkey_signal_connected = False
             self._special_apps_signal_connected = False

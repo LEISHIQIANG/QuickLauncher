@@ -11,6 +11,8 @@ import threading
 from collections.abc import Callable
 from datetime import datetime
 
+from runtime_paths import app_root
+
 # 回调函数类型
 MOUSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
 KEYBOARD_CALLBACK = ctypes.CFUNCTYPE(None)
@@ -123,8 +125,7 @@ class HooksDLL:
 
     @classmethod
     def _default_dll_path(cls) -> str:
-        hooks_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(hooks_dir, "hooks.dll")
+        return str(app_root() / "hooks" / "hooks.dll")
 
     def _validate_integrity(self) -> str:
         if os.path.abspath(self.dll_path) != os.path.abspath(self._default_dll_path()):

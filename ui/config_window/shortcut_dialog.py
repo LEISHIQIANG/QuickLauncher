@@ -7,6 +7,11 @@ import os
 
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
+from core.shortcut_icon_helpers import (
+    default_folder_icon_path,
+    shortcut_type_for_target,
+    shortcut_uses_folder_icon,
+)
 from qt_compat import (
     QCheckBox,
     QColor,
@@ -43,10 +48,11 @@ class _IconLoadThread(QThread):
 
     icon_loaded = pyqtSignal(object)  # QPixmap or None
 
-    def __init__(self, custom_icon_path: str, target_path: str, parent=None):
+    def __init__(self, custom_icon_path: str, target_path: str, shortcut_type: ShortcutType, parent=None):
         super().__init__(parent)
         self._custom_icon_path = custom_icon_path
         self._target_path = target_path
+        self._shortcut_type = shortcut_type
         self._stop_requested = False
 
     def request_stop(self):
@@ -69,6 +75,19 @@ class _IconLoadThread(QThread):
                     pixmap = IconExtractor.from_file(icon_path, 48)
                 except Exception as exc:
                     logger.debug("从文件加载图标失败: %s", exc, exc_info=True)
+
+        if (
+            not pixmap
+            and not icon_path
+            and not self._stop_requested
+            and shortcut_uses_folder_icon(self._shortcut_type, self._target_path)
+        ):
+            folder_icon = default_folder_icon_path()
+            if folder_icon:
+                try:
+                    pixmap = IconExtractor.from_file(folder_icon, 48)
+                except Exception as exc:
+                    logger.debug("加载默认文件夹图标失败: %s", exc, exc_info=True)
 
         # 2. 尝试目标文件图标
         if not pixmap and self._target_path and not self._stop_requested:
@@ -351,9 +370,9 @@ class ShortcutDialog(BaseDialog):
             return
 
         # 先显示默认图标，后台加载真实图标
-        self._apply_icon_to_preview(self._create_file_icon(48))
+        self._apply_icon_to_preview(self._create_fallback_icon(48))
 
-        thread = _IconLoadThread(custom, target, parent=None)
+        thread = _IconLoadThread(custom, target, self.shortcut.type, parent=None)
         thread.icon_loaded.connect(self._on_icon_loaded)
         self._icon_thread = thread
         thread.start()
@@ -362,7 +381,7 @@ class ShortcutDialog(BaseDialog):
         """后台图标加载完成"""
         self._icon_thread = None
         if not pixmap or pixmap.isNull():
-            pixmap = self._create_file_icon(48)
+            pixmap = self._create_fallback_icon(48)
         self._apply_icon_to_preview(pixmap)
 
     def _apply_icon_to_preview(self, pixmap):
@@ -406,6 +425,16 @@ class ShortcutDialog(BaseDialog):
         painter.end()
         return pixmap
 
+    def _create_fallback_icon(self, size: int) -> QPixmap:
+        target = self.target_edit.text().strip() if hasattr(self, "target_edit") else ""
+        if shortcut_uses_folder_icon(self.shortcut.type, target, resolve_lnk=False):
+            folder_icon = default_folder_icon_path()
+            if folder_icon:
+                pixmap = QPixmap(folder_icon)
+                if pixmap and not pixmap.isNull():
+                    return pixmap.scaled(size, size, QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+        return self._create_file_icon(size)
+
     def _browse_target(self):
         """浏览目标文件"""
         file_path, _ = get_open_file_name(
@@ -434,6 +463,8 @@ class ShortcutDialog(BaseDialog):
                     self.workdir_edit.setText(info.get("working_dir", ""))
                 except Exception as exc:
                     logger.debug("解析快捷方式文件失败: %s", exc, exc_info=True)
+
+            self.shortcut.type = shortcut_type_for_target(self.target_edit.text().strip())
 
             # 更新预览
             self._update_icon_preview()
@@ -490,6 +521,7 @@ class ShortcutDialog(BaseDialog):
         """获取快捷方式"""
         self.shortcut.name = self.name_edit.text().strip()[:6]
         self.shortcut.target_path = self.target_edit.text().strip()
+        self.shortcut.type = shortcut_type_for_target(self.shortcut.target_path)
         self.shortcut.target_args = self.args_edit.text().strip()
         self.shortcut.working_dir = self.workdir_edit.text().strip()
         self.shortcut.icon_path = self._custom_icon_path

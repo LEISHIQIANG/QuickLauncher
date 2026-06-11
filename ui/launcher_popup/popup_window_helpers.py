@@ -26,16 +26,47 @@ except ImportError:
     _should_invert_icon = None
 
 
+def sync_all_folders_for_data_manager(data_manager) -> tuple[int, int]:
+    """Synchronize linked folders without touching any GUI object."""
+    try:
+        from core.folder_sync import sync_folder
+
+        folders = list(getattr(getattr(data_manager, "data", None), "folders", []) or [])
+        total_added = 0
+        total_removed = 0
+
+        for folder in folders:
+            if not getattr(folder, "linked_path", ""):
+                continue
+            try:
+                added, removed = sync_folder(data_manager, folder.id)
+                total_added += added
+                total_removed += removed
+                logger.info("同步文件夹 '%s': 新增 %s 项, 删除 %s 项", folder.name, added, removed)
+            except Exception as e:
+                logger.error("同步文件夹 '%s' 失败: %s", getattr(folder, "name", ""), e)
+
+        if total_added > 0 or total_removed > 0:
+            logger.info("所有文件夹同步完成: 总计新增 %s 项, 删除 %s 项", total_added, total_removed)
+        else:
+            logger.info("所有文件夹已是最新状态")
+
+        return total_added, total_removed
+    except Exception as e:
+        logger.error("同步文件夹失败: %s", e)
+        return 0, 0
+
+
 class FolderSyncWorker(QThread):
     """后台文件夹同步工作线程，避免 GUI 线程卡顿"""
 
-    def __init__(self, launcher):
-        super().__init__(launcher)
-        self.launcher = launcher
+    def __init__(self, data_manager, parent=None):
+        super().__init__(parent)
+        self.data_manager = data_manager
 
     def run(self):
         try:
-            self.launcher._sync_all_folders()
+            sync_all_folders_for_data_manager(self.data_manager)
         except Exception as e:
             logger.error(f"后台文件夹同步失败: {e}")
 
@@ -189,13 +220,18 @@ class IconFlashOverlay(QWidget):
             start_x = (launcher.width() - line_width) // 2
             dock_y = int(getattr(launcher, "dock_y", 0) or 0)
             dock_row_stride = icon_size + sp(6)
+            try:
+                display_rows = launcher._dock_display_rows(visible_count, cols)
+                first_icon_y = launcher._dock_first_icon_y(display_rows)
+            except Exception:
+                first_icon_y = dock_y + sp(8)
             for i in range(visible_count):
                 row = i // cols
                 if row >= dock_height_mode:
                     break
                 col = i % cols
                 x = start_x + col * cell_size
-                y = dock_y + sp(8) + row * dock_row_stride
+                y = first_icon_y + row * dock_row_stride
                 icon_x = x + (cell_size - icon_size) // 2
                 pixmap = self._icon_pixmap(dock_items[i])
                 if pixmap is not None:

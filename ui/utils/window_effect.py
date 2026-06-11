@@ -13,6 +13,12 @@ HRGN = c_void_p
 # Windows 版本缓存
 _windows_version_cache = None
 _WIN10_SHADOW_ATTR = "_quicklauncher_win10_shadow"
+_WIN10_SHADOW_DEFAULT_SIZE = 14
+_WIN10_SHADOW_DEFAULT_DISTANCE = 2
+_WIN10_SHADOW_ALPHA_SCALE_MIN = 0.28
+_WIN10_SHADOW_ALPHA_SCALE_MAX = 0.72
+_win10_shadow_config_size = None
+_win10_shadow_config_distance = None
 _WINDOW_EFFECT_ERRORS = (
     AttributeError,
     ImportError,
@@ -159,10 +165,78 @@ def paint_win10_rounded_surface(
         return False
 
 
+def _optional_non_negative_int(value):
+    if value is None:
+        return None
+    try:
+        return max(0, int(value))
+    except _WINDOW_EFFECT_ERRORS:
+        return None
+
+
+def _shadow_override_value(value):
+    value = _optional_non_negative_int(value)
+    if value is None or value <= 0:
+        return None
+    return value
+
+
+def _active_default_shadow_size() -> int:
+    return _win10_shadow_config_size if _win10_shadow_config_size is not None else _WIN10_SHADOW_DEFAULT_SIZE
+
+
+def _active_default_shadow_distance() -> int:
+    if _win10_shadow_config_distance is not None:
+        return _win10_shadow_config_distance
+    return _WIN10_SHADOW_DEFAULT_DISTANCE
+
+
+def refresh_win10_window_shadows() -> None:
+    """Refresh existing Win10 companion shadows after global defaults change."""
+    try:
+        from qt_compat import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        for widget in QApplication.topLevelWidgets():
+            try:
+                shadow = getattr(widget, _WIN10_SHADOW_ATTR, None)
+                if shadow is None:
+                    continue
+                shadow._last_shadow_state = None
+                shadow._last_paint_state = None
+                if shadow.widget is not None:
+                    shadow.widget.update()
+                shadow.sync_later()
+            except _WINDOW_EFFECT_ERRORS:
+                logger.debug("刷新 Win10 全局阴影失败", exc_info=True)
+    except _WINDOW_EFFECT_ERRORS:
+        logger.debug("遍历 Win10 全局阴影失败", exc_info=True)
+
+
+def configure_win10_window_shadow(shadow_size: int | None = None, shadow_distance: int | None = None) -> bool:
+    """Configure global Win10 self-painted shadow defaults.
+
+    ``None`` or ``0`` means automatic defaults. Positive values override the
+    defaults for every popup that uses the shared Win10 companion shadow.
+    """
+    global _win10_shadow_config_size, _win10_shadow_config_distance
+    next_size = _shadow_override_value(shadow_size)
+    next_distance = _shadow_override_value(shadow_distance)
+    if next_size == _win10_shadow_config_size and next_distance == _win10_shadow_config_distance:
+        return False
+    _win10_shadow_config_size = next_size
+    _win10_shadow_config_distance = next_distance
+    if is_win10():
+        refresh_win10_window_shadows()
+    return True
+
+
 class _Win10ShadowWindow:
     """Transparent companion window that paints a Win10-like rounded shadow."""
 
-    def __init__(self, target, radius: int):
+    def __init__(self, target, radius: int, shadow_size: int | None = None, shadow_distance: int | None = None):
         from qt_compat import QColor, QEvent, QPainter, QPainterPath, QRectF, Qt, QWidget
 
         self._QColor = QColor
@@ -173,6 +247,8 @@ class _Win10ShadowWindow:
         self._Qt = Qt
         self._target_ref = ref(target)
         self._radius = max(0, int(radius))
+        self._shadow_size = _optional_non_negative_int(shadow_size)
+        self._shadow_distance = _optional_non_negative_int(shadow_distance)
         self._sync_pending = False
         self._attached = False
         self._window_handle = None
@@ -254,7 +330,7 @@ class _Win10ShadowWindow:
             from qt_compat import QTimer
 
             self._sync_timer = QTimer(target)
-            self._sync_timer.setInterval(50)
+            self._sync_timer.setInterval(200)
             self._sync_timer.timeout.connect(self.sync)
             target.destroyed.connect(self._on_target_destroyed)
             self._install_target_event_hooks(target)
@@ -335,6 +411,31 @@ class _Win10ShadowWindow:
             self.widget.update()
         self.sync_later()
 
+    def set_shadow_options(
+        self,
+        *,
+        radius: int | None = None,
+        shadow_size: int | None = None,
+        shadow_distance: int | None = None,
+    ):
+        next_radius = self._radius if radius is None else max(0, int(radius))
+        next_size = _optional_non_negative_int(shadow_size)
+        next_distance = _optional_non_negative_int(shadow_distance)
+        if (
+            next_radius == self._radius
+            and next_size == self._shadow_size
+            and next_distance == self._shadow_distance
+        ):
+            return
+        self._radius = next_radius
+        self._shadow_size = next_size
+        self._shadow_distance = next_distance
+        self._last_shadow_state = None
+        self._last_paint_state = None
+        if self.widget is not None:
+            self.widget.update()
+        self.sync_later()
+
     def sync_later(self):
         if self._sync_pending:
             return
@@ -376,10 +477,13 @@ class _Win10ShadowWindow:
         self._set_sync_timer_active(True)
 
         try:
+            shadow_size_px, shadow_distance_px, margin, bottom_extra = self._shadow_metrics(target)
+            if shadow_size_px <= 0:
+                self._hide_shadow_widget()
+                return
             if not self._ensure_widget(target):
                 return
             self._connect_target_window_signals(target)
-            margin, bottom_extra = self._shadow_margins(target)
             frame = target.frameGeometry()
             widget_geometry = (
                 int(frame.x()) - margin,
@@ -393,6 +497,8 @@ class _Win10ShadowWindow:
                 int(frame.height()),
                 int(round(opacity * 1000)),
                 int(self._radius),
+                shadow_size_px,
+                shadow_distance_px,
                 margin,
                 bottom_extra,
             )
@@ -404,6 +510,8 @@ class _Win10ShadowWindow:
                 int(frame.width()),
                 int(frame.height()),
                 int(self._radius),
+                shadow_size_px,
+                shadow_distance_px,
                 margin,
                 bottom_extra,
             )
@@ -414,6 +522,8 @@ class _Win10ShadowWindow:
             self._content_y = margin
             self._content_w = max(1, int(frame.width()))
             self._content_h = max(1, int(frame.height()))
+            self._shadow_size_px = shadow_size_px
+            self._shadow_distance_px = shadow_distance_px
             self._shadow_margin = margin
             self._shadow_bottom_extra = bottom_extra
             self.widget.setGeometry(*widget_geometry)
@@ -480,6 +590,7 @@ class _Win10ShadowWindow:
         wrap_event("showEvent", self.sync_later)
         wrap_event("hideEvent", self._hide_shadow_widget)
         wrap_event("closeEvent", self.detach)
+        wrap_event("changeEvent", self.sync_later)
         self._install_target_method_hooks(target)
 
     def _install_target_method_hooks(self, target):
@@ -508,6 +619,7 @@ class _Win10ShadowWindow:
         wrap_method("showNormal", self.sync_later)
         wrap_method("showFullScreen", self.sync_later)
         wrap_method("showMaximized", self.sync_later)
+        wrap_method("setWindowOpacity", self.sync_later)
 
     def _ensure_widget(self, target):
         if self.widget is not None:
@@ -521,7 +633,7 @@ class _Win10ShadowWindow:
             self.widget = None
             return False
 
-    def _shadow_margins(self, target):
+    def _shadow_metrics(self, target):
         scale = 1.0
         try:
             handle = target.windowHandle()
@@ -530,8 +642,18 @@ class _Win10ShadowWindow:
                 scale = max(1.0, float(screen.logicalDotsPerInchX()) / 96.0)
         except _WINDOW_EFFECT_ERRORS:
             logger.debug("计算 Win10 阴影 DPI 失败", exc_info=True)
-        margin = max(10, int(round(13 * scale)))
-        bottom_extra = max(1, int(round(1.5 * scale)))
+        raw_size = self._shadow_size if self._shadow_size is not None else _active_default_shadow_size()
+        raw_distance = self._shadow_distance if self._shadow_distance is not None else _active_default_shadow_distance()
+        shadow_size_px = max(0, int(round(raw_size * scale)))
+        shadow_distance_px = max(0, int(round(raw_distance * scale)))
+        if shadow_size_px <= 0:
+            return 0, shadow_distance_px, 0, 0
+        margin = max(1, shadow_size_px + max(1, int(round(2 * scale))))
+        bottom_extra = shadow_distance_px
+        return shadow_size_px, shadow_distance_px, margin, bottom_extra
+
+    def _shadow_margins(self, target):
+        _, _, margin, bottom_extra = self._shadow_metrics(target)
         return margin, bottom_extra
 
     def _sync_z_order_later(self):
@@ -553,7 +675,7 @@ class _Win10ShadowWindow:
             SWP_NOMOVE = 0x0002
             SWP_NOSIZE = 0x0001
             SWP_NOACTIVATE = 0x0010
-            SWP_NOOWNERZORDER = 0x0200
+            # 关键修复：先将阴影窗口放到目标窗口正下方
             windll.user32.SetWindowPos(
                 HWND(shadow_hwnd),
                 HWND(target_hwnd),
@@ -561,7 +683,17 @@ class _Win10ShadowWindow:
                 0,
                 0,
                 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+            # 立即将目标窗口提升，确保阴影在下方
+            windll.user32.SetWindowPos(
+                HWND(target_hwnd),
+                HWND(shadow_hwnd),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             )
         except _WINDOW_EFFECT_ERRORS:
             logger.debug("设置 Win10 阴影窗口层级失败", exc_info=True)
@@ -589,39 +721,55 @@ class _Win10ShadowWindow:
             )
             radius = max(0.0, float(self._radius))
             margin = max(1, int(getattr(self, "_shadow_margin", 18)))
-            bottom_extra = max(0, int(getattr(self, "_shadow_bottom_extra", 7)))
+            shadow_size = max(1, int(getattr(self, "_shadow_size_px", max(1, margin - 2))))
+            shadow_distance = max(0, int(getattr(self, "_shadow_distance_px", 3)))
+            alpha_scale = max(
+                _WIN10_SHADOW_ALPHA_SCALE_MIN,
+                min(_WIN10_SHADOW_ALPHA_SCALE_MAX, 12.0 / float(shadow_size)),
+            )
 
             painter.setPen(Qt.NoPen)
-            for i in range(margin, 0, -1):
-                t = i / float(margin)
+            for i in range(shadow_size, 0, -1):
+                t = i / float(shadow_size)
                 spread = float(i)
                 strength = (1.0 - t) * (1.0 - t)
-                alpha = int(1 + 5 * strength)
+                alpha = max(1, int((2 + 12 * strength) * alpha_scale))
                 shadow_rect = content.adjusted(
                     -spread,
                     -spread * 0.88,
                     spread,
-                    spread * 0.88 + bottom_extra * strength,
-                ).translated(0, bottom_extra * 0.35)
+                    spread * 0.88,
+                ).translated(0, shadow_distance)
                 path = QPainterPath()
                 path.addRoundedRect(shadow_rect, radius + spread, radius + spread)
                 painter.fillPath(path, QColor(0, 0, 0, alpha))
 
-            contact_margin = max(4, int(round(margin * 0.38)))
+            contact_margin = max(4, int(round(shadow_size * 0.48)))
             for i in range(contact_margin, 0, -1):
                 t = i / float(contact_margin)
                 spread = float(i)
                 strength = (1.0 - t) * (1.0 - t)
-                alpha = int(1 + 3 * strength)
+                alpha = max(1, int((3 + 14 * strength) * alpha_scale))
                 shadow_rect = content.adjusted(
-                    -spread * 0.36,
+                    -spread * 0.42,
                     0,
-                    spread * 0.36,
-                    spread * 0.36 + bottom_extra,
-                ).translated(0, 0.75 + bottom_extra * 0.10)
+                    spread * 0.42,
+                    spread * 0.55 + max(1.0, shadow_size * 0.12),
+                ).translated(0, 1.0 + shadow_distance)
                 path = QPainterPath()
-                path.addRoundedRect(shadow_rect, radius + spread * 0.36, radius + spread * 0.36)
+                path.addRoundedRect(shadow_rect, radius + spread * 0.42, radius + spread * 0.42)
                 painter.fillPath(path, QColor(0, 0, 0, alpha))
+
+            near = QPainterPath()
+            near_spread = max(2.0, shadow_size * 0.12)
+            near.addRoundedRect(
+                content.adjusted(-near_spread, -near_spread * 0.65, near_spread, near_spread).translated(
+                    0, min(float(shadow_distance), near_spread)
+                ),
+                radius + near_spread,
+                radius + near_spread,
+            )
+            painter.fillPath(near, QColor(0, 0, 0, max(6, int(18 * alpha_scale))))
 
             inner = QPainterPath()
             inner.addRoundedRect(content, radius, radius)
@@ -650,20 +798,40 @@ def _find_qt_widget_for_hwnd(hwnd: int):
     return None
 
 
-def install_win10_window_shadow(widget, radius: int = 12):
-    """Install or update the custom Win10 rounded shadow for a frameless widget."""
+def install_win10_window_shadow(
+    widget,
+    radius: int = 12,
+    shadow_size: int | None = None,
+    shadow_distance: int | None = None,
+):
+    """Install or update the custom Win10 rounded shadow for a frameless widget.
+
+    ``shadow_size`` and ``shadow_distance`` use ``None`` or ``0`` as auto mode,
+    so existing configurations get the default Win11-like shadow instead of
+    silently disabling it.
+    """
     if widget is None:
         return False
     if not is_win10():
         remove_win10_window_shadow(widget)
         return False
     try:
+        normalized_size = _optional_non_negative_int(shadow_size)
+        normalized_distance = _optional_non_negative_int(shadow_distance)
+        if normalized_size == 0:
+            normalized_size = None
+        if normalized_distance == 0:
+            normalized_distance = None
         shadow = getattr(widget, _WIN10_SHADOW_ATTR, None)
         if shadow is None:
-            shadow = _Win10ShadowWindow(widget, radius)
+            shadow = _Win10ShadowWindow(widget, radius, normalized_size, normalized_distance)
             setattr(widget, _WIN10_SHADOW_ATTR, shadow)
         else:
-            shadow.set_radius(radius)
+            shadow.set_shadow_options(
+                radius=radius,
+                shadow_size=normalized_size,
+                shadow_distance=normalized_distance,
+            )
             shadow.sync_later()
         return True
     except RuntimeError:
@@ -694,8 +862,13 @@ def remove_win10_window_shadow(widget):
         return False
 
 
-def install_win10_window_shadow_for_hwnd(hwnd: int, radius: int = 12):
-    return install_win10_window_shadow(_find_qt_widget_for_hwnd(hwnd), radius)
+def install_win10_window_shadow_for_hwnd(
+    hwnd: int,
+    radius: int = 12,
+    shadow_size: int | None = None,
+    shadow_distance: int | None = None,
+):
+    return install_win10_window_shadow(_find_qt_widget_for_hwnd(hwnd), radius, shadow_size, shadow_distance)
 
 
 class WindowCompositionAttributeData(Structure):

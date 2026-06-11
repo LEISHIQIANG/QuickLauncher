@@ -127,6 +127,48 @@ def test_popup_menu_retains_until_hidden(monkeypatch, qapp):
     menu.deleteLater()
 
 
+def test_popup_menu_does_not_apply_native_blur_by_default(monkeypatch, qapp):
+    from ui.styles.style import PopupMenu
+
+    calls = []
+    monkeypatch.setattr(PopupMenu, "_apply_blur_effect", lambda self: calls.append(True))
+
+    menu = PopupMenu(theme="dark")
+    menu.add_action("one", lambda: None)
+    menu.popup(QPoint(-10000, -10000))
+    qapp.processEvents()
+
+    assert calls == []
+
+    menu.hide()
+    menu.deleteLater()
+
+
+def test_popup_menu_native_blur_is_opt_in_and_delayed(monkeypatch, qapp):
+    import ui.styles.style as style_mod
+    from ui.styles.style import PopupMenu
+
+    calls = []
+    scheduled = []
+    monkeypatch.setattr(PopupMenu, "_apply_blur_effect", lambda self: calls.append(True))
+    monkeypatch.setattr(style_mod.QTimer, "singleShot", lambda delay, callback: scheduled.append((delay, callback)))
+
+    menu = PopupMenu(theme="dark", native_effects=True)
+    menu.add_action("one", lambda: None)
+    menu.popup(QPoint(-10000, -10000))
+
+    assert calls == []
+    assert scheduled
+    assert scheduled[0][0] == 40
+
+    scheduled[0][1]()
+
+    assert calls == [True]
+
+    menu.hide()
+    menu.deleteLater()
+
+
 def test_popup_menu_reclamps_after_inline_submenu_expands(monkeypatch, qapp):
     import ui.styles.style as style_mod
     from ui.styles.style import PopupMenu

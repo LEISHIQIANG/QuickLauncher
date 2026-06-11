@@ -831,7 +831,10 @@ class PopupSearchMixin:
                 if not skip_effect_update:
                     try:
                         self._geometry_adjusting = False
-                        self._update_window_effect()
+                        if hasattr(self, "_schedule_window_effect_update"):
+                            self._schedule_window_effect_update(0)
+                        else:
+                            self._update_window_effect()
                         self._geometry_adjusting = True
                     except Exception as exc:
                         logger.debug("更新窗口特效: %s", exc, exc_info=True)
@@ -896,6 +899,17 @@ class PopupSearchMixin:
         self._search_mask_cache_key = cache_key
         logger.debug("[SEARCH_MASK] 遮罩已应用")
 
+    def _clear_search_mask_for_animation(self):
+        """Avoid rebuilding native masks on every search animation frame."""
+        if self.__dict__.get("_search_mask_cleared", False):
+            return
+        try:
+            self.clearMask()
+            self._search_mask_cleared = True
+            self._search_mask_cache_key = None
+        except Exception as exc:
+            logger.debug("清除搜索动画遮罩失败: %s", exc, exc_info=True)
+
     # ── Search reveal animation ──────────────────────────────────────
 
     def _start_search_reveal_animation(self, active: bool):
@@ -937,7 +951,7 @@ class PopupSearchMixin:
         self._search_anim_started_at = time.perf_counter()
         self._search_anim_last_ts = self._search_anim_started_at
 
-        self._apply_search_mask(force=active)
+        self._clear_search_mask_for_animation()
         self.update(self._search_animation_update_rect())
 
         try:
@@ -971,7 +985,6 @@ class PopupSearchMixin:
             diff = self._search_target_progress - self._search_anim_from_progress
             self._search_reveal_progress = self._search_anim_from_progress + diff * ease_t
 
-            self._apply_search_mask()
             self.update(self._search_animation_update_rect())
 
         try:
@@ -1037,7 +1050,7 @@ class PopupSearchMixin:
     # ── Page animation preloading ────────────────────────────────────
 
     def _preload_animation_pages(self):
-        """增量式预加载：不阻塞 UI 线程，分帧逐步加载图标和渲染 page pixmap"""
+        """后台生成页面滑动快照；真实图标应在显示前完成预热。"""
         if not self.pages:
             return
         # 停止已有的预加载定时器（如果有）
@@ -1045,28 +1058,31 @@ class PopupSearchMixin:
         if timer is not None:
             timer.stop()
 
-        # 构建待加载的 item 列表（优先当前页和相邻页）
+        # 页面快照覆盖全部页面，连续快速滚动也不会追上预热队列。
         items_list = []
         n = len(self.pages)
-        # 优先顺序：当前页 → 下一页 → 上一页 → 其余页
         priority_order = [self.current_page]
         if n > 1:
             priority_order.append((self.current_page + 1) % n)
         if n > 2:
             priority_order.append((self.current_page - 1) % n)
-        for i in range(n):
-            if i not in priority_order:
-                priority_order.append(i)
+        for page_idx in range(n):
+            if page_idx not in priority_order:
+                priority_order.append(page_idx)
 
-        for page_idx in priority_order:
-            page = self.pages[page_idx]
-            for item_entry in page.items:
-                if isinstance(item_entry, dict):
-                    item = item_entry.get("item")
-                else:
-                    item = item_entry
-                if item is not None:
-                    items_list.append(item)
+        seen_items = set()
+        if not bool(self.__dict__.get("_all_page_icons_preloaded", False)):
+            max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 3))
+            for page_idx in priority_order:
+                for item_entry in list(self._get_page_animation_items(page_idx))[:max_visible]:
+                    if isinstance(item_entry, dict):
+                        item = item_entry.get("item")
+                    else:
+                        item = item_entry
+                    marker = id(item)
+                    if item is not None and marker not in seen_items:
+                        seen_items.add(marker)
+                        items_list.append(item)
 
         dock_items = self.__dict__.get("dock_items", None)
         if dock_items:
@@ -1074,7 +1090,9 @@ class PopupSearchMixin:
             dock_rows = max(1, int(getattr(settings, "dock_height_mode", 1) or 1))
             max_dock_items = self.cols * dock_rows
             for item in (dock_items or [])[:max_dock_items]:
-                if item is not None:
+                marker = id(item)
+                if item is not None and marker not in seen_items:
+                    seen_items.add(marker)
                     items_list.append(item)
 
         self._preload_items_list = items_list
@@ -1084,26 +1102,52 @@ class PopupSearchMixin:
 
         if timer is None:
             timer = QTimer(self)
-            timer.setInterval(1)
+            timer.setInterval(24)
             set_precise_timer(timer, owner="LauncherPopup._preload_batch_timer")
             timer.timeout.connect(self._preload_next_batch)
             self._preload_batch_timer = timer
         timer.start()
 
     def _preload_next_batch(self):
-        """每帧处理一小批图标加载，8ms 预算内完成后让出事件循环"""
-        deadline = time.perf_counter() + 0.008  # 8ms 预算，不影响 60fps
+        """每次只处理极少量预热任务，避免一次 shell 图标提取拖住 UI。"""
+        try:
+            if not self.isVisible():
+                timer = getattr(self, "_preload_batch_timer", None)
+                if timer:
+                    timer.stop()
+                return
+        except RuntimeError:
+            return
+
+        if (
+            getattr(self, "_is_dragging", False)
+            or getattr(self, "_search_drag_selecting", False)
+            or getattr(self, "_pinned_window_drag_active", False)
+        ):
+            return
+
+        timer = getattr(self, "_indicator_timer", None)
+        try:
+            if timer is not None and timer.isActive():
+                return
+        except Exception as exc:
+            logger.debug("检查页面动画状态失败: %s", exc, exc_info=True)
+
+        deadline = time.perf_counter() + 0.003
+        max_icons_per_tick = 1
 
         # 阶段1：加载图标到 _icon_pixmap_cache
         items = getattr(self, "_preload_items_list", None)
         idx = getattr(self, "_preload_icon_idx", 0)
         if items and idx < len(items):
-            while idx < len(items) and time.perf_counter() < deadline:
+            processed = 0
+            while idx < len(items) and processed < max_icons_per_tick and time.perf_counter() < deadline:
                 try:
                     self._get_icon(items[idx])
                 except Exception as exc:
                     logger.debug("预加载图标: %s", exc, exc_info=True)
                 idx += 1
+                processed += 1
             self._preload_icon_idx = idx
             if idx < len(items):
                 return  # 还有图标未加载，下一帧继续

@@ -15,6 +15,9 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+from runtime_paths import app_root
+from runtime_paths import config_dir as runtime_config_dir
+
 from .config_history import ConfigHistoryManager
 from .config_recovery import ConfigRecoveryReport
 from .config_repairs import apply_config_repairs
@@ -81,15 +84,10 @@ class DataManager:
             return
         self._initialized = True
 
-        import sys
-
-        if getattr(sys, "frozen", False):
-            install_dir = Path(sys.executable).parent
-        else:
-            install_dir = Path(__file__).parent.parent
+        install_dir = app_root()
 
         self.install_dir = install_dir
-        self.app_dir = install_dir / "config"
+        self.app_dir = runtime_config_dir()
         self.data_file = self.app_dir / "data.json"
         self.icon_repo_file = self.app_dir / "icon_repo.json"
         self.system_icons_file = install_dir / "assets" / "system_icons" / "config.json"
@@ -560,7 +558,7 @@ class DataManager:
                 if flush_immediately:
                     self._do_save()
                 else:
-                    self.save(immediate=True)
+                    self.save(immediate=False)
 
     def _do_save(self) -> bool:
         """Save data to disk atomically with lock splitting."""
@@ -1148,7 +1146,7 @@ class DataManager:
                     folder.items.sort(key=lambda x: x.order)
                 self._persist_folder_changes(folder, immediate=False)
 
-    def update_settings(self, **kwargs):
+    def update_settings(self, *, immediate: bool = True, **kwargs):
         """update_settings"""
         with self._save_lock:
             changed = False
@@ -1177,7 +1175,7 @@ class DataManager:
 
             if changed:
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
-                self.save(immediate=True)
+                self.save(immediate=immediate)
 
     def get_settings(self) -> AppSettings:
         """get_settings"""

@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 
 from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, QTimer
+from runtime_paths import config_dir, is_packaged_runtime
 from ui.styles.theme_controller import resolve_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
@@ -34,13 +35,7 @@ def _trace_to_crash_log(msg: str):
         return
 
     try:
-        import sys
-        from pathlib import Path
-
-        if getattr(sys, "frozen", False):
-            log_dir = str(Path(sys.executable).parent / "config")
-        else:
-            log_dir = str(Path(__file__).parent.parent.parent / "config")
+        log_dir = str(config_dir())
         with open(os.path.join(log_dir, "crash.log"), "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().isoformat()}] {msg}\n")
     except Exception as exc:
@@ -53,13 +48,7 @@ class BaseDialog(QDialog):
     @staticmethod
     def _is_compiled():
         """检测是否为 Nuitka 编译版本 — 跳过不可靠的 Qt 回调操作"""
-        import sys
-
-        return (
-            "__compiled__" in dir(__builtins__)
-            or bool(globals().get("__compiled__"))
-            or bool(getattr(sys, "frozen", False))
-        )
+        return bool(globals().get("__compiled__", False)) or is_packaged_runtime()
 
     def __init__(self, parent=None):
         super().__init__(parent)

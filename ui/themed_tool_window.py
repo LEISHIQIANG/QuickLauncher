@@ -24,6 +24,7 @@ from qt_compat import (
     QtCompat,
     QVBoxLayout,
 )
+from runtime_paths import app_root
 from ui.styles.style import Colors, StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -302,7 +303,7 @@ class ThemedToolWindow(QDialog):
 
     @staticmethod
     def _possible_icon_paths():
-        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        root_dir = str(app_root())
         return [
             os.path.join(root_dir, "assets", "app.ico"),
             os.path.join(root_dir, "app.ico"),

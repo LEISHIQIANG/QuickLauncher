@@ -54,6 +54,68 @@ class PopupRendererMixin:
         self._theme_colors_cache = (theme, colors)
         return colors
 
+    def _draw_win10_internal_shadow(self, painter: QPainter, rect: QRectF, radius: int) -> None:
+        margin = max(0, int(getattr(self, "shadow_margin", 0) or 0))
+        if margin <= 0 or not is_win10():
+            return
+        shadow_size = max(1, int(getattr(self, "shadow_size_px", 0) or max(1, margin - sp(2))))
+        shadow_distance = max(0, int(getattr(self, "shadow_distance_px", 0) or 0))
+        cache_key = (
+            self.width(),
+            self.height(),
+            round(rect.x(), 2),
+            round(rect.y(), 2),
+            round(rect.width(), 2),
+            round(rect.height(), 2),
+            int(radius),
+            shadow_size,
+            shadow_distance,
+        )
+        cached = getattr(self, "_win10_internal_shadow_cache", None)
+        if cached is not None and getattr(self, "_win10_internal_shadow_cache_key", None) == cache_key:
+            painter.drawPixmap(0, 0, cached)
+            return
+
+        alpha_scale = max(0.28, min(0.72, 12.0 / float(shadow_size)))
+
+        shadow_pixmap = QPixmap(max(1, self.width()), max(1, self.height()))
+        shadow_pixmap.fill(QtCompat.transparent)
+        shadow_painter = QPainter(shadow_pixmap)
+        shadow_painter.setRenderHint(QtCompat.Antialiasing)
+        shadow_painter.setRenderHint(QtCompat.HighQualityAntialiasing)
+        shadow_painter.setPen(QtCompat.NoPen)
+        for i in range(shadow_size, 0, -1):
+            t = i / float(shadow_size)
+            spread = float(i)
+            strength = (1.0 - t) * (1.0 - t)
+            alpha = max(1, int((2 + 12 * strength) * alpha_scale))
+            shadow_rect = rect.adjusted(
+                -spread,
+                -spread * 0.88,
+                spread,
+                spread * 0.88,
+            ).translated(0, shadow_distance)
+            path = QPainterPath()
+            path.addRoundedRect(shadow_rect, radius + spread, radius + spread)
+            shadow_painter.fillPath(path, QColor(0, 0, 0, alpha))
+
+        contact_margin = max(4, int(round(shadow_size * 0.48)))
+        contact_rect = rect.adjusted(
+            contact_margin,
+            rect.height() - max(2, shadow_size * 0.28),
+            -contact_margin,
+            shadow_distance + max(2, shadow_size * 0.28),
+        )
+        if contact_rect.width() > 0 and contact_rect.height() > 0:
+            path = QPainterPath()
+            path.addRoundedRect(contact_rect, radius, radius)
+            shadow_painter.fillPath(path, QColor(0, 0, 0, max(1, int(9 * alpha_scale))))
+        shadow_painter.end()
+
+        self._win10_internal_shadow_cache = shadow_pixmap
+        self._win10_internal_shadow_cache_key = cache_key
+        painter.drawPixmap(0, 0, shadow_pixmap)
+
     def paintEvent(self, event):
         """绘制"""
         painter = QPainter(self)
@@ -82,7 +144,7 @@ class PopupRendererMixin:
         radius = self._get_paint_corner_radius(bg_mode, blur_radius)
 
         # 使用缓存的路径，避免重复计算
-        path_cache_key = (self.width(), self.height(), int(top_inset), float(radius))
+        path_cache_key = (self.width(), self.height(), int(margin), int(top_inset), float(radius))
         if (
             self._cached_bg_path is None
             or self._cached_bg_path.isEmpty()
@@ -148,6 +210,8 @@ class PopupRendererMixin:
                 painter.setCompositionMode(clear_mode)
             painter.fillPath(self._cached_outside_path, QtCompat.transparent)
             painter.restore()
+
+        self._draw_win10_internal_shadow(painter, rect, radius)
         # 绘制背景
         if bg_mode == "image" and self.settings.custom_bg_path and os.path.exists(self.settings.custom_bg_path):
             # 图片模式
@@ -280,11 +344,12 @@ class PopupRendererMixin:
             self._draw_dock(painter, text_color, hover_color, dock_bg, drop_highlight_color, bg_mode, border_color)
 
         pin_y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else 0
-        pinned_rect = QRect(max(0, self.width() - sp(18)), pin_y_offset, sp(18), sp(18))
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        pinned_rect = QRect(max(0, self.width() - shadow_margin - sp(18)), pin_y_offset, sp(18), sp(18))
         if self.is_pinned and dirty_rect.intersects(pinned_rect):
             painter.setBrush(QBrush(accent_color))
             painter.setPen(QtCompat.NoPen)
-            painter.drawEllipse(self.width() - sp(14), pin_y_offset + sp(6), sp(8), sp(8))
+            painter.drawEllipse(self.width() - shadow_margin - sp(14), pin_y_offset + sp(6), sp(8), sp(8))
 
     def _draw_icons(
         self,
@@ -563,11 +628,12 @@ class PopupRendererMixin:
         x = self.padding
         w = self.width() - self.padding * 2
         rect_h = max(sp(6), full_h - sp(8))
-        rect_y = sp(4)
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        rect_y = shadow_margin + sp(4)
         rect = QRectF(x, rect_y, w, rect_h)
         bg = QColor(255, 255, 255, 34 if self.settings.theme == "dark" else 150)
         painter.save()
-        painter.setClipRect(0, clip_top, self.width(), clip_h)
+        painter.setClipRect(0, shadow_margin + clip_top, self.width(), clip_h)
         painter.setOpacity(progress)
         painter.setBrush(QBrush(bg))
         painter.setPen(QPen(accent_color, 1))
@@ -729,7 +795,8 @@ class PopupRendererMixin:
         text_h = fm.height()
         text_spacing = sp(1)
         is_dark = self.settings.theme == "dark"
-        use_card = bg_mode == "acrylic"
+        # Background modes should only change the panel background; icon affordances stay aligned.
+        use_card = True
         icon_alpha = self.settings.icon_alpha
         cols = self.cols
         cell_size = self.cell_size
@@ -742,7 +809,14 @@ class PopupRendererMixin:
         indicator_height = sp(16) if has_indicator else 0
         indicator_spacing = sp(4) if has_indicator else 0
         dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
-        icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+        icons_bottom = (
+            self.height()
+            - int(getattr(self, "shadow_margin", 0) or 0)
+            - bottom_margin
+            - dock_height
+            - indicator_height
+            - indicator_spacing
+        )
 
         for i, entry in enumerate(items):
             if isinstance(entry, dict):
@@ -939,18 +1013,29 @@ class PopupRendererMixin:
             return
 
         dock_y = self.dock_y
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
 
         # Dock 背景
         dock_bg.setAlpha(self.settings.dock_bg_alpha_255)
         painter.setBrush(QBrush(dock_bg))
         painter.setPen(QtCompat.NoPen)
         radius = sp(getattr(self.settings, "dock_corner_radius", 10))
-        painter.drawRoundedRect(QRectF(sp(6), dock_y, self.width() - sp(12), self.dock_height), radius, radius)
+        bg_y = dock_y + self._dock_background_top_gap()
+        painter.drawRoundedRect(
+            QRectF(
+                shadow_margin + sp(6),
+                bg_y,
+                max(1, self.width() - shadow_margin * 2 - sp(12)),
+                self._dock_background_height(),
+            ),
+            radius,
+            radius,
+        )
 
         # 顶部分隔线 — 极细纯黑（关闭抗锯齿保证清晰）
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(QPen(QColor(0, 0, 0, 60), 1))
-        painter.drawLine(0, dock_y, self.width(), dock_y)
+        painter.drawLine(shadow_margin, dock_y, self.width() - shadow_margin, dock_y)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
@@ -977,12 +1062,10 @@ class PopupRendererMixin:
         icon_size = self.icon_size
         dock_row_stride = icon_size + sp(6)
         is_dark = self.settings.theme == "dark"
-        use_card = bg_mode == "acrylic"
         card_pad = sp(2)
         card_r = sp(6)
-        hover_pad = sp(4)
-        hover_size_extra = sp(9)
-        dock_top_padding = sp(8)
+        display_rows = self._dock_display_rows(visible_count, max_cols)
+        first_icon_y = self._dock_first_icon_y(display_rows)
 
         for i in range(visible_count):
             item = self.dock_items[i]
@@ -996,50 +1079,29 @@ class PopupRendererMixin:
                 break
 
             x = start_x + col * self.cell_size
-            # Dock图标Y坐标：
-            # - 单行(row=0)：y = dock_y + 8（与原来完全一致）
-            # - 多行(row>0)：y = dock_y + 8 + row * dock_row_stride
-            #   dock_row_stride = icon_size + 6（行间距6px，上下边距保持 8px 不变）
-            y = dock_y + dock_top_padding + row * dock_row_stride
+            y = first_icon_y + row * dock_row_stride
 
-            hover_x = x + (cell_size - icon_size) // 2 - hover_pad
-            hover_y = y - hover_pad
-            hover_size = icon_size + hover_size_extra
+            card_size = icon_size + card_pad * 2
+            card_x = x + (cell_size - card_size) // 2
+            card_y = y - card_pad
 
             # ===== 绘制背景 =====
-            if use_card:
-                card_size = icon_size + card_pad * 2
-                card_x = x + (cell_size - card_size) // 2
-                card_y = y - card_pad
-                if i == self._drag_dock_hover_index:
-                    highlight = QColor(drop_highlight_color)
-                    highlight.setAlpha(80)
-                    painter.setBrush(QBrush(highlight))
-                    painter.setPen(QPen(drop_highlight_color, 1.5))
-                elif i == self.dock_hover_index:
-                    painter.setBrush(QBrush(QColor(255, 255, 255, 80 if is_dark else 200)))
-                    painter.setPen(QPen(QColor(255, 255, 255, 80 if is_dark else 160), 1))
-                else:
-                    painter.setBrush(QBrush(QColor(255, 255, 255, 22 if is_dark else 90)))
-                    painter.setPen(QPen(QColor(255, 255, 255, 40 if is_dark else 120), 1))
+            if i == self._drag_dock_hover_index:
+                highlight = QColor(drop_highlight_color)
+                highlight.setAlpha(80)
+                painter.setBrush(QBrush(highlight))
+                painter.setPen(QPen(drop_highlight_color, 1.5))
                 painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
-                icon_x = card_x + card_pad
-                icon_y = card_y + card_pad
+            elif i == self.dock_hover_index:
+                painter.setBrush(QBrush(QColor(255, 255, 255, 80 if is_dark else 200)))
+                painter.setPen(QPen(QColor(255, 255, 255, 80 if is_dark else 160), 1))
+                painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
             else:
-                if i == self._drag_dock_hover_index:
-                    highlight = QColor(drop_highlight_color)
-                    highlight.setAlpha(80)
-                    painter.setBrush(QBrush(highlight))
-                    painter.setPen(QPen(drop_highlight_color, 2))
-                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), sp(6), sp(6))
-                elif i == self.dock_hover_index:
-                    hover = QColor(hover_color)
-                    hover.setAlpha(180)
-                    painter.setBrush(QBrush(hover))
-                    painter.setPen(QtCompat.NoPen)
-                    painter.drawRoundedRect(QRectF(hover_x, hover_y, hover_size, hover_size), sp(6), sp(6))
-                icon_x = x + (cell_size - icon_size) // 2
-                icon_y = y
+                painter.setBrush(QBrush(QColor(255, 255, 255, 22 if is_dark else 90)))
+                painter.setPen(QPen(QColor(255, 255, 255, 40 if is_dark else 120), 1))
+                painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
+            icon_x = card_x + card_pad
+            icon_y = card_y + card_pad
             # ===== 背景绘制结束 =====
 
             pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)

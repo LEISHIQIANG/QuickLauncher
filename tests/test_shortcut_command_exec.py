@@ -1712,13 +1712,18 @@ def test_command_dialog_insert_menu_exposes_ip_variables(qapp):
         assert "公网 IP" in buttons
 
         buttons["内网 IP"].click()
+        qapp.processEvents()
         assert "{{LAN_IP}}" in dialog.command_edit.toPlainText()
         buttons["公网 IP"].click()
+        qapp.processEvents()
         assert "{{WAN_IP}}" in dialog.command_edit.toPlainText()
     finally:
         if getattr(dialog, "_insert_menu", None):
-            dialog._insert_menu.close()
-            dialog._insert_menu.deleteLater()
+            try:
+                dialog._insert_menu.close()
+                dialog._insert_menu.deleteLater()
+            except RuntimeError:
+                pass
         dialog.deleteLater()
 
 

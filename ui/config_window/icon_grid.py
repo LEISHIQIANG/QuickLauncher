@@ -10,6 +10,11 @@ from collections import OrderedDict
 
 from core import AppData, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
+from core.shortcut_icon_helpers import (
+    default_folder_icon_path,
+    shortcut_type_for_target,
+    shortcut_uses_folder_icon,
+)
 from qt_compat import (
     QApplication,
     QColor,
@@ -60,6 +65,7 @@ from .batch_launch_dialog import BatchLaunchDialog
 from .icon_grid_ordering import move_drag_group_order
 
 logger = logging.getLogger(__name__)
+_BATCH_FAVICON_MAX_WORKERS = 2
 
 
 class SimpleStatusDialog(QDialog):
@@ -175,6 +181,9 @@ class SimpleStatusDialog(QDialog):
     def update_text(self, text):
         self.label.setText(text)
         self.label.update()
+        if self.isVisible():
+            self.label.repaint()
+            self.repaint()
 
 
 class MoveFolderDialog(BaseDialog):
@@ -332,29 +341,11 @@ class _IconLoadWorker(QObject):
                     break
                 image = QImage()
 
-                import os
-                import sys
-
-                is_folder_type = stype == ShortcutType.FOLDER
-                if stype == ShortcutType.FILE and target_path and os.path.isdir(target_path):
-                    is_folder_type = True
-
-                if not icon_path and is_folder_type:
-                    possible_paths = [
-                        os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico"),
-                        os.path.join(
-                            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                            "assets",
-                            "Folder.ico",
-                        ),
-                    ]
-                    if hasattr(sys, "_MEIPASS"):
-                        possible_paths.insert(0, os.path.join(sys._MEIPASS, "assets", "Folder.ico"))
-                    for p in possible_paths:
-                        if os.path.exists(p):
-                            icon_path = p
-                            target_path = None
-                            break
+                if not icon_path and shortcut_uses_folder_icon(stype, target_path):
+                    folder_icon = default_folder_icon_path()
+                    if folder_icon:
+                        icon_path = folder_icon
+                        target_path = None
 
                 try:
                     image = self._load_one(IconExtractor, icon_path, target_path, size)
@@ -423,9 +414,10 @@ class _BatchFaviconFetchWorker(QObject):
     progress = pyqtSignal(int, int)  # (completed, total)
     completed = pyqtSignal(int, int)  # (success, total)
 
-    def __init__(self, tasks):
+    def __init__(self, tasks, max_workers: int = _BATCH_FAVICON_MAX_WORKERS):
         super().__init__()
         self._tasks = list(tasks or [])
+        self._max_workers = max(1, int(max_workers or 1))
         self._cancel_requested = False
 
     def cancel(self):
@@ -437,7 +429,10 @@ class _BatchFaviconFetchWorker(QObject):
         total = len(self._tasks)
         success_count = 0
         completed_count = 0
-        executor = ThreadPoolExecutor(max_workers=5)
+        executor = ThreadPoolExecutor(
+            max_workers=min(self._max_workers, max(1, total)),
+            thread_name_prefix="BatchFavicon",
+        )
 
         def fetch_one(task):
             sid, name, url = task
@@ -1652,6 +1647,7 @@ class IconGrid(QWidget):
         dialog = getattr(self, "_favicon_fetch_status_dialog", None)
         if dialog is not None:
             dialog.update_text(tr("正在获取图标... {current}/{total}", current=completed_count, total=total))
+        logger.debug("批量获取图标进度: %s/%s", completed_count, total)
 
     def _on_favicon_fetch_completed(self, generation: int, worker_success: int, total: int):
         if generation != getattr(self, "_favicon_fetch_generation", generation):
@@ -1753,12 +1749,18 @@ class IconGrid(QWidget):
                     break
 
             pixmap = None
-            if item.icon_path:
-                pixmap = IconExtractor.from_file(item.icon_path, size, return_image=False)
-            elif item.target_path:
+            icon_path = item.icon_path
+            target_path = item.target_path
+            if not icon_path and shortcut_uses_folder_icon(item.type, target_path):
+                icon_path = default_folder_icon_path()
+                target_path = ""
+
+            if icon_path:
+                pixmap = IconExtractor.from_file(icon_path, size, return_image=False)
+            elif target_path:
                 pixmap = IconExtractor.extract(
-                    item.target_path,
-                    item.target_path,
+                    target_path,
+                    target_path,
                     size,
                     return_image=False,
                     fallback_to_default=False,
@@ -1859,21 +1861,34 @@ class IconGrid(QWidget):
     def _batch_move(self, ids):
         if not ids:
             return
-        folders = [f for f in self.data_manager.data.folders if not f.is_dock and f.id != self.current_folder_id]
-        if not folders:
-            return
-        dialog = MoveFolderDialog(folders, self)
-        if dialog.exec_() != dialog.Accepted or not dialog.selected_folder:
-            return
-        target = dialog.selected_folder
-        self._take_batch_snapshot()
-        current_folder = self.data_manager.data.get_folder_by_id(self.current_folder_id)
-        if getattr(current_folder, "is_icon_repo", False) or getattr(target, "is_icon_repo", False):
-            self.data_manager.copy_shortcuts_batch(ids, target.id)
-        else:
-            self.data_manager.move_shortcuts_batch(ids, target.id)
-        self.load_folder(self.current_folder_id)
-        self.shortcut_added.emit()
+        try:
+            folders = [f for f in self.data_manager.data.folders if not f.is_dock and f.id != self.current_folder_id]
+            if not folders:
+                return
+            dialog = MoveFolderDialog(folders, self)
+            if dialog.exec_() != dialog.Accepted or not dialog.selected_folder:
+                return
+            target = dialog.selected_folder
+            self._take_batch_snapshot()
+            current_folder = self.data_manager.data.get_folder_by_id(self.current_folder_id)
+            if getattr(current_folder, "is_icon_repo", False) or getattr(target, "is_icon_repo", False):
+                result = self.data_manager.copy_shortcuts_batch(ids, target.id)
+            else:
+                result = self.data_manager.move_shortcuts_batch(ids, target.id)
+            if isinstance(result, dict) and result.get("requested") and not result.get("success"):
+                logger.warning("批量移动未移动任何项目: %s", result)
+            self.load_folder(self.current_folder_id)
+            self.shortcut_added.emit()
+        except Exception as exc:
+            logger.exception("批量移动快捷方式失败: ids=%s current_folder=%s", ids, self.current_folder_id)
+            try:
+                ThemedMessageBox.warning(
+                    self,
+                    tr("批量移动"),
+                    tr("移动所选快捷方式失败，请查看运行日志。\n{error}", error=str(exc)),
+                )
+            except Exception:
+                logger.debug("显示批量移动失败提示失败", exc_info=True)
 
     def _has_url_shortcuts(self, ids):
         """检查选中的快捷方式中是否包含网站类型"""
@@ -1901,6 +1916,16 @@ class IconGrid(QWidget):
         status_dialog = SimpleStatusDialog(tr("批量获取图标"), self)
         status_dialog.update_text(tr("正在获取图标... 0/{total}", total=len(url_shortcuts)))
         status_dialog.show()
+        QApplication.processEvents()
+
+        QTimer.singleShot(0, lambda: self._begin_batch_favicon_fetch(url_shortcuts, status_dialog))
+
+    def _begin_batch_favicon_fetch(self, url_shortcuts, status_dialog):
+        try:
+            if hasattr(status_dialog, "isVisible") and not status_dialog.isVisible():
+                return
+        except RuntimeError:
+            return
 
         self._take_batch_snapshot()
         shortcut_lookup = {shortcut.id: shortcut for shortcut in url_shortcuts}
@@ -2502,11 +2527,6 @@ class IconGrid(QWidget):
         shortcut = ShortcutItem()
         shortcut.name = os.path.splitext(os.path.basename(file_path))[0][:6]
 
-        if os.path.isdir(file_path):
-            shortcut.type = ShortcutType.FOLDER
-        else:
-            shortcut.type = ShortcutType.FILE
-
         shortcut.target_path = file_path
 
         if file_path.lower().endswith(".lnk"):
@@ -2519,4 +2539,5 @@ class IconGrid(QWidget):
                 shortcut.working_dir = info.get("working_dir", "")
             except Exception as exc:
                 logger.debug("解析快捷方式文件失败: %s", exc, exc_info=True)
+        shortcut.type = shortcut_type_for_target(shortcut.target_path)
         return shortcut

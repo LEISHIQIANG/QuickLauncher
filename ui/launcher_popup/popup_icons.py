@@ -2,9 +2,9 @@
 
 import logging
 import os
-import sys
 
 from core import ShortcutItem, ShortcutType
+from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
 from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QRectF, Qt, QtCompat
 from ui.utils.ui_scale import font_px
 
@@ -22,12 +22,40 @@ logger = logging.getLogger(__name__)
 
 
 class PopupIconMixin:
+    _MIN_ICON_PIXMAP_CACHE_CAPACITY = 200
+
+    def _icon_pixmap_cache_capacity(self) -> int:
+        return max(
+            self._MIN_ICON_PIXMAP_CACHE_CAPACITY,
+            int(self.__dict__.get("_icon_pixmap_cache_capacity_value", 0) or 0),
+        )
+
+    def _reserve_icon_pixmap_cache(self, item_count: int) -> int:
+        """Reserve enough LRU entries for file keys plus target-path aliases."""
+        required = max(self._MIN_ICON_PIXMAP_CACHE_CAPACITY, max(0, int(item_count)) * 2 + 32)
+        self._icon_pixmap_cache_capacity_value = required
+        return required
+
+    def _trim_icon_pixmap_cache(self, cache=None) -> None:
+        cache = self._icon_pixmap_cache if cache is None else cache
+        limit = self._icon_pixmap_cache_capacity()
+        while len(cache) > limit:
+            try:
+                cache.popitem(last=False)
+            except TypeError:
+                cache.pop(next(iter(cache)))
+            except Exception:
+                break
+
     def _default_icon_cache_key(self, item: ShortcutItem):
         name = getattr(item, "name", "") or "?"
         initial = name[0] if name else "?"
         return (getattr(item, "type", None), self.icon_size, initial)
 
     def _mark_icon_cache_changed(self):
+        if self.__dict__.get("_batch_icon_preload_active", False):
+            self._icon_cache_batch_changed = True
+            return
         self._icon_cache_revision = int(getattr(self, "_icon_cache_revision", 0) or 0) + 1
         # Clear page pixmap cache so it re-renders with updated icons
         cache = getattr(self, "_page_pixmap_cache", None)
@@ -60,29 +88,12 @@ class PopupIconMixin:
         return cached[1]
 
     def _folder_icon_path(self) -> str | None:
-        if "_cached_folder_icon_path" in self.__dict__:
-            return self._cached_folder_icon_path
+        cached = self.__dict__.get("_cached_folder_icon_path")
+        if cached and os.path.exists(cached):
+            return cached
 
-        possible_paths = []
-        if hasattr(sys, "_MEIPASS"):
-            possible_paths.append(os.path.join(sys._MEIPASS, "assets", "Folder.ico"))
-        possible_paths.extend(
-            [
-                os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico"),
-                os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                    "assets",
-                    "Folder.ico",
-                ),
-            ]
-        )
-        for path in possible_paths:
-            if os.path.exists(path):
-                self._cached_folder_icon_path = path
-                return path
-
-        self._cached_folder_icon_path = None
-        return None
+        self._cached_folder_icon_path = default_folder_icon_path()
+        return self._cached_folder_icon_path
 
     def _get_cached_icon_for_animation(self, item: ShortcutItem, need_invert: bool = False):
         source_size = self._get_icon_source_size()
@@ -94,10 +105,7 @@ class PopupIconMixin:
         # fall back to colored rectangles during page animation.
         if not icon_path:
             item_type = getattr(item, "type", None)
-            is_folder_type = item_type == ShortcutType.FOLDER
-            if item_type == ShortcutType.FILE and target_path and os.path.isdir(target_path):
-                is_folder_type = True
-            if is_folder_type:
+            if shortcut_uses_folder_icon(item_type, target_path):
                 folder_icon_path = self._folder_icon_path()
                 if folder_icon_path:
                     icon_path = folder_icon_path
@@ -170,11 +178,20 @@ class PopupIconMixin:
         need_invert = self._icon_should_invert(item)
         source_size = self._get_icon_source_size()
         icon_cache = getattr(self, "_icon_pixmap_cache", None)
+        if icon_cache is None:
+            icon_cache = {}
+            self._icon_pixmap_cache = icon_cache
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
+        folder_icon_path = None
 
-        if not icon_path and getattr(item, "type", None) == ShortcutType.FOLDER:
-            icon_path = getattr(self, "_cached_folder_icon_path", None)
+        if not icon_path and shortcut_uses_folder_icon(
+            getattr(item, "type", None),
+            target_path,
+            resolve_lnk=False,
+        ):
+            folder_icon_path = self._folder_icon_path()
+            icon_path = folder_icon_path
             if icon_path:
                 target_path = None
 
@@ -186,6 +203,24 @@ class PopupIconMixin:
                 if callable(move_to_end):
                     move_to_end(cache_key)
                 return cached
+            if folder_icon_path:
+                pixmap = QPixmap(folder_icon_path)
+                if pixmap and not pixmap.isNull():
+                    if need_invert and HAS_ICON_EXTRACTOR and IconExtractor:
+                        pixmap = IconExtractor.invert_pixmap(pixmap)
+                    if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:
+                        pixmap = pixmap.scaled(
+                            self.icon_size,
+                            self.icon_size,
+                            Qt.KeepAspectRatio,
+                            Qt.SmoothTransformation,
+                        )
+                    icon_cache[cache_key] = pixmap
+                    move_to_end = getattr(icon_cache, "move_to_end", None)
+                    if callable(move_to_end):
+                        move_to_end(cache_key)
+                    self._trim_icon_pixmap_cache(icon_cache)
+                    return pixmap
 
         if icon_cache is not None and target_path:
             alias_key = ("target_path", str(target_path), self.icon_size, source_size, need_invert)
@@ -209,11 +244,7 @@ class PopupIconMixin:
         if getattr(self, "_suspend_icon_extraction", False):
             return self._get_icon_for_paint(item)
 
-        is_folder_type = item_type == ShortcutType.FOLDER
-        if item_type == ShortcutType.FILE and target_path and os.path.isdir(target_path):
-            is_folder_type = True
-
-        if not icon_path and is_folder_type:
+        if not icon_path and shortcut_uses_folder_icon(item_type, target_path):
             folder_icon_path = self._folder_icon_path()
             if folder_icon_path:
                 icon_path = folder_icon_path
@@ -260,8 +291,7 @@ class PopupIconMixin:
                             self._icon_pixmap_cache[cache_key] = pixmap
                             self._mark_icon_cache_changed()
                             self._icon_pixmap_cache.move_to_end(cache_key)
-                            while len(self._icon_pixmap_cache) > 200:
-                                self._icon_pixmap_cache.popitem(last=False)
+                            self._trim_icon_pixmap_cache()
                             return pixmap
 
                         self._remember_icon_miss(cache_key)
@@ -291,8 +321,7 @@ class PopupIconMixin:
                         self._icon_pixmap_cache[alias_key] = cached
                         self._icon_pixmap_cache.move_to_end(cache_key)
                         self._icon_pixmap_cache.move_to_end(alias_key)
-                        while len(self._icon_pixmap_cache) > 200:
-                            self._icon_pixmap_cache.popitem(last=False)
+                        self._trim_icon_pixmap_cache()
                         return cached
 
                     if cache_key not in self._get_icon_miss_cache():
@@ -318,8 +347,7 @@ class PopupIconMixin:
                             self._mark_icon_cache_changed()
                             self._icon_pixmap_cache.move_to_end(cache_key)
                             self._icon_pixmap_cache.move_to_end(alias_key)
-                            while len(self._icon_pixmap_cache) > 200:
-                                self._icon_pixmap_cache.popitem(last=False)
+                            self._trim_icon_pixmap_cache()
                             return pixmap
 
                         self._remember_icon_miss(cache_key)

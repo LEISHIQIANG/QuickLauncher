@@ -8,6 +8,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from runtime_paths import app_root
+
 
 class UnsafePathError(ValueError):
     """Raised when a path resolves outside the expected root."""
@@ -122,7 +124,7 @@ def _protected_roots() -> tuple[Path, ...]:
     home = Path.home()
     if str(home):
         roots.append(resolve_existing(home / ".qoderwork"))
-    roots.append(Path(__file__).resolve(strict=False).parents[1])
+    roots.append(app_root())
     deduped: list[Path] = []
     for root in roots:
         if root not in deduped:

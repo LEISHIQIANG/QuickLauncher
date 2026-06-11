@@ -17,11 +17,20 @@ from qt_compat import (
 )
 from ui.utils.safe_file_dialog import get_open_file_name
 from ui.utils.ui_scale import sp
+from ui.utils.window_effect import is_win10
 
 logger = logging.getLogger(__name__)
 
 
 class SettingsAppearancePageMixin:
+    @staticmethod
+    def _shadow_value_label(value):
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 0
+        return "自动" if value <= 0 else str(value)
+
     def _setup_appearance_page(self, page):
         # 弹窗背景 (置顶)
         layout, group = page.add_group("弹窗背景")
@@ -167,6 +176,35 @@ class SettingsAppearancePageMixin:
 
         layout.addLayout(grid_effect)
 
+        # Win10 外阴影
+        layout, self.win10_shadow_group = page.add_group("Win10外阴影")
+        self.win10_shadow_group.setVisible(is_win10())
+
+        grid_shadow = QGridLayout()
+        grid_shadow.setVerticalSpacing(sp(8))
+
+        grid_shadow.addWidget(self._create_label("外阴影大小"), 0, 0)
+        self.shadow_size_slider = QSlider(QtCompat.Horizontal)
+        self.shadow_size_slider.setRange(0, 80)
+        self.shadow_size_slider.valueChanged.connect(self._on_shadow_size_changed)
+        grid_shadow.addWidget(self.shadow_size_slider, 0, 1)
+
+        self.shadow_size_label = QLabel("0")
+        self.shadow_size_label.setMinimumWidth(sp(40))
+        grid_shadow.addWidget(self.shadow_size_label, 0, 2)
+
+        grid_shadow.addWidget(self._create_label("外阴影偏移"), 1, 0)
+        self.shadow_distance_slider = QSlider(QtCompat.Horizontal)
+        self.shadow_distance_slider.setRange(0, 80)
+        self.shadow_distance_slider.valueChanged.connect(self._on_shadow_distance_changed)
+        grid_shadow.addWidget(self.shadow_distance_slider, 1, 1)
+
+        self.shadow_distance_label = QLabel("0")
+        self.shadow_distance_label.setMinimumWidth(sp(40))
+        grid_shadow.addWidget(self.shadow_distance_label, 1, 2)
+
+        layout.addLayout(grid_shadow)
+
     # === Settings Load ===
 
     def _load_appearance_settings(self, settings):
@@ -196,6 +234,13 @@ class SettingsAppearancePageMixin:
 
         self.edge_opacity_slider.setValue(int(settings.edge_highlight_opacity * 100))
         self.edge_opacity_label.setText(f"{int(settings.edge_highlight_opacity * 100)}%")
+
+        shadow_size = int(getattr(settings, "shadow_size", 0) or 0)
+        shadow_distance = int(getattr(settings, "shadow_distance", 0) or 0)
+        self.shadow_size_slider.setValue(shadow_size)
+        self.shadow_size_label.setText(self._shadow_value_label(shadow_size))
+        self.shadow_distance_slider.setValue(shadow_distance)
+        self.shadow_distance_label.setText(self._shadow_value_label(shadow_distance))
 
         current_alpha = settings.bg_alpha
         current_blur = settings.bg_blur_radius
@@ -270,7 +315,7 @@ class SettingsAppearancePageMixin:
         if self.corner_spin.isEnabled():
             updates["corner_radius"] = self.corner_spin.value()
 
-        self.data_manager.update_settings(**updates)
+        self.data_manager.update_settings(immediate=False, **updates)
 
     def _on_dock_size_changed(self):
         if self._updating:
@@ -280,7 +325,7 @@ class SettingsAppearancePageMixin:
         enabled = height_val > 0
         mode = height_val if height_val > 0 else 1
 
-        self.data_manager.update_settings(dock_enabled=enabled, dock_height_mode=mode)
+        self.data_manager.update_settings(immediate=False, dock_enabled=enabled, dock_height_mode=mode)
 
     def _on_bg_alpha_changed(self, value):
         self.bg_alpha_label.setText(f"{value}%")
@@ -289,26 +334,26 @@ class SettingsAppearancePageMixin:
 
         mode = self.data_manager.get_settings().bg_mode
         with self.data_manager.batch_update():
-            self.data_manager.update_settings(bg_alpha=value)
+            self.data_manager.update_settings(immediate=False, bg_alpha=value)
 
             if mode == "theme":
-                self.data_manager.update_settings(theme_bg_alpha=value)
+                self.data_manager.update_settings(immediate=False, theme_bg_alpha=value)
             elif mode == "image":
-                self.data_manager.update_settings(image_bg_alpha=value)
+                self.data_manager.update_settings(immediate=False, image_bg_alpha=value)
             elif mode == "acrylic":
-                self.data_manager.update_settings(acrylic_bg_alpha=value)
+                self.data_manager.update_settings(immediate=False, acrylic_bg_alpha=value)
 
     def _on_dock_bg_alpha_changed(self, value):
         self.dock_bg_alpha_label.setText(f"{value}%")
         if self._updating:
             return
-        self.data_manager.update_settings(dock_bg_alpha=value)
+        self.data_manager.update_settings(immediate=False, dock_bg_alpha=value)
 
     def _on_icon_alpha_changed(self, value):
         self.icon_alpha_label.setText(f"{value}%")
         if self._updating:
             return
-        self.data_manager.update_settings(icon_alpha=value / 100.0)
+        self.data_manager.update_settings(immediate=False, icon_alpha=value / 100.0)
 
     def _on_bg_mode_changed(self, button):
         mode = "theme"
@@ -372,14 +417,14 @@ class SettingsAppearancePageMixin:
 
         mode = self.data_manager.get_settings().bg_mode
         with self.data_manager.batch_update():
-            self.data_manager.update_settings(bg_blur_radius=value)
+            self.data_manager.update_settings(immediate=False, bg_blur_radius=value)
 
             if mode == "theme":
-                self.data_manager.update_settings(theme_blur_radius=value)
+                self.data_manager.update_settings(immediate=False, theme_blur_radius=value)
             elif mode == "image":
-                self.data_manager.update_settings(image_blur_radius=value)
+                self.data_manager.update_settings(immediate=False, image_blur_radius=value)
             elif mode == "acrylic":
-                self.data_manager.update_settings(acrylic_blur_radius=value)
+                self.data_manager.update_settings(immediate=False, acrylic_blur_radius=value)
 
         self._schedule_slider_settings_changed()
 
@@ -390,11 +435,27 @@ class SettingsAppearancePageMixin:
 
         mode = self.data_manager.get_settings().bg_mode
         with self.data_manager.batch_update():
-            self.data_manager.update_settings(edge_highlight_opacity=value / 100.0)
+            self.data_manager.update_settings(immediate=False, edge_highlight_opacity=value / 100.0)
 
             if mode == "theme":
-                self.data_manager.update_settings(theme_edge_opacity=value / 100.0)
+                self.data_manager.update_settings(immediate=False, theme_edge_opacity=value / 100.0)
             elif mode == "image":
-                self.data_manager.update_settings(image_edge_opacity=value / 100.0)
+                self.data_manager.update_settings(immediate=False, image_edge_opacity=value / 100.0)
             elif mode == "acrylic":
-                self.data_manager.update_settings(acrylic_edge_opacity=value / 100.0)
+                self.data_manager.update_settings(immediate=False, acrylic_edge_opacity=value / 100.0)
+
+        self._schedule_slider_settings_changed()
+
+    def _on_shadow_size_changed(self, value):
+        self.shadow_size_label.setText(self._shadow_value_label(value))
+        if self._updating:
+            return
+        self.data_manager.update_settings(immediate=False, shadow_size=value)
+        self._schedule_slider_settings_changed()
+
+    def _on_shadow_distance_changed(self, value):
+        self.shadow_distance_label.setText(self._shadow_value_label(value))
+        if self._updating:
+            return
+        self.data_manager.update_settings(immediate=False, shadow_distance=value)
+        self._schedule_slider_settings_changed()

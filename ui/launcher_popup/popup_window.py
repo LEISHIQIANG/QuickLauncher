@@ -191,11 +191,19 @@ class LauncherPopup(
         self._icon_pixmap_cache = OrderedDict()
         self._default_icon_cache = {}
         self._visible_icons_preloaded = False
+        self._all_page_icons_preloaded = False
         self._first_show_ready = False
         self._blank_refresh_in_progress = False
+        self._blank_refresh_pending = False
+        self._blank_refresh_worker_started = False
+        self._blank_refresh_generation = 0
+        self._blank_refresh_requested_at = 0.0
+        self._blank_refresh_not_before = 0.0
         self._icon_flash_overlay = IconFlashOverlay(self)
         self._sync_worker = None
         self._folder_sync_refresh_seq = 0
+        self._pending_last_page_index = None
+        self._last_page_save_timer = None
         # 使用全局字体
         self._label_font = QFont()
         self._label_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
@@ -204,6 +212,7 @@ class LauncherPopup(
         # ===== 选中文件状态 =====
         self._selected_files = []
         self._file_thread = None
+        self._pending_file_check_context = None
         self._file_check_seq = 0
         self._selected_files_source_hwnd = 0
         self._selected_files_request_hwnd = 0
@@ -258,7 +267,8 @@ class LauncherPopup(
         self._last_effect_state = None
 
         # 布局参数
-        self.padding = sp(8)
+        self._base_padding = sp(8)
+        self.padding = self._base_padding
         self.cols = self.settings.cols
         self.cell_size = sp(self.settings.cell_size)
         self.icon_size = sp(self.settings.icon_size)
@@ -267,20 +277,7 @@ class LauncherPopup(
         self.row_spacing = sp(2)
         self.cell_h = int(self.cell_size * 1.15)
 
-        # Dock 高度计算
-        # 单行：icon_size + 16（与原来保持完全一致）
-        # 多行：icon_size + (display_rows-1)*dock_row_stride + 16
-        # dock_row_stride = icon_size + 6 --- 行间距6px，上下边距保持 8px 不变
-        self.dock_height = 0
-        dock_enabled = getattr(self.settings, "dock_enabled", True)
-        if dock_enabled and self.dock_items:
-            max_rows = getattr(self.settings, "dock_height_mode", 1)
-            # 计算实际行数
-            actual_rows = (len(self.dock_items) + self.cols - 1) // self.cols
-            # 最终显示行数，不超过设置的最大行数
-            display_rows = min(max(1, actual_rows), max_rows)
-            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
-            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + sp(12)
+        self.dock_height = self._calculate_dock_height()
         self.window_effect = WindowEffect()
 
         # 设置窗口
@@ -701,6 +698,7 @@ class LauncherPopup(
             if page_cache is not None:
                 page_cache.clear()
             self._visible_icons_preloaded = False
+            self._all_page_icons_preloaded = False
             self._first_show_ready = False
             self._cached_bg_path = None
             self._bg_cache = None
@@ -738,6 +736,7 @@ class LauncherPopup(
         )
         if data_structure_changed:
             self._visible_icons_preloaded = False
+            self._all_page_icons_preloaded = False
             self._first_show_ready = False
 
         # 修正 current_page 边界（页面数量可能变化）
@@ -811,27 +810,20 @@ class LauncherPopup(
             except Exception as exc:
                 logger.debug("调度窗口特效刷新失败: %s", exc, exc_info=True)
 
-        # 更新 Dock 高度
-        # 单行：icon_size + 16（与原来保持完全一致）
-        # 多行：icon_size + (display_rows-1)*dock_row_stride + 16
-        # dock_row_stride = icon_size + 6 --- 行间距6px，上下边距保持 8px 不变
-        dock_enabled = getattr(self.settings, "dock_enabled", True)
-        if dock_enabled and self.dock_items:
-            max_rows = getattr(self.settings, "dock_height_mode", 1)
-            actual_rows = (len(self.dock_items) + self.cols - 1) // self.cols
-            display_rows = min(max(1, actual_rows), max_rows)
-            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
-            # 单行：icon_size + 16；多行：icon_size + (rows-1)*dock_row_stride + 16
-            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + sp(12)
-        else:
-            self.dock_height = 0
+        self.dock_height = self._calculate_dock_height()
 
         # 重新计算窗口大小 (现在处于正确的 DPI 上下文中)
         calculated_width, calculated_height = self._calculate_fixed_size()
 
-        # 强制更新窗口特效，确保在新屏幕上正确显示
+        # 调度窗口特效刷新，避免打开/刷新链路同步重建 DWM/region。
         if not skip_effect:
-            self._update_window_effect()
+            try:
+                if hasattr(self, "_schedule_window_effect_update"):
+                    self._schedule_window_effect_update(0)
+                else:
+                    QTimer.singleShot(0, self._update_window_effect)
+            except Exception as exc:
+                logger.debug("调度窗口特效刷新失败: %s", exc, exc_info=True)
 
         # 最后精确居中显示
         if reposition:

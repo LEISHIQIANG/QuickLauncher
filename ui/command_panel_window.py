@@ -980,6 +980,8 @@ class CommandPanelWindow(ThemedToolWindow):
         self._update_subtitle("完成" if result.success else "失败")
 
     def _on_result_update(self, token: str, result: CommandResult, command_def):
+        if self._closing_panel:
+            return
         if token != self._run_token:
             return
         self._current_definition = command_def
@@ -988,6 +990,8 @@ class CommandPanelWindow(ThemedToolWindow):
         self._update_subtitle("执行中")
 
     def _on_result_ready(self, token: str, result: CommandResult, command_def, duration: float):
+        if self._closing_panel:
+            return
         if token != self._run_token:
             return
         self._set_running(False)
@@ -1285,7 +1289,7 @@ class CommandPanelWindow(ThemedToolWindow):
         menu.show()
         menu.raise_()
         try:
-            menu._apply_blur_effect()
+            menu._schedule_blur_effect()
         except Exception as exc:
             logger.debug("应用模糊效果: %s", exc, exc_info=True)
 

@@ -127,6 +127,7 @@ def check_source_metadata(
     required_source_files = [
         root / "assets" / "app.ico",
         root / "hooks" / "hooks.dll",
+        root / "modules" / "action_chain" / "module.json",
         root / "QuickLauncher.manifest",
         root / "plugins" / "PLUGIN_DEV.md",
         root / "scripts" / "installer.iss",
@@ -213,6 +214,7 @@ def check_release_artifacts(
     *,
     dist_dir: Path | None = None,
     installer: Path | None = None,
+    portable_zip: Path | None = None,
     version: str | None = None,
     min_exe_bytes: int = 1024 * 1024,
     run_smoke: bool = False,
@@ -233,6 +235,7 @@ def check_release_artifacts(
 
     dist_dir = Path(dist_dir or root / "dist" / "QuickLauncher")
     installer = Path(installer or root / "dist" / f"QuickLauncher_Setup_{version}.exe")
+    portable_zip = Path(portable_zip) if portable_zip is not None else None
 
     # Scan for forbidden debris (pycache, bytecode, temp uploads)
     debris = _scan_debris(dist_dir)
@@ -242,10 +245,13 @@ def check_release_artifacts(
     required_artifacts = [
         (dist_dir / "QuickLauncher.exe", min_exe_bytes),
         (dist_dir / "hooks" / "hooks.dll", 1),
+        (dist_dir / "modules" / "action_chain" / "module.json", 1),
         (dist_dir / "assets" / "app.ico", 1),
         (dist_dir / "plugins", 0),
         (installer, min_exe_bytes),
     ]
+    if portable_zip is not None:
+        required_artifacts.append((portable_zip, min_exe_bytes))
     for path, min_bytes in required_artifacts:
         if min_bytes == 0:
             _require_dir(errors, path)
@@ -260,11 +266,22 @@ def check_release_artifacts(
         for plugin_json in sorted((dist_dir / "plugins").glob("*/plugin.json")):
             errors.append(f"release must not contain bundled plugin source: {plugin_json.parent}")
 
-    for key, path in {
+    unused_runtime_components = [
+        dist_dir / "PIL" / "_avif.pyd",
+        dist_dir / "PIL" / "_imagingtk.pyd",
+    ]
+    for path in unused_runtime_components:
+        if path.exists():
+            errors.append(f"unused runtime component must be removed: {path.relative_to(dist_dir)}")
+
+    artifact_paths = {
         "exe": dist_dir / "QuickLauncher.exe",
         "hooks_dll": dist_dir / "hooks" / "hooks.dll",
         "installer": installer,
-    }.items():
+    }
+    if portable_zip is not None:
+        artifact_paths["portable_zip"] = portable_zip
+    for key, path in artifact_paths.items():
         if path.is_file():
             release_manifest["artifacts"][key] = {
                 "path": str(path),
@@ -300,6 +317,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--source-only", action="store_true")
     parser.add_argument("--dist-dir", type=Path, default=None)
     parser.add_argument("--installer", type=Path, default=None)
+    parser.add_argument("--portable-zip", type=Path, default=None)
     parser.add_argument("--min-exe-bytes", type=int, default=1024 * 1024)
     parser.add_argument("--run-smoke", action="store_true")
     parser.add_argument("--smoke-timeout", type=float, default=30.0)
@@ -310,6 +328,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--write-manifest", type=Path, default=None)
     parser.add_argument("--write-installer-sha256", type=Path, default=None)
+    parser.add_argument("--write-portable-sha256", type=Path, default=None)
     return parser.parse_args(argv)
 
 
@@ -326,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
             args.root,
             dist_dir=args.dist_dir,
             installer=args.installer,
+            portable_zip=args.portable_zip,
             version=args.version,
             min_exe_bytes=args.min_exe_bytes,
             run_smoke=args.run_smoke,
@@ -341,6 +361,13 @@ def main(argv: list[str] | None = None) -> int:
         args.write_installer_sha256.parent.mkdir(parents=True, exist_ok=True)
         args.write_installer_sha256.write_text(
             f"{installer_info['sha256']}  {Path(installer_info['path']).name}\n",
+            encoding="utf-8",
+        )
+    portable_info = result.manifest.get("artifacts", {}).get("portable_zip", {})
+    if args.write_portable_sha256 and portable_info.get("sha256"):
+        args.write_portable_sha256.parent.mkdir(parents=True, exist_ok=True)
+        args.write_portable_sha256.write_text(
+            f"{portable_info['sha256']}  {Path(portable_info['path']).name}\n",
             encoding="utf-8",
         )
     if result.ok:

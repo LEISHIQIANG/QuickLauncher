@@ -11,6 +11,7 @@ from qt_compat import (
     QThread,
     pyqtSignal,
 )
+from runtime_paths import app_executable, is_packaged_runtime
 from ui.config_window.settings_helpers import ExportThread, ImportThread, ProgressDialog
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.safe_file_dialog import get_open_file_name, get_save_file_name
@@ -47,7 +48,7 @@ class SettingsDataActionsMixin:
 
     def _on_export_clicked(self):
         # Same as old settings
-        logger.info(f"[导出配置] 按钮被点击, frozen={getattr(sys, 'frozen', False)}")
+        logger.info("[导出配置] 按钮被点击, packaged=%s", is_packaged_runtime())
         if self._is_thread_running("export_thread"):
             return
         try:
@@ -77,7 +78,7 @@ class SettingsDataActionsMixin:
             ThemedMessageBox.critical(self, "错误", str(e))
 
     def _on_import_clicked(self):
-        logger.info(f"[导入配置] 按钮被点击, frozen={getattr(sys, 'frozen', False)}")
+        logger.info("[导入配置] 按钮被点击, packaged=%s", is_packaged_runtime())
         if self._is_thread_running("import_thread"):
             return
         try:
@@ -419,10 +420,9 @@ class SettingsDataActionsMixin:
                 _srv.close()
                 _main_mod._server = None
 
-            # 获取当前exe路径
-            if getattr(sys, "frozen", False):
+            if is_packaged_runtime():
                 # 打包后的exe：直接启动 exe
-                exe_path = sys.executable
+                exe_path = str(app_executable())
                 # 使用 CREATE_NEW_PROCESS_GROUP 和 DETACHED_PROCESS
                 # CREATE_BREAKAWAY_FROM_JOB (0x01000000) 确保新进程不受当前作业对象限制
                 creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | 0x01000000

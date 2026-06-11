@@ -6,8 +6,9 @@
 import logging
 import os
 import shutil
-import sys
 from pathlib import Path
+
+from runtime_paths import app_root
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,7 @@ class ConfigMigrator:
     @staticmethod
     def get_new_config_dir() -> Path:
         """获取新的配置目录（安装路径/config）"""
-        if getattr(sys, "frozen", False):
-            install_dir = Path(sys.executable).parent
-        else:
-            install_dir = Path(__file__).parent.parent
-        return install_dir / "config"
+        return app_root() / "config"
 
     @staticmethod
     def needs_migration() -> bool:

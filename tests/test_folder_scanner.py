@@ -139,6 +139,24 @@ class TestCreateShortcut:
         assert result.working_dir == r"C:\Apps"
         assert result.type == ShortcutType.FILE
 
+    def test_lnk_to_folder_uses_folder_type(self, tmp_path):
+        lnk = tmp_path / "docs.lnk"
+        lnk.write_text("stub", encoding="utf-8")
+        target = tmp_path / "Docs"
+        target.mkdir()
+
+        fake_parsed = {
+            "target": str(target),
+            "args": "",
+            "working_dir": "",
+        }
+        with patch("core.folder_scanner.ShortcutParser") as mock_parser:
+            mock_parser.parse.return_value = fake_parsed
+            result = FolderScanner._create_shortcut(lnk)
+
+        assert result.target_path == str(target)
+        assert result.type == ShortcutType.FOLDER
+
     def test_lnk_parser_returns_none(self, tmp_path):
         lnk = tmp_path / "broken.lnk"
         lnk.write_text("stub", encoding="utf-8")

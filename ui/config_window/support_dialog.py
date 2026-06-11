@@ -20,6 +20,7 @@ from qt_compat import (
     QtCompat,
     pyqtProperty,
 )
+from runtime_paths import app_root
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_animation
 from ui.utils.ui_scale import font_px, sp
@@ -47,7 +48,7 @@ def _rounded_pixmap(source: QPixmap, radius: int = 20) -> QPixmap:
 
 def _support_image_path() -> str:
     """获取收款码图片的绝对路径。"""
-    module_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    module_root = str(app_root())
     exe_root = os.path.dirname(os.path.abspath(sys.argv[0]))
     candidates = [
         os.path.join(module_root, "assets", "support.jpg"),

@@ -124,6 +124,37 @@ def test_preload_animation_pages_queues_incremental_work(monkeypatch):
     assert popup._preload_batch_timer.started
 
 
+def test_preload_animation_pages_only_queues_pixmaps_after_all_icons_are_ready(monkeypatch):
+    popup = _popup_for_animation()
+    popup._all_page_icons_preloaded = True
+
+    class _Signal:
+        def connect(self, callback):
+            self.callback = callback
+
+    class _Timer:
+        def __init__(self, *args, **kwargs):
+            self.timeout = _Signal()
+            self.started = False
+
+        def setInterval(self, interval):
+            self.interval = interval
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            self.started = False
+
+    monkeypatch.setattr(popup_search_mod, "QTimer", _Timer)
+
+    LauncherPopup._preload_animation_pages(popup)
+
+    assert popup._preload_items_list == []
+    assert popup._preload_page_queue == [0, 1, 2]
+    assert popup._preload_batch_timer.started
+
+
 def test_page_animation_update_area_stays_above_dock():
     popup = _popup_for_animation()
     updates = []
@@ -174,7 +205,12 @@ def test_page_switch_uses_continuous_targets_when_wrapping():
     assert popup.current_page == 0
     assert popup._target_page == 3.0
     assert popup._indicator_timer.isActive()
-    assert popup._settings_updates[-1] == {"last_page_index": 0}
+    assert popup._pending_last_page_index == 0
+    assert popup._settings_updates == []
+
+    LauncherPopup._persist_last_page_index(popup)
+
+    assert popup._settings_updates[-1] == {"last_page_index": 0, "immediate": False}
 
 
 def test_page_animation_finish_normalizes_continuous_position():

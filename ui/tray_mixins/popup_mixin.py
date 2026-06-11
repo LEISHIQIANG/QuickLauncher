@@ -267,7 +267,7 @@ class PopupMixin:
                     selection_trigger_pos=selection_trigger_pos,
                     trigger_method="mouse",
                 )
-                self.popup_window.preload_visible_icons()
+                self.popup_window.preload_visible_icons(force=True, all_pages=True)
                 self.popup_window.prepare_first_show()
                 self.popup_window.show()
                 self.popup_window.activateWindow()
@@ -285,7 +285,7 @@ class PopupMixin:
                     trigger_method="mouse",
                 )
                 self.popup_window.preload_background()
-                self.popup_window.preload_visible_icons()
+                self.popup_window.preload_visible_icons(force=True, all_pages=True)
                 self.popup_window.prepare_first_show()
                 self.popup_window.show()
                 self.popup_window.activateWindow()

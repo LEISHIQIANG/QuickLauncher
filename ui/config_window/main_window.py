@@ -4,8 +4,9 @@
 
 import logging
 import os
-import sys
 import time
+
+from runtime_paths import app_root, is_packaged_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +120,7 @@ class TitleBar(QWidget):
 
         # 图标 (默认显示)
         icon_size = sp(25)
-        # 兼容打包环境
-        if getattr(sys, "frozen", False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        base_dir = str(app_root())
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(icon_size, icon_size)
         self.icon_label.setCursor(QtCompat.PointingHandCursor)
@@ -683,10 +680,9 @@ class ConfigWindow(QMainWindow):
         if not self._drag_drop_compat_applied:
             self._drag_drop_compat_applied = True
             self._lifecycle.defer(0, allow_drag_drop_for_widget, self, generation=generation)
-        # 立即应用阴影和亚克力效果（去掉延迟，确保窗口零延迟渲染）
-        self._apply_window_shadow()
+        # 窗口特效放到显示后的空闲片刻执行，避免 showEvent 阻塞首帧。
+        self._lifecycle.defer(32, self._apply_window_shadow, generation=generation)
         self._start_show_animation()
-        self._schedule_settings_panel_preload(generation)
 
     def _next_window_animation_generation(self) -> int:
         self._window_animation_generation = int(getattr(self, "_window_animation_generation", 0) or 0) + 1
@@ -802,9 +798,7 @@ class ConfigWindow(QMainWindow):
         # 管理员指示灯：紫色=代码运行，绿色=非管理员，红色=管理员
         import ctypes
 
-        is_compiled = (
-            getattr(sys, "frozen", False) or "__compiled__" in dir(__builtins__) or globals().get("__compiled__", False)
-        )
+        is_compiled = is_packaged_runtime()
         if is_compiled:
             is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
             dot_color = "#ff6b6b" if is_admin else "#6bcb77"
@@ -824,6 +818,7 @@ class ConfigWindow(QMainWindow):
 
     def rescale_ui(self):
         """Re-apply geometry that depends on the current global UI scale."""
+        Glassmorphism.clear_stylesheet_cache()
         total_width, total_height = self._calculate_window_size()
         self.setFixedSize(total_width, total_height)
 
@@ -904,9 +899,9 @@ class ConfigWindow(QMainWindow):
         self._settings_panel_preload_scheduled = True
         lifecycle = getattr(self, "_lifecycle", None)
         if lifecycle is not None:
-            lifecycle.defer(450, self._preload_settings_panel, generation=generation)
+            lifecycle.defer(1500, self._preload_settings_panel, generation=generation)
         else:
-            QTimer.singleShot(450, self._preload_settings_panel)
+            QTimer.singleShot(1500, self._preload_settings_panel)
 
     def _preload_settings_panel(self):
         self._settings_panel_preload_scheduled = False
@@ -1159,11 +1154,14 @@ class ConfigWindow(QMainWindow):
 
         tune_font_rendering(self, recursive=True)
 
-        # 切换主题时立即刷新 acrylic/DWM 磨砂玻璃底色，避免新旧主题颜色混合
-        self._apply_window_shadow()
-
-        # 刷新颜色滤镜
-        self._apply_color_filter()
+        try:
+            visible = bool(self.isVisible())
+        except RuntimeError:
+            visible = False
+        if visible:
+            # 切换主题时刷新 acrylic/DWM 底色；隐藏状态交给 showEvent 统一处理。
+            self._apply_window_shadow()
+            self._apply_color_filter()
 
     def _on_folder_selected(self, folder_id: str):
         """选中文件夹"""
@@ -1321,16 +1319,47 @@ class ConfigWindow(QMainWindow):
         if getattr(shortcut, "_icon_repo_source", "") == "system":
             return
         theme = self.data_manager.get_settings().theme
+        shortcut_id = shortcut.id
+        shortcut_name = shortcut.name
+        folder_id = self.icon_grid.current_folder_id
 
         confirmed = ThemedMessageBox.question(
-            self, tr("确认删除"), tr("确定要删除 '{name}' 吗?", name=shortcut.name), theme
+            self, tr("确认删除"), tr("确定要删除 '{name}' 吗?", name=shortcut_name), theme
         )
 
         if confirmed:
-            folder_id = self.icon_grid.current_folder_id
-            self.data_manager.delete_shortcut(folder_id, shortcut.id)
-            self.icon_grid.load_folder(folder_id)
+            QTimer.singleShot(
+                0,
+                lambda fid=folder_id, sid=shortcut_id, name=shortcut_name: self._delete_shortcut_after_confirm(
+                    fid, sid, name
+                ),
+            )
+
+    def _delete_shortcut_after_confirm(self, folder_id: str, shortcut_id: str, shortcut_name: str):
+        try:
+            if not folder_id or not shortcut_id:
+                return
+            logger.info("确认删除快捷方式: folder_id=%s shortcut_id=%s name=%s", folder_id, shortcut_id, shortcut_name)
+            deleted = self.data_manager.delete_shortcut(folder_id, shortcut_id)
+            logger.info(
+                "删除快捷方式完成: folder_id=%s shortcut_id=%s deleted=%s",
+                folder_id,
+                shortcut_id,
+                deleted,
+            )
+            if self.icon_grid.current_folder_id == folder_id:
+                self.icon_grid.load_folder(folder_id)
             self.settings_changed.emit()  # 通知弹窗刷新数据
+        except Exception as exc:
+            logger.exception("删除快捷方式失败: folder_id=%s shortcut_id=%s", folder_id, shortcut_id)
+            try:
+                ThemedMessageBox.warning(
+                    self,
+                    tr("删除失败"),
+                    tr("删除快捷方式失败，请查看运行日志。\n{error}", error=str(exc)),
+                )
+            except Exception:
+                logger.debug("显示删除失败提示失败", exc_info=True)
 
     def _on_add_file(self):
         """添加文件快捷方式"""
@@ -1498,43 +1527,11 @@ class ConfigWindow(QMainWindow):
 
     def _on_settings_panel_changed(self):
         """设置面板变更"""
-        # 保存当前选中的文件夹
-        current_folder_id = self.icon_grid.current_folder_id
-
-        # 重新加载数据
-        self.data_manager.reload()
-
-        self.rescale_ui()
-
-        # 刷新文件夹列表（不触发选中事件）
-        if hasattr(self.folder_panel, "_load_folders"):
-            # 临时断开信号
-            try:
-                self.folder_panel.folder_selected.disconnect()
-            except Exception as exc:
-                logger.debug("断开文件夹选择信号失败: %s", exc, exc_info=True)
-
-            self.folder_panel._load_folders()
-
-            # 恢复选中状态
-            if current_folder_id:
-                for i in range(self.folder_panel.folder_list.count()):
-                    item = self.folder_panel.folder_list.item(i)
-                    if item.data(QtCompat.UserRole) == current_folder_id:
-                        self.folder_panel.folder_list.setCurrentRow(i)
-                        break
-
-            # 重新连接信号
-            self.folder_panel.folder_selected.connect(self._on_folder_selected)
-
-        # 重新加载图标网格以刷新图标
-        if current_folder_id:
-            self.icon_grid.load_folder(current_folder_id)
+        theme = self.data_manager.get_settings().theme
+        if theme != getattr(self, "_theme", None):
+            self._apply_theme()
 
         self.settings_changed.emit()
-
-        # 更新颜色滤镜
-        self._apply_color_filter()
 
     def _on_import_completed(self, count: int):
         """导入完成处理"""

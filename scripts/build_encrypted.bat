@@ -110,7 +110,7 @@ echo.
 echo [3/5] Installing dependencies...
 !PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 !PYTHON_CMD! -m pip install nuitka ordered-set zstandard python-minifier -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
-!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 echo   Done
 
 REM ============================================
@@ -171,6 +171,7 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --lto=yes ^
     --remove-output ^
     --no-pyi-file ^
+    --report=dist\nuitka-encrypted-report.xml ^
     --windows-icon-from-ico="assets\app.ico" ^
     --enable-plugin=pyqt5 ^
     --include-qt-plugins=platforms ^
@@ -194,11 +195,12 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
+    --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^
-    --include-package=PIL ^
+    --include-package=watchdog ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^
     --include-module=win32gui ^
@@ -212,6 +214,8 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-module=win32com.shell.shell ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
+    --include-module=PIL.ImageDraw ^
+    --include-module=PIL.ImageFont ^
     --include-module=PIL.BmpImagePlugin ^
     --include-module=PIL.GifImagePlugin ^
     --include-module=PIL.IcoImagePlugin ^
@@ -295,7 +299,7 @@ if exist "PyQt5\qt-plugins\imageformats" (
 if exist "PyQt5\qt-plugins\platformthemes" (
     del /f /q PyQt5\qt-plugins\platformthemes\qxdgdesktopportal.dll 2>nul
 )
-if exist "PIL" del /f /q PIL\_imagingcms.pyd PIL\_imagingtk.pyd PIL\_imagingmath.pyd 2>nul
+if exist "PIL" del /f /q PIL\_avif.pyd PIL\_imagingcms.pyd PIL\_imagingtk.pyd 2>nul
 if exist "config" (
     del /f /q config\*.log config\*.log.* 2>nul
     del /f /q config\data.json config\data.json.backup 2>nul

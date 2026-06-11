@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 
+from runtime_paths import is_packaged_runtime
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,21 +27,7 @@ def _is_working_python(exe_path: str) -> bool:
 
 def maybe_reexec_in_venv(root_dir: str):
     try:
-        is_compiled = (
-            getattr(sys, "frozen", False)
-            or getattr(sys, "_MEIPASS", False)
-            or ("__compiled__" in sys.builtin_module_names)
-        )
-        if not is_compiled:
-            try:
-                import builtins
-
-                if hasattr(builtins, "__compiled__"):
-                    is_compiled = True
-            except (ImportError, AttributeError):
-                logger.debug("检测编译状态失败", exc_info=True)
-
-        if is_compiled:
+        if is_packaged_runtime():
             return
         venv_py = os.path.join(root_dir, ".venv", "Scripts", "python.exe")
         if not os.path.exists(venv_py):

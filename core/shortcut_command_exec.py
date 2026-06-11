@@ -17,6 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from qt_compat import QObject, pyqtSignal
+from runtime_paths import app_root, is_packaged_runtime
 
 from .background_tasks import start_background_thread
 from .command_exec import (
@@ -808,14 +809,11 @@ class CommandExecutionMixin:
 
     @staticmethod
     def _is_packaged_runtime() -> bool:
-        executable = os.path.basename(sys.executable or "").lower()
-        return bool(getattr(sys, "frozen", False)) or (executable.endswith(".exe") and "python" not in executable)
+        return is_packaged_runtime()
 
     @staticmethod
     def _app_install_dir() -> str:
-        if ShortcutExecutor._is_packaged_runtime():
-            return os.path.dirname(os.path.abspath(sys.executable))
-        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return str(app_root())
 
     @staticmethod
     def _probe_python_launcher(candidate: str) -> bool:
@@ -2616,10 +2614,9 @@ class CommandExecutionMixin:
             try:
                 # 延迟让 UI 事件处理完成
                 # 打包版本首次调用需要更长延迟，Qt网络模块初始化较慢
-                import sys
                 import time
 
-                is_frozen = getattr(sys, "frozen", False)
+                is_frozen = is_packaged_runtime()
 
                 # 打包版本使用更长的初始延迟
                 initial_delay = 0.35 if is_frozen else 0.15
@@ -2665,11 +2662,9 @@ class CommandExecutionMixin:
         """
         try:
             # 延迟导入以避免循环引用
-            import sys
-
             from qt_compat import QLocalSocket
 
-            is_frozen = getattr(sys, "frozen", False)
+            is_frozen = is_packaged_runtime()
 
             # 首次调用时给Qt网络模块和IPC服务器更多初始化时间
             # 这对于打包后的exe在首次使用QLocalSocket尤为重要

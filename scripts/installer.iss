@@ -60,7 +60,7 @@ Name: "desktopicon"; Description: "Create desktop shortcut"; Flags: unchecked
 Name: "startupicon"; Description: "Start with Windows"; Flags: unchecked
 
 [Files]
-Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config\*.log,config\*.log.*,temp_icons\favicons\*,temp_icons\favicons\*.*"
+Source: "..\dist\QuickLauncher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "icons\*,icons\*.*,config\*.log,config\*.log.*,temp_icons\favicons\*,temp_icons\favicons\*.*"
 ; VC++ Redistributable package (if needed)
 ; Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
@@ -69,6 +69,7 @@ Name: "{app}\config"; Permissions: users-modify
 Name: "{app}\icons"; Permissions: users-modify
 Name: "{app}\temp_icons"; Permissions: users-modify
 Name: "{app}\temp_icons\favicons"; Permissions: users-modify
+Name: "{app}\plugins"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -194,11 +195,12 @@ begin
   end;
 end;
 
-procedure CopyDirectory(SourceDir, DestDir: String);
+function CopyDirectory(SourceDir, DestDir: String): Boolean;
 var
   FindRec: TFindRec;
   SourcePath, DestPath: String;
 begin
+  Result := True;
   if FindFirst(SourceDir + '\*', FindRec) then
   begin
     try
@@ -211,13 +213,20 @@ begin
           if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = FILE_ATTRIBUTE_DIRECTORY then
           begin
             ForceDirectories(DestPath);
-            CopyDirectory(SourcePath, DestPath);
-            DelTree(SourcePath, True, True, True);
+            if CopyDirectory(SourcePath, DestPath) then
+              DelTree(SourcePath, True, True, True)
+            else
+              Result := False;
           end
           else
           begin
-            CopyFile(SourcePath, DestPath, False);
-            DeleteFile(SourcePath);
+            if CopyFile(SourcePath, DestPath, False) then
+              DeleteFile(SourcePath)
+            else
+            begin
+              Log('Failed to migrate file: ' + SourcePath);
+              Result := False;
+            end;
           end;
         end;
       until not FindNext(FindRec);
@@ -238,9 +247,13 @@ begin
   begin
     Log('Old config detected, migrating...');
     ForceDirectories(NewConfigDir);
-    CopyDirectory(OldConfigDir, NewConfigDir);
-    RemoveDir(OldConfigDir);
-    Log('Config migration complete');
+    if CopyDirectory(OldConfigDir, NewConfigDir) then
+    begin
+      RemoveDir(OldConfigDir);
+      Log('Config migration complete');
+    end
+    else
+      Log('Config migration incomplete; source files were preserved');
   end;
 end;
 

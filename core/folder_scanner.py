@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 from .data_models import ShortcutItem, ShortcutType
+from .shortcut_icon_helpers import shortcut_type_for_target
 from .shortcut_parser import ShortcutParser
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,7 @@ class FolderScanner:
                     shortcut.target_path = parsed.get("target", str(file_path))
                     shortcut.target_args = parsed.get("args", "")
                     shortcut.working_dir = parsed.get("working_dir", "")
+                    shortcut.type = shortcut_type_for_target(shortcut.target_path)
                     # 如果没有更友好的名称,使用文件名
                     # .lnk 文件的名称通常就是文件名本身
             except Exception as e:

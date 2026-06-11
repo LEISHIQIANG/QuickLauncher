@@ -14,7 +14,7 @@ from qt_compat import (
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.ui_scale import sp
-from ui.utils.window_effect import is_win10, is_win11
+from ui.utils.window_effect import install_win10_window_shadow, is_win10, is_win11, remove_win10_window_shadow
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,8 @@ class PopupWindowEffectMixin:
             getattr(s, "corner_radius", 8),
             getattr(s, "bg_alpha", 90),
             getattr(s, "bg_blur_radius", 0),
+            getattr(s, "shadow_size", 0),
+            getattr(s, "shadow_distance", 0),
             theme,
             getattr(s, f"{theme}_black_point", 50),
             getattr(s, f"{theme}_white_point", 50),
@@ -153,26 +155,49 @@ class PopupWindowEffectMixin:
         self._window_effect_update_delay_ms = None
         self._update_window_effect()
 
+    def _install_win10_popup_shadow(self, radius: int):
+        if self._uses_win10_internal_popup_shadow():
+            remove_win10_window_shadow(self)
+            return True
+        settings = getattr(self, "settings", None)
+        shadow_size = getattr(settings, "shadow_size", 0)
+        shadow_distance = getattr(settings, "shadow_distance", 0)
+        return install_win10_window_shadow(
+            self,
+            radius,
+            shadow_size=shadow_size,
+            shadow_distance=shadow_distance,
+        )
+
+    def _uses_win10_internal_popup_shadow(self) -> bool:
+        return bool(is_win10())
+
     def _update_window_effect(self):
         """更新窗口特效 (Acrylic / Blur)"""
         try:
+            bg_mode = getattr(self.settings, "bg_mode", "theme")
+            desired_radius = getattr(self.settings, "corner_radius", 8)
+            blur_radius = getattr(self.settings, "bg_blur_radius", 0)
+            paint_radius = self._get_paint_corner_radius(bg_mode, blur_radius)
+
             # 参数快照缓存：如果效果参数未变化则跳过 DWM 重建，
             # 避免 showEvent 等场景重复调用导致的视觉闪烁
             current_state = self._snapshot_effect_state()
             if current_state is not None and current_state == getattr(self, "_last_effect_state", None):
+                if is_win10():
+                    self._install_win10_popup_shadow(paint_radius)
                 logger.debug("[EFFECT] 参数未变化，跳过 DWM 重建")
                 return
-
-            bg_mode = getattr(self.settings, "bg_mode", "theme")
-            desired_radius = getattr(self.settings, "corner_radius", 8)
-            blur_radius = getattr(self.settings, "bg_blur_radius", 0)
 
             hwnd = int(self.winId())
             if not hwnd:
                 return
 
             logger.debug(f"[EFFECT] 更新窗口效果: mode={bg_mode}, size={self.width()}x{self.height()}")
-            self.window_effect.enable_window_shadow(hwnd, self._get_paint_corner_radius(bg_mode, blur_radius))
+            if is_win10():
+                self._install_win10_popup_shadow(paint_radius)
+            else:
+                self.window_effect.enable_window_shadow(hwnd, paint_radius)
 
             if bg_mode == "acrylic":
                 # ===== 亚克力模式：使用与配置窗口完全相同的磨砂玻璃效果 =====
@@ -248,9 +273,88 @@ class PopupWindowEffectMixin:
 class PopupLayoutMixin:
     """Window setup, sizing, positioning, and resize/move events."""
 
+    def _dock_display_rows(self, visible_count: int | None = None, cols: int | None = None) -> int:
+        if not self.dock_items:
+            return 0
+
+        max_rows = max(1, int(getattr(self.settings, "dock_height_mode", 1) or 1))
+        cols = max(1, int(cols if cols is not None else getattr(self, "cols", 1) or 1))
+        if visible_count is None:
+            visible_count = len(self.dock_items)
+            if max_rows == 1:
+                visible_count = min(visible_count, cols)
+        visible_count = max(0, int(visible_count or 0))
+        if visible_count <= 0:
+            return 0
+
+        actual_rows = (visible_count + cols - 1) // cols
+        return min(max(1, actual_rows), max_rows)
+
+    def _dock_background_top_gap(self) -> int:
+        return max(1, sp(5))
+
+    def _dock_outer_bottom_gap(self) -> int:
+        return sp(6)
+
+    def _dock_background_height(self) -> int:
+        total_h = int(getattr(self, "dock_height", 0) or 0) + self._dock_outer_bottom_gap()
+        return max(0, total_h - self._dock_background_top_gap() * 2)
+
+    def _dock_card_block_height(self, display_rows: int) -> int:
+        rows = max(1, int(display_rows or 1))
+        card_pad = sp(2)
+        dock_row_stride = self.icon_size + sp(6)
+        return self.icon_size + card_pad * 2 + (rows - 1) * dock_row_stride
+
+    def _dock_first_icon_y(self, display_rows: int | None = None) -> int:
+        rows = self._dock_display_rows() if display_rows is None else max(1, int(display_rows or 1))
+        card_pad = sp(2)
+        bg_y = int(getattr(self, "dock_y", 0) or 0) + self._dock_background_top_gap()
+        block_h = self._dock_card_block_height(rows)
+        bg_h = self._dock_background_height()
+        inner_top = max(card_pad, (bg_h - block_h) // 2)
+        return bg_y + inner_top + card_pad
+
+    def _calculate_dock_height(self) -> int:
+        """Return Dock height with enough room for the shared icon card frame."""
+        dock_enabled = getattr(self.settings, "dock_enabled", True)
+        if not (dock_enabled and self.dock_items):
+            return 0
+
+        display_rows = self._dock_display_rows()
+        if display_rows <= 0:
+            return 0
+        return self._dock_card_block_height(display_rows) + sp(16)
+
+    def _win10_internal_shadow_metrics(self) -> tuple[int, int, int]:
+        if not self._uses_win10_internal_popup_shadow():
+            return 0, 0, 0
+        settings = getattr(self, "settings", None)
+        raw_size = getattr(settings, "shadow_size", 0)
+        raw_distance = getattr(settings, "shadow_distance", 0)
+        try:
+            shadow_size = int(raw_size)
+        except (TypeError, ValueError):
+            shadow_size = 0
+        try:
+            shadow_distance = int(raw_distance)
+        except (TypeError, ValueError):
+            shadow_distance = 0
+
+        shadow_size_px = sp(shadow_size if shadow_size > 0 else 14)
+        shadow_distance_px = sp(shadow_distance if shadow_distance > 0 else 2)
+        margin = max(0, shadow_size_px + shadow_distance_px + sp(2))
+        return shadow_size_px, shadow_distance_px, margin
+
     def _setup_window(self):
         """设置窗口属性"""
-        apply_custom_window_chrome(self, kind="tool", topmost=True, translucent=True)
+        apply_custom_window_chrome(
+            self,
+            kind="tool",
+            topmost=True,
+            translucent=True,
+            no_shadow=self._uses_win10_internal_popup_shadow(),
+        )
         self.setWindowOpacity(0)  # 初始透明度为 0
         try:
             self.setAttribute(QtCompat.WA_NoSystemBackground, True)
@@ -272,7 +376,9 @@ class PopupLayoutMixin:
         """基于"常用"页面计算固定窗口大小"""
         # 使用配置的每列行数
         self.fixed_rows = getattr(self.settings, "popup_max_rows", 3)
-        self.shadow_margin = 0
+        self.shadow_size_px, self.shadow_distance_px, self.shadow_margin = self._win10_internal_shadow_metrics()
+        base_padding = int(self.__dict__.get("_base_padding", sp(8)) or sp(8))
+        self.padding = base_padding + int(self.shadow_margin)
         self.cell_h = int(self.cell_size * 1.15)
 
         width = self.padding * 2 + self.cols * self.cell_size
@@ -284,7 +390,7 @@ class PopupLayoutMixin:
 
         logger.debug(
             f"[SIZE] 计算窗口尺寸: y_offset={y_offset}, "
-            f"search_reveal_progress={getattr(self, '_search_reveal_progress', 'N/A')}"
+            f"search_reveal_progress={self.__dict__.get('_search_reveal_progress', 'N/A')}"
         )
 
         # theme/image 模式：mask 裁掉顶部34px，所有坐标需整体下移补偿
@@ -297,10 +403,10 @@ class PopupLayoutMixin:
         dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
         self.dock_y = self.indicator_y + indicator_height
 
-        height = self.content_height + indicator_spacing + indicator_height + dock_height + sp(6)
+        height = self.content_height + indicator_spacing + indicator_height + dock_height + self._dock_outer_bottom_gap()
 
-        total_width = width + self.shadow_margin * 2
-        total_height = height + self.shadow_margin * 2
+        total_width = width
+        total_height = height + self.shadow_margin
 
         self.setFixedSize(total_width, total_height)
         return total_width, total_height

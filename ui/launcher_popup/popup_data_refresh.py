@@ -14,17 +14,19 @@ except ImportError:
 from core.window_detection import _is_desktop_window, _is_explorer_like_window
 from qt_compat import (
     QCursor,
-    QPixmap,
-    QtCompat,
     QTimer,
 )
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
-from ui.launcher_popup.popup_window_helpers import FolderSyncWorker
+from ui.launcher_popup.popup_window_helpers import FolderSyncWorker, sync_all_folders_for_data_manager
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.ui_scale import font_px, sp, spf
 from ui.utils.window_effect import is_win11
 
 logger = logging.getLogger(__name__)
+
+_BLANK_REFRESH_INITIAL_DELAY_MS = 180
+_BLANK_REFRESH_INTERACTION_QUIET_MS = 260
+_BLANK_REFRESH_RETRY_DELAY_MS = 90
 
 try:
     from core import IconExtractor
@@ -54,6 +56,8 @@ class PopupDataRefreshMixin:
             prev_corner = getattr(prev_settings, "corner_radius", 8)
             prev_path = getattr(prev_settings, "custom_bg_path", "")
             prev_blur = getattr(prev_settings, "bg_blur_radius", 0)
+            prev_shadow_size = getattr(prev_settings, "shadow_size", 0)
+            prev_shadow_distance = getattr(prev_settings, "shadow_distance", 0)
         except Exception:
             prev_cols = self.cols
             prev_cell = self.cell_size
@@ -64,6 +68,8 @@ class PopupDataRefreshMixin:
             prev_corner = 8
             prev_path = ""
             prev_blur = 0
+            prev_shadow_size = 0
+            prev_shadow_distance = 0
 
         self.cols = self.settings.cols
         self.cell_size = sp(self.settings.cell_size)
@@ -96,28 +102,18 @@ class PopupDataRefreshMixin:
             paint_radius != prev_paint_radius
         )
         bg_params_changed = (bg_mode != prev_bg_mode) or (bg_path != prev_path) or (blur_radius != prev_blur)
+        shadow_changed = (
+            getattr(self.settings, "shadow_size", 0) != prev_shadow_size
+            or getattr(self.settings, "shadow_distance", 0) != prev_shadow_distance
+        )
 
-        # Dock 高度更新
-        # 单行：icon_size + 16（与原来保持完全一致）
-        # 多行：icon_size + (display_rows-1)*dock_row_stride + 16
-        # dock_row_stride = icon_size + 6 --- 行间距6px，上下边距保持 8px 不变
-        dock_enabled = getattr(self.settings, "dock_enabled", True)
-        if dock_enabled and self.dock_items:
-            max_rows = getattr(self.settings, "dock_height_mode", 1)
-            # 计算实际行数
-            actual_rows = (len(self.dock_items) + self.cols - 1) // self.cols
-            # 最终显示行数，不超过设置的最大行数
-            display_rows = min(max(1, actual_rows), max_rows)
-            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
-            # 单行：icon_size + 16；多行：icon_size + (rows-1)*dock_row_stride + 16
-            self.dock_height = self.icon_size + (display_rows - 1) * dock_row_stride + sp(12)
-        else:
-            self.dock_height = 0
+        self.dock_height = self._calculate_dock_height()
 
         if self.icon_size != prev_icon_size:
             self._icon_pixmap_cache.clear()
             self._default_icon_cache.clear()
             self._visible_icons_preloaded = False
+            self._all_page_icons_preloaded = False
 
         if layout_changed:
             self._calculate_fixed_size()
@@ -125,8 +121,29 @@ class PopupDataRefreshMixin:
         if radius_changed:
             self._cached_bg_path = None
 
-        if bg_mode == "acrylic" or prev_bg_mode == "acrylic" or radius_changed:
-            self._update_window_effect()
+        if prev_bg_mode == "image" and bg_mode != "image":
+            try:
+                self._release_background_cache()
+            except Exception as exc:
+                logger.debug("切换背景模式时释放图片背景缓存失败: %s", exc, exc_info=True)
+
+        if bg_mode == "acrylic" or prev_bg_mode == "acrylic" or radius_changed or shadow_changed:
+            self._last_effect_state = None
+            try:
+                visible = bool(self.isVisible())
+            except RuntimeError:
+                visible = False
+            except Exception as exc:
+                logger.debug("检查弹窗可见状态失败: %s", exc, exc_info=True)
+                visible = False
+            if visible:
+                try:
+                    if hasattr(self, "_schedule_window_effect_update"):
+                        self._schedule_window_effect_update(0)
+                    else:
+                        self._update_window_effect()
+                except Exception as exc:
+                    logger.debug("调度窗口特效刷新失败: %s", exc, exc_info=True)
 
         # 重绘
         self.update()
@@ -147,41 +164,83 @@ class PopupDataRefreshMixin:
         """预加载背景图片"""
         self._get_cached_bg_pixmap()
 
-    def preload_visible_icons(self, force: bool = False):
-        """预热首屏可见图标，减少首次弹出时的图标补绘感。"""
+    def preload_visible_icons(self, force: bool = False, all_pages: bool = False):
+        """预热弹窗可见范围内的图标，避免显示后再逐个补绘。
+
+        当 IconExtractor 缓存已命中（启动时 _preload_icons 已预热），
+        每个图标的加载仅为缓存查找，耗时 <1ms，整体几乎无延迟。
+        显示前调用传 force=True，保证首帧直接使用真实图标。
+        all_pages=True 会预热每一页的可见格子，保证首次切页也完整。
+        """
         if not force and not self.isVisible():
             return
 
-        if self._visible_icons_preloaded:
+        if all_pages and getattr(self, "_all_page_icons_preloaded", False):
             return
-
-        self._visible_icons_preloaded = True
+        if not all_pages and self._visible_icons_preloaded:
+            return
 
         if not HAS_ICON_EXTRACTOR or not IconExtractor:
             return
 
         try:
             items = []
+            seen = set()
+            max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 3))
 
-            if self.pages and 0 <= self.current_page < len(self.pages):
-                max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 3))
-                items.extend((self.pages[self.current_page].items or [])[:max_visible])
+            if self.pages:
+                page_indexes = range(len(self.pages)) if all_pages else (self.current_page,)
+                for page_index in page_indexes:
+                    if not 0 <= page_index < len(self.pages):
+                        continue
+                    page_items = (
+                        self._get_page_animation_items(page_index)
+                        if hasattr(self, "_get_page_animation_items")
+                        else (self.pages[page_index].items or [])
+                    )
+                    items.extend(list(page_items)[:max_visible])
 
             if self.dock_items:
                 dock_rows = max(1, int(getattr(self.settings, "dock_height_mode", 1) or 1))
                 max_dock_items = self.cols * dock_rows
                 items.extend((self.dock_items or [])[:max_dock_items])
 
+            unique_items = []
             for item in items:
-                try:
-                    self._get_icon(item)
-                except Exception:
+                item_key = getattr(item, "id", None) or id(item)
+                if item_key in seen:
                     continue
+                seen.add(item_key)
+                unique_items.append(item)
+
+            reserve_cache = getattr(self, "_reserve_icon_pixmap_cache", None)
+            if callable(reserve_cache):
+                reserve_cache(len(unique_items))
+
+            previous_batch_state = bool(self.__dict__.get("_batch_icon_preload_active", False))
+            self._batch_icon_preload_active = True
+            self._icon_cache_batch_changed = False
+            batch_changed = False
+            try:
+                for item in unique_items:
+                    try:
+                        self._get_icon(item)
+                    except Exception:
+                        continue
+                batch_changed = bool(self.__dict__.get("_icon_cache_batch_changed", False))
+            finally:
+                self._batch_icon_preload_active = previous_batch_state
+                self._icon_cache_batch_changed = False
+            if batch_changed and not previous_batch_state:
+                self._mark_icon_cache_changed()
+            self._visible_icons_preloaded = True
+            if all_pages:
+                self._all_page_icons_preloaded = True
         except Exception as e:
             logger.debug(f"preload visible icons failed: {e}")
 
     def prepare_first_show(self, create_native_window: bool = True):
-        """Warm up Qt's first paint path before the popup is shown to the user."""
+        """Warm up only cheap Qt state before the popup is shown to the user."""
         if self._first_show_ready:
             return
 
@@ -197,39 +256,17 @@ class PopupDataRefreshMixin:
             logger.debug("获取窗口ID失败: %s", exc, exc_info=True)
 
         try:
-            self.preload_background()
+            self._schedule_bg_load()
         except Exception as exc:
-            logger.debug("预加载背景失败: %s", exc, exc_info=True)
+            logger.debug("调度背景预加载失败: %s", exc, exc_info=True)
 
         try:
-            self.preload_visible_icons(force=True)
+            if hasattr(self, "_schedule_window_effect_update"):
+                self._schedule_window_effect_update(0)
+            else:
+                QTimer.singleShot(0, self._update_window_effect)
         except Exception as exc:
-            logger.debug("预加载可见图标失败: %s", exc, exc_info=True)
-
-        try:
-            if hasattr(self, "preload_page_animation_pixmaps"):
-                self.preload_page_animation_pixmaps()
-        except Exception as exc:
-            logger.debug("预加载页面动画像素图失败: %s", exc, exc_info=True)
-
-        try:
-            self._update_window_effect()
-        except Exception as exc:
-            logger.debug("更新窗口特效失败: %s", exc, exc_info=True)
-
-        old_progress = self._reveal_progress
-        old_opacity = self.windowOpacity()
-        try:
-            self._reveal_progress = 1.0
-            self.setWindowOpacity(1.0)
-            warmup = QPixmap(max(1, self.width()), max(1, self.height()))
-            warmup.fill(QtCompat.transparent)
-            self.render(warmup)
-        except Exception as e:
-            logger.debug(f"first show warmup failed: {e}")
-        finally:
-            self._reveal_progress = old_progress
-            self.setWindowOpacity(old_opacity)
+            logger.debug("调度窗口特效预热失败: %s", exc, exc_info=True)
 
         self._first_show_ready = True
 
@@ -266,15 +303,49 @@ class PopupDataRefreshMixin:
             self._refresh_selected_files_indicator()
             return
 
+        current_thread = self.__dict__.get("_file_thread")
+        if self._qthread_is_running(current_thread):
+            self._pending_file_check_context = context
+            logger.debug("文件选择检测线程仍在运行，已排队最新请求: id=%s", context.request_id)
+            return
+
+        self._start_file_selection_thread(context)
+
+    def _qthread_is_running(self, thread) -> bool:
+        try:
+            return bool(thread is not None and thread.isRunning())
+        except RuntimeError:
+            return False
+        except (AttributeError, TypeError):
+            return False
+
+    def _start_file_selection_thread(self, context: SelectionTriggerContext):
+        if bool(getattr(self, "_closing", False)):
+            return
+
         thread = FileSelectionThread(
             context,
         )
         thread.files_found.connect(self._on_files_found)
-        thread.finished.connect(lambda current=thread: setattr(self, "_file_thread", None) if self._file_thread is current else None)
+        thread.finished.connect(lambda current=thread: self._on_file_check_thread_finished(current))
         thread.finished.connect(thread.deleteLater)
         thread.start()
         # 保存引用防止被 GC
         self._file_thread = thread
+
+    def _on_file_check_thread_finished(self, thread):
+        if getattr(self, "_file_thread", None) is thread:
+            self._file_thread = None
+
+        context = getattr(self, "_pending_file_check_context", None)
+        if context is None:
+            return
+        self._pending_file_check_context = None
+        if bool(getattr(self, "_closing", False)):
+            return
+        if int(getattr(context, "request_id", 0) or 0) != int(getattr(self, "_file_check_seq", 0) or 0):
+            return
+        self._start_file_selection_thread(context)
 
     def _clear_selected_files_context(self):
         self._selected_files = []
@@ -414,32 +485,7 @@ class PopupDataRefreshMixin:
 
     def _sync_all_folders(self):
         """同步所有文件夹 - 等同于配置窗口的手动同步功能"""
-        try:
-            from core.folder_sync import sync_folder
-
-            # 获取所有文件夹 - 直接访问 folders 属性
-            folders = self.data_manager.data.folders
-            total_added = 0
-            total_removed = 0
-
-            # 遍历所有文件夹，执行同步
-            for folder in folders:
-                if folder.linked_path:  # 只同步有链接路径的文件夹
-                    try:
-                        added, removed = sync_folder(self.data_manager, folder.id)
-                        total_added += added
-                        total_removed += removed
-                        logger.info(f"同步文件夹 '{folder.name}': 新增 {added} 项, 删除 {removed} 项")
-                    except Exception as e:
-                        logger.error(f"同步文件夹 '{folder.name}' 失败: {e}")
-
-            if total_added > 0 or total_removed > 0:
-                logger.info(f"所有文件夹同步完成: 总计新增 {total_added} 项, 删除 {total_removed} 项")
-            else:
-                logger.info("所有文件夹已是最新状态")
-
-        except Exception as e:
-            logger.error(f"同步文件夹失败: {e}")
+        sync_all_folders_for_data_manager(self.data_manager)
 
     def _flash_icons(self):
         """Flash icons through a cheap child overlay instead of repainting icons."""
@@ -457,6 +503,80 @@ class PopupDataRefreshMixin:
     def _on_folder_sync_finished(self):
         """Handle completed folder sync on the GUI thread."""
         self._schedule_folder_sync_refresh()
+
+    def _reset_blank_area_refresh_state(self):
+        self._blank_refresh_pending = False
+        self._blank_refresh_worker_started = False
+        self._blank_refresh_in_progress = False
+
+    def _defer_blank_area_refresh_for_interaction(self, quiet_ms: int = _BLANK_REFRESH_INTERACTION_QUIET_MS):
+        """Keep a double-click refresh queued while page scrolling/dragging stays active."""
+        state = self.__dict__
+        if not (bool(state.get("_blank_refresh_in_progress", False)) or bool(state.get("_blank_refresh_pending", False))):
+            return
+        try:
+            quiet_until = time.monotonic() + max(0, int(quiet_ms)) / 1000.0
+            self._blank_refresh_not_before = max(
+                float(state.get("_blank_refresh_not_before", 0.0) or 0.0),
+                quiet_until,
+            )
+        except Exception as exc:
+            logger.debug("延后空白区刷新失败: %s", exc, exc_info=True)
+
+    def _blank_refresh_should_wait_for_ui(self) -> bool:
+        """Return True while user-facing animation/input should stay first in line."""
+        state = self.__dict__
+        try:
+            if time.monotonic() < float(state.get("_blank_refresh_not_before", 0.0) or 0.0):
+                return True
+        except Exception as exc:
+            logger.debug("检查空白区刷新静默期失败: %s", exc, exc_info=True)
+
+        timer = state.get("_indicator_timer")
+        try:
+            if timer is not None and timer.isActive():
+                return True
+        except Exception as exc:
+            logger.debug("检查翻页动画状态失败: %s", exc, exc_info=True)
+
+        return bool(
+            state.get("_is_dragging", False)
+            or state.get("_search_drag_selecting", False)
+            or state.get("_pinned_window_drag_active", False)
+        )
+
+    def _blank_refresh_retry_delay_ms(self) -> int:
+        state = self.__dict__
+        try:
+            wait_ms = int(max(0.0, float(state.get("_blank_refresh_not_before", 0.0) or 0.0) - time.monotonic()) * 1000)
+        except Exception:
+            wait_ms = 0
+        return max(_BLANK_REFRESH_RETRY_DELAY_MS, min(360, wait_ms + 16))
+
+    def _schedule_blank_area_refresh_worker(self, delay_ms: int | None = None):
+        state = self.__dict__
+        seq = int(state.get("_blank_refresh_generation", 0) or 0) + 1
+        self._blank_refresh_generation = seq
+        delay = _BLANK_REFRESH_INITIAL_DELAY_MS if delay_ms is None else max(0, int(delay_ms))
+        QTimer.singleShot(delay, lambda seq=seq: self._maybe_start_folder_sync_worker(seq))
+
+    def _maybe_start_folder_sync_worker(self, seq: int):
+        state = self.__dict__
+        if seq != int(state.get("_blank_refresh_generation", -1) or -1):
+            return
+        if not bool(state.get("_blank_refresh_pending", False)):
+            return
+        if bool(state.get("_closing", False)):
+            self._reset_blank_area_refresh_state()
+            return
+
+        if state.get("_sync_worker") is not None or self._blank_refresh_should_wait_for_ui():
+            self._schedule_blank_area_refresh_worker(self._blank_refresh_retry_delay_ms())
+            return
+
+        self._blank_refresh_pending = False
+        self._blank_refresh_worker_started = True
+        self._start_folder_sync_worker()
 
     def _is_cursor_inside_popup(self) -> bool:
         try:
@@ -529,10 +649,17 @@ class PopupDataRefreshMixin:
                 QTimer.singleShot(140, lambda seq=seq: self._finish_folder_sync_refresh(seq))
                 return
 
+            if self._blank_refresh_should_wait_for_ui():
+                QTimer.singleShot(
+                    self._blank_refresh_retry_delay_ms(),
+                    lambda seq=seq: self._finish_folder_sync_refresh(seq),
+                )
+                return
+
             self._refresh_after_folder_sync(sync_first=False)
         except Exception as e:
             logger.error(f"同步刷新收尾失败: {e}")
-            self._blank_refresh_in_progress = False
+            self._reset_blank_area_refresh_state()
 
     def _refresh_after_folder_sync(self, sync_first: bool = True):
         """Refresh after folder sync while preserving transient search state."""
@@ -553,11 +680,12 @@ class PopupDataRefreshMixin:
         except Exception as e:
             logger.error(f"同步刷新处理失败: {e}")
         finally:
-            self._blank_refresh_in_progress = False
+            self._reset_blank_area_refresh_state()
 
     def _run_blank_area_refresh(self):
         """在双击事件结束后执行空白区刷新，避免重入和窗口抖动"""
         if self._blank_refresh_in_progress:
+            self._defer_blank_area_refresh_for_interaction()
             return
 
         self._blank_refresh_in_progress = True
@@ -566,15 +694,27 @@ class PopupDataRefreshMixin:
             # 立即提供无延迟的视觉反馈
             self._flash_icons()
 
-            QTimer.singleShot(150, self._start_folder_sync_worker)
+            self._blank_refresh_pending = True
+            self._blank_refresh_worker_started = False
+            now = time.monotonic()
+            self._blank_refresh_requested_at = now
+            self._blank_refresh_not_before = now + (_BLANK_REFRESH_INITIAL_DELAY_MS / 1000.0)
+            self._schedule_blank_area_refresh_worker(_BLANK_REFRESH_INITIAL_DELAY_MS)
         except Exception as e:
             logger.error(f"启动同步线程失败: {e}")
-            self._blank_refresh_in_progress = False
+            self._reset_blank_area_refresh_state()
 
     def _start_folder_sync_worker(self):
         """延迟启动文件夹同步，避免与闪烁动画竞争 UI 线程。"""
         try:
-            self._sync_worker = FolderSyncWorker(self)
+            if bool(getattr(self, "_closing", False)):
+                self._reset_blank_area_refresh_state()
+                return
+            if self._qthread_is_running(getattr(self, "_sync_worker", None)):
+                self._blank_refresh_pending = True
+                return
+
+            self._sync_worker = FolderSyncWorker(self.data_manager)
             self._sync_worker.finished.connect(self.folder_sync_finished.emit)
             self._sync_worker.finished.connect(self._sync_worker.deleteLater)
             self._sync_worker.finished.connect(
@@ -585,9 +725,10 @@ class PopupDataRefreshMixin:
             self._sync_worker.start()
         except Exception as e:
             logger.error(f"启动同步线程失败: {e}")
-            self._blank_refresh_in_progress = False
+            self._reset_blank_area_refresh_state()
 
     def stop_background_threads(self):
+        self._pending_file_check_context = None
         for attr in ("_file_thread", "_sync_worker"):
             thread = getattr(self, attr, None)
             if thread is None:

@@ -4,7 +4,6 @@
 
 import logging
 import os
-import sys
 
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
@@ -34,6 +33,7 @@ from qt_compat import (
     QTimer,
     QVBoxLayout,
 )
+from runtime_paths import app_root
 from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 from ui.utils.safe_file_dialog import get_existing_directory
@@ -994,10 +994,7 @@ class CommandDialog(BaseDialog):
 
         # 自动设置图标
         icon_path = ""
-        if getattr(sys, "frozen", False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        base_dir = str(app_root())
         command_icon_files = {
             "open_task_manager": "taskmgr.png",
             "open_windows_settings": "windows-settings.png",
@@ -1449,17 +1446,18 @@ class CommandDialog(BaseDialog):
             thread.cancel()
         except Exception as exc:
             logger.debug("取消测试线程失败: %s", exc, exc_info=True)
-        if thread.isRunning():
-            thread.wait(3000)
-        if thread.isRunning():
-            logger.warning("命令测试任务取消后仍在后台运行")
-            self._command_test_thread = None
-        else:
+        if not thread.isRunning():
             try:
                 thread.deleteLater()
             except Exception as exc:
                 logger.debug("删除线程失败: %s", exc, exc_info=True)
-            self._command_test_thread = None
+        else:
+            try:
+                thread.delete_when_finished()
+            except Exception as exc:
+                logger.debug("注册命令测试任务异步删除失败: %s", exc, exc_info=True)
+            logger.debug("命令测试任务已请求取消，将在后台自然结束后回收")
+        self._command_test_thread = None
 
     def _load_data(self):
         """加载数据"""

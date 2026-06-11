@@ -21,6 +21,7 @@ _WHEEL_BURST_RESET_SECONDS = 0.28
 _WHEEL_PAGE_MIN_INTERVAL_SECONDS = 0.105
 _WHEEL_MAX_EVENT_STEPS = 1.0
 _PIXEL_DELTA_PER_PAGE = 120.0
+_LAST_PAGE_INDEX_SAVE_DELAY_MS = 450
 
 
 class PopupEventsMixin:
@@ -239,11 +240,19 @@ class PopupEventsMixin:
             if row >= dock_height_mode:
                 return None
             x = int(start_x + col * self.cell_size)
-            y = int(self.dock_y + sp(8) + row * (self.icon_size + sp(6)) - sp(6))
-            pad = sp(6)
-            return QRect(x - pad, y - pad, int(self.cell_size) + pad * 2, int(self.icon_size) + pad * 2).intersected(
-                self.rect()
-            )
+            display_rows = self._dock_display_rows(visible_count, max_cols)
+            icon_y = int(self._dock_first_icon_y(display_rows) + row * (self.icon_size + sp(6)))
+            card_pad = sp(2)
+            card_size = int(self.icon_size + card_pad * 2)
+            card_x = int(x + (self.cell_size - card_size) // 2)
+            card_y = int(icon_y - card_pad)
+            repaint_pad = sp(4)
+            return QRect(
+                card_x - repaint_pad,
+                card_y - repaint_pad,
+                card_size + repaint_pad * 2,
+                card_size + repaint_pad * 2,
+            ).intersected(self.rect())
         except Exception as exc:
             logger.debug("计算Dock刷新区域失败: %s", exc, exc_info=True)
             return None
@@ -559,7 +568,7 @@ class PopupEventsMixin:
             super().mouseDoubleClickEvent(event)
             return
 
-        QTimer.singleShot(0, self._run_blank_area_refresh)
+        QTimer.singleShot(16, self._run_blank_area_refresh)
         event.accept()
 
     def wheelEvent(self, event):
@@ -577,6 +586,9 @@ class PopupEventsMixin:
                 # 搜索激活时，屏蔽滚轮翻页，指示器保持不动
                 event.accept()
                 return
+
+            if hasattr(self, "_defer_blank_area_refresh_for_interaction"):
+                self._defer_blank_area_refresh_for_interaction()
 
             if len(self.pages) <= 1:
                 event.accept()
@@ -598,7 +610,7 @@ class PopupEventsMixin:
             change = 5 if delta > 0 else -5
             new_alpha = max(0, min(100, self.settings.bg_alpha + change))
             if new_alpha != self.settings.bg_alpha:
-                self.data_manager.update_settings(bg_alpha=new_alpha)
+                self.data_manager.update_settings(bg_alpha=new_alpha, immediate=False)
                 self.settings = self.data_manager.get_settings()
                 self.update()
             event.accept()
@@ -608,7 +620,7 @@ class PopupEventsMixin:
             change = 0.1 if delta > 0 else -0.1
             new_alpha = max(0.2, min(1.0, self.settings.icon_alpha + change))
             if abs(new_alpha - self.settings.icon_alpha) > 1e-9:
-                self.data_manager.update_settings(icon_alpha=new_alpha)
+                self.data_manager.update_settings(icon_alpha=new_alpha, immediate=False)
                 self.settings = self.data_manager.get_settings()
                 self.update()
             event.accept()
@@ -680,6 +692,37 @@ class PopupEventsMixin:
             return round(position)
         return target
 
+    def _schedule_last_page_index_save(self, delay_ms: int = _LAST_PAGE_INDEX_SAVE_DELAY_MS):
+        self._pending_last_page_index = int(getattr(self, "current_page", 0) or 0)
+        timer = self.__dict__.get("_last_page_save_timer")
+        if timer is None:
+            try:
+                timer = QTimer(self)
+            except RuntimeError:
+                return
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._persist_last_page_index)
+            self._last_page_save_timer = timer
+        timer.start(max(0, int(delay_ms)))
+
+    def _persist_last_page_index(self):
+        state = self.__dict__
+        pending = state.get("_pending_last_page_index")
+        if pending is None:
+            return
+        if state.get("_sync_worker") is not None or bool(state.get("_blank_refresh_pending", False)):
+            self._schedule_last_page_index_save()
+            return
+
+        page_index = int(pending)
+        self._pending_last_page_index = None
+        try:
+            self.data_manager.update_settings(last_page_index=page_index, immediate=False)
+        except TypeError:
+            self.data_manager.update_settings(last_page_index=page_index)
+        except Exception as exc:
+            logger.debug("延迟保存弹窗页码失败: %s", exc, exc_info=True)
+
     def _queue_page_switch(self, direction: int):
         if len(self.pages) <= 1 or direction == 0:
             return
@@ -687,8 +730,10 @@ class PopupEventsMixin:
         old_page = self.current_page
         self.current_page = (self.current_page + direction) % len(self.pages)
         if self.current_page != old_page:
+            if hasattr(self, "_defer_blank_area_refresh_for_interaction"):
+                self._defer_blank_area_refresh_for_interaction()
             self._target_page = self._page_animation_target_base() + direction
-            self.data_manager.update_settings(last_page_index=self.current_page)
+            self._schedule_last_page_index_save()
             if not self._indicator_timer.isActive():
                 self._page_anim_last_ts = 0.0
                 self._indicator_timer.start()
@@ -1013,7 +1058,14 @@ class PopupEventsMixin:
                 left_pressed = (user32.GetAsyncKeyState(0x01) & 0x8000) != 0
                 right_pressed = (user32.GetAsyncKeyState(0x02) & 0x8000) != 0
                 if left_pressed or right_pressed:
-                    QTimer.singleShot(50, self.hide)
+                    if hasattr(self, "_defer_lifecycle_callback"):
+                        self._defer_lifecycle_callback(
+                            50,
+                            self.hide,
+                            generation=int(getattr(self, "_lifecycle_generation", 0) or 0),
+                        )
+                    else:
+                        QTimer.singleShot(50, self.hide)
             except Exception as exc:
                 logger.debug("检查鼠标按键状态失败: %s", exc, exc_info=True)
 
@@ -1022,6 +1074,13 @@ class PopupEventsMixin:
         if not self.is_pinned and not self._executing and not self._is_dragging:
             auto_close = getattr(self.settings, "popup_auto_close", True)
             if auto_close:
-                QTimer.singleShot(100, self._check_close)
+                if hasattr(self, "_defer_lifecycle_callback"):
+                    self._defer_lifecycle_callback(
+                        100,
+                        self._check_close,
+                        generation=int(getattr(self, "_lifecycle_generation", 0) or 0),
+                    )
+                else:
+                    QTimer.singleShot(100, self._check_close)
 
     # ===== 搜索与 slash(/) 命令辅助方法 =====

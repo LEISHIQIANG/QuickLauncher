@@ -2,16 +2,13 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+from runtime_paths import config_dir, is_nuitka_compiled, is_packaged_runtime
+
 logger = logging.getLogger(__name__)
 
 
 def get_log_dir() -> str:
-    import sys
-    from pathlib import Path
-
-    if getattr(sys, "frozen", False):
-        return str(Path(sys.executable).parent / "config")
-    return str(Path(__file__).parent.parent / "config")
+    return str(config_dir())
 
 
 def setup_logging(log_dir: str) -> tuple:
@@ -90,23 +87,39 @@ def _install_native_crash_handler(crash_log_path: str):
         0xC0000135: "DLL_NOT_FOUND",
     }
 
-    # 预先编码路径为窄字符串（bytes），崩溃时直接用指针写文件
-    _crash_log_bytes = crash_log_path.encode("utf-8", errors="ignore") + b"\x00"
+    class _EXCEPTION_RECORD(ctypes.Structure):
+        _fields_ = [
+            ("ExceptionCode", wintypes.DWORD),
+            ("ExceptionFlags", wintypes.DWORD),
+            ("ExceptionRecord", ctypes.c_void_p),
+            ("ExceptionAddress", ctypes.c_void_p),
+            ("NumberParameters", wintypes.DWORD),
+            ("ExceptionInformation", ctypes.c_ulonglong * 15),
+        ]
+
+    class _EXCEPTION_POINTERS(ctypes.Structure):
+        _fields_ = [
+            ("ExceptionRecord", ctypes.POINTER(_EXCEPTION_RECORD)),
+            ("ContextRecord", ctypes.c_void_p),
+        ]
 
     @ctypes.WINFUNCTYPE(wintypes.LONG, ctypes.c_void_p)
     def _handler(exc_ptr):
         try:
-            record = ctypes.cast(exc_ptr, ctypes.POINTER(ctypes.c_ulonglong * 18))
-            code = record.contents[0] & 0xFFFFFFFF
-            addr = record.contents[1]
+            pointers = ctypes.cast(exc_ptr, ctypes.POINTER(_EXCEPTION_POINTERS)).contents
+            record = pointers.ExceptionRecord.contents
+            code = int(record.ExceptionCode) & 0xFFFFFFFF
+            addr = int(record.ExceptionAddress or 0)
             code_name = _EXCEPTION_CODES.get(code, "")
+            param_count = max(0, min(int(record.NumberParameters), 15))
+            params = ",".join(f"0x{int(record.ExceptionInformation[i]):X}" for i in range(param_count))
 
-            msg = (f"[NATIVE_CRASH] code=0x{code:08X} name={code_name} addr=0x{addr:016X}\r\n").encode(
-                "utf-8", errors="replace"
-            )
+            msg = (
+                f"[NATIVE_CRASH] code=0x{code:08X} name={code_name} addr=0x{addr:016X} params=[{params}]\r\n"
+            ).encode("utf-8", errors="replace")
 
-            h = kernel32.CreateFileA(
-                ctypes.c_char_p(_crash_log_bytes),
+            h = kernel32.CreateFileW(
+                ctypes.c_wchar_p(crash_log_path),
                 GENERIC_WRITE,
                 FILE_SHARE_RW,
                 None,
@@ -163,8 +176,8 @@ def setup_faulthandler(log_dir: str):
         fh_file = open(fh_path, "a", encoding="utf-8", errors="ignore")
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        is_frozen = getattr(sys, "frozen", False)
-        is_nuitka = "__compiled__" in dir(__builtins__) or globals().get("__compiled__", False)
+        is_frozen = is_packaged_runtime()
+        is_nuitka = is_nuitka_compiled()
         exe = sys.executable
         py_ver = sys.version.split()[0]
         try:

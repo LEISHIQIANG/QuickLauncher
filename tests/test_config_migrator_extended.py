@@ -42,20 +42,16 @@ class TestGetOldConfigDir:
 
 class TestGetNewConfigDir:
     def test_frozen_mode_uses_executable_parent(self):
-        mock_sys = MagicMock()
-        mock_sys.frozen = True
-        mock_sys.executable = r"C:\Apps\QuickLauncher\QuickLauncher.exe"
-        with patch("core.config_migrator.sys", mock_sys):
+        with patch("core.config_migrator.app_root", return_value=Path(r"C:\Apps\QuickLauncher")):
             d = ConfigMigrator.get_new_config_dir()
             assert d == Path(r"C:\Apps\QuickLauncher\config")
 
     def test_dev_mode_uses_file_parent_parent(self):
-        mock_sys = MagicMock()
-        mock_sys.frozen = False
-        with patch("core.config_migrator.sys", mock_sys):
+        project_root = Path(__file__).resolve().parents[1]
+        with patch("core.config_migrator.app_root", return_value=project_root):
             d = ConfigMigrator.get_new_config_dir()
             # __file__ is .../core/config_migrator.py, parent.parent is project root
-            assert d.name == "config"
+            assert d == project_root / "config"
 
 
 # ---------------------------------------------------------------------------

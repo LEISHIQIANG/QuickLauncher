@@ -16,6 +16,8 @@ import sys
 import winreg
 from ctypes import wintypes
 
+from runtime_paths import app_executable, app_root, is_packaged_runtime
+
 logger = logging.getLogger(__name__)
 
 APP_NAME = "QuickLauncher"
@@ -200,22 +202,16 @@ if os.name == "nt":
 
 def _is_frozen() -> bool:
     """Return whether the current runtime is a packaged executable."""
-    if getattr(sys, "frozen", False):
-        return True
-    if "__compiled__" in globals():
-        return True
-
-    exe_name = os.path.basename(sys.executable).lower()
-    return exe_name not in ("python.exe", "pythonw.exe", "python", "pythonw") and exe_name.endswith(".exe")
+    return bool(globals().get("__compiled__", False)) or is_packaged_runtime()
 
 
 def _get_project_root() -> str:
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return str(app_root())
 
 
 def _get_exe_path() -> str:
     """Resolve the app executable path, including Nuitka standalone cases."""
-    exe = sys.executable
+    exe = str(app_executable())
 
     if "python" in os.path.basename(exe).lower():
         if sys.argv and sys.argv[0].lower().endswith(".exe"):

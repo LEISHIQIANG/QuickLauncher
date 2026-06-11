@@ -688,19 +688,22 @@ class UrlDialog(BaseDialog):
                 thread.suppress_result_signal()
             except Exception as exc:
                 logger.debug("抑制结果信号失败: %s", exc, exc_info=True)
-            if thread.isRunning():
-                thread.wait(500)
-            if thread.isRunning():
-                thread.wait(2000)  # 延长等待替代 terminate，让线程自然完成
-            if thread.isRunning():
-                logger.warning("URL 对话框后台任务取消后仍在运行: %s", attr)
-                setattr(self, attr, None)
-            else:
+            try:
+                thread.cancel()
+            except Exception as exc:
+                logger.debug("取消 URL 对话框后台任务失败: %s", exc, exc_info=True)
+            if not thread.isRunning():
                 try:
                     thread.deleteLater()
                 except Exception as exc:
                     logger.debug("删除线程失败: %s", exc, exc_info=True)
-                setattr(self, attr, None)
+            else:
+                try:
+                    thread.delete_when_finished()
+                except Exception as exc:
+                    logger.debug("注册 URL 对话框后台任务异步删除失败: %s", exc, exc_info=True)
+                logger.debug("URL 对话框后台任务已请求取消，将在后台自然结束后回收: %s", attr)
+            setattr(self, attr, None)
 
     def showEvent(self, event):
         """显示时进行延迟测试"""

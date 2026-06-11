@@ -12,6 +12,7 @@ from typing import Any
 
 from core.action_chain_host import DefaultActionChainHostAPI
 from core.version import APP_VERSION
+from runtime_paths import resource_path
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ MODULE_STATUSES = {
 }
 
 ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
-ACTION_CHAIN_MANIFEST = Path(__file__).resolve().parent.parent / "modules" / "action_chain" / "module.json"
+ACTION_CHAIN_MANIFEST = resource_path("modules", "action_chain", "module.json")
 
 
 @dataclass

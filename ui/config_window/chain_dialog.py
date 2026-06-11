@@ -9,6 +9,7 @@ import os
 from core import ShortcutItem, ShortcutType
 from core.chain_processors import processor_definition
 from core.i18n import tr
+from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
 from qt_compat import (
     QCheckBox,
     QColor,
@@ -1257,7 +1258,6 @@ class ChainDialog(BaseDialog):
         target_path = getattr(shortcut, "target_path", "") or ""
         try:
             import os
-            import sys
 
             from core.icon_extractor import IconExtractor
 
@@ -1267,16 +1267,16 @@ class ChainDialog(BaseDialog):
                     pm = IconExtractor.from_file(icon_path, source_size, return_image=False)
                     if pm and not pm.isNull():
                         return pm
+            # 文件夹类型默认图标
+            if not icon_path and shortcut_uses_folder_icon(shortcut.type, target_path):
+                folder_ico = default_folder_icon_path()
+                if folder_ico:
+                    pm = IconExtractor.from_file(folder_ico, source_size, return_image=False)
+                    if pm and not pm.isNull():
+                        return pm
             if target_path:
                 if os.path.exists(target_path):
                     pm = IconExtractor.extract(target_path, target_path, source_size, return_image=False)
-                    if pm and not pm.isNull():
-                        return pm
-            # 文件夹类型默认图标
-            if shortcut.type == ShortcutType.FOLDER:
-                folder_ico = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "assets", "Folder.ico")
-                if os.path.exists(folder_ico):
-                    pm = IconExtractor.from_file(folder_ico, source_size, return_image=False)
                     if pm and not pm.isNull():
                         return pm
         except Exception as exc:
@@ -1797,17 +1797,18 @@ class ChainDialog(BaseDialog):
             thread.cancel()
         except Exception as exc:
             logger.debug("取消动作链测试线程失败: %s", exc, exc_info=True)
-        if thread.isRunning():
-            thread.wait(3000)
-        if thread.isRunning():
-            logger.warning("动作链测试任务取消后仍在后台运行")
-            self._test_thread = None
-        else:
+        if not thread.isRunning():
             try:
                 thread.deleteLater()
             except Exception as exc:
                 logger.debug("删除动作链测试线程失败: %s", exc, exc_info=True)
-            self._test_thread = None
+        else:
+            try:
+                thread.delete_when_finished()
+            except Exception as exc:
+                logger.debug("注册动作链测试任务异步删除失败: %s", exc, exc_info=True)
+            logger.debug("动作链测试任务已请求取消，将在后台自然结束后回收")
+        self._test_thread = None
 
     # ── get_shortcut 契约 ────────────────────────────────────
 

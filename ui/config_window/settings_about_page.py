@@ -14,6 +14,7 @@ from qt_compat import (
     QtCompat,
     QVBoxLayout,
 )
+from runtime_paths import app_root
 from ui.utils.ui_scale import font_px, scale_qss, sp
 
 logger = logging.getLogger(__name__)
@@ -237,7 +238,7 @@ class SettingsAboutPageMixin:
 
         # 尝试加载图标
         try:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            base_dir = str(app_root())
             icon_path = os.path.join(base_dir, "assets", "app.ico")
             if not os.path.exists(icon_path):
                 icon_path = os.path.join(base_dir, "app.ico")

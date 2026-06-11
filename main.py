@@ -8,6 +8,15 @@ import sys
 import traceback
 from datetime import datetime
 
+if "--smoke-test" in sys.argv:
+    import atexit
+    import shutil
+    import tempfile
+
+    _smoke_config_dir = tempfile.mkdtemp(prefix="quicklauncher-smoke-")
+    os.environ["QL_SMOKE_CONFIG_DIR"] = _smoke_config_dir
+    atexit.register(shutil.rmtree, _smoke_config_dir, ignore_errors=True)
+
 from bootstrap.startup_tasks import (
     cleanup_stale_command_cache,
     merge_default_special_apps,
@@ -15,11 +24,12 @@ from bootstrap.startup_tasks import (
     sync_autostart_setting_from_task,
     sync_frozen_autostart_from_config,
 )
+from runtime_paths import app_root
 
 
 # 确保项目根目录在 sys.path 中（双击运行时工作目录可能不是项目根目录）
 def _ensure_project_root_on_path():
-    root = os.path.dirname(os.path.abspath(__file__))
+    root = str(app_root())
     if root not in sys.path:
         sys.path.insert(0, root)
     return root
@@ -154,11 +164,7 @@ def main():
     cleanup_stale_command_cache(logger)
 
     try:
-        root_dir = (
-            os.path.dirname(sys.executable)
-            if getattr(sys, "frozen", False)
-            else os.path.dirname(os.path.abspath(__file__))
-        )
+        root_dir = str(app_root())
         if root_dir not in sys.path:
             sys.path.insert(0, root_dir)
 
@@ -411,7 +417,6 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
     """Run a non-interactive packaged-runtime smoke test and exit."""
 
     import json
-    from pathlib import Path
 
     checks: dict[str, object] = {}
     errors: list[str] = []
@@ -423,7 +428,7 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
             checks[name] = "failed"
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
 
-    root_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    root_dir = app_root()
     checks["root_dir"] = str(root_dir)
     checks["safe_mode"] = bool(os.environ.get("QL_SAFE_MODE"))
 
@@ -436,6 +441,7 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
         required = [
             root_dir / "assets" / "app.ico",
             root_dir / "hooks" / "hooks.dll",
+            root_dir / "modules" / "action_chain" / "module.json",
             root_dir / "plugins",
         ]
         missing = [str(path) for path in required if not path.exists()]
@@ -454,6 +460,36 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
         if created:
             app.quit()
         return {"binding": QT_LIB, "created": created}
+
+    def check_dialog_runtime():
+        from types import SimpleNamespace
+
+        from core import Folder
+        from qt_compat import QApplication, QDialog, QTimer, QWidget
+        from ui.config_window.icon_grid import MoveFolderDialog
+
+        app = QApplication.instance()
+        created = app is None
+        if app is None:
+            app = QApplication([argv[0], "--smoke-test-dialog"])
+
+        parent = QWidget()
+        parent.theme = "dark"
+        parent.data_manager = SimpleNamespace(get_settings=lambda: SimpleNamespace(theme="dark"))
+        dialog = MoveFolderDialog([Folder(id="target", name="Target")], parent)
+        try:
+            QTimer.singleShot(150, dialog.accept)
+            result = dialog.exec_()
+            app.processEvents()
+            if result != QDialog.Accepted:
+                raise RuntimeError(f"MoveFolderDialog returned {result}")
+            return {"dialog": type(dialog).__name__, "result": int(result)}
+        finally:
+            dialog.deleteLater()
+            parent.deleteLater()
+            app.processEvents()
+            if created:
+                app.quit()
 
     def check_core_services():
         from core.command_registry import CommandRegistry
@@ -513,11 +549,57 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
             "url_latency_ms": latency["latency_ms"],
         }
 
+    def check_image_runtime():
+        from io import BytesIO
+
+        from PIL import (
+            BmpImagePlugin,
+            GifImagePlugin,
+            IcoImagePlugin,
+            Image,
+            JpegImagePlugin,
+            PngImagePlugin,
+            WebPImagePlugin,
+        )
+
+        decoder_plugins = (
+            BmpImagePlugin,
+            GifImagePlugin,
+            IcoImagePlugin,
+            JpegImagePlugin,
+            PngImagePlugin,
+            WebPImagePlugin,
+        )
+        formats = ("PNG", "JPEG", "GIF", "WEBP", "BMP", "ICO")
+        checked = []
+        for image_format in formats:
+            mode = "RGB" if image_format == "JPEG" else "RGBA"
+            image = Image.new(mode, (32, 32), (40, 120, 200) if mode == "RGB" else (40, 120, 200, 255))
+            payload = BytesIO()
+            image.save(payload, format=image_format)
+            payload.seek(0)
+            with Image.open(payload) as decoded:
+                decoded.load()
+                if decoded.size != (32, 32):
+                    raise RuntimeError(f"{image_format} decoder returned {decoded.size}")
+            checked.append(image_format.lower())
+        return {"formats": checked, "decoder_plugins": len(decoder_plugins)}
+
+    def check_folder_watch_runtime():
+        from core.folder_watcher import WATCHDOG_AVAILABLE
+
+        if not WATCHDOG_AVAILABLE:
+            raise RuntimeError("watchdog is unavailable")
+        return {"watchdog": True}
+
     for name, callback in (
         ("version", check_version),
         ("runtime_files", check_runtime_files),
         ("network_runtime", check_network_runtime),
+        ("image_runtime", check_image_runtime),
+        ("folder_watch_runtime", check_folder_watch_runtime),
         ("qt_application", check_qt_application),
+        ("dialog_runtime", check_dialog_runtime),
         ("core_services", check_core_services),
     ):
         record(name, callback)

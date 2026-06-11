@@ -7,6 +7,7 @@ import os
 import tempfile
 
 from qt_compat import QBrush, QColor, QPainter, QPen, QPixmap, QRectF, QtCompat
+from runtime_paths import app_root
 from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,7 @@ def log_error(msg):
 def get_temp_icon_dir():
     try:
         # Use a local temp directory to avoid permission issues
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        temp_dir = os.path.join(base_dir, "temp_icons")
+        temp_dir = str(app_root() / "temp_icons")
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
         return temp_dir

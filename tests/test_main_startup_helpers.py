@@ -21,7 +21,7 @@ def test_sync_frozen_autostart_logs_bad_config(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     (config_dir / "data.json").write_text("{bad json", encoding="utf-8")
-    monkeypatch.setattr(startup_tasks.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup_tasks, "is_packaged_runtime", lambda: True)
     logger = _Logger()
 
     startup_tasks.sync_frozen_autostart_from_config(str(tmp_path), logger)
@@ -33,7 +33,7 @@ def test_sync_frozen_autostart_uses_config_value(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     (config_dir / "data.json").write_text('{"settings": {"auto_start": true}}', encoding="utf-8")
-    monkeypatch.setattr(startup_tasks.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup_tasks, "is_packaged_runtime", lambda: True)
     calls = []
 
     import core.auto_start_manager as auto_start_manager
@@ -88,7 +88,7 @@ def test_process_startup_events_ignores_qt_runtime_error():
 def test_sync_autostart_setting_from_task_enables_config(monkeypatch):
     import core.auto_start_manager as auto_start_manager
 
-    monkeypatch.setattr(startup_tasks.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup_tasks, "is_packaged_runtime", lambda: True)
     monkeypatch.setattr(auto_start_manager, "get_auto_start_check_result", lambda: (True, "ok"))
     updates = []
     tray = SimpleNamespace(
@@ -106,7 +106,7 @@ def test_sync_autostart_setting_from_task_enables_config(monkeypatch):
 def test_sync_autostart_setting_from_task_disables_stale_config(monkeypatch):
     import core.auto_start_manager as auto_start_manager
 
-    monkeypatch.setattr(startup_tasks.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup_tasks, "is_packaged_runtime", lambda: True)
     monkeypatch.setattr(auto_start_manager, "get_auto_start_check_result", lambda: (False, "missing"))
     updates = []
     tray = SimpleNamespace(

@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from runtime_paths import app_root
+
 from .background_tasks import start_background_thread
 from .command_action_safety import sanitize_command_actions
 from .command_registry import (
@@ -1289,7 +1291,7 @@ def has_high_risk_permissions(permissions: list[str]) -> bool:
 def _is_builtin_plugin_package(package_path: str, plugin_id: str) -> bool:
     try:
         package = Path(package_path).resolve(strict=False)
-        plugins_dir = Path(__file__).resolve(strict=False).parents[1] / ".plugins"
+        plugins_dir = app_root() / ".plugins"
         expected = plugins_dir / f"{plugin_id}{PLUGIN_PACKAGE_EXTENSION}"
         return package == expected.resolve(strict=False)
     except Exception:
@@ -1501,7 +1503,7 @@ class PluginManager:
 
     @staticmethod
     def _default_plugins_dir() -> str:
-        return os.path.join(os.path.dirname(__file__), "..", "plugins")
+        return str(app_root() / "plugins")
 
     # ---- scanning ----
 
