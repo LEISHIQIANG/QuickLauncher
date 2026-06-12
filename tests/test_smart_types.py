@@ -95,7 +95,7 @@ class TestSmartTypeRecognizer:
 
     def test_recognize_json_array(self):
         """Test JSON array recognition."""
-        type_, confidence = recognize_type('[1, 2, 3]')
+        type_, confidence = recognize_type("[1, 2, 3]")
         assert type_ in (SmartType.JSON, SmartType.JSON_STRING)
 
     def test_recognize_integer(self):
@@ -439,47 +439,54 @@ class TestTypeCompatibility:
     def test_same_type_compatible(self):
         """Test same type compatibility."""
         from core.chain.port_types import TypeCompatibility
+
         assert TypeCompatibility.is_compatible("text", "text") is True
 
     def test_any_compatible(self):
         """Test any type compatibility."""
         from core.chain.port_types import TypeCompatibility
+
         assert TypeCompatibility.is_compatible("any", "text") is True
         assert TypeCompatibility.is_compatible("text", "any") is True
 
     def test_text_to_number_incompatible(self):
         """Test text to number incompatibility."""
         from core.chain.port_types import TypeCompatibility
+
         assert TypeCompatibility.is_compatible("text", "number") is False
 
     def test_number_to_text_compatible(self):
         """Test number to text compatibility."""
         from core.chain.port_types import TypeCompatibility
+
         assert TypeCompatibility.is_compatible("number", "text") is True
 
     def test_smart_type_compatibility(self):
         """Test smart type compatibility."""
         from core.chain.port_types import TypeCompatibility
-        assert TypeCompatibility.is_compatible(
-            "number", "number",
-            SmartType.INTEGER.value, SmartType.FLOAT.value
-        ) is True
+
+        assert (
+            TypeCompatibility.is_compatible("number", "number", SmartType.INTEGER.value, SmartType.FLOAT.value) is True
+        )
 
     def test_conversion_cost_same(self):
         """Test conversion cost for same type."""
         from core.chain.port_types import TypeCompatibility
+
         cost = TypeCompatibility.get_conversion_cost("text", "text")
         assert cost == 0
 
     def test_conversion_cost_any(self):
         """Test conversion cost for any type."""
         from core.chain.port_types import TypeCompatibility
+
         cost = TypeCompatibility.get_conversion_cost("any", "text")
         assert cost == 0
 
     def test_conversion_cost_impossible(self):
         """Test conversion cost for impossible conversion."""
         from core.chain.port_types import TypeCompatibility
+
         cost = TypeCompatibility.get_conversion_cost("text", "number")
         assert cost == -1
 

@@ -16,34 +16,36 @@ COMPILE_PYCACHE_PREFIX = ROOT / "dist" / "release-gate-pycache"
 PYTEST_BASETEMP = Path(tempfile.gettempdir()) / "QuickLauncher" / "pytest-tmp" / "release-gate"
 COVERAGE_FAIL_UNDER = 67
 
-_ESSENTIAL_ENV_KEYS = frozenset({
-    "appdata",
-    "ci",
-    "comspec",
-    "github_actions",
-    "home",
-    "homepath",
-    "localappdata",
-    "number_of_processors",
-    "os",
-    "path",
-    "pathext",
-    "processor_architecture",
-    "programfiles",
-    "programfiles(x86)",
-    "qt_qpa_platform",
-    "runner_os",
-    "pythonhome",
-    "pythonpath",
-    "systemroot",
-    "temp",
-    "tmp",
-    "userdomain",
-    "userhome",
-    "username",
-    "userprofile",
-    "windir",
-})
+_ESSENTIAL_ENV_KEYS = frozenset(
+    {
+        "appdata",
+        "ci",
+        "comspec",
+        "github_actions",
+        "home",
+        "homepath",
+        "localappdata",
+        "number_of_processors",
+        "os",
+        "path",
+        "pathext",
+        "processor_architecture",
+        "programfiles",
+        "programfiles(x86)",
+        "qt_qpa_platform",
+        "runner_os",
+        "pythonhome",
+        "pythonpath",
+        "systemroot",
+        "temp",
+        "tmp",
+        "userdomain",
+        "userhome",
+        "username",
+        "userprofile",
+        "windir",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -63,8 +65,14 @@ def _default_steps(python: str) -> list[GateStep]:
         GateStep(
             "pytest",
             [
-                python, "-m", "pytest", "--basetemp", str(PYTEST_BASETEMP),
-                "--cov=core", "--cov=services", "--cov=hooks",
+                python,
+                "-m",
+                "pytest",
+                "--basetemp",
+                str(PYTEST_BASETEMP),
+                "--cov=core",
+                "--cov=services",
+                "--cov=hooks",
                 "--cov-report=term-missing",
                 f"--cov-fail-under={COVERAGE_FAIL_UNDER}",
             ],
@@ -126,8 +134,14 @@ def _step_env(step: GateStep) -> dict[str, str]:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python", default=sys.executable, help="Python executable to use for every gate step.")
-    parser.add_argument("--skip-tests", action="store_true", help="Skip pytest while keeping compile, ruff, and metadata checks.")
-    parser.add_argument("--skip-smoke", action="store_true", help="Skip post-package smoke test (useful when no packaged build is available).")
+    parser.add_argument(
+        "--skip-tests", action="store_true", help="Skip pytest while keeping compile, ruff, and metadata checks."
+    )
+    parser.add_argument(
+        "--skip-smoke",
+        action="store_true",
+        help="Skip post-package smoke test (useful when no packaged build is available).",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the commands without running them.")
     return parser.parse_args(argv)
 

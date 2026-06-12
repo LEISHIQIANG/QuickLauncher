@@ -155,6 +155,7 @@ def _ok_list(items: list) -> CommandResult:
 def _ok_json(value: Any) -> CommandResult:
     """Create a success result with JSON output."""
     import json
+
     text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     return CommandResult(
         success=True,
@@ -171,6 +172,7 @@ def _ok_json(value: Any) -> CommandResult:
 def _ok_file(path: str) -> CommandResult:
     """Create a success result with file path output."""
     import os
+
     path = str(path or "").strip()
     folder = os.path.dirname(os.path.abspath(path)) if path else ""
     return CommandResult(
@@ -278,120 +280,156 @@ def _get_handler(processor_id: str):
     """Get handler for a processor."""
     handlers = {
         # Text processors
-        "text_trim": lambda args: _ok(text_trim(
-            str(args.get("text", "")),
-            str(args.get("chars", "")),
-        )),
-        "text_contains": lambda args: _ok_bool(text_contains(
-            str(args.get("text", "")),
-            str(args.get("substring", "")),
-            _to_bool(args.get("case_sensitive", True)),
-        )),
-        "text_startswith": lambda args: _ok_bool(text_startswith(
-            str(args.get("text", "")),
-            str(args.get("prefix", "")),
-            _to_bool(args.get("case_sensitive", True)),
-        )),
-        "text_endswith": lambda args: _ok_bool(text_endswith(
-            str(args.get("text", "")),
-            str(args.get("suffix", "")),
-            _to_bool(args.get("case_sensitive", True)),
-        )),
-        "text_regex_replace": lambda args: _ok(text_regex_replace(
-            str(args.get("text", "")),
-            str(args.get("pattern", "")),
-            str(args.get("replacement", "")),
-            int(_to_num(args.get("count", 0))),
-        )),
-        "text_count": lambda args: _ok_number(text_count(
-            str(args.get("text", "")),
-            str(args.get("substring", "")),
-            _to_bool(args.get("case_sensitive", True)),
-        )),
+        "text_trim": lambda args: _ok(
+            text_trim(
+                str(args.get("text", "")),
+                str(args.get("chars", "")),
+            )
+        ),
+        "text_contains": lambda args: _ok_bool(
+            text_contains(
+                str(args.get("text", "")),
+                str(args.get("substring", "")),
+                _to_bool(args.get("case_sensitive", True)),
+            )
+        ),
+        "text_startswith": lambda args: _ok_bool(
+            text_startswith(
+                str(args.get("text", "")),
+                str(args.get("prefix", "")),
+                _to_bool(args.get("case_sensitive", True)),
+            )
+        ),
+        "text_endswith": lambda args: _ok_bool(
+            text_endswith(
+                str(args.get("text", "")),
+                str(args.get("suffix", "")),
+                _to_bool(args.get("case_sensitive", True)),
+            )
+        ),
+        "text_regex_replace": lambda args: _ok(
+            text_regex_replace(
+                str(args.get("text", "")),
+                str(args.get("pattern", "")),
+                str(args.get("replacement", "")),
+                int(_to_num(args.get("count", 0))),
+            )
+        ),
+        "text_count": lambda args: _ok_number(
+            text_count(
+                str(args.get("text", "")),
+                str(args.get("substring", "")),
+                _to_bool(args.get("case_sensitive", True)),
+            )
+        ),
         "text_reverse": lambda args: _ok(text_reverse(str(args.get("text", "")))),
-
         # Logic processors
-        "switch_case": lambda args: _ok(switch_case(
-            str(args.get("value", "")),
-            dict(args.get("cases_json", {})),
-            str(args.get("default", "")),
-        )),
+        "switch_case": lambda args: _ok(
+            switch_case(
+                str(args.get("value", "")),
+                dict(args.get("cases_json", {})),
+                str(args.get("default", "")),
+            )
+        ),
         "is_empty": lambda args: _ok_bool(is_empty(args.get("value"))),
         "is_numeric": lambda args: _ok_bool(is_numeric(str(args.get("text", "")))),
         "is_json": lambda args: _ok_bool(is_json(str(args.get("text", "")))),
-
         # Math processors
         "math_abs": lambda args: _ok_number(math_abs(_to_num(args.get("number", 0)))),
         "math_ceil": lambda args: _ok_number(math_ceil(_to_num(args.get("number", 0)))),
         "math_floor": lambda args: _ok_number(math_floor(_to_num(args.get("number", 0)))),
-        "math_round": lambda args: _ok_number(math_round(
-            _to_num(args.get("number", 0)),
-            int(_to_num(args.get("decimals", 0))),
-        )),
-        "math_clamp": lambda args: _ok_number(math_clamp(
-            _to_num(args.get("number", 0)),
-            _to_num(args.get("min", 0)),
-            _to_num(args.get("max", 100)),
-        )),
-
+        "math_round": lambda args: _ok_number(
+            math_round(
+                _to_num(args.get("number", 0)),
+                int(_to_num(args.get("decimals", 0))),
+            )
+        ),
+        "math_clamp": lambda args: _ok_number(
+            math_clamp(
+                _to_num(args.get("number", 0)),
+                _to_num(args.get("min", 0)),
+                _to_num(args.get("max", 100)),
+            )
+        ),
         # List processors
-        "list_count": lambda args: _ok_number(list_count(
-            _parse_list(args.get("list", "")),
-            args.get("value", ""),
-        )),
+        "list_count": lambda args: _ok_number(
+            list_count(
+                _parse_list(args.get("list", "")),
+                args.get("value", ""),
+            )
+        ),
         "list_sum": lambda args: _ok_number(list_sum(_parse_list(args.get("list", "")))),
         "list_min": lambda args: _ok(list_min(_parse_list(args.get("list", "")))),
         "list_max": lambda args: _ok(list_max(_parse_list(args.get("list", "")))),
         "list_avg": lambda args: _ok_number(list_avg(_parse_list(args.get("list", "")))),
-        "list_find": lambda args: _ok(str(list_find(
-            _parse_list(args.get("list", "")),
-            args.get("value", ""),
-        ) or "")),
-        "list_remove": lambda args: _ok_list(list_remove(
-            _parse_list(args.get("list", "")),
-            args.get("value", ""),
-        )),
-
+        "list_find": lambda args: _ok(
+            str(
+                list_find(
+                    _parse_list(args.get("list", "")),
+                    args.get("value", ""),
+                )
+                or ""
+            )
+        ),
+        "list_remove": lambda args: _ok_list(
+            list_remove(
+                _parse_list(args.get("list", "")),
+                args.get("value", ""),
+            )
+        ),
         # File processors
-        "file_copy": lambda args: _ok_file(file_copy(
-            str(args.get("src", "")),
-            str(args.get("dst", "")),
-            _to_bool(args.get("overwrite", False)),
-        )),
-        "file_move": lambda args: _ok_file(file_move(
-            str(args.get("src", "")),
-            str(args.get("dst", "")),
-            _to_bool(args.get("overwrite", False)),
-        )),
-        "file_delete": lambda args: _ok_bool(file_delete(
-            str(args.get("path", "")),
-            _to_bool(args.get("to_trash", True)),
-        )),
+        "file_copy": lambda args: _ok_file(
+            file_copy(
+                str(args.get("src", "")),
+                str(args.get("dst", "")),
+                _to_bool(args.get("overwrite", False)),
+            )
+        ),
+        "file_move": lambda args: _ok_file(
+            file_move(
+                str(args.get("src", "")),
+                str(args.get("dst", "")),
+                _to_bool(args.get("overwrite", False)),
+            )
+        ),
+        "file_delete": lambda args: _ok_bool(
+            file_delete(
+                str(args.get("path", "")),
+                _to_bool(args.get("to_trash", True)),
+            )
+        ),
         "file_size": lambda args: _ok_number(file_size(str(args.get("path", "")))),
         "file_modified": lambda args: _ok_number(file_modified(str(args.get("path", "")))),
-        "file_list_dir": lambda args: _ok_list(file_list_dir(
-            str(args.get("path", "")),
-            str(args.get("pattern", "*")),
-            _to_bool(args.get("recursive", False)),
-        )),
-
+        "file_list_dir": lambda args: _ok_list(
+            file_list_dir(
+                str(args.get("path", "")),
+                str(args.get("pattern", "*")),
+                _to_bool(args.get("recursive", False)),
+            )
+        ),
         # JSON processors
-        "json_merge": lambda args: _ok_json(json_merge(
-            args.get("a", {}),
-            args.get("b", {}),
-            args.get("c", {}),
-        )),
-        "json_flatten": lambda args: _ok_json(json_flatten(
-            args.get("json", {}),
-            separator=str(args.get("separator", ".")),
-        )),
+        "json_merge": lambda args: _ok_json(
+            json_merge(
+                args.get("a", {}),
+                args.get("b", {}),
+                args.get("c", {}),
+            )
+        ),
+        "json_flatten": lambda args: _ok_json(
+            json_flatten(
+                args.get("json", {}),
+                separator=str(args.get("separator", ".")),
+            )
+        ),
         "json_keys": lambda args: _ok_list(json_keys(args.get("json", {}))),
         "json_values": lambda args: _ok_list(json_values(args.get("json", {}))),
         "json_length": lambda args: _ok_number(json_length(args.get("json", {}))),
-        "json_to_csv": lambda args: _ok(json_to_csv(
-            args.get("json", []),
-            str(args.get("delimiter", ",")),
-        )),
+        "json_to_csv": lambda args: _ok(
+            json_to_csv(
+                args.get("json", []),
+                str(args.get("delimiter", ",")),
+            )
+        ),
     }
 
     return handlers.get(processor_id)

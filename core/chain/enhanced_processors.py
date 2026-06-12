@@ -34,7 +34,6 @@ __all__ = [
     "text_center",
     "text_ljust",
     "text_rjust",
-
     # Logic processors
     "switch_case",
     "try_catch",
@@ -42,7 +41,6 @@ __all__ = [
     "is_empty",
     "is_numeric",
     "is_json",
-
     # Math processors
     "math_abs",
     "math_ceil",
@@ -52,7 +50,6 @@ __all__ = [
     "math_max",
     "math_clamp",
     "math_random",
-
     # List processors
     "list_count",
     "list_sum",
@@ -62,7 +59,6 @@ __all__ = [
     "list_group_by",
     "list_find",
     "list_remove",
-
     # File processors
     "file_copy",
     "file_move",
@@ -70,7 +66,6 @@ __all__ = [
     "file_size",
     "file_modified",
     "file_list_dir",
-
     # JSON processors
     "json_merge",
     "json_flatten",
@@ -82,6 +77,7 @@ __all__ = [
 
 
 # ── Text Processors ──────────────────────────────────────────────────────────
+
 
 def text_trim(text: str, chars: str = "") -> str:
     """Trim whitespace or specified characters from both ends."""
@@ -149,6 +145,7 @@ def text_rjust(text: str, width: int, fillchar: str = " ") -> str:
 
 
 # ── Logic Processors ──────────────────────────────────────────────────────────
+
 
 def switch_case(value: str, cases: dict[str, str], default: str = "") -> str:
     """Switch case logic."""
@@ -221,6 +218,7 @@ def is_json(value: str) -> bool:
 
 # ── Math Processors ──────────────────────────────────────────────────────────
 
+
 def math_abs(value: float) -> float:
     """Absolute value."""
     return abs(value)
@@ -229,12 +227,14 @@ def math_abs(value: float) -> float:
 def math_ceil(value: float) -> int:
     """Round up to nearest integer."""
     import math
+
     return math.ceil(value)
 
 
 def math_floor(value: float) -> int:
     """Round down to nearest integer."""
     import math
+
     return math.floor(value)
 
 
@@ -261,10 +261,12 @@ def math_clamp(value: float, min_val: float, max_val: float) -> float:
 def math_random(min_val: int = 0, max_val: int = 100) -> int:
     """Generate random integer."""
     import random
+
     return random.randint(min_val, max_val)
 
 
 # ── List Processors ──────────────────────────────────────────────────────────
+
 
 def list_count(items: list, value: Any) -> int:
     """Count occurrences of value in list."""
@@ -338,6 +340,7 @@ def list_remove(items: list, value: Any) -> list:
 
 
 # ── File Processors ──────────────────────────────────────────────────────────
+
 
 def file_copy(src: str, dst: str, overwrite: bool = False) -> str:
     """Copy file to destination."""
@@ -423,6 +426,7 @@ def file_list_dir(path: str, pattern: str = "*", recursive: bool = False) -> lis
 
 # ── JSON Processors ──────────────────────────────────────────────────────────
 
+
 def json_merge(*args: dict) -> dict:
     """Merge multiple JSON objects."""
     result = {}
@@ -497,6 +501,7 @@ def json_to_csv(data: list[dict], delimiter: str = ",") -> str:
 
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
+
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
     """Safely convert value to float."""

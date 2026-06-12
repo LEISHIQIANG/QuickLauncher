@@ -102,7 +102,7 @@ class TestLogicProcessors:
 
     def test_is_json(self):
         assert is_json('{"key": "value"}') is True
-        assert is_json('[1, 2, 3]') is True
+        assert is_json("[1, 2, 3]") is True
         assert is_json("hello") is False
         assert is_json("") is False
 

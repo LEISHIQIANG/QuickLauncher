@@ -267,7 +267,8 @@ class CommandDialog(BaseDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
 
-        custom_style = base_style + scale_qss(f"""
+        custom_style = base_style + scale_qss(
+            f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -285,7 +286,8 @@ class CommandDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """)
+        """
+        )
         self.setStyleSheet(custom_style)
 
         # 1. 样式重置与定义
@@ -310,7 +312,8 @@ class CommandDialog(BaseDialog):
         capture_spin_disabled_bg = "rgba(255, 255, 255, 0.035)" if theme == "dark" else "rgba(255, 255, 255, 0.38)"
         capture_spin_disabled_text = "rgba(255, 255, 255, 0.34)" if theme == "dark" else "rgba(60, 60, 67, 0.32)"
 
-        capture_option_style = scale_qss(f"""
+        capture_option_style = scale_qss(
+            f"""
             QLabel#CaptureOptionLabel {{
                 color: {capture_label_color};
                 font-size: 12px;
@@ -350,7 +353,8 @@ class CommandDialog(BaseDialog):
                 width: 12px;
                 height: 12px;
             }}
-        """)
+        """
+        )
         self.capture_timeout_label.setStyleSheet(capture_option_style)
         self.command_panel_size_label.setStyleSheet(capture_option_style)
         for button in self.command_panel_size_buttons:
@@ -359,11 +363,15 @@ class CommandDialog(BaseDialog):
 
         # --- 命令输入框容器样式 ---
         # 只有容器负责背景和边框，内部编辑器完全透明
-        self.command_container.setStyleSheet(scale_qss(f"""
+        self.command_container.setStyleSheet(
+            scale_qss(
+                f"""
             #CommandContainer {{
                 {input_style}
             }}
-        """))
+        """
+            )
+        )
 
         # 内部编辑器：透明、无边框、无背景
         editor_style = f"""
@@ -377,14 +385,19 @@ class CommandDialog(BaseDialog):
             }}
         """
         self.command_edit.setStyleSheet(scale_qss(editor_style))
-        self.test_output.setStyleSheet(scale_qss(editor_style + f"""
+        self.test_output.setStyleSheet(
+            scale_qss(
+                editor_style
+                + f"""
             QPlainTextEdit {{
                 background-color: {"rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(255, 255, 255, 0.75)"};
                 border: 1px solid {border_color};
                 border-radius: 8px;
                 padding: 4px;
             }}
-        """))
+        """
+            )
+        )
         # 再次强制视口透明（双重保险）
         if hasattr(self.command_edit, "viewport"):
             self.command_edit.viewport().setStyleSheet("background: transparent;")
@@ -429,7 +442,9 @@ class CommandDialog(BaseDialog):
         profile_toggle_hover = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(255, 255, 255, 0.82)"
         profile_toggle_border = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "rgba(0, 0, 0, 0.08)"
         profile_toggle_color = "rgba(255, 255, 255, 0.58)" if theme == "dark" else "rgba(60, 60, 67, 0.62)"
-        self.advanced_profile_toggle.setStyleSheet(scale_qss(f"""
+        self.advanced_profile_toggle.setStyleSheet(
+            scale_qss(
+                f"""
             QPushButton#CommandProfileToggle {{
                 background-color: {profile_toggle_bg};
                 border: 1px solid {profile_toggle_border};
@@ -449,13 +464,17 @@ class CommandDialog(BaseDialog):
             QPushButton#CommandProfileToggle:checked {{
                 background-color: {profile_toggle_hover};
             }}
-        """))
-        self.advanced_profile_frame.setStyleSheet("""
+        """
+            )
+        )
+        self.advanced_profile_frame.setStyleSheet(
+            """
             QFrame#CommandProfileFrame {
                 background: transparent;
                 border: none;
             }
-        """)
+        """
+        )
         self._set_command_profile_toggle_icon(self.advanced_profile_toggle.isChecked())
 
         # 应用单选按钮样式
@@ -489,7 +508,8 @@ class CommandDialog(BaseDialog):
         invert_cb_style = get_compact_checkbox_stylesheet(theme)
         self.invert_light_cb.setStyleSheet(invert_cb_style)
         self.invert_dark_cb.setStyleSheet(invert_cb_style)
-        compact_option_cb_style = cb_style + scale_qss(f"""
+        compact_option_cb_style = cb_style + scale_qss(
+            f"""
             QCheckBox {{
                 font-size: 12px;
                 spacing: 6px;
@@ -502,7 +522,8 @@ class CommandDialog(BaseDialog):
                 width: 12px;
                 height: 12px;
             }}
-            """)
+            """
+        )
         self.show_window_cb.setStyleSheet(compact_option_cb_style)
         self.run_as_admin_cb.setStyleSheet(compact_option_cb_style)
         self.variable_expansion_cb.setStyleSheet(compact_option_cb_style)
@@ -555,13 +576,17 @@ class CommandDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(scale_qss("""
+        self.icon_preview.setStyleSheet(
+            scale_qss(
+                """
             QLabel {
                 background-color: rgba(255, 255, 255, 0.2);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 10px;
             }
-        """))
+        """
+            )
+        )
         icon_layout.addWidget(self.icon_preview)
 
         icon_path_layout = QVBoxLayout()
@@ -935,6 +960,7 @@ class CommandDialog(BaseDialog):
     def _is_plugin_builtin_command(self, command_id: str) -> bool:
         try:
             from core import registry
+
             if registry is None:
                 return False
             cmd = registry.get(command_id)
@@ -959,6 +985,7 @@ class CommandDialog(BaseDialog):
         """将 plugin-builtin 命令的 param 默认值填入高级选项 checkbox。"""
         try:
             from core import registry
+
             if registry is None:
                 return
             cmd = registry.get(command_id)
@@ -1571,8 +1598,7 @@ class CommandDialog(BaseDialog):
             # 应用反转（根据当前主题对应的反转标志）
             _current_theme = getattr(self, "theme", "dark")
             _need_invert = (
-                self.invert_light_cb.isChecked() if _current_theme == "light"
-                else self.invert_dark_cb.isChecked()
+                self.invert_light_cb.isChecked() if _current_theme == "light" else self.invert_dark_cb.isChecked()
             )
             if _need_invert and pixmap and not pixmap.isNull():
                 from core.icon_extractor import IconExtractor

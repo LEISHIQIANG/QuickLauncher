@@ -92,7 +92,8 @@ class RemoveNodeCommand(Command):
     def execute(self) -> None:
         # Save connections before removing
         self._connections = [
-            conn for conn in self._graph.iter_connections()
+            conn
+            for conn in self._graph.iter_connections()
             if conn.source_node_id == self._node_id or conn.target_node_id == self._node_id
         ]
 

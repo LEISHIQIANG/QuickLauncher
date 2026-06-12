@@ -60,8 +60,12 @@ def register(api):
         search_terms=["screen ocr", "截图识别", "文字识别"],
         result_window_size="medium",
         params=[
-            CommandParam(name="show_window", type="bool", required=False, default="false", label="显示执行窗口", advanced=True),
-            CommandParam(name="capture_output", type="bool", required=False, default="true", label="捕获输出", advanced=True),
+            CommandParam(
+                name="show_window", type="bool", required=False, default="false", label="显示执行窗口", advanced=True
+            ),
+            CommandParam(
+                name="capture_output", type="bool", required=False, default="true", label="捕获输出", advanced=True
+            ),
         ],
     )
     # Avoid competing with QuickLauncher's first paint and popup preparation.
@@ -138,7 +142,7 @@ def _parse_helper_stdout(stdout: str) -> dict:
     for line in reversed((stdout or "").splitlines()):
         if line.startswith(SENTINEL):
             try:
-                parsed = json.loads(line[len(SENTINEL):])
+                parsed = json.loads(line[len(SENTINEL) :])
                 return parsed if isinstance(parsed, dict) else {}
             except json.JSONDecodeError:
                 return {}

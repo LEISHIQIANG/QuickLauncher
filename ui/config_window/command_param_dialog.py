@@ -86,10 +86,7 @@ class CommandParamDialog(BaseDialog):
 
     def _apply_theme(self):
         theme = self.theme
-        self.setStyleSheet(
-            Glassmorphism.get_full_glassmorphism_stylesheet(theme)
-            + get_checkbox_stylesheet(theme)
-        )
+        self.setStyleSheet(Glassmorphism.get_full_glassmorphism_stylesheet(theme) + get_checkbox_stylesheet(theme))
         button_style = Glassmorphism.get_flat_action_button_style(theme)
         for button in getattr(self, "_buttons", ()):
             button.setStyleSheet(button_style)

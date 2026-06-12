@@ -191,7 +191,7 @@ class PopupMixin:
 
         # 简单的防抖动 (Debounce)
         current_time = time.monotonic()
-        if hasattr(self, "_last_click_time") and (current_time - self._last_click_time < 0.08):
+        if hasattr(self, "_last_click_time") and (current_time - self._last_click_time < 0.05):
             logger.debug("点击过快，已忽略")
             return
         self._last_click_time = current_time

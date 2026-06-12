@@ -91,7 +91,9 @@ class ChainValue:
         )
 
 
-def make_chain_value(value: Any, kind: str = ChainValueKind.ANY, *, metadata: dict[str, Any] | None = None) -> ChainValue:
+def make_chain_value(
+    value: Any, kind: str = ChainValueKind.ANY, *, metadata: dict[str, Any] | None = None
+) -> ChainValue:
     """Create a ChainValue from a raw value.
 
     Args:
@@ -239,6 +241,7 @@ def raw_value(value: Any) -> Any:
 
 
 # ── Internal Helper Functions ────────────────────────────────────────────────
+
 
 def _normalize_kind(kind: str) -> str:
     """Normalize a kind string."""

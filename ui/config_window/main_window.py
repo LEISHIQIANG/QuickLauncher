@@ -96,7 +96,9 @@ class TitleBar(QWidget):
         self.back_btn.setCursor(QtCompat.PointingHandCursor)
         self.back_btn.clicked.connect(self._on_back)
         self.back_btn.setVisible(False)
-        self.back_btn.setStyleSheet(scale_qss("""
+        self.back_btn.setStyleSheet(
+            scale_qss(
+                """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -115,7 +117,9 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.18);
                 color: #006fd6;
             }
-        """))
+        """
+            )
+        )
         layout.addWidget(self.back_btn)
 
         # 图标 (默认显示)
@@ -182,7 +186,9 @@ class TitleBar(QWidget):
         self.settings_btn.setCursor(QtCompat.PointingHandCursor)
         self.settings_btn.clicked.connect(self._on_settings)
 
-        self.settings_btn.setStyleSheet(scale_qss("""
+        self.settings_btn.setStyleSheet(
+            scale_qss(
+                """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -198,7 +204,9 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.18);
                 color: #ffffff;
             }
-        """))
+        """
+            )
+        )
         layout.addWidget(self.settings_btn)
 
         # 关闭按钮
@@ -206,7 +214,9 @@ class TitleBar(QWidget):
         self.close_btn.setFixedSize(sp(32), sp(32))
         self.close_btn.setCursor(QtCompat.PointingHandCursor)
         self.close_btn.clicked.connect(self._on_close)
-        self.close_btn.setStyleSheet(scale_qss("""
+        self.close_btn.setStyleSheet(
+            scale_qss(
+                """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -222,7 +232,9 @@ class TitleBar(QWidget):
                 background-color: #c50f1f;
                 color: white;
             }
-        """))
+        """
+            )
+        )
         layout.addWidget(self.close_btn)
 
     def set_theme(self, theme: str):
@@ -242,7 +254,8 @@ class TitleBar(QWidget):
         )
 
         # 更新按钮样式
-        btn_base_style = scale_qss(f"""
+        btn_base_style = scale_qss(
+            f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -259,13 +272,16 @@ class TitleBar(QWidget):
                 background-color: rgba(128, 128, 128, 0.18);
                 color: {text_color};
             }}
-        """)
+        """
+        )
 
         self.back_btn.setStyleSheet(btn_base_style + scale_qss("QPushButton { font-size: 24px; padding-bottom: 8px; }"))
         self.settings_btn.setStyleSheet(btn_base_style + scale_qss("QPushButton { font-size: 18px; }"))
 
         # 关闭按钮特殊处理 hover 颜色
-        self.close_btn.setStyleSheet(scale_qss(f"""
+        self.close_btn.setStyleSheet(
+            scale_qss(
+                f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -283,7 +299,9 @@ class TitleBar(QWidget):
                 background-color: #c50f1f;
                 color: white;
             }}
-        """))
+        """
+            )
+        )
 
         if not self._settings_icon_path:
             return
@@ -488,9 +506,7 @@ class RoundedWindow(QWidget):
                 from ui.utils.window_effect import is_win10
 
                 if is_win10():
-                    paint_win10_rounded_surface(
-                        painter, self, self.bg_color, self.border_color, self.corner_radius
-                    )
+                    paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
                     return
             except (AttributeError, ImportError, RuntimeError, TypeError) as exc:
                 logger.debug("设置渲染提示失败: %s", exc, exc_info=True)
@@ -782,7 +798,9 @@ class ConfigWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.status_bar.setFixedHeight(sp(22))
         self.status_bar.setSizeGripEnabled(False)
-        self.status_bar.setStyleSheet(scale_qss("font-size: 11px; background: transparent; QStatusBar::item { border: none; }"))
+        self.status_bar.setStyleSheet(
+            scale_qss("font-size: 11px; background: transparent; QStatusBar::item { border: none; }")
+        )
         self.status_bar.setContentsMargins(sp(self.FOLDER_PANEL_WIDTH) + sp(4), 0, 0, 0)
 
         # 右侧版本信息 - 纯文本QLabel
@@ -864,7 +882,7 @@ class ConfigWindow(QMainWindow):
             self.settings_panel.command_settings_changed.connect(self.settings_changed.emit)
             self.settings_panel.import_completed.connect(self._on_import_completed)
             # 连接触发配置变更信号
-            if self.tray_app and hasattr(self.tray_app, '_apply_mouse_hook_settings'):
+            if self.tray_app and hasattr(self.tray_app, "_apply_mouse_hook_settings"):
                 self.settings_panel.trigger_config_changed.connect(self.tray_app._apply_mouse_hook_settings)
 
             # 替换占位符
@@ -1037,7 +1055,8 @@ class ConfigWindow(QMainWindow):
         theme = self.data_manager.get_settings().theme
 
         if theme == "dark":
-            return scale_qss("""
+            return scale_qss(
+                """
                 QMenu {
                     background-color: rgba(30, 30, 30, 120);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1060,9 +1079,11 @@ class ConfigWindow(QMainWindow):
                     background-color: rgba(255, 255, 255, 0.12);
                     margin: 6px 10px;
                 }
-            """)
+            """
+            )
         else:
-            return scale_qss("""
+            return scale_qss(
+                """
                 QMenu {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1085,7 +1106,8 @@ class ConfigWindow(QMainWindow):
                     background-color: #e5e5ea;
                     margin: 6px 10px;
                 }
-            """)
+            """
+            )
 
     def get_menu_stylesheet(self) -> str:
         """公开方法供子组件调用"""
@@ -1123,9 +1145,13 @@ class ConfigWindow(QMainWindow):
         # 设置状态栏颜色
         status_color = "rgba(255, 255, 255, 0.5)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
         self.status_bar.setStyleSheet(
-            scale_qss(f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}")
+            scale_qss(
+                f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}"
+            )
         )
-        self.version_label.setStyleSheet(scale_qss(f"font-size: 11px; color: {status_color}; padding: 0; margin-right: 10px;"))
+        self.version_label.setStyleSheet(
+            scale_qss(f"font-size: 11px; color: {status_color}; padding: 0; margin-right: 10px;")
+        )
 
         # 设置标题栏和设置面板主题
         self.title_bar.set_theme(theme)
@@ -1379,7 +1405,9 @@ class ConfigWindow(QMainWindow):
 
             dialog = ShortcutDialog(self)
             self._active_file_dialog = dialog
-            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_file_dialog", dialog))
+            dialog.finished.connect(
+                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_file_dialog", dialog)
+            )
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
@@ -1412,7 +1440,9 @@ class ConfigWindow(QMainWindow):
 
             dialog = HotkeyDialog(self)
             self._active_hotkey_dialog = dialog
-            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_hotkey_dialog", dialog))
+            dialog.finished.connect(
+                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_hotkey_dialog", dialog)
+            )
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
@@ -1445,7 +1475,9 @@ class ConfigWindow(QMainWindow):
 
             dialog = UrlDialog(self)
             self._active_url_dialog = dialog
-            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_url_dialog", dialog))
+            dialog.finished.connect(
+                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_url_dialog", dialog)
+            )
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
@@ -1478,7 +1510,9 @@ class ConfigWindow(QMainWindow):
 
             dialog = CommandDialog(self)
             self._active_command_dialog = dialog
-            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_command_dialog", dialog))
+            dialog.finished.connect(
+                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_command_dialog", dialog)
+            )
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)
@@ -1510,7 +1544,9 @@ class ConfigWindow(QMainWindow):
 
             dialog = ChainDialog(self)
             self._active_chain_dialog = dialog
-            dialog.finished.connect(lambda dialog=dialog: self._clear_active_dialog_if_current("_active_chain_dialog", dialog))
+            dialog.finished.connect(
+                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_chain_dialog", dialog)
+            )
 
             def _apply_add(shortcut):
                 self.data_manager.add_shortcut(folder_id, shortcut)

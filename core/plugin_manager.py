@@ -130,6 +130,7 @@ def _drain_plugin_executors(
 # ── Data models ───────────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
 
+
 class _RestrictedPluginModule(types.ModuleType):
     def __init__(self, original: types.ModuleType, blocked_attrs: frozenset[str], plugin_id: str):
         super().__init__(original.__name__)
@@ -381,7 +382,9 @@ class PluginAPI:
         try:
             from core.chain_processors import register_external_processor
 
-            ok = register_external_processor(definition, handler, owner=self._plugin_id, permissions=frozenset(self._permissions))
+            ok = register_external_processor(
+                definition, handler, owner=self._plugin_id, permissions=frozenset(self._permissions)
+            )
         except Exception:
             logger.debug("插件动作链电池注册失败: %s", definition, exc_info=True)
             return False
@@ -538,11 +541,7 @@ class PluginAPI:
                     "max_value",
                     "advanced",
                 }
-                allowed = {
-                    key: value
-                    for key, value in param.items()
-                    if key in valid_param_keys
-                }
+                allowed = {key: value for key, value in param.items() if key in valid_param_keys}
                 if "name" in allowed:
                     normalized_params.append(CommandParam(**allowed))
         cmd = CommandDefinition(
@@ -574,6 +573,7 @@ class PluginAPI:
         """Atomically register all staged commands and search sources. Rollback on any failure."""
         if self._committed:
             return True
+
         def rollback_chain_processors():
             try:
                 from core.chain_processors import unregister_external_processors

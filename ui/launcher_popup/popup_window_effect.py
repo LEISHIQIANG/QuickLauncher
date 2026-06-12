@@ -4,6 +4,7 @@ import logging
 
 from qt_compat import (
     QApplication,
+    QFont,
     QPainterPath,
     QPoint,
     QRectF,
@@ -13,7 +14,8 @@ from qt_compat import (
     QTimer,
 )
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.utils.ui_scale import sp
+from ui.utils.font_manager import get_font_family
+from ui.utils.ui_scale import font_px, sp
 from ui.utils.window_effect import install_win10_window_shadow, is_win10, is_win11, remove_win10_window_shadow
 
 logger = logging.getLogger(__name__)
@@ -273,6 +275,20 @@ class PopupWindowEffectMixin:
 class PopupLayoutMixin:
     """Window setup, sizing, positioning, and resize/move events."""
 
+    def _update_grid_text_metrics(self) -> None:
+        """Keep the smaller single-line label font and row height in sync."""
+        label_font = self.__dict__.get("_label_font")
+        if label_font is not None:
+            raw_size = max(9, int(self.settings.icon_size * 0.28))
+            label_font.setFamily(get_font_family())
+            label_font.setPixelSize(font_px(raw_size))
+            label_font.setWeight(QFont.Weight.Medium)
+            label_font.setStyleHint(QFont.StyleHint.SansSerif)
+            label_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+            label_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+            label_font.setKerning(True)
+        self.cell_h = int(self.cell_size * 1.15)
+
     def _dock_display_rows(self, visible_count: int | None = None, cols: int | None = None) -> int:
         if not self.dock_items:
             return 0
@@ -379,7 +395,7 @@ class PopupLayoutMixin:
         self.shadow_size_px, self.shadow_distance_px, self.shadow_margin = self._win10_internal_shadow_metrics()
         base_padding = int(self.__dict__.get("_base_padding", sp(8)) or sp(8))
         self.padding = base_padding + int(self.shadow_margin)
-        self.cell_h = int(self.cell_size * 1.15)
+        self._update_grid_text_metrics()
 
         width = self.padding * 2 + self.cols * self.cell_size
         # 增加搜索框导致的Y偏移
@@ -403,7 +419,9 @@ class PopupLayoutMixin:
         dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
         self.dock_y = self.indicator_y + indicator_height
 
-        height = self.content_height + indicator_spacing + indicator_height + dock_height + self._dock_outer_bottom_gap()
+        height = (
+            self.content_height + indicator_spacing + indicator_height + dock_height + self._dock_outer_bottom_gap()
+        )
 
         total_width = width
         total_height = height + self.shadow_margin

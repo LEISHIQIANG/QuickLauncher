@@ -12,7 +12,25 @@ from qt_compat import QTimer
 logger = logging.getLogger(__name__)
 
 _HOOK_INSTALL_RETRY_DELAYS_MS = (500, 2000, 5000)
-_PROCESS_CHECK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="QLProcessCheck")
+_PROCESS_CHECK_EXECUTOR = None
+_PROCESS_CHECK_EXECUTOR_LOCK = threading.Lock()
+
+
+def _get_process_check_executor() -> ThreadPoolExecutor:
+    global _PROCESS_CHECK_EXECUTOR
+    with _PROCESS_CHECK_EXECUTOR_LOCK:
+        if _PROCESS_CHECK_EXECUTOR is None:
+            _PROCESS_CHECK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="QLProcessCheck")
+        return _PROCESS_CHECK_EXECUTOR
+
+
+def shutdown_process_check_executor() -> None:
+    global _PROCESS_CHECK_EXECUTOR
+    with _PROCESS_CHECK_EXECUTOR_LOCK:
+        executor = _PROCESS_CHECK_EXECUTOR
+        _PROCESS_CHECK_EXECUTOR = None
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _collect_special_process_pids(target_apps: set[str], cancel_event: threading.Event | None = None) -> set[int]:
@@ -41,7 +59,9 @@ class HooksMixin:
 
         if attempt < len(_HOOK_INSTALL_RETRY_DELAYS_MS):
             delay = _HOOK_INSTALL_RETRY_DELAYS_MS[attempt]
-            logger.warning("鼠标钩子安装失败，%sms 后重试 (%s/%s)", delay, attempt + 1, len(_HOOK_INSTALL_RETRY_DELAYS_MS))
+            logger.warning(
+                "鼠标钩子安装失败，%sms 后重试 (%s/%s)", delay, attempt + 1, len(_HOOK_INSTALL_RETRY_DELAYS_MS)
+            )
             QTimer.singleShot(delay, lambda: self._install_hook(attempt + 1))
             return
 
@@ -98,6 +118,11 @@ class HooksMixin:
         try:
             from hooks.keyboard_hook_dll import KeyboardHook
 
+            if self.keyboard_hook:
+                try:
+                    self.keyboard_hook.uninstall()
+                except Exception as exc:
+                    logger.debug("卸载旧键盘钩子失败: %s", exc, exc_info=True)
             self.keyboard_hook = KeyboardHook()
 
             # 设置全局键盘钩子引用，供文件对话框使用
@@ -117,9 +142,11 @@ class HooksMixin:
                     self.mouse_hook.set_keyboard_hook(self.keyboard_hook)
             else:
                 logger.warning("  键盘钩子安装失败")
+                self.keyboard_hook = None
 
         except Exception:
             logger.exception("键盘钩子异常")
+            self.keyboard_hook = None
 
     def _check_hook_health(self):
         """Periodically recover DLL hooks if Windows reports them missing."""
@@ -129,17 +156,36 @@ class HooksMixin:
 
             mouse_hook = getattr(self, "mouse_hook", None)
             keyboard_hook = getattr(self, "keyboard_hook", None)
-            mouse_missing = bool(mouse_hook) and hasattr(mouse_hook, "is_installed") and not mouse_hook.is_installed()
-            keyboard_missing = (
-                bool(keyboard_hook) and hasattr(keyboard_hook, "is_installed") and not keyboard_hook.is_installed()
+            mouse_missing = mouse_hook is None or (
+                hasattr(mouse_hook, "is_installed") and not mouse_hook.is_installed()
             )
+            keyboard_missing = keyboard_hook is None or (
+                hasattr(keyboard_hook, "is_installed") and not keyboard_hook.is_installed()
+            )
+
+            dll = getattr(mouse_hook, "_dll", None) or getattr(keyboard_hook, "_dll", None)
+            runtime_stats = dll.get_runtime_stats() if dll and hasattr(dll, "get_runtime_stats") else {}
+            previous = getattr(self, "_last_hook_runtime_stats", {})
+            self._last_hook_runtime_stats = runtime_stats
+            if runtime_stats and previous:
+                dropped_delta = runtime_stats.get("callback_queue_dropped", 0) - previous.get(
+                    "callback_queue_dropped", 0
+                )
+                exception_delta = runtime_stats.get("callback_exceptions", 0) - previous.get("callback_exceptions", 0)
+                if dropped_delta > 0 or exception_delta > 0:
+                    logger.warning(
+                        "钩子回调通道出现异常: dropped_delta=%s exception_delta=%s queue_depth=%s",
+                        dropped_delta,
+                        exception_delta,
+                        runtime_stats.get("callback_queue_depth", 0),
+                    )
             if mouse_missing or keyboard_missing:
                 logger.warning(
                     "检测到钩子健康异常，准备自动重装: mouse_missing=%s keyboard_missing=%s",
                     mouse_missing,
                     keyboard_missing,
                 )
-                self._reinstall_hooks()
+                self._reinstall_hooks(mouse=mouse_missing, keyboard=keyboard_missing)
         except Exception as exc:
             logger.debug("检查钩子健康状态失败: %s", exc, exc_info=True)
 
@@ -151,22 +197,53 @@ class HooksMixin:
             self.hotkey_manager._dll = self.keyboard_hook._dll
         self.hotkey_manager.start()
 
-    def _reinstall_hooks(self):
+    def _reinstall_hooks(self, *, mouse: bool = True, keyboard: bool = True):
         """重装钩子以保持优先级（轻量级，仅卸载重装）"""
+        if getattr(self, "_hook_reinstall_in_progress", False):
+            return False
         try:
             now = time.monotonic()
             if now < self._hook_reinstall_cooldown_until:
-                return
-            self._hook_reinstall_cooldown_until = now + 2.0
+                return False
+            self._hook_reinstall_in_progress = True
 
-            if not self._install_mouse_backend():
-                return
+            success = True
+            if mouse:
+                mouse_backend_ok = self._install_mouse_backend()
+                mouse_hook = getattr(self, "mouse_hook", None)
+                if mouse_backend_ok and mouse_hook is not None and hasattr(mouse_hook, "is_installed"):
+                    mouse_backend_ok = bool(mouse_hook.is_installed())
+                success = mouse_backend_ok
 
-            if self.keyboard_hook:
-                self.keyboard_hook.uninstall()
-                self.keyboard_hook.install(self._on_alt_double_tap_from_hook)
+            if keyboard:
+                self._install_keyboard_hook()
+                keyboard_ok = bool(self.keyboard_hook and self.keyboard_hook.is_installed())
+                success = success and keyboard_ok
+                if keyboard_ok:
+                    self.hotkey_manager._dll = self.keyboard_hook._dll
+                    current_hotkey = getattr(self.hotkey_manager, "_current_hotkey", None)
+                    if current_hotkey:
+                        success = bool(self.hotkey_manager.set_hotkey(current_hotkey)) and success
+
+            if success:
+                self._hook_reinstall_failures = 0
+                self._hook_reinstall_cooldown_until = now + 1.0
+                return True
+
+            failures = int(getattr(self, "_hook_reinstall_failures", 0)) + 1
+            self._hook_reinstall_failures = failures
+            delay = min(30.0, float(2 ** min(failures, 5)))
+            self._hook_reinstall_cooldown_until = now + delay
+            logger.warning("钩子重装未完全成功，%.1fs 后再次检查", delay)
+            return False
         except Exception as exc:
             logger.debug("重装键盘钩子失败: %s", exc, exc_info=True)
+            failures = int(getattr(self, "_hook_reinstall_failures", 0)) + 1
+            self._hook_reinstall_failures = failures
+            self._hook_reinstall_cooldown_until = time.monotonic() + min(30.0, float(2 ** min(failures, 5)))
+            return False
+        finally:
+            self._hook_reinstall_in_progress = False
 
     def _check_new_processes(self):
         """检测特定软件启动时重装钩子（仅监测可能有钩子冲突的软件）"""
@@ -182,7 +259,7 @@ class HooksMixin:
                 return
             cancel_event = threading.Event()
             self._process_check_cancel_event = cancel_event
-            future = _PROCESS_CHECK_EXECUTOR.submit(_collect_special_process_pids, target_apps, cancel_event)
+            future = _get_process_check_executor().submit(_collect_special_process_pids, target_apps, cancel_event)
             self._process_check_future = future
             future.add_done_callback(self._emit_process_check_done)
         except Exception as exc:
@@ -281,7 +358,10 @@ class HooksMixin:
         expanded_apps = []
         seen = set()
 
-        for app in self._get_special_apps():
+        for raw_app in self._get_special_apps():
+            app = str(raw_app or "").strip().lower()
+            if not app:
+                continue
             candidates = [app]
             if app.endswith(".exe"):
                 base_name = app[:-4].strip()
@@ -334,7 +414,7 @@ class HooksMixin:
 
             trigger_settings = normalize_trigger_settings(settings)
             # 优先使用扩展接口
-            if hasattr(self.mouse_hook, 'set_trigger_config_ex'):
+            if hasattr(self.mouse_hook, "set_trigger_config_ex"):
                 normal_mode = trigger_settings["popup_trigger_mode"]
                 normal_keys = trigger_settings["popup_trigger_keys"]
                 normal_button = trigger_settings["popup_trigger_button"]
@@ -345,8 +425,14 @@ class HooksMixin:
                 special_modifiers = trigger_settings["popup_special_trigger_modifiers"]
 
                 self.mouse_hook.set_trigger_config_ex(
-                    normal_mode, normal_button, normal_keys, normal_modifiers,
-                    special_mode, special_button, special_keys, special_modifiers
+                    normal_mode,
+                    normal_button,
+                    normal_keys,
+                    normal_modifiers,
+                    special_mode,
+                    special_button,
+                    special_keys,
+                    special_modifiers,
                 )
                 logger.info(
                     "已应用扩展触发配置: 普通=%s(%s)+%s+%s, 特殊=%s(%s)+%s+%s",
@@ -359,7 +445,7 @@ class HooksMixin:
                     special_button,
                     special_modifiers,
                 )
-            elif hasattr(self.mouse_hook, 'set_trigger_config'):
+            elif hasattr(self.mouse_hook, "set_trigger_config"):
                 self.mouse_hook.set_trigger_config(
                     trigger_settings["popup_trigger_button"],
                     trigger_settings["popup_trigger_modifiers"],

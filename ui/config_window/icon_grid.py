@@ -272,7 +272,8 @@ class MoveFolderDialog(BaseDialog):
             btn_border = "rgba(255,255,255,0.35)"
             btn_text = "#1D1D1F"
 
-        btn_style = scale_qss(f"""
+        btn_style = scale_qss(
+            f"""
             QPushButton {{
                 background-color: {btn_bg};
                 border: 1px solid {btn_border};
@@ -283,7 +284,8 @@ class MoveFolderDialog(BaseDialog):
             }}
             QPushButton:hover {{ background-color: {btn_hover}; }}
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
-        """)
+        """
+        )
         self.cancel_btn.setStyleSheet(btn_style)
         self.ok_btn.setStyleSheet(btn_style)
 
@@ -611,35 +613,51 @@ class IconWidget(QFrame):
             return
         if self._is_selected:
             self.icon_frame.set_colors(
-                QColor(100, 181, 246, 26), QColor(100, 181, 246, 170),
-                border_width=1.0, radius=9.0,
+                QColor(100, 181, 246, 26),
+                QColor(100, 181, 246, 170),
+                border_width=1.0,
+                radius=9.0,
             )
         elif drop:
             if self.theme == "dark":
                 self.icon_frame.set_colors(
-                    QColor(168, 230, 207, 45), QColor(168, 230, 207, 180),
-                    border_width=2.0, radius=9.0, dashed=True,
+                    QColor(168, 230, 207, 45),
+                    QColor(168, 230, 207, 180),
+                    border_width=2.0,
+                    radius=9.0,
+                    dashed=True,
                 )
             else:
                 self.icon_frame.set_colors(
-                    QColor(168, 230, 207, 75), QColor(70, 180, 140, 200),
-                    border_width=2.0, radius=9.0, dashed=True,
+                    QColor(168, 230, 207, 75),
+                    QColor(70, 180, 140, 200),
+                    border_width=2.0,
+                    radius=9.0,
+                    dashed=True,
                 )
         else:
             bg = self._hover_qcolor if hover else self._bg_qcolor
             self.icon_frame.set_colors(
-                bg, self._border_qcolor,
-                border_width=1.0, radius=9.0,
+                bg,
+                self._border_qcolor,
+                border_width=1.0,
+                radius=9.0,
             )
 
     def _icon_frame_style(self, hover=False, drop=False):
         if self._is_selected:
-            return scale_qss("QFrame { background-color: rgba(100,181,246,26); border-radius: 9px; border: 1px solid rgba(100,181,246,170); }")
+            return scale_qss(
+                "QFrame { background-color: rgba(100,181,246,26); border-radius: 9px; border: 1px solid rgba(100,181,246,170); }"
+            )
         if drop:
             if self.theme == "dark":
-                return scale_qss("QFrame { background-color: rgba(168, 230, 207, 45); border-radius: 9px; border: 2px dashed rgba(168, 230, 207, 180); }")
+                return scale_qss(
+                    "QFrame { background-color: rgba(168, 230, 207, 45); border-radius: 9px; border: 2px dashed rgba(168, 230, 207, 180); }"
+                )
             else:
-                return scale_qss("QFrame { background-color: rgba(168, 230, 207, 75); border-radius: 9px; border: 2px dashed rgba(70, 180, 140, 200); }")
+                return scale_qss(
+                    "QFrame { background-color: rgba(168, 230, 207, 75); border-radius: 9px; border: 2px dashed rgba(70, 180, 140, 200); }"
+                )
         bg = self._hover_bg if hover else self._normal_bg
         return scale_qss(f"QFrame {{ background-color: {bg}; border-radius: 9px; border: {self._border}; }}")
 
@@ -1185,13 +1203,17 @@ class IconGrid(QWidget):
             grid_bg = "rgba(255, 255, 255, 0.20)"
             grid_border = "rgba(0, 0, 0, 0.06)"
 
-        self.grid_area.setStyleSheet(scale_qss(f"""
+        self.grid_area.setStyleSheet(
+            scale_qss(
+                f"""
             QWidget#iconGridArea {{
                 background-color: {grid_bg};
                 border: 1px solid {grid_border};
                 border-radius: 10px;
             }}
-        """))
+        """
+            )
+        )
 
         if theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
@@ -1206,7 +1228,8 @@ class IconGrid(QWidget):
             btn_text = "#1D1D1F"
             shadow_color = QColor(0, 0, 0, 20)
 
-        btn_style = scale_qss(f"""
+        btn_style = scale_qss(
+            f"""
             QPushButton {{
                 background-color: {btn_bg};
                 border: 1px solid {btn_border};
@@ -1219,7 +1242,8 @@ class IconGrid(QWidget):
             QPushButton:hover {{ background-color: {btn_hover}; }}
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
             QPushButton:disabled {{ background-color: rgba(255,255,255,0.3); color: #C7C7CC; }}
-        """)
+        """
+        )
 
         self.add_file_btn.setStyleSheet(btn_style)
         self.add_hotkey_btn.setStyleSheet(btn_style)
@@ -1285,7 +1309,8 @@ class IconGrid(QWidget):
             parent = parent.parent()
 
         if theme == "dark":
-            return scale_qss("""
+            return scale_qss(
+                """
                 QMenu {
                     background-color: rgba(30, 30, 30, 120);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1312,9 +1337,11 @@ class IconGrid(QWidget):
                     background-color: rgba(255, 255, 255, 16);
                     margin: 6px 10px;
                 }
-            """)
+            """
+            )
         else:
-            return scale_qss("""
+            return scale_qss(
+                """
                 QMenu {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1341,7 +1368,8 @@ class IconGrid(QWidget):
                     background-color: rgba(60, 60, 67, 18);
                     margin: 6px 10px;
                 }
-            """)
+            """
+            )
 
     def _get_cell_size(self):
         # 分栏框宽度减去左右各10px边距，除以6列
@@ -2381,13 +2409,17 @@ class IconGrid(QWidget):
                 bg = "rgba(224, 250, 240, 200)"
                 border = "2px dashed rgba(70, 180, 140, 180)"
 
-            self.grid_area.setStyleSheet(scale_qss(f"""
+            self.grid_area.setStyleSheet(
+                scale_qss(
+                    f"""
                 QWidget#iconGridArea {{
                     background-color: {bg};
                     border: {border};
                     border-radius: 10px;
                 }}
-            """))
+            """
+                )
+            )
         else:
             event.ignore()
 

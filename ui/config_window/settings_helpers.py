@@ -209,9 +209,9 @@ class ProgressDialog(QDialog):
         self.msg_label = QLabel("正在处理...")
         self.msg_label.setWordWrap(True)
         self.msg_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
-        self.msg_label.setStyleSheet(scale_qss(
-            f"font-size: 13px; border: none; background: transparent; color: {self.text_color};"
-        ))
+        self.msg_label.setStyleSheet(
+            scale_qss(f"font-size: 13px; border: none; background: transparent; color: {self.text_color};")
+        )
         main_layout.addWidget(self.msg_label, 1)
 
         self.btn_layout = QHBoxLayout()
@@ -246,7 +246,12 @@ class ProgressDialog(QDialog):
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             # 磨砂玻璃模式：与ThemedMessageBox完全一致

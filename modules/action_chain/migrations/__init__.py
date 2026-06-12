@@ -46,18 +46,14 @@ def migrate_chain_data(
     target = int(to_schema or LATEST_SCHEMA)
 
     if current > target:
-        logger.warning(
-            "数据 schema_version=%d 高于目标 %d，跳过迁移", current, target
-        )
+        logger.warning("数据 schema_version=%d 高于目标 %d，跳过迁移", current, target)
         data["schema_version"] = target
         return data
 
     while current < target:
         step = _MIGRATIONS.get(current)
         if step is None:
-            logger.warning(
-                "缺少 %d → %d 的迁移函数，停止迁移", current, current + 1
-            )
+            logger.warning("缺少 %d → %d 的迁移函数，停止迁移", current, current + 1)
             break
         try:
             data = step(data)
@@ -68,4 +64,3 @@ def migrate_chain_data(
 
     data["schema_version"] = current
     return data
-

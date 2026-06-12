@@ -411,7 +411,9 @@ class SettingsSystemPageMixin:
 
         percent = self._normalize_ui_scale(self.ui_scale_edit.text())
         self._sync_ui_scale_controls(percent)
-        current = self._normalize_ui_scale(getattr(self.data_manager.get_settings(), "ui_scale_percent", DEFAULT_SCALE_PERCENT))
+        current = self._normalize_ui_scale(
+            getattr(self.data_manager.get_settings(), "ui_scale_percent", DEFAULT_SCALE_PERCENT)
+        )
         if percent == current:
             return
 
@@ -712,12 +714,12 @@ fso.DeleteFile WScript.ScriptFullName
         layout.addWidget(title_label, 0, 0, 1, 4)
 
         slider_defs = [
-            ("黑场",  "black_point",      0, 100, 50,   ("中性", "压暗", "提亮")),
-            ("白场",  "white_point",      0, 100, 50,   ("中性", "加亮", "压暗")),
-            ("中间调","mid_gamma",        0, 100, 50,   ("中性", "变暗", "变亮")),
-            ("色温",  "temperature",      0, 100, 50,   ("中性", "暖", "冷")),
-            ("Acrylic","acrylic",         1, 255, 30,   ("极模糊","强模糊","中模糊","弱模糊","近实色")),
-            ("底色α", "bg_alpha_filter",  1, 255, 100,  ("极透","高透","半透","低透","实色")),
+            ("黑场", "black_point", 0, 100, 50, ("中性", "压暗", "提亮")),
+            ("白场", "white_point", 0, 100, 50, ("中性", "加亮", "压暗")),
+            ("中间调", "mid_gamma", 0, 100, 50, ("中性", "变暗", "变亮")),
+            ("色温", "temperature", 0, 100, 50, ("中性", "暖", "冷")),
+            ("Acrylic", "acrylic", 1, 255, 30, ("极模糊", "强模糊", "中模糊", "弱模糊", "近实色")),
+            ("底色α", "bg_alpha_filter", 1, 255, 100, ("极透", "高透", "半透", "低透", "实色")),
         ]
 
         sliders = {}
@@ -839,12 +841,12 @@ fso.DeleteFile WScript.ScriptFullName
     def _get_slider_meta(self, key: str):
         """返回 (min, max, default, descs)"""
         meta = {
-            "black_point":    (0, 100, 50,  ("中性", "压暗", "提亮")),
-            "white_point":    (0, 100, 50,  ("中性", "加亮", "压暗")),
-            "mid_gamma":      (0, 100, 50,  ("中性", "变暗", "变亮")),
-            "temperature":    (0, 100, 50,  ("中性", "暖", "冷")),
-            "acrylic":        (1, 255, 30,  ("极模糊","强模糊","中模糊","弱模糊","近实色")),
-            "bg_alpha_filter":(1, 255, 100, ("极透","高透","半透","低透","实色")),
+            "black_point": (0, 100, 50, ("中性", "压暗", "提亮")),
+            "white_point": (0, 100, 50, ("中性", "加亮", "压暗")),
+            "mid_gamma": (0, 100, 50, ("中性", "变暗", "变亮")),
+            "temperature": (0, 100, 50, ("中性", "暖", "冷")),
+            "acrylic": (1, 255, 30, ("极模糊", "强模糊", "中模糊", "弱模糊", "近实色")),
+            "bg_alpha_filter": (1, 255, 100, ("极透", "高透", "半透", "低透", "实色")),
         }
         return meta.get(key, (0, 100, 50, ("", "", "")))
 

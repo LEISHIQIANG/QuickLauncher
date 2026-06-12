@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from qt_compat import QMetaObject, QObject, Qt, QTimer, pyqtSignal
+from qt_compat import QObject, Qt, QTimer, pyqtSignal
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ class HotkeyManager(QObject):
     """全局热键管理器"""
 
     activated = pyqtSignal()
-    _start_dispatch_requested = pyqtSignal()
+    _dispatch_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, dll=None):
         super().__init__(parent)
@@ -22,18 +22,7 @@ class HotkeyManager(QObject):
         self._dispatch_timer.setSingleShot(True)
         self._dispatch_timer.setInterval(15)
         self._dispatch_timer.timeout.connect(self._drain_pending_activated)
-        connected = False
-        for conn_type in (getattr(getattr(Qt, "ConnectionType", object), "QueuedConnection", None), getattr(Qt, "QueuedConnection", None)):
-            if conn_type is None:
-                continue
-            try:
-                self._start_dispatch_requested.connect(self._start_dispatch_timer, conn_type)
-                connected = True
-                break
-            except Exception:
-                continue
-        if not connected:
-            self._start_dispatch_requested.connect(self._start_dispatch_timer)
+        self._dispatch_requested.connect(self._start_dispatch_timer, Qt.QueuedConnection)
         self._dll = dll
 
     def set_dll(self, dll) -> None:
@@ -82,6 +71,8 @@ class HotkeyManager(QObject):
             self._dispatch_timer.stop()
         except Exception:
             logger.debug("停止 dispatch_timer 失败", exc_info=True)
+        with self._pending_lock:
+            self._pending_activated = 0
 
     def _normalize_hotkey(self, hotkey_str: str) -> str:
         s = (hotkey_str or "").strip()
@@ -264,23 +255,17 @@ class HotkeyManager(QObject):
         logger.debug("Global hotkey activated")
         try:
             with self._pending_lock:
-                self._pending_activated += 1
-            # 安全地在主线程启动定时器（避免跨线程操作 QTimer）
-            for conn_type in (Qt.ConnectionType.QueuedConnection, Qt.QueuedConnection):
-                try:
-                    QMetaObject.invokeMethod(self._dispatch_timer, "start", conn_type)
+                if not self._is_running:
                     return
-                except Exception:
-                    continue
-            # 所有 QMetaObject 方式都失败时，通过信号桥间接调度到主线程
+                self._pending_activated += 1
             try:
-                self._start_dispatch_requested.emit()
-                return
+                self._dispatch_requested.emit()
             except Exception as exc:
+                with self._pending_lock:
+                    self._pending_activated = max(0, self._pending_activated - 1)
                 logger.debug("跨线程调度QTimer失败: %s", exc, exc_info=True)
-            logger.warning("无法跨线程调度 QTimer.start，热键激活可能延迟")
-        except Exception:
-            return
+        except Exception as exc:
+            logger.debug("处理原生热键激活失败: %s", exc, exc_info=True)
 
     def _start_dispatch_timer(self):
         try:

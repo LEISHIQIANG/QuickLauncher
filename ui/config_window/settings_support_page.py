@@ -514,17 +514,30 @@ class DrinkCard(QFrame):
             painter.drawRoundedRect(cup, sp(5), sp(5))
             painter.setBrush(QBrush(color("#C47A35")))
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(QRectF(cup.left() + w * 0.06, cup.top() + h * 0.1, cup.width() - w * 0.12, h * 0.11), sp(3), sp(3))
+            painter.drawRoundedRect(
+                QRectF(cup.left() + w * 0.06, cup.top() + h * 0.1, cup.width() - w * 0.12, h * 0.11), sp(3), sp(3)
+            )
             painter.setBrush(QBrush(color("#FFB34D")))
-            painter.drawRoundedRect(QRectF(cup.left() + w * 0.07, cup.top() + h * 0.2, cup.width() - w * 0.14, h * 0.1), sp(3), sp(3))
+            painter.drawRoundedRect(
+                QRectF(cup.left() + w * 0.07, cup.top() + h * 0.2, cup.width() - w * 0.14, h * 0.1), sp(3), sp(3)
+            )
             painter.setPen(QPen(color("#8E5426", 190), pen_width))
-            painter.drawLine(QPointF(cx - w * 0.36, cup.bottom() + h * 0.08), QPointF(cx + w * 0.36, cup.bottom() + h * 0.08))
+            painter.drawLine(
+                QPointF(cx - w * 0.36, cup.bottom() + h * 0.08), QPointF(cx + w * 0.36, cup.bottom() + h * 0.08)
+            )
             painter.setPen(QPen(color("#D47A2C", 190), pen_width))
             for offset in (-0.16, 0.0, 0.16):
                 steam = QPainterPath()
                 x = cx + w * offset
                 steam.moveTo(x, icon_rect.top() + h * 0.26)
-                steam.cubicTo(x - w * 0.08, icon_rect.top() + h * 0.15, x + w * 0.08, icon_rect.top() + h * 0.1, x, icon_rect.top() + h * 0.02)
+                steam.cubicTo(
+                    x - w * 0.08,
+                    icon_rect.top() + h * 0.15,
+                    x + w * 0.08,
+                    icon_rect.top() + h * 0.1,
+                    x,
+                    icon_rect.top() + h * 0.02,
+                )
                 painter.drawPath(steam)
 
         elif key == "tea":
@@ -542,8 +555,22 @@ class DrinkCard(QFrame):
             painter.drawLine(QPointF(cx - w * 0.43, cy + h * 0.34), QPointF(cx + w * 0.43, cy + h * 0.34))
             leaf = QPainterPath()
             leaf.moveTo(cx, icon_rect.top() + h * 0.08)
-            leaf.cubicTo(cx + w * 0.24, icon_rect.top() + h * 0.04, cx + w * 0.28, icon_rect.top() + h * 0.29, cx + w * 0.04, icon_rect.top() + h * 0.33)
-            leaf.cubicTo(cx - w * 0.04, icon_rect.top() + h * 0.23, cx - w * 0.03, icon_rect.top() + h * 0.13, cx, icon_rect.top() + h * 0.08)
+            leaf.cubicTo(
+                cx + w * 0.24,
+                icon_rect.top() + h * 0.04,
+                cx + w * 0.28,
+                icon_rect.top() + h * 0.29,
+                cx + w * 0.04,
+                icon_rect.top() + h * 0.33,
+            )
+            leaf.cubicTo(
+                cx - w * 0.04,
+                icon_rect.top() + h * 0.23,
+                cx - w * 0.03,
+                icon_rect.top() + h * 0.13,
+                cx,
+                icon_rect.top() + h * 0.08,
+            )
             painter.setBrush(QBrush(color("#68D391")))
             painter.setPen(QPen(color("#2F9E44"), pen_width))
             painter.drawPath(leaf)
@@ -690,7 +717,9 @@ class DrinkCard(QFrame):
         price_font.setBold(False)
         painter.setFont(price_font)
         painter.setPen(QPen(sub_color))
-        painter.drawText(QRect(sp(5), sp(82), rect.width() - sp(10), sp(22)), QtCompat.AlignCenter, f"¥{self.price:.2f}")
+        painter.drawText(
+            QRect(sp(5), sp(82), rect.width() - sp(10), sp(22)), QtCompat.AlignCenter, f"¥{self.price:.2f}"
+        )
 
         painter.end()
 
@@ -966,11 +995,15 @@ class SettingsSupportPageMixin:
 
         if hasattr(self, "_support_title_lbl"):
             self._support_title_lbl.setStyleSheet(
-                scale_qss(f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none;")
+                scale_qss(
+                    f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none;"
+                )
             )
         if hasattr(self, "_support_desc_lbl"):
             self._support_desc_lbl.setStyleSheet(
-                scale_qss(f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none;")
+                scale_qss(
+                    f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none;"
+                )
             )
         if hasattr(self, "_reaction_label"):
             self._reaction_label.setStyleSheet(
@@ -980,17 +1013,22 @@ class SettingsSupportPageMixin:
         if hasattr(self, "_qr_container"):
             card_bg = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
             card_border = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
-            self._qr_container.setStyleSheet(scale_qss(f"""
+            self._qr_container.setStyleSheet(
+                scale_qss(
+                    f"""
                 QFrame#QRContainer {{
                     background-color: {card_bg};
                     border: 1px solid {card_border};
                     border-radius: 16px;
                 }}
-            """))
+            """
+                )
+            )
 
             # 动态应用精致的、独立于全局 Compact 按钮的高对比度微章按钮样式表
             if theme == "dark":
-                btn_style_fullscreen = scale_qss("""
+                btn_style_fullscreen = scale_qss(
+                    """
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -1008,8 +1046,10 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(255, 255, 255, 0.05);
                     }
-                """)
-                btn_style_close = scale_qss("""
+                """
+                )
+                btn_style_close = scale_qss(
+                    """
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -1027,9 +1067,11 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(255, 82, 82, 0.05);
                     }
-                """)
+                """
+                )
             else:
-                btn_style_fullscreen = scale_qss("""
+                btn_style_fullscreen = scale_qss(
+                    """
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -1047,8 +1089,10 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(0, 0, 0, 0.02);
                     }
-                """)
-                btn_style_close = scale_qss("""
+                """
+                )
+                btn_style_close = scale_qss(
+                    """
                     QPushButton {
                         font-size: 11px;
                         padding: 6px 12px;
@@ -1066,7 +1110,8 @@ class SettingsSupportPageMixin:
                     QPushButton:pressed {
                         background: rgba(211, 47, 47, 0.03);
                     }
-                """)
+                """
+                )
             self._view_fullscreen_btn.setStyleSheet(btn_style_fullscreen)
             self._close_qr_btn.setStyleSheet(btn_style_close)
 

@@ -165,6 +165,7 @@ class EnhancedPortDefinition:
         # Pattern matching
         if "pattern" in constraints:
             import re
+
             if not re.match(str(constraints["pattern"]), str(value)):
                 return False, f"格式不匹配: {constraints.get('pattern_message', constraints['pattern'])}"
 
@@ -225,8 +226,7 @@ class TypeCompatibility:
     }
 
     @classmethod
-    def is_compatible(cls, source_kind: str, target_kind: str,
-                      source_smart: str = "", target_smart: str = "") -> bool:
+    def is_compatible(cls, source_kind: str, target_kind: str, source_smart: str = "", target_smart: str = "") -> bool:
         """Check if source type is compatible with target type.
 
         Args:
@@ -314,8 +314,9 @@ class TypeCompatibility:
         return cls._check_base_compatible(base_kind, hint.base_type)
 
     @classmethod
-    def get_conversion_cost(cls, source_kind: str, target_kind: str,
-                            source_smart: str = "", target_smart: str = "") -> int:
+    def get_conversion_cost(
+        cls, source_kind: str, target_kind: str, source_smart: str = "", target_smart: str = ""
+    ) -> int:
         """Get the cost of converting from source to target type.
 
         Returns:
@@ -361,12 +362,16 @@ class TypeCompatibility:
 def get_compatibility(source: EnhancedPortDefinition, target: EnhancedPortDefinition) -> dict[str, Any]:
     """Get detailed compatibility information between two ports."""
     compatible = TypeCompatibility.is_compatible(
-        source.kind, target.kind,
-        source.smart_type, target.smart_type,
+        source.kind,
+        target.kind,
+        source.smart_type,
+        target.smart_type,
     )
     cost = TypeCompatibility.get_conversion_cost(
-        source.kind, target.kind,
-        source.smart_type, target.smart_type,
+        source.kind,
+        target.kind,
+        source.smart_type,
+        target.smart_type,
     )
 
     return {
@@ -382,22 +387,26 @@ def get_compatibility(source: EnhancedPortDefinition, target: EnhancedPortDefini
 def can_connect(source: EnhancedPortDefinition, target: EnhancedPortDefinition) -> bool:
     """Check if two ports can be connected."""
     return TypeCompatibility.is_compatible(
-        source.kind, target.kind,
-        source.smart_type, target.smart_type,
+        source.kind,
+        target.kind,
+        source.smart_type,
+        target.smart_type,
     )
 
 
 def get_conversion_cost(source: EnhancedPortDefinition, target: EnhancedPortDefinition) -> int:
     """Get the cost of converting between two ports."""
     return TypeCompatibility.get_conversion_cost(
-        source.kind, target.kind,
-        source.smart_type, target.smart_type,
+        source.kind,
+        target.kind,
+        source.smart_type,
+        target.smart_type,
     )
 
 
-def _get_compatibility_message(compatible: bool, cost: int,
-                               source: EnhancedPortDefinition,
-                               target: EnhancedPortDefinition) -> str:
+def _get_compatibility_message(
+    compatible: bool, cost: int, source: EnhancedPortDefinition, target: EnhancedPortDefinition
+) -> str:
     """Get a human-readable compatibility message."""
     if not compatible:
         return f"类型不兼容: {source.effective_type} -> {target.effective_type}"

@@ -110,7 +110,9 @@ class ActionChainModule:
             shortcut_id = str(step.get("shortcut_id") or "")
             target = shortcut_map.get(shortcut_id)
             if target is None:
-                issues.append(_issue("error", "chain.step.missing_shortcut", f"步骤 {index}: 引用的快捷方式不存在。", step))
+                issues.append(
+                    _issue("error", "chain.step.missing_shortcut", f"步骤 {index}: 引用的快捷方式不存在。", step)
+                )
                 continue
             error = _validate_shortcut_step_bindings(steps, index, step, target, shortcut_map)
             if error:

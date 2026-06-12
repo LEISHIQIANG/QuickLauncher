@@ -2,7 +2,7 @@
 
 ## 概述
 
-全局键盘、鼠标钩子只由 `hooks.dll` 实现。Python 层通过 `ctypes` 加载 DLL，负责生命周期、诊断和与 Qt 主线程的信号桥接，不作为备用钩子后端。
+全局键盘、鼠标输入只由 `hooks.dll` 实现。鼠标侧同时使用 `WH_MOUSE_LL` 和后台 Raw Input：低级钩子负责拦截，Raw Input 负责在低级钩子漏报或被 Windows 静默移除时兜底。Python 层通过 `ctypes` 加载 DLL，负责生命周期、诊断和与 Qt 主线程的信号桥接。
 
 ## 文件结构
 
@@ -61,20 +61,59 @@ keyboard_hook.install(lambda: print("Alt双击"))
 ## 功能特性
 
 - 鼠标中键拦截
+- Raw Input 后台兜底与物理点击去重
 - Alt+左键双击检测
 - Alt双击检测
 - 自定义热键支持
 - 暂停/恢复功能
 - 修饰键状态查询（Alt/Ctrl）
 - 钩子安装状态查询：`IsMouseHookInstalled()`、`IsKeyboardHookInstalled()`
+- Raw Input 状态查询：`IsRawInputFallbackActive()`
 - 最近错误查询：`GetLastHookError()`
 - 能力位查询：`GetHooksCapabilities()`
+- 统一键鼠事件录制：移动、五键鼠标、垂直/水平滚轮、键盘按下/抬起、扫描码与微秒时间戳
+- 异步组合宏回放：键盘、鼠标和 Unicode 事件可按同一时间线混排
+- 宏回放取消、等待、进度查询，以及取消/异常后的按键和鼠标键自动释放
+- 回放事件使用专用 `dwExtraInfo` 标记，默认不触发启动器且不会被宏录制再次采集
+- 钩子诊断文件默认不写盘；仅在排障时设置 `QUICKLAUNCHER_HOOK_DEBUG=1`
+  才启用 `hooks/hook_debug.log`，避免正常触发路径产生磁盘 I/O
+
+## 宏基础接口
+
+Python 业务层优先使用 `InputMacroBackend`：
+
+```python
+from hooks import InputMacroBackend
+
+macro = InputMacroBackend()
+macro.start_recording()
+# 用户执行键盘和鼠标操作
+events = macro.stop_recording()
+
+sequence = macro.build_sequence(speed=1.25)
+macro.play(sequence)
+macro.wait(5000)
+```
+
+底层 DLL 接口包括：
+
+- `StartInputCapture` / `StopInputCapture` / `IsInputCaptureActive`
+- `PlayMacroEvents` / `CancelMacroPlayback` / `WaitForMacroPlayback`
+- `GetMacroStatus` / `ReleaseMacroPressedInputs`
+
+录制默认只采集物理输入。只有显式设置 `HOOK_CAPTURE_INCLUDE_INJECTED`
+或 `HOOK_CAPTURE_INCLUDE_OWN_PLAYBACK` 时才会收到注入事件，从根源上避免宏自录、
+递归触发和无限回放。
 
 ## 稳定性约束
 
 - 鼠标与键盘低级钩子回调必须快速返回；DLL 内部只记录触发状态，再由独立回调线程调用 Python 回调。
-- 回调线程使用有界 FIFO 队列承接键盘、鼠标和热键事件，高频触发时最多保留最近 64 个事件，避免单槽覆盖或无限堆积。
+- Raw Input 与低级钩子使用每个鼠标按键的物理事件计数配对，正常情况下不会重复回调；未配对事件会走兜底并将低级钩子标记为待恢复。
+- 弹窗/热键回调线程使用 256 项有界 FIFO；宏录制使用独立的 8192 项队列，互不阻塞。
+- 鼠标移动默认保留完整轨迹；需要低采样录制时可显式开启连续移动合并。
 - Python 回调异常不能穿透到低级钩子过程；DLL 回调线程会捕获异常边界并继续运行。
+- 回放采用专用线程和可取消等待，不在低级钩子线程内休眠或调用 Python。
+- 宏结束、取消或发送失败时默认释放本次宏仍按住的键，避免出现卡键。
 - 安装钩子时等待钩子线程初始化；超时会写入最近错误，供诊断中心显示。
 - 主程序重装钩子时应通过 `Uninstall*Hook()` 后再 `Install*Hook()`，不要创建多个 DLL 实例争用全局钩子。
 

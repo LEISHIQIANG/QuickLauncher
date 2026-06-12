@@ -65,7 +65,6 @@ __all__ = [
     "KNOWN_PROCESSOR_PARAM_KINDS",
     "KNOWN_PROCESSOR_SAFETY_LEVELS",
     "KNOWN_PROCESSOR_PORT_ROLES",
-
     # From processor_registry
     "ProcessorRegistry",
     "ProcessorCategory",
@@ -75,7 +74,6 @@ __all__ = [
     "list_processors",
     "get_processors_by_category",
     "search_processors",
-
     # From registry (backward compatibility)
     "PROCESSOR_DEFINITIONS",
     "EXTERNAL_PROCESSOR_DEFINITIONS",
@@ -92,7 +90,6 @@ __all__ = [
     "unregister_external_processors",
     "python_cell_metadata",
     "execute_chain_processor",
-
     # Unified API
     "get_all_processors",
     "get_processor_full",
@@ -303,9 +300,18 @@ def get_processor_documentation(processor_id: str) -> str:
         for example in definition.examples:
             lines.extend([f"### {example.title}", ""])
             if example.args:
-                lines.extend(["**Arguments:**", "```json", json.dumps(example.args, indent=2, ensure_ascii=False), "```"])
+                lines.extend(
+                    ["**Arguments:**", "```json", json.dumps(example.args, indent=2, ensure_ascii=False), "```"]
+                )
             if example.expected:
-                lines.extend(["**Expected Output:**", "```json", json.dumps(example.expected, indent=2, ensure_ascii=False), "```"])
+                lines.extend(
+                    [
+                        "**Expected Output:**",
+                        "```json",
+                        json.dumps(example.expected, indent=2, ensure_ascii=False),
+                        "```",
+                    ]
+                )
             lines.append("")
     lines.extend(["## Safety", "", f"- **Level:** {definition.safety.level}"])
     if definition.safety.reads_files:

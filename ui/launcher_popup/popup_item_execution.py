@@ -275,7 +275,9 @@ class PopupItemExecutionMixin:
                         context_meta["input_values"] = dict(runtime_inputs)
                     if selected_files_for_item:
                         context_meta["selected_files"] = list(selected_files_for_item)
-                    if tray_app.show_command_panel(shortcut=item, raw_input=item.command or "", context_meta=context_meta):
+                    if tray_app.show_command_panel(
+                        shortcut=item, raw_input=item.command or "", context_meta=context_meta
+                    ):
                         self._executing = False
                         return
                 except Exception:

@@ -291,7 +291,7 @@ class ScreenshotFrame(wx.Frame):
     def find_smallest_containing_rect(self, screen_pt):
         """寻找包含当前鼠标位置的最小可见窗口/元素矩形（即最底层的叶子节点控件）"""
         smallest_rect = None
-        smallest_area = float('inf')
+        smallest_area = float("inf")
 
         for hwnd, rect in self.window_rects:
             if rect.Contains(screen_pt):
@@ -318,28 +318,28 @@ class ScreenshotFrame(wx.Frame):
         near_top = abs(p.y - y) <= tol
         near_bottom = abs(p.y - (y + h)) <= tol
 
-        in_x_range = (x - tol <= p.x <= x + w + tol)
-        in_y_range = (y - tol <= p.y <= y + h + tol)
+        in_x_range = x - tol <= p.x <= x + w + tol
+        in_y_range = y - tol <= p.y <= y + h + tol
 
         # 1. 优先判定四个角
         if near_left and near_top:
-            return 'TL'
+            return "TL"
         if near_right and near_top:
-            return 'TR'
+            return "TR"
         if near_left and near_bottom:
-            return 'BL'
+            return "BL"
         if near_right and near_bottom:
-            return 'BR'
+            return "BR"
 
         # 2. 判定四条边
         if near_top and in_x_range:
-            return 'T'
+            return "T"
         if near_bottom and in_x_range:
-            return 'B'
+            return "B"
         if near_left and in_y_range:
-            return 'L'
+            return "L"
         if near_right and in_y_range:
-            return 'R'
+            return "R"
 
         # 3. 判定内部移动
         if x < p.x < x + w and y < p.y < y + h:
@@ -347,21 +347,21 @@ class ScreenshotFrame(wx.Frame):
             if self.show_buttons:
                 if self.confirm_rect.Contains(p) or self.cancel_rect.Contains(p):
                     return None
-            return 'MOVE'
+            return "MOVE"
 
         return None
 
     def update_cursor(self, handle):
         """根据控制柄状态设置相应的鼠标指针形状"""
-        if handle in ['TL', 'BR']:
+        if handle in ["TL", "BR"]:
             self.SetCursor(wx.Cursor(wx.CURSOR_SIZENWSE))
-        elif handle in ['TR', 'BL']:
+        elif handle in ["TR", "BL"]:
             self.SetCursor(wx.Cursor(wx.CURSOR_SIZENESW))
-        elif handle in ['T', 'B']:
+        elif handle in ["T", "B"]:
             self.SetCursor(wx.Cursor(wx.CURSOR_SIZENS))
-        elif handle in ['L', 'R']:
+        elif handle in ["L", "R"]:
             self.SetCursor(wx.Cursor(wx.CURSOR_SIZEWE))
-        elif handle == 'MOVE':
+        elif handle == "MOVE":
             self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
         else:
             self.SetCursor(wx.Cursor(wx.CURSOR_CROSS))
@@ -453,14 +453,14 @@ class ScreenshotFrame(wx.Frame):
                     hs_radius = max(3, int(3 * self.scale_factor))
 
                     points = [
-                        (x, y),                  # 左上
-                        (x + sw // 2, y),        # 中上
-                        (x + sw, y),             # 右上
-                        (x, y + sh // 2),        # 左中
-                        (x + sw, y + sh // 2),   # 右中
-                        (x, y + sh),             # 左下
-                        (x + sw // 2, y + sh),   # 中下
-                        (x + sw, y + sh)         # 右下
+                        (x, y),  # 左上
+                        (x + sw // 2, y),  # 中上
+                        (x + sw, y),  # 右上
+                        (x, y + sh // 2),  # 左中
+                        (x + sw, y + sh // 2),  # 右中
+                        (x, y + sh),  # 左下
+                        (x + sw // 2, y + sh),  # 中下
+                        (x + sw, y + sh),  # 右下
                     ]
                     for px, py in points:
                         dc.DrawCircle(px, py, hs_radius)
@@ -529,7 +529,7 @@ class ScreenshotFrame(wx.Frame):
         # that causes a visible dashed-frame flash on simple clicks.
         if self.auto_rect and not self.start_pos and not self.end_pos:
             self.pending_auto_rect = wx.Rect(self.auto_rect)
-            self.drag_mode = 'AUTO_CLICK'
+            self.drag_mode = "AUTO_CLICK"
             self.is_dragging = True
             self.show_buttons = False
             if not self.panel.HasCapture():
@@ -559,7 +559,7 @@ class ScreenshotFrame(wx.Frame):
         # 3. 点击外部，创建新截图区域（临时坐标设为单击位置）
         self.start_pos = pos
         self.end_pos = pos
-        self.drag_mode = 'NEW'
+        self.drag_mode = "NEW"
         self.is_dragging = True
         self.show_buttons = False
 
@@ -598,7 +598,7 @@ class ScreenshotFrame(wx.Frame):
             return
 
         # B. 绘制新选区状态
-        if self.is_dragging and self.drag_mode == 'AUTO_CLICK':
+        if self.is_dragging and self.drag_mode == "AUTO_CLICK":
             if self.click_start_pos:
                 dx = abs(pos.x - self.click_start_pos.x)
                 dy = abs(pos.y - self.click_start_pos.y)
@@ -606,12 +606,12 @@ class ScreenshotFrame(wx.Frame):
                     self.pending_auto_rect = None
                     self.start_pos = self.click_start_pos
                     self.end_pos = pos
-                    self.drag_mode = 'NEW'
+                    self.drag_mode = "NEW"
                     self.show_buttons = False
                     self.panel.Refresh()
             return
 
-        if self.is_dragging and self.drag_mode == 'NEW':
+        if self.is_dragging and self.drag_mode == "NEW":
             self.end_pos = pos
             self.panel.Refresh()
             return
@@ -626,13 +626,17 @@ class ScreenshotFrame(wx.Frame):
 
             r = wx.Rect(self.drag_start_rect)
 
-            if self.drag_mode == 'MOVE':
+            if self.drag_mode == "MOVE":
                 new_x = self.drag_start_rect.x + dx
                 new_y = self.drag_start_rect.y + dy
-                if new_x < 0: new_x = 0
-                if new_y < 0: new_y = 0
-                if new_x + r.width > screen_w: new_x = screen_w - r.width
-                if new_y + r.height > screen_h: new_y = screen_h - r.height
+                if new_x < 0:
+                    new_x = 0
+                if new_y < 0:
+                    new_y = 0
+                if new_x + r.width > screen_w:
+                    new_x = screen_w - r.width
+                if new_y + r.height > screen_h:
+                    new_y = screen_h - r.height
                 r.x = new_x
                 r.y = new_y
             else:
@@ -640,7 +644,7 @@ class ScreenshotFrame(wx.Frame):
                 min_size = max(10, int(10 * self.scale_factor))
 
                 # 水平调整
-                if 'L' in self.drag_mode:
+                if "L" in self.drag_mode:
                     new_x = self.drag_start_rect.x + dx
                     new_w = self.drag_start_rect.width - dx
                     if new_x < 0:
@@ -651,7 +655,7 @@ class ScreenshotFrame(wx.Frame):
                         new_x = self.drag_start_rect.x + self.drag_start_rect.width - min_size
                     r.x = new_x
                     r.width = new_w
-                elif 'R' in self.drag_mode:
+                elif "R" in self.drag_mode:
                     new_w = self.drag_start_rect.width + dx
                     if self.drag_start_rect.x + new_w > screen_w:
                         new_w = screen_w - self.drag_start_rect.x
@@ -660,7 +664,7 @@ class ScreenshotFrame(wx.Frame):
                     r.width = new_w
 
                 # 垂直调整
-                if 'T' in self.drag_mode:
+                if "T" in self.drag_mode:
                     new_y = self.drag_start_rect.y + dy
                     new_h = self.drag_start_rect.height - dy
                     if new_y < 0:
@@ -671,7 +675,7 @@ class ScreenshotFrame(wx.Frame):
                         new_y = self.drag_start_rect.y + self.drag_start_rect.height - min_size
                     r.y = new_y
                     r.height = new_h
-                elif 'B' in self.drag_mode:
+                elif "B" in self.drag_mode:
                     new_h = self.drag_start_rect.height + dy
                     if self.drag_start_rect.y + new_h > screen_h:
                         new_h = screen_h - self.drag_start_rect.y
@@ -693,7 +697,7 @@ class ScreenshotFrame(wx.Frame):
 
         pos = event.GetPosition()
         is_click = False
-        if hasattr(self, 'click_start_pos') and self.click_start_pos:
+        if hasattr(self, "click_start_pos") and self.click_start_pos:
             dx = abs(pos.x - self.click_start_pos.x)
             dy = abs(pos.y - self.click_start_pos.y)
             if dx < 5 and dy < 5:
@@ -716,7 +720,9 @@ class ScreenshotFrame(wx.Frame):
                 self.set_auto_rect(None)
             elif is_click and self.auto_rect:
                 self.start_pos = wx.Point(self.auto_rect.x, self.auto_rect.y)
-                self.end_pos = wx.Point(self.auto_rect.x + self.auto_rect.width, self.auto_rect.y + self.auto_rect.height)
+                self.end_pos = wx.Point(
+                    self.auto_rect.x + self.auto_rect.width, self.auto_rect.y + self.auto_rect.height
+                )
                 self.show_buttons = True
                 self.set_auto_rect(None)
             else:

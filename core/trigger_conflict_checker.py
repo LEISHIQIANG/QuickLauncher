@@ -4,9 +4,13 @@ from .hotkey_conflict_checker import check_conflict, normalize_hotkey
 from .trigger_config import normalize_trigger_config, trigger_config_to_hotkey
 
 
-def check_trigger_conflict(button: str = "", modifiers: list[str] = None,
-                          mode: str = "mouse", keys: list[str] = None,
-                          shortcuts: list | None = None) -> tuple[bool, str]:
+def check_trigger_conflict(
+    button: str = "",
+    modifiers: list[str] = None,
+    mode: str = "mouse",
+    keys: list[str] = None,
+    shortcuts: list | None = None,
+) -> tuple[bool, str]:
     """
     检查触发按键配置是否有冲突
 

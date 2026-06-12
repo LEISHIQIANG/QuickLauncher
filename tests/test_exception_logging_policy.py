@@ -23,7 +23,9 @@ def test_no_exception_pass_handlers_in_production_code():
         for node in ast.walk(tree):
             if not isinstance(node, ast.ExceptHandler):
                 continue
-            body = [stmt for stmt in node.body if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Constant)]
+            body = [
+                stmt for stmt in node.body if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Constant)
+            ]
             if len(body) == 1 and isinstance(body[0], ast.Pass):
                 offenders.append(f"{path}:{body[0].lineno}")
 

@@ -85,7 +85,9 @@ class CustomToolTip(QWidget):
         else:
             color = "#1c1c1e"
 
-        self.label.setStyleSheet(scale_qss(f"""
+        self.label.setStyleSheet(
+            scale_qss(
+                f"""
             QLabel {{
                 color: {color};
                 font-size: 11px;
@@ -93,7 +95,9 @@ class CustomToolTip(QWidget):
                 background: transparent;
                 border: none;
             }}
-        """))
+        """
+            )
+        )
         self.label.setText(text)
 
         # 强制更新布局

@@ -520,15 +520,21 @@ class CommandPanelWindow(ThemedToolWindow):
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
         if hasattr(self, "command_input_group"):
-            self.command_input_group.setStyleSheet(scale_qss(f"""
+            self.command_input_group.setStyleSheet(
+                scale_qss(
+                    f"""
                 QWidget {{
                     min-height: 28px;
                     border: 1px solid {border};
                     border-radius: 8px;
                     background: {bg};
                 }}
-            """))
-        self.command_input.setStyleSheet(scale_qss(f"""
+            """
+                )
+            )
+        self.command_input.setStyleSheet(
+            scale_qss(
+                f"""
             QLineEdit {{
                 min-height: 28px;
                 padding: 0 10px;
@@ -542,9 +548,13 @@ class CommandPanelWindow(ThemedToolWindow):
             QLineEdit::placeholder {{
                 color: {placeholder};
             }}
-        """))
+        """
+            )
+        )
         if hasattr(self, "history_toggle_btn"):
-            self.history_toggle_btn.setStyleSheet(scale_qss(f"""
+            self.history_toggle_btn.setStyleSheet(
+                scale_qss(
+                    f"""
                 QPushButton {{
                     min-height: 28px;
                     padding: 0;
@@ -570,7 +580,9 @@ class CommandPanelWindow(ThemedToolWindow):
                     color: rgba(128, 128, 128, 0.30);
                     background: transparent;
                 }}
-            """))
+            """
+                )
+            )
 
     def _style_status_label(self):
         kind = str(self.status_label.property("status_kind") or "neutral")
@@ -624,7 +636,9 @@ class CommandPanelWindow(ThemedToolWindow):
             header = "rgba(0, 0, 0, 0.04)"
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
-        self.table.setStyleSheet(scale_qss(f"""
+        self.table.setStyleSheet(
+            scale_qss(
+                f"""
             QTableWidget {{
                 background: {bg};
                 border: 1px solid {grid};
@@ -641,7 +655,9 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-right: 1px solid {grid};
                 padding: 5px;
             }}
-        """))
+        """
+            )
+        )
         self.style_scrollbars(self.table)
 
     def _style_progress(self):
@@ -656,7 +672,9 @@ class CommandPanelWindow(ThemedToolWindow):
         label_style = scale_qss(f"font-size: 12px; color: {text}; background: transparent;")
         self.progress_title.setStyleSheet(label_style)
         self.progress_detail.setStyleSheet(label_style)
-        self.progress_bar.setStyleSheet(scale_qss(f"""
+        self.progress_bar.setStyleSheet(
+            scale_qss(
+                f"""
             QProgressBar {{
                 border: none;
                 border-radius: 4px;
@@ -669,7 +687,9 @@ class CommandPanelWindow(ThemedToolWindow):
                 border-radius: 4px;
                 background: {chunk};
             }}
-        """))
+        """
+            )
+        )
 
     def _style_command_suggestions(self):
         return
@@ -1276,8 +1296,11 @@ class CommandPanelWindow(ThemedToolWindow):
                 input_values[input_key] = value
                 continue
             args[name] = value
-        if errors and self._current_shortcut is None and self._current_args_text.strip() and not any(
-            str(value).strip() for value in args.values()
+        if (
+            errors
+            and self._current_shortcut is None
+            and self._current_args_text.strip()
+            and not any(str(value).strip() for value in args.values())
         ):
             self.param_error_label.setVisible(False)
             self._current_input_values = input_values
@@ -1784,7 +1807,9 @@ class CommandPanelWindow(ThemedToolWindow):
             self._show_widget("qr")
             pixmap = QPixmap(str(image_path))
             if not pixmap.isNull():
-                self.qr_label.setPixmap(pixmap.scaled(QSize(sp(220), sp(220)), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.qr_label.setPixmap(
+                    pixmap.scaled(QSize(sp(220), sp(220)), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
                 self.qr_label.setText("")
                 self._rendered_text = message
                 return
@@ -1881,7 +1906,9 @@ class CommandPanelWindow(ThemedToolWindow):
             bg, hover = danger_bg, danger_hover
         else:
             bg, hover = primary_bg, primary_hover
-        button.setStyleSheet(scale_qss(f"""
+        button.setStyleSheet(
+            scale_qss(
+                f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 10px;
@@ -1904,7 +1931,9 @@ class CommandPanelWindow(ThemedToolWindow):
                 background: transparent;
                 border: 1px solid rgba(128, 128, 128, 0.22);
             }}
-        """))
+        """
+            )
+        )
 
     def _show_more_actions(self):
         actions = sorted(

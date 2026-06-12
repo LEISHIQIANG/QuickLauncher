@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Changed
 
+- 鼠标触发升级为 `WH_MOUSE_LL + Raw Input` 双通道：低级钩子负责即时拦截，Raw Input 在钩子被系统静默移除或漏报时继续触发，并自动请求重装低级钩子。
 - 优化快捷键录入时会直接触发按键功能的问题。
 - 优化快捷键录入功能。
 - 优化中键弹窗滚轮翻页的流畅度。

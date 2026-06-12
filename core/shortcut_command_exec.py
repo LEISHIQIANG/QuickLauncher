@@ -382,9 +382,12 @@ class CommandExecutionMixin:
         stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
         stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
         return (
-            stdout, stderr,
-            stdout_truncated, stderr_truncated,
-            stdout_encoding, stderr_encoding,
+            stdout,
+            stderr,
+            stdout_truncated,
+            stderr_truncated,
+            stdout_encoding,
+            stderr_encoding,
             stdout_fallback or stderr_fallback,
         )
 
@@ -2611,6 +2614,7 @@ class CommandExecutionMixin:
         解决方案：使用注册后台任务在短暂延迟后发送命令，
         让当前事件处理完成后再发送。
         """
+
         def do_send():
             try:
                 # 延迟让 UI 事件处理完成

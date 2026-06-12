@@ -59,7 +59,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert "google.protobuf" not in script
     assert 'xcopy "plugins" "dist\\QuickLauncher\\plugins\\" /E /I /Y' not in script
     assert 'mkdir "dist\\QuickLauncher\\plugins"' in script
-    assert 'dist\\QuickLauncher\\.plugins' not in script
+    assert "dist\\QuickLauncher\\.plugins" not in script
     assert 'copy /Y "plugins\\PLUGIN_DEV.md" "dist\\QuickLauncher\\"' in script
     assert "Failed to remove old dist\\QuickLauncher" in script
     assert 'robocopy "dist\\main.dist" "dist\\QuickLauncher" /MIR' in script
@@ -83,7 +83,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert "QuickLauncher_Setup_%APP_VERSION%.sha256" in script
     assert '--portable-zip "dist\\%PORTABLE_NAME%.zip"' in script
     assert "QuickLauncher_Portable_%APP_VERSION%.sha256" not in script
-    assert 'dist\\%PORTABLE_NAME%.sha256' in script
+    assert "dist\\%PORTABLE_NAME%.sha256" in script
     assert script.index("Compress-Archive") < script.index("scripts\\check_release_artifacts.py")
 
 
@@ -232,7 +232,9 @@ def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_pa
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
-    strict_result = check_release_artifacts(root, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1)
+    strict_result = check_release_artifacts(
+        root, dist_dir=dist, installer=installer, version=APP_VERSION, min_exe_bytes=1
+    )
     allowed_result = check_release_artifacts(
         root,
         dist_dir=dist,

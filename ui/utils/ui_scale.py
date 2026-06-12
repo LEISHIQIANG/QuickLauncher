@@ -117,6 +117,7 @@ def font_px(px: int) -> int:
 def sqsize(w: int, h: int):
     """Return a scaled QSize."""
     from qt_compat import QSize
+
     return QSize(sp(w), sp(h))
 
 
@@ -128,18 +129,21 @@ def smargins(left: int, top: int, right: int, bottom: int) -> tuple[int, int, in
 def srect(x: int, y: int, w: int, h: int):
     """Return a scaled QRect."""
     from qt_compat import QRect
+
     return QRect(sp(x), sp(y), sp(w), sp(h))
 
 
 def srectf(x: float, y: float, w: float, h: float):
     """Return a scaled QRectF."""
     from qt_compat import QRectF
+
     return QRectF(spf(x), spf(y), spf(w), spf(h))
 
 
 def spoint(x: int, y: int):
     """Return a scaled QPoint."""
     from qt_compat import QPoint
+
     return QPoint(sp(x), sp(y))
 
 

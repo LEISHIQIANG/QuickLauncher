@@ -39,6 +39,7 @@ env/
 
 # Reasonix AI config
 .reasonix/
+.mimocode/
 
 # IDE
 .vscode/

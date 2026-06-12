@@ -71,21 +71,25 @@ JSON_OUTPUTS = ["output"]
 ANY_OUTPUTS = [ChainPortDefinition("output", label="输出", kind="any", description="任意类型输出。", role="primary")]
 HTTP_OUTPUTS = ["output", "status_code", "headers", "length", "empty"]
 
-DEFAULT_PYTHON_CELL_SOURCE = '''TITLE = "脚本电池"
+DEFAULT_PYTHON_CELL_SOURCE = """TITLE = "脚本电池"
 INPUTS = ["input"]
 OUTPUTS = ["output"]
 
 def process(inputs):
     value = inputs.get("input", "")
     return {"output": value}
-'''
+"""
 
 
 def _port_definition(processor_id: str, value: str | ChainPortDefinition, direction: str) -> ChainPortDefinition:
     if isinstance(value, ChainPortDefinition):
         return value
     port_id = str(value or "").strip()
-    kind = _early_processor_input_kind(processor_id, port_id) if direction == "input" else _early_processor_output_kind(processor_id, port_id)
+    kind = (
+        _early_processor_input_kind(processor_id, port_id)
+        if direction == "input"
+        else _early_processor_output_kind(processor_id, port_id)
+    )
     return ChainPortDefinition(
         id=port_id,
         label=_default_port_label(port_id),
@@ -129,7 +133,11 @@ def _processor_category(processor_id: str) -> str:
         return "图像"
     if processor_id.startswith("http_") or processor_id.startswith("json_") or processor_id == "url_encode":
         return "网络与结构化"
-    if processor_id.startswith(("math_", "series_", "num_", "list_")) or processor_id in {"base_convert", "dec_to_hex", "hex_to_dec"}:
+    if processor_id.startswith(("math_", "series_", "num_", "list_")) or processor_id in {
+        "base_convert",
+        "dec_to_hex",
+        "hex_to_dec",
+    }:
         return "数学与列表"
     if processor_id.startswith(("file_", "folder_", "path_")):
         return "文件与路径"
@@ -151,7 +159,9 @@ def _processor_description(processor_id: str, title: str) -> str:
 
 def _processor_safety(processor_id: str) -> ChainProcessorSafety:
     if processor_id == "python_cell":
-        return ChainProcessorSafety("dangerous", executes_code=True, requires_confirmation=True, capability="chain.script_cell")
+        return ChainProcessorSafety(
+            "dangerous", executes_code=True, requires_confirmation=True, capability="chain.script_cell"
+        )
     if processor_id in {"http_get", "http_post"}:
         return ChainProcessorSafety("caution", network=True, capability=f"chain.processor.{processor_id}")
     if processor_id == "http_download":
@@ -163,9 +173,13 @@ def _processor_safety(processor_id: str) -> ChainProcessorSafety:
             capability="chain.processor.http_download",
         )
     if processor_id in {"img_resize", "img_watermark", "img_crop", "img_rotate", "file_write_text", "folder_create"}:
-        return ChainProcessorSafety("dangerous", writes_files=True, requires_confirmation=True, capability=f"chain.processor.{processor_id}")
+        return ChainProcessorSafety(
+            "dangerous", writes_files=True, requires_confirmation=True, capability=f"chain.processor.{processor_id}"
+        )
     if processor_id in {"img_convert"}:
-        return ChainProcessorSafety("caution", reads_files=True, writes_files=True, capability=f"chain.processor.{processor_id}")
+        return ChainProcessorSafety(
+            "caution", reads_files=True, writes_files=True, capability=f"chain.processor.{processor_id}"
+        )
     if processor_id in {"file_read_text"}:
         return ChainProcessorSafety("caution", reads_files=True, capability=f"chain.processor.{processor_id}")
     if processor_id in {"file_path_input", "folder_path_input", "path_exists", "path_split"}:
@@ -371,9 +385,41 @@ def _early_processor_input_kind(processor_id: str, port: str) -> str:
         return "bool"
     if port in {"value", "input"}:
         return "any"
-    if port in {"width", "height", "x", "y", "start", "end", "step", "index", "count", "ms", "angle", "length", "group", "a", "b", "number", "base", "exp", "from_base", "to_base", "ratio"} and (
+    if port in {
+        "width",
+        "height",
+        "x",
+        "y",
+        "start",
+        "end",
+        "step",
+        "index",
+        "count",
+        "ms",
+        "angle",
+        "length",
+        "group",
+        "a",
+        "b",
+        "number",
+        "base",
+        "exp",
+        "from_base",
+        "to_base",
+        "ratio",
+    } and (
         processor_id.startswith(("math_", "series_", "num_"))
-        or processor_id in {"base_convert", "dec_to_hex", "hex_to_dec", "loop_counter", "loop_repeat", "text_slice", "regex_extract", "list_slice"}
+        or processor_id
+        in {
+            "base_convert",
+            "dec_to_hex",
+            "hex_to_dec",
+            "loop_counter",
+            "loop_repeat",
+            "text_slice",
+            "regex_extract",
+            "list_slice",
+        }
     ):
         return "number"
     if port in {"width", "height", "x", "y", "index", "ms", "angle"}:
@@ -402,7 +448,11 @@ def _early_processor_output_kind(processor_id: str, port: str) -> str:
         return "text"
     if processor_id in {"text_split", "text_lines", "loop_counter", "series_arith", "series_geom"} and port == "output":
         return "list"
-    if processor_id.startswith("list_") and processor_id not in {"list_item", "list_len", "list_contains", "list_join"} and port == "output":
+    if (
+        processor_id.startswith("list_")
+        and processor_id not in {"list_item", "list_len", "list_contains", "list_join"}
+        and port == "output"
+    ):
         return "list"
     if processor_id in {"text_len", "list_len", "hex_to_dec"} and port == "output":
         return "number"
@@ -414,7 +464,18 @@ def _early_processor_output_kind(processor_id: str, port: str) -> str:
         return "number"
     if processor_id.startswith("bool_") or processor_id == "compare_value":
         return "bool" if port == "output" else "text"
-    if processor_id in {"file_path_input", "path_join", "path_split", "file_write_text", "img_resize", "img_convert", "img_watermark", "img_crop", "img_rotate", "http_download"}:
+    if processor_id in {
+        "file_path_input",
+        "path_join",
+        "path_split",
+        "file_write_text",
+        "img_resize",
+        "img_convert",
+        "img_watermark",
+        "img_crop",
+        "img_rotate",
+        "http_download",
+    }:
         return "file" if port in {"output", "path"} else "text"
     if processor_id in {"json_get", "json_parse", "json_set"} and port == "output":
         return "json"
@@ -425,13 +486,17 @@ def _early_processor_output_kind(processor_id: str, port: str) -> str:
 
 PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
     # ── 基本图标 ──
-    "python_cell": ChainProcessorDefinition("python_cell", "脚本电池", ["input"], ["output"], DEFAULT_PYTHON_CELL_SOURCE),
+    "python_cell": ChainProcessorDefinition(
+        "python_cell", "脚本电池", ["input"], ["output"], DEFAULT_PYTHON_CELL_SOURCE
+    ),
     "panel_node": ChainProcessorDefinition("panel_node", "看板", ["input", "text"], TEXT_OUTPUTS),
     "text_input": ChainProcessorDefinition("text_input", "文本输入", ["text"], TEXT_OUTPUTS),
     "assert_not_empty": ChainProcessorDefinition("assert_not_empty", "检查非空", ["text", "message"], TEXT_OUTPUTS),
     "coalesce_value": ChainProcessorDefinition("coalesce_value", "空值兜底", ["value", "fallback"], TEXT_OUTPUTS),
     "type_convert": ChainProcessorDefinition("type_convert", "类型转换", ["value", "type"], TEXT_OUTPUTS),
-    "conditional_branch": ChainProcessorDefinition("conditional_branch", "条件分支", ["value", "compare", "target"], TEXT_OUTPUTS),
+    "conditional_branch": ChainProcessorDefinition(
+        "conditional_branch", "条件分支", ["value", "compare", "target"], TEXT_OUTPUTS
+    ),
     "logger_node": ChainProcessorDefinition("logger_node", "日志输出", ["text", "level"], TEXT_OUTPUTS),
     "sleep_node": ChainProcessorDefinition("sleep_node", "等待", ["input", "ms"], TEXT_OUTPUTS + ["ms"]),
     "bool_value": ChainProcessorDefinition("bool_value", "布尔值", ["value"], BOOL_OUTPUTS),
@@ -440,28 +505,37 @@ PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
     "bool_or": ChainProcessorDefinition("bool_or", "逻辑或", ["a", "b"], BOOL_OUTPUTS),
     "bool_xor": ChainProcessorDefinition("bool_xor", "逻辑异或", ["a", "b"], BOOL_OUTPUTS),
     "compare_value": ChainProcessorDefinition("compare_value", "比较判断", ["a", "operator", "b"], BOOL_OUTPUTS),
-    "if_else": ChainProcessorDefinition("if_else", "条件选择", ["condition", "true_value", "false_value"], TEXT_OUTPUTS),
+    "if_else": ChainProcessorDefinition(
+        "if_else", "条件选择", ["condition", "true_value", "false_value"], TEXT_OUTPUTS
+    ),
     "loop_repeat": ChainProcessorDefinition("loop_repeat", "循环重复", ["input", "count", "delimiter"], TEXT_OUTPUTS),
-    "loop_counter": ChainProcessorDefinition("loop_counter", "计数循环", ["start", "end", "step", "delimiter"], LIST_OUTPUTS),
-
+    "loop_counter": ChainProcessorDefinition(
+        "loop_counter", "计数循环", ["start", "end", "step", "delimiter"], LIST_OUTPUTS
+    ),
     # ── 文本处理 ──
-    "text_template": ChainProcessorDefinition("text_template", "文本模板", ["template", "input", "a", "b", "c"], TEXT_OUTPUTS),
+    "text_template": ChainProcessorDefinition(
+        "text_template", "文本模板", ["template", "input", "a", "b", "c"], TEXT_OUTPUTS
+    ),
     "text_replace": ChainProcessorDefinition("text_replace", "文本替换", ["text", "find", "replace"], TEXT_OUTPUTS),
     "text_slice": ChainProcessorDefinition("text_slice", "文本裁剪", ["text", "start", "end"], TEXT_OUTPUTS),
     "regex_extract": ChainProcessorDefinition("regex_extract", "正则提取", ["text", "pattern", "group"], TEXT_OUTPUTS),
     "text_case": ChainProcessorDefinition("text_case", "大小写转换", ["text", "mode"], TEXT_OUTPUTS),
-    "text_join": ChainProcessorDefinition("text_join", "文本合并", ["delimiter", "a", "b", "c", "d", "e"], TEXT_OUTPUTS),
+    "text_join": ChainProcessorDefinition(
+        "text_join", "文本合并", ["delimiter", "a", "b", "c", "d", "e"], TEXT_OUTPUTS
+    ),
     "text_len": ChainProcessorDefinition("text_len", "文本长度", ["text"], NUMBER_OUTPUTS),
     "text_split": ChainProcessorDefinition("text_split", "文本拆分", ["text", "delimiter"], LIST_OUTPUTS),
     "text_lines": ChainProcessorDefinition("text_lines", "文本分行", ["text"], LIST_OUTPUTS),
-
     # ── 图像处理 ──
     "img_resize": ChainProcessorDefinition("img_resize", "图片缩放", ["filepath", "width", "height"], FILE_OUTPUTS),
     "img_convert": ChainProcessorDefinition("img_convert", "图片转换", ["filepath", "format"], FILE_OUTPUTS),
-    "img_watermark": ChainProcessorDefinition("img_watermark", "添加水印", ["filepath", "text", "position"], FILE_OUTPUTS),
-    "img_crop": ChainProcessorDefinition("img_crop", "图片裁剪", ["filepath", "x", "y", "width", "height"], FILE_OUTPUTS),
+    "img_watermark": ChainProcessorDefinition(
+        "img_watermark", "添加水印", ["filepath", "text", "position"], FILE_OUTPUTS
+    ),
+    "img_crop": ChainProcessorDefinition(
+        "img_crop", "图片裁剪", ["filepath", "x", "y", "width", "height"], FILE_OUTPUTS
+    ),
     "img_rotate": ChainProcessorDefinition("img_rotate", "图片旋转", ["filepath", "angle"], FILE_OUTPUTS),
-
     # ── 网络处理 ──
     "json_get": ChainProcessorDefinition("json_get", "取结构化字段", ["json", "path"], ANY_OUTPUTS),
     "json_set": ChainProcessorDefinition("json_set", "设置结构化字段", ["json", "path", "value"], JSON_OUTPUTS),
@@ -471,7 +545,6 @@ PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
     "json_parse": ChainProcessorDefinition("json_parse", "结构化文本校验格式化", ["json_str"], JSON_OUTPUTS),
     "json_template": ChainProcessorDefinition("json_template", "结构化模板", ["json", "template"], TEXT_OUTPUTS),
     "http_download": ChainProcessorDefinition("http_download", "文件下载", ["url", "save_dir"], FILE_OUTPUTS),
-
     # ── 数学与数据结构 ──
     "num_input": ChainProcessorDefinition("num_input", "数字输入", ["number"], NUMBER_OUTPUTS),
     "math_add": ChainProcessorDefinition("math_add", "加法", ["a", "b"], NUMBER_OUTPUTS),
@@ -490,16 +563,19 @@ PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
     "list_sort": ChainProcessorDefinition("list_sort", "列表排序", ["list", "mode"], LIST_OUTPUTS),
     "list_filter": ChainProcessorDefinition("list_filter", "列表筛选", ["list", "contains", "exclude"], LIST_OUTPUTS),
     "list_contains": ChainProcessorDefinition("list_contains", "列表包含", ["list", "value"], BOOL_OUTPUTS),
-    "list_template": ChainProcessorDefinition("list_template", "列表套模板", ["list", "template", "delimiter"], LIST_OUTPUTS),
+    "list_template": ChainProcessorDefinition(
+        "list_template", "列表套模板", ["list", "template", "delimiter"], LIST_OUTPUTS
+    ),
     "list_concat": ChainProcessorDefinition("list_concat", "列表合并", ["a", "b", "c", "delimiter"], LIST_OUTPUTS),
     "list_slice": ChainProcessorDefinition("list_slice", "列表切片", ["list", "start", "end"], LIST_OUTPUTS),
     "list_zip": ChainProcessorDefinition("list_zip", "列表配对", ["a", "b", "template", "delimiter"], LIST_OUTPUTS),
     "list_flatten": ChainProcessorDefinition("list_flatten", "列表展开", ["list", "mode"], LIST_OUTPUTS),
     "list_join": ChainProcessorDefinition("list_join", "列表转文本", ["list", "delimiter"], TEXT_OUTPUTS),
-    "base_convert": ChainProcessorDefinition("base_convert", "通用进制转换", ["number", "from_base", "to_base"], TEXT_OUTPUTS),
+    "base_convert": ChainProcessorDefinition(
+        "base_convert", "通用进制转换", ["number", "from_base", "to_base"], TEXT_OUTPUTS
+    ),
     "dec_to_hex": ChainProcessorDefinition("dec_to_hex", "十进制转十六进制", ["number"], TEXT_OUTPUTS),
     "hex_to_dec": ChainProcessorDefinition("hex_to_dec", "十六进制转十进制", ["number"], NUMBER_OUTPUTS),
-
     # ── Windows 文件与路径 ──
     "file_path_input": ChainProcessorDefinition("file_path_input", "文件路径", ["path"], FILE_OUTPUTS),
     "folder_path_input": ChainProcessorDefinition("folder_path_input", "文件夹路径", ["path"], FOLDER_OUTPUTS),
@@ -512,8 +588,12 @@ PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
     ),
     "path_exists": ChainProcessorDefinition("path_exists", "路径存在", ["path"], BOOL_OUTPUTS + ["path"]),
     "folder_create": ChainProcessorDefinition("folder_create", "创建文件夹", ["path"], FOLDER_OUTPUTS),
-    "file_read_text": ChainProcessorDefinition("file_read_text", "读取文本文件", ["path", "encoding"], TEXT_OUTPUTS + ["path", "folder", "filename"]),
-    "file_write_text": ChainProcessorDefinition("file_write_text", "写入文本文件", ["path", "text", "encoding", "mode"], FILE_OUTPUTS + ["length"]),
+    "file_read_text": ChainProcessorDefinition(
+        "file_read_text", "读取文本文件", ["path", "encoding"], TEXT_OUTPUTS + ["path", "folder", "filename"]
+    ),
+    "file_write_text": ChainProcessorDefinition(
+        "file_write_text", "写入文本文件", ["path", "text", "encoding", "mode"], FILE_OUTPUTS + ["length"]
+    ),
 }
 
 EXTERNAL_PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {}
@@ -700,7 +780,9 @@ def _external_port_defs(processor_id: str, values: Any, direction: str) -> list[
                 ChainPortDefinition(
                     id=port_id,
                     label=str(value.get("label") or _default_port_label(port_id)),
-                    kind=str(value.get("kind") or value.get("type") or _early_processor_input_kind(processor_id, port_id)),
+                    kind=str(
+                        value.get("kind") or value.get("type") or _early_processor_input_kind(processor_id, port_id)
+                    ),
                     required=bool(value.get("required", False)),
                     multiple=bool(value.get("multiple", False)),
                     default=str(value.get("default") or ""),
@@ -911,7 +993,11 @@ def execute_chain_processor(
             return _ok_bool(_compare_values(_string_values(values)))
         if processor_id == "if_else":
             text_values = _string_values(values)
-            return _ok(text_values.get("true_value", "") if _to_bool(values.get("condition", "")) else text_values.get("false_value", ""))
+            return _ok(
+                text_values.get("true_value", "")
+                if _to_bool(values.get("condition", ""))
+                else text_values.get("false_value", "")
+            )
         if processor_id == "loop_repeat":
             return _ok(_loop_repeat(_string_values(values)))
         if processor_id == "loop_counter":
@@ -1109,6 +1195,7 @@ def _execute_extra_processor(processor_id: str, values: dict[str, Any]) -> Comma
     try:
         from .enhanced_definitions import get_enhanced_definitions as _ged
         from .extended_definitions import get_extended_definitions as _ged2
+
         _all_extra = {}
         _all_extra.update(_ged())
         _all_extra.update(_ged2())
@@ -1172,7 +1259,10 @@ def _execute_external_with_timeout(
     while not done_event.is_set():
         if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
             return CommandResult(
-                success=False, message="已取消", display_type="text", error="cancelled",
+                success=False,
+                message="已取消",
+                display_type="text",
+                error="cancelled",
             )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -1188,7 +1278,10 @@ def _execute_external_with_timeout(
     if "error" in result_holder:
         exc = result_holder["error"]
         return CommandResult(
-            success=False, message=str(exc), display_type="text", error=str(exc),
+            success=False,
+            message=str(exc),
+            display_type="text",
+            error=str(exc),
         )
     return _normalize_external_processor_result(result_holder.get("result"))
 
@@ -1327,6 +1420,7 @@ def _execute_python_cell(source: str, values: dict[str, Any]) -> CommandResult:
 
 # ── 基本图标处理逻辑 ──
 
+
 def _panel_node(values: dict[str, Any]) -> CommandResult:
     has_input = "input" in values
     input_text = _value_to_text(values.get("input", ""))
@@ -1380,21 +1474,21 @@ def _conditional_branch(values: dict[str, str]) -> str:
 
     result = False
     if comp == "==":
-        result = (val == target)
+        result = val == target
     elif comp == "!=":
-        result = (val != target)
+        result = val != target
     elif comp == ">":
         try:
-            result = (float(val) > float(target))
+            result = float(val) > float(target)
         except ValueError:
-            result = (val > target)
+            result = val > target
     elif comp == "<":
         try:
-            result = (float(val) < float(target))
+            result = float(val) < float(target)
         except ValueError:
-            result = (val < target)
+            result = val < target
     elif comp in ("contains", "in"):
-        result = (target in val)
+        result = target in val
 
     if result:
         return val
@@ -1513,6 +1607,7 @@ def _loop_counter(values: dict[str, str]) -> str:
 
 # ── 文本处理逻辑 ──
 
+
 def _text_template(values: dict[str, str]) -> str:
     template = values.get("template", "")
     if not template:
@@ -1596,11 +1691,14 @@ def _text_lines(values: dict[str, str]) -> list[str]:
 
 # ── 图像处理逻辑（安全包装以防 Pillow 未安装） ──
 
+
 def _run_img_op(op_func, values):
     try:
         import PIL  # noqa: F401 - trigger ImportError if PIL not installed
     except ImportError as err:
-        raise ImportError("检测到您的系统未安装 Pillow 库。请在 cmd/terminal 中运行 'pip install Pillow' 以执行本图像处理节点。") from err
+        raise ImportError(
+            "检测到您的系统未安装 Pillow 库。请在 cmd/terminal 中运行 'pip install Pillow' 以执行本图像处理节点。"
+        ) from err
     return op_func(values)
 
 
@@ -1609,6 +1707,7 @@ def _img_resize(values: dict[str, str]) -> str:
     w = int(values.get("width", "300").strip() or "300")
     h = int(values.get("height", "300").strip() or "300")
     from PIL import Image
+
     img = Image.open(filepath)
     resampling = getattr(Image, "Resampling", None)
     filter_type = resampling.LANCZOS if resampling else Image.BICUBIC
@@ -1621,6 +1720,7 @@ def _img_convert(values: dict[str, str]) -> str:
     filepath = values.get("filepath", "").strip()
     fmt = values.get("format", "png").strip().lower()
     from PIL import Image
+
     img = Image.open(filepath)
     root, _ = os.path.splitext(filepath)
     new_path = f"{root}.{fmt}"
@@ -1633,6 +1733,7 @@ def _img_watermark(values: dict[str, str]) -> str:
     text = values.get("text", "QuickLauncher").strip()
     pos = values.get("position", "bottom-right").strip().lower()
     from PIL import Image, ImageDraw, ImageFont
+
     img = Image.open(filepath).convert("RGBA")
     txt = Image.new("RGBA", img.size, (255, 255, 255, 0))
     d = ImageDraw.Draw(txt)
@@ -1662,6 +1763,7 @@ def _img_crop(values: dict[str, str]) -> str:
     w = int(values.get("width", "100").strip() or "100")
     h = int(values.get("height", "100").strip() or "100")
     from PIL import Image
+
     img = Image.open(filepath)
     img = img.crop((x, y, x + w, y + h))
     img.save(filepath)
@@ -1672,6 +1774,7 @@ def _img_rotate(values: dict[str, str]) -> str:
     filepath = values.get("filepath", "").strip()
     angle = float(values.get("angle", "90").strip() or "90")
     from PIL import Image
+
     img = Image.open(filepath)
     img = img.rotate(angle, expand=True)
     img.save(filepath)
@@ -1681,6 +1784,7 @@ def _img_rotate(values: dict[str, str]) -> str:
 # ── 网络处理逻辑 ──
 
 # ── 数学与数据结构处理逻辑 ──
+
 
 def _to_num(value: Any, default: float = 0.0) -> float:
     if not value:
@@ -1792,7 +1896,7 @@ def _math_pow(values: dict[str, str]) -> str:
     base = _to_num(values.get("base", "0"))
     exp = _to_num(values.get("exp", "1"))
     try:
-        res = base ** exp
+        res = base**exp
         return str(int(res) if isinstance(res, float) and res.is_integer() else res)
     except Exception as e:
         raise ValueError(f"幂运算失败: {e}") from e
@@ -1823,7 +1927,7 @@ def _series_geom(values: dict[str, str]) -> str:
     count = int(_to_num(values.get("count", "10")))
     if count < 1:
         count = 1
-    res = [start * (ratio ** i) for i in range(count)]
+    res = [start * (ratio**i) for i in range(count)]
     return "\n".join(str(int(x) if x.is_integer() else x) for x in res)
 
 
@@ -1978,6 +2082,7 @@ def _list_join_values(values: dict[str, str]) -> str:
 
 # ── 进制转换处理逻辑 ──
 
+
 def _base_convert(values: dict[str, str]) -> str:
     num_str = values.get("number", "0").strip()
     from_base = int(_to_num(values.get("from_base", "10"), 10))
@@ -2023,10 +2128,12 @@ def _hex_to_dec(values: dict[str, str]) -> str:
 
 # ── 自动加载增强和扩展电池 ─────────────────────────────────────────────────────
 
+
 def _load_extra_processors() -> None:
     """Merge enhanced and extended processors into the main registry."""
     try:
         from .enhanced_definitions import get_enhanced_definitions as _ged
+
         _enhanced = _ged()
         for k, v in _enhanced.items():
             if k not in PROCESSOR_DEFINITIONS:
@@ -2038,6 +2145,7 @@ def _load_extra_processors() -> None:
 
     try:
         from .extended_definitions import get_extended_definitions as _ged2
+
         _extended = _ged2()
         for k, v in _extended.items():
             if k not in PROCESSOR_DEFINITIONS:
@@ -2046,5 +2154,6 @@ def _load_extra_processors() -> None:
                 PROCESSOR_DEFINITIONS[k] = v
     except Exception:
         logger.warning("加载扩展动作链电池失败", exc_info=True)
+
 
 _load_extra_processors()

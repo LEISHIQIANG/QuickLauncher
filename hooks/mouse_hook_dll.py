@@ -29,7 +29,11 @@ class MouseHook:
         self._callback = callback
         success = self._dll.install_mouse_hook(callback)
         if success:
-            logger.info("鼠标钩子安装成功 (DLL版本)")
+            logger.info(
+                "鼠标输入后端安装成功: low_level=%s raw_input=%s",
+                self._dll.is_mouse_hook_installed(),
+                self._dll.is_raw_input_fallback_active(),
+            )
         return success
 
     def uninstall(self):
@@ -64,19 +68,27 @@ class MouseHook:
             diagnostics = self._dll.get_diagnostics()
             hook_ok = diagnostics.get("loaded", False) and diagnostics.get("compatible", False)
             installed = diagnostics.get("mouse_hook_installed")
+            raw_input_active = diagnostics.get("raw_input_fallback_active")
+            runtime_stats = diagnostics.get("runtime_stats") or {}
         except Exception as e:
             logger.debug("获取 DLL 诊断信息失败: %s", e)
             hook_ok = False
             installed = None
+            raw_input_active = None
+            runtime_stats = {}
         return {
-            "total_events": None,
-            "blocked_events": None,
+            "total_events": runtime_stats.get("low_level_mouse_events"),
+            "raw_input_events": runtime_stats.get("raw_mouse_events"),
+            "raw_fallback_triggers": runtime_stats.get("raw_fallback_triggers"),
             "safe_mode_activations": None,
-            "errors": None,
+            "errors": runtime_stats.get("callback_exceptions"),
+            "callback_queue_dropped": runtime_stats.get("callback_queue_dropped"),
+            "callback_queue_depth": runtime_stats.get("callback_queue_depth"),
             "is_safe_mode": self.is_paused(),
-            "is_blocked": not self._dll._ready() if hasattr(self._dll, "_ready") else False,
+            "is_blocked": not self._dll.is_ready(),
             "hook_installed": installed,
-            "hook_health_ok": hook_ok if installed is None else bool(hook_ok and installed),
+            "raw_input_fallback_active": raw_input_active,
+            "hook_health_ok": hook_ok if installed is None else bool(hook_ok and (installed or raw_input_active)),
         }
 
     def force_release(self):
@@ -91,14 +103,31 @@ class MouseHook:
         """Alt键是否按住"""
         return self._dll.is_alt_held()
 
-    def set_trigger_config(self, normal_button: str, normal_modifiers: list[str],
-                           special_button: str, special_modifiers: list[str]):
+    def set_trigger_config(
+        self, normal_button: str, normal_modifiers: list[str], special_button: str, special_modifiers: list[str]
+    ):
         """设置触发按键配置"""
         self._dll.set_trigger_config(normal_button, normal_modifiers, special_button, special_modifiers)
 
-    def set_trigger_config_ex(self, normal_mode: str, normal_button: str, normal_keys: list[str],
-                              normal_modifiers: list[str], special_mode: str, special_button: str,
-                              special_keys: list[str], special_modifiers: list[str]):
+    def set_trigger_config_ex(
+        self,
+        normal_mode: str,
+        normal_button: str,
+        normal_keys: list[str],
+        normal_modifiers: list[str],
+        special_mode: str,
+        special_button: str,
+        special_keys: list[str],
+        special_modifiers: list[str],
+    ):
         """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
-        self._dll.set_trigger_config_ex(normal_mode, normal_button, normal_keys, normal_modifiers,
-                                        special_mode, special_button, special_keys, special_modifiers)
+        self._dll.set_trigger_config_ex(
+            normal_mode,
+            normal_button,
+            normal_keys,
+            normal_modifiers,
+            special_mode,
+            special_button,
+            special_keys,
+            special_modifiers,
+        )

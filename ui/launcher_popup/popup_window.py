@@ -36,7 +36,7 @@ from ui.launcher_popup.popup_search import PopupSearchMixin
 from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowEffectMixin
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
 from ui.utils.interruptible_animation import is_animation_running, set_precise_timer, stop_named_animations
-from ui.utils.ui_scale import font_px, sp, spf
+from ui.utils.ui_scale import sp, spf
 from ui.utils.window_effect import WindowEffect
 
 logger = logging.getLogger(__name__)
@@ -204,10 +204,7 @@ class LauncherPopup(
         self._folder_sync_refresh_seq = 0
         self._pending_last_page_index = None
         self._last_page_save_timer = None
-        # 使用全局字体
         self._label_font = QFont()
-        self._label_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
-        self._label_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
 
         # ===== 选中文件状态 =====
         self._selected_files = []
@@ -272,10 +269,9 @@ class LauncherPopup(
         self.cols = self.settings.cols
         self.cell_size = sp(self.settings.cell_size)
         self.icon_size = sp(self.settings.icon_size)
-        # Font: use unscaled settings value as input to font_px() to avoid double-scaling
-        self._label_font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.28))))
+        # Font and row height are finalized together in _calculate_fixed_size().
         self.row_spacing = sp(2)
-        self.cell_h = int(self.cell_size * 1.15)
+        self._update_grid_text_metrics()
 
         self.dock_height = self._calculate_dock_height()
         self.window_effect = WindowEffect()
@@ -776,8 +772,7 @@ class LauncherPopup(
         self.cols = self.settings.cols
         self.cell_size = sp(self.settings.cell_size)
         self.icon_size = sp(self.settings.icon_size)
-        self._label_font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.28))))
-        self.cell_h = int(self.cell_size * 1.15)
+        self._update_grid_text_metrics()
         if preserved_search_state is not None:
             self._ensure_search_cursor_visible()
             self._restart_search_cursor_blink()

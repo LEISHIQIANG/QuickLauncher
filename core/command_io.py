@@ -69,7 +69,9 @@ class CommandOutputArtifact:
 def command_params_from_shortcut(shortcut: ShortcutItem | None) -> list[CommandParam]:
     if shortcut is None:
         return []
-    return [CommandParam(**raw) for raw in ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", []))]
+    return [
+        CommandParam(**raw) for raw in ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", []))
+    ]
 
 
 def mask_sensitive_args(args: dict[str, Any], params: list[CommandParam] | None) -> dict[str, str]:
@@ -87,7 +89,9 @@ def remembered_args(args: dict[str, Any], params: list[CommandParam] | None) -> 
     for key, value in dict(args or {}).items():
         name = str(key)
         param = param_map.get(name)
-        if param is not None and (bool(getattr(param, "sensitive", False)) or not bool(getattr(param, "remember", True))):
+        if param is not None and (
+            bool(getattr(param, "sensitive", False)) or not bool(getattr(param, "remember", True))
+        ):
             continue
         remembered[name] = str(value or "")
     return remembered
@@ -145,7 +149,11 @@ def build_invocation_snapshot(
         return existing
 
     context_meta = dict(getattr(request, "context_meta", {}) or {})
-    params = list(getattr(command_def, "params", []) or []) if command_def is not None else command_params_from_shortcut(shortcut)
+    params = (
+        list(getattr(command_def, "params", []) or [])
+        if command_def is not None
+        else command_params_from_shortcut(shortcut)
+    )
     args = {str(k): str(v) for k, v in dict(getattr(request, "args", {}) or {}).items()}
     input_values = _string_dict(context_meta.get("input_values"))
     input_values.update(_string_dict(getattr(request, "input_values", None)))
@@ -417,7 +425,9 @@ def _output_value(value: Any) -> str:
 
 def _stable_json(value: Any, *, indent: int | None = None) -> str:
     try:
-        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=None if indent else (",", ":"), indent=indent)
+        return json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=None if indent else (",", ":"), indent=indent
+        )
     except Exception:
         return str(value)
 

@@ -212,20 +212,24 @@ class TestChainGraph:
         graph.add_node(node2)
         graph.add_node(node3)
 
-        graph.add_connection(ChainConnection(
-            id="conn1",
-            source_node_id="node1",
-            source_port_id="output",
-            target_node_id="node2",
-            target_port_id="input",
-        ))
-        graph.add_connection(ChainConnection(
-            id="conn2",
-            source_node_id="node2",
-            source_port_id="output",
-            target_node_id="node3",
-            target_port_id="input",
-        ))
+        graph.add_connection(
+            ChainConnection(
+                id="conn1",
+                source_node_id="node1",
+                source_port_id="output",
+                target_node_id="node2",
+                target_port_id="input",
+            )
+        )
+        graph.add_connection(
+            ChainConnection(
+                id="conn2",
+                source_node_id="node2",
+                source_port_id="output",
+                target_node_id="node3",
+                target_port_id="input",
+            )
+        )
 
         order = graph.topological_sort()
         assert order == ["node1", "node2", "node3"]
@@ -245,20 +249,24 @@ class TestChainGraph:
         graph.add_node(node2)
 
         # Create cycle: node1 -> node2 -> node1
-        graph.add_connection(ChainConnection(
-            id="conn1",
-            source_node_id="node1",
-            source_port_id="output",
-            target_node_id="node2",
-            target_port_id="input",
-        ))
-        graph.add_connection(ChainConnection(
-            id="conn2",
-            source_node_id="node2",
-            source_port_id="output",
-            target_node_id="node1",
-            target_port_id="input",
-        ))
+        graph.add_connection(
+            ChainConnection(
+                id="conn1",
+                source_node_id="node1",
+                source_port_id="output",
+                target_node_id="node2",
+                target_port_id="input",
+            )
+        )
+        graph.add_connection(
+            ChainConnection(
+                id="conn2",
+                source_node_id="node2",
+                source_port_id="output",
+                target_node_id="node1",
+                target_port_id="input",
+            )
+        )
 
         assert graph.has_cycle()
 
@@ -362,13 +370,15 @@ class TestGraphRuntime:
         graph.add_node(node1)
         graph.add_node(node2)
 
-        graph.add_connection(ChainConnection(
-            id="conn1",
-            source_node_id="node1",
-            source_port_id="output",
-            target_node_id="node2",
-            target_port_id="input",
-        ))
+        graph.add_connection(
+            ChainConnection(
+                id="conn1",
+                source_node_id="node1",
+                source_port_id="output",
+                target_node_id="node2",
+                target_port_id="input",
+            )
+        )
 
         executor = GraphExecutor()
         result = executor.execute(graph)

@@ -154,6 +154,7 @@ def execute_extra_file_processor(processor_id: str, values: dict[str, Any]) -> C
         path = normalize_path_value(text_values.get("path", ""))
         pattern = text_values.get("pattern", "*") or "*"
         import glob
+
         items = glob.glob(os.path.join(path, pattern))
         return _ok_list([os.path.basename(item) for item in items])
 

@@ -315,36 +315,49 @@ def _get_handler(processor_id: str):
     handlers = {
         # Date/Time processors
         "datetime_now": lambda args: _ok(datetime_now(str(args.get("format", "%Y-%m-%d %H:%M:%S")))),
-        "datetime_format": lambda args: _ok(datetime_format(str(args.get("datetime", "")), str(args.get("format", "%Y-%m-%d %H:%M:%S")))),
-        "datetime_parse": lambda args: _ok_json(datetime_parse(str(args.get("datetime", "")), str(args.get("format", "%Y-%m-%d %H:%M:%S")))),
-        "datetime_add": lambda args: _ok(datetime_add(
-            str(args.get("datetime", "")),
-            _to_int(args.get("days", 0)),
-            _to_int(args.get("hours", 0)),
-            _to_int(args.get("minutes", 0)),
-            _to_int(args.get("seconds", 0)),
-            str(args.get("format", "%Y-%m-%d %H:%M:%S")),
-        )),
-        "datetime_diff": lambda args: _ok_number(datetime_diff(
-            str(args.get("datetime1", "")),
-            str(args.get("datetime2", "")),
-            str(args.get("unit", "seconds")),
-        )),
-        "datetime_part": lambda args: _ok_number(datetime_part(
-            str(args.get("datetime", "")),
-            str(args.get("part", "year")),
-            str(args.get("format", "%Y-%m-%d %H:%M:%S")),
-        )),
+        "datetime_format": lambda args: _ok(
+            datetime_format(str(args.get("datetime", "")), str(args.get("format", "%Y-%m-%d %H:%M:%S")))
+        ),
+        "datetime_parse": lambda args: _ok_json(
+            datetime_parse(str(args.get("datetime", "")), str(args.get("format", "%Y-%m-%d %H:%M:%S")))
+        ),
+        "datetime_add": lambda args: _ok(
+            datetime_add(
+                str(args.get("datetime", "")),
+                _to_int(args.get("days", 0)),
+                _to_int(args.get("hours", 0)),
+                _to_int(args.get("minutes", 0)),
+                _to_int(args.get("seconds", 0)),
+                str(args.get("format", "%Y-%m-%d %H:%M:%S")),
+            )
+        ),
+        "datetime_diff": lambda args: _ok_number(
+            datetime_diff(
+                str(args.get("datetime1", "")),
+                str(args.get("datetime2", "")),
+                str(args.get("unit", "seconds")),
+            )
+        ),
+        "datetime_part": lambda args: _ok_number(
+            datetime_part(
+                str(args.get("datetime", "")),
+                str(args.get("part", "year")),
+                str(args.get("format", "%Y-%m-%d %H:%M:%S")),
+            )
+        ),
         "timestamp_now": lambda args: _ok_number(timestamp_now()),
-        "timestamp_to_datetime": lambda args: _ok(timestamp_to_datetime(
-            _to_num(args.get("timestamp", 0)),
-            str(args.get("format", "%Y-%m-%d %H:%M:%S")),
-        )),
-        "datetime_to_timestamp": lambda args: _ok_number(datetime_to_timestamp(
-            str(args.get("datetime", "")),
-            str(args.get("format", "%Y-%m-%d %H:%M:%S")),
-        )),
-
+        "timestamp_to_datetime": lambda args: _ok(
+            timestamp_to_datetime(
+                _to_num(args.get("timestamp", 0)),
+                str(args.get("format", "%Y-%m-%d %H:%M:%S")),
+            )
+        ),
+        "datetime_to_timestamp": lambda args: _ok_number(
+            datetime_to_timestamp(
+                str(args.get("datetime", "")),
+                str(args.get("format", "%Y-%m-%d %H:%M:%S")),
+            )
+        ),
         # Encoding/Decoding processors
         "base64_encode": lambda args: _ok(base64_encode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "base64_decode": lambda args: _ok(base64_decode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
@@ -354,7 +367,6 @@ def _get_handler(processor_id: str):
         "html_decode": lambda args: _ok(html_decode(str(args.get("text", "")))),
         "hex_encode": lambda args: _ok(hex_encode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hex_decode": lambda args: _ok(hex_decode(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
-
         # System info processors
         "sys_platform": lambda args: _ok(sys_platform()),
         "sys_version": lambda args: _ok(sys_version()),
@@ -364,34 +376,41 @@ def _get_handler(processor_id: str):
         "sys_current_dir": lambda args: _ok(sys_current_dir()),
         "sys_home_dir": lambda args: _ok(sys_home_dir()),
         "sys_temp_dir": lambda args: _ok(sys_temp_dir()),
-
         # Network processors
         "net_ip_address": lambda args: _ok(net_ip_address(str(args.get("hostname", "")))),
         "net_ping": lambda args: _ok_bool(net_ping(str(args.get("host", "")), _to_num(args.get("timeout", 3.0)))),
-        "net_port_check": lambda args: _ok_bool(net_port_check(
-            str(args.get("host", "")),
-            _to_int(args.get("port", 80)),
-            _to_num(args.get("timeout", 3.0)),
-        )),
+        "net_port_check": lambda args: _ok_bool(
+            net_port_check(
+                str(args.get("host", "")),
+                _to_int(args.get("port", 80)),
+                _to_num(args.get("timeout", 3.0)),
+            )
+        ),
         "net_url_parse": lambda args: _ok_json(net_url_parse(str(args.get("url", "")))),
-
         # Validation processors
         "validate_email": lambda args: _ok_bool(validate_email(str(args.get("email", "")))),
         "validate_url": lambda args: _ok_bool(validate_url(str(args.get("url", "")))),
         "validate_ip": lambda args: _ok_bool(validate_ip(str(args.get("ip", "")))),
-        "validate_phone": lambda args: _ok_bool(validate_phone(str(args.get("phone", "")), str(args.get("country", "CN")))),
-        "validate_regex": lambda args: _ok_bool(validate_regex(str(args.get("text", "")), str(args.get("pattern", "")))),
-        "validate_range": lambda args: _ok_bool(validate_range(
-            _to_num(args.get("value", 0)),
-            _to_num(args.get("min", 0)),
-            _to_num(args.get("max", 100)),
-        )),
-        "validate_length": lambda args: _ok_bool(validate_length(
-            str(args.get("text", "")),
-            _to_int(args.get("min", 0)),
-            _to_int(args.get("max", 0)),
-        )),
-
+        "validate_phone": lambda args: _ok_bool(
+            validate_phone(str(args.get("phone", "")), str(args.get("country", "CN")))
+        ),
+        "validate_regex": lambda args: _ok_bool(
+            validate_regex(str(args.get("text", "")), str(args.get("pattern", "")))
+        ),
+        "validate_range": lambda args: _ok_bool(
+            validate_range(
+                _to_num(args.get("value", 0)),
+                _to_num(args.get("min", 0)),
+                _to_num(args.get("max", 100)),
+            )
+        ),
+        "validate_length": lambda args: _ok_bool(
+            validate_length(
+                str(args.get("text", "")),
+                _to_int(args.get("min", 0)),
+                _to_int(args.get("max", 0)),
+            )
+        ),
         # Hash processors
         "hash_md5": lambda args: _ok(hash_md5(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hash_sha1": lambda args: _ok(hash_sha1(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
@@ -399,99 +418,132 @@ def _get_handler(processor_id: str):
         "hash_sha512": lambda args: _ok(hash_sha512(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hash_crc32": lambda args: _ok(hash_crc32(str(args.get("text", "")), str(args.get("encoding", "utf-8")))),
         "hash_uuid": lambda args: _ok(hash_uuid()),
-
         # Color processors
         "color_hex_to_rgb": lambda args: _ok(str(color_hex_to_rgb(str(args.get("hex", "#000000"))))),
-        "color_rgb_to_hex": lambda args: _ok(color_rgb_to_hex(
-            _to_int(args.get("r", 0)),
-            _to_int(args.get("g", 0)),
-            _to_int(args.get("b", 0)),
-        )),
+        "color_rgb_to_hex": lambda args: _ok(
+            color_rgb_to_hex(
+                _to_int(args.get("r", 0)),
+                _to_int(args.get("g", 0)),
+                _to_int(args.get("b", 0)),
+            )
+        ),
         "color_brightness": lambda args: _ok_number(color_brightness(str(args.get("hex", "#000000")))),
         "color_complementary": lambda args: _ok(color_complementary(str(args.get("hex", "#000000")))),
         "color_random": lambda args: _ok(color_random()),
-
         # Set operations
-        "set_union": lambda args: _ok_list(set_union(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))),
-        "set_intersection": lambda args: _ok_list(set_intersection(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))),
-        "set_difference": lambda args: _ok_list(set_difference(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))),
+        "set_union": lambda args: _ok_list(
+            set_union(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))
+        ),
+        "set_intersection": lambda args: _ok_list(
+            set_intersection(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))
+        ),
+        "set_difference": lambda args: _ok_list(
+            set_difference(_parse_list(args.get("set1", "")), _parse_list(args.get("set2", "")))
+        ),
         "set_unique": lambda args: _ok_list(set_unique(_parse_list(args.get("list", "")))),
-
         # Dictionary operations
         "dict_keys": lambda args: _ok_list(dict_keys(_parse_json(args.get("json", {})))),
         "dict_values": lambda args: _ok_list(dict_values(_parse_json(args.get("json", {})))),
-        "dict_merge": lambda args: _ok_json(dict_merge(
-            _parse_json(args.get("a", {})),
-            _parse_json(args.get("b", {})),
-            _parse_json(args.get("c", {})),
-        )),
-        "dict_get": lambda args: _ok(str(dict_get(
-            _parse_json(args.get("json", {})),
-            str(args.get("key", "")),
-            args.get("default"),
-        ))),
-        "dict_set": lambda args: _ok_json(dict_set(
-            _parse_json(args.get("json", {})),
-            str(args.get("key", "")),
-            args.get("value"),
-        )),
-        "dict_filter": lambda args: _ok_json(dict_filter(
-            _parse_json(args.get("json", {})),
-            _parse_list(args.get("keys", "")),
-        )),
-
+        "dict_merge": lambda args: _ok_json(
+            dict_merge(
+                _parse_json(args.get("a", {})),
+                _parse_json(args.get("b", {})),
+                _parse_json(args.get("c", {})),
+            )
+        ),
+        "dict_get": lambda args: _ok(
+            str(
+                dict_get(
+                    _parse_json(args.get("json", {})),
+                    str(args.get("key", "")),
+                    args.get("default"),
+                )
+            )
+        ),
+        "dict_set": lambda args: _ok_json(
+            dict_set(
+                _parse_json(args.get("json", {})),
+                str(args.get("key", "")),
+                args.get("value"),
+            )
+        ),
+        "dict_filter": lambda args: _ok_json(
+            dict_filter(
+                _parse_json(args.get("json", {})),
+                _parse_list(args.get("keys", "")),
+            )
+        ),
         # String formatting
         "str_format": lambda args: _ok(str_format(str(args.get("template", "")), **_parse_json(args.get("args", {})))),
-        "str_pad_left": lambda args: _ok(str_pad_left(
-            str(args.get("text", "")),
-            _to_int(args.get("width", 0)),
-            str(args.get("fillchar", " ")),
-        )),
-        "str_pad_right": lambda args: _ok(str_pad_right(
-            str(args.get("text", "")),
-            _to_int(args.get("width", 0)),
-            str(args.get("fillchar", " ")),
-        )),
-        "str_truncate": lambda args: _ok(str_truncate(
-            str(args.get("text", "")),
-            _to_int(args.get("max_length", 100)),
-            str(args.get("suffix", "...")),
-        )),
-        "str_repeat": lambda args: _ok(str_repeat(
-            str(args.get("text", "")),
-            _to_int(args.get("count", 1)),
-        )),
-
+        "str_pad_left": lambda args: _ok(
+            str_pad_left(
+                str(args.get("text", "")),
+                _to_int(args.get("width", 0)),
+                str(args.get("fillchar", " ")),
+            )
+        ),
+        "str_pad_right": lambda args: _ok(
+            str_pad_right(
+                str(args.get("text", "")),
+                _to_int(args.get("width", 0)),
+                str(args.get("fillchar", " ")),
+            )
+        ),
+        "str_truncate": lambda args: _ok(
+            str_truncate(
+                str(args.get("text", "")),
+                _to_int(args.get("max_length", 100)),
+                str(args.get("suffix", "...")),
+            )
+        ),
+        "str_repeat": lambda args: _ok(
+            str_repeat(
+                str(args.get("text", "")),
+                _to_int(args.get("count", 1)),
+            )
+        ),
         # Compression processors
-        "compress_gzip": lambda args: _ok(base64.b64encode(compress_gzip(
-            str(args.get("text", "")),
-            str(args.get("encoding", "utf-8")),
-        )).decode("ascii")),
-        "decompress_gzip": lambda args: _ok(decompress_gzip(
-            base64.b64decode(str(args.get("text", ""))),
-            str(args.get("encoding", "utf-8")),
-        )),
-        "compress_zlib": lambda args: _ok(base64.b64encode(compress_zlib(
-            str(args.get("text", "")),
-            str(args.get("encoding", "utf-8")),
-        )).decode("ascii")),
-        "decompress_zlib": lambda args: _ok(decompress_zlib(
-            base64.b64decode(str(args.get("text", ""))),
-            str(args.get("encoding", "utf-8")),
-        )),
-
+        "compress_gzip": lambda args: _ok(
+            base64.b64encode(
+                compress_gzip(
+                    str(args.get("text", "")),
+                    str(args.get("encoding", "utf-8")),
+                )
+            ).decode("ascii")
+        ),
+        "decompress_gzip": lambda args: _ok(
+            decompress_gzip(
+                base64.b64decode(str(args.get("text", ""))),
+                str(args.get("encoding", "utf-8")),
+            )
+        ),
+        "compress_zlib": lambda args: _ok(
+            base64.b64encode(
+                compress_zlib(
+                    str(args.get("text", "")),
+                    str(args.get("encoding", "utf-8")),
+                )
+            ).decode("ascii")
+        ),
+        "decompress_zlib": lambda args: _ok(
+            decompress_zlib(
+                base64.b64decode(str(args.get("text", ""))),
+                str(args.get("encoding", "utf-8")),
+            )
+        ),
         # Environment processors
         "env_get": lambda args: _ok(env_get(str(args.get("key", "")), str(args.get("default", "")))),
         "env_set": lambda args: _ok(env_set(str(args.get("key", "")), str(args.get("value", "")))),
         "env_list": lambda args: _ok_json(env_list()),
         "env_expand": lambda args: _ok(env_expand(str(args.get("text", "")))),
-
         # Math extended processors
         "math_sin": lambda args: _ok_number(math_sin(_to_num(args.get("angle", 0)))),
         "math_cos": lambda args: _ok_number(math_cos(_to_num(args.get("angle", 0)))),
         "math_tan": lambda args: _ok_number(math_tan(_to_num(args.get("angle", 0)))),
         "math_sqrt": lambda args: _ok_number(math_sqrt(_to_num(args.get("number", 0)))),
-        "math_log": lambda args: _ok_number(math_log(_to_num(args.get("number", 1)), _to_num(args.get("base", 2.718281828459045)))),
+        "math_log": lambda args: _ok_number(
+            math_log(_to_num(args.get("number", 1)), _to_num(args.get("base", 2.718281828459045)))
+        ),
         "math_factorial": lambda args: _ok_number(math_factorial(_to_int(args.get("number", 0)))),
         "math_gcd": lambda args: _ok_number(math_gcd(_to_int(args.get("a", 0)), _to_int(args.get("b", 0)))),
         "math_lcm": lambda args: _ok_number(math_lcm(_to_int(args.get("a", 0)), _to_int(args.get("b", 0)))),

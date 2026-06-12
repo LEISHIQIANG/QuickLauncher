@@ -129,29 +129,38 @@ class UrlDialog(BaseDialog):
 
         # 预览框样式
         if theme == "dark":
-            self.icon_preview.setStyleSheet(scale_qss("""
+            self.icon_preview.setStyleSheet(
+                scale_qss(
+                    """
                 QLabel {
                     background-color: rgba(255, 255, 255, 0.1);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 10px;
                 }
-            """))
+            """
+                )
+            )
         else:
             # 预览框样式
-            self.icon_preview.setStyleSheet(scale_qss("""
+            self.icon_preview.setStyleSheet(
+                scale_qss(
+                    """
                 QLabel {
                     background-color: rgba(0, 0, 0, 0.05);
                     border: 1px solid rgba(0, 0, 0, 0.05);
                     border-radius: 10px;
                 }
-            """))
+            """
+                )
+            )
 
         # 使用与主配置窗口一致的 Glassmorphism 样式
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = base_style + scale_qss(f"""
+        custom_style = base_style + scale_qss(
+            f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -169,7 +178,8 @@ class UrlDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """)
+        """
+        )
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -578,8 +588,7 @@ class UrlDialog(BaseDialog):
         # 应用反转
         _current_theme = getattr(self, "theme", "dark")
         _need_invert = (
-            self.invert_light_cb.isChecked() if _current_theme == "light"
-            else self.invert_dark_cb.isChecked()
+            self.invert_light_cb.isChecked() if _current_theme == "light" else self.invert_dark_cb.isChecked()
         )
         if _need_invert and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor

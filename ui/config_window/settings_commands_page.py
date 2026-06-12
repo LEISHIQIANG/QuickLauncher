@@ -48,7 +48,9 @@ class DragDropListWidget(QListWidget):
         self._initial_drag_row = -1
 
         # Transparent background and zero focus outlines
-        self.setStyleSheet(scale_qss("""
+        self.setStyleSheet(
+            scale_qss(
+                """
             QListWidget {
                 background: transparent;
                 border: none;
@@ -67,7 +69,9 @@ class DragDropListWidget(QListWidget):
             QListWidget::item:selected {
                 background: transparent;
             }
-        """))
+        """
+            )
+        )
 
     def startDrag(self, supported_actions):
         item = self.currentItem()
@@ -373,12 +377,16 @@ class SettingsCommandsPageMixin:
         fav_desc.setObjectName("fav_desc")
         fav_desc.setWordWrap(True)
         fav_desc.setMinimumWidth(0)
-        fav_desc.setStyleSheet(scale_qss(f"""
+        fav_desc.setStyleSheet(
+            scale_qss(
+                f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """))
+        """
+            )
+        )
         layout2.addWidget(fav_desc)
 
         # Drag & Drop list widget for favorite commands
@@ -394,12 +402,16 @@ class SettingsCommandsPageMixin:
 
         # Placeholder label when no favorites are present
         self.fav_placeholder_lbl = QLabel(tr("暂未收藏任何命令"))
-        self.fav_placeholder_lbl.setStyleSheet(scale_qss(f"""
+        self.fav_placeholder_lbl.setStyleSheet(
+            scale_qss(
+                f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             font-style: italic;
             padding: 4px;
-        """))
+        """
+            )
+        )
         layout2.addWidget(self.fav_placeholder_lbl)
 
         # ── Disabled builtin commands ──
@@ -409,12 +421,16 @@ class SettingsCommandsPageMixin:
         disable_desc.setObjectName("disable_desc")
         disable_desc.setWordWrap(True)
         disable_desc.setMinimumWidth(0)
-        disable_desc.setStyleSheet(scale_qss(f"""
+        disable_desc.setStyleSheet(
+            scale_qss(
+                f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """))
+        """
+            )
+        )
         layout3.addWidget(disable_desc)
 
         # Search filter for built-in commands
@@ -499,9 +515,11 @@ class SettingsCommandsPageMixin:
 
                     item_widget = QWidget()
                     item_widget.setObjectName("FavItem")
-                    item_widget.setStyleSheet(scale_qss(
-                        f"QWidget#FavItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
-                    ))
+                    item_widget.setStyleSheet(
+                        scale_qss(
+                            f"QWidget#FavItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                        )
+                    )
 
                     item_layout = QGridLayout(item_widget)
                     item_layout.setContentsMargins(sp(10), sp(6), sp(10), sp(6))
@@ -729,12 +747,16 @@ class SettingsCommandsPageMixin:
                 is_fav = cmd.id in favs
 
                 entry["widget"].setStyleSheet(
-                    scale_qss(f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}")
+                    scale_qss(
+                        f"QWidget#BuiltinItem {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                    )
                 )
                 entry["title_lbl"].setStyleSheet(scale_qss(f"font-weight: 400; color: {text_color}; font-size: 12px;"))
                 entry["key_lbl"].setStyleSheet(scale_qss("color: rgba(10,132,255,0.85); font-size: 11px;"))
                 if entry["desc_lbl"]:
-                    entry["desc_lbl"].setStyleSheet(scale_qss(f"color: {sub_text_color}; font-size: 11px; margin-left: 14px;"))
+                    entry["desc_lbl"].setStyleSheet(
+                        scale_qss(f"color: {sub_text_color}; font-size: 11px; margin-left: 14px;")
+                    )
 
                 dot_color = "#f44336" if is_disabled else "#4caf50"
                 entry["dot_lbl"].setStyleSheet(scale_qss(f"color: {dot_color}; font-size: 11px; margin-right: 2px;"))

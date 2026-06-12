@@ -63,6 +63,11 @@ def test_hotkey_manager_normalizes_side_modifiers_and_fkeys():
     assert manager._normalize_hotkey("LCtrl + RAlt + F1") == "<ctrl_l>+<alt_r>+<f1>"
     assert manager._normalize_hotkey("Win + Space") == "<cmd>+<space>"
     assert manager._normalize_hotkey("Ctrl + Shift + P") == "<ctrl>+<shift>+p"
+    assert manager._normalize_hotkey("Control+Escape") == "<ctrl>+<esc>"
+    assert manager._normalize_hotkey("Super+PgDn") == "<cmd>+<pagedown>"
+    assert manager._normalize_hotkey("<ALT>+Return") == "<alt>+<enter>"
+    assert manager._normalize_hotkey("Ctrl+Alt") == ""
+    assert manager._normalize_hotkey("++") == ""
 
 
 def test_side_specific_hotkey_rejected():

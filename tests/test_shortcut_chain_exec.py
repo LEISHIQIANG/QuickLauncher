@@ -393,7 +393,9 @@ def test_chain_missing_binding_fails_step(monkeypatch):
 
 def test_chain_rejects_future_step_binding(monkeypatch):
     first = ShortcutItem(id="first", name="First", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
-    second = ShortcutItem(id="second", name="Second", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    second = ShortcutItem(
+        id="second", name="Second", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True
+    )
     chain = ShortcutItem(
         type=ShortcutType.CHAIN,
         chain_steps=[
@@ -416,7 +418,9 @@ def test_chain_rejects_future_step_binding(monkeypatch):
 
 
 def test_chain_processor_node_passes_output_to_later_step(monkeypatch):
-    target = ShortcutItem(id="target", name="Target", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    target = ShortcutItem(
+        id="target", name="Target", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True
+    )
     chain = ShortcutItem(
         type=ShortcutType.CHAIN,
         chain_steps=[
@@ -445,7 +449,9 @@ def test_chain_processor_node_passes_output_to_later_step(monkeypatch):
 
 
 def test_chain_runtime_records_node_snapshots(monkeypatch):
-    target = ShortcutItem(id="target", name="Target", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True)
+    target = ShortcutItem(
+        id="target", name="Target", type=ShortcutType.COMMAND, command_type="cmd", capture_output=True
+    )
     chain = ShortcutItem(
         type=ShortcutType.CHAIN,
         chain_steps=[
@@ -618,7 +624,7 @@ def test_python_processor_custom_output_and_multi_input_bindings():
                 "input_binding": ["1.outputs.foo", "2.outputs.bar"],
                 "source": (
                     'INPUTS=["input"]\nOUTPUTS=["joined"]\n'
-                    'def process(inputs):\n'
+                    "def process(inputs):\n"
                     '    return {"joined": ",".join(inputs["input"])}\n'
                 ),
             },

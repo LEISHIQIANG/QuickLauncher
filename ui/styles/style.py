@@ -807,7 +807,11 @@ class StyleSheet:
                     background-color: rgba(190, 190, 197, 0.12);
                     color: rgba(235, 235, 245, 0.3);
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+            """.replace(
+                "{selection_bg}", selection_bg
+            ).replace(
+                "{selection_text}", selection_text
+            )
         else:
             return """
                 QLineEdit, QTextEdit, QPlainTextEdit {
@@ -829,7 +833,11 @@ class StyleSheet:
                     background-color: #f5f5f7;
                     color: rgba(60, 60, 67, 0.3);
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+            """.replace(
+                "{selection_bg}", selection_bg
+            ).replace(
+                "{selection_text}", selection_text
+            )
 
     @staticmethod
     def get_scrollbar_style(theme: str) -> str:
@@ -948,7 +956,9 @@ class StyleSheet:
                     color: {selection_text};
                     border: 1px solid rgba(10, 132, 255, 0.45);
                 }
-            """.replace("{selection_bg}", selection_bg)
+            """.replace(
+                    "{selection_bg}", selection_bg
+                )
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1008,7 +1018,9 @@ class StyleSheet:
                     color: {selection_text};
                     border: 1px solid rgba(0, 122, 255, 0.25);
                 }
-            """.replace("{selection_bg}", selection_bg)
+            """.replace(
+                    "{selection_bg}", selection_bg
+                )
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1231,7 +1243,8 @@ class Glassmorphism:
             btn_hover = "rgba(255,255,255,0.95)"
             text_color = "#1D1D1F"
 
-        return scale_qss(f"""
+        return scale_qss(
+            f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 4px 13px;
@@ -1243,14 +1256,16 @@ class Glassmorphism:
             QPushButton:hover {{ background-color: {btn_hover}; }}
             QPushButton:pressed {{ background-color: {btn_bg}; opacity: 0.8; }}
             QPushButton:disabled {{ background-color: rgba(255,255,255,0.3); color: #C7C7CC; }}
-        """)
+        """
+        )
 
     @staticmethod
     def get_action_button_style(theme: str, is_compact: bool = False, is_delete: bool = False) -> str:
         """获取设置/配置窗口按钮的统一精细样式 (保证视觉 100% 一致)"""
         if is_delete:
             if theme == "dark":
-                return scale_qss("""
+                return scale_qss(
+                    """
                     QPushButton {
                         font-size: 10px;
                         padding: 2px 4px;
@@ -1272,9 +1287,11 @@ class Glassmorphism:
                         background: rgba(128,128,128,0.08);
                         border: 1px solid rgba(128,128,128,0.15);
                     }
-                """)
+                """
+                )
             else:
-                return scale_qss("""
+                return scale_qss(
+                    """
                     QPushButton {
                         font-size: 10px;
                         padding: 2px 4px;
@@ -1296,7 +1313,8 @@ class Glassmorphism:
                         background: rgba(128,128,128,0.08);
                         border: 1px solid rgba(128,128,128,0.15);
                     }
-                """)
+                """
+                )
 
         if theme == "dark":
             btn_bg = "rgba(255,255,255,0.18)"
@@ -1312,7 +1330,8 @@ class Glassmorphism:
             text_color = "rgba(28,28,30,0.75)"
 
         if is_compact:
-            return scale_qss(f"""
+            return scale_qss(
+                f"""
                 QPushButton {{
                     font-size: 10px;
                     padding: 2px 4px;
@@ -1338,9 +1357,11 @@ class Glassmorphism:
                     color: white;
                     border: 1px solid rgba(10,132,255,0.9);
                 }}
-            """)
+            """
+            )
         else:
-            return scale_qss(f"""
+            return scale_qss(
+                f"""
                 QPushButton {{
                     font-size: 11px;
                     padding: 5px 12px;
@@ -1365,7 +1386,8 @@ class Glassmorphism:
                     color: white;
                     border: 1px solid rgba(10,132,255,0.9);
                 }}
-            """)
+            """
+            )
 
     @staticmethod
     def get_neumorphism_input_style(theme: str) -> str:
@@ -1431,7 +1453,11 @@ class Glassmorphism:
                     background: transparent;
                     border: none;
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+            """.replace(
+                "{selection_bg}", selection_bg
+            ).replace(
+                "{selection_text}", selection_text
+            )
         else:
             return """
                 /* Text Inputs */
@@ -1491,7 +1517,11 @@ class Glassmorphism:
                     background: transparent;
                     border: none;
                 }
-            """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+            """.replace(
+                "{selection_bg}", selection_bg
+            ).replace(
+                "{selection_text}", selection_text
+            )
 
     @staticmethod
     def get_neumorphism_groupbox_style(theme: str) -> str:
@@ -1571,7 +1601,9 @@ class Glassmorphism:
                 QListWidget::item:hover:!selected {
                     background: {selection_hover_bg};
                 }
-            """.replace("{selection_bg}", selection_bg)
+            """.replace(
+                    "{selection_bg}", selection_bg
+                )
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1599,7 +1631,9 @@ class Glassmorphism:
                 QListWidget::item:hover:!selected {
                     background: {selection_hover_bg};
                 }
-            """.replace("{selection_bg}", selection_bg)
+            """.replace(
+                    "{selection_bg}", selection_bg
+                )
                 .replace("{selection_hover_bg}", selection_hover_bg)
                 .replace("{selection_text}", selection_text)
             )
@@ -1773,7 +1807,11 @@ def get_menu_stylesheet(theme: str) -> str:
                 background-color: rgba(255, 255, 255, 16);
                 margin: 6px 10px;
             }
-        """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+        """.replace(
+            "{selection_bg}", selection_bg
+        ).replace(
+            "{selection_text}", selection_text
+        )
     else:
         css = """
             QMenu {
@@ -1801,7 +1839,11 @@ def get_menu_stylesheet(theme: str) -> str:
                 background-color: rgba(60, 60, 67, 18);
                 margin: 6px 10px;
             }
-        """.replace("{selection_bg}", selection_bg).replace("{selection_text}", selection_text)
+        """.replace(
+            "{selection_bg}", selection_bg
+        ).replace(
+            "{selection_text}", selection_text
+        )
     return scale_qss(css)
 
 

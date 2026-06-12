@@ -397,8 +397,7 @@ def test_action_chain_can_be_registered_from_plugin_manifest(tmp_path):
         encoding="utf-8",
     )
     (plugin_dir / "main.py").write_text(
-        "def register(api):\n"
-        "    assert api.register_module('quicklauncher.action_chain', 'module.json')\n",
+        "def register(api):\n" "    assert api.register_module('quicklauncher.action_chain', 'module.json')\n",
         encoding="utf-8",
     )
 

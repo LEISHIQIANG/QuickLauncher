@@ -169,14 +169,18 @@ def _collect_environment_diagnostics() -> list[DiagnosticItem]:
             "ok" if py_info.get("usable") else "warn",
             py_info.get("summary", "未找到 py 启动器"),
             json.dumps(py_info, ensure_ascii=False),
-            "请安装 Python Launcher for Windows，或在 Python 安装器中勾选 py launcher。"
-            if not py_info.get("usable")
-            else "",
+            (
+                "请安装 Python Launcher for Windows，或在 Python 安装器中勾选 py launcher。"
+                if not py_info.get("usable")
+                else ""
+            ),
         )
     )
 
     bash_path = _find_git_bash()
-    bash_info = _probe_command_runtime([bash_path or "bash", "--version"], "bash") if bash_path else _missing_runtime("bash")
+    bash_info = (
+        _probe_command_runtime([bash_path or "bash", "--version"], "bash") if bash_path else _missing_runtime("bash")
+    )
     if bash_path:
         bash_info["path"] = bash_path
     items.append(

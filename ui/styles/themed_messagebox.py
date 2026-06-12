@@ -340,7 +340,12 @@ class ThemedMessageBox(QDialog):
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             # 磨砂玻璃模式：与RoundedWindow完全一致
@@ -612,7 +617,12 @@ class ThemedInputDialog(QDialog):
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             # 磨砂玻璃模式：与RoundedWindow完全一致

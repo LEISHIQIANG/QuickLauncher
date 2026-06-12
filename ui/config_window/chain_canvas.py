@@ -135,6 +135,7 @@ def compile_canvas_to_steps(canvas: dict) -> list[dict]:
         steps.append(step)
     return ShortcutItem._normalize_chain_steps(steps)
 
+
 def _append_binding(existing, binding: str):
     if not existing:
         return binding
@@ -399,27 +400,27 @@ class NodeItem(QGraphicsRectItem):
         # 完美的 Grasshopper 电池配色方案
         if status == "failed":
             # 运行出错为红色
-            bg_color = QColor("#FFCDD2")      # 淡粉红
+            bg_color = QColor("#FFCDD2")  # 淡粉红
             border_color = QColor("#D32F2F")  # 深红
-            text_color = QColor("#311B92")    # 深紫/黑
+            text_color = QColor("#311B92")  # 深紫/黑
             port_text_color = QColor("#5C3A21")
         elif status == "skipped":
             # 运行警告为淡黄色
-            bg_color = QColor("#FFF59D")      # 淡黄色
+            bg_color = QColor("#FFF59D")  # 淡黄色
             border_color = QColor("#FBC02D")  # 金黄
-            text_color = QColor("#3E2723")    # 暗棕色
+            text_color = QColor("#3E2723")  # 暗棕色
             port_text_color = QColor("#5D4037")
         elif is_selected:
             # 点击选中为更加清爽亮洁的亮白色，杜绝深灰色调带来的暗沉感
-            bg_color = QColor("#FFFFFF")      # 亮白背景，轻盈明快
+            bg_color = QColor("#FFFFFF")  # 亮白背景，轻盈明快
             border_color = QColor("#007AFF")  # 高级品牌焦点蓝，极其醒目专业
-            text_color = QColor("#1C1C1E")    # 黑色文字
+            text_color = QColor("#1C1C1E")  # 黑色文字
             port_text_color = QColor("#3A3A3C")
         else:
             # 默认灰白色
-            bg_color = QColor("#ECEFF1")      # 灰白色
+            bg_color = QColor("#ECEFF1")  # 灰白色
             border_color = QColor("#90A4AE")  # 浅灰蓝边
-            text_color = QColor("#212121")    # 深灰字
+            text_color = QColor("#212121")  # 深灰字
             port_text_color = QColor("#607D8B")
 
         self.setBrush(QBrush(bg_color))
@@ -540,13 +541,13 @@ class ConnectionItem(QGraphicsPathItem):
         # Define colors (Grasshopper aesthetic)
         if is_preview:
             color_start = QColor("#FFB74D")  # Cozy orange
-            color_end = QColor("#FF8A65")    # Soft coral
+            color_end = QColor("#FF8A65")  # Soft coral
         elif is_highlighted:
             color_start = QColor("#AEEA00")  # Electric neon green
-            color_end = QColor("#00E676")    # Bright flow green
+            color_end = QColor("#00E676")  # Bright flow green
         else:
             color_start = QColor("#64B5F6")  # Premium output blue
-            color_end = QColor("#4DB6AC")    # Premium input teal
+            color_end = QColor("#4DB6AC")  # Premium input teal
 
         # Pass 1: Drop Shadow (Soft, floating 3D depth, without harsh outlines)
         shadow_path = path.translated(0, 1.2)
@@ -742,8 +743,11 @@ class ChainCanvasScene(QGraphicsScene):
                     if self.views():
                         try:
                             from ui.toast_notification import ToastNotification
+
                             toast = ToastNotification(self.views()[0])
-                            toast.show_toast(f"连接失败: {str(e)}", theme="error", duration_ms=3000, target_widget=self.views()[0])
+                            toast.show_toast(
+                                f"连接失败: {str(e)}", theme="error", duration_ms=3000, target_widget=self.views()[0]
+                            )
                         except Exception as exc:
                             logger.debug("显示连线失败提示失败: %s", exc, exc_info=True)
 
@@ -774,7 +778,9 @@ class ChainCanvasScene(QGraphicsScene):
                 panel_viewport = current
                 break
             current = current.parentItem()
-        if panel_viewport is not None and panel_viewport.scroll_by_wheel_delta(PanelTextViewportItem.wheel_delta_from_event(event)):
+        if panel_viewport is not None and panel_viewport.scroll_by_wheel_delta(
+            PanelTextViewportItem.wheel_delta_from_event(event)
+        ):
             event.accept()
             return
         super().wheelEvent(event)
@@ -782,6 +788,7 @@ class ChainCanvasScene(QGraphicsScene):
 
 class ChainCanvasView(QGraphicsView):
     """自定义图形视图以捕获和派发键盘事件。"""
+
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
         self.setRenderHint(QPainter.Antialiasing)
@@ -1123,12 +1130,10 @@ class ChainCanvasWidget(QWidget):
             return
 
         self._push_history()
-        self.canvas["nodes"] = [
-            n for n in self.canvas.get("nodes", [])
-            if str(n.get("id") or "") not in selected_nodes
-        ]
+        self.canvas["nodes"] = [n for n in self.canvas.get("nodes", []) if str(n.get("id") or "") not in selected_nodes]
         self.canvas["connections"] = [
-            c for c in self.canvas.get("connections", [])
+            c
+            for c in self.canvas.get("connections", [])
             if str(c.get("source_node") or "") not in selected_nodes
             and str(c.get("target_node") or "") not in selected_nodes
         ]
@@ -1141,11 +1146,7 @@ class ChainCanvasWidget(QWidget):
         self.canvas_changed.emit()
 
     def copy_selected_nodes(self) -> bool:
-        selected_ids = [
-            item.node_id
-            for item in self.scene.selectedItems()
-            if item.__class__.__name__ == "NodeItem"
-        ]
+        selected_ids = [item.node_id for item in self.scene.selectedItems() if item.__class__.__name__ == "NodeItem"]
         if not selected_ids and self._selected_node_id:
             selected_ids = [self._selected_node_id]
         selected_set = set(selected_ids)
@@ -1153,9 +1154,7 @@ class ChainCanvasWidget(QWidget):
             self._clipboard = {"nodes": [], "connections": []}
             return False
         nodes = [
-            copy.deepcopy(node)
-            for node in self.canvas.get("nodes", [])
-            if str(node.get("id") or "") in selected_set
+            copy.deepcopy(node) for node in self.canvas.get("nodes", []) if str(node.get("id") or "") in selected_set
         ]
         connections = [
             copy.deepcopy(connection)
@@ -1345,8 +1344,18 @@ class ChainCanvasWidget(QWidget):
         target = self._node_by_id(str(connection.get("target_node") or ""))
         source_port = str(connection.get("source_port") or "")
         target_port = str(connection.get("target_port") or "")
-        source_title = str((source or {}).get("title") or (source or {}).get("processor_id") or (source or {}).get("shortcut_id") or "来源")
-        target_title = str((target or {}).get("title") or (target or {}).get("processor_id") or (target or {}).get("shortcut_id") or "目标")
+        source_title = str(
+            (source or {}).get("title")
+            or (source or {}).get("processor_id")
+            or (source or {}).get("shortcut_id")
+            or "来源"
+        )
+        target_title = str(
+            (target or {}).get("title")
+            or (target or {}).get("processor_id")
+            or (target or {}).get("shortcut_id")
+            or "目标"
+        )
         lines = [f"{source_title}.{source_port} -> {target_title}.{target_port}"]
         snapshot = dict((source or {}).get("last_run_snapshot") or {})
         if not snapshot:
@@ -1402,6 +1411,7 @@ class ChainCanvasWidget(QWidget):
     def show_error_toast(self, message: str):
         try:
             from ui.toast_notification import ToastNotification
+
             toast = ToastNotification(self)
             toast.show_toast(message, theme="error", duration_ms=3000, target_widget=self)
         except Exception:
@@ -1410,7 +1420,9 @@ class ChainCanvasWidget(QWidget):
     def _on_port_connected(self, source_port: PortItem, target_port: PortItem, multi: bool):
         try:
             if source_port.node_id != target_port.node_id:
-                self._connect(source_port.node_id, source_port.port_id, target_port.node_id, target_port.port_id, multi=multi)
+                self._connect(
+                    source_port.node_id, source_port.port_id, target_port.node_id, target_port.port_id, multi=multi
+                )
             self._pending_output = None
             self._pending_port = None
         except Exception as e:
@@ -1619,7 +1631,9 @@ class ChainCanvasWidget(QWidget):
                 pos = item.pos()
                 node["x"] = float(pos.x())
                 node["y"] = float(pos.y())
-        for index, node in enumerate(sorted(nodes, key=lambda n: (float(n.get("y", 0) or 0), float(n.get("x", 0) or 0))), start=1):
+        for index, node in enumerate(
+            sorted(nodes, key=lambda n: (float(n.get("y", 0) or 0), float(n.get("x", 0) or 0))), start=1
+        ):
             node["order"] = index
         self._refresh_connection_paths()
 
@@ -1666,12 +1680,14 @@ class PythonCellSourceDialog(BaseDialog):
 
         # 注册全局应用事件过滤器以捕获模态独占下的点击外部事件
         from qt_compat import QApplication
+
         QApplication.instance().installEventFilter(self)
 
     def done(self, result):
         # 关闭时注销过滤器以防内存泄漏
         try:
             from qt_compat import QApplication
+
             QApplication.instance().removeEventFilter(self)
         except Exception as exc:
             logger.debug("移除 Python 电池源码对话框事件过滤器失败: %s", exc, exc_info=True)
@@ -1686,6 +1702,7 @@ class PythonCellSourceDialog(BaseDialog):
             return super().eventFilter(obj, event)
 
         from qt_compat import QEvent
+
         if event.type() == QEvent.MouseButtonPress:
             # 向上遍历父链判定是否是对话框内的交互（如右键菜单、代码补全下拉等）
             p = obj
@@ -1708,6 +1725,7 @@ class PythonCellSourceDialog(BaseDialog):
                 # 如果点击在文本框卡片外面，触发自动保存关闭并拦截此点击，提供最流畅的防干扰体验
                 if not self.geometry().contains(pos):
                     from qt_compat import QTimer
+
                     QTimer.singleShot(50, self.accept)
                     return True
         return super().eventFilter(obj, event)
@@ -1721,7 +1739,7 @@ class PythonCellSourceDialog(BaseDialog):
         max_line_len = 0
         for line in lines:
             expanded_line = line.replace("\t", "    ")
-            if hasattr(font_metrics, 'horizontalAdvance'):
+            if hasattr(font_metrics, "horizontalAdvance"):
                 width = font_metrics.horizontalAdvance(expanded_line)
             else:
                 width = font_metrics.width(expanded_line)
@@ -1762,6 +1780,7 @@ class PythonCellSourceDialog(BaseDialog):
     def changeEvent(self, event):
         super().changeEvent(event)
         from qt_compat import QEvent, QTimer
+
         if event.type() == QEvent.ActivationChange:
             if not self.isActiveWindow():
                 # 稍微延迟检测，防止点击右键菜单等子窗口触发误关
@@ -1771,6 +1790,7 @@ class PythonCellSourceDialog(BaseDialog):
         if self._dialog_finished:
             return
         from qt_compat import QApplication
+
         active_win = QApplication.activeWindow()
         if active_win is None:
             self.accept()
@@ -1803,7 +1823,9 @@ class PythonCellSourceDialog(BaseDialog):
         else:
             editor_text = "#1C1C1E"
 
-        custom_style = base_style + f"""
+        custom_style = (
+            base_style
+            + f"""
             QDialog {{
                 background: transparent;
                 border: none;
@@ -1820,6 +1842,7 @@ class PythonCellSourceDialog(BaseDialog):
                 background-color: rgba(100, 181, 246, 0.3);
             }}
         """
+        )
         self.setStyleSheet(scale_qss(custom_style))
 
     def source(self) -> str:
@@ -1927,7 +1950,9 @@ class NodePropertyPanel(QWidget):
         self.run_box.setStyleSheet(scale_qss(group_box_style))
 
         # 统一设置表单中的 QLineEdit 样式以和动作链属性的输入框一致
-        self.setStyleSheet(scale_qss(f"""
+        self.setStyleSheet(
+            scale_qss(
+                f"""
             QLineEdit, QTextEdit, QSpinBox, QComboBox {{
                 background-color: {input_bg};
                 border: 1px solid {border_color};
@@ -1943,17 +1968,21 @@ class NodePropertyPanel(QWidget):
                 color: {text_primary};
                 font-size: 12px;
             }}
-        """))
+        """
+            )
+        )
 
         # 按钮复用扁平操作按钮样式，使其与 "动作链属性" 的按钮视觉完全一致
-        flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + scale_qss("""
+        flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + scale_qss(
+            """
             QPushButton {
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-size: 12px;
                 font-weight: 400;
                 min-height: 22px;
             }
-        """)
+        """
+        )
         self.source_btn.setStyleSheet(flat_btn_style)
         self.delete_btn.setStyleSheet(flat_btn_style)
 
@@ -1998,12 +2027,16 @@ class NodePropertyPanel(QWidget):
                 lbl_text = str(param_def.get("label") or _port_label(port)) + ":"
 
                 label_widget = QLabel(lbl_text)
-                label_widget.setStyleSheet(scale_qss("""
+                label_widget.setStyleSheet(
+                    scale_qss(
+                        """
                     QLabel {
                         font-size: 12px;
                         font-weight: 400;
                     }
-                """))
+                """
+                    )
+                )
 
                 if port in self._connections:
                     row = QWidget()
@@ -2013,7 +2046,9 @@ class NodePropertyPanel(QWidget):
 
                     label = QLabel(self._connections[port])
                     label.setWordWrap(True)
-                    label.setStyleSheet(scale_qss("""
+                    label.setStyleSheet(
+                        scale_qss(
+                            """
                         QLabel {
                             background-color: rgba(100, 181, 246, 0.12);
                             border: 1px solid rgba(100, 181, 246, 0.25);
@@ -2022,13 +2057,19 @@ class NodePropertyPanel(QWidget):
                             color: #64B5F6;
                             font-size: 11px;
                         }
-                    """))
+                    """
+                        )
+                    )
 
                     clear = QPushButton("断开")
                     clear.setFixedSize(sp(48), sp(22))
                     clear.setCursor(Qt.PointingHandCursor)
-                    clear.clicked.connect(lambda _=False, p=port: self.disconnect_requested.emit(str(node.get("id") or ""), p))
-                    clear.setStyleSheet(scale_qss("""
+                    clear.clicked.connect(
+                        lambda _=False, p=port: self.disconnect_requested.emit(str(node.get("id") or ""), p)
+                    )
+                    clear.setStyleSheet(
+                        scale_qss(
+                            """
                         QPushButton {
                             background-color: rgba(220, 38, 38, 0.1);
                             border: 1px solid rgba(220, 38, 38, 0.25);
@@ -2044,7 +2085,9 @@ class NodePropertyPanel(QWidget):
                             border: 1px solid rgba(220, 38, 38, 0.45);
                             color: #FF8787;
                         }
-                    """))
+                    """
+                        )
+                    )
                     clear.raise_()
 
                     row_layout.addWidget(label, 1)

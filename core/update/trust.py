@@ -127,7 +127,9 @@ def _verify_ed25519(pub_key: bytes, message: bytes, signature: bytes) -> bool:
         verify_key.verify(signature, message)
         return True
     except ImportError:
-        raise SignatureVerificationError("cryptography library not available for legacy manifest verification") from None
+        raise SignatureVerificationError(
+            "cryptography library not available for legacy manifest verification"
+        ) from None
     except InvalidSignature:
         raise SignatureVerificationError("Ed25519 signature does not match manifest content") from None
     except Exception as exc:

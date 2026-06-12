@@ -55,8 +55,14 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
     assert envs[0]["PYTHONDONTWRITEBYTECODE"] == "1"
 
     assert commands[1] == [
-        "py-test", "-m", "pytest", "--basetemp", str(release_gate.PYTEST_BASETEMP),
-        "--cov=core", "--cov=services", "--cov=hooks",
+        "py-test",
+        "-m",
+        "pytest",
+        "--basetemp",
+        str(release_gate.PYTEST_BASETEMP),
+        "--cov=core",
+        "--cov=services",
+        "--cov=hooks",
         "--cov-report=term-missing",
         f"--cov-fail-under={release_gate.COVERAGE_FAIL_UNDER}",
     ]
@@ -114,9 +120,7 @@ def test_release_gate_coverage_baseline_matches_current_project_floor():
 def test_release_gate_cleans_stale_caches_before_running(monkeypatch):
     clean_calls = []
     monkeypatch.setattr(release_gate, "_clean_stale_caches", lambda root: clean_calls.append(root))
-    monkeypatch.setattr(
-        release_gate.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0)
-    )
+    monkeypatch.setattr(release_gate.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0))
 
     release_gate.main(["--python", "py-test"])
     assert clean_calls == [release_gate.ROOT]

@@ -74,7 +74,7 @@ class ProcessorLoader:
         count = 0
 
         # Try get_processors() function
-        if hasattr(module, 'get_processors') and callable(module.get_processors):
+        if hasattr(module, "get_processors") and callable(module.get_processors):
             processors = module.get_processors()
             if isinstance(processors, dict):
                 for _proc_id, definition in processors.items():
@@ -83,14 +83,14 @@ class ProcessorLoader:
                             count += 1
 
         # Try PROCESSORS dict
-        elif hasattr(module, 'PROCESSORS') and isinstance(module.PROCESSORS, dict):
+        elif hasattr(module, "PROCESSORS") and isinstance(module.PROCESSORS, dict):
             for _proc_id, definition in module.PROCESSORS.items():
                 if isinstance(definition, ChainProcessorDefinition):
                     if self._registry.register(definition):
                         count += 1
 
         # Try register_processors(registry) function
-        elif hasattr(module, 'register_processors') and callable(module.register_processors):
+        elif hasattr(module, "register_processors") and callable(module.register_processors):
             result = module.register_processors(self._registry)
             if isinstance(result, int):
                 count = result
@@ -108,7 +108,7 @@ class ProcessorLoader:
         """
         try:
             package = importlib.import_module(package_name)
-            package_path = getattr(package, '__path__', None)
+            package_path = getattr(package, "__path__", None)
 
             if not package_path:
                 return self.discover_from_module(package_name)
@@ -142,7 +142,7 @@ class ProcessorLoader:
 
         total = 0
         for file_path in directory.glob("*.py"):
-            if file_path.name.startswith('_'):
+            if file_path.name.startswith("_"):
                 continue
 
             try:
@@ -182,6 +182,7 @@ class ProcessorLoader:
         # Load additional processors
         try:
             from .additional_processors import register_additional_processors
+
             count = register_additional_processors(self._registry)
             total += count
         except Exception as e:
@@ -203,10 +204,12 @@ class ProcessorLoader:
             try:
                 self._registry._validate_definition(definition)
             except ValueError as e:
-                issues.append({
-                    "processor_id": definition.id,
-                    "error": str(e),
-                })
+                issues.append(
+                    {
+                        "processor_id": definition.id,
+                        "error": str(e),
+                    }
+                )
 
         return issues
 
@@ -238,8 +241,8 @@ def discover_processors() -> int:
 
     # Try to load from additional modules
     modules_to_try = [
-        'core.chain.additional_processors',
-        'plugins.chain_processors',
+        "core.chain.additional_processors",
+        "plugins.chain_processors",
     ]
 
     for module_name in modules_to_try:

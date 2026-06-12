@@ -68,7 +68,9 @@ def test_merge_default_special_apps_updates_and_writes_marker(tmp_path, monkeypa
 def test_cleanup_stale_command_cache_logs_os_error(monkeypatch):
     from core.shortcut_command_exec import CommandExecutionMixin
 
-    monkeypatch.setattr(CommandExecutionMixin, "_cleanup_cmd_cache", classmethod(lambda cls: (_ for _ in ()).throw(OSError("denied"))))
+    monkeypatch.setattr(
+        CommandExecutionMixin, "_cleanup_cmd_cache", classmethod(lambda cls: (_ for _ in ()).throw(OSError("denied")))
+    )
     logger = _Logger()
 
     startup_tasks.cleanup_stale_command_cache(logger)

@@ -252,7 +252,9 @@ class ShortcutItem:
             item.module_id = item.module_id or BATCH_LAUNCH_MODULE_ID
             item.module_version = item.module_version or BATCH_LAUNCH_MODULE_VERSION
         try:
-            schema_version = int(data.get("chain_schema_version", data.get("schema_version", ACTION_CHAIN_SCHEMA_VERSION)))
+            schema_version = int(
+                data.get("chain_schema_version", data.get("schema_version", ACTION_CHAIN_SCHEMA_VERSION))
+            )
         except (TypeError, ValueError):
             schema_version = ACTION_CHAIN_SCHEMA_VERSION
         item.chain_schema_version = max(1, schema_version)
@@ -883,23 +885,23 @@ class AppSettings:
             settings.special_apps = DEFAULT_SPECIAL_APPS.copy()
 
         # 确保触发配置有默认值（向后兼容）
-        if not hasattr(settings, 'popup_trigger_button'):
+        if not hasattr(settings, "popup_trigger_button"):
             settings.popup_trigger_button = "middle"
-        if not hasattr(settings, 'popup_trigger_modifiers'):
+        if not hasattr(settings, "popup_trigger_modifiers"):
             settings.popup_trigger_modifiers = []
-        if not hasattr(settings, 'popup_special_trigger_button'):
+        if not hasattr(settings, "popup_special_trigger_button"):
             settings.popup_special_trigger_button = "middle"
-        if not hasattr(settings, 'popup_special_trigger_modifiers'):
+        if not hasattr(settings, "popup_special_trigger_modifiers"):
             settings.popup_special_trigger_modifiers = ["ctrl"]
 
         # 向后兼容：确保新触发模式字段有默认值
-        if not hasattr(settings, 'popup_trigger_mode'):
+        if not hasattr(settings, "popup_trigger_mode"):
             settings.popup_trigger_mode = "mouse"
-        if not hasattr(settings, 'popup_trigger_keys'):
+        if not hasattr(settings, "popup_trigger_keys"):
             settings.popup_trigger_keys = []
-        if not hasattr(settings, 'popup_special_trigger_mode'):
+        if not hasattr(settings, "popup_special_trigger_mode"):
             settings.popup_special_trigger_mode = "mouse"
-        if not hasattr(settings, 'popup_special_trigger_keys'):
+        if not hasattr(settings, "popup_special_trigger_keys"):
             settings.popup_special_trigger_keys = []
 
         for key, value in normalize_trigger_settings(settings).items():

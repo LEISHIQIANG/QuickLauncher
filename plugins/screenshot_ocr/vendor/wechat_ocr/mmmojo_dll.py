@@ -4,7 +4,7 @@ from .winapi import *
 
 
 class MMMojoInfoMethod(Enum):
-    '''
+    """
     typedef enum {
         kMMNone = 0,
         kMMPush,
@@ -12,15 +12,17 @@ class MMMojoInfoMethod(Enum):
         kMMPullResp,
         kMMShared,
     } MMMojoInfoMethod;
-    '''
+    """
+
     kMMNone = 0
     kMMPush = auto()
     kMMPullReq = auto()
     kMMPullResp = auto()
     kMMShared = auto()
 
+
 class MMMojoEnvironmentCallbackType(Enum):
-    '''
+    """
     typedef enum {
         kMMUserData = 0,
         kMMReadPush,
@@ -32,7 +34,8 @@ class MMMojoEnvironmentCallbackType(Enum):
         kMMRemoteProcessLaunchFailed,
         kMMRemoteMojoError,
     } MMMojoEnvironmentCallbackType;
-    '''
+    """
+
     kMMUserData = 0
     kMMReadPush = auto()
     kMMReadPull = auto()
@@ -43,8 +46,9 @@ class MMMojoEnvironmentCallbackType(Enum):
     kMMRemoteProcessLaunchFailed = auto()
     kMMRemoteMojoError = auto()
 
+
 class MMMojoEnvironmentInitParamType(Enum):
-    '''
+    """
     typedef enum {
         kMMHostProcess = 0,
         kMMLoopStartThread,
@@ -59,7 +63,8 @@ class MMMojoEnvironmentInitParamType(Enum):
         kMMCompatible,
         #endif  // defined(WIN32)
     } MMMojoEnvironmentInitParamType;
-    '''
+    """
+
     kMMHostProcess = 0
     kMMLoopStartThread = auto()
     kMMExePath = auto()
@@ -89,11 +94,17 @@ class MmmojoDll:
         # void* CreateMMMojoEnvironment()
         CreateMMMojoEnvironment = self.func_def("CreateMMMojoEnvironment", c_void_p)
         # void SetMMMojoEnvironmentCallbacks(void* mmmojo_env,int type, ...)
-        SetMMMojoEnvironmentCallbacks = self.func_def("SetMMMojoEnvironmentCallbacks", void, *(c_void_p, c_int, py_object))
+        SetMMMojoEnvironmentCallbacks = self.func_def(
+            "SetMMMojoEnvironmentCallbacks", void, *(c_void_p, c_int, py_object)
+        )
         # void SetMMMojoEnvironmentInitParams(void* mmmojo_env,int type, ...);
-        SetMMMojoEnvironmentInitParams = self.func_def("SetMMMojoEnvironmentInitParams", void, *(c_void_p, c_int, c_void_p))
+        SetMMMojoEnvironmentInitParams = self.func_def(
+            "SetMMMojoEnvironmentInitParams", void, *(c_void_p, c_int, c_void_p)
+        )
         # void AppendMMSubProcessSwitchNative(void* mmmojo_env, const char* switch_string, const wchar_t* value);
-        AppendMMSubProcessSwitchNative = self.func_def("AppendMMSubProcessSwitchNative", void, *(c_void_p, c_char_p, c_wchar_p))
+        AppendMMSubProcessSwitchNative = self.func_def(
+            "AppendMMSubProcessSwitchNative", void, *(c_void_p, c_char_p, c_wchar_p)
+        )
         # void StartMMMojoEnvironment(void* mmmojo_env);
         StartMMMojoEnvironment = self.func_def("StartMMMojoEnvironment", void, *(c_void_p,))
         # void StopMMMojoEnvironment(void* mmmojo_env);
@@ -111,7 +122,7 @@ class MmmojoDll:
         # bool GetMMMojoReadInfoSync(const void* mmmojo_readinfo);
         GetMMMojoReadInfoSync = self.func_def("GetMMMojoReadInfoSync", c_bool, *(c_void_p,))
         # void* CreateMMMojoWriteInfo(int method, bool sync, uint32_t request_id);
-        CreateMMMojoWriteInfo = self.func_def("CreateMMMojoWriteInfo",c_void_p, *(c_int, c_bool, c_uint32))
+        CreateMMMojoWriteInfo = self.func_def("CreateMMMojoWriteInfo", c_void_p, *(c_int, c_bool, c_uint32))
         # void* GetMMMojoWriteInfoRequest(void* mmmojo_writeinfo, uint32_t request_data_size);
         GetMMMojoWriteInfoRequest = self.func_def("GetMMMojoWriteInfoRequest", c_void_p, *(c_void_p, c_uint32))
         # void RemoveMMMojoWriteInfo(void* mmmojo_writeinfo);
@@ -121,13 +132,15 @@ class MmmojoDll:
         # void SetMMMojoWriteInfoMessagePipe(void* mmmojo_writeinfo,int num_of_message_pipe);
         SetMMMojoWriteInfoMessagePipe = self.func_def("SetMMMojoWriteInfoMessagePipe", void, *(c_void_p, c_int))
         # void SetMMMojoWriteInfoResponseSync(void* mmmojo_writeinfo, void** mmmojo_readinfo);
-        SetMMMojoWriteInfoResponseSync = self.func_def("SetMMMojoWriteInfoResponseSync", void, *(c_void_p, POINTER(c_void_p)))
+        SetMMMojoWriteInfoResponseSync = self.func_def(
+            "SetMMMojoWriteInfoResponseSync", void, *(c_void_p, POINTER(c_void_p))
+        )
         # bool SendMMMojoWriteInfo(void* mmmojo_env,void* mmmojo_writeinfo);
-        SendMMMojoWriteInfo = self.func_def("SendMMMojoWriteInfo", c_bool, *(c_void_p,c_void_p))
+        SendMMMojoWriteInfo = self.func_def("SendMMMojoWriteInfo", c_bool, *(c_void_p, c_void_p))
         # bool SwapMMMojoWriteInfoCallback(void* mmmojo_writeinfo,void* mmmojo_readinfo);
-        SwapMMMojoWriteInfoCallback = self.func_def("SwapMMMojoWriteInfoCallback", c_bool, *(c_void_p,c_void_p))
+        SwapMMMojoWriteInfoCallback = self.func_def("SwapMMMojoWriteInfoCallback", c_bool, *(c_void_p, c_void_p))
         # bool SwapMMMojoWriteInfoMessage(void* mmmojo_writeinfo, void* mmmojo_readinfo);
-        SwapMMMojoWriteInfoMessage = self.func_def("SwapMMMojoWriteInfoMessage", c_bool, *(c_void_p,c_void_p))
+        SwapMMMojoWriteInfoMessage = self.func_def("SwapMMMojoWriteInfoMessage", c_bool, *(c_void_p, c_void_p))
         return locals()
 
     def __getattr__(self, key):
@@ -137,40 +150,3 @@ class MmmojoDll:
 
     def __getitem__(self, key):
         return self._funcs_dict[key]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

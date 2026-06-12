@@ -266,7 +266,8 @@ class PopupBackgroundMixin:
         # Win10: 在加载新背景时使用回退背景，避免闪烁到纯色
         try:
             from ui.utils.window_effect import is_win10
-            if is_win10() and hasattr(self, '_win10_fallback_bg') and self._win10_fallback_bg:
+
+            if is_win10() and hasattr(self, "_win10_fallback_bg") and self._win10_fallback_bg:
                 return self._win10_fallback_bg
         except Exception as exc:
             logger.debug("获取 Win10 背景回退缓存失败: %s", exc, exc_info=True)

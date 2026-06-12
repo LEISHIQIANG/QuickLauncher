@@ -96,10 +96,12 @@ class StepCardWidget(QFrame):
         num_label = QLabel(f"{self.step_index + 1}")
         num_label.setFixedWidth(sp(18))
         num_label.setAlignment(Qt.AlignCenter)
-        num_label.setStyleSheet(scale_qss(
-            "color: rgba(128,128,128,180); font-size: 11px; font-weight: 400; "
-            "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-        ))
+        num_label.setStyleSheet(
+            scale_qss(
+                "color: rgba(128,128,128,180); font-size: 11px; font-weight: 400; "
+                "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
+            )
+        )
         layout.addWidget(num_label)
 
         # 快捷方式图标
@@ -114,9 +116,9 @@ class StepCardWidget(QFrame):
         # 名称
         display_name = shortcut_name or step.get("shortcut_id", "???")
         name_label = QLabel(display_name)
-        name_label.setStyleSheet(scale_qss(
-            "font-size: 13px; font-weight: 400; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-        ))
+        name_label.setStyleSheet(
+            scale_qss("font-size: 13px; font-weight: 400; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;")
+        )
         layout.addWidget(name_label, 1)
 
         # ── 内联参数控件 ──
@@ -129,12 +131,14 @@ class StepCardWidget(QFrame):
         delay_spin.setSuffix("ms")
         delay_spin.setFixedWidth(sp(70))
         delay_spin.setToolTip(tr("执行前延迟"))
-        delay_spin.setStyleSheet(scale_qss(
-            "QSpinBox { font-size: 11px; font-weight: 400; "
-            "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; "
-            "padding: 1px 3px; border-radius: 5px; }"
-            "QSpinBox::up-button, QSpinBox::down-button { width: 14px; }"
-        ))
+        delay_spin.setStyleSheet(
+            scale_qss(
+                "QSpinBox { font-size: 11px; font-weight: 400; "
+                "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; "
+                "padding: 1px 3px; border-radius: 5px; }"
+                "QSpinBox::up-button, QSpinBox::down-button { width: 14px; }"
+            )
+        )
         delay_spin.valueChanged.connect(self._on_delay_changed)
         layout.addWidget(delay_spin)
         self._delay_spin = delay_spin
@@ -186,30 +190,36 @@ class StepCardWidget(QFrame):
         tip_rule = getattr(parent, "_tip_stylesheet", "") if parent else ""
         child_rules = self._checkbox_style + tip_rule
         if selected:
-            self.setStyleSheet(scale_qss(
-                f"StepCardWidget {{"
-                f" background-color: rgba(0, 122, 255, 0.15);"
-                f" border-left: 3px solid {c};"
-                f" border-top: 1px solid rgba(0, 122, 255, 0.4);"
-                f" border-right: 1px solid rgba(0, 122, 255, 0.4);"
-                f" border-bottom: 1px solid rgba(0, 122, 255, 0.4);"
-                f" border-radius: 8px;"
-                f"}}"
-            ) + child_rules)
+            self.setStyleSheet(
+                scale_qss(
+                    f"StepCardWidget {{"
+                    f" background-color: rgba(0, 122, 255, 0.15);"
+                    f" border-left: 3px solid {c};"
+                    f" border-top: 1px solid rgba(0, 122, 255, 0.4);"
+                    f" border-right: 1px solid rgba(0, 122, 255, 0.4);"
+                    f" border-bottom: 1px solid rgba(0, 122, 255, 0.4);"
+                    f" border-radius: 8px;"
+                    f"}}"
+                )
+                + child_rules
+            )
         else:
-            self.setStyleSheet(scale_qss(
-                f"StepCardWidget {{"
-                f" background-color: rgba(128, 128, 128, 0.08);"
-                f" border-left: 3px solid {c};"
-                f" border-top: 1px solid rgba(128, 128, 128, 0.12);"
-                f" border-right: 1px solid rgba(128, 128, 128, 0.12);"
-                f" border-bottom: 1px solid rgba(128, 128, 128, 0.12);"
-                f" border-radius: 8px;"
-                f"}}"
-                f"StepCardWidget:hover {{"
-                f" background-color: rgba(128, 128, 128, 0.15);"
-                f"}}"
-            ) + child_rules)
+            self.setStyleSheet(
+                scale_qss(
+                    f"StepCardWidget {{"
+                    f" background-color: rgba(128, 128, 128, 0.08);"
+                    f" border-left: 3px solid {c};"
+                    f" border-top: 1px solid rgba(128, 128, 128, 0.12);"
+                    f" border-right: 1px solid rgba(128, 128, 128, 0.12);"
+                    f" border-bottom: 1px solid rgba(128, 128, 128, 0.12);"
+                    f" border-radius: 8px;"
+                    f"}}"
+                    f"StepCardWidget:hover {{"
+                    f" background-color: rgba(128, 128, 128, 0.15);"
+                    f"}}"
+                )
+                + child_rules
+            )
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -227,6 +237,7 @@ class StepCardWidget(QFrame):
 
 class GrasshopperGroupWidget(QWidget):
     """Grasshopper 风格的二级属性/电池组团控件，支持 2 行紧凑排布和底部微型标签。"""
+
     def __init__(self, title: str, theme: str = "dark", parent=None):
         super().__init__(parent)
         self.setObjectName("GrasshopperGroup")
@@ -258,7 +269,9 @@ class GrasshopperGroupWidget(QWidget):
             label_color = "rgba(0, 0, 0, 130)"
             line_color = "rgba(0, 0, 0, 15)"
 
-        self.label.setStyleSheet(scale_qss(f"""
+        self.label.setStyleSheet(
+            scale_qss(
+                f"""
             QLabel {{
                 color: {label_color};
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
@@ -268,16 +281,22 @@ class GrasshopperGroupWidget(QWidget):
                 padding-top: 2px;
                 border-top: 1px solid {line_color};
             }}
-        """))
+        """
+            )
+        )
         layout.addWidget(self.label)
 
-        self.setStyleSheet(scale_qss(f"""
+        self.setStyleSheet(
+            scale_qss(
+                f"""
             QWidget#GrasshopperGroup {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
                 border-radius: 4px;
             }}
-        """))
+        """
+            )
+        )
         self.setFixedHeight(sp(102))
 
         self._button_count = 0
@@ -416,9 +435,11 @@ class ChainDialog(BaseDialog):
 
         # 顶部标题
         self.title_label = QLabel(tr("编辑动作链") if self.shortcut.name else tr("新建动作链"))
-        self.title_label.setStyleSheet(scale_qss(
-            "font-size: 12px; font-weight: 400; color: gray; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-        ))
+        self.title_label.setStyleSheet(
+            scale_qss(
+                "font-size: 12px; font-weight: 400; color: gray; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
+            )
+        )
         root.addWidget(self.title_label)
 
         self.module_tabs = self._build_module_bar()
@@ -520,11 +541,26 @@ class ChainDialog(BaseDialog):
         from core.chain_processors import processor_definitions as _all_defs
 
         _CATEGORY_TAB_ORDER = [
-            "输入与调试", "逻辑", "文本", "数学与列表", "数学扩展",
-            "网络与结构化", "文件与路径", "图像", "日期时间",
-            "编码解码", "数据验证", "加密哈希", "颜色处理",
-            "集合操作", "字典操作", "字符串格式化", "数据压缩",
-            "环境变量", "系统信息", "网络工具",
+            "输入与调试",
+            "逻辑",
+            "文本",
+            "数学与列表",
+            "数学扩展",
+            "网络与结构化",
+            "文件与路径",
+            "图像",
+            "日期时间",
+            "编码解码",
+            "数据验证",
+            "加密哈希",
+            "颜色处理",
+            "集合操作",
+            "字典操作",
+            "字符串格式化",
+            "数据压缩",
+            "环境变量",
+            "系统信息",
+            "网络工具",
         ]
 
         _CATEGORY_TAB_LABEL = {
@@ -606,15 +642,25 @@ class ChainDialog(BaseDialog):
         # 分组组团数据提取
         urls = [it for it in self._available if it.type == ShortcutType.URL]
         commands = [it for it in self._available if it.type == ShortcutType.COMMAND]
-        apps = [it for it in self._available if it.type in (ShortcutType.FILE, ShortcutType.FOLDER, ShortcutType.HOTKEY)]
+        apps = [
+            it for it in self._available if it.type in (ShortcutType.FILE, ShortcutType.FOLDER, ShortcutType.HOTKEY)
+        ]
 
         def create_sep():
             sep = QFrame()
             sep.setFrameShape(QFrame.VLine)
             if theme == "dark":
-                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
+                sep.setStyleSheet(
+                    scale_qss(
+                        "QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                    )
+                )
             else:
-                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
+                sep.setStyleSheet(
+                    scale_qss(
+                        "QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                    )
+                )
             return sep
 
         # 1. 网址组团
@@ -685,8 +731,11 @@ class ChainDialog(BaseDialog):
             group = GrasshopperGroupWidget(title, theme)
             for pid in processor_ids:
                 from core.chain_processors import processor_title
+
                 p_title = processor_title(pid)
-                btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+                btn = self._make_module_button(
+                    p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid)
+                )
                 group.add_button(btn)
             layout.addWidget(group)
 
@@ -716,21 +765,31 @@ class ChainDialog(BaseDialog):
             sep = QFrame()
             sep.setFrameShape(QFrame.VLine)
             if theme == "dark":
-                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
+                sep.setStyleSheet(
+                    scale_qss(
+                        "QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                    )
+                )
             else:
-                sep.setStyleSheet(scale_qss("QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"))
+                sep.setStyleSheet(
+                    scale_qss(
+                        "QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                    )
+                )
             return sep
 
         from core.chain_processors import processor_title
 
         for i in range(0, len(processor_ids), group_size):
-            chunk = processor_ids[i:i + group_size]
+            chunk = processor_ids[i : i + group_size]
             if i > 0:
                 layout.addWidget(create_sep())
             group = GrasshopperGroupWidget(title, theme)
             for pid in chunk:
                 p_title = processor_title(pid)
-                btn = self._make_module_button(p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid))
+                btn = self._make_module_button(
+                    p_title, lambda _=False, target_pid=pid: self._add_processor_node(target_pid)
+                )
                 group.add_button(btn)
             layout.addWidget(group)
 
@@ -790,10 +849,12 @@ class ChainDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(scale_qss(
-            "QLabel { background-color: rgba(255, 255, 255, 0.1); "
-            "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
-        ))
+        self.icon_preview.setStyleSheet(
+            scale_qss(
+                "QLabel { background-color: rgba(255, 255, 255, 0.1); "
+                "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
+            )
+        )
         icon_layout.addWidget(self.icon_preview)
 
         icon_right_layout = QVBoxLayout()
@@ -945,10 +1006,12 @@ class ChainDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(scale_qss(
-            "QLabel { background-color: rgba(255, 255, 255, 0.1); "
-            "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
-        ))
+        self.icon_preview.setStyleSheet(
+            scale_qss(
+                "QLabel { background-color: rgba(255, 255, 255, 0.1); "
+                "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; }"
+            )
+        )
         preview_row.addWidget(self.icon_preview)
         self.icon_edit = QLineEdit()
         self.icon_edit.setPlaceholderText(tr("留空则使用默认图标"))
@@ -995,7 +1058,8 @@ class ChainDialog(BaseDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
 
-        custom = base_style + scale_qss(f"""
+        custom = base_style + scale_qss(
+            f"""
             QDialog {{ background: transparent; border: none; }}
             QLabel, QCheckBox, QGroupBox, QLineEdit, QSpinBox, QPushButton, QTabWidget {{
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
@@ -1063,19 +1127,24 @@ class ChainDialog(BaseDialog):
             QTabBar::tab:selected {{
                 background-color: {input_bg};
             }}
-        """)
-        self._tip_stylesheet = scale_qss(f"QToolTip {{ background: {tip_bg}; color: {tip_fg}; border: 1px solid {tip_border}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 400; }}")
+        """
+        )
+        self._tip_stylesheet = scale_qss(
+            f"QToolTip {{ background: {tip_bg}; color: {tip_fg}; border: 1px solid {tip_border}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 400; }}"
+        )
         self.setStyleSheet(custom)
 
         # 按钮复用扁平操作按钮样式
-        refined_button_font = scale_qss("""
+        refined_button_font = scale_qss(
+            """
             QPushButton {
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-size: 12px;
                 font-weight: 400;
                 min-height: 22px;
             }
-        """)
+        """
+        )
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme) + refined_button_font
         for btn in (
             self.file_btn,
@@ -1095,7 +1164,8 @@ class ChainDialog(BaseDialog):
             btn.setStyleSheet(flat_btn_style)
 
         # 菜单栏按钮使用更小且更精致的文字大小以防文本截断，契合 Grasshopper 风格
-        module_button_font = scale_qss("""
+        module_button_font = scale_qss(
+            """
             QPushButton {
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-size: 10px;
@@ -1104,7 +1174,8 @@ class ChainDialog(BaseDialog):
                 padding: 1px 2px;
                 margin: 0px;
             }
-        """)
+        """
+        )
         module_btn_style = Glassmorphism.get_flat_action_button_style(theme) + module_button_font
         for btn in getattr(self, "_module_buttons", []):
             btn.setStyleSheet(module_btn_style)
@@ -1118,11 +1189,13 @@ class ChainDialog(BaseDialog):
         self.invert_dark_cb.setStyleSheet(get_compact_checkbox_stylesheet(theme))
 
         # result_view 透明背景，文字直接显示在分栏框里
-        self.result_view.setStyleSheet(scale_qss(
-            f"QPlainTextEdit {{ background: transparent; border: none; "
-            f"color: {text_primary}; font-size: 12px; padding: 8px; "
-            f"font-family: 'Cascadia Code', 'Consolas', monospace; }}"
-        ))
+        self.result_view.setStyleSheet(
+            scale_qss(
+                f"QPlainTextEdit {{ background: transparent; border: none; "
+                f"color: {text_primary}; font-size: 12px; padding: 8px; "
+                f"font-family: 'Cascadia Code', 'Consolas', monospace; }}"
+            )
+        )
         # viewport 必须用 palette 强制上色，否则 BaseDialog 透明背景会让点击时闪白
         from qt_compat import QPalette
 
@@ -1202,8 +1275,7 @@ class ChainDialog(BaseDialog):
             pixmap = self._create_chain_icon(48)
         _current_theme = getattr(self, "theme", "dark")
         _need_invert = (
-            self.invert_light_cb.isChecked() if _current_theme == "light"
-            else self.invert_dark_cb.isChecked()
+            self.invert_light_cb.isChecked() if _current_theme == "light" else self.invert_dark_cb.isChecked()
         )
         if _need_invert and pixmap and not pixmap.isNull():
             try:
@@ -1580,10 +1652,7 @@ class ChainDialog(BaseDialog):
         self._remove_step()
 
     def _load_selected_binding_fields(self):
-        if not all(
-            hasattr(self, name)
-            for name in ("input_binding_edit", "param_bindings_edit", "step_args_edit")
-        ):
+        if not all(hasattr(self, name) for name in ("input_binding_edit", "param_bindings_edit", "step_args_edit")):
             return
         self._binding_loading = True
         try:
@@ -1632,9 +1701,7 @@ class ChainDialog(BaseDialog):
     def _format_mapping(values: dict) -> str:
         if not isinstance(values, dict):
             return ""
-        return "\n".join(
-            f"{key}={value}" for key, value in values.items() if str(key).strip() and str(value).strip()
-        )
+        return "\n".join(f"{key}={value}" for key, value in values.items() if str(key).strip() and str(value).strip())
 
     # ── 风险分析 ─────────────────────────────────────────────
 

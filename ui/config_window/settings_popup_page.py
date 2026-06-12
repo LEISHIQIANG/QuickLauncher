@@ -127,15 +127,15 @@ class SettingsPopupPageMixin:
         layout.addLayout(special_row)
 
         # 传递钩子引用，录制时暂停钩子
-        if hasattr(self, 'tray_app') and self.tray_app and hasattr(self.tray_app, 'mouse_hook'):
+        if hasattr(self, "tray_app") and self.tray_app and hasattr(self.tray_app, "mouse_hook"):
             self.normal_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
             self.special_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
 
         # 重新连接清空按钮，让其自动应用配置
         self.normal_trigger_recorder.clear_btn.clicked.disconnect()
-        self.normal_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger('normal'))
+        self.normal_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger("normal"))
         self.special_trigger_recorder.clear_btn.clicked.disconnect()
-        self.special_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger('special'))
+        self.special_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger("special"))
 
         apply_btn = QPushButton(tr("应用触发设置"))
         apply_btn.clicked.connect(self._on_trigger_config_changed)
@@ -221,13 +221,13 @@ class SettingsPopupPageMixin:
             getattr(settings, "popup_trigger_mode", "mouse"),
             getattr(settings, "popup_trigger_keys", []),
             getattr(settings, "popup_trigger_button", "middle"),
-            getattr(settings, "popup_trigger_modifiers", [])
+            getattr(settings, "popup_trigger_modifiers", []),
         )
         self.special_trigger_recorder.set_trigger(
             getattr(settings, "popup_special_trigger_mode", "mouse"),
             getattr(settings, "popup_special_trigger_keys", []),
             getattr(settings, "popup_special_trigger_button", "middle"),
-            getattr(settings, "popup_special_trigger_modifiers", ["ctrl"])
+            getattr(settings, "popup_special_trigger_modifiers", ["ctrl"]),
         )
 
         self.special_apps_list.clear()
@@ -273,7 +273,7 @@ class SettingsPopupPageMixin:
     def _on_clear_trigger(self, trigger_type: str):
         """清空触发配置并自动应用"""
         # 保存当前配置作为备份
-        if trigger_type == 'normal':
+        if trigger_type == "normal":
             recorder = self.normal_trigger_recorder
         else:
             recorder = self.special_trigger_recorder
@@ -311,7 +311,12 @@ class SettingsPopupPageMixin:
         normal = normalize_trigger_config(normal_mode, normal_keys, normal_btn, normal_mods)
         special = normalize_trigger_config(special_mode, special_keys, special_btn, special_mods)
         normal_mode, normal_keys, normal_btn, normal_mods = normal.mode, normal.keys, normal.button, normal.modifiers
-        special_mode, special_keys, special_btn, special_mods = special.mode, special.keys, special.button, special.modifiers
+        special_mode, special_keys, special_btn, special_mods = (
+            special.mode,
+            special.keys,
+            special.button,
+            special.modifiers,
+        )
         shortcuts = self._shortcut_conflict_candidates()
 
         logger.info(
@@ -336,6 +341,7 @@ class SettingsPopupPageMixin:
         )
         if is_conflict:
             from ui.styles.themed_messagebox import ThemedMessageBox
+
             ThemedMessageBox.warning(self, "配置冲突", msg)
             return False
 
@@ -348,6 +354,7 @@ class SettingsPopupPageMixin:
         )
         if is_conflict:
             from ui.styles.themed_messagebox import ThemedMessageBox
+
             ThemedMessageBox.warning(self, "配置冲突", f"特殊触发：{msg}")
             return False
 
@@ -360,7 +367,7 @@ class SettingsPopupPageMixin:
             popup_special_trigger_mode=special_mode,
             popup_special_trigger_keys=special_keys,
             popup_special_trigger_button=special_btn,
-            popup_special_trigger_modifiers=special_mods
+            popup_special_trigger_modifiers=special_mods,
         )
         self.normal_trigger_recorder.set_trigger(normal_mode, normal_keys, normal_btn, normal_mods)
         self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)

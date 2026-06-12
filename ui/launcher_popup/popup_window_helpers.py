@@ -173,7 +173,7 @@ class IconFlashOverlay(QWidget):
         padding = int(getattr(launcher, "padding", 0) or 0)
         text_h = QFontMetrics(getattr(launcher, "_label_font", launcher.font())).height()
         text_spacing = sp(1)
-        use_card = getattr(getattr(launcher, "settings", None), "bg_mode", "theme") == "acrylic"
+        use_card = True
 
         if 0 <= current_page < len(pages):
             items = getattr(pages[current_page], "items", []) or []

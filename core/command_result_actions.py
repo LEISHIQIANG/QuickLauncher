@@ -28,13 +28,17 @@ def enrich_result_actions(result: CommandResult, artifact: CommandOutputArtifact
         _copy(default_actions, "复制 TSV", artifact.table_tsv)
         table_csv = artifact.outputs.get("table.csv", "")
         if table_csv or artifact.table_tsv:
-            default_actions.append(CommandAction(type="save_csv", label="保存 CSV", value=table_csv or artifact.table_tsv))
+            default_actions.append(
+                CommandAction(type="save_csv", label="保存 CSV", value=table_csv or artifact.table_tsv)
+            )
     if display_type == "json":
         _copy(default_actions, "复制 JSON", artifact.json_text or artifact.outputs.get("json", ""))
         _copy(default_actions, "复制压缩 JSON", artifact.outputs.get("json.compact", ""))
         if artifact.json_text or artifact.outputs.get("json"):
             default_actions.append(
-                CommandAction(type="save_json", label="保存 JSON", value=artifact.json_text or artifact.outputs.get("json", ""))
+                CommandAction(
+                    type="save_json", label="保存 JSON", value=artifact.json_text or artifact.outputs.get("json", "")
+                )
             )
 
     for path in artifact.files:

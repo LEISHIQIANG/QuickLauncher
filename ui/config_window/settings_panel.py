@@ -162,7 +162,12 @@ class CompactProgressDialog(QDialog):
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             # 磨砂玻璃模式：与ThemedMessageBox完全一致
@@ -459,7 +464,8 @@ class NavigationWidget(QListWidget):
         self.theme = theme
         self._apply_nav_icons(theme)
 
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             QListWidget {{
                 background-color: transparent;
                 border: none;
@@ -480,7 +486,8 @@ class NavigationWidget(QListWidget):
                 background-color: transparent;
                 border: none;
             }}
-        """)
+        """
+        )
 
     def _apply_nav_icons(self, theme: str):
         from .action_button_icons import create_action_button_icon
@@ -540,7 +547,9 @@ class BaseSettingPage(SmoothScrollArea):
         group.setFont(get_qfont(14))
         group.setProperty("settingsGroupTitle", title)
 
-        group.setStyleSheet(scale_qss("""
+        group.setStyleSheet(
+            scale_qss(
+                """
             QGroupBox {
                 border: none;
                 padding-top: 5px;
@@ -553,7 +562,9 @@ class BaseSettingPage(SmoothScrollArea):
                 padding-left: 18px;
                 color: white;
             }
-        """))
+        """
+            )
+        )
 
         icon_label = QLabel()
         icon_label.setObjectName("SettingsGroupIcon")
@@ -1002,21 +1013,25 @@ class SettingsPanel(
 
         # 分栏容器圆角矩形样式
         if theme == "dark":
-            container_style = scale_qss("""
+            container_style = scale_qss(
+                """
                 QWidget#NavContainer, QWidget#ContentContainer {
                     background-color: rgba(255, 255, 255, 0.06);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 10px;
                 }
-            """)
+            """
+            )
         else:
-            container_style = scale_qss("""
+            container_style = scale_qss(
+                """
                 QWidget#NavContainer, QWidget#ContentContainer {
                     background-color: rgba(255, 255, 255, 0.20);
                     border: 1px solid rgba(0, 0, 0, 0.06);
                     border-radius: 10px;
                 }
-            """)
+            """
+            )
         self.nav_container.setStyleSheet(container_style)
         self.content_container.setStyleSheet(container_style)
 

@@ -11,8 +11,9 @@ repos:
   - repo: local
     hooks:
       - id: no-silent-exceptions
-        name: Reject silent except Exception: pass
+        name: "Reject silent except Exception: pass"
         entry: python scripts/check_silent_exceptions.py
         language: python
         types: [python]
-        stages: [commit]
+        stages: [pre-commit]
+        exclude: '^(tests/|plugins/screenshot_ocr/)'

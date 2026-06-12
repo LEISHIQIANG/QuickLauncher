@@ -250,6 +250,7 @@ class GraphExecutionContext:
 
 class CancelledError(Exception):
     """Raised when execution is cancelled."""
+
     pass
 
 
@@ -271,11 +272,14 @@ class GraphRuntime:
         """Register a processor handler."""
         self._processor_handlers[processor_id] = handler
 
-    def execute(self, graph: ChainGraph,
-                cancel_event: threading.Event | None = None,
-                max_steps: int = 0,
-                timeout: float = 0.0,
-                use_cache: bool = True) -> ExecutionResult:
+    def execute(
+        self,
+        graph: ChainGraph,
+        cancel_event: threading.Event | None = None,
+        max_steps: int = 0,
+        timeout: float = 0.0,
+        use_cache: bool = True,
+    ) -> ExecutionResult:
         """Execute a graph.
 
         Args:
@@ -490,6 +494,7 @@ class GraphRuntime:
         # Try to import from registry
         try:
             from .registry import get_processor_handler
+
             return get_processor_handler(processor_id)
         except ImportError as exc:
             logger.debug("无法从 registry 导入处理器 %s: %s", processor_id, exc, exc_info=True)
@@ -507,8 +512,9 @@ class GraphRuntime:
                 outputs[port.id] = None
         return outputs
 
-    def _skip_downstream_nodes(self, graph: ChainGraph, failed_node_id: str,
-                               result: ExecutionResult, context: GraphExecutionContext) -> None:
+    def _skip_downstream_nodes(
+        self, graph: ChainGraph, failed_node_id: str, result: ExecutionResult, context: GraphExecutionContext
+    ) -> None:
         """Mark downstream nodes as skipped after a failure."""
         # BFS to find all downstream nodes
         visited = set()
@@ -537,8 +543,9 @@ class GraphRuntime:
                         dep_node.status = NodeStatus.SKIPPED
                     queue.append(dep_id)
 
-    def execute_node(self, graph: ChainGraph, node_id: str,
-                     cancel_event: threading.Event | None = None) -> NodeExecutionResult:
+    def execute_node(
+        self, graph: ChainGraph, node_id: str, cancel_event: threading.Event | None = None
+    ) -> NodeExecutionResult:
         """Execute a single node and its dependencies.
 
         This method executes only the specified node and all its upstream dependencies.
@@ -562,12 +569,15 @@ class GraphRuntime:
         result = self.execute(sub_graph, cancel_event=cancel_event)
 
         # Return only the result for the requested node
-        return result.node_results.get(node_id, NodeExecutionResult(
-            node_id=node_id,
-            processor_id="",
-            status=NodeStatus.FAILED,
-            error="Node not found in execution result",
-        ))
+        return result.node_results.get(
+            node_id,
+            NodeExecutionResult(
+                node_id=node_id,
+                processor_id="",
+                status=NodeStatus.FAILED,
+                error="Node not found in execution result",
+            ),
+        )
 
     def _get_upstream_nodes(self, graph: ChainGraph, node_id: str) -> list[str]:
         """Get all upstream nodes (recursive dependencies)."""
@@ -613,11 +623,13 @@ def _create_chain_value(value: Any, kind: str) -> ChainValue:
     )
 
 
-def execute_graph(graph: ChainGraph,
-                  cancel_event: threading.Event | None = None,
-                  max_steps: int = 0,
-                  timeout: float = 0.0,
-                  use_cache: bool = True) -> ExecutionResult:
+def execute_graph(
+    graph: ChainGraph,
+    cancel_event: threading.Event | None = None,
+    max_steps: int = 0,
+    timeout: float = 0.0,
+    use_cache: bool = True,
+) -> ExecutionResult:
     """Convenience function to execute a graph.
 
     Args:

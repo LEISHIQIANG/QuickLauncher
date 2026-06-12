@@ -275,34 +275,40 @@ class TemplateLibrary:
     def _load_builtin_templates(self) -> None:
         """Load built-in templates."""
         # Basic text processing template
-        self.register_template(ChainTemplate(
-            id="builtin.text_processing",
-            name="文本处理流程",
-            description="基本的文本处理流程：输入 -> 替换 -> 输出",
-            category="文本",
-            author="QuickLauncher",
-            tags=["文本", "基础"],
-        ))
+        self.register_template(
+            ChainTemplate(
+                id="builtin.text_processing",
+                name="文本处理流程",
+                description="基本的文本处理流程：输入 -> 替换 -> 输出",
+                category="文本",
+                author="QuickLauncher",
+                tags=["文本", "基础"],
+            )
+        )
 
         # File processing template
-        self.register_template(ChainTemplate(
-            id="builtin.file_processing",
-            name="文件处理流程",
-            description="基本的文件处理流程：读取 -> 处理 -> 写入",
-            category="文件",
-            author="QuickLauncher",
-            tags=["文件", "基础"],
-        ))
+        self.register_template(
+            ChainTemplate(
+                id="builtin.file_processing",
+                name="文件处理流程",
+                description="基本的文件处理流程：读取 -> 处理 -> 写入",
+                category="文件",
+                author="QuickLauncher",
+                tags=["文件", "基础"],
+            )
+        )
 
         # HTTP request template
-        self.register_template(ChainTemplate(
-            id="builtin.http_request",
-            name="HTTP请求流程",
-            description="基本的HTTP请求流程：构建URL -> 请求 -> 解析响应",
-            category="网络",
-            author="QuickLauncher",
-            tags=["HTTP", "网络"],
-        ))
+        self.register_template(
+            ChainTemplate(
+                id="builtin.http_request",
+                name="HTTP请求流程",
+                description="基本的HTTP请求流程：构建URL -> 请求 -> 解析响应",
+                category="网络",
+                author="QuickLauncher",
+                tags=["HTTP", "网络"],
+            )
+        )
 
     # ── Template Operations ────────────────────────────────────────────────
 
@@ -337,10 +343,12 @@ class TemplateLibrary:
 
         results = []
         for template in self._templates.values():
-            if (query in template.name.lower() or
-                query in template.description.lower() or
-                query in template.category.lower() or
-                any(query in tag.lower() for tag in template.tags)):
+            if (
+                query in template.name.lower()
+                or query in template.description.lower()
+                or query in template.category.lower()
+                or any(query in tag.lower() for tag in template.tags)
+            ):
                 results.append(template)
 
         return results

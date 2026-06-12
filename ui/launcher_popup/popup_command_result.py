@@ -291,27 +291,29 @@ class PopupCommandResultMixin:
                 logger.debug("设置文档框架格式失败: %s", exc, exc_info=True)
 
             # Apply styling directly to the vertical scrollbar child widget for bulletproof styling propagation
-            te.verticalScrollBar().setStyleSheet(scale_qss(
-                f"QScrollBar:vertical {{"
-                f"  border: none;"
-                f"  background: transparent;"
-                f"  width: 3px;"
-                f"  margin: 0px;"
-                f"}}"
-                f"QScrollBar::handle:vertical {{"
-                f"  background: {scrollbar_handle_color};"
-                f"  min-height: 12px;"
-                f"  border-radius: 1px;"
-                f"}}"
-                f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{"
-                f"  border: none;"
-                f"  background: none;"
-                f"  height: 0px;"
-                f"}}"
-                f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{"
-                f"  background: none;"
-                f"}}"
-            ))
+            te.verticalScrollBar().setStyleSheet(
+                scale_qss(
+                    f"QScrollBar:vertical {{"
+                    f"  border: none;"
+                    f"  background: transparent;"
+                    f"  width: 3px;"
+                    f"  margin: 0px;"
+                    f"}}"
+                    f"QScrollBar::handle:vertical {{"
+                    f"  background: {scrollbar_handle_color};"
+                    f"  min-height: 12px;"
+                    f"  border-radius: 1px;"
+                    f"}}"
+                    f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{"
+                    f"  border: none;"
+                    f"  background: none;"
+                    f"  height: 0px;"
+                    f"}}"
+                    f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{"
+                    f"  background: none;"
+                    f"}}"
+                )
+            )
         except Exception as exc:
             logger.debug("设置滚动条样式失败: %s", exc, exc_info=True)
 
@@ -447,7 +449,12 @@ class PopupCommandResultMixin:
         fm = QFontMetrics(font)
         text_w = fm.horizontalAdvance("关闭") if hasattr(fm, "horizontalAdvance") else fm.width("关闭")
         close_w = max(sp(40), text_w + sp(12))
-        return QRect(card_rect.right() - sp(6) - close_w, card_rect.bottom() - sp(_ACTION_BTN_H) - sp(6), close_w, sp(_ACTION_BTN_H))
+        return QRect(
+            card_rect.right() - sp(6) - close_w,
+            card_rect.bottom() - sp(_ACTION_BTN_H) - sp(6),
+            close_w,
+            sp(_ACTION_BTN_H),
+        )
 
     def _action_button_rects(self):
         """Return list of (QRect, action_index) for each action button."""
@@ -908,7 +915,12 @@ class PopupCommandResultMixin:
             painter.setFont(error_font)
             painter.setPen(QColor("#f44336"))
             painter.drawText(
-                QRect(card_x + sp(8), card_y + card_h - sp(36) if result.actions else card_y + card_h - sp(18), card_w - sp(16), sp(14)),
+                QRect(
+                    card_x + sp(8),
+                    card_y + card_h - sp(36) if result.actions else card_y + card_h - sp(18),
+                    card_w - sp(16),
+                    sp(14),
+                ),
                 Qt.AlignLeft,
                 result.error,
             )

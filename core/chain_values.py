@@ -59,7 +59,9 @@ class ChainValue:
         }
 
 
-def make_chain_value(value: Any, kind: str = ChainValueKind.ANY, *, metadata: dict[str, Any] | None = None) -> ChainValue:
+def make_chain_value(
+    value: Any, kind: str = ChainValueKind.ANY, *, metadata: dict[str, Any] | None = None
+) -> ChainValue:
     normalized_kind = _normalize_kind(kind)
     coerced = _coerce_value(value, normalized_kind)
     text = value_to_text(coerced)
@@ -84,7 +86,10 @@ def chain_value_to_dict(value: Any, kind: str = ChainValueKind.ANY) -> dict[str,
 
 def typed_mapping(values: dict[str, Any], port_kinds: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
     kinds = dict(port_kinds or {})
-    return {str(key): make_chain_value(value, kinds.get(str(key), ChainValueKind.ANY)).to_dict() for key, value in dict(values or {}).items()}
+    return {
+        str(key): make_chain_value(value, kinds.get(str(key), ChainValueKind.ANY)).to_dict()
+        for key, value in dict(values or {}).items()
+    }
 
 
 def value_to_text(value: Any) -> str:
@@ -198,6 +203,7 @@ def _coerce_value(value: Any, kind: str) -> Any:
 def _coerce_to_path(value: Any) -> str:
     """Coerce a value to a file/folder path string."""
     import os
+
     if isinstance(value, ChainValue):
         value = value.value
     if isinstance(value, str):

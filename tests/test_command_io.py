@@ -143,7 +143,10 @@ def test_param_defaults_and_input_discovery():
     }
     assert resolve_param_default(CommandParam(name="a", source="clipboard"), context_meta=context) == "clip"
     assert resolve_param_default(CommandParam(name="a", source="selected_text"), context_meta=context) == "sel"
-    assert resolve_param_default(CommandParam(name="a", source="selected_file"), context_meta=context) == "C:/folder/file.txt"
+    assert (
+        resolve_param_default(CommandParam(name="a", source="selected_file"), context_meta=context)
+        == "C:/folder/file.txt"
+    )
     assert resolve_param_default(CommandParam(name="a", source="last"), last_args={"a": "last"}) == "last"
     assert discover_input_variables("echo {{input}} {{input:提示}} {{input:提示}}") == [
         ("input", ""),

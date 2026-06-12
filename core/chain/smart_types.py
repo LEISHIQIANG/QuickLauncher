@@ -157,7 +157,7 @@ TYPE_HINTS: dict[str, TypeHint] = {
         smart_type=SmartType.JSON,
         base_type="json",
         description="JSON数据",
-        examples=['{"key": "value"}', '[1, 2, 3]'],
+        examples=['{"key": "value"}', "[1, 2, 3]"],
         validator="validate_json",
     ),
     SmartType.JSON_STRING: TypeHint(
@@ -596,7 +596,9 @@ class TypeValidator:
             return True, ""
         if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", text):
             return TypeValidator.validate_ip_address(value)
-        if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$", text):
+        if re.match(
+            r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$", text
+        ):
             return True, ""
         return False, f"无效的主机名格式: {value}"
 
@@ -662,8 +664,20 @@ class TypeValidator:
             return True, ""
         # Named colors
         named_colors = {
-            "red", "green", "blue", "white", "black", "yellow", "cyan", "magenta",
-            "orange", "purple", "pink", "gray", "grey", "brown",
+            "red",
+            "green",
+            "blue",
+            "white",
+            "black",
+            "yellow",
+            "cyan",
+            "magenta",
+            "orange",
+            "purple",
+            "pink",
+            "gray",
+            "grey",
+            "brown",
         }
         if text.lower() in named_colors:
             return True, ""
@@ -673,6 +687,7 @@ class TypeValidator:
     def validate_regex(value: Any) -> tuple[bool, str]:
         """Validate that value is a valid regex."""
         import re as regex_module
+
         try:
             regex_module.compile(str(value))
             return True, ""

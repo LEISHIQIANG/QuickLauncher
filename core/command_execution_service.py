@@ -109,7 +109,9 @@ class CommandExecutionService:
 
     # ── internal helpers ──────────────────────────────────────────
 
-    def _submit_worker(self, worker: Callable[[], None], name_prefix: str, request_id: str) -> concurrent.futures.Future:
+    def _submit_worker(
+        self, worker: Callable[[], None], name_prefix: str, request_id: str
+    ) -> concurrent.futures.Future:
         """Submit *worker* to the shared pool and track the future."""
         future = self._pool.submit(worker)
         with self._futures_lock:
@@ -287,7 +289,9 @@ class CommandExecutionService:
         handle = handle or CommandExecutionHandle()
         started = time.perf_counter()
         invocation = build_invocation_snapshot(request, None, request.shortcut)
-        runtime_shortcut = prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
+        runtime_shortcut = (
+            prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
+        )
         try:
             from core import ShortcutExecutor
 
@@ -315,7 +319,9 @@ class CommandExecutionService:
         handle = handle or CommandExecutionHandle()
         started = time.perf_counter()
         invocation = build_invocation_snapshot(request, None, request.shortcut)
-        runtime_shortcut = prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
+        runtime_shortcut = (
+            prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
+        )
         try:
             from core import ShortcutExecutor
 
@@ -360,7 +366,9 @@ class CommandExecutionService:
         handle = handle or CommandExecutionHandle()
         started = time.perf_counter()
         invocation = build_invocation_snapshot(request, None, request.shortcut)
-        runtime_shortcut = prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
+        runtime_shortcut = (
+            prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
+        )
         try:
             from core.shortcut_chain_exec import execute_shortcut_chain
 

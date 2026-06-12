@@ -43,9 +43,9 @@ class LegacyAdapter:
     """Adapter for converting between legacy chain format and new graph format."""
 
     @staticmethod
-    def steps_to_graph(steps: list[dict[str, Any]],
-                       canvas: dict[str, Any] | None = None,
-                       shortcut_map: dict[str, Any] | None = None) -> ChainGraph:
+    def steps_to_graph(
+        steps: list[dict[str, Any]], canvas: dict[str, Any] | None = None, shortcut_map: dict[str, Any] | None = None
+    ) -> ChainGraph:
         """Convert legacy chain_steps to ChainGraph.
 
         Args:
@@ -65,15 +65,11 @@ class LegacyAdapter:
 
             if node_type == "processor":
                 processor_id = str(step.get("processor_id") or "")
-                node = LegacyAdapter._create_processor_node(
-                    node_id, processor_id, step, index
-                )
+                node = LegacyAdapter._create_processor_node(node_id, processor_id, step, index)
             else:
                 # Shortcut node
                 shortcut_id = str(step.get("shortcut_id") or "")
-                node = LegacyAdapter._create_shortcut_node(
-                    node_id, shortcut_id, step, index, shortcut_map
-                )
+                node = LegacyAdapter._create_shortcut_node(node_id, shortcut_id, step, index, shortcut_map)
 
             # Get position from canvas if available
             if canvas:
@@ -128,8 +124,7 @@ class LegacyAdapter:
         return graph
 
     @staticmethod
-    def _create_processor_node(node_id: str, processor_id: str,
-                                step: dict, index: int) -> ChainNode:
+    def _create_processor_node(node_id: str, processor_id: str, step: dict, index: int) -> ChainNode:
         """Create a processor node from step data."""
         registry = get_registry()
         definition = registry.get_definition(processor_id)
@@ -155,9 +150,9 @@ class LegacyAdapter:
         return node
 
     @staticmethod
-    def _create_shortcut_node(node_id: str, shortcut_id: str,
-                               step: dict, index: int,
-                               shortcut_map: dict[str, Any] | None) -> ChainNode:
+    def _create_shortcut_node(
+        node_id: str, shortcut_id: str, step: dict, index: int, shortcut_map: dict[str, Any] | None
+    ) -> ChainNode:
         """Create a shortcut node from step data."""
         shortcut = (shortcut_map or {}).get(shortcut_id)
 
@@ -169,18 +164,22 @@ class LegacyAdapter:
         )
 
         # Add standard ports
-        node.inputs.append(ChainPort(
-            id="input",
-            label="输入",
-            direction=PortDirection.INPUT,
-            kind="any",
-        ))
-        node.outputs.append(ChainPort(
-            id="output",
-            label="输出",
-            direction=PortDirection.OUTPUT,
-            kind="text",
-        ))
+        node.inputs.append(
+            ChainPort(
+                id="input",
+                label="输入",
+                direction=PortDirection.INPUT,
+                kind="any",
+            )
+        )
+        node.outputs.append(
+            ChainPort(
+                id="output",
+                label="输出",
+                direction=PortDirection.OUTPUT,
+                kind="text",
+            )
+        )
 
         # Store shortcut reference
         node.params["shortcut_id"] = shortcut_id
@@ -190,8 +189,7 @@ class LegacyAdapter:
         return node
 
     @staticmethod
-    def _apply_canvas_position(node: ChainNode, canvas: dict[str, Any],
-                                node_id: str) -> None:
+    def _apply_canvas_position(node: ChainNode, canvas: dict[str, Any], node_id: str) -> None:
         """Apply canvas position to node."""
         nodes_data = canvas.get("nodes") or []
 
@@ -248,8 +246,11 @@ class LegacyAdapter:
             step["delay_ms"] = int(node.params.get("delay_ms") or 0)
 
             # Add args (excluding internal graph/adapter metadata)
-            params = {k: v for k, v in node.params.items()
-                     if k not in ("shortcut_id", "input_binding", "stop_on_error", "delay_ms", "source")}
+            params = {
+                k: v
+                for k, v in node.params.items()
+                if k not in ("shortcut_id", "input_binding", "stop_on_error", "delay_ms", "source")
+            }
             if params:
                 step["args"] = params
             if "source" in node.params:
@@ -349,57 +350,69 @@ class GraphExecutor:
 
     # ── Built-in Handlers ──────────────────────────────────────────────────
 
-    def _handle_text_input(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_input(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         return {"output": str(inputs.get("text") or node.params.get("text") or "")}
 
-    def _handle_num_input(self, node: ChainNode, inputs: dict[str, Any],
-                          context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_num_input(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         value = inputs.get("number") or node.params.get("number") or "0"
         try:
             return {"output": float(value)}
         except (ValueError, TypeError):
             return {"output": 0}
 
-    def _handle_bool_value(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_bool_value(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         value = inputs.get("value") or node.params.get("value") or "false"
-        return {"output": str(value).lower() in ("true", "1", "yes"), "not": str(value).lower() not in ("true", "1", "yes")}
+        return {
+            "output": str(value).lower() in ("true", "1", "yes"),
+            "not": str(value).lower() not in ("true", "1", "yes"),
+        }
 
-    def _handle_panel_node(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_panel_node(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         return {"output": str(inputs.get("input") or "")}
 
-    def _handle_logger_node(self, node: ChainNode, inputs: dict[str, Any],
-                            context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_logger_node(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         level = str(inputs.get("level") or node.params.get("level") or "info")
         logger.log(logging.INFO if level == "info" else logging.WARNING, "%s", text)
         return {"output": text}
 
-    def _handle_sleep_node(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_sleep_node(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         ms = int(inputs.get("ms") or node.params.get("ms") or 1000)
         time.sleep(ms / 1000.0)
         return {"output": str(ms), "ms": ms}
 
-    def _handle_text_replace(self, node: ChainNode, inputs: dict[str, Any],
-                             context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_replace(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         find = str(inputs.get("find") or node.params.get("find") or "")
         replace = str(inputs.get("replace") or node.params.get("replace") or "")
         result = text.replace(find, replace) if find else text
         return {"output": result}
 
-    def _handle_text_slice(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_slice(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         start = int(inputs.get("start") or node.params.get("start") or 0)
         end = int(inputs.get("end") or node.params.get("end") or len(text))
         return {"output": text[start:end]}
 
-    def _handle_text_case(self, node: ChainNode, inputs: dict[str, Any],
-                          context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_case(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         mode = str(inputs.get("mode") or node.params.get("mode") or "upper")
         if mode == "upper":
@@ -412,8 +425,9 @@ class GraphExecutor:
             return {"output": text.strip()}
         return {"output": text}
 
-    def _handle_text_join(self, node: ChainNode, inputs: dict[str, Any],
-                          context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_join(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         delimiter = str(inputs.get("delimiter") or node.params.get("delimiter") or "")
         parts = []
         for key in ("a", "b", "c", "d", "e"):
@@ -422,26 +436,40 @@ class GraphExecutor:
                 parts.append(str(value))
         return {"output": delimiter.join(parts)}
 
-    def _handle_text_len(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_len(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         return {"output": len(text)}
 
-    def _handle_text_split(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_split(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         delimiter = str(inputs.get("delimiter") or node.params.get("delimiter") or "")
         parts = text.split(delimiter) if delimiter else list(text)
-        return {"output": parts, "count": len(parts), "first": parts[0] if parts else "", "last": parts[-1] if parts else ""}
+        return {
+            "output": parts,
+            "count": len(parts),
+            "first": parts[0] if parts else "",
+            "last": parts[-1] if parts else "",
+        }
 
-    def _handle_text_lines(self, node: ChainNode, inputs: dict[str, Any],
-                           context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_lines(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         text = str(inputs.get("text") or "")
         lines = text.splitlines()
-        return {"output": lines, "count": len(lines), "first": lines[0] if lines else "", "last": lines[-1] if lines else ""}
+        return {
+            "output": lines,
+            "count": len(lines),
+            "first": lines[0] if lines else "",
+            "last": lines[-1] if lines else "",
+        }
 
-    def _handle_text_template(self, node: ChainNode, inputs: dict[str, Any],
-                              context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_text_template(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         template = str(inputs.get("template") or node.params.get("template") or "{output}")
         replacements = {}
         for key in ("input", "a", "b", "c"):
@@ -453,9 +481,11 @@ class GraphExecutor:
             result = result.replace(f"{{{key}}}", value)
         return {"output": result}
 
-    def _handle_regex_extract(self, node: ChainNode, inputs: dict[str, Any],
-                              context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_regex_extract(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         import re
+
         text = str(inputs.get("text") or "")
         pattern = str(inputs.get("pattern") or node.params.get("pattern") or "")
         group = int(inputs.get("group") or node.params.get("group") or 0)
@@ -467,65 +497,75 @@ class GraphExecutor:
             logger.debug("正则处理器执行失败，返回空输出: %s", exc, exc_info=True)
         return {"output": ""}
 
-    def _handle_math_add(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_math_add(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = float(inputs.get("a") or node.params.get("a") or 0)
         b = float(inputs.get("b") or node.params.get("b") or 0)
         return {"output": a + b}
 
-    def _handle_math_sub(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_math_sub(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = float(inputs.get("a") or node.params.get("a") or 0)
         b = float(inputs.get("b") or node.params.get("b") or 0)
         return {"output": a - b}
 
-    def _handle_math_mul(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_math_mul(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = float(inputs.get("a") or node.params.get("a") or 0)
         b = float(inputs.get("b") or node.params.get("b") or 0)
         return {"output": a * b}
 
-    def _handle_math_div(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_math_div(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = float(inputs.get("a") or node.params.get("a") or 0)
         b = float(inputs.get("b") or node.params.get("b") or 1)
         if b == 0:
             return {"output": None}
         return {"output": a / b}
 
-    def _handle_math_mod(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_math_mod(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = float(inputs.get("a") or node.params.get("a") or 0)
         b = float(inputs.get("b") or node.params.get("b") or 1)
         if b == 0:
             return {"output": None}
         return {"output": a % b}
 
-    def _handle_math_pow(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_math_pow(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         base = float(inputs.get("base") or node.params.get("base") or 0)
         exp = float(inputs.get("exp") or node.params.get("exp") or 1)
-        return {"output": base ** exp}
+        return {"output": base**exp}
 
-    def _handle_bool_not(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_bool_not(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         value = bool(inputs.get("value"))
         return {"output": not value, "not": not value}
 
-    def _handle_bool_and(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_bool_and(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = bool(inputs.get("a"))
         b = bool(inputs.get("b"))
         return {"output": a and b}
 
-    def _handle_bool_or(self, node: ChainNode, inputs: dict[str, Any],
-                        context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_bool_or(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = bool(inputs.get("a"))
         b = bool(inputs.get("b"))
         return {"output": a or b}
 
-    def _handle_compare_value(self, node: ChainNode, inputs: dict[str, Any],
-                              context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_compare_value(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         a = inputs.get("a")
         b = inputs.get("b")
         operator = str(inputs.get("operator") or node.params.get("operator") or "等于")
@@ -553,45 +593,56 @@ class GraphExecutor:
 
         return {"output": result}
 
-    def _handle_if_else(self, node: ChainNode, inputs: dict[str, Any],
-                        context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_if_else(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         condition = bool(inputs.get("condition"))
         true_value = inputs.get("true_value")
         false_value = inputs.get("false_value")
         return {"output": true_value if condition else false_value}
 
-    def _handle_list_create(self, node: ChainNode, inputs: dict[str, Any],
-                            context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_list_create(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         items = []
         for key in ("a", "b", "c", "d", "e"):
             value = inputs.get(key) or node.params.get(key)
             if value is not None:
                 items.append(value)
-        return {"output": items, "count": len(items), "first": items[0] if items else None, "last": items[-1] if items else None}
+        return {
+            "output": items,
+            "count": len(items),
+            "first": items[0] if items else None,
+            "last": items[-1] if items else None,
+        }
 
-    def _handle_list_item(self, node: ChainNode, inputs: dict[str, Any],
-                          context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_list_item(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         lst = inputs.get("list") or []
         index = int(inputs.get("index") or node.params.get("index") or 0)
         if isinstance(lst, list) and 0 <= index < len(lst):
             return {"output": lst[index]}
         return {"output": None}
 
-    def _handle_list_len(self, node: ChainNode, inputs: dict[str, Any],
-                         context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_list_len(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         lst = inputs.get("list") or []
         return {"output": len(lst) if isinstance(lst, list) else 0}
 
-    def _handle_list_join(self, node: ChainNode, inputs: dict[str, Any],
-                          context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_list_join(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         lst = inputs.get("list") or []
         delimiter = str(inputs.get("delimiter") or node.params.get("delimiter") or ",")
         if isinstance(lst, list):
             return {"output": delimiter.join(str(item) for item in lst)}
         return {"output": str(lst)}
 
-    def _handle_list_concat(self, node: ChainNode, inputs: dict[str, Any],
-                            context: GraphExecutionContext) -> dict[str, Any]:
+    def _handle_list_concat(
+        self, node: ChainNode, inputs: dict[str, Any], context: GraphExecutionContext
+    ) -> dict[str, Any]:
         result = []
         for key in ("a", "b", "c"):
             lst = inputs.get(key) or []
@@ -603,13 +654,16 @@ class GraphExecutor:
 
     # ── Execution Methods ──────────────────────────────────────────────────
 
-    def execute(self, graph: ChainGraph,
-                cancel_event: threading.Event | None = None,
-                max_steps: int = 0,
-                timeout: float = 0.0,
-                use_cache: bool = True,
-                on_node_start: Any = None,
-                on_node_complete: Any = None) -> ExecutionResult:
+    def execute(
+        self,
+        graph: ChainGraph,
+        cancel_event: threading.Event | None = None,
+        max_steps: int = 0,
+        timeout: float = 0.0,
+        use_cache: bool = True,
+        on_node_start: Any = None,
+        on_node_complete: Any = None,
+    ) -> ExecutionResult:
         """Execute a graph.
 
         Args:
@@ -624,14 +678,15 @@ class GraphExecutor:
         Returns:
             ExecutionResult
         """
-        return self._runtime.execute(
-            graph, cancel_event, max_steps, timeout, use_cache
-        )
+        return self._runtime.execute(graph, cancel_event, max_steps, timeout, use_cache)
 
-    def execute_steps(self, steps: list[dict[str, Any]],
-                      canvas: dict[str, Any] | None = None,
-                      shortcut_map: dict[str, Any] | None = None,
-                      **kwargs) -> ExecutionResult:
+    def execute_steps(
+        self,
+        steps: list[dict[str, Any]],
+        canvas: dict[str, Any] | None = None,
+        shortcut_map: dict[str, Any] | None = None,
+        **kwargs,
+    ) -> ExecutionResult:
         """Execute legacy chain_steps format.
 
         Args:
@@ -646,8 +701,9 @@ class GraphExecutor:
         graph = LegacyAdapter.steps_to_graph(steps, canvas, shortcut_map)
         return self.execute(graph, **kwargs)
 
-    def execute_node(self, graph: ChainGraph, node_id: str,
-                     cancel_event: threading.Event | None = None) -> NodeExecutionResult:
+    def execute_node(
+        self, graph: ChainGraph, node_id: str, cancel_event: threading.Event | None = None
+    ) -> NodeExecutionResult:
         """Execute a single node and its dependencies."""
         return self._runtime.execute_node(graph, node_id, cancel_event)
 
@@ -670,9 +726,9 @@ def execute_chain_graph(graph: ChainGraph, **kwargs) -> ExecutionResult:
     return get_executor().execute(graph, **kwargs)
 
 
-def convert_steps_to_graph(steps: list[dict[str, Any]],
-                           canvas: dict[str, Any] | None = None,
-                           shortcut_map: dict[str, Any] | None = None) -> ChainGraph:
+def convert_steps_to_graph(
+    steps: list[dict[str, Any]], canvas: dict[str, Any] | None = None, shortcut_map: dict[str, Any] | None = None
+) -> ChainGraph:
     """Convert legacy steps to graph."""
     return LegacyAdapter.steps_to_graph(steps, canvas, shortcut_map)
 

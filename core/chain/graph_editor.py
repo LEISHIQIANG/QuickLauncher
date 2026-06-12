@@ -45,8 +45,9 @@ class GraphEditor:
 
     # ── Node Operations ────────────────────────────────────────────────────
 
-    def add_processor_node(self, processor_id: str, x: float = 0, y: float = 0,
-                           node_id: str | None = None) -> ChainNode | None:
+    def add_processor_node(
+        self, processor_id: str, x: float = 0, y: float = 0, node_id: str | None = None
+    ) -> ChainNode | None:
         """Add a processor node to the graph.
 
         Args:
@@ -70,8 +71,7 @@ class GraphEditor:
         self._graph.add_node(node)
         return node
 
-    def duplicate_node(self, node_id: str, offset_x: float = 50,
-                       offset_y: float = 50) -> ChainNode | None:
+    def duplicate_node(self, node_id: str, offset_x: float = 50, offset_y: float = 50) -> ChainNode | None:
         """Duplicate a node.
 
         Args:
@@ -87,6 +87,7 @@ class GraphEditor:
             return None
 
         import uuid
+
         new_node = ChainNode(
             id=str(uuid.uuid4()),
             processor_id=original.processor_id,
@@ -103,32 +104,36 @@ class GraphEditor:
 
         # Copy ports
         for port in original.inputs:
-            new_node.inputs.append(ChainPort(
-                id=port.id,
-                label=port.label,
-                direction=port.direction,
-                kind=port.kind,
-                smart_type=port.smart_type,
-                required=port.required,
-                multiple=port.multiple,
-                default=port.default,
-                description=port.description,
-                role=port.role,
-            ))
+            new_node.inputs.append(
+                ChainPort(
+                    id=port.id,
+                    label=port.label,
+                    direction=port.direction,
+                    kind=port.kind,
+                    smart_type=port.smart_type,
+                    required=port.required,
+                    multiple=port.multiple,
+                    default=port.default,
+                    description=port.description,
+                    role=port.role,
+                )
+            )
 
         for port in original.outputs:
-            new_node.outputs.append(ChainPort(
-                id=port.id,
-                label=port.label,
-                direction=port.direction,
-                kind=port.kind,
-                smart_type=port.smart_type,
-                required=port.required,
-                multiple=port.multiple,
-                default=port.default,
-                description=port.description,
-                role=port.role,
-            ))
+            new_node.outputs.append(
+                ChainPort(
+                    id=port.id,
+                    label=port.label,
+                    direction=port.direction,
+                    kind=port.kind,
+                    smart_type=port.smart_type,
+                    required=port.required,
+                    multiple=port.multiple,
+                    default=port.default,
+                    description=port.description,
+                    role=port.role,
+                )
+            )
 
         self._graph.add_node(new_node)
         return new_node
@@ -156,8 +161,9 @@ class GraphEditor:
 
     # ── Connection Operations ──────────────────────────────────────────────
 
-    def connect(self, source_node_id: str, source_port_id: str,
-                target_node_id: str, target_port_id: str) -> ChainConnection | None:
+    def connect(
+        self, source_node_id: str, source_port_id: str, target_node_id: str, target_port_id: str
+    ) -> ChainConnection | None:
         """Create a connection between two nodes.
 
         Args:
@@ -189,8 +195,7 @@ class GraphEditor:
         """Remove a connection."""
         return self._graph.remove_connection(connection_id) is not None
 
-    def disconnect_port(self, node_id: str, port_id: str,
-                        direction: PortDirection) -> int:
+    def disconnect_port(self, node_id: str, port_id: str, direction: PortDirection) -> int:
         """Disconnect all connections to/from a port."""
         to_remove = []
 
@@ -209,8 +214,7 @@ class GraphEditor:
 
     # ── Layout Operations ──────────────────────────────────────────────────
 
-    def auto_layout(self, direction: str = "horizontal",
-                    spacing_x: float = 200, spacing_y: float = 100) -> None:
+    def auto_layout(self, direction: str = "horizontal", spacing_x: float = 200, spacing_y: float = 100) -> None:
         """Auto-layout the graph nodes.
 
         Args:
@@ -280,8 +284,7 @@ class GraphEditor:
         nodes = [n for n in nodes if n is not None]
         distribute_nodes(nodes, "vertical")
 
-    def center_nodes(self, node_ids: list[str],
-                     center_x: float = 400, center_y: float = 300) -> None:
+    def center_nodes(self, node_ids: list[str], center_x: float = 400, center_y: float = 300) -> None:
         """Center nodes around a point."""
         nodes = [self._graph.get_node(nid) for nid in node_ids]
         nodes = [n for n in nodes if n is not None]
@@ -361,8 +364,10 @@ class GraphEditor:
 
 # ── Layout Algorithms ──────────────────────────────────────────────────────
 
-def auto_layout(graph: ChainGraph, direction: str = "horizontal",
-                spacing_x: float = 200, spacing_y: float = 100) -> None:
+
+def auto_layout(
+    graph: ChainGraph, direction: str = "horizontal", spacing_x: float = 200, spacing_y: float = 100
+) -> None:
     """Auto-layout graph nodes based on topological order.
 
     Args:
@@ -400,8 +405,9 @@ def auto_layout(graph: ChainGraph, direction: str = "horizontal",
         _layout_vertical(graph, level_groups, spacing_x, spacing_y)
 
 
-def _layout_horizontal(graph: ChainGraph, level_groups: dict[int, list[str]],
-                       spacing_x: float, spacing_y: float) -> None:
+def _layout_horizontal(
+    graph: ChainGraph, level_groups: dict[int, list[str]], spacing_x: float, spacing_y: float
+) -> None:
     """Layout nodes horizontally (left to right)."""
     x = 50.0
 
@@ -417,15 +423,11 @@ def _layout_horizontal(graph: ChainGraph, level_groups: dict[int, list[str]],
                 y += (node.height or 60) + spacing_y
 
         # Find max width in this level
-        max_width = max(
-            (graph.get_node(nid).width or 150 for nid in node_ids if graph.get_node(nid)),
-            default=150
-        )
+        max_width = max((graph.get_node(nid).width or 150 for nid in node_ids if graph.get_node(nid)), default=150)
         x += max_width + spacing_x
 
 
-def _layout_vertical(graph: ChainGraph, level_groups: dict[int, list[str]],
-                     spacing_x: float, spacing_y: float) -> None:
+def _layout_vertical(graph: ChainGraph, level_groups: dict[int, list[str]], spacing_x: float, spacing_y: float) -> None:
     """Layout nodes vertically (top to bottom)."""
     y = 50.0
 
@@ -441,10 +443,7 @@ def _layout_vertical(graph: ChainGraph, level_groups: dict[int, list[str]],
                 x += (node.width or 150) + spacing_x
 
         # Find max height in this level
-        max_height = max(
-            (graph.get_node(nid).height or 60 for nid in node_ids if graph.get_node(nid)),
-            default=60
-        )
+        max_height = max((graph.get_node(nid).height or 60 for nid in node_ids if graph.get_node(nid)), default=60)
         y += max_height + spacing_y
 
 
@@ -516,8 +515,7 @@ def distribute_nodes(nodes: list[ChainNode], direction: str = "horizontal") -> N
             y += node.height + gap
 
 
-def center_nodes(nodes: list[ChainNode], center_x: float = 400,
-                 center_y: float = 300) -> None:
+def center_nodes(nodes: list[ChainNode], center_x: float = 400, center_y: float = 300) -> None:
     """Center nodes around a point."""
     if not nodes:
         return
@@ -558,9 +556,9 @@ def get_bounds(nodes: list[ChainNode]) -> tuple[float, float, float, float]:
     return (min_x, min_y, max_x, max_y)
 
 
-def find_nearest_port(graph: ChainGraph, x: float, y: float,
-                      port_direction: PortDirection | None = None,
-                      max_distance: float = 50.0) -> tuple[ChainNode, ChainPort] | None:
+def find_nearest_port(
+    graph: ChainGraph, x: float, y: float, port_direction: PortDirection | None = None, max_distance: float = 50.0
+) -> tuple[ChainNode, ChainPort] | None:
     """Find the nearest port to a point."""
     best_node = None
     best_port = None
@@ -595,8 +593,9 @@ def find_nearest_port(graph: ChainGraph, x: float, y: float,
     return None
 
 
-def can_connect(graph: ChainGraph, source_node_id: str, source_port_id: str,
-                target_node_id: str, target_port_id: str) -> tuple[bool, str]:
+def can_connect(
+    graph: ChainGraph, source_node_id: str, source_port_id: str, target_node_id: str, target_port_id: str
+) -> tuple[bool, str]:
     """Check if two ports can be connected.
 
     Returns:

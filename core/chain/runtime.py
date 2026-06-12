@@ -166,9 +166,16 @@ class ChainRunContext:
         self.snapshots[node_id] = snapshot
         return snapshot
 
-    def complete_snapshot(self, node_id: str, status: str, outputs: dict[str, str] | None = None,
-                         typed_outputs: dict[str, ChainValue] | None = None,
-                         message: str = "", error: str = "", warnings: list[str] | None = None) -> None:
+    def complete_snapshot(
+        self,
+        node_id: str,
+        status: str,
+        outputs: dict[str, str] | None = None,
+        typed_outputs: dict[str, ChainValue] | None = None,
+        message: str = "",
+        error: str = "",
+        warnings: list[str] | None = None,
+    ) -> None:
         """Mark a snapshot as complete."""
         snapshot = self.snapshots.get(node_id)
         if snapshot is None:
@@ -201,4 +208,5 @@ class ChainRunContext:
 
 class CancelledError(Exception):
     """Raised when an action chain run is cancelled."""
+
     pass

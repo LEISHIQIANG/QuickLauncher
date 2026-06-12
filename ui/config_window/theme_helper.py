@@ -317,7 +317,8 @@ def get_radio_stylesheet(theme: str) -> str:
     radio_on = create_ios_radio_icon(True, theme)
     radio_off = create_ios_radio_icon(False, theme)
 
-    return scale_qss(f"""
+    return scale_qss(
+        f"""
         QRadioButton {{
             font-size: 12px;
             spacing: 8px;
@@ -335,7 +336,8 @@ def get_radio_stylesheet(theme: str) -> str:
         QRadioButton::indicator:checked {{
             image: url("{radio_on}");
         }}
-    """)
+    """
+    )
 
 
 def get_checkbox_stylesheet(theme: str) -> str:
@@ -343,7 +345,8 @@ def get_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return scale_qss(f"""
+    return scale_qss(
+        f"""
         QCheckBox {{
             font-size: 12px;
             spacing: 8px;
@@ -361,7 +364,8 @@ def get_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """)
+    """
+    )
 
 
 def get_small_checkbox_stylesheet(theme: str) -> str:
@@ -369,7 +373,8 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return scale_qss(f"""
+    return scale_qss(
+        f"""
         QCheckBox {{
             font-size: 10px;
             spacing: 4px;
@@ -387,7 +392,8 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """)
+    """
+    )
 
 
 def get_compact_checkbox_stylesheet(theme: str) -> str:
@@ -395,7 +401,8 @@ def get_compact_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return scale_qss(f"""
+    return scale_qss(
+        f"""
         QCheckBox {{
             font-size: 11px;
             spacing: 6px;
@@ -413,7 +420,8 @@ def get_compact_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """)
+    """
+    )
 
 
 def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
@@ -421,7 +429,8 @@ def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
     check_on = create_ios_checkbox_icon(True, theme)
     check_off = create_ios_checkbox_icon(False, theme)
 
-    return scale_qss(f"""
+    return scale_qss(
+        f"""
         QCheckBox::indicator {{
             width: 11px;
             height: 11px;
@@ -433,14 +442,16 @@ def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{check_on}");
         }}
-    """)
+    """
+    )
 
 
 def get_switch_stylesheet(theme: str) -> str:
     switch_on = create_ios_switch_icon(True, theme)
     switch_off = create_ios_switch_icon(False, theme)
 
-    return scale_qss(f"""
+    return scale_qss(
+        f"""
         QCheckBox {{
             font-size: 12px;
             spacing: 8px;
@@ -458,7 +469,8 @@ def get_switch_stylesheet(theme: str) -> str:
         QCheckBox::indicator:checked {{
             image: url("{switch_on}");
         }}
-    """)
+    """
+    )
 
 
 def get_dialog_stylesheet(theme: str) -> str:

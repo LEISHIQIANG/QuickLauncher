@@ -19,7 +19,17 @@ def test_legacy_processor_module_is_registry_facade():
 
 KNOWN_PORT_KINDS = {"any", "text", "json", "file", "folder", "url", "list", "number", "bool"}
 KNOWN_PARAM_KINDS = KNOWN_PORT_KINDS | {"textarea", "choice", "password"}
-KNOWN_PORT_ROLES = {"primary", "data", "status", "diagnostic", "collection", "metadata", "stream", "control", "parameter"}
+KNOWN_PORT_ROLES = {
+    "primary",
+    "data",
+    "status",
+    "diagnostic",
+    "collection",
+    "metadata",
+    "stream",
+    "control",
+    "parameter",
+}
 
 
 def test_all_processors_have_complete_schema():
@@ -83,8 +93,14 @@ def test_processor_contract_specs_are_schema_driven():
     sleep = processor_definition("sleep_node")
     assert sleep is not None
 
-    input_specs = {spec.id: spec for spec in input_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})}
-    output_specs = {spec.id: spec for spec in output_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})}
+    input_specs = {
+        spec.id: spec
+        for spec in input_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})
+    }
+    output_specs = {
+        spec.id: spec
+        for spec in output_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})
+    }
 
     assert input_specs["ms"].kind == "number"
     assert input_specs["ms"].label == "毫秒"
@@ -194,19 +210,20 @@ def test_sampled_processor_outputs_match_declared_contract(tmp_path):
     }
     try:
         from core.chain.enhanced_definitions import get_enhanced_definitions as _ge
+
         intentionally_unsampled |= set(_ge().keys())
     except Exception:
         pass
     try:
         from core.chain.extended_definitions import get_extended_definitions as _ge2
+
         intentionally_unsampled |= set(_ge2().keys())
     except Exception:
         pass
     all_ids = {definition.id for definition in processor_definitions()}
     unsampled_registered_ids = intentionally_unsampled & all_ids
     assert all_ids == sampled_ids | unsampled_registered_ids, (
-        f"Missing sample args or intentionally_unsampled for: "
-        f"{all_ids - sampled_ids - unsampled_registered_ids}"
+        f"Missing sample args or intentionally_unsampled for: " f"{all_ids - sampled_ids - unsampled_registered_ids}"
     )
 
     for definition in processor_definitions():

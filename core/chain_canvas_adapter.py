@@ -17,7 +17,9 @@ def chain_data_field(chain_data: Any, name: str, default: Any = None) -> Any:
 
 
 def validation_steps(chain_data: Any, canvas: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    canonical = canonical_canvas(canvas if canvas is not None else chain_data_field(chain_data, "chain_canvas", {}) or {})
+    canonical = canonical_canvas(
+        canvas if canvas is not None else chain_data_field(chain_data, "chain_canvas", {}) or {}
+    )
     if canonical.get("nodes"):
         try:
             from core.chain.graph_executor import LegacyAdapter
@@ -99,10 +101,18 @@ def canonical_canvas(canvas: Any) -> dict[str, Any]:
         connections.append(
             {
                 "id": str(raw.get("id") or ""),
-                "source_node": str(raw.get("source_node") or raw.get("source_node_id") or raw.get("source") or "").strip(),
-                "source_port": str(raw.get("source_port") or raw.get("source_port_id") or raw.get("sourcePort") or "").strip(),
-                "target_node": str(raw.get("target_node") or raw.get("target_node_id") or raw.get("target") or "").strip(),
-                "target_port": str(raw.get("target_port") or raw.get("target_port_id") or raw.get("targetPort") or "").strip(),
+                "source_node": str(
+                    raw.get("source_node") or raw.get("source_node_id") or raw.get("source") or ""
+                ).strip(),
+                "source_port": str(
+                    raw.get("source_port") or raw.get("source_port_id") or raw.get("sourcePort") or ""
+                ).strip(),
+                "target_node": str(
+                    raw.get("target_node") or raw.get("target_node_id") or raw.get("target") or ""
+                ).strip(),
+                "target_port": str(
+                    raw.get("target_port") or raw.get("target_port_id") or raw.get("targetPort") or ""
+                ).strip(),
             }
         )
     return {"version": 1, "nodes": nodes, "connections": connections}

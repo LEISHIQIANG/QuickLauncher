@@ -45,6 +45,7 @@ __all__ = [
 
 class DataType(str, Enum):
     """Data structure type enumeration."""
+
     ITEM = "item"
     LIST = "list"
     TREE = "tree"
@@ -52,10 +53,11 @@ class DataType(str, Enum):
 
 class AlignmentStrategy(str, Enum):
     """Strategy for aligning lists of different lengths."""
+
     SHORTEST = "shortest"  # Stop at shortest list length
-    LONGEST = "longest"    # Continue to longest list length (repeat last)
-    CYCLE = "cycle"        # Cycle through shorter lists
-    CROSS = "cross"        # Cross reference (all combinations)
+    LONGEST = "longest"  # Continue to longest list length (repeat last)
+    CYCLE = "cycle"  # Cycle through shorter lists
+    CROSS = "cross"  # Cross reference (all combinations)
 
 
 # Type alias for path
@@ -72,13 +74,14 @@ class Item:
     Item is the atomic unit of data in the system.
     It wraps a value with type information and metadata.
     """
+
     value: Any
     data_type: str = "any"  # SmartType or ChainValueKind
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.metadata is None:
-            object.__setattr__(self, 'metadata', {})
+            object.__setattr__(self, "metadata", {})
 
     def __str__(self) -> str:
         return str(self.value)
@@ -126,12 +129,13 @@ class List:
     List is an ordered collection of Items. It supports standard
     collection operations and list-specific operations.
     """
+
     items: list[Item] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.metadata is None:
-            object.__setattr__(self, 'metadata', {})
+            object.__setattr__(self, "metadata", {})
         # Ensure all items are Item instances
         normalized = []
         for item in self.items:
@@ -139,7 +143,7 @@ class List:
                 normalized.append(item)
             else:
                 normalized.append(Item.from_any(item))
-        object.__setattr__(self, 'items', normalized)
+        object.__setattr__(self, "items", normalized)
 
     def __len__(self) -> int:
         return len(self.items)
@@ -265,6 +269,7 @@ class List:
     def reduce(self, func, initial=None):
         """Reduce items to single value."""
         from functools import reduce
+
         values = [item.value for item in self.items]
         if not values:
             return initial
@@ -313,14 +318,15 @@ class Tree:
     - (1,) is the second branch
     - (0, 0) is the first sub-branch of the first branch
     """
+
     branches: dict[Path, List] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.metadata is None:
-            object.__setattr__(self, 'metadata', {})
+            object.__setattr__(self, "metadata", {})
         if self.branches is None:
-            object.__setattr__(self, 'branches', {})
+            object.__setattr__(self, "branches", {})
 
     def __len__(self) -> int:
         """Get number of branches."""
@@ -457,10 +463,7 @@ class Tree:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
-            "branches": {
-                str(list(path)): branch.to_dict()
-                for path, branch in self.branches.items()
-            },
+            "branches": {str(list(path)): branch.to_dict() for path, branch in self.branches.items()},
             "metadata": dict(self.metadata or {}),
         }
 
@@ -814,39 +817,39 @@ def list_element_operation(lst: List, operation: str) -> List:
 def _apply_operation(a: Any, b: Any, operation: str) -> Any:
     """Apply binary operation between two values."""
     try:
-        if operation == 'add':
+        if operation == "add":
             return a + b
-        elif operation == 'sub':
+        elif operation == "sub":
             return a - b
-        elif operation == 'mul':
+        elif operation == "mul":
             return a * b
-        elif operation == 'div':
+        elif operation == "div":
             if b == 0:
                 return None  # Division by zero
             return a / b
-        elif operation == 'mod':
+        elif operation == "mod":
             if b == 0:
                 return None
             return a % b
-        elif operation == 'pow':
-            return a ** b
-        elif operation == 'eq':
+        elif operation == "pow":
+            return a**b
+        elif operation == "eq":
             return a == b
-        elif operation == 'ne':
+        elif operation == "ne":
             return a != b
-        elif operation == 'gt':
+        elif operation == "gt":
             return a > b
-        elif operation == 'lt':
+        elif operation == "lt":
             return a < b
-        elif operation == 'ge':
+        elif operation == "ge":
             return a >= b
-        elif operation == 'le':
+        elif operation == "le":
             return a <= b
-        elif operation == 'and':
+        elif operation == "and":
             return bool(a) and bool(b)
-        elif operation == 'or':
+        elif operation == "or":
             return bool(a) or bool(b)
-        elif operation == 'xor':
+        elif operation == "xor":
             return bool(a) != bool(b)
         else:
             return None
@@ -857,32 +860,35 @@ def _apply_operation(a: Any, b: Any, operation: str) -> Any:
 def _apply_unary_operation(value: Any, operation: str) -> Any:
     """Apply unary operation to a value."""
     try:
-        if operation == 'abs':
+        if operation == "abs":
             return abs(value)
-        elif operation == 'neg':
+        elif operation == "neg":
             return -value
-        elif operation == 'sqrt':
+        elif operation == "sqrt":
             import math
+
             return math.sqrt(value)
-        elif operation == 'floor':
+        elif operation == "floor":
             import math
+
             return math.floor(value)
-        elif operation == 'ceil':
+        elif operation == "ceil":
             import math
+
             return math.ceil(value)
-        elif operation == 'round':
+        elif operation == "round":
             return round(value)
-        elif operation == 'str':
+        elif operation == "str":
             return str(value)
-        elif operation == 'int':
+        elif operation == "int":
             return int(value)
-        elif operation == 'float':
+        elif operation == "float":
             return float(value)
-        elif operation == 'bool':
+        elif operation == "bool":
             return bool(value)
-        elif operation == 'not':
+        elif operation == "not":
             return not bool(value)
-        elif operation == 'len':
+        elif operation == "len":
             return len(value)
         else:
             return value
@@ -895,69 +901,65 @@ def _apply_unary_operation(value: Any, operation: str) -> Any:
 
 def add_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Add two data structures (supports broadcasting)."""
-    return _binary_data_operation(a, b, 'add')
+    return _binary_data_operation(a, b, "add")
 
 
 def sub_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Subtract two data structures (supports broadcasting)."""
-    return _binary_data_operation(a, b, 'sub')
+    return _binary_data_operation(a, b, "sub")
 
 
 def mul_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Multiply two data structures (supports broadcasting)."""
-    return _binary_data_operation(a, b, 'mul')
+    return _binary_data_operation(a, b, "mul")
 
 
 def div_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Divide two data structures (supports broadcasting)."""
-    return _binary_data_operation(a, b, 'div')
+    return _binary_data_operation(a, b, "div")
 
 
 def mod_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Modulo two data structures (supports broadcasting)."""
-    return _binary_data_operation(a, b, 'mod')
+    return _binary_data_operation(a, b, "mod")
 
 
 def pow_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Power of two data structures (supports broadcasting)."""
-    return _binary_data_operation(a, b, 'pow')
+    return _binary_data_operation(a, b, "pow")
 
 
 def eq_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Check equality of two data structures."""
-    return _binary_data_operation(a, b, 'eq')
+    return _binary_data_operation(a, b, "eq")
 
 
 def ne_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Check inequality of two data structures."""
-    return _binary_data_operation(a, b, 'ne')
+    return _binary_data_operation(a, b, "ne")
 
 
 def gt_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Check greater than."""
-    return _binary_data_operation(a, b, 'gt')
+    return _binary_data_operation(a, b, "gt")
 
 
 def lt_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Check less than."""
-    return _binary_data_operation(a, b, 'lt')
+    return _binary_data_operation(a, b, "lt")
 
 
 def ge_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Check greater or equal."""
-    return _binary_data_operation(a, b, 'ge')
+    return _binary_data_operation(a, b, "ge")
 
 
 def le_data(a: Item | List | Tree, b: Item | List | Tree) -> Item | List | Tree:
     """Check less or equal."""
-    return _binary_data_operation(a, b, 'le')
+    return _binary_data_operation(a, b, "le")
 
 
-def _binary_data_operation(
-    a: Item | List | Tree,
-    b: Item | List | Tree,
-    operation: str
-) -> Item | List | Tree:
+def _binary_data_operation(a: Item | List | Tree, b: Item | List | Tree, operation: str) -> Item | List | Tree:
     """Apply binary operation between two data structures with broadcasting."""
 
     # Get data types
@@ -1020,12 +1022,7 @@ def _list_list_operation(lst1: List, lst2: List, operation: str) -> List:
     return List(items=result_items)
 
 
-def _broadcast_item_to_tree(
-    item: Item,
-    tree: Tree,
-    operation: str,
-    reverse: bool = False
-) -> Tree:
+def _broadcast_item_to_tree(item: Item, tree: Tree, operation: str, reverse: bool = False) -> Tree:
     """Broadcast an item to all branches of a tree."""
     new_branches = {}
     for path, branch in tree.branches.items():
@@ -1059,17 +1056,17 @@ def _tree_tree_operation(tree1: Tree, tree2: Tree, operation: str) -> Tree:
 
 def abs_data(data: Item | List | Tree) -> Item | List | Tree:
     """Absolute value."""
-    return _unary_data_operation(data, 'abs')
+    return _unary_data_operation(data, "abs")
 
 
 def neg_data(data: Item | List | Tree) -> Item | List | Tree:
     """Negate."""
-    return _unary_data_operation(data, 'neg')
+    return _unary_data_operation(data, "neg")
 
 
 def sqrt_data(data: Item | List | Tree) -> Item | List | Tree:
     """Square root."""
-    return _unary_data_operation(data, 'sqrt')
+    return _unary_data_operation(data, "sqrt")
 
 
 def _unary_data_operation(data: Item | List | Tree, operation: str) -> Item | List | Tree:
@@ -1095,10 +1092,7 @@ def _unary_data_operation(data: Item | List | Tree, operation: str) -> Item | Li
 # ── Alignment Functions ────────────────────────────────────────────────────
 
 
-def align_data(
-    *data: List | Tree,
-    strategy: AlignmentStrategy = AlignmentStrategy.LONGEST
-) -> tuple[List | Tree, ...]:
+def align_data(*data: List | Tree, strategy: AlignmentStrategy = AlignmentStrategy.LONGEST) -> tuple[List | Tree, ...]:
     """Align multiple data structures using the specified strategy.
 
     Args:

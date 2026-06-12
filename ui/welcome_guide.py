@@ -174,9 +174,12 @@ class WelcomeGuide(QDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         btn_style = Glassmorphism.get_flat_action_button_style(theme)
 
-        self.setStyleSheet(base_style + """
+        self.setStyleSheet(
+            base_style
+            + """
             QDialog { background: transparent; }
-        """)
+        """
+        )
 
         for btn in [self.skip_btn, self.prev_btn, self.next_btn]:
             btn.setStyleSheet(btn_style)
@@ -238,7 +241,12 @@ class WelcomeGuide(QDialog):
 
             path = QPainterPath()
             path.addRoundedRect(
-                inset, inset, self.width() - inset * 2, self.height() - inset * 2, self.corner_radius, self.corner_radius
+                inset,
+                inset,
+                self.width() - inset * 2,
+                self.height() - inset * 2,
+                self.corner_radius,
+                self.corner_radius,
             )
 
             # 磨砂玻璃模式 - 与主配置窗口一致的 alpha 处理
@@ -301,7 +309,9 @@ class WelcomeGuide(QDialog):
         anim.setEndValue(pos)
         anim.setEasingCurve(QtCompat.OutCubic)
         anim.finished.connect(lambda: logger.info("Animation finished"))
-        anim.finished.connect(lambda animation=anim: setattr(self, "_show_anim", None) if self._show_anim is animation else None)
+        anim.finished.connect(
+            lambda animation=anim: setattr(self, "_show_anim", None) if self._show_anim is animation else None
+        )
         anim.finished.connect(anim.deleteLater)
         anim.start()
         self._show_anim = anim

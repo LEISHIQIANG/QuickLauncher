@@ -80,6 +80,7 @@ class TestUnifiedRegistry:
         """Test processor definition validation."""
         # Valid definition
         from core.chain.definitions import ChainProcessorDefinition
+
         valid_def = ChainProcessorDefinition(
             id="test_processor",
             title="Test Processor",
@@ -272,20 +273,24 @@ class TestParallelRuntime:
         graph.add_node(node3)
 
         # Add connections
-        graph.add_connection(ChainConnection(
-            id="conn1",
-            source_node_id="node1",
-            source_port_id="output",
-            target_node_id="node3",
-            target_port_id="a",
-        ))
-        graph.add_connection(ChainConnection(
-            id="conn2",
-            source_node_id="node2",
-            source_port_id="output",
-            target_node_id="node3",
-            target_port_id="b",
-        ))
+        graph.add_connection(
+            ChainConnection(
+                id="conn1",
+                source_node_id="node1",
+                source_port_id="output",
+                target_node_id="node3",
+                target_port_id="a",
+            )
+        )
+        graph.add_connection(
+            ChainConnection(
+                id="conn2",
+                source_node_id="node2",
+                source_port_id="output",
+                target_node_id="node3",
+                target_port_id="b",
+            )
+        )
 
         # Execute with parallel runtime
         runtime = ParallelGraphRuntime(max_workers=2)
@@ -310,13 +315,15 @@ class TestParallelRuntime:
         graph.add_node(node1)
         graph.add_node(node2)
 
-        graph.add_connection(ChainConnection(
-            id="conn1",
-            source_node_id="node1",
-            source_port_id="output",
-            target_node_id="node2",
-            target_port_id="input",
-        ))
+        graph.add_connection(
+            ChainConnection(
+                id="conn1",
+                source_node_id="node1",
+                source_port_id="output",
+                target_node_id="node2",
+                target_port_id="input",
+            )
+        )
 
         runtime = ParallelGraphRuntime()
         plan = runtime._create_execution_plan(graph)

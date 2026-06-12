@@ -140,7 +140,9 @@ def test_programming_data_processors(tmp_path):
     assert res.success is True
     assert res.message == '{"a":1,"b":{"c":2}}'
 
-    res = execute_chain_processor("json_get", {"json": '{"items":[{"name":"甲"},{"name":"乙"}]}', "path": "items[1].name"})
+    res = execute_chain_processor(
+        "json_get", {"json": '{"items":[{"name":"甲"},{"name":"乙"}]}', "path": "items[1].name"}
+    )
     assert res.success is True
     assert res.message == "乙"
 

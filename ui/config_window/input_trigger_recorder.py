@@ -278,11 +278,23 @@ class InputTriggerRecorderWidget(QWidget):
         mods = []
         try:
             user32 = ctypes.windll.user32
-            if (user32.GetAsyncKeyState(0x11) & 0x8000) or (user32.GetAsyncKeyState(0xA2) & 0x8000) or (user32.GetAsyncKeyState(0xA3) & 0x8000):
+            if (
+                (user32.GetAsyncKeyState(0x11) & 0x8000)
+                or (user32.GetAsyncKeyState(0xA2) & 0x8000)
+                or (user32.GetAsyncKeyState(0xA3) & 0x8000)
+            ):
                 mods.append("ctrl")
-            if (user32.GetAsyncKeyState(0x12) & 0x8000) or (user32.GetAsyncKeyState(0xA4) & 0x8000) or (user32.GetAsyncKeyState(0xA5) & 0x8000):
+            if (
+                (user32.GetAsyncKeyState(0x12) & 0x8000)
+                or (user32.GetAsyncKeyState(0xA4) & 0x8000)
+                or (user32.GetAsyncKeyState(0xA5) & 0x8000)
+            ):
                 mods.append("alt")
-            if (user32.GetAsyncKeyState(0x10) & 0x8000) or (user32.GetAsyncKeyState(0xA0) & 0x8000) or (user32.GetAsyncKeyState(0xA1) & 0x8000):
+            if (
+                (user32.GetAsyncKeyState(0x10) & 0x8000)
+                or (user32.GetAsyncKeyState(0xA0) & 0x8000)
+                or (user32.GetAsyncKeyState(0xA1) & 0x8000)
+            ):
                 mods.append("shift")
             if (user32.GetAsyncKeyState(0x5B) & 0x8000) or (user32.GetAsyncKeyState(0x5C) & 0x8000):
                 mods.append("win")

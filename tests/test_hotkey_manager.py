@@ -106,9 +106,23 @@ def test_start_stop(manager):
 def test_callback_invocation(manager):
     results = []
     manager.activated.connect(lambda: results.append("activated"))
+    manager.start()
     manager._on_activated()
     manager._drain_pending_activated()
     assert results == ["activated"]
+
+
+def test_stopped_manager_ignores_late_native_callback(manager):
+    results = []
+    manager.activated.connect(lambda: results.append("activated"))
+    manager.start()
+    manager.stop()
+
+    manager._on_activated()
+    manager._drain_pending_activated()
+
+    assert results == []
+    assert manager._pending_activated == 0
 
 
 def test_invalid_key_combo(manager):

@@ -44,7 +44,6 @@ __all__ = [
     "timestamp_now",
     "timestamp_to_datetime",
     "datetime_to_timestamp",
-
     # Encoding/Decoding processors
     "base64_encode",
     "base64_decode",
@@ -56,7 +55,6 @@ __all__ = [
     "unicode_decode",
     "hex_encode",
     "hex_decode",
-
     # System info processors
     "sys_platform",
     "sys_version",
@@ -70,7 +68,6 @@ __all__ = [
     "sys_home_dir",
     "sys_temp_dir",
     "sys_env_vars",
-
     # Network processors
     "net_hostname",
     "net_ip_address",
@@ -79,7 +76,6 @@ __all__ = [
     "net_url_parse",
     "net_url_build",
     "net_mac_address",
-
     # Validation processors
     "validate_email",
     "validate_url",
@@ -90,7 +86,6 @@ __all__ = [
     "validate_regex",
     "validate_range",
     "validate_length",
-
     # Hash processors
     "hash_md5",
     "hash_sha1",
@@ -100,7 +95,6 @@ __all__ = [
     "hash_hmac",
     "hash_uuid",
     "hash_uuid5",
-
     # Color processors
     "color_hex_to_rgb",
     "color_rgb_to_hex",
@@ -110,7 +104,6 @@ __all__ = [
     "color_contrast",
     "color_complementary",
     "color_random",
-
     # Set operations
     "set_union",
     "set_intersection",
@@ -119,7 +112,6 @@ __all__ = [
     "set_is_subset",
     "set_is_superset",
     "set_unique",
-
     # Dictionary operations
     "dict_keys",
     "dict_values",
@@ -130,7 +122,6 @@ __all__ = [
     "dict_delete",
     "dict_filter",
     "dict_map",
-
     # String formatting
     "str_format",
     "str_template",
@@ -140,7 +131,6 @@ __all__ = [
     "str_truncate",
     "str_repeat",
     "str_replace_multiple",
-
     # Compression processors
     "compress_gzip",
     "decompress_gzip",
@@ -148,14 +138,12 @@ __all__ = [
     "decompress_zlib",
     "compress_deflate",
     "decompress_deflate",
-
     # Environment processors
     "env_get",
     "env_set",
     "env_list",
     "env_path",
     "env_expand",
-
     # Math extended
     "math_sin",
     "math_cos",
@@ -174,6 +162,7 @@ __all__ = [
 
 # ── Date/Time Processors ─────────────────────────────────────────────────────
 
+
 def datetime_now(format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Get current datetime formatted."""
     return datetime.now().strftime(format_str)
@@ -182,7 +171,7 @@ def datetime_now(format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
 def datetime_format(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Format a datetime string."""
     try:
-        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
         return dt.strftime(format_str)
     except ValueError:
         # Try common formats
@@ -198,7 +187,7 @@ def datetime_format(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
 def datetime_parse(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> dict[str, Any]:
     """Parse a datetime string to components."""
     try:
-        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
 
@@ -217,11 +206,17 @@ def datetime_parse(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> dict[s
     }
 
 
-def datetime_add(dt_str: str, days: int = 0, hours: int = 0, minutes: int = 0,
-                 seconds: int = 0, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
+def datetime_add(
+    dt_str: str,
+    days: int = 0,
+    hours: int = 0,
+    minutes: int = 0,
+    seconds: int = 0,
+    format_str: str = "%Y-%m-%d %H:%M:%S",
+) -> str:
     """Add time to datetime."""
     try:
-        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
 
@@ -232,12 +227,12 @@ def datetime_add(dt_str: str, days: int = 0, hours: int = 0, minutes: int = 0,
 def datetime_diff(dt1_str: str, dt2_str: str, unit: str = "seconds") -> float:
     """Calculate difference between two datetimes."""
     try:
-        dt1 = datetime.fromisoformat(dt1_str.replace('Z', '+00:00'))
+        dt1 = datetime.fromisoformat(dt1_str.replace("Z", "+00:00"))
     except ValueError:
         dt1 = datetime.strptime(dt1_str, "%Y-%m-%d %H:%M:%S")
 
     try:
-        dt2 = datetime.fromisoformat(dt2_str.replace('Z', '+00:00'))
+        dt2 = datetime.fromisoformat(dt2_str.replace("Z", "+00:00"))
     except ValueError:
         dt2 = datetime.strptime(dt2_str, "%Y-%m-%d %H:%M:%S")
 
@@ -262,7 +257,7 @@ def datetime_diff(dt1_str: str, dt2_str: str, unit: str = "seconds") -> float:
 def datetime_part(dt_str: str, part: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> int:
     """Extract a part from datetime."""
     try:
-        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
 
@@ -295,13 +290,14 @@ def timestamp_to_datetime(timestamp: float, format_str: str = "%Y-%m-%d %H:%M:%S
 def datetime_to_timestamp(dt_str: str, format_str: str = "%Y-%m-%d %H:%M:%S") -> float:
     """Convert datetime string to timestamp."""
     try:
-        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except ValueError:
         dt = datetime.strptime(dt_str, format_str)
     return dt.timestamp()
 
 
 # ── Encoding/Decoding Processors ─────────────────────────────────────────────
+
 
 def base64_encode(text: str, encoding: str = "utf-8") -> str:
     """Encode text to Base64."""
@@ -355,6 +351,7 @@ def hex_decode(hex_str: str, encoding: str = "utf-8") -> str:
 
 # ── System Info Processors ────────────────────────────────────────────────────
 
+
 def sys_platform() -> str:
     """Get operating system platform."""
     return sys.platform
@@ -378,6 +375,7 @@ def sys_hostname() -> str:
 def sys_username() -> str:
     """Get current username."""
     import getpass
+
     return getpass.getuser()
 
 
@@ -389,6 +387,7 @@ def sys_cpu_count() -> int:
 def sys_memory_info() -> dict[str, Any]:
     """Get memory information."""
     import psutil
+
     mem = psutil.virtual_memory()
     return {
         "total": mem.total,
@@ -401,6 +400,7 @@ def sys_memory_info() -> dict[str, Any]:
 def sys_disk_info(path: str = "/") -> dict[str, Any]:
     """Get disk information."""
     import psutil
+
     disk = psutil.disk_usage(path)
     return {
         "total": disk.total,
@@ -423,6 +423,7 @@ def sys_home_dir() -> str:
 def sys_temp_dir() -> str:
     """Get temporary directory."""
     import tempfile
+
     return tempfile.gettempdir()
 
 
@@ -432,6 +433,7 @@ def sys_env_vars() -> dict[str, str]:
 
 
 # ── Network Processors ───────────────────────────────────────────────────────
+
 
 def net_hostname() -> str:
     """Get local hostname."""
@@ -450,13 +452,11 @@ def net_ping(host: str, timeout: float = 3.0) -> bool:
     try:
         if sys.platform == "win32":
             result = subprocess.run(
-                ["ping", "-n", "1", "-w", str(int(timeout * 1000)), host],
-                capture_output=True, timeout=timeout + 1
+                ["ping", "-n", "1", "-w", str(int(timeout * 1000)), host], capture_output=True, timeout=timeout + 1
             )
         else:
             result = subprocess.run(
-                ["ping", "-c", "1", "-W", str(int(timeout)), host],
-                capture_output=True, timeout=timeout + 1
+                ["ping", "-c", "1", "-W", str(int(timeout)), host], capture_output=True, timeout=timeout + 1
             )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -494,8 +494,7 @@ def net_url_parse(url: str) -> dict[str, str]:
     }
 
 
-def net_url_build(scheme: str = "https", host: str = "", path: str = "",
-                  params: dict = None, port: int = 0) -> str:
+def net_url_build(scheme: str = "https", host: str = "", path: str = "", params: dict = None, port: int = 0) -> str:
     """Build a URL from components."""
     netloc = host
     if port:
@@ -511,14 +510,15 @@ def net_url_build(scheme: str = "https", host: str = "", path: str = "",
 def net_mac_address() -> str:
     """Get MAC address."""
     mac = uuid.getnode()
-    return ':'.join(f'{(mac >> i) & 0xff:02x}' for i in range(0, 48, 8))
+    return ":".join(f"{(mac >> i) & 0xff:02x}" for i in range(0, 48, 8))
 
 
 # ── Validation Processors ────────────────────────────────────────────────────
 
+
 def validate_email(email: str) -> bool:
     """Validate email address."""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return bool(re.match(pattern, email))
 
 
@@ -547,17 +547,17 @@ def validate_ip(ip: str) -> bool:
 def validate_phone(phone: str, country: str = "CN") -> bool:
     """Validate phone number."""
     # Remove spaces and dashes
-    phone = re.sub(r'[\s-]', '', phone)
+    phone = re.sub(r"[\s-]", "", phone)
 
     if country == "CN":
         # Chinese phone numbers
-        pattern = r'^(\+86)?1[3-9]\d{9}$'
+        pattern = r"^(\+86)?1[3-9]\d{9}$"
     elif country == "US":
         # US phone numbers
-        pattern = r'^(\+1)?[2-9]\d{2}[2-9]\d{6}$'
+        pattern = r"^(\+1)?[2-9]\d{2}[2-9]\d{6}$"
     else:
         # Generic pattern
-        pattern = r'^\+?[\d\s-]{7,15}$'
+        pattern = r"^\+?[\d\s-]{7,15}$"
 
     return bool(re.match(pattern, phone))
 
@@ -568,12 +568,12 @@ def validate_id_card(id_card: str, country: str = "CN") -> bool:
         # Chinese ID card (18 digits)
         if len(id_card) != 18:
             return False
-        pattern = r'^\d{17}[\dXx]$'
+        pattern = r"^\d{17}[\dXx]$"
         if not re.match(pattern, id_card):
             return False
         # Validate checksum
         weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
-        check_codes = '10X98765432'
+        check_codes = "10X98765432"
         total = sum(int(id_card[i]) * weights[i] for i in range(17))
         return check_codes[total % 11] == id_card[17].upper()
     return True
@@ -581,7 +581,7 @@ def validate_id_card(id_card: str, country: str = "CN") -> bool:
 
 def validate_credit_card(number: str) -> bool:
     """Validate credit card number using Luhn algorithm."""
-    number = number.replace(' ', '').replace('-', '')
+    number = number.replace(" ", "").replace("-", "")
     if not number.isdigit():
         return False
 
@@ -622,6 +622,7 @@ def validate_length(text: str, min_len: int = 0, max_len: int = 0) -> bool:
 
 # ── Hash Processors ──────────────────────────────────────────────────────────
 
+
 def hash_md5(text: str, encoding: str = "utf-8") -> str:
     """Calculate MD5 hash."""
     return hashlib.md5(text.encode(encoding)).hexdigest()
@@ -644,17 +645,14 @@ def hash_sha512(text: str, encoding: str = "utf-8") -> str:
 
 def hash_crc32(text: str, encoding: str = "utf-8") -> str:
     """Calculate CRC32 hash."""
-    return format(zlib.crc32(text.encode(encoding)) & 0xffffffff, '08x')
+    return format(zlib.crc32(text.encode(encoding)) & 0xFFFFFFFF, "08x")
 
 
 def hash_hmac(text: str, key: str, algorithm: str = "sha256", encoding: str = "utf-8") -> str:
     """Calculate HMAC hash."""
     import hmac
-    return hmac.new(
-        key.encode(encoding),
-        text.encode(encoding),
-        getattr(hashlib, algorithm)
-    ).hexdigest()
+
+    return hmac.new(key.encode(encoding), text.encode(encoding), getattr(hashlib, algorithm)).hexdigest()
 
 
 def hash_uuid(namespace: str = "", name: str = "") -> str:
@@ -674,17 +672,18 @@ def hash_uuid5(namespace: str, name: str) -> str:
 
 # ── Color Processors ─────────────────────────────────────────────────────────
 
+
 def color_hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Convert hex color to RGB."""
-    hex_color = hex_color.lstrip('#')
+    hex_color = hex_color.lstrip("#")
     if len(hex_color) == 3:
-        hex_color = ''.join(c * 2 for c in hex_color)
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        hex_color = "".join(c * 2 for c in hex_color)
+    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
 
 
 def color_rgb_to_hex(r: int, g: int, b: int) -> str:
     """Convert RGB to hex color."""
-    return f'#{r:02x}{g:02x}{b:02x}'
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def color_hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[int, int, int]:
@@ -696,24 +695,25 @@ def color_hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[int, int, in
     if s == 0:
         r = g = b = lightness
     else:
+
         def hue2rgb(p, q, t):
             if t < 0:
                 t += 1
             if t > 1:
                 t -= 1
-            if t < 1/6:
+            if t < 1 / 6:
                 return p + (q - p) * 6 * t
-            if t < 1/2:
+            if t < 1 / 2:
                 return q
-            if t < 2/3:
-                return p + (q - p) * (2/3 - t) * 6
+            if t < 2 / 3:
+                return p + (q - p) * (2 / 3 - t) * 6
             return p
 
         q = lightness * (1 + s) if lightness < 0.5 else lightness + s - lightness * s
         p = 2 * lightness - q
-        r = hue2rgb(p, q, h + 1/3)
+        r = hue2rgb(p, q, h + 1 / 3)
         g = hue2rgb(p, q, h)
-        b = hue2rgb(p, q, h - 1/3)
+        b = hue2rgb(p, q, h - 1 / 3)
 
     return (int(r * 255), int(g * 255), int(b * 255))
 
@@ -762,10 +762,12 @@ def color_complementary(hex_color: str) -> str:
 def color_random() -> str:
     """Generate random color."""
     import random
-    return f'#{random.randint(0, 0xffffff):06x}'
+
+    return f"#{random.randint(0, 0xffffff):06x}"
 
 
 # ── Set Operations ───────────────────────────────────────────────────────────
+
 
 def set_union(set1: list, set2: list) -> list:
     """Union of two sets."""
@@ -809,6 +811,7 @@ def set_unique(items: list) -> list:
 
 
 # ── Dictionary Operations ────────────────────────────────────────────────────
+
 
 def dict_keys(data: dict) -> list:
     """Get dictionary keys."""
@@ -865,6 +868,7 @@ def dict_map(data: dict, func) -> dict:
 
 # ── String Formatting ────────────────────────────────────────────────────────
 
+
 def str_format(template: str, **kwargs) -> str:
     """Format string with named parameters."""
     return template.format(**kwargs)
@@ -874,7 +878,7 @@ def str_template(template: str, **kwargs) -> str:
     """Format string template with $variables."""
     result = template
     for key, value in kwargs.items():
-        result = result.replace(f'${{{key}}}', str(value))
+        result = result.replace(f"${{{key}}}", str(value))
     return result
 
 
@@ -897,7 +901,7 @@ def str_truncate(text: str, max_length: int, suffix: str = "...") -> str:
     """Truncate string to max length."""
     if len(text) <= max_length:
         return text
-    return text[:max_length - len(suffix)] + suffix
+    return text[: max_length - len(suffix)] + suffix
 
 
 def str_repeat(text: str, count: int) -> str:
@@ -915,15 +919,18 @@ def str_replace_multiple(text: str, replacements: dict) -> str:
 
 # ── Compression Processors ───────────────────────────────────────────────────
 
+
 def compress_gzip(data: str, encoding: str = "utf-8") -> bytes:
     """Compress data with gzip."""
     import gzip
+
     return gzip.compress(data.encode(encoding))
 
 
 def decompress_gzip(data: bytes, encoding: str = "utf-8") -> str:
     """Decompress gzip data."""
     import gzip
+
     return gzip.decompress(data).decode(encoding)
 
 
@@ -948,6 +955,7 @@ def decompress_deflate(data: bytes, encoding: str = "utf-8") -> str:
 
 
 # ── Environment Processors ───────────────────────────────────────────────────
+
 
 def env_get(key: str, default: str = "") -> str:
     """Get environment variable."""
@@ -978,33 +986,39 @@ def env_expand(text: str) -> str:
 
 # ── Math Extended ────────────────────────────────────────────────────────────
 
+
 def math_sin(x: float) -> float:
     """Calculate sine."""
     import math
+
     return math.sin(x)
 
 
 def math_cos(x: float) -> float:
     """Calculate cosine."""
     import math
+
     return math.cos(x)
 
 
 def math_tan(x: float) -> float:
     """Calculate tangent."""
     import math
+
     return math.tan(x)
 
 
 def math_sqrt(x: float) -> float:
     """Calculate square root."""
     import math
+
     return math.sqrt(x)
 
 
 def math_log(x: float, base: float = 2.718281828459045) -> float:
     """Calculate logarithm."""
     import math
+
     if base == 2.718281828459045:
         return math.log(x)
     return math.log(x, base)
@@ -1013,35 +1027,40 @@ def math_log(x: float, base: float = 2.718281828459045) -> float:
 def math_log10(x: float) -> float:
     """Calculate base-10 logarithm."""
     import math
+
     return math.log10(x)
 
 
 def math_exp(x: float) -> float:
     """Calculate e^x."""
     import math
+
     return math.exp(x)
 
 
 def math_pow(base: float, exp: float) -> float:
     """Calculate base^exp."""
-    return base ** exp
+    return base**exp
 
 
 def math_factorial(n: int) -> int:
     """Calculate factorial."""
     import math
+
     return math.factorial(n)
 
 
 def math_gcd(a: int, b: int) -> int:
     """Calculate greatest common divisor."""
     import math
+
     return math.gcd(a, b)
 
 
 def math_lcm(a: int, b: int) -> int:
     """Calculate least common multiple."""
     import math
+
     return abs(a * b) // math.gcd(a, b)
 
 
@@ -1054,5 +1073,5 @@ def math_fibonacci(n: int) -> list[int]:
 
     fib = [0, 1]
     for i in range(2, n):
-        fib.append(fib[i-1] + fib[i-2])
+        fib.append(fib[i - 1] + fib[i - 2])
     return fib

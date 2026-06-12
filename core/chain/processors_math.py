@@ -25,9 +25,11 @@ def execute_extra_math_processor(processor_id: str, values: dict[str, Any]) -> C
         return ok(str(abs(to_num(values.get("number", 0)))))
     if processor_id == "math_ceil":
         import math as _m
+
         return ok(str(_m.ceil(to_num(values.get("number", 0)))))
     if processor_id == "math_floor":
         import math as _m
+
         return ok(str(_m.floor(to_num(values.get("number", 0)))))
     if processor_id == "math_round":
         n = to_num(values.get("number", 0))
@@ -42,29 +44,37 @@ def execute_extra_math_processor(processor_id: str, values: dict[str, Any]) -> C
     # ── Extended: Advanced math ──
     if processor_id == "math_sin":
         import math as _m
+
         return ok(str(_m.sin(to_num(values.get("angle", 0)))))
     if processor_id == "math_cos":
         import math as _m
+
         return ok(str(_m.cos(to_num(values.get("angle", 0)))))
     if processor_id == "math_tan":
         import math as _m
+
         return ok(str(_m.tan(to_num(values.get("angle", 0)))))
     if processor_id == "math_sqrt":
         import math as _m
+
         return ok(str(_m.sqrt(to_num(values.get("number", 0)))))
     if processor_id == "math_log":
         import math as _m
+
         x = to_num(values.get("number", 1))
         b = to_num(values.get("base", 2.718281828459045))
         return ok(str(_m.log(x, b) if b != 2.718281828459045 else _m.log(x)))
     if processor_id == "math_factorial":
         import math as _m
+
         return ok(str(_m.factorial(int(to_num(values.get("number", 0))))))
     if processor_id == "math_gcd":
         import math as _m
+
         return ok(str(_m.gcd(int(to_num(values.get("a", 0))), int(to_num(values.get("b", 0))))))
     if processor_id == "math_lcm":
         import math as _m
+
         a = int(to_num(values.get("a", 0)))
         b = int(to_num(values.get("b", 0)))
         return ok(str(abs(a * b) // _m.gcd(a, b)))

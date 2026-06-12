@@ -327,6 +327,7 @@ class TestMathExtendedProcessors:
 
     def test_math_sin(self):
         import math
+
         assert abs(math_sin(math.pi / 2) - 1.0) < 1e-10
 
     def test_math_cos(self):

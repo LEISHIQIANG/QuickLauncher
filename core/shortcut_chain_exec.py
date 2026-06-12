@@ -177,8 +177,13 @@ def _execute_shortcut_chain_runtime(
                 # Get timeout from step definition (default 0 = no timeout)
                 timeout_ms = int(step.get("timeout_ms", 0) or 0)
                 step_success, detail, step_error, step_result, resolved_args, resolved_inputs = _execute_processor_step(
-                    step, chain_values, typed_chain_values, previous_output,
-                    cancel_event=cancel_event, timeout_ms=timeout_ms, host_api=host_api,
+                    step,
+                    chain_values,
+                    typed_chain_values,
+                    previous_output,
+                    cancel_event=cancel_event,
+                    timeout_ms=timeout_ms,
+                    host_api=host_api,
                 )
         elif target is None:
             step_success = False
@@ -225,7 +230,9 @@ def _execute_shortcut_chain_runtime(
                 if step.get("stop_on_error", True):
                     break
                 continue
-            args, input_values, prepare_error = _prepare_step_values(step, chain_values, typed_chain_values, previous_output)
+            args, input_values, prepare_error = _prepare_step_values(
+                step, chain_values, typed_chain_values, previous_output
+            )
             resolved_args = dict(args)
             resolved_inputs = dict(input_values)
             if prepare_error:
@@ -259,7 +266,9 @@ def _execute_shortcut_chain_runtime(
         output = artifact.output
         previous_output = output
         chain_values.update(chain_values_from_artifact(index, artifact))
-        raw_outputs = dict(step_payload.get("raw_outputs") or {}) if isinstance(step_payload.get("raw_outputs"), dict) else {}
+        raw_outputs = (
+            dict(step_payload.get("raw_outputs") or {}) if isinstance(step_payload.get("raw_outputs"), dict) else {}
+        )
         output_kinds = _step_output_kinds(step, shortcut_map)
         typed_chain_values.update(_typed_values_from_artifact(index, artifact, raw_outputs, output_kinds))
         outputs = _artifact_outputs(artifact, raw_outputs)
@@ -578,9 +587,9 @@ def _processor_safety_error(step: dict[str, Any], processor_args: dict[str, Any]
             if not allowed:
                 _audit_dangerous_processor(processor_id, step, title, capability, "denied")
                 return f"处理节点未授权: {title} ({capability})"
-        requires_confirmation = bool(getattr(safety, "requires_confirmation", False)) or str(
-            getattr(safety, "level", "")
-        ) == "dangerous"
+        requires_confirmation = (
+            bool(getattr(safety, "requires_confirmation", False)) or str(getattr(safety, "level", "")) == "dangerous"
+        )
         if not requires_confirmation:
             return ""
         request = {
@@ -770,7 +779,9 @@ def _typed_values_from_artifact(
             raw = raw_outputs.get(str(name), value)
             values[f"{prefix}.outputs.{name}"] = make_chain_value(raw, output_kinds.get(str(name), ChainValueKind.ANY))
         _expand_typed_list(values, prefix, "files", list(getattr(artifact, "files", []) or []), ChainValueKind.FILE)
-        _expand_typed_list(values, prefix, "folders", list(getattr(artifact, "folders", []) or []), ChainValueKind.FOLDER)
+        _expand_typed_list(
+            values, prefix, "folders", list(getattr(artifact, "folders", []) or []), ChainValueKind.FOLDER
+        )
         _expand_typed_list(values, prefix, "urls", list(getattr(artifact, "urls", []) or []), ChainValueKind.URL)
     return values
 

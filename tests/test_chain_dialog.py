@@ -217,7 +217,11 @@ def test_shortcut_nodes_expose_standard_outputs_in_canvas():
     ports = node_output_ports({"node_type": "shortcut", "shortcut_id": "a"}, {"a": item})
     assert "success" in ports
     assert "stdout" in ports
-    assert node_output_ports({"node_type": "processor", "processor_id": "text_template"}) == ["output", "length", "empty"]
+    assert node_output_ports({"node_type": "processor", "processor_id": "text_template"}) == [
+        "output",
+        "length",
+        "empty",
+    ]
 
 
 def test_shortcut_standard_output_labels_are_data_oriented():
@@ -255,8 +259,14 @@ def test_http_processors_expose_status_and_headers_outputs():
 def test_processor_canvas_ports_read_definition_schema():
     from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node
 
-    inputs = {spec.id: spec for spec in input_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})}
-    outputs = {spec.id: spec for spec in output_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})}
+    inputs = {
+        spec.id: spec
+        for spec in input_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})
+    }
+    outputs = {
+        spec.id: spec
+        for spec in output_port_specs_for_node({"node_type": "processor", "processor_id": "sleep_node"}, {})
+    }
 
     assert inputs["ms"].kind == "number"
     assert inputs["ms"].label == "毫秒"
@@ -306,7 +316,10 @@ def test_programming_processors_are_chinese_and_execute():
     assert execute_chain_processor("bool_and", {"a": "true", "b": "false"}).message == "false"
     assert execute_chain_processor("bool_not", {"value": "false"}).message == "true"
     assert execute_chain_processor("compare_value", {"a": "3", "operator": "大于", "b": "2"}).message == "true"
-    assert execute_chain_processor("if_else", {"condition": "true", "true_value": "甲", "false_value": "乙"}).message == "甲"
+    assert (
+        execute_chain_processor("if_else", {"condition": "true", "true_value": "甲", "false_value": "乙"}).message
+        == "甲"
+    )
     assert execute_chain_processor("loop_repeat", {"input": "甲", "count": "3", "delimiter": ","}).message == "甲,甲,甲"
 
 
@@ -484,6 +497,7 @@ def test_chain_dialog_run_status_updates(qapp):
 
     # 直接模拟 _on_test_result 的 payload 传入
     from core.command_registry import CommandResult
+
     mock_result = CommandResult(
         success=False,
         message="Test failed",
@@ -492,8 +506,8 @@ def test_chain_dialog_run_status_updates(qapp):
             "items": [
                 {"status": "ok", "title": "A", "duration": 0.2},
                 {"status": "failed", "title": "B", "duration": 0.3, "detail": "error occurred"},
-            ]
-        }
+            ],
+        },
     )
 
     dialog._on_test_result(mock_result)
@@ -518,6 +532,7 @@ def test_chain_dialog_run_status_updates(qapp):
 
     # 模拟启动测试，清除状态
     import unittest.mock as mock
+
     with mock.patch("ui.config_window.chain_dialog.DialogTestTask") as mock_task_class:
         mock_thread = mock.Mock()
         mock_task_class.return_value = mock_thread
@@ -681,13 +696,15 @@ def test_chain_canvas_realtime_line_following(qapp):
     dialog._add_step(item2)
 
     canvas_widget = dialog.canvas_widget
-    canvas_widget.canvas["connections"] = [{
-        "id": "c1",
-        "source_node": canvas_widget.canvas["nodes"][0]["id"],
-        "source_port": "stdout",
-        "target_node": canvas_widget.canvas["nodes"][1]["id"],
-        "target_port": "input",
-    }]
+    canvas_widget.canvas["connections"] = [
+        {
+            "id": "c1",
+            "source_node": canvas_widget.canvas["nodes"][0]["id"],
+            "source_port": "stdout",
+            "target_node": canvas_widget.canvas["nodes"][1]["id"],
+            "target_port": "input",
+        }
+    ]
     # 渲染
     canvas_widget._render()
 
@@ -705,6 +722,7 @@ def test_chain_canvas_realtime_line_following(qapp):
 
     # 触发移动
     from qt_compat import QPointF
+
     node_item.setPos(QPointF(100.0, 150.0))
 
     # 检查连接线路径已发生实时变更
@@ -729,13 +747,20 @@ def test_chain_canvas_keyboard_selection_and_deletion(qapp):
 
     # 模拟 QKeyEvent
     from qt_compat import Qt
+
     class FakeEvent:
         def __init__(self, key, modifiers):
             self._key = key
             self._modifiers = modifiers
-        def key(self): return self._key
-        def modifiers(self): return self._modifiers
-        def accept(self): pass
+
+        def key(self):
+            return self._key
+
+        def modifiers(self):
+            return self._modifiers
+
+        def accept(self):
+            pass
 
     # 1. 初始状态下：应该选中最新的那个节点（第3个）
     assert node_items[0].isSelected() is False

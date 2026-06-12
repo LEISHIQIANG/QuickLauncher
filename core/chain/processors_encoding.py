@@ -51,6 +51,7 @@ def execute_extra_system_processor(processor_id: str, values: dict[str, Any]) ->
         return ok(socket.gethostname())
     if processor_id == "sys_username":
         import getpass as _gp
+
         return ok(_gp.getuser())
     if processor_id == "sys_cpu_count":
         return ok(str(os.cpu_count() or 0))
@@ -60,6 +61,7 @@ def execute_extra_system_processor(processor_id: str, values: dict[str, Any]) ->
         return ok(os.path.expanduser("~"))
     if processor_id == "sys_temp_dir":
         import tempfile as _tf
+
         return ok(_tf.gettempdir())
 
     # -- Network tools --
@@ -71,6 +73,7 @@ def execute_extra_system_processor(processor_id: str, values: dict[str, Any]) ->
         to = float(text_values.get("timeout", "3") or "3")
         try:
             import subprocess as _sp
+
             if sys.platform == "win32":
                 r = _sp.run(["ping", "-n", "1", "-w", str(int(to * 1000)), host], capture_output=True, timeout=to + 1)
             else:
@@ -93,10 +96,20 @@ def execute_extra_system_processor(processor_id: str, values: dict[str, Any]) ->
     if processor_id == "net_url_parse":
         url = text_values.get("url", "")
         p = urllib.parse.urlparse(url)
-        return ok(json.dumps({
-            "scheme": p.scheme, "hostname": p.hostname or "", "port": str(p.port or ""),
-            "path": p.path, "query": p.query, "fragment": p.fragment,
-        }, ensure_ascii=False, separators=(",", ":")))
+        return ok(
+            json.dumps(
+                {
+                    "scheme": p.scheme,
+                    "hostname": p.hostname or "",
+                    "port": str(p.port or ""),
+                    "path": p.path,
+                    "query": p.query,
+                    "fragment": p.fragment,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
 
     # -- Environment variables --
     if processor_id == "env_get":

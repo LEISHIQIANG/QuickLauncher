@@ -45,7 +45,10 @@ def format_command_params(params) -> str:
     lines = []
     for param in ShortcutItem._normalize_command_params(params):
         has_extra = (
-            any(param.get(key) for key in ("label", "placeholder", "help", "source", "validator", "pattern", "min_value", "max_value"))
+            any(
+                param.get(key)
+                for key in ("label", "placeholder", "help", "source", "validator", "pattern", "min_value", "max_value")
+            )
             or bool(param.get("multiline"))
             or bool(param.get("advanced"))
             or bool(param.get("sensitive"))

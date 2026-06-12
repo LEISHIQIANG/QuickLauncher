@@ -185,6 +185,7 @@ class SettingsDataActionsMixin:
         )
 
         if result == ThemedMessageBox.Yes:
+
             class _RestoreThread(QThread):
                 finished_signal = pyqtSignal(bool)
 
@@ -210,7 +211,9 @@ class SettingsDataActionsMixin:
                 if success:
                     report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
                     if report.get("has_warnings"):
-                        ThemedMessageBox.warning(self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。"))
+                        ThemedMessageBox.warning(
+                            self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。")
+                        )
                     ThemedMessageBox.information(self, tr("恢复成功"), tr("配置已恢复，程序即将重启。"))
                     self._restart_application()
                 else:

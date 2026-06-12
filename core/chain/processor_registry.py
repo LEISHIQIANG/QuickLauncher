@@ -144,9 +144,7 @@ class ProcessorRegistry:
 
     # ── Registration ───────────────────────────────────────────────────────
 
-    def register(self, definition: ChainProcessorDefinition,
-                 handler: Callable | None = None,
-                 owner: str = "") -> bool:
+    def register(self, definition: ChainProcessorDefinition, handler: Callable | None = None, owner: str = "") -> bool:
         """Register a processor.
 
         Args:
@@ -260,11 +258,7 @@ class ProcessorRegistry:
         if not category:
             return []
 
-        return [
-            self._definitions[pid]
-            for pid in category.processors
-            if pid in self._definitions
-        ]
+        return [self._definitions[pid] for pid in category.processors if pid in self._definitions]
 
     def get_category_for_processor(self, processor_id: str) -> ProcessorCategory | None:
         """Get the category for a processor."""
@@ -308,10 +302,12 @@ class ProcessorRegistry:
 
         results = []
         for definition in self._definitions.values():
-            if (query in definition.id.lower() or
-                query in definition.title.lower() or
-                query in definition.description.lower() or
-                query in definition.category.lower()):
+            if (
+                query in definition.id.lower()
+                or query in definition.title.lower()
+                or query in definition.description.lower()
+                or query in definition.category.lower()
+            ):
                 results.append(definition)
 
         return results
@@ -431,6 +427,7 @@ class ProcessorRegistry:
                     lines.append("**Arguments:**")
                     lines.append("```json")
                     import json
+
                     lines.append(json.dumps(example.args, indent=2, ensure_ascii=False))
                     lines.append("```")
                 if example.expected:
@@ -490,10 +487,7 @@ class ProcessorRegistry:
         return {
             "total_processors": len(self._definitions),
             "total_categories": len(self._categories),
-            "processors_by_category": {
-                cat_id: len(cat.processors)
-                for cat_id, cat in self._categories.items()
-            },
+            "processors_by_category": {cat_id: len(cat.processors) for cat_id, cat in self._categories.items()},
             "processors_by_safety": {
                 level: sum(1 for d in self._definitions.values() if d.safety.level == level)
                 for level in KNOWN_PROCESSOR_SAFETY_LEVELS
@@ -515,9 +509,7 @@ def get_registry() -> ProcessorRegistry:
     return _global_registry
 
 
-def register_processor(definition: ChainProcessorDefinition,
-                       handler: Callable | None = None,
-                       owner: str = "") -> bool:
+def register_processor(definition: ChainProcessorDefinition, handler: Callable | None = None, owner: str = "") -> bool:
     """Register a processor with the global registry."""
     return get_registry().register(definition, handler, owner)
 

@@ -126,12 +126,7 @@ class ColorFilterOverlay(QWidget):
     @property
     def is_neutral(self) -> bool:
         """Return True if all parameters are at neutral (50)."""
-        return (
-            self._black_point == 50
-            and self._white_point == 50
-            and self._mid_gamma == 50
-            and self._temperature == 50
-        )
+        return self._black_point == 50 and self._white_point == 50 and self._mid_gamma == 50 and self._temperature == 50
 
     def paintEvent(self, event):
         painter = QPainter(self)

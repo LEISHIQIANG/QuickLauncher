@@ -229,7 +229,9 @@ class BatchLaunchCard(QFrame):
     def set_icon(self, pixmap: QPixmap):
         if pixmap and not pixmap.isNull():
             self.icon_label.setPixmap(
-                pixmap.scaled(sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pixmap.scaled(
+                    sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
             )
 
     def get_config(self):
@@ -536,7 +538,9 @@ class BatchLaunchDialog(BaseDialog):
     def __init__(self, data_manager: DataManager, folder_id: str, parent=None, shortcut: ShortcutItem | None = None):
         self.data_manager = data_manager
         self.folder_id = folder_id
-        self.shortcut = copy.deepcopy(shortcut) if shortcut is not None else ShortcutItem(type=ShortcutType.BATCH_LAUNCH)
+        self.shortcut = (
+            copy.deepcopy(shortcut) if shortcut is not None else ShortcutItem(type=ShortcutType.BATCH_LAUNCH)
+        )
         self._editing_existing = shortcut is not None
         self.launch_cards = []
         self._launch_card_by_id = {}
@@ -631,13 +635,17 @@ class BatchLaunchDialog(BaseDialog):
         self.batch_icon_preview = QLabel()
         self.batch_icon_preview.setFixedSize(sp(32), sp(32))
         self.batch_icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.batch_icon_preview.setStyleSheet(scale_qss("""
+        self.batch_icon_preview.setStyleSheet(
+            scale_qss(
+                """
             QLabel {
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
             }
-        """))
+        """
+            )
+        )
         layout.addWidget(self.batch_icon_preview)
 
         right = QVBoxLayout()
@@ -1085,7 +1093,8 @@ class BatchLaunchDialog(BaseDialog):
             pixmap = _create_type_icon(ShortcutItem(type=ShortcutType.BATCH_LAUNCH, name=name), 48)
         _current_theme = getattr(self, "theme", "dark")
         _need_invert = (
-            self.batch_invert_light_cb.isChecked() if _current_theme == "light"
+            self.batch_invert_light_cb.isChecked()
+            if _current_theme == "light"
             else self.batch_invert_dark_cb.isChecked()
         )
         if _need_invert and pixmap and not pixmap.isNull():

@@ -150,9 +150,9 @@ class DiagnosticsWindow(ThemedToolWindow):
         self._collect_thread = DiagnosticsCollectThread(self.data_manager, self.tray_app)
         self._collect_thread.finished_signal.connect(self._on_collect_finished)
         self._collect_thread.finished.connect(
-            lambda thread=self._collect_thread: setattr(self, "_collect_thread", None)
-            if getattr(self, "_collect_thread", None) is thread
-            else None
+            lambda thread=self._collect_thread: (
+                setattr(self, "_collect_thread", None) if getattr(self, "_collect_thread", None) is thread else None
+            )
         )
         self._collect_thread.finished.connect(self._collect_thread.deleteLater)
         self._collect_thread.start()
@@ -215,9 +215,9 @@ class DiagnosticsWindow(ThemedToolWindow):
         self._fix_thread = DiagnosticsFixThread(self.data_manager, fix_ids)
         self._fix_thread.finished_signal.connect(self._on_fix_finished)
         self._fix_thread.finished.connect(
-            lambda thread=self._fix_thread: setattr(self, "_fix_thread", None)
-            if getattr(self, "_fix_thread", None) is thread
-            else None
+            lambda thread=self._fix_thread: (
+                setattr(self, "_fix_thread", None) if getattr(self, "_fix_thread", None) is thread else None
+            )
         )
         self._fix_thread.finished.connect(self._fix_thread.deleteLater)
         self._fix_thread.start()

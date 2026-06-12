@@ -166,9 +166,7 @@ class Win32GlobalHotkey:
                 logger.info("全局热键注册成功: %s (id=%d)", hotkey_str, hotkey_id)
                 return hotkey_id
             else:
-                logger.warning(
-                    "全局热键注册失败: %s (可能已被其他程序占用)", hotkey_str
-                )
+                logger.warning("全局热键注册失败: %s (可能已被其他程序占用)", hotkey_str)
                 return 0
         except Exception as exc:
             logger.error("RegisterHotKey 调用失败: %s", exc, exc_info=True)

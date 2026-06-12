@@ -69,6 +69,8 @@ _LEFT_RIGHT_LABELS = {
     "lwin": "LWin",
     "rwin": "RWin",
 }
+
+
 class HotkeyRecorderWidget(QWidget):
     """Compact hotkey recorder with optional left/right modifiers."""
 
@@ -589,7 +591,10 @@ class HotkeyDialog(BaseDialog):
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
-        self.setStyleSheet(base_style + scale_qss(f"""
+        self.setStyleSheet(
+            base_style
+            + scale_qss(
+                f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -607,7 +612,9 @@ class HotkeyDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """))
+        """
+            )
+        )
         flat_btn_style = Glassmorphism.get_flat_action_button_style(theme)
         for btn in [
             self.hotkey_input.record_btn,
@@ -631,15 +638,19 @@ class HotkeyDialog(BaseDialog):
         self.invert_dark_cb.setStyleSheet(invert_cb_style)
 
         if theme == "dark":
-            self.icon_preview.setStyleSheet(scale_qss(
-                "QLabel { background-color: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; }"
-            ))
+            self.icon_preview.setStyleSheet(
+                scale_qss(
+                    "QLabel { background-color: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; }"
+                )
+            )
             self.conflict_label.setStyleSheet(scale_qss("color: rgba(255,255,255,0.62); font-size: 11px;"))
             self.test_result_label.setStyleSheet(scale_qss("color: rgba(255,255,255,0.62); font-size: 11px;"))
         else:
-            self.icon_preview.setStyleSheet(scale_qss(
-                "QLabel { background-color: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; }"
-            ))
+            self.icon_preview.setStyleSheet(
+                scale_qss(
+                    "QLabel { background-color: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; }"
+                )
+            )
             self.conflict_label.setStyleSheet(scale_qss("color: rgba(0,0,0,0.55); font-size: 11px;"))
             self.test_result_label.setStyleSheet(scale_qss("color: rgba(0,0,0,0.55); font-size: 11px;"))
 
@@ -733,8 +744,7 @@ class HotkeyDialog(BaseDialog):
             pixmap = self._create_hotkey_icon(40)
         _current_theme = getattr(self, "theme", "dark")
         _need_invert = (
-            self.invert_light_cb.isChecked() if _current_theme == "light"
-            else self.invert_dark_cb.isChecked()
+            self.invert_light_cb.isChecked() if _current_theme == "light" else self.invert_dark_cb.isChecked()
         )
         if _need_invert and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor

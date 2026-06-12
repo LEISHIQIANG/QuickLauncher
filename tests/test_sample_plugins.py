@@ -104,12 +104,12 @@ def test_qr_code_scanner_prefers_host_helper_for_bundled_qt_runtime():
 
     assert "qr_code_scanner/runtime/site-packages/zxingcpp.cp312-win_amd64.pyd" in names
     assert "qr_code_scanner/runtime/site-packages/zxingcpp.cp313-win_amd64.pyd" in names
-    assert "current.parent / \"QuickLauncher.exe\"" in main_py
+    assert 'current.parent / "QuickLauncher.exe"' in main_py
     assert "def _python_has_qr_runtime" in main_py
     assert "from PyQt5.QtCore import QPoint" in main_py
     assert "import zxingcpp" in main_py
-    assert "APP_ROOT = Path(sys.executable or \"\").resolve().parent" in runner_py
-    assert "APP_ROOT / \"PyQt5\"" in runner_py
+    assert 'APP_ROOT = Path(sys.executable or "").resolve().parent' in runner_py
+    assert 'APP_ROOT / "PyQt5"' in runner_py
 
 
 def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
@@ -121,10 +121,7 @@ def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
     site_packages = plugin_dir / "runtime" / "site-packages"
     helper = tmp_path / "helper_import_wx.py"
     helper.write_text(
-        "import sys\n"
-        "import wx\n"
-        "print('WX_OK=' + wx.version())\n"
-        "print('ARGS=' + ','.join(sys.argv[1:]))\n",
+        "import sys\n" "import wx\n" "print('WX_OK=' + wx.version())\n" "print('ARGS=' + ','.join(sys.argv[1:]))\n",
         encoding="utf-8",
     )
 

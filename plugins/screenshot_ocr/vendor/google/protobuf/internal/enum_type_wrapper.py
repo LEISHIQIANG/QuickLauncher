@@ -35,86 +35,80 @@ on proto classes.  For usage, see:
   reflection_test.py
 """
 
-__author__ = 'rabsatt@google.com (Kevin Rabsatt)'
+__author__ = "rabsatt@google.com (Kevin Rabsatt)"
 
 
 class EnumTypeWrapper:
-  """A utility for finding the names of enum values."""
+    """A utility for finding the names of enum values."""
 
-  DESCRIPTOR = None
+    DESCRIPTOR = None
 
-  # This is a type alias, which mypy typing stubs can type as
-  # a genericized parameter constrained to an int, allowing subclasses
-  # to be typed with more constraint in .pyi stubs
-  # Eg.
-  # def MyGeneratedEnum(Message):
-  #   ValueType = NewType('ValueType', int)
-  #   def Name(self, number: MyGeneratedEnum.ValueType) -> str
-  ValueType = int
+    # This is a type alias, which mypy typing stubs can type as
+    # a genericized parameter constrained to an int, allowing subclasses
+    # to be typed with more constraint in .pyi stubs
+    # Eg.
+    # def MyGeneratedEnum(Message):
+    #   ValueType = NewType('ValueType', int)
+    #   def Name(self, number: MyGeneratedEnum.ValueType) -> str
+    ValueType = int
 
-  def __init__(self, enum_type):
-    """Inits EnumTypeWrapper with an EnumDescriptor."""
-    self._enum_type = enum_type
-    self.DESCRIPTOR = enum_type  # pylint: disable=invalid-name
+    def __init__(self, enum_type):
+        """Inits EnumTypeWrapper with an EnumDescriptor."""
+        self._enum_type = enum_type
+        self.DESCRIPTOR = enum_type  # pylint: disable=invalid-name
 
-  def Name(self, number):  # pylint: disable=invalid-name
-    """Returns a string containing the name of an enum value."""
-    try:
-      return self._enum_type.values_by_number[number].name
-    except KeyError:
-      pass  # fall out to break exception chaining
+    def Name(self, number):  # pylint: disable=invalid-name
+        """Returns a string containing the name of an enum value."""
+        try:
+            return self._enum_type.values_by_number[number].name
+        except KeyError:
+            pass  # fall out to break exception chaining
 
-    if not isinstance(number, int):
-      raise TypeError(
-          f'Enum value for {self._enum_type.name} must be an int, but got {type(number)} {number!r}.')
-    else:
-      # repr here to handle the odd case when you pass in a boolean.
-      raise ValueError(f'Enum {self._enum_type.name} has no name defined for value {number!r}')
+        if not isinstance(number, int):
+            raise TypeError(f"Enum value for {self._enum_type.name} must be an int, but got {type(number)} {number!r}.")
+        else:
+            # repr here to handle the odd case when you pass in a boolean.
+            raise ValueError(f"Enum {self._enum_type.name} has no name defined for value {number!r}")
 
-  def Value(self, name):  # pylint: disable=invalid-name
-    """Returns the value corresponding to the given enum name."""
-    try:
-      return self._enum_type.values_by_name[name].number
-    except KeyError:
-      pass  # fall out to break exception chaining
-    raise ValueError(f'Enum {self._enum_type.name} has no value defined for name {name!r}')
+    def Value(self, name):  # pylint: disable=invalid-name
+        """Returns the value corresponding to the given enum name."""
+        try:
+            return self._enum_type.values_by_name[name].number
+        except KeyError:
+            pass  # fall out to break exception chaining
+        raise ValueError(f"Enum {self._enum_type.name} has no value defined for name {name!r}")
 
-  def keys(self):
-    """Return a list of the string names in the enum.
+    def keys(self):
+        """Return a list of the string names in the enum.
 
-    Returns:
-      A list of strs, in the order they were defined in the .proto file.
-    """
+        Returns:
+          A list of strs, in the order they were defined in the .proto file.
+        """
 
-    return [value_descriptor.name
-            for value_descriptor in self._enum_type.values]
+        return [value_descriptor.name for value_descriptor in self._enum_type.values]
 
-  def values(self):
-    """Return a list of the integer values in the enum.
+    def values(self):
+        """Return a list of the integer values in the enum.
 
-    Returns:
-      A list of ints, in the order they were defined in the .proto file.
-    """
+        Returns:
+          A list of ints, in the order they were defined in the .proto file.
+        """
 
-    return [value_descriptor.number
-            for value_descriptor in self._enum_type.values]
+        return [value_descriptor.number for value_descriptor in self._enum_type.values]
 
-  def items(self):
-    """Return a list of the (name, value) pairs of the enum.
+    def items(self):
+        """Return a list of the (name, value) pairs of the enum.
 
-    Returns:
-      A list of (str, int) pairs, in the order they were defined
-      in the .proto file.
-    """
-    return [(value_descriptor.name, value_descriptor.number)
-            for value_descriptor in self._enum_type.values]
+        Returns:
+          A list of (str, int) pairs, in the order they were defined
+          in the .proto file.
+        """
+        return [(value_descriptor.name, value_descriptor.number) for value_descriptor in self._enum_type.values]
 
-  def __getattr__(self, name):
-    """Returns the value corresponding to the given enum name."""
-    try:
-      return super(
-          EnumTypeWrapper,
-          self).__getattribute__('_enum_type').values_by_name[name].number
-    except KeyError:
-      pass  # fall out to break exception chaining
-    raise AttributeError(f'Enum {self._enum_type.name} has no value defined for name {name!r}')
+    def __getattr__(self, name):
+        """Returns the value corresponding to the given enum name."""
+        try:
+            return super(EnumTypeWrapper, self).__getattribute__("_enum_type").values_by_name[name].number
+        except KeyError:
+            pass  # fall out to break exception chaining
+        raise AttributeError(f"Enum {self._enum_type.name} has no value defined for name {name!r}")

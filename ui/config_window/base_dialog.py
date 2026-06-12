@@ -117,9 +117,7 @@ class BaseDialog(QDialog):
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if is_win10():
-                paint_win10_rounded_surface(
-                    painter, self, self.bg_color, self.border_color, self.corner_radius
-                )
+                paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
                 return
 
             inset = spf(1.0) if is_win10() else spf(0.5)

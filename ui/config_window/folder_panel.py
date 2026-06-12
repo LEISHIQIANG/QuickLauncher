@@ -496,16 +496,22 @@ class FolderPanel(QWidget):
             btn_hover_text = "rgba(28, 28, 30, 0.9)"
             btn_color = "rgba(28, 28, 30, 0.65)"
 
-        self.list_frame.setStyleSheet(scale_qss(f"""
+        self.list_frame.setStyleSheet(
+            scale_qss(
+                f"""
             QFrame#folderListFrame {{
                 background-color: {frame_bg};
                 border: 1px solid {frame_border};
                 border-radius: 10px;
             }}
-        """))
+        """
+            )
+        )
 
         # Items are drawn by FolderItemWidget, stylesheet just resets default background
-        self.folder_list.setStyleSheet(scale_qss("""
+        self.folder_list.setStyleSheet(
+            scale_qss(
+                """
             QListWidget#folderList {
                 outline: none;
                 background: transparent;
@@ -525,7 +531,9 @@ class FolderPanel(QWidget):
                 background: transparent;
                 border: none;
             }
-        """))
+        """
+            )
+        )
 
         # Propagate theme change to any existing FolderItemWidgets
         for i in range(self.folder_list.count()):
@@ -535,7 +543,9 @@ class FolderPanel(QWidget):
                 widget.theme = theme
                 widget.update()
 
-        self.add_btn.setStyleSheet(scale_qss(f"""
+        self.add_btn.setStyleSheet(
+            scale_qss(
+                f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 4px 13px;
@@ -554,7 +564,9 @@ class FolderPanel(QWidget):
             QPushButton:pressed {{
                 opacity: 0.7;
             }}
-        """))
+        """
+            )
+        )
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
@@ -596,7 +608,8 @@ class FolderPanel(QWidget):
         theme = self._get_current_theme()
 
         if theme == "dark":
-            return scale_qss("""
+            return scale_qss(
+                """
                 QMenu {
                     background-color: rgba(30, 30, 30, 120);
                     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -623,9 +636,11 @@ class FolderPanel(QWidget):
                     background-color: rgba(255, 255, 255, 16);
                     margin: 6px 10px;
                 }
-            """)
+            """
+            )
         else:
-            return scale_qss("""
+            return scale_qss(
+                """
                 QMenu {
                     background-color: rgba(255, 255, 255, 120);
                     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -652,7 +667,8 @@ class FolderPanel(QWidget):
                     background-color: rgba(60, 60, 67, 18);
                     margin: 6px 10px;
                 }
-            """)
+            """
+            )
 
     def _load_folders(self):
         """加载文件夹列表"""
@@ -1212,7 +1228,9 @@ class FolderPanel(QWidget):
         if dialog.exec_():
             name = dialog.get_text()
             if name:
-                QTimer.singleShot(0, lambda fid=folder_id, new_name=name: self._rename_folder_after_dialog(fid, new_name))
+                QTimer.singleShot(
+                    0, lambda fid=folder_id, new_name=name: self._rename_folder_after_dialog(fid, new_name)
+                )
 
     def _rename_folder_after_dialog(self, folder_id: str, name: str):
         try:

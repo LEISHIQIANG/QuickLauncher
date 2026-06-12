@@ -10,6 +10,8 @@ from core.data_models import Folder, ShortcutItem
 from qt_compat import QFont, QPixmap, QPoint, QRect, QWidget
 from ui.launcher_popup.popup_window import LauncherPopup
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
+from ui.utils.font_manager import get_font_family
+from ui.utils.ui_scale import font_px
 
 pytestmark = pytest.mark.ui
 
@@ -402,3 +404,26 @@ def test_icon_flash_overlay_uses_short_dirty_pulse(qapp):
     assert overlay._opacity == 0.0
     assert overlay._items == []
     launcher.deleteLater()
+
+
+def test_popup_label_replaces_sixth_character_with_ellipsis():
+    assert LauncherPopup._elided_label("启动器标签") == "启动器标签"
+    assert LauncherPopup._elided_label("启动器标签显") == "启动器标签显"
+    assert LauncherPopup._elided_label("启动器标签显示") == "启动器标签…"
+
+
+def test_popup_grid_metrics_keep_smaller_font_and_single_line_height(qapp):
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.settings = SimpleNamespace(icon_size=32)
+    popup._label_font = QFont()
+    popup.icon_size = 32
+    popup.cell_size = 48
+
+    LauncherPopup._update_grid_text_metrics(popup)
+
+    assert popup._label_font.pixelSize() == font_px(9)
+    assert popup._label_font.family() == get_font_family()
+    assert popup._label_font.weight() == QFont.Weight.Medium
+    assert popup._label_font.hintingPreference() == QFont.HintingPreference.PreferFullHinting
+    assert popup._label_font.styleStrategy() & QFont.StyleStrategy.PreferAntialias
+    assert popup.cell_h == int(popup.cell_size * 1.15)

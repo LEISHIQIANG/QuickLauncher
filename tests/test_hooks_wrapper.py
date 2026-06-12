@@ -1,6 +1,7 @@
 import ctypes
 import hashlib
 import os
+import time
 
 import pytest
 
@@ -23,12 +24,26 @@ class _FakeDLL:
         for name in hooks_wrapper.HooksDLL.REQUIRED_EXPORTS:
             setattr(self, name, _FakeFunc(True))
         self.GetHooksVersion = _FakeFunc(hooks_wrapper.HooksDLL.EXPECTED_VERSION)
-        self.GetHooksCapabilities = _FakeFunc(0x7F)
+        self.GetHooksCapabilities = _FakeFunc(0xFF)
         self.GetLastHookError = _FakeFunc(0)
         self.IsMouseHookInstalled = _FakeFunc(True)
         self.IsKeyboardHookInstalled = _FakeFunc(False)
+        self.IsRawInputFallbackActive = _FakeFunc(True)
         self.SetSpecialApps = _FakeFunc(None)
         self.ClearSpecialApps = _FakeFunc(None)
+
+
+class _RuntimeStatsFunc(_FakeFunc):
+    def __call__(self, stats_ptr, stats_size):
+        stats = ctypes.cast(stats_ptr, ctypes.POINTER(hooks_wrapper.HooksRuntimeStats)).contents
+        stats.size = stats_size
+        stats.version = hooks_wrapper.HooksDLL.EXPECTED_VERSION
+        stats.health_flags = 0xFF
+        stats.callback_queue_depth = 2
+        stats.low_level_mouse_events = 11
+        stats.raw_mouse_events = 7
+        stats.callback_queue_dropped = 3
+        return True
 
 
 def test_hooks_wrapper_reports_version_and_capabilities(monkeypatch):
@@ -40,10 +55,12 @@ def test_hooks_wrapper_reports_version_and_capabilities(monkeypatch):
     assert diagnostics["loaded"] is True
     assert diagnostics["compatible"] is True
     assert diagnostics["version"] == hooks_wrapper.HooksDLL.EXPECTED_VERSION
-    assert diagnostics["capabilities"] == 0x7F
+    assert diagnostics["capabilities"] == 0xFF
     assert diagnostics["has_hook_health"] is True
+    assert diagnostics["has_raw_input_status"] is True
     assert diagnostics["has_hotkey_capture"] is True
     assert diagnostics["mouse_hook_installed"] is True
+    assert diagnostics["raw_input_fallback_active"] is True
     assert diagnostics["keyboard_hook_installed"] is False
 
 
@@ -90,12 +107,63 @@ def test_hooks_wrapper_binds_hotkey_capture_exports(monkeypatch):
     assert fake.stopped is True
 
 
+def test_hooks_wrapper_reports_runtime_stats(monkeypatch):
+    fake = _FakeDLL()
+    fake.GetHooksRuntimeStats = _RuntimeStatsFunc()
+    fake.ResetHooksRuntimeStats = _FakeFunc(None)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+
+    diagnostics = hooks_wrapper.HooksDLL("stats.dll").get_diagnostics()
+
+    assert diagnostics["has_runtime_stats"] is True
+    assert diagnostics["runtime_stats"]["version"] == hooks_wrapper.HooksDLL.EXPECTED_VERSION
+    assert diagnostics["runtime_stats"]["callback_queue_depth"] == 2
+    assert diagnostics["runtime_stats"]["low_level_mouse_events"] == 11
+    assert diagnostics["runtime_stats"]["callback_queue_dropped"] == 3
+
+
+def test_captured_events_to_macro_preserves_input_and_scales_timing():
+    captured = [
+        {
+            "type": hooks_wrapper.INPUT_KEY_DOWN,
+            "flags": hooks_wrapper.INPUT_FLAG_EXTENDED | hooks_wrapper.INPUT_FLAG_INJECTED,
+            "timestamp_us": 1000,
+            "vk_code": 0x41,
+            "scan_code": 30,
+        },
+        {
+            "type": hooks_wrapper.INPUT_KEY_UP,
+            "flags": hooks_wrapper.INPUT_FLAG_EXTENDED,
+            "timestamp_us": 5000,
+            "vk_code": 0x41,
+            "scan_code": 30,
+        },
+    ]
+
+    macro = hooks_wrapper.HooksDLL.captured_events_to_macro(
+        captured,
+        speed=2.0,
+        preserve_initial_delay=True,
+    )
+
+    assert [event["delay_us"] for event in macro] == [500, 2000]
+    assert macro[0]["flags"] == hooks_wrapper.INPUT_FLAG_EXTENDED
+    assert macro[0]["vk_code"] == 0x41
+    assert macro[1]["scan_code"] == 30
+
+
+def test_captured_events_to_macro_rejects_invalid_speed():
+    with pytest.raises(ValueError):
+        hooks_wrapper.HooksDLL.captured_events_to_macro([], speed=0)
+
+
 def test_hooks_wrapper_tolerates_older_dll_without_health_exports(monkeypatch):
     class LegacyDLL(_FakeDLL):
         def __init__(self):
             super().__init__()
             del self.IsMouseHookInstalled
             del self.IsKeyboardHookInstalled
+            del self.IsRawInputFallbackActive
 
     monkeypatch.setattr(ctypes, "CDLL", lambda path: LegacyDLL())
 
@@ -104,7 +172,9 @@ def test_hooks_wrapper_tolerates_older_dll_without_health_exports(monkeypatch):
     assert diagnostics["loaded"] is True
     assert diagnostics["compatible"] is True
     assert diagnostics["has_hook_health"] is False
+    assert diagnostics["has_raw_input_status"] is False
     assert diagnostics["mouse_hook_installed"] is False
+    assert diagnostics["raw_input_fallback_active"] is False
     assert diagnostics["keyboard_hook_installed"] is False
 
 
@@ -118,6 +188,18 @@ def test_hooks_wrapper_handles_load_failure(monkeypatch):
 
     assert dll.install_mouse_hook(lambda x, y: None) is False
     assert dll.get_diagnostics()["loaded"] is False
+
+
+def test_failed_hotkey_replacement_keeps_previous_callback_alive(monkeypatch):
+    fake = _FakeDLL()
+    fake.SetGlobalHotkey = _FakeFunc(False)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("hotkey.dll")
+    previous_ref = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
+    dll._hotkey_callback_ref = previous_ref
+
+    assert dll.set_hotkey("<ctrl>+a", lambda: None) is False
+    assert dll._hotkey_callback_ref is previous_ref
 
 
 def test_hooks_wrapper_reports_outdated_version(monkeypatch):
@@ -141,12 +223,101 @@ def test_hooks_wrapper_reports_file_metadata(monkeypatch, tmp_path):
     dll_path.write_bytes(content)
     monkeypatch.setattr(ctypes, "CDLL", lambda path: _FakeDLL())
 
-    diagnostics = hooks_wrapper.HooksDLL(str(dll_path)).get_diagnostics()
+    diagnostics = hooks_wrapper.HooksDLL(
+        str(dll_path),
+        expected_sha256=hashlib.sha256(content).hexdigest(),
+    ).get_diagnostics()
 
     assert diagnostics["exists"] is True
     assert diagnostics["size_bytes"] == len(content)
     assert diagnostics["sha256"] == hashlib.sha256(content).hexdigest()
     assert diagnostics["path_resolved"].endswith("hooks.dll")
+
+
+def test_hooks_wrapper_rejects_custom_path_hash_mismatch(monkeypatch, tmp_path):
+    dll_path = tmp_path / "hooks.dll"
+    dll_path.write_bytes(b"unexpected")
+    load_calls = []
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: load_calls.append(path) or _FakeDLL())
+
+    dll = hooks_wrapper.HooksDLL(str(dll_path))
+
+    assert dll.loaded is False
+    assert "SHA-256 mismatch" in dll.load_error
+    assert load_calls == []
+
+
+def test_hooks_wrapper_can_explicitly_skip_custom_integrity_check(monkeypatch, tmp_path):
+    dll_path = tmp_path / "hooks.dll"
+    dll_path.write_bytes(b"development build")
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: _FakeDLL())
+
+    dll = hooks_wrapper.HooksDLL(str(dll_path), verify_integrity=False)
+
+    assert dll.loaded is True
+    assert dll.compatible is True
+
+
+def test_shutdown_hooks_uses_correct_native_signatures():
+    calls = []
+
+    class StrictNoArg:
+        def __init__(self, name):
+            self.name = name
+
+        def __call__(self):
+            calls.append((self.name, ()))
+
+    class StrictTimeout:
+        def __call__(self, timeout_ms):
+            calls.append(("WaitForMacroPlayback", (timeout_ms,)))
+            return True
+
+    fake = type("ShutdownDLL", (), {})()
+    for name in (
+        "StopInputCapture",
+        "CancelMacroPlayback",
+        "ReleaseMacroPressedInputs",
+        "StopHotkeyCapture",
+        "UninstallMouseHook",
+        "UninstallKeyboardHook",
+        "ClearGlobalHotkey",
+    ):
+        setattr(fake, name, StrictNoArg(name))
+    fake.WaitForMacroPlayback = StrictTimeout()
+
+    dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
+    dll.dll = fake
+    dll.loaded = True
+    dll.compatible = True
+    dll._lifecycle_lock = __import__("threading").RLock()
+    dll._retired_callback_refs = __import__("collections").deque(maxlen=64)
+    dll._input_capture_filter_flags = 0
+    for attr_name in (
+        "_mouse_callback_ref",
+        "_alt_dclick_callback_ref",
+        "_keyboard_callback_ref",
+        "_hotkey_callback_ref",
+        "_hotkey_capture_callback_ref",
+        "_input_event_callback_ref",
+    ):
+        setattr(dll, attr_name, None)
+
+    dll.shutdown_hooks()
+
+    assert ("StopInputCapture", ()) in calls
+    assert ("CancelMacroPlayback", ()) in calls
+    assert ("WaitForMacroPlayback", (2000,)) in calls
+
+
+def test_retired_callback_refs_are_bounded(monkeypatch):
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: _FakeDLL())
+    dll = hooks_wrapper.HooksDLL("bounded.dll")
+
+    for _ in range(100):
+        dll._retire_callback_ref(object())
+
+    assert len(dll._retired_callback_refs) == 64
 
 
 def test_hooks_wrapper_uses_shared_key_map():
@@ -164,11 +335,47 @@ def test_dll_global_hotkey_parser_accepts_shared_key_map():
         pytest.skip(f"hooks.dll unavailable: {dll.load_error or dll.missing_exports}")
 
     callback = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
-    rejected = [
-        key
-        for key in sorted(KEY_TO_VK)
-        if not dll.dll.SetGlobalHotkey(f"ctrl+{key}".encode(), callback)
-    ]
+    rejected = [key for key in sorted(KEY_TO_VK) if not dll.dll.SetGlobalHotkey(f"ctrl+{key}".encode(), callback)]
     dll.dll.ClearGlobalHotkey()
 
     assert rejected == []
+
+
+def test_dll_macro_capture_ignores_normal_filters_and_can_include_own_playback():
+    dll_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "hooks.dll"))
+    if not os.path.exists(dll_path):
+        pytest.skip("hooks.dll is not available")
+
+    dll = hooks_wrapper.HooksDLL(dll_path)
+    if not dll.loaded or not dll.compatible or not dll.get_diagnostics()["has_input_capture"]:
+        pytest.skip(f"macro capture unavailable: {dll.load_error or dll.missing_exports}")
+
+    captured = []
+    try:
+        assert dll.install_keyboard_hook()
+        assert dll.start_input_capture(
+            captured.append,
+            filter_flags=hooks_wrapper.CAPTURE_KEYBOARD,
+            include_own_playback=True,
+        )
+        assert dll.play_macro(
+            [
+                {"type": hooks_wrapper.INPUT_KEY_DOWN, "vk_code": 0x87},
+                {"type": hooks_wrapper.INPUT_KEY_UP, "vk_code": 0x87},
+            ],
+            no_timing=True,
+        )
+        assert dll.wait_for_macro_playback(2000)
+        deadline = time.monotonic() + 1.0
+        while len(captured) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        dll.stop_input_capture()
+        dll.uninstall_keyboard_hook()
+
+    f24_events = [event for event in captured if event["vk_code"] == 0x87]
+    assert [event["type"] for event in f24_events] == [
+        hooks_wrapper.INPUT_KEY_DOWN,
+        hooks_wrapper.INPUT_KEY_UP,
+    ]
+    assert all(event["flags"] & hooks_wrapper.INPUT_FLAG_OWN_PLAYBACK for event in f24_events)

@@ -1207,11 +1207,16 @@ class DataManager:
         """
         if not self.icons_dir.exists():
             return {
-                "exe_files_removed": 0, "exe_files_size_mb": 0,
-                "large_files_removed": 0, "large_files_size_mb": 0,
-                "orphan_files_removed": 0, "orphan_files_size_mb": 0,
-                "duplicate_files_removed": 0, "duplicate_files_size_mb": 0,
-                "total_removed": 0, "total_size_freed_mb": 0,
+                "exe_files_removed": 0,
+                "exe_files_size_mb": 0,
+                "large_files_removed": 0,
+                "large_files_size_mb": 0,
+                "orphan_files_removed": 0,
+                "orphan_files_size_mb": 0,
+                "duplicate_files_removed": 0,
+                "duplicate_files_size_mb": 0,
+                "total_removed": 0,
+                "total_size_freed_mb": 0,
                 "dry_run": dry_run,
             }
 
@@ -1438,6 +1443,7 @@ class DataManager:
                 logger.warning("最新备份 %s 格式无效", latest.name)
                 return
             import shutil
+
             shutil.copy2(str(latest), str(self.data_file))
             logger.info("已从备份 %s 恢复 data.json", latest.name)
         except Exception as exc:

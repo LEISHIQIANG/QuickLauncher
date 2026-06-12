@@ -69,11 +69,13 @@ class ParallelExecutionResult(ExecutionResult):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "execution_plan": self.execution_plan.to_dict() if self.execution_plan else None,
-            "parallel_groups_executed": self.parallel_groups_executed,
-            "max_parallelism_used": self.max_parallelism_used,
-        })
+        result.update(
+            {
+                "execution_plan": self.execution_plan.to_dict() if self.execution_plan else None,
+                "parallel_groups_executed": self.parallel_groups_executed,
+                "max_parallelism_used": self.max_parallelism_used,
+            }
+        )
         return result
 
 
@@ -89,12 +91,15 @@ class ParallelGraphRuntime(GraphRuntime):
         self._max_workers = max_workers
         self._executor: ThreadPoolExecutor | None = None
 
-    def execute(self, graph: ChainGraph,
-                cancel_event: threading.Event | None = None,
-                max_steps: int = 0,
-                timeout: float = 0.0,
-                use_cache: bool = True,
-                parallel: bool = True) -> ParallelExecutionResult:
+    def execute(
+        self,
+        graph: ChainGraph,
+        cancel_event: threading.Event | None = None,
+        max_steps: int = 0,
+        timeout: float = 0.0,
+        use_cache: bool = True,
+        parallel: bool = True,
+    ) -> ParallelExecutionResult:
         """Execute a graph with optional parallel execution.
 
         Args:
@@ -179,9 +184,14 @@ class ParallelGraphRuntime(GraphRuntime):
 
         return plan
 
-    def _execute_parallel(self, graph: ChainGraph, context: GraphExecutionContext,
-                         result: ParallelExecutionResult, plan: ExecutionPlan,
-                         use_cache: bool) -> None:
+    def _execute_parallel(
+        self,
+        graph: ChainGraph,
+        context: GraphExecutionContext,
+        result: ParallelExecutionResult,
+        plan: ExecutionPlan,
+        use_cache: bool,
+    ) -> None:
         """Execute graph with parallel execution of independent nodes."""
         result.status = "running"
 
@@ -222,8 +232,9 @@ class ParallelGraphRuntime(GraphRuntime):
 
             self._executor = None
 
-    def _execute_sequential(self, graph: ChainGraph, context: GraphExecutionContext,
-                           result: ExecutionResult, use_cache: bool) -> None:
+    def _execute_sequential(
+        self, graph: ChainGraph, context: GraphExecutionContext, result: ExecutionResult, use_cache: bool
+    ) -> None:
         """Execute graph sequentially (fallback)."""
         result.status = "running"
 
@@ -254,9 +265,9 @@ class ParallelGraphRuntime(GraphRuntime):
         if result.status == "running":
             result.status = "completed"
 
-    def _execute_single_node(self, node_id: str, graph: ChainGraph,
-                            context: GraphExecutionContext, result: ExecutionResult,
-                            use_cache: bool) -> None:
+    def _execute_single_node(
+        self, node_id: str, graph: ChainGraph, context: GraphExecutionContext, result: ExecutionResult, use_cache: bool
+    ) -> None:
         """Execute a single node."""
         node = graph.get_node(node_id)
         if node is None:
@@ -313,9 +324,15 @@ class ParallelGraphRuntime(GraphRuntime):
 
         context.current_step += 1
 
-    def _execute_node_group(self, group: list[str], graph: ChainGraph,
-                           context: GraphExecutionContext, result: ExecutionResult,
-                           use_cache: bool, executor: ThreadPoolExecutor) -> None:
+    def _execute_node_group(
+        self,
+        group: list[str],
+        graph: ChainGraph,
+        context: GraphExecutionContext,
+        result: ExecutionResult,
+        use_cache: bool,
+        executor: ThreadPoolExecutor,
+    ) -> None:
         """Execute a group of independent nodes in parallel."""
         futures: dict[str, Future] = {}
 
@@ -473,6 +490,7 @@ class ParallelGraphRuntime(GraphRuntime):
                     port = node.get_output(port_id)
                     if port:
                         from .values import make_chain_value
+
                         typed_value = make_chain_value(value, port.kind)
                         node_result.typed_outputs[port_id] = typed_value
 
@@ -499,8 +517,9 @@ class ParallelGraphRuntime(GraphRuntime):
 
         return node_result
 
-    def _skip_downstream_nodes(self, graph: ChainGraph, failed_node_id: str,
-                              result: ExecutionResult, context: GraphExecutionContext) -> None:
+    def _skip_downstream_nodes(
+        self, graph: ChainGraph, failed_node_id: str, result: ExecutionResult, context: GraphExecutionContext
+    ) -> None:
         """Mark downstream nodes as skipped after a failure."""
         # BFS to find all downstream nodes
         visited = set()
@@ -530,12 +549,14 @@ class ParallelGraphRuntime(GraphRuntime):
                     queue.append(dep_id)
 
 
-def execute_graph_parallel(graph: ChainGraph,
-                          cancel_event: threading.Event | None = None,
-                          max_steps: int = 0,
-                          timeout: float = 0.0,
-                          use_cache: bool = True,
-                          max_workers: int = 4) -> ParallelExecutionResult:
+def execute_graph_parallel(
+    graph: ChainGraph,
+    cancel_event: threading.Event | None = None,
+    max_steps: int = 0,
+    timeout: float = 0.0,
+    use_cache: bool = True,
+    max_workers: int = 4,
+) -> ParallelExecutionResult:
     """Convenience function to execute a graph with parallel execution.
 
     Args:

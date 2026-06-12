@@ -33,9 +33,11 @@ def execute_extra_data_processor(processor_id: str, values: dict[str, Any]) -> C
         return ok(hashlib.sha512(text_values.get("text", "").encode("utf-8")).hexdigest())
     if processor_id == "hash_crc32":
         import zlib as _zl
-        return ok(format(_zl.crc32(text_values.get("text", "").encode("utf-8")) & 0xffffffff, "08x"))
+
+        return ok(format(_zl.crc32(text_values.get("text", "").encode("utf-8")) & 0xFFFFFFFF, "08x"))
     if processor_id == "hash_uuid":
         import uuid as _uu
+
         return ok(str(_uu.uuid4()))
 
     # -- Color --
@@ -64,6 +66,7 @@ def execute_extra_data_processor(processor_id: str, values: dict[str, Any]) -> C
         return ok(f"#{255 - r:02x}{255 - g:02x}{255 - b:02x}")
     if processor_id == "color_random":
         import random as _rr
+
         return ok(f"#{_rr.randint(0, 0xffffff):06x}")
 
     # -- Set operations --
@@ -118,14 +121,22 @@ def execute_extra_data_processor(processor_id: str, values: dict[str, Any]) -> C
 
     # -- String formatting --
     if processor_id == "str_pad_left":
-        return ok(text_values.get("text", "").rjust(int(text_values.get("width", "0") or "0"), text_values.get("fillchar", " ") or " "))
+        return ok(
+            text_values.get("text", "").rjust(
+                int(text_values.get("width", "0") or "0"), text_values.get("fillchar", " ") or " "
+            )
+        )
     if processor_id == "str_pad_right":
-        return ok(text_values.get("text", "").ljust(int(text_values.get("width", "0") or "0"), text_values.get("fillchar", " ") or " "))
+        return ok(
+            text_values.get("text", "").ljust(
+                int(text_values.get("width", "0") or "0"), text_values.get("fillchar", " ") or " "
+            )
+        )
     if processor_id == "str_truncate":
         t = text_values.get("text", "")
         ml = int(text_values.get("max_length", "100") or "100")
         s = text_values.get("suffix", "...")
-        return ok(t if len(t) <= ml else t[:ml - len(s)] + s)
+        return ok(t if len(t) <= ml else t[: ml - len(s)] + s)
     if processor_id == "str_repeat":
         return ok(text_values.get("text", "") * int(text_values.get("count", "1") or "1"))
 

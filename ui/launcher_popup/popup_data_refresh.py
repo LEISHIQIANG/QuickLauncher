@@ -19,7 +19,7 @@ from qt_compat import (
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker, sync_all_folders_for_data_manager
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
-from ui.utils.ui_scale import font_px, sp, spf
+from ui.utils.ui_scale import sp, spf
 from ui.utils.window_effect import is_win11
 
 logger = logging.getLogger(__name__)
@@ -74,8 +74,7 @@ class PopupDataRefreshMixin:
         self.cols = self.settings.cols
         self.cell_size = sp(self.settings.cell_size)
         self.icon_size = sp(self.settings.icon_size)
-        self._label_font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.28))))
-        self.cell_h = int(self.cell_size * 1.15)
+        self._update_grid_text_metrics()
 
         layout_changed = (
             self.cols != prev_cols
@@ -512,7 +511,9 @@ class PopupDataRefreshMixin:
     def _defer_blank_area_refresh_for_interaction(self, quiet_ms: int = _BLANK_REFRESH_INTERACTION_QUIET_MS):
         """Keep a double-click refresh queued while page scrolling/dragging stays active."""
         state = self.__dict__
-        if not (bool(state.get("_blank_refresh_in_progress", False)) or bool(state.get("_blank_refresh_pending", False))):
+        if not (
+            bool(state.get("_blank_refresh_in_progress", False)) or bool(state.get("_blank_refresh_pending", False))
+        ):
             return
         try:
             quiet_until = time.monotonic() + max(0, int(quiet_ms)) / 1000.0
@@ -718,9 +719,9 @@ class PopupDataRefreshMixin:
             self._sync_worker.finished.connect(self.folder_sync_finished.emit)
             self._sync_worker.finished.connect(self._sync_worker.deleteLater)
             self._sync_worker.finished.connect(
-                lambda worker=self._sync_worker: setattr(self, "_sync_worker", None)
-                if getattr(self, "_sync_worker", None) is worker
-                else None
+                lambda worker=self._sync_worker: (
+                    setattr(self, "_sync_worker", None) if getattr(self, "_sync_worker", None) is worker else None
+                )
             )
             self._sync_worker.start()
         except Exception as e:

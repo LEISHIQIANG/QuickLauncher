@@ -122,9 +122,7 @@ def join_background_tasks(owner: Any = None, *, timeout: float = 5.0) -> list[Ba
         if remaining <= 0:
             break
         thread.join(timeout=remaining)
-    remaining_tasks = [
-        task for task in list_background_tasks() if owner_name is None or task.owner == owner_name
-    ]
+    remaining_tasks = [task for task in list_background_tasks() if owner_name is None or task.owner == owner_name]
     if remaining_tasks:
         logger.warning(
             "Background tasks still running for %s: %s",

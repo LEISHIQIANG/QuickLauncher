@@ -169,15 +169,21 @@ class ChainProcessorDefinition:
         processor_id = str(id or "").strip()
         input_defs = [_port_definition(processor_id, value, "input") for value in list(inputs or [])]
         output_defs = [_port_definition(processor_id, value, "output") for value in list(outputs or ["output"])]
-        param_defs = list(params) if params is not None else [_param_definition(processor_id, port) for port in input_defs]
-        example_defs = list(examples) if examples is not None else [_default_example(str(title or processor_id), param_defs)]
+        param_defs = (
+            list(params) if params is not None else [_param_definition(processor_id, port) for port in input_defs]
+        )
+        example_defs = (
+            list(examples) if examples is not None else [_default_example(str(title or processor_id), param_defs)]
+        )
         object.__setattr__(self, "id", processor_id)
         object.__setattr__(self, "title", str(title or processor_id))
         object.__setattr__(self, "inputs", input_defs)
         object.__setattr__(self, "outputs", output_defs)
         object.__setattr__(self, "source", str(source or ""))
         object.__setattr__(self, "category", category or _processor_category(processor_id))
-        object.__setattr__(self, "description", description or _processor_description(processor_id, str(title or processor_id)))
+        object.__setattr__(
+            self, "description", description or _processor_description(processor_id, str(title or processor_id))
+        )
         object.__setattr__(self, "params", param_defs)
         object.__setattr__(self, "safety", safety or _processor_safety(processor_id))
         object.__setattr__(self, "examples", example_defs)

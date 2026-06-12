@@ -119,19 +119,29 @@ class ThemedToolWindow(QDialog):
             text_secondary = "rgba(60, 60, 67, 0.6)"
 
         self.setStyleSheet(scale_qss("QDialog { background: transparent; }"))
-        self.title_label.setStyleSheet(scale_qss(f"""
+        self.title_label.setStyleSheet(
+            scale_qss(
+                f"""
             font-size: 14px; font-weight: 400;
             color: {text_primary};
             background: transparent;
-        """))
+        """
+            )
+        )
         self.title_label.setFont(get_qfont(14, 400))
-        self.subtitle_label.setStyleSheet(scale_qss(f"""
+        self.subtitle_label.setStyleSheet(
+            scale_qss(
+                f"""
             font-size: 11px;
             color: {text_secondary};
             background: transparent;
             padding-left: 6px;
-        """))
-        self.close_btn_top.setStyleSheet(scale_qss(f"""
+        """
+            )
+        )
+        self.close_btn_top.setStyleSheet(
+            scale_qss(
+                f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -149,7 +159,9 @@ class ThemedToolWindow(QDialog):
                 background: #C50F1F;
                 color: #ffffff;
             }}
-        """))
+        """
+            )
+        )
         tune_font_rendering(self, recursive=True)
         self.title_label.setFont(get_qfont(14, 400))
 
@@ -166,7 +178,9 @@ class ThemedToolWindow(QDialog):
         selection_bg = Colors.get_selection_bg(theme)
         selection_text = Colors.get_selection_text(theme)
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(scale_qss(f"""
+        widget.setStyleSheet(
+            scale_qss(
+                f"""
             QPlainTextEdit {{
                 background: transparent;
                 border: none;
@@ -174,7 +188,10 @@ class ThemedToolWindow(QDialog):
                 selection-background-color: {selection_bg};
                 selection-color: {selection_text};
             }}
-        """ + scrollbar_style))
+        """
+                + scrollbar_style
+            )
+        )
         self.style_scrollbars(widget)
 
     def style_list_widget(self, widget: QListWidget):
@@ -199,7 +216,9 @@ class ThemedToolWindow(QDialog):
         padding = "4px 7px" if compact else "8px 10px"
         radius = "4px" if compact else "6px"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        widget.setStyleSheet(scale_qss(f"""
+        widget.setStyleSheet(
+            scale_qss(
+                f"""
             QListWidget {{
                 background: transparent;
                 border: 1px solid {border};
@@ -221,7 +240,10 @@ class ThemedToolWindow(QDialog):
                 color: {selected_text};
                 border: 1px solid {selected_border};
             }}
-        """ + scrollbar_style))
+        """
+                + scrollbar_style
+            )
+        )
         self.style_scrollbars(widget)
 
     def style_scrollbars(self, widget):
@@ -248,7 +270,8 @@ class ThemedToolWindow(QDialog):
             btn_hover = "rgba(0, 122, 255, 0.8)"
             btn_text = "#1c1c1e"
             disabled = "rgba(60, 60, 67, 0.35)"
-        style = scale_qss(f"""
+        style = scale_qss(
+            f"""
             QPushButton {{
                 font-size: 11px;
                 padding: 6px 10px;
@@ -271,7 +294,8 @@ class ThemedToolWindow(QDialog):
                 background: transparent;
                 border: 1px solid {btn_border};
             }}
-        """)
+        """
+        )
         for button in buttons:
             button.setFixedHeight(sp(30))
             button.setCursor(QtCompat.PointingHandCursor)
@@ -295,7 +319,9 @@ class ThemedToolWindow(QDialog):
                     pixmap = QPixmap(icon_path)
                     if not pixmap.isNull():
                         self.icon_label.setPixmap(
-                            pixmap.scaled(QSize(sp(20), sp(20)), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                            pixmap.scaled(
+                                QSize(sp(20), sp(20)), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation
+                            )
                         )
                         return
         except Exception as exc:

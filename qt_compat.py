@@ -101,7 +101,6 @@ from PyQt5.QtWidgets import (
     QMenu,
     QMenuBar,
     QMessageBox,
-    QPlainTextEdit as _QPlainTextEdit,
     QProgressDialog,
     QScrollArea,
     QSizePolicy,
@@ -115,8 +114,6 @@ from PyQt5.QtWidgets import (
     QSystemTrayIcon,
     QTableWidget,
     QTabWidget,
-    QTextBrowser as _QTextBrowser,
-    QTextEdit as _QTextEdit,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -140,6 +137,9 @@ from PyQt5.QtWidgets import (
     QListWidgetItem as _QListWidgetItem,
 )
 from PyQt5.QtWidgets import (
+    QPlainTextEdit as _QPlainTextEdit,
+)
+from PyQt5.QtWidgets import (
     QProgressBar as QProgressBar,
 )
 from PyQt5.QtWidgets import (
@@ -156,6 +156,12 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtWidgets import (
     QTableWidgetItem as _QTableWidgetItem,
+)
+from PyQt5.QtWidgets import (
+    QTextBrowser as _QTextBrowser,
+)
+from PyQt5.QtWidgets import (
+    QTextEdit as _QTextEdit,
 )
 
 PYQT_VERSION = 5

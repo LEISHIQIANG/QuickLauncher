@@ -91,6 +91,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
 
         # 初始化 UI 缩放（从配置中读取，在创建任何 UI 之前设置）
         from ui.utils.ui_scale import set_scale as _set_ui_scale
+
         _init_scale = getattr(self.data_manager.get_settings(), "ui_scale_percent", 100)
         _set_ui_scale(_init_scale)
         try:
@@ -208,6 +209,9 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._mouse_paused_state = False
         self._special_app_monitors_active = False
         self._hook_reinstall_cooldown_until = 0.0
+        self._hook_reinstall_failures = 0
+        self._hook_reinstall_in_progress = False
+        self._last_hook_runtime_stats = {}
 
         # 安装键盘钩子 (Alt双击检测 + Alt按住状态跟踪)
         self.keyboard_hook = None
@@ -275,7 +279,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         self._process_check_done_signal.connect(self._on_process_check_done)
 
         self._hook_health_timer = QTimer(self)
-        self._hook_health_timer.setInterval(10000)
+        self._hook_health_timer.setInterval(3000)
         self._hook_health_timer.timeout.connect(self._check_hook_health)
 
         self._update_checker = None
@@ -483,9 +487,8 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         if cur.get("theme") != prev.get("theme"):
             self._create_menu()  # 重建托盘菜单以应用新主题
 
-        shadow_changed = (
-            cur.get("shadow_size") != prev.get("shadow_size")
-            or cur.get("shadow_distance") != prev.get("shadow_distance")
+        shadow_changed = cur.get("shadow_size") != prev.get("shadow_size") or cur.get("shadow_distance") != prev.get(
+            "shadow_distance"
         )
         if shadow_changed:
             self._apply_win10_shadow_settings(cur)
@@ -661,6 +664,13 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             self._process_check_future = None
         except Exception as exc:
             logger.debug("取消特殊应用监控任务失败: %s", exc, exc_info=True)
+
+        try:
+            from ui.tray_mixins.hooks_mixin import shutdown_process_check_executor
+
+            shutdown_process_check_executor()
+        except Exception as exc:
+            logger.debug("关闭特殊应用监控线程池失败: %s", exc, exc_info=True)
 
         try:
             if self._update_checker:
@@ -877,9 +887,11 @@ fso.DeleteFile WScript.ScriptFullName
             self._icon_cache_clean_thread = IconCacheCleanThread(self.data_manager)
             self._icon_cache_clean_thread.finished_signal.connect(self._on_icon_cache_clean_finished)
             self._icon_cache_clean_thread.finished.connect(
-                lambda thread=self._icon_cache_clean_thread: setattr(self, "_icon_cache_clean_thread", None)
-                if getattr(self, "_icon_cache_clean_thread", None) is thread
-                else None
+                lambda thread=self._icon_cache_clean_thread: (
+                    setattr(self, "_icon_cache_clean_thread", None)
+                    if getattr(self, "_icon_cache_clean_thread", None) is thread
+                    else None
+                )
             )
             self._icon_cache_clean_thread.finished.connect(self._icon_cache_clean_thread.deleteLater)
             self._icon_cache_clean_thread.start()

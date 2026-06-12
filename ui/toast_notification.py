@@ -151,7 +151,9 @@ class ToastNotification(QWidget):
         else:
             color = "#1c1c1e"
 
-        self.label.setStyleSheet(scale_qss(f"""
+        self.label.setStyleSheet(
+            scale_qss(
+                f"""
             QLabel {{
                 color: {color};
                 font-size: 13px;
@@ -159,7 +161,9 @@ class ToastNotification(QWidget):
                 padding: 0 24px;
                 background: transparent;
             }}
-        """))
+        """
+            )
+        )
         self.label.setFont(get_qfont(13, 400))
         self.label.setText(text)
 

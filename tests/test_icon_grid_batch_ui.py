@@ -415,9 +415,7 @@ def test_batch_fetch_icons_starts_worker_without_blocking(monkeypatch, qapp):
     snapshots = []
     started = []
     grid._take_batch_snapshot = lambda: snapshots.append(True)
-    grid._start_favicon_fetch_worker = (
-        lambda tasks, dialog, shortcuts: started.append((tasks, dialog, shortcuts))
-    )
+    grid._start_favicon_fetch_worker = lambda tasks, dialog, shortcuts: started.append((tasks, dialog, shortcuts))
 
     class _StatusDialog:
         def __init__(self, title, parent=None):

@@ -47,12 +47,16 @@ class SettingsPluginsPageMixin:
         desc.setObjectName("plugins_desc")
         desc.setWordWrap(True)
         desc.setMinimumWidth(0)
-        desc.setStyleSheet(scale_qss(f"""
+        desc.setStyleSheet(
+            scale_qss(
+                f"""
             {get_font_css_with_size(11, 400)}
             color: {self._get_desc_color()};
             padding: 0px;
             margin: 0px 0px 8px 0px;
-        """))
+        """
+            )
+        )
         layout.addWidget(desc)
 
         # Plugin list area
@@ -251,7 +255,9 @@ class SettingsPluginsPageMixin:
             text_color = "rgba(28, 28, 30, 0.9)"
             sub_text_color = "rgba(28, 28, 30, 0.65)"
 
-        card.setStyleSheet(scale_qss(f"""
+        card.setStyleSheet(
+            scale_qss(
+                f"""
             QWidget#PluginCard {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
@@ -260,7 +266,9 @@ class SettingsPluginsPageMixin:
             QWidget#PluginCard:hover {{
                 background-color: {hover_bg};
             }}
-        """))
+        """
+            )
+        )
 
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
@@ -423,7 +431,9 @@ class SettingsPluginsPageMixin:
             err_lbl.setWordWrap(True)
             err_lbl.setMinimumWidth(0)
             err_lbl.setStyleSheet(
-                scale_qss("color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);")
+                scale_qss(
+                    "color: #f44336; font-size: 11px; padding: 4px 8px; background-color: rgba(244, 67, 54, 0.08); border-radius: 4px; border: 1px dashed rgba(244, 67, 54, 0.2);"
+                )
             )
             info_layout.addWidget(err_lbl)
 
@@ -573,7 +583,6 @@ class SettingsPluginsPageMixin:
         """Show recent plugin errors from plugin_errors.jsonl."""
         import json
         from pathlib import Path
-
 
         try:
             config_dir = Path(str(self.data_manager.config_dir))

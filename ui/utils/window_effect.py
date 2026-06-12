@@ -421,11 +421,7 @@ class _Win10ShadowWindow:
         next_radius = self._radius if radius is None else max(0, int(radius))
         next_size = _optional_non_negative_int(shadow_size)
         next_distance = _optional_non_negative_int(shadow_distance)
-        if (
-            next_radius == self._radius
-            and next_size == self._shadow_size
-            and next_distance == self._shadow_distance
-        ):
+        if next_radius == self._radius and next_size == self._shadow_size and next_distance == self._shadow_distance:
             return
         self._radius = next_radius
         self._shadow_size = next_size

@@ -8,6 +8,7 @@ import hashlib
 import logging
 import os
 import threading
+from collections import deque
 from collections.abc import Callable
 from datetime import datetime
 
@@ -19,10 +20,109 @@ KEYBOARD_CALLBACK = ctypes.CFUNCTYPE(None)
 HOTKEY_CAPTURE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 logger = logging.getLogger(__name__)
 
+INPUT_MOUSE_MOVE = 1
+INPUT_MOUSE_BUTTON_DOWN = 2
+INPUT_MOUSE_BUTTON_UP = 3
+INPUT_MOUSE_WHEEL = 4
+INPUT_MOUSE_HWHEEL = 5
+INPUT_KEY_DOWN = 6
+INPUT_KEY_UP = 7
+INPUT_UNICODE_DOWN = 8
+INPUT_UNICODE_UP = 9
+
+INPUT_FLAG_EXTENDED = 0x0001
+INPUT_FLAG_INJECTED = 0x0002
+INPUT_FLAG_LOWER_IL_INJECTED = 0x0004
+INPUT_FLAG_OWN_PLAYBACK = 0x0008
+INPUT_FLAG_SYSTEM_KEY = 0x0010
+INPUT_FLAG_REPEAT = 0x0020
+INPUT_FLAG_ABSOLUTE = 0x0040
+
+CAPTURE_MOUSE_MOVE = 0x0001
+CAPTURE_MOUSE_BUTTON = 0x0002
+CAPTURE_MOUSE_WHEEL = 0x0004
+CAPTURE_KEYBOARD = 0x0008
+CAPTURE_ALL_PHYSICAL = 0x000F
+CAPTURE_INCLUDE_INJECTED = 0x0100
+CAPTURE_INCLUDE_OWN_PLAYBACK = 0x0200
+CAPTURE_COALESCE_MOUSE_MOVE = 0x0400
+
+PLAYBACK_NO_TIMING = 0x0001
+PLAYBACK_KEEP_PRESSED_ON_CANCEL = 0x0002
+
+
+class HooksRuntimeStats(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_uint),
+        ("version", ctypes.c_uint),
+        ("health_flags", ctypes.c_uint),
+        ("callback_queue_depth", ctypes.c_uint),
+        ("low_level_mouse_events", ctypes.c_uint64),
+        ("raw_mouse_events", ctypes.c_uint64),
+        ("raw_fallback_triggers", ctypes.c_uint64),
+        ("injected_mouse_events_ignored", ctypes.c_uint64),
+        ("low_level_keyboard_events", ctypes.c_uint64),
+        ("raw_keyboard_events", ctypes.c_uint64),
+        ("injected_keyboard_events_ignored", ctypes.c_uint64),
+        ("callback_queue_dropped", ctypes.c_uint64),
+        ("callback_exceptions", ctypes.c_uint64),
+        ("mouse_last_event_tick", ctypes.c_uint64),
+        ("keyboard_last_event_tick", ctypes.c_uint64),
+    ]
+
+
+class HookInputEvent(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_uint),
+        ("type", ctypes.c_uint),
+        ("flags", ctypes.c_uint),
+        ("reserved", ctypes.c_uint),
+        ("timestamp_us", ctypes.c_uint64),
+        ("sequence", ctypes.c_uint64),
+        ("x", ctypes.c_int),
+        ("y", ctypes.c_int),
+        ("data", ctypes.c_int),
+        ("vk_code", ctypes.c_uint),
+        ("scan_code", ctypes.c_uint),
+        ("extra_info", ctypes.c_uint64),
+    ]
+
+
+class HookMacroEvent(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_uint),
+        ("type", ctypes.c_uint),
+        ("flags", ctypes.c_uint),
+        ("delay_us", ctypes.c_uint),
+        ("x", ctypes.c_int),
+        ("y", ctypes.c_int),
+        ("data", ctypes.c_int),
+        ("vk_code", ctypes.c_uint),
+        ("scan_code", ctypes.c_uint),
+    ]
+
+
+class HookMacroStatus(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_uint),
+        ("active", ctypes.c_uint),
+        ("cancel_requested", ctypes.c_uint),
+        ("last_error", ctypes.c_uint),
+        ("total_events", ctypes.c_uint64),
+        ("completed_events", ctypes.c_uint64),
+        ("captured_events", ctypes.c_uint64),
+        ("capture_dropped", ctypes.c_uint64),
+        ("playback_started_tick", ctypes.c_uint64),
+        ("playback_finished_tick", ctypes.c_uint64),
+    ]
+
+
+INPUT_EVENT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.POINTER(HookInputEvent))
+
 
 class HooksDLL:
-    EXPECTED_VERSION = 5
-    EXPECTED_DLL_SHA256 = "e261000005adde2fc4cd418cd9997ad69c0c79169474f8f3df6d4a37ca603222"
+    EXPECTED_VERSION = 9
+    EXPECTED_DLL_SHA256 = "ab4ea474971bf6bdf1f9b6b4a4f1be6e08d567791bb1871d067658d200bdd7a0"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -75,11 +175,23 @@ class HooksDLL:
             cls._instance = cls(dll_path)
             return cls._instance
 
-    def __init__(self, dll_path: str = None):
+    def __init__(
+        self,
+        dll_path: str = None,
+        *,
+        expected_sha256: str | None = None,
+        verify_integrity: bool = True,
+    ):
         if dll_path is None:
             dll_path = self._default_dll_path()
         dll_path = os.path.abspath(dll_path)
         self.dll_path = dll_path
+        self._expected_sha256 = (
+            str(expected_sha256).strip().lower()
+            if expected_sha256 is not None
+            else str(self.EXPECTED_DLL_SHA256 or "").strip().lower()
+        )
+        self._verify_integrity = bool(verify_integrity)
         self.dll = None
         self.loaded = False
         self.compatible = False
@@ -90,7 +202,12 @@ class HooksDLL:
         self._has_special_apps = False
         self._has_last_error = False
         self._has_hook_health = False
+        self._has_raw_input_status = False
         self._has_hotkey_capture = False
+        self._has_runtime_stats = False
+        self._has_input_capture = False
+        self._has_macro_playback = False
+        self._lifecycle_lock = threading.RLock()
         integrity_error = self._validate_integrity()
         if integrity_error:
             self.load_error = integrity_error
@@ -110,29 +227,48 @@ class HooksDLL:
 
         self._bind_required_exports()
         self._bind_optional_exports()
-        self.compatible = self.loaded and not self.missing_exports
+        self.compatible = bool(
+            self.loaded and not self.missing_exports and (self.version is None or self.version >= self.EXPECTED_VERSION)
+        )
 
         # 保持回调引用防止GC
         self._init_callback_refs()
         HooksDLL._last_probe = self.get_diagnostics()
 
     def _init_callback_refs(self):
+        if not hasattr(self, "_retired_callback_refs"):
+            self._retired_callback_refs = deque(maxlen=64)
         self._mouse_callback_ref = None
         self._alt_dclick_callback_ref = None
         self._keyboard_callback_ref = None
         self._hotkey_callback_ref = None
         self._hotkey_capture_callback_ref = None
+        self._retire_callback_ref(getattr(self, "_input_event_callback_ref", None))
+        self._input_event_callback_ref = None
+        self._input_capture_filter_flags = 0
+
+    def _retire_callback_ref(self, callback_ref) -> None:
+        """Keep native callback thunks alive after replacement or timeout.
+
+        Native shutdown has bounded waits so a misbehaving Python callback
+        cannot freeze application exit. Retaining old thunks prevents a late
+        native return from jumping into freed ctypes memory.
+        """
+        if callback_ref is not None:
+            if not hasattr(self, "_retired_callback_refs"):
+                self._retired_callback_refs = deque(maxlen=64)
+            self._retired_callback_refs.append(callback_ref)
 
     @classmethod
     def _default_dll_path(cls) -> str:
         return str(app_root() / "hooks" / "hooks.dll")
 
     def _validate_integrity(self) -> str:
-        if os.path.abspath(self.dll_path) != os.path.abspath(self._default_dll_path()):
+        if not self._verify_integrity:
             return ""
-        expected = str(self.EXPECTED_DLL_SHA256 or "").strip().lower()
+        expected = self._expected_sha256
         if not expected:
-            return ""
+            return "hooks.dll integrity verification enabled without an expected SHA-256"
         file_info = _dll_file_info(self.dll_path)
         if not file_info["exists"]:
             return ""
@@ -218,6 +354,13 @@ class HooksDLL:
             self._has_hook_health = False
 
         try:
+            self.dll.IsRawInputFallbackActive.argtypes = []
+            self.dll.IsRawInputFallbackActive.restype = ctypes.c_bool
+            self._has_raw_input_status = True
+        except AttributeError:
+            self._has_raw_input_status = False
+
+        try:
             self.dll.StartHotkeyCapture.argtypes = [HOTKEY_CAPTURE_CALLBACK, ctypes.c_int]
             self.dll.StartHotkeyCapture.restype = ctypes.c_bool
             self.dll.StopHotkeyCapture.argtypes = []
@@ -227,6 +370,43 @@ class HooksDLL:
             self._has_hotkey_capture = True
         except AttributeError:
             self._has_hotkey_capture = False
+
+        try:
+            self.dll.GetHooksRuntimeStats.argtypes = [ctypes.POINTER(HooksRuntimeStats), ctypes.c_uint]
+            self.dll.GetHooksRuntimeStats.restype = ctypes.c_bool
+            self.dll.ResetHooksRuntimeStats.argtypes = []
+            self.dll.ResetHooksRuntimeStats.restype = None
+            self._has_runtime_stats = True
+        except AttributeError:
+            self._has_runtime_stats = False
+
+        try:
+            self.dll.StartInputCapture.argtypes = [INPUT_EVENT_CALLBACK, ctypes.c_uint]
+            self.dll.StartInputCapture.restype = ctypes.c_bool
+            self.dll.StopInputCapture.argtypes = []
+            self.dll.StopInputCapture.restype = None
+            self.dll.IsInputCaptureActive.argtypes = []
+            self.dll.IsInputCaptureActive.restype = ctypes.c_bool
+            self._has_input_capture = True
+        except AttributeError:
+            self._has_input_capture = False
+
+        try:
+            self.dll.PlayMacroEvents.argtypes = [ctypes.POINTER(HookMacroEvent), ctypes.c_uint, ctypes.c_uint]
+            self.dll.PlayMacroEvents.restype = ctypes.c_bool
+            self.dll.CancelMacroPlayback.argtypes = []
+            self.dll.CancelMacroPlayback.restype = None
+            self.dll.IsMacroPlaybackActive.argtypes = []
+            self.dll.IsMacroPlaybackActive.restype = ctypes.c_bool
+            self.dll.WaitForMacroPlayback.argtypes = [ctypes.c_uint]
+            self.dll.WaitForMacroPlayback.restype = ctypes.c_bool
+            self.dll.GetMacroStatus.argtypes = [ctypes.POINTER(HookMacroStatus), ctypes.c_uint]
+            self.dll.GetMacroStatus.restype = ctypes.c_bool
+            self.dll.ReleaseMacroPressedInputs.argtypes = []
+            self.dll.ReleaseMacroPressedInputs.restype = None
+            self._has_macro_playback = True
+        except AttributeError:
+            self._has_macro_playback = False
 
         # 触发配置支持（可选）
         try:
@@ -239,8 +419,14 @@ class HooksDLL:
         # 扩展触发配置支持（可选）
         try:
             self.dll.SetTriggerConfigEx.argtypes = [
-                ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
-                ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
             ]
             self.dll.SetTriggerConfigEx.restype = None
             self._has_trigger_config_ex = True
@@ -270,8 +456,37 @@ class HooksDLL:
         try:
             return bool(self.dll.IsKeyboardHookInstalled())
         except Exception as exc:
-            logger.debug("hooks.dll IsHotkeyCaptureActive failed: %s", exc, exc_info=True)
+            logger.debug("hooks.dll IsKeyboardHookInstalled failed: %s", exc, exc_info=True)
             return False
+
+    def is_raw_input_fallback_active(self) -> bool:
+        if self.dll is None or not getattr(self, "_has_raw_input_status", False):
+            return False
+        try:
+            return bool(self.dll.IsRawInputFallbackActive())
+        except Exception as exc:
+            logger.debug("hooks.dll IsRawInputFallbackActive failed: %s", exc, exc_info=True)
+            return False
+
+    def get_runtime_stats(self) -> dict:
+        if self.dll is None or not getattr(self, "_has_runtime_stats", False):
+            return {}
+        try:
+            stats = HooksRuntimeStats()
+            stats.size = ctypes.sizeof(HooksRuntimeStats)
+            if not self.dll.GetHooksRuntimeStats(ctypes.byref(stats), stats.size):
+                return {}
+            return {name: int(getattr(stats, name)) for name, _ctype in HooksRuntimeStats._fields_}
+        except Exception as exc:
+            logger.debug("hooks.dll GetHooksRuntimeStats failed: %s", exc, exc_info=True)
+            return {}
+
+    def reset_runtime_stats(self) -> None:
+        if self.dll is not None and getattr(self, "_has_runtime_stats", False):
+            try:
+                self.dll.ResetHooksRuntimeStats()
+            except Exception as exc:
+                logger.debug("hooks.dll ResetHooksRuntimeStats failed: %s", exc, exc_info=True)
 
     def get_diagnostics(self) -> dict:
         compatible = bool(self.loaded and not self.missing_exports)
@@ -291,9 +506,15 @@ class HooksDLL:
             "expected_version": self.EXPECTED_VERSION,
             "capabilities": self.capabilities,
             "has_hook_health": bool(getattr(self, "_has_hook_health", False)),
+            "has_raw_input_status": bool(getattr(self, "_has_raw_input_status", False)),
             "has_hotkey_capture": bool(getattr(self, "_has_hotkey_capture", False)),
+            "has_runtime_stats": bool(getattr(self, "_has_runtime_stats", False)),
+            "has_input_capture": bool(getattr(self, "_has_input_capture", False)),
+            "has_macro_playback": bool(getattr(self, "_has_macro_playback", False)),
             "mouse_hook_installed": self.is_mouse_hook_installed(),
+            "raw_input_fallback_active": self.is_raw_input_fallback_active(),
             "keyboard_hook_installed": self.is_keyboard_hook_installed(),
+            "runtime_stats": self.get_runtime_stats(),
             "missing_exports": list(self.missing_exports),
             "load_error": self.load_error,
             "last_hook_error": self.get_last_hook_error(),
@@ -310,40 +531,98 @@ class HooksDLL:
     def _ready(self) -> bool:
         return bool(self.loaded and self.compatible and self.dll is not None)
 
+    def is_ready(self) -> bool:
+        """Return whether the native DLL is loaded and API-compatible."""
+        with self._lifecycle_lock:
+            return self._ready()
+
     def shutdown_hooks(self) -> None:
         """Uninstall native hooks before dropping the DLL reference."""
-        if self.dll is not None:
-            for func_name in ("StopHotkeyCapture", "UninstallMouseHook", "UninstallKeyboardHook", "ClearGlobalHotkey"):
+        lifecycle_lock = getattr(self, "_lifecycle_lock", None)
+        if lifecycle_lock is None:
+            lifecycle_lock = threading.RLock()
+            self._lifecycle_lock = lifecycle_lock
+        with lifecycle_lock:
+            dll = self.dll
+            if dll is None:
+                return
+
+            for func_name in ("StopInputCapture", "CancelMacroPlayback"):
                 try:
-                    func = getattr(self.dll, func_name, None)
+                    func = getattr(dll, func_name, None)
                     if func is not None:
                         func()
                 except Exception as exc:
                     logger.debug("hooks.dll %s failed during shutdown: %s", func_name, exc, exc_info=True)
-        self.dll = None
-        self.loaded = False
-        self.compatible = False
-        self._init_callback_refs()
+
+            try:
+                wait_for_playback = getattr(dll, "WaitForMacroPlayback", None)
+                if wait_for_playback is not None:
+                    wait_for_playback(2000)
+            except Exception as exc:
+                logger.debug("hooks.dll WaitForMacroPlayback failed during shutdown: %s", exc, exc_info=True)
+
+            for func_name in (
+                "ReleaseMacroPressedInputs",
+                "StopHotkeyCapture",
+                "UninstallMouseHook",
+                "UninstallKeyboardHook",
+                "ClearGlobalHotkey",
+            ):
+                try:
+                    func = getattr(dll, func_name, None)
+                    if func is not None:
+                        func()
+                except Exception as exc:
+                    logger.debug("hooks.dll %s failed during shutdown: %s", func_name, exc, exc_info=True)
+
+            for attr_name in (
+                "_mouse_callback_ref",
+                "_alt_dclick_callback_ref",
+                "_keyboard_callback_ref",
+                "_hotkey_callback_ref",
+                "_hotkey_capture_callback_ref",
+                "_input_event_callback_ref",
+            ):
+                self._retire_callback_ref(getattr(self, attr_name, None))
+                setattr(self, attr_name, None)
+            self.dll = None
+            self.loaded = False
+            self.compatible = False
+            self._init_callback_refs()
 
     def install_mouse_hook(self, callback: Callable[[int, int], None]) -> bool:
         """安装鼠标钩子"""
-        if not self._ready():
-            return False
-        self._mouse_callback_ref = MOUSE_CALLBACK(callback)
-        ok = bool(self.dll.InstallMouseHook(self._mouse_callback_ref))
-        if not ok:
-            logger.warning("InstallMouseHook failed, last_error=%s", self.get_last_hook_error())
-        return ok
+        with self._lifecycle_lock:
+            if not self._ready():
+                return False
+            callback_ref = MOUSE_CALLBACK(callback)
+            previous_ref = self._mouse_callback_ref
+            ok = bool(self.dll.InstallMouseHook(callback_ref))
+            self._retire_callback_ref(previous_ref)
+            self._mouse_callback_ref = callback_ref if ok else None
+            if not ok:
+                logger.warning("InstallMouseHook failed, last_error=%s", self.get_last_hook_error())
+            return ok
 
     def uninstall_mouse_hook(self):
         """卸载鼠标钩子"""
-        if self._ready():
-            self.dll.UninstallMouseHook()
+        mouse_filters = CAPTURE_MOUSE_MOVE | CAPTURE_MOUSE_BUTTON | CAPTURE_MOUSE_WHEEL
+        if getattr(self, "_input_capture_filter_flags", 0) & mouse_filters:
+            self.stop_input_capture()
+        with self._lifecycle_lock:
+            if self._ready():
+                self.dll.UninstallMouseHook()
+            self._retire_callback_ref(self._mouse_callback_ref)
+            self._retire_callback_ref(self._alt_dclick_callback_ref)
+            self._mouse_callback_ref = None
+            self._alt_dclick_callback_ref = None
 
     def set_mouse_paused(self, paused: bool):
         """设置鼠标钩子暂停状态"""
-        if self._ready():
-            self.dll.SetMousePaused(paused)
+        with self._lifecycle_lock:
+            if self._ready():
+                self.dll.SetMousePaused(paused)
 
     def is_mouse_paused(self) -> bool:
         """获取鼠标钩子暂停状态"""
@@ -353,31 +632,45 @@ class HooksDLL:
 
     def set_alt_double_click_callback(self, callback: Callable[[int, int], None] | None):
         """设置Alt+左键双击回调"""
-        if callback:
-            self._alt_dclick_callback_ref = MOUSE_CALLBACK(callback)
-            if self._ready():
-                self.dll.SetAltDoubleClickCallback(self._alt_dclick_callback_ref)
-        else:
-            if self._ready():
-                self.dll.SetAltDoubleClickCallback(None)
+        with self._lifecycle_lock:
+            previous_ref = self._alt_dclick_callback_ref
+            if callback:
+                callback_ref = MOUSE_CALLBACK(callback)
+                if self._ready():
+                    self.dll.SetAltDoubleClickCallback(callback_ref)
+                self._alt_dclick_callback_ref = callback_ref
+            else:
+                if self._ready():
+                    self.dll.SetAltDoubleClickCallback(None)
+                self._alt_dclick_callback_ref = None
+            self._retire_callback_ref(previous_ref)
 
     def install_keyboard_hook(self, alt_double_tap_callback: Callable[[], None] | None = None) -> bool:
         """安装键盘钩子"""
-        if alt_double_tap_callback:
-            self._keyboard_callback_ref = KEYBOARD_CALLBACK(alt_double_tap_callback)
-        else:
-            self._keyboard_callback_ref = KEYBOARD_CALLBACK(lambda: None)
-        if not self._ready():
-            return False
-        ok = bool(self.dll.InstallKeyboardHook(self._keyboard_callback_ref))
-        if not ok:
-            logger.warning("InstallKeyboardHook failed, last_error=%s", self.get_last_hook_error())
-        return ok
+        with self._lifecycle_lock:
+            if alt_double_tap_callback:
+                callback_ref = KEYBOARD_CALLBACK(alt_double_tap_callback)
+            else:
+                callback_ref = KEYBOARD_CALLBACK(lambda: None)
+            if not self._ready():
+                return False
+            previous_ref = self._keyboard_callback_ref
+            ok = bool(self.dll.InstallKeyboardHook(callback_ref))
+            self._retire_callback_ref(previous_ref)
+            self._keyboard_callback_ref = callback_ref if ok else None
+            if not ok:
+                logger.warning("InstallKeyboardHook failed, last_error=%s", self.get_last_hook_error())
+            return ok
 
     def uninstall_keyboard_hook(self):
         """卸载键盘钩子"""
-        if self._ready():
-            self.dll.UninstallKeyboardHook()
+        if getattr(self, "_input_capture_filter_flags", 0) & CAPTURE_KEYBOARD:
+            self.stop_input_capture()
+        with self._lifecycle_lock:
+            if self._ready():
+                self.dll.UninstallKeyboardHook()
+            self._retire_callback_ref(self._keyboard_callback_ref)
+            self._keyboard_callback_ref = None
 
     def is_alt_held(self) -> bool:
         """获取Alt键按住状态"""
@@ -393,28 +686,43 @@ class HooksDLL:
 
     def set_hotkey(self, hotkey_str: str, callback: Callable[[], None]):
         """设置全局热键"""
-        if not self._ready():
-            return False
-        self._hotkey_callback_ref = KEYBOARD_CALLBACK(callback)
-        return bool(self.dll.SetGlobalHotkey(hotkey_str.encode("utf-8"), self._hotkey_callback_ref))
+        with self._lifecycle_lock:
+            if not self._ready():
+                return False
+            callback_ref = KEYBOARD_CALLBACK(callback)
+            ok = bool(self.dll.SetGlobalHotkey(hotkey_str.encode("utf-8"), callback_ref))
+            if ok:
+                self._retire_callback_ref(self._hotkey_callback_ref)
+                self._hotkey_callback_ref = callback_ref
+            return ok
 
     def clear_hotkey(self):
         """清除全局热键"""
-        if self._ready():
-            self.dll.ClearGlobalHotkey()
+        with self._lifecycle_lock:
+            if self._ready():
+                self.dll.ClearGlobalHotkey()
+            self._retire_callback_ref(self._hotkey_callback_ref)
+            self._hotkey_callback_ref = None
 
     def start_hotkey_capture(self, callback: Callable[[int, int, int], None], timeout_ms: int = 10000) -> bool:
         """启动受保护快捷键录制，录制期间 DLL 会吞掉所有键盘事件。"""
-        if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:
-            return False
-        self._hotkey_capture_callback_ref = HOTKEY_CAPTURE_CALLBACK(callback)
-        return bool(self.dll.StartHotkeyCapture(self._hotkey_capture_callback_ref, int(timeout_ms)))
+        with self._lifecycle_lock:
+            if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:
+                return False
+            callback_ref = HOTKEY_CAPTURE_CALLBACK(callback)
+            ok = bool(self.dll.StartHotkeyCapture(callback_ref, int(timeout_ms)))
+            if ok:
+                self._retire_callback_ref(self._hotkey_capture_callback_ref)
+                self._hotkey_capture_callback_ref = callback_ref
+            return ok
 
     def stop_hotkey_capture(self):
         """停止受保护快捷键录制。"""
-        if self._ready() and getattr(self, "_has_hotkey_capture", False):
-            self.dll.StopHotkeyCapture()
-        self._hotkey_capture_callback_ref = None
+        with self._lifecycle_lock:
+            if self._ready() and getattr(self, "_has_hotkey_capture", False):
+                self.dll.StopHotkeyCapture()
+            self._retire_callback_ref(self._hotkey_capture_callback_ref)
+            self._hotkey_capture_callback_ref = None
 
     def is_hotkey_capture_active(self) -> bool:
         """返回 DLL 当前是否处于快捷键录制模式。"""
@@ -424,6 +732,175 @@ class HooksDLL:
             return bool(self.dll.IsHotkeyCaptureActive())
         except Exception:
             return False
+
+    @staticmethod
+    def _input_event_to_dict(event: HookInputEvent) -> dict:
+        return {name: int(getattr(event, name)) for name, _ctype in HookInputEvent._fields_}
+
+    def start_input_capture(
+        self,
+        callback: Callable[[dict], None],
+        *,
+        filter_flags: int = CAPTURE_ALL_PHYSICAL,
+        include_injected: bool = False,
+        include_own_playback: bool = False,
+        coalesce_mouse_moves: bool = False,
+    ) -> bool:
+        """Start non-blocking keyboard/mouse macro capture.
+
+        The callback runs on a native capture-dispatch thread and must return
+        quickly. Event dictionaries are detached copies and may be retained.
+        """
+        with self._lifecycle_lock:
+            if not self._ready() or not self._has_input_capture or not callback:
+                return False
+            flags = int(filter_flags)
+            if include_injected:
+                flags |= CAPTURE_INCLUDE_INJECTED
+            if include_own_playback:
+                flags |= CAPTURE_INCLUDE_OWN_PLAYBACK
+            if coalesce_mouse_moves:
+                flags |= CAPTURE_COALESCE_MOUSE_MOVE
+
+            def _dispatch(event_ptr):
+                if not event_ptr:
+                    return
+                try:
+                    callback(self._input_event_to_dict(event_ptr.contents))
+                except Exception:
+                    logger.exception("input capture callback failed")
+
+            callback_ref = INPUT_EVENT_CALLBACK(_dispatch)
+            previous_ref = self._input_event_callback_ref
+            ok = bool(self.dll.StartInputCapture(callback_ref, flags))
+            self._retire_callback_ref(previous_ref)
+            if not ok:
+                self._input_event_callback_ref = None
+                self._input_capture_filter_flags = 0
+                logger.warning("StartInputCapture failed, last_error=%s", self.get_last_hook_error())
+            else:
+                self._input_event_callback_ref = callback_ref
+                self._input_capture_filter_flags = flags
+            return ok
+
+    def stop_input_capture(self) -> None:
+        with self._lifecycle_lock:
+            if self._ready() and self._has_input_capture:
+                self.dll.StopInputCapture()
+            self._retire_callback_ref(self._input_event_callback_ref)
+            self._input_event_callback_ref = None
+            self._input_capture_filter_flags = 0
+
+    def is_input_capture_active(self) -> bool:
+        if not self._ready() or not self._has_input_capture:
+            return False
+        return bool(self.dll.IsInputCaptureActive())
+
+    @staticmethod
+    def captured_events_to_macro(
+        events: list[dict],
+        *,
+        speed: float = 1.0,
+        preserve_initial_delay: bool = False,
+    ) -> list[dict]:
+        """Convert timestamped capture events into delayed playback events."""
+        if speed <= 0:
+            raise ValueError("speed must be greater than zero")
+        result = []
+        previous_timestamp = 0
+        first_timestamp = None
+        for raw in events:
+            timestamp = max(0, int(raw.get("timestamp_us", 0)))
+            if first_timestamp is None:
+                first_timestamp = timestamp
+                delay = timestamp if preserve_initial_delay else 0
+            else:
+                delay = max(0, timestamp - previous_timestamp)
+            previous_timestamp = timestamp
+            result.append(
+                {
+                    "type": int(raw.get("type", 0)),
+                    "flags": int(raw.get("flags", 0)) & (INPUT_FLAG_EXTENDED | INPUT_FLAG_ABSOLUTE),
+                    "delay_us": min(0xFFFFFFFF, round(delay / speed)),
+                    "x": int(raw.get("x", 0)),
+                    "y": int(raw.get("y", 0)),
+                    "data": int(raw.get("data", 0)),
+                    "vk_code": int(raw.get("vk_code", 0)),
+                    "scan_code": int(raw.get("scan_code", 0)),
+                }
+            )
+        return result
+
+    @staticmethod
+    def _build_macro_event(raw: dict | HookMacroEvent) -> HookMacroEvent:
+        if isinstance(raw, HookMacroEvent):
+            event = raw
+            if not event.size:
+                event.size = ctypes.sizeof(HookMacroEvent)
+            return event
+        event = HookMacroEvent()
+        event.size = ctypes.sizeof(HookMacroEvent)
+        event.type = int(raw.get("type", 0))
+        event.flags = int(raw.get("flags", 0))
+        event.delay_us = max(0, min(0xFFFFFFFF, int(raw.get("delay_us", 0))))
+        event.x = int(raw.get("x", 0))
+        event.y = int(raw.get("y", 0))
+        event.data = int(raw.get("data", 0))
+        event.vk_code = int(raw.get("vk_code", 0))
+        event.scan_code = int(raw.get("scan_code", 0))
+        return event
+
+    def play_macro(
+        self,
+        events: list[dict | HookMacroEvent],
+        *,
+        no_timing: bool = False,
+        keep_pressed_on_cancel: bool = False,
+    ) -> bool:
+        """Copy a macro sequence into the DLL and play it asynchronously."""
+        with self._lifecycle_lock:
+            if not self._ready() or not self._has_macro_playback or not events:
+                return False
+            native_events = [self._build_macro_event(event) for event in events]
+            array = (HookMacroEvent * len(native_events))(*native_events)
+            options = 0
+            if no_timing:
+                options |= PLAYBACK_NO_TIMING
+            if keep_pressed_on_cancel:
+                options |= PLAYBACK_KEEP_PRESSED_ON_CANCEL
+            ok = bool(self.dll.PlayMacroEvents(array, len(native_events), options))
+            if not ok:
+                logger.warning("PlayMacroEvents failed, last_error=%s", self.get_last_hook_error())
+            return ok
+
+    def cancel_macro_playback(self) -> None:
+        with self._lifecycle_lock:
+            if self._ready() and self._has_macro_playback:
+                self.dll.CancelMacroPlayback()
+
+    def wait_for_macro_playback(self, timeout_ms: int = 0xFFFFFFFF) -> bool:
+        if not self._ready() or not self._has_macro_playback:
+            return False
+        return bool(self.dll.WaitForMacroPlayback(max(0, min(0xFFFFFFFF, int(timeout_ms)))))
+
+    def is_macro_playback_active(self) -> bool:
+        if not self._ready() or not self._has_macro_playback:
+            return False
+        return bool(self.dll.IsMacroPlaybackActive())
+
+    def get_macro_status(self) -> dict:
+        if not self._ready() or not self._has_macro_playback:
+            return {}
+        status = HookMacroStatus()
+        status.size = ctypes.sizeof(HookMacroStatus)
+        if not self.dll.GetMacroStatus(ctypes.byref(status), status.size):
+            return {}
+        return {name: int(getattr(status, name)) for name, _ctype in HookMacroStatus._fields_}
+
+    def release_macro_pressed_inputs(self) -> None:
+        with self._lifecycle_lock:
+            if self._ready() and self._has_macro_playback:
+                self.dll.ReleaseMacroPressedInputs()
 
     def release_all_modifier_keys(self):
         """释放所有修饰键"""
@@ -451,8 +928,9 @@ class HooksDLL:
         if self._ready() and self._has_special_apps:
             self.dll.ClearSpecialApps()
 
-    def set_trigger_config(self, normal_button: str, normal_modifiers: list[str],
-                           special_button: str, special_modifiers: list[str]):
+    def set_trigger_config(
+        self, normal_button: str, normal_modifiers: list[str], special_button: str, special_modifiers: list[str]
+    ):
         """设置触发按键配置"""
         if not self._ready() or not self._has_trigger_config:
             logger.warning("hooks.dll 不支持基础触发配置或尚未就绪")
@@ -474,9 +952,17 @@ class HooksDLL:
 
         self.dll.SetTriggerConfig(normal_btn, normal_mod, special_btn, special_mod)
 
-    def set_trigger_config_ex(self, normal_mode: str, normal_button: str, normal_keys: list[str],
-                              normal_modifiers: list[str], special_mode: str, special_button: str,
-                              special_keys: list[str], special_modifiers: list[str]):
+    def set_trigger_config_ex(
+        self,
+        normal_mode: str,
+        normal_button: str,
+        normal_keys: list[str],
+        normal_modifiers: list[str],
+        special_mode: str,
+        special_button: str,
+        special_keys: list[str],
+        special_modifiers: list[str],
+    ):
         """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
         if not self._ready() or not self._has_trigger_config_ex:
             logger.warning("hooks.dll 不支持扩展触发配置或尚未就绪")
@@ -484,11 +970,14 @@ class HooksDLL:
 
         from core.trigger_config import normalize_trigger_config
 
-        normal = normalize_trigger_config(
-            normal_mode, normal_keys, normal_button, normal_modifiers, fill_defaults=True
-        )
+        normal = normalize_trigger_config(normal_mode, normal_keys, normal_button, normal_modifiers, fill_defaults=True)
         special = normalize_trigger_config(
-            special_mode, special_keys, special_button, special_modifiers, fill_defaults=True, default_modifiers=["ctrl"]
+            special_mode,
+            special_keys,
+            special_button,
+            special_modifiers,
+            fill_defaults=True,
+            default_modifiers=["ctrl"],
         )
         mode_map = {"keyboard": 1, "mouse": 0, "hybrid": 2}
         btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
@@ -507,8 +996,14 @@ class HooksDLL:
         special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
 
         self.dll.SetTriggerConfigEx(
-            normal_mode_int, normal_btn, normal_keys_vk.encode("utf-8"), normal_mod,
-            special_mode_int, special_btn, special_keys_vk.encode("utf-8"), special_mod
+            normal_mode_int,
+            normal_btn,
+            normal_keys_vk.encode("utf-8"),
+            normal_mod,
+            special_mode_int,
+            special_btn,
+            special_keys_vk.encode("utf-8"),
+            special_mod,
         )
 
     @staticmethod

@@ -27,8 +27,12 @@ def test_verify_update_signature_requires_public_keys():
 
 
 def test_update_signature_payload_is_canonical():
-    left = UpdateInfo(version="1.2.3", download_url="https://example.com/a.exe", file_hash="sha256:" + "a" * 64, file_size=123)
-    right = SimpleNamespace(file_size=123, file_hash="sha256:" + "a" * 64, download_url="https://example.com/a.exe", version="1.2.3")
+    left = UpdateInfo(
+        version="1.2.3", download_url="https://example.com/a.exe", file_hash="sha256:" + "a" * 64, file_size=123
+    )
+    right = SimpleNamespace(
+        file_size=123, file_hash="sha256:" + "a" * 64, download_url="https://example.com/a.exe", version="1.2.3"
+    )
 
     assert update_signature_payload(left) == update_signature_payload(right)
 

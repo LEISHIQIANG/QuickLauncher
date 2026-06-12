@@ -98,9 +98,13 @@ class ModuleRegistry:
                 manifest = json.load(fh)
             actual_id = str(manifest.get("id") or "")
             if actual_id != module_id:
-                return ModuleRecord(module_id, MODULE_BROKEN, manifest, None, "manifest_id_mismatch", str(manifest_path))
+                return ModuleRecord(
+                    module_id, MODULE_BROKEN, manifest, None, "manifest_id_mismatch", str(manifest_path)
+                )
             if not _host_version_compatible(APP_VERSION, manifest):
-                return ModuleRecord(module_id, MODULE_INCOMPATIBLE, manifest, None, "host_version_incompatible", str(manifest_path))
+                return ModuleRecord(
+                    module_id, MODULE_INCOMPATIBLE, manifest, None, "host_version_incompatible", str(manifest_path)
+                )
             entry = str(manifest.get("entry") or "")
             module_name, class_name = entry.split(":", 1)
             module = _import_module_from_manifest(module_name, manifest_path)

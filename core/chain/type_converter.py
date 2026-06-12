@@ -31,8 +31,9 @@ class UnifiedTypeConverter:
     """Unified type conversion system."""
 
     @staticmethod
-    def convert(value: Any, source_type: str, target_type: str,
-                source_smart: str = "", target_smart: str = "") -> tuple[Any, bool, str]:
+    def convert(
+        value: Any, source_type: str, target_type: str, source_smart: str = "", target_smart: str = ""
+    ) -> tuple[Any, bool, str]:
         """Convert a value from source type to target type.
 
         Args:
@@ -131,8 +132,7 @@ class UnifiedTypeConverter:
         )
 
     @staticmethod
-    def detect_and_convert(value: Any, target_kind: str = "text",
-                           target_smart: str = "") -> tuple[Any, str, float]:
+    def detect_and_convert(value: Any, target_kind: str = "text", target_smart: str = "") -> tuple[Any, str, float]:
         """Detect the type of a value and convert it.
 
         Args:
@@ -207,20 +207,15 @@ def auto_convert(value: Any, target_kind: str, target_smart: str = "") -> Any:
 
     Simple wrapper that returns just the converted value.
     """
-    converted, success, _ = UnifiedTypeConverter.convert(
-        value, "text", target_kind, "", target_smart
-    )
+    converted, success, _ = UnifiedTypeConverter.convert(value, "text", target_kind, "", target_smart)
     return converted if success else value
 
 
-def detect_and_convert(value: Any, target_kind: str = "text",
-                       target_smart: str = "") -> tuple[Any, str]:
+def detect_and_convert(value: Any, target_kind: str = "text", target_smart: str = "") -> tuple[Any, str]:
     """Detect type and convert.
 
     Returns:
         Tuple of (converted_value, detected_type)
     """
-    converted, detected, _ = UnifiedTypeConverter.detect_and_convert(
-        value, target_kind, target_smart
-    )
+    converted, detected, _ = UnifiedTypeConverter.detect_and_convert(value, target_kind, target_smart)
     return converted, detected

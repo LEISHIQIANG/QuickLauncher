@@ -138,9 +138,9 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self._scan_thread = ShortcutHealthScanThread(self.data_manager.data, state_dir=self.data_manager.config_dir)
         self._scan_thread.finished_signal.connect(self._on_scan_finished)
         self._scan_thread.finished.connect(
-            lambda thread=self._scan_thread: setattr(self, "_scan_thread", None)
-            if getattr(self, "_scan_thread", None) is thread
-            else None
+            lambda thread=self._scan_thread: (
+                setattr(self, "_scan_thread", None) if getattr(self, "_scan_thread", None) is thread else None
+            )
         )
         self._scan_thread.finished.connect(self._scan_thread.deleteLater)
         self._scan_thread.start()
@@ -207,9 +207,9 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self._fix_thread = ShortcutHealthFixThread(self.data_manager, fix_ids)
         self._fix_thread.finished_signal.connect(self._on_fix_finished)
         self._fix_thread.finished.connect(
-            lambda thread=self._fix_thread: setattr(self, "_fix_thread", None)
-            if getattr(self, "_fix_thread", None) is thread
-            else None
+            lambda thread=self._fix_thread: (
+                setattr(self, "_fix_thread", None) if getattr(self, "_fix_thread", None) is thread else None
+            )
         )
         self._fix_thread.finished.connect(self._fix_thread.deleteLater)
         self._fix_thread.start()
@@ -250,9 +250,11 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self._cache_clean_thread = FaviconCacheCleanThread(self.data_manager)
         self._cache_clean_thread.finished_signal.connect(self._on_cache_clean_finished)
         self._cache_clean_thread.finished.connect(
-            lambda thread=self._cache_clean_thread: setattr(self, "_cache_clean_thread", None)
-            if getattr(self, "_cache_clean_thread", None) is thread
-            else None
+            lambda thread=self._cache_clean_thread: (
+                setattr(self, "_cache_clean_thread", None)
+                if getattr(self, "_cache_clean_thread", None) is thread
+                else None
+            )
         )
         self._cache_clean_thread.finished.connect(self._cache_clean_thread.deleteLater)
         self._cache_clean_thread.start()

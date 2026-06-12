@@ -12,28 +12,32 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-DEFAULT_EXCLUDED_DIRS = frozenset({
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "__pycache__",
-    "build",
-    "dist",
-    "htmlcov",
-    "temp_icons",
-})
+DEFAULT_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "__pycache__",
+        "build",
+        "dist",
+        "htmlcov",
+        "temp_icons",
+    }
+)
 
-LOG_METHODS = frozenset({
-    "critical",
-    "debug",
-    "error",
-    "exception",
-    "info",
-    "log",
-    "warn",
-    "warning",
-})
+LOG_METHODS = frozenset(
+    {
+        "critical",
+        "debug",
+        "error",
+        "exception",
+        "info",
+        "log",
+        "warn",
+        "warning",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -62,9 +66,7 @@ def _is_broad_exception(node: ast.ExceptHandler) -> tuple[bool, str]:
 
 def _has_logging(node: ast.ExceptHandler) -> bool:
     return any(
-        isinstance(child, ast.Call)
-        and isinstance(child.func, ast.Attribute)
-        and child.func.attr in LOG_METHODS
+        isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute) and child.func.attr in LOG_METHODS
         for statement in node.body
         for child in ast.walk(statement)
     )

@@ -146,7 +146,8 @@ class ShortcutDialog(BaseDialog):
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
 
-        custom_style = base_style + scale_qss(f"""
+        custom_style = base_style + scale_qss(
+            f"""
             QDialog {{ background: transparent; border: none; }}
             QGroupBox {{
                 border: 1px solid {border_color};
@@ -164,7 +165,8 @@ class ShortcutDialog(BaseDialog):
                 color: {title_color};
                 font-size: 13px;
             }}
-        """)
+        """
+        )
         self.setStyleSheet(custom_style)
 
         # 按钮使用扁平操作按钮样式（与主配置窗口底部四按钮一致）
@@ -265,13 +267,17 @@ class ShortcutDialog(BaseDialog):
         self.icon_preview = QLabel()
         self.icon_preview.setFixedSize(sp(32), sp(32))
         self.icon_preview.setAlignment(QtCompat.AlignCenter)
-        self.icon_preview.setStyleSheet(scale_qss("""
+        self.icon_preview.setStyleSheet(
+            scale_qss(
+                """
             QLabel {
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
             }
-        """))
+        """
+            )
+        )
         icon_layout.addWidget(self.icon_preview)
 
         # 图标路径和按钮
@@ -389,8 +395,7 @@ class ShortcutDialog(BaseDialog):
         # 应用反转（根据当前主题对应的反转标志）
         _current_theme = getattr(self, "theme", "dark")
         _need_invert = (
-            self.invert_light_cb.isChecked() if _current_theme == "light"
-            else self.invert_dark_cb.isChecked()
+            self.invert_light_cb.isChecked() if _current_theme == "light" else self.invert_dark_cb.isChecked()
         )
         if _need_invert and pixmap and not pixmap.isNull():
             from core.icon_extractor import IconExtractor

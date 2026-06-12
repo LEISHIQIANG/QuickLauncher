@@ -41,6 +41,7 @@ __all__ = [
 
 class NodeStatus(str, Enum):
     """Status of a node in the graph."""
+
     IDLE = "idle"
     RUNNING = "running"
     SUCCESS = "success"
@@ -54,6 +55,7 @@ class NodeStatus(str, Enum):
 
 class PortDirection(str, Enum):
     """Direction of a port."""
+
     INPUT = "input"
     OUTPUT = "output"
 
@@ -337,8 +339,9 @@ class ChainNode:
         return node
 
     @classmethod
-    def from_definition(cls, definition: ChainProcessorDefinition,
-                        node_id: str | None = None, x: float = 0, y: float = 0) -> ChainNode:
+    def from_definition(
+        cls, definition: ChainProcessorDefinition, node_id: str | None = None, x: float = 0, y: float = 0
+    ) -> ChainNode:
         """Create a node from a processor definition."""
         node = cls(
             id=node_id or str(uuid.uuid4()),
@@ -434,9 +437,13 @@ class ChainConnection:
         return cls(
             id=str(data.get("id") or str(uuid.uuid4())),
             source_node_id=str(data.get("source_node_id") or data.get("source_node") or data.get("source") or ""),
-            source_port_id=str(data.get("source_port_id") or data.get("source_port") or data.get("sourcePort") or "output"),
+            source_port_id=str(
+                data.get("source_port_id") or data.get("source_port") or data.get("sourcePort") or "output"
+            ),
             target_node_id=str(data.get("target_node_id") or data.get("target_node") or data.get("target") or ""),
-            target_port_id=str(data.get("target_port_id") or data.get("target_port") or data.get("targetPort") or "input"),
+            target_port_id=str(
+                data.get("target_port_id") or data.get("target_port") or data.get("targetPort") or "input"
+            ),
             enabled=bool(data.get("enabled", True)),
             valid=bool(data.get("valid", True)),
             error=str(data.get("error") or ""),
@@ -447,11 +454,13 @@ class ChainConnection:
 
 class GraphValidationError(Exception):
     """Raised when graph validation fails."""
+
     pass
 
 
 class CyclicGraphError(GraphValidationError):
     """Raised when a cycle is detected in the graph."""
+
     pass
 
 
@@ -517,7 +526,8 @@ class ChainGraph:
 
         # Remove all connections to/from this node
         to_remove = [
-            conn_id for conn_id, conn in self.connections.items()
+            conn_id
+            for conn_id, conn in self.connections.items()
             if conn.source_node_id == node_id or conn.target_node_id == node_id
         ]
         for conn_id in to_remove:
@@ -609,7 +619,9 @@ class ChainGraph:
             port = source_node.get_output(conn.source_port_id)
             if port:
                 # Check if port has other connections
-                port.connected = self._port_has_connections(conn.source_node_id, conn.source_port_id, PortDirection.OUTPUT)
+                port.connected = self._port_has_connections(
+                    conn.source_node_id, conn.source_port_id, PortDirection.OUTPUT
+                )
 
         if target_node:
             port = target_node.get_input(conn.target_port_id)
@@ -651,23 +663,14 @@ class ChainGraph:
 
     def get_connections_from_output(self, node_id: str, port_id: str) -> list[ChainConnection]:
         """Get all connections from a specific output port."""
-        return [
-            c for c in self.connections.values()
-            if c.source_node_id == node_id and c.source_port_id == port_id
-        ]
+        return [c for c in self.connections.values() if c.source_node_id == node_id and c.source_port_id == port_id]
 
     def _port_has_connections(self, node_id: str, port_id: str, direction: PortDirection) -> bool:
         """Check if a port has any connections."""
         if direction == PortDirection.OUTPUT:
-            return any(
-                c.source_node_id == node_id and c.source_port_id == port_id
-                for c in self.connections.values()
-            )
+            return any(c.source_node_id == node_id and c.source_port_id == port_id for c in self.connections.values())
         else:
-            return any(
-                c.target_node_id == node_id and c.target_port_id == port_id
-                for c in self.connections.values()
-            )
+            return any(c.target_node_id == node_id and c.target_port_id == port_id for c in self.connections.values())
 
     # ── Graph Analysis ─────────────────────────────────────────────────────
 
@@ -723,9 +726,7 @@ class ChainGraph:
         if len(result) != len(self.nodes):
             # Find nodes involved in cycle
             cycle_nodes = [node_id for node_id, degree in in_degree.items() if degree > 0]
-            raise CyclicGraphError(
-                f"Graph contains a cycle involving nodes: {cycle_nodes}"
-            )
+            raise CyclicGraphError(f"Graph contains a cycle involving nodes: {cycle_nodes}")
 
         return result
 
@@ -747,22 +748,26 @@ class ChainGraph:
 
         # Check for empty graph
         if not self.nodes:
-            issues.append({
-                "level": "warning",
-                "code": "graph.empty",
-                "message": "Graph has no nodes",
-            })
+            issues.append(
+                {
+                    "level": "warning",
+                    "code": "graph.empty",
+                    "message": "Graph has no nodes",
+                }
+            )
             return issues
 
         # Check for cycles
         try:
             self.topological_sort()
         except CyclicGraphError as e:
-            issues.append({
-                "level": "error",
-                "code": "graph.cycle",
-                "message": str(e),
-            })
+            issues.append(
+                {
+                    "level": "error",
+                    "code": "graph.cycle",
+                    "message": str(e),
+                }
+            )
 
         # Validate each node
         for node in self.nodes.values():
@@ -777,12 +782,14 @@ class ChainGraph:
         # Check for disconnected nodes
         for node in self.nodes.values():
             if node.is_source and node.is_sink and len(self.nodes) > 1:
-                issues.append({
-                    "level": "warning",
-                    "code": "node.disconnected",
-                    "message": f"Node '{node.title}' is disconnected",
-                    "node_id": node.id,
-                })
+                issues.append(
+                    {
+                        "level": "warning",
+                        "code": "node.disconnected",
+                        "message": f"Node '{node.title}' is disconnected",
+                        "node_id": node.id,
+                    }
+                )
 
         return issues
 
@@ -795,13 +802,15 @@ class ChainGraph:
             if port.required and not port.connected:
                 # Check if there's a default value
                 if port.default is None:
-                    issues.append({
-                        "level": "error",
-                        "code": "port.required",
-                        "message": f"Required input '{port.label}' on node '{node.title}' is not connected",
-                        "node_id": node.id,
-                        "port_id": port.id,
-                    })
+                    issues.append(
+                        {
+                            "level": "error",
+                            "code": "port.required",
+                            "message": f"Required input '{port.label}' on node '{node.title}' is not connected",
+                            "node_id": node.id,
+                            "port_id": port.id,
+                        }
+                    )
 
         return issues
 
@@ -811,20 +820,24 @@ class ChainGraph:
 
         # Check that nodes exist
         if conn.source_node_id not in self.nodes:
-            issues.append({
-                "level": "error",
-                "code": "connection.source_missing",
-                "message": f"Source node {conn.source_node_id} not found",
-                "connection_id": conn.id,
-            })
+            issues.append(
+                {
+                    "level": "error",
+                    "code": "connection.source_missing",
+                    "message": f"Source node {conn.source_node_id} not found",
+                    "connection_id": conn.id,
+                }
+            )
 
         if conn.target_node_id not in self.nodes:
-            issues.append({
-                "level": "error",
-                "code": "connection.target_missing",
-                "message": f"Target node {conn.target_node_id} not found",
-                "connection_id": conn.id,
-            })
+            issues.append(
+                {
+                    "level": "error",
+                    "code": "connection.target_missing",
+                    "message": f"Target node {conn.target_node_id} not found",
+                    "connection_id": conn.id,
+                }
+            )
 
         return issues
 
@@ -931,12 +944,14 @@ class ChainGraph:
     def to_json(self) -> str:
         """Convert to JSON string."""
         import json
+
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
     @classmethod
     def from_json(cls, json_str: str) -> ChainGraph:
         """Create from JSON string."""
         import json
+
         data = json.loads(json_str)
         return cls.from_dict(data)
 
@@ -999,8 +1014,9 @@ class ChainGraph:
         }
 
     @classmethod
-    def from_canvas_dict(cls, data: dict[str, Any],
-                         processor_lookup: dict[str, ChainProcessorDefinition] | None = None) -> ChainGraph:
+    def from_canvas_dict(
+        cls, data: dict[str, Any], processor_lookup: dict[str, ChainProcessorDefinition] | None = None
+    ) -> ChainGraph:
         """Create from legacy canvas format."""
         graph = cls(
             name=str(data.get("name") or ""),
@@ -1057,9 +1073,7 @@ class ChainGraph:
             conn = ChainConnection.from_dict(conn_data)
             source_node = graph.get_node(conn.source_node_id)
             if source_node and source_node.get_output(conn.source_port_id) is None:
-                source_node.outputs.append(
-                    ChainPort(id=conn.source_port_id, direction=PortDirection.OUTPUT)
-                )
+                source_node.outputs.append(ChainPort(id=conn.source_port_id, direction=PortDirection.OUTPUT))
             target_node = graph.get_node(conn.target_node_id)
             if target_node and target_node.get_input(conn.target_port_id) is None:
                 target_node.inputs.append(

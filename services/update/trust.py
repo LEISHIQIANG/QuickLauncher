@@ -44,7 +44,9 @@ def verify_update_signature(payload: bytes | str, signature: str, public_keys: t
         raise UpdateSignatureError("no update signature public keys configured")
     for public_key in keys:
         try:
-            if _verify_ed25519(payload_bytes, signature_bytes, _decode_key_material(public_key, expected=32, label="public key")):
+            if _verify_ed25519(
+                payload_bytes, signature_bytes, _decode_key_material(public_key, expected=32, label="public key")
+            ):
                 return True
         except UpdateSignatureError:
             raise

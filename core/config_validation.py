@@ -68,7 +68,14 @@ _STRING_CHOICES = {
     "popup_trigger_mode": {"keyboard", "mouse", "hybrid"},
     "popup_special_trigger_mode": {"keyboard", "mouse", "hybrid"},
 }
-_STRING_FIELDS = {"last_version", "custom_bg_path", "bg_solid_color", "edge_highlight_color", "popup_trigger_button", "popup_special_trigger_button"}
+_STRING_FIELDS = {
+    "last_version",
+    "custom_bg_path",
+    "bg_solid_color",
+    "edge_highlight_color",
+    "popup_trigger_button",
+    "popup_special_trigger_button",
+}
 _LIST_STRING_FIELDS = {
     "special_apps",
     "enabled_plugins",

@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 class PopupRendererMixin:
+    @staticmethod
+    def _elided_label(text: str) -> str:
+        """Show at most six characters, replacing the sixth with an ellipsis."""
+        normalized = " ".join(str(text or "").split())
+        return normalized if len(normalized) <= 6 else f"{normalized[:5]}…"
+
     def _get_theme_colors(self):
         theme = self.settings.theme
         cache = getattr(self, "_theme_colors_cache", None)
@@ -730,7 +736,7 @@ class PopupRendererMixin:
             items = cached_items[1]
         else:
             items = [
-                {"item": result.shortcut, "text": (getattr(result.shortcut, "name", "") or "")[:6]}
+                {"item": result.shortcut, "text": getattr(result.shortcut, "name", "") or ""}
                 for result in visible_results
             ]
             self._search_draw_items_cache = (cache_key, items)
@@ -824,7 +830,7 @@ class PopupRendererMixin:
                 name_str = entry.get("text", "")
             else:
                 item = entry
-                name_str = (getattr(item, "name", "") or "")[:6]
+                name_str = getattr(item, "name", "") or ""
             if item is None:
                 continue
 
@@ -900,7 +906,8 @@ class PopupRendererMixin:
             painter.setOpacity(opacity)
             painter.setPen(QPen(text_color))
             text_y = card_y + card_size + text_spacing
-            painter.drawText(x, text_y, cell_size, text_h, QtCompat.AlignHCenter | QtCompat.AlignTop, name_str)
+            label = self._elided_label(name_str)
+            painter.drawText(x, text_y, cell_size, text_h, QtCompat.AlignHCenter | QtCompat.AlignTop, label)
 
             painter.restore()
 

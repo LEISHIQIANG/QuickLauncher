@@ -31,7 +31,6 @@ __all__ = [
     "div_lists",
     "mod_lists",
     "pow_lists",
-
     # Comparison operations
     "eq_lists",
     "ne_lists",
@@ -39,13 +38,11 @@ __all__ = [
     "lt_lists",
     "ge_lists",
     "le_lists",
-
     # Logical operations
     "and_lists",
     "or_lists",
     "xor_lists",
     "not_list",
-
     # Broadcasting (list + scalar)
     "add_scalar",
     "sub_scalar",
@@ -53,7 +50,6 @@ __all__ = [
     "div_scalar",
     "mod_scalar",
     "pow_scalar",
-
     # Aggregation
     "sum_list",
     "min_list",
@@ -63,7 +59,6 @@ __all__ = [
     "std_list",
     "count_list",
     "join_list",
-
     # Transformations
     "reverse_list",
     "sort_list",
@@ -74,7 +69,6 @@ __all__ = [
     "map_list",
     "filter_list",
     "reduce_list",
-
     # List combinations
     "zip_lists",
     "cross_lists",
@@ -82,7 +76,6 @@ __all__ = [
     "interleave_lists",
     "difference_lists",
     "intersection_lists",
-
     # List slicing
     "slice_list",
     "take_list",
@@ -91,12 +84,10 @@ __all__ = [
     "last_list",
     "rest_list",
     "init_list",
-
     # List generation
     "range_list",
     "repeat_list",
     "generate_list",
-
     # Utility
     "is_empty",
     "contains",
@@ -141,25 +132,29 @@ def mul_lists(list1: List, list2: List) -> List:
 
 def div_lists(list1: List, list2: List) -> List:
     """Divide two lists element-wise: [10,20] / [2,4] = [5,5]"""
+
     def safe_div(a, b):
         if b == 0:
             return None
         return a / b
+
     return _element_wise_op(list1, list2, safe_div)
 
 
 def mod_lists(list1: List, list2: List) -> List:
     """Modulo two lists element-wise: [10,11] % [3,3] = [1,2]"""
+
     def safe_mod(a, b):
         if b == 0:
             return None
         return a % b
+
     return _element_wise_op(list1, list2, safe_mod)
 
 
 def pow_lists(list1: List, list2: List) -> List:
     """Power of two lists element-wise: [2,3] ^ [2,2] = [4,9]"""
-    return _element_wise_op(list1, list2, lambda a, b: a ** b)
+    return _element_wise_op(list1, list2, lambda a, b: a**b)
 
 
 # ── Comparison Operations ──────────────────────────────────────────────────
@@ -250,25 +245,29 @@ def mul_scalar(lst: List, scalar: Any) -> List:
 
 def div_scalar(lst: List, scalar: Any) -> List:
     """Divide each element by scalar: [10,20,30] / 10 = [1,2,3]"""
+
     def safe_div(a, b):
         if b == 0:
             return None
         return a / b
+
     return _broadcast_op(lst, scalar, safe_div)
 
 
 def mod_scalar(lst: List, scalar: Any) -> List:
     """Modulo each element by scalar: [10,11,12] % 3 = [1,2,0]"""
+
     def safe_mod(a, b):
         if b == 0:
             return None
         return a % b
+
     return _broadcast_op(lst, scalar, safe_mod)
 
 
 def pow_scalar(lst: List, scalar: Any) -> List:
     """Raise each element to power of scalar: [2,3,4] ^ 2 = [4,9,16]"""
-    return _broadcast_op(lst, scalar, lambda a, b: a ** b)
+    return _broadcast_op(lst, scalar, lambda a, b: a**b)
 
 
 # ── Aggregation Operations ─────────────────────────────────────────────────
@@ -313,8 +312,8 @@ def median_list(lst: List) -> float | None:
         return None
     n = len(values)
     if n % 2 == 0:
-        return (values[n//2 - 1] + values[n//2]) / 2
-    return values[n//2]
+        return (values[n // 2 - 1] + values[n // 2]) / 2
+    return values[n // 2]
 
 
 def std_list(lst: List) -> float | None:
@@ -348,8 +347,10 @@ def reverse_list(lst: List) -> List:
 def sort_list(lst: List, key: Callable = None, reverse: bool = False) -> List:
     """Sort list: [3,1,2] -> [1,2,3]"""
     if key is None:
+
         def key(x):
             return x.value
+
     sorted_items = sorted(lst.items, key=key, reverse=reverse)
     return List(items=sorted_items)
 
@@ -357,6 +358,7 @@ def sort_list(lst: List, key: Callable = None, reverse: bool = False) -> List:
 def shuffle_list(lst: List) -> List:
     """Shuffle list randomly"""
     import random
+
     items = list(lst.items)
     random.shuffle(items)
     return List(items=items)
@@ -618,11 +620,11 @@ def _tree_operation(tree1: Tree, tree2: Tree, op: Callable) -> Tree:
 def _get_operation_func(operation: str) -> Callable:
     """Get operation function by name"""
     ops = {
-        'add': add_scalar,
-        'sub': sub_scalar,
-        'mul': mul_scalar,
-        'div': div_scalar,
-        'mod': mod_scalar,
-        'pow': pow_scalar,
+        "add": add_scalar,
+        "sub": sub_scalar,
+        "mul": mul_scalar,
+        "div": div_scalar,
+        "mod": mod_scalar,
+        "pow": pow_scalar,
     }
     return ops.get(operation, add_scalar)
