@@ -53,6 +53,8 @@ from PyQt5.QtGui import (
     QPixmap,
     QRadialGradient,
     QRegion,
+    QSyntaxHighlighter,
+    QTextCharFormat,
     QTextCursor,
 )
 from PyQt5.QtGui import (
@@ -631,6 +633,8 @@ __all__ = [
     "QImageReader",
     "QImageIOHandler",
     "QTextCursor",
+    "QTextCharFormat",
+    "QSyntaxHighlighter",
     "QRegion",
     "QBitmap",
     "QLinearGradient",

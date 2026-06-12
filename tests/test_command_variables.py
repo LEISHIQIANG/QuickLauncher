@@ -11,6 +11,7 @@ from core.command_variables import (
     quote_bash_arg,
     quote_powershell_arg,
     resolve_command_variables,
+    uses_selected_file_variables,
 )
 from core.config_repairs import apply_config_repairs, scan_config_repairs
 from core.data_models import AppData, Folder, ShortcutItem, ShortcutType
@@ -221,6 +222,13 @@ def test_resolve_selected_files_quotes_each_path():
     )
 
     assert text == r'tool C:\A\a.txt "D:\B Folder\b.txt"'
+
+
+def test_selected_file_variable_detection_uses_template_rules():
+    assert uses_selected_file_variables("tool {{SELECTED_FILES:q}}")
+    assert uses_selected_file_variables("tool {{selected_file_name}}")
+    assert not uses_selected_file_variables("tool {{{{selected_files:q}}}}")
+    assert not uses_selected_file_variables("tool selected_files")
 
 
 def test_missing_selected_file_variables_resolve_empty():

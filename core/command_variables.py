@@ -104,6 +104,16 @@ def find_unknown_variable_specs(text: str, *, include_url: bool = False) -> list
     return unknown
 
 
+def uses_selected_file_variables(text: str) -> bool:
+    """Return whether text contains an active single- or multi-file variable."""
+    guarded = _guard_escaped_double_braces(text or "")
+    for match in _TOKEN_RE.finditer(guarded):
+        base, _ = _split_spec(match.group(1).strip())
+        if base.lower() in {"selected_file", "selected_file_name", "selected_file_dir", "selected_files"}:
+            return True
+    return False
+
+
 def migrate_legacy_variable_syntax(text: str, *, include_url: bool = False) -> str:
     """Convert whitelisted legacy {var} placeholders to {{var}} placeholders.
 

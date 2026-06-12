@@ -31,6 +31,7 @@ from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
+from .template_variable_highlighter import TemplateLineEdit
 from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet
 
@@ -197,6 +198,8 @@ class UrlDialog(BaseDialog):
             btn.setStyleSheet(flat_btn_style)
         for btn in getattr(self, "_url_var_buttons", []):
             btn.setStyleSheet(flat_btn_style)
+        self.url_edit.set_template_theme(theme)
+        self.browser_args_edit.set_template_theme(theme)
 
         # 应用复选框样式
         invert_cb_style = get_compact_checkbox_stylesheet(theme)
@@ -228,7 +231,8 @@ class UrlDialog(BaseDialog):
         self.name_edit.setPlaceholderText("最多6个字符")
         basic_layout.addRow(tr("名称:"), self.name_edit)
 
-        self.url_edit = QLineEdit()
+        self.url_edit = TemplateLineEdit(theme=self.theme)
+        self.url_edit.setFixedHeight(sp(32))
         self.url_edit.setPlaceholderText("例如: https://www.google.com/search?q={{input}}")
         self.url_edit.textChanged.connect(self._update_icon_preview)
         self.url_edit.textChanged.connect(self._reset_latency_result)
@@ -257,6 +261,7 @@ class UrlDialog(BaseDialog):
             ("时间", "{{time}}"),
             ("内网 IP", "{{LAN_IP}}"),
             ("公网 IP", "{{WAN_IP}}"),
+            ("多文件", "{{selected_files}}"),
         ):
             var_btn = QPushButton(text)
             var_btn.setFixedHeight(sp(26))
@@ -288,7 +293,8 @@ class UrlDialog(BaseDialog):
         browser_path_layout.addWidget(self._clear_browser_btn)
         browser_layout.addRow(tr("路径:"), browser_path_layout)
 
-        self.browser_args_edit = QLineEdit()
+        self.browser_args_edit = TemplateLineEdit(theme=self.theme)
+        self.browser_args_edit.setFixedHeight(sp(32))
         self.browser_args_edit.setPlaceholderText("可选，例如 --profile-directory=Default {{url}}")
         browser_layout.addRow(tr("参数:"), self.browser_args_edit)
         layout.addWidget(browser_group)

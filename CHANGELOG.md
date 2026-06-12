@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
+- 新增 `{{selected_files}}` / `{{selected_files:q}}` 多文件变量入口，支持将资源管理器中全部选中文件传给命令和 URL。
+- 命令与 URL 编辑面板新增模板变量高亮，自动适配深色和浅色主题。
 - 新增全局 UI 缩放功能，可在"弹窗交互"中修改并应用，可调整范围为90%-150%。
 - 新增悬浮窗固定后的拖拽移动功能，可按住鼠标左键拖拽移动悬浮窗。
 - 新增鼠标宏键盘宏模块(实际功能暂未完善，后续会新增宏录制功能)。
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Changed
 
+- 文件选择敏感判断改为复用变量解析规则，正确识别大小写变量并忽略转义后的字面模板。
 - 优化增强鼠标键盘钩子
 - 优化快捷键录入时会直接触发按键功能的问题。
 - 优化中键弹窗滚轮翻页的流畅度。

@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 
 from core.chain_contracts import input_port_specs_for_node, output_port_specs_for_node
 from core.chain_processors import execute_chain_processor, processor_definition, processor_definitions
@@ -15,6 +17,27 @@ def test_legacy_processor_module_is_registry_facade():
     assert legacy.processor_definitions is registry.processor_definitions
     assert legacy.processor_definition is registry.processor_definition
     assert legacy.execute_chain_processor is registry.execute_chain_processor
+
+
+def test_cold_registry_import_loads_extra_processors_without_circular_import_warning():
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import core.chain.registry as registry; "
+                "assert 'text_trim' in registry.PROCESSOR_DEFINITIONS; "
+                "assert 'datetime_now' in registry.PROCESSOR_DEFINITIONS"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert probe.returncode == 0, probe.stderr
+    assert "partially initialized module" not in probe.stderr
+    assert "加载扩展动作链电池失败" not in probe.stderr
 
 
 KNOWN_PORT_KINDS = {"any", "text", "json", "file", "folder", "url", "list", "number", "bool"}

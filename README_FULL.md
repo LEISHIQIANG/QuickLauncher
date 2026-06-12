@@ -312,7 +312,11 @@ QuickLauncher 拥有统一的命令注册系统 `CommandRegistry`：
 |------|------|----------|
 | `{{clipboard}}` | 当前剪贴板文本 | `Hello World` |
 | `{{selected_text}}` | 前台窗口选中的文本（`after_close` 模式） | `选中的内容` |
-| `{{selected_files}}` | 资源管理器中选中的文件路径（多行或 `:q` 引用） | `C:\file1.txt` |
+| `{{selected_file}}` | 资源管理器中第一个选中文件，保持原有单文件行为 | `C:\file1.txt` |
+| `{{selected_file_name}}` | 第一个选中文件的文件名 | `file1.txt` |
+| `{{selected_file_dir}}` | 第一个选中文件所在目录 | `C:\work` |
+| `{{selected_files}}` | 资源管理器中全部选中文件；不引用时以换行分隔 | `C:\file1.txt` |
+| `{{selected_files:q}}` | 资源管理器中全部选中文件；逐个按当前命令类型安全引用 | `"C:\file 1.txt" C:\file2.txt` |
 | `{{date}}` | 当前日期 | `2026-05-27` |
 | `{{time}}` | 当前时间 | `14:30:00` |
 | `{{app_dir}}` | 应用安装目录 | `C:\Program Files\QuickLauncher` |

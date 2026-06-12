@@ -311,6 +311,18 @@ def test_selection_sensitive_command_defers_while_probe_is_pending(monkeypatch):
     assert scheduled and scheduled[0][0] == 35
 
 
+def test_multi_file_variable_defers_while_probe_is_pending(monkeypatch):
+    popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
+    popup._selected_files_status = "pending"
+    scheduled = []
+    monkeypatch.setattr(popup_item_execution.QTimer, "singleShot", lambda ms, cb: scheduled.append((ms, cb)))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND, command_type="cmd", command="tool {{SELECTED_FILES:q}}")
+
+    assert popup_window.LauncherPopup._should_wait_for_selection(popup, item) is True
+    assert scheduled and scheduled[0][0] == 35
+
+
 def test_selection_sensitive_retry_uses_popup_lifecycle_defer():
     popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
     popup._selected_files_status = "pending"

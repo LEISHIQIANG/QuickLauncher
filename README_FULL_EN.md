@@ -312,7 +312,11 @@ Command shortcuts support `{{variable_name}}` syntax for dynamic substitution. U
 |----------|-------------|----------------|
 | `{{clipboard}}` | Current clipboard text | `Hello World` |
 | `{{selected_text}}` | Selected text in foreground window (`after_close` mode) | Selected content |
-| `{{selected_files}}` | Selected file paths in Explorer (multi-line or `:q` quoted) | `C:\file1.txt` |
+| `{{selected_file}}` | First selected Explorer file, preserving the existing single-file behavior | `C:\file1.txt` |
+| `{{selected_file_name}}` | File name of the first selected file | `file1.txt` |
+| `{{selected_file_dir}}` | Parent directory of the first selected file | `C:\work` |
+| `{{selected_files}}` | All selected Explorer files, newline-delimited when unquoted | `C:\file1.txt` |
+| `{{selected_files:q}}` | All selected Explorer files, each safely quoted for the active command type | `"C:\file 1.txt" C:\file2.txt` |
 | `{{date}}` | Current date | `2026-05-27` |
 | `{{time}}` | Current time | `14:30:00` |
 | `{{app_dir}}` | Application installation directory | `C:\Program Files\QuickLauncher` |

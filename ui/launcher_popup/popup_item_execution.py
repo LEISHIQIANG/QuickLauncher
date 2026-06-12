@@ -452,15 +452,17 @@ class PopupItemExecutionMixin:
 
         selection_sensitive = item.type in (ShortcutType.FILE, ShortcutType.FOLDER)
         if item.type == ShortcutType.COMMAND:
+            from core.command_variables import uses_selected_file_variables
+
             command = getattr(item, "command", "") or ""
-            selection_sensitive = (
-                getattr(item, "command_type", "") == "builtin"
-                or "{{selected_file" in command
-                or "{{selected_files" in command
+            selection_sensitive = getattr(item, "command_type", "") == "builtin" or uses_selected_file_variables(
+                command
             )
         elif item.type == ShortcutType.URL:
+            from core.command_variables import uses_selected_file_variables
+
             url_text = f"{getattr(item, 'url', '') or ''} {getattr(item, 'preferred_browser_args', '') or ''}"
-            selection_sensitive = "{{selected_file" in url_text or "{{selected_files" in url_text
+            selection_sensitive = uses_selected_file_variables(url_text)
         elif item.type == ShortcutType.CHAIN:
             selection_sensitive = True
         elif item.type == ShortcutType.BATCH_LAUNCH:

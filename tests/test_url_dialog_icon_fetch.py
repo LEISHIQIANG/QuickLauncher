@@ -55,6 +55,9 @@ def test_url_dialog_exposes_ip_variable_buttons(qapp):
         assert dialog.url_edit.text() == "{{LAN_IP}}"
         buttons["公网 IP"].click()
         assert dialog.url_edit.text() == "{{LAN_IP}}{{WAN_IP}}"
+        assert "多文件" in buttons
+        buttons["多文件"].click()
+        assert dialog.url_edit.text().endswith("{{selected_files}}")
     finally:
         dialog.deleteLater()
 

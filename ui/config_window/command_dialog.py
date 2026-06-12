@@ -48,6 +48,7 @@ from .command_profile_helpers import (
     parse_command_params_text,
 )
 from .icon_browse_helper import choose_custom_icon
+from .template_variable_highlighter import install_template_variable_highlighter
 from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
@@ -385,6 +386,7 @@ class CommandDialog(BaseDialog):
             }}
         """
         self.command_edit.setStyleSheet(scale_qss(editor_style))
+        self._command_variable_highlighter.set_theme(theme)
         self.test_output.setStyleSheet(
             scale_qss(
                 editor_style
@@ -660,6 +662,7 @@ class CommandDialog(BaseDialog):
 
         # 内层编辑器：完全透明，只负责显示文字
         self.command_edit = QPlainTextEdit()
+        self._command_variable_highlighter = install_template_variable_highlighter(self.command_edit, self.theme)
         self.command_edit.setFixedHeight(sp(92))
         self.command_edit.setTabChangesFocus(True)
         # 关键：关闭视口背景自动填充
@@ -1145,7 +1148,7 @@ class CommandDialog(BaseDialog):
             ("选中文本", "{{selected_text}}"),
             ("选中文本(引用)", "{{selected_text:q}}"),
             ("选中文件(引用)", "{{selected_file:q}}"),
-            ("选中文件列表(引用)", "{{selected_files:q}}"),
+            ("选中多文件(逐项引用)", "{{selected_files:q}}"),
             ("选中文件名(引用)", "{{selected_file_name:q}}"),
             ("选中文件目录(引用)", "{{selected_file_dir:q}}"),
             ("日期", "{{date}}"),

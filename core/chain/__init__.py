@@ -24,6 +24,9 @@ This package contains the core components of the action chain system:
 
 from __future__ import annotations
 
+# Complete the main registry before enhanced definitions instantiate processor
+# schemas whose defaults are supplied by registry helpers.
+from . import registry as registry
 from .contracts import (
     ChainConnectionIssue,
     ChainPortSpec,
