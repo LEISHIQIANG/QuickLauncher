@@ -107,6 +107,25 @@ def test_hooks_wrapper_binds_hotkey_capture_exports(monkeypatch):
     assert fake.stopped is True
 
 
+def test_hotkey_capture_owner_prevents_stale_recorder_stop(monkeypatch):
+    fake = _FakeDLL()
+    fake.StartHotkeyCapture = _FakeFunc(True)
+    fake.StopHotkeyCapture = _FakeFunc(None)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("capture-owner.dll")
+    first_owner = object()
+    second_owner = object()
+
+    assert dll.start_hotkey_capture(lambda *_args: None, owner=first_owner) is True
+    first_ref = dll._hotkey_capture_callback_ref
+    assert dll.start_hotkey_capture(lambda *_args: None, owner=second_owner) is False
+    assert dll._hotkey_capture_callback_ref is first_ref
+    assert dll.stop_hotkey_capture(owner=second_owner) is False
+    assert dll.hotkey_capture_owned_by(first_owner) is True
+    assert dll.stop_hotkey_capture(owner=first_owner) is True
+    assert dll.hotkey_capture_owned_by(first_owner) is False
+
+
 def test_hooks_wrapper_reports_runtime_stats(monkeypatch):
     fake = _FakeDLL()
     fake.GetHooksRuntimeStats = _RuntimeStatsFunc()
@@ -258,6 +277,21 @@ def test_hooks_wrapper_can_explicitly_skip_custom_integrity_check(monkeypatch, t
     assert dll.compatible is True
 
 
+def test_hooks_wrapper_exposes_repeatable_integrity_check(monkeypatch, tmp_path):
+    dll_path = tmp_path / "hooks.dll"
+    content = b"known native payload"
+    dll_path.write_bytes(content)
+    expected = hashlib.sha256(content).hexdigest()
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: _FakeDLL())
+
+    dll = hooks_wrapper.HooksDLL(str(dll_path), expected_sha256=expected)
+
+    assert dll.expected_sha256 == expected
+    assert dll.verify_integrity() is True
+    dll_path.write_bytes(b"tampered")
+    assert dll.verify_integrity() is False
+
+
 def test_shutdown_hooks_uses_correct_native_signatures():
     calls = []
 
@@ -285,14 +319,17 @@ def test_shutdown_hooks_uses_correct_native_signatures():
     ):
         setattr(fake, name, StrictNoArg(name))
     fake.WaitForMacroPlayback = StrictTimeout()
+    fake.AreHooksQuiescent = _FakeFunc(True)
 
     dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
     dll.dll = fake
     dll.loaded = True
     dll.compatible = True
+    dll._has_input_capture = True
     dll._lifecycle_lock = __import__("threading").RLock()
     dll._retired_callback_refs = __import__("collections").deque(maxlen=64)
     dll._input_capture_filter_flags = 0
+    dll._input_capture_owner = None
     for attr_name in (
         "_mouse_callback_ref",
         "_alt_dclick_callback_ref",
@@ -303,11 +340,79 @@ def test_shutdown_hooks_uses_correct_native_signatures():
     ):
         setattr(dll, attr_name, None)
 
-    dll.shutdown_hooks()
+    assert dll.shutdown_hooks() is True
 
     assert ("StopInputCapture", ()) in calls
     assert ("CancelMacroPlayback", ()) in calls
     assert ("WaitForMacroPlayback", (2000,)) in calls
+
+
+def test_failed_hook_replacement_keeps_previous_callbacks_alive(monkeypatch):
+    fake = _FakeDLL()
+    fake.InstallMouseHook = _FakeFunc(False)
+    fake.InstallKeyboardHook = _FakeFunc(False)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("replacement.dll")
+    mouse_ref = hooks_wrapper.MOUSE_CALLBACK(lambda _x, _y: None)
+    keyboard_ref = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
+    dll._mouse_callback_ref = mouse_ref
+    dll._keyboard_callback_ref = keyboard_ref
+
+    assert dll.install_mouse_hook(lambda _x, _y: None) is False
+    assert dll.install_keyboard_hook(lambda: None) is False
+    assert dll._mouse_callback_ref is mouse_ref
+    assert dll._keyboard_callback_ref is keyboard_ref
+
+
+def test_input_capture_owner_cannot_be_replaced_or_stopped(monkeypatch):
+    fake = _FakeDLL()
+    fake.StartInputCapture = _FakeFunc(True)
+    fake.StopInputCapture = _FakeFunc(None)
+    fake.IsInputCaptureActive = _FakeFunc(True)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("capture-owner.dll")
+    first_owner = object()
+    second_owner = object()
+
+    assert dll.start_input_capture(lambda _event: None, owner=first_owner) is True
+    first_ref = dll._input_event_callback_ref
+    assert dll.start_input_capture(lambda _event: None, owner=second_owner) is False
+    assert dll._input_event_callback_ref is first_ref
+    assert dll.stop_input_capture(owner=second_owner) is False
+    assert dll._input_capture_owner is first_owner
+    assert dll.stop_input_capture(owner=first_owner) is True
+    assert dll._input_capture_owner is None
+
+
+def test_shutdown_retains_dll_when_native_callbacks_are_not_quiescent(monkeypatch):
+    fake = _FakeDLL()
+    fake.AreHooksQuiescent = _FakeFunc(False)
+    fake.WaitForMacroPlayback = _FakeFunc(True)
+    dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
+    dll.dll = fake
+    dll.loaded = True
+    dll.compatible = True
+    dll._has_input_capture = True
+    dll._lifecycle_lock = __import__("threading").RLock()
+    dll._retired_callback_refs = __import__("collections").deque(maxlen=64)
+    dll._input_capture_filter_flags = 0
+    dll._input_capture_owner = None
+    callback_ref = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
+    for attr_name in (
+        "_mouse_callback_ref",
+        "_alt_dclick_callback_ref",
+        "_keyboard_callback_ref",
+        "_hotkey_callback_ref",
+        "_hotkey_capture_callback_ref",
+        "_input_event_callback_ref",
+    ):
+        setattr(dll, attr_name, callback_ref if attr_name == "_keyboard_callback_ref" else None)
+    ticks = iter((0.0, 3.0))
+    monkeypatch.setattr(hooks_wrapper.time, "monotonic", lambda: next(ticks))
+
+    assert dll.shutdown_hooks() is False
+    assert dll.dll is fake
+    assert dll._keyboard_callback_ref is callback_ref
 
 
 def test_retired_callback_refs_are_bounded(monkeypatch):

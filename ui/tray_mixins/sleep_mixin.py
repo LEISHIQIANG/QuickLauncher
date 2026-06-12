@@ -115,11 +115,6 @@ class SleepMixin:
         yield getattr(self, "command_panel_window", None)
 
     def _perform_sleep_cleanup(self):
-        try:
-            self.hotkey_manager.stop()
-        except _SLEEP_MIXIN_ERRORS as exc:
-            logger.debug("停止热键管理器: %s", exc, exc_info=True)
-
         logger.info("进入轻睡眠模式：保留键盘 Hook 用于 Alt 双击切换中键")
 
         try:
@@ -181,10 +176,8 @@ class SleepMixin:
         try:
             if self.keyboard_hook is None:
                 self._install_keyboard_hook_and_hotkey()
-            else:
-                self.hotkey_manager.start()
         except _SLEEP_MIXIN_ERRORS as e:
-            logger.debug("恢复键盘钩子/热键失败: %s", e)
+            logger.debug("恢复键盘钩子失败: %s", e)
 
         try:
             if self.mouse_hook and self._mouse_paused_state:

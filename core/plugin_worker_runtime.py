@@ -1,0 +1,288 @@
+"""Persistent out-of-process runtime for heavyweight plugins."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import logging
+import os
+import secrets
+import socket
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from runtime_paths import app_executable, app_root, is_packaged_runtime
+
+logger = logging.getLogger(__name__)
+_MAX_MESSAGE_BYTES = 4 * 1024 * 1024
+
+
+class PluginWorkerError(RuntimeError):
+    pass
+
+
+class JsonLineChannel:
+    def __init__(self, connection: socket.socket):
+        self._connection = connection
+        self._read_buffer = bytearray()
+        self._send_lock = threading.Lock()
+
+    def send(self, payload: dict[str, Any]) -> None:
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        if len(encoded) > _MAX_MESSAGE_BYTES:
+            raise PluginWorkerError("plugin worker message exceeds size limit")
+        with self._send_lock:
+            self._connection.sendall(encoded)
+
+    def receive(self, timeout: float | None = None) -> dict[str, Any]:
+        self._connection.settimeout(None if timeout is None else max(0.05, float(timeout)))
+        while True:
+            newline = self._read_buffer.find(b"\n")
+            if newline >= 0:
+                raw = bytes(self._read_buffer[:newline])
+                del self._read_buffer[: newline + 1]
+                try:
+                    payload = json.loads(raw.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise PluginWorkerError("plugin worker sent invalid JSON") from exc
+                if not isinstance(payload, dict):
+                    raise PluginWorkerError("plugin worker message must be an object")
+                return payload
+            chunk = self._connection.recv(65536)
+            if not chunk:
+                raise EOFError("plugin worker connection closed")
+            self._read_buffer.extend(chunk)
+            if len(self._read_buffer) > _MAX_MESSAGE_BYTES:
+                raise PluginWorkerError("plugin worker message exceeds size limit")
+
+    def close(self) -> None:
+        try:
+            self._connection.shutdown(socket.SHUT_RDWR)
+        except OSError as exc:
+            logger.debug("plugin worker socket shutdown skipped: %s", exc)
+        try:
+            self._connection.close()
+        except OSError as exc:
+            logger.debug("plugin worker socket close failed: %s", exc)
+
+
+class PersistentPluginWorker:
+    def __init__(
+        self,
+        *,
+        plugin_id: str,
+        script_path: Path,
+        site_paths: list[Path] | None = None,
+        cwd: Path | None = None,
+        inherit_environment: bool = True,
+    ):
+        self.plugin_id = str(plugin_id)
+        self.script_path = Path(script_path).resolve(strict=False)
+        self.site_paths = [Path(path).resolve(strict=False) for path in site_paths or []]
+        self.cwd = Path(cwd or self.script_path.parent).resolve(strict=False)
+        self.inherit_environment = bool(inherit_environment)
+        self._process: subprocess.Popen | None = None
+        self._channel: JsonLineChannel | None = None
+        self._request_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._request_seq = 0
+
+    @property
+    def running(self) -> bool:
+        process = self._process
+        return process is not None and process.poll() is None and self._channel is not None
+
+    def start(self, timeout: float = 45.0) -> None:
+        with self._state_lock:
+            if self.running:
+                return
+            self._close_unlocked(force=True)
+            if not self.script_path.is_file():
+                raise FileNotFoundError(str(self.script_path))
+
+            token = secrets.token_urlsafe(32)
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            listener.settimeout(0.2)
+            port = int(listener.getsockname()[1])
+
+            command = self._build_command(port, token)
+            env = os.environ.copy() if self.inherit_environment else self._minimal_environment()
+            creationflags = 0
+            if os.name == "nt":
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+                    subprocess,
+                    "BELOW_NORMAL_PRIORITY_CLASS",
+                    0x00004000,
+                )
+            kwargs: dict[str, Any] = {
+                "cwd": str(self.cwd),
+                "env": env,
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+                "shell": False,
+                "creationflags": creationflags,
+            }
+            started = time.perf_counter()
+            try:
+                self._process = subprocess.Popen(command, **kwargs)
+                deadline = time.monotonic() + max(0.1, float(timeout))
+                while True:
+                    if self._process.poll() is not None:
+                        raise PluginWorkerError(
+                            f"plugin worker exited during startup: returncode={self._process.returncode}"
+                        )
+                    try:
+                        connection, address = listener.accept()
+                        break
+                    except TimeoutError:
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError(f"plugin worker startup timed out after {timeout:.1f}s") from None
+                if address[0] not in ("127.0.0.1", "::1"):
+                    connection.close()
+                    raise PluginWorkerError("plugin worker connected from a non-loopback address")
+                channel = JsonLineChannel(connection)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    channel.close()
+                    raise TimeoutError(f"plugin worker startup timed out after {timeout:.1f}s")
+                try:
+                    hello = channel.receive(timeout=remaining)
+                except EOFError as exc:
+                    returncode = self._process.poll()
+                    raise PluginWorkerError(f"plugin worker exited during startup: returncode={returncode}") from exc
+                if hello.get("type") != "ready" or not secrets.compare_digest(str(hello.get("token") or ""), token):
+                    channel.close()
+                    raise PluginWorkerError("plugin worker authentication failed")
+                self._channel = channel
+                logger.info(
+                    "插件常驻运行时就绪: plugin=%s pid=%s elapsed=%.1f ms",
+                    self.plugin_id,
+                    getattr(self._process, "pid", 0),
+                    (time.perf_counter() - started) * 1000,
+                )
+            except Exception:
+                self._close_unlocked(force=True)
+                raise
+            finally:
+                listener.close()
+
+    def request(self, payload: dict[str, Any], timeout: float = 300.0) -> dict[str, Any]:
+        with self._request_lock:
+            if not self.running:
+                self.start(timeout=min(max(5.0, float(timeout)), 60.0))
+            channel = self._channel
+            if channel is None:
+                raise PluginWorkerError("plugin worker is unavailable")
+            self._request_seq += 1
+            request_id = f"{self.plugin_id}-{self._request_seq}"
+            message = {"type": "request", "id": request_id, "payload": dict(payload or {})}
+            try:
+                channel.send(message)
+                response = channel.receive(timeout=timeout)
+                if response.get("type") != "response" or response.get("id") != request_id:
+                    raise PluginWorkerError("plugin worker returned a mismatched response")
+                result = response.get("payload")
+                if not isinstance(result, dict):
+                    raise PluginWorkerError("plugin worker returned an invalid payload")
+            except Exception:
+                with self._state_lock:
+                    self._close_unlocked(force=True)
+                raise
+            return result
+
+    def close(self, timeout: float = 3.0) -> None:
+        with self._state_lock:
+            channel = self._channel
+            process = self._process
+            if channel is not None and process is not None and process.poll() is None:
+                try:
+                    channel.send({"type": "shutdown"})
+                    process.wait(timeout=max(0.1, float(timeout)))
+                except Exception as exc:
+                    logger.debug("plugin worker graceful shutdown failed: %s", exc)
+            self._close_unlocked(force=True)
+
+    def _close_unlocked(self, *, force: bool) -> None:
+        channel = self._channel
+        self._channel = None
+        if channel is not None:
+            channel.close()
+        process = self._process
+        self._process = None
+        if process is None or process.poll() is not None:
+            return
+        if force:
+            try:
+                process.terminate()
+                process.wait(timeout=1.0)
+            except Exception:
+                try:
+                    process.kill()
+                except OSError as exc:
+                    logger.debug("plugin worker force kill failed: %s", exc)
+
+    def _build_command(self, port: int, token: str) -> list[str]:
+        if is_packaged_runtime():
+            command = [str(app_executable()), "--plugin-worker", str(self.script_path)]
+        else:
+            command = [str(sys.executable), str(app_root() / "main.py"), "--plugin-worker", str(self.script_path)]
+        for site_path in self.site_paths:
+            command.extend(["--plugin-site", str(site_path)])
+        command.extend(["--plugin-port", str(port), "--plugin-token", token])
+        return command
+
+    @staticmethod
+    def _minimal_environment() -> dict[str, str]:
+        keep = ("SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "PATHEXT", "COMSPEC")
+        return {key: value for key in keep if (value := os.environ.get(key))}
+
+
+def run_worker_process(
+    script_path: str,
+    *,
+    site_paths: list[str],
+    port: int,
+    token: str,
+) -> int:
+    script = Path(script_path).resolve(strict=False)
+    if not script.is_file():
+        return 2
+    for path in reversed([script.parent, *[Path(value) for value in site_paths]]):
+        path_text = str(path.resolve(strict=False))
+        if path.is_dir() and path_text not in sys.path:
+            sys.path.insert(0, path_text)
+        if path.is_dir():
+            os.environ["PATH"] = path_text + os.pathsep + os.environ.get("PATH", "")
+            add_dll_directory = getattr(os, "add_dll_directory", None)
+            if add_dll_directory:
+                try:
+                    add_dll_directory(path_text)
+                except OSError as exc:
+                    logger.debug("plugin worker DLL directory rejected %s: %s", path_text, exc)
+
+    connection = socket.create_connection(("127.0.0.1", int(port)), timeout=15.0)
+    channel = JsonLineChannel(connection)
+    module_name = f"_plugin_worker_{secrets.token_hex(8)}"
+    spec = importlib.util.spec_from_file_location(module_name, script)
+    if spec is None or spec.loader is None:
+        channel.close()
+        return 2
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    run_worker = getattr(module, "run_worker", None)
+    if not callable(run_worker):
+        channel.close()
+        return 2
+    try:
+        result = run_worker(channel, token)
+        return int(result or 0)
+    finally:
+        channel.close()

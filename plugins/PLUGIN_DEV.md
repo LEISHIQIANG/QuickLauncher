@@ -204,6 +204,9 @@ def handle_hello(context):
 | `write_data_file(relative_path, text, encoding="utf-8", append=False)` | 只写入插件私有 `data/` 目录内的文本文件 | `file.write` |
 | `http_request(url, method="GET", headers=None, body=None, timeout=10, max_bytes=2097152)` | 发起有超时、请求体、请求头和响应大小上限的 `GET` / `POST` / `HEAD` 请求 | `network.request` |
 | `run_process_capture(args, cwd="", timeout=30, max_bytes=2097152, inherit_environment=False, helper_output_file=False)` | 通过主程序受控执行子进程并返回 `stdout` / `stderr` / `returncode`；截图/GUI helper 可用 `inherit_environment=True` 保留 Qt/wx 运行环境，用 `helper_output_file=True` 兼容打包版 GUI stdout | `process.run` |
+| `prewarm_persistent_helper(script_path, site_paths=None, timeout=45, inherit_environment=True)` | 在启动空闲期启动并预热重型插件 worker；适合 OCR、模型推理和大型原生 DLL | `process.run` |
+| `request_persistent_helper(script_path, payload=None, site_paths=None, timeout=300, inherit_environment=True)` | 向已预热 worker 发送 JSON 请求并复用同一进程；未启动时会自动启动 | `process.run` |
+| `stop_persistent_helper(script_path)` | 停止指定常驻 worker；插件禁用时宿主也会自动清理 | `process.run` |
 | `is_user_admin()` | 判断主程序当前是否具备管理员权限 | 无 |
 | `get_recycle_bin_info()` | 查询回收站条目数和估算大小 | `file.read` |
 | `empty_recycle_bin()` | 通过主程序清空回收站 | `file.write` |

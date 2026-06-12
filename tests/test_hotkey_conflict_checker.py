@@ -4,7 +4,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 
-from core.hotkey_conflict_checker import SYSTEM_HOTKEYS, _get_vk_code, check_conflict, normalize_hotkey
+from core.hotkey_conflict_checker import (
+    SYSTEM_HOTKEYS,
+    _get_vk_code,
+    check_conflict,
+    is_hotkey_registered,
+    normalize_hotkey,
+)
 
 # ── normalize_hotkey ──────────────────────────────────────────────────────────
 
@@ -441,3 +447,31 @@ class TestSystemHotkeysIntegrity:
 def test_vk_code_uses_shared_key_map_aliases():
     assert _get_vk_code("PgDn") == 0x22
     assert _get_vk_code("VolumeUp") == 0xAF
+
+
+def test_registration_probe_uses_unique_atom_and_always_deletes_it(monkeypatch):
+    calls = []
+
+    class User32:
+        @staticmethod
+        def RegisterHotKey(_hwnd, hotkey_id, modifiers, vk):
+            calls.append(("register", hotkey_id, modifiers, vk))
+            return 0
+
+    class Kernel32:
+        @staticmethod
+        def GlobalAddAtomW(name):
+            calls.append(("add", name))
+            return 0xC123
+
+        @staticmethod
+        def GlobalDeleteAtom(atom):
+            calls.append(("delete", atom))
+            return 0
+
+    monkeypatch.setattr("ctypes.windll.user32", User32())
+    monkeypatch.setattr("ctypes.windll.kernel32", Kernel32())
+
+    assert is_hotkey_registered(["ctrl"], "P") is True
+    assert ("register", 0xC123, 0x0002, ord("P")) in calls
+    assert calls[-1] == ("delete", 0xC123)

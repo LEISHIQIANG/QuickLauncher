@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import tempfile
 import uuid
 from pathlib import Path
@@ -33,8 +34,8 @@ def assert_safe_user_path(path: str | os.PathLike[str], *, operation: str = "fil
     target = resolve_existing(raw)
     if _is_drive_or_fs_root(target):
         raise UnsafePathError(f"Refusing to operate on filesystem root: {target}")
-    if target.exists() and target.is_symlink():
-        raise UnsafePathError(f"Refusing to operate on symlink: {target}")
+    if target.exists() and is_link_or_reparse_point(target):
+        raise UnsafePathError(f"Refusing to operate on symlink or reparse point: {target}")
     for protected in _protected_roots():
         if _is_allowed_temp_path(target):
             continue
@@ -93,8 +94,8 @@ def safe_rmtree_child(
     root: str | os.PathLike[str], target: str | os.PathLike[str], *, missing_ok: bool = False
 ) -> None:
     raw_target = Path(target).expanduser()
-    if raw_target.is_symlink():
-        raise UnsafePathError(f"Refusing to remove symlink: {raw_target}")
+    if is_link_or_reparse_point(raw_target):
+        raise UnsafePathError(f"Refusing to remove symlink or reparse point: {raw_target}")
     target_path = resolve_under(root, target, allow_root=False)
     if not target_path.exists():
         if missing_ok:
@@ -104,6 +105,18 @@ def safe_rmtree_child(
         shutil.rmtree(target_path)
         return
     target_path.unlink()
+
+
+def is_link_or_reparse_point(path: str | os.PathLike[str]) -> bool:
+    """Return whether a path is a symlink or Windows reparse point."""
+    candidate = Path(path).expanduser()
+    try:
+        if candidate.is_symlink():
+            return True
+        attributes = getattr(candidate.lstat(), "st_file_attributes", 0)
+        return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+    except (FileNotFoundError, OSError):
+        return False
 
 
 def _protected_roots() -> tuple[Path, ...]:

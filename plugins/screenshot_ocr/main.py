@@ -19,6 +19,8 @@ _PLUGIN_API = None
 _INJECTED_SITE: str | None = None
 _CACHED_HELPER_CMD: list[str] | None = None
 _WARMUP_TIMER: threading.Timer | None = None
+PERSISTENT_WORKER = "ocr_worker.py"
+PERSISTENT_SITE_PATHS = ["runtime/site-packages"]
 
 
 def _runtime_site() -> Path | None:
@@ -75,10 +77,16 @@ def register(api):
 
 
 def dispose(api=None):
-    global _INJECTED_SITE, _CACHED_HELPER_CMD, _WARMUP_TIMER
+    global _PLUGIN_API, _INJECTED_SITE, _CACHED_HELPER_CMD, _WARMUP_TIMER
     if _WARMUP_TIMER is not None:
         _WARMUP_TIMER.cancel()
         _WARMUP_TIMER = None
+    plugin_api = api or _PLUGIN_API
+    if plugin_api is not None and hasattr(plugin_api, "stop_persistent_helper"):
+        try:
+            plugin_api.stop_persistent_helper(PERSISTENT_WORKER)
+        except Exception:
+            pass
     _CACHED_HELPER_CMD = None
     if _INJECTED_SITE:
         wx_str = str(Path(_INJECTED_SITE) / "wx")
@@ -88,6 +96,7 @@ def dispose(api=None):
             except ValueError:
                 pass
         _INJECTED_SITE = None
+    _PLUGIN_API = None
 
 
 def handle_capture(context) -> CommandResult:
@@ -96,8 +105,17 @@ def handle_capture(context) -> CommandResult:
 
 
 def _warmup_cmd() -> None:
-    helper = Path(__file__).resolve().parent / "ocr_runner.py"
-    _find_helper_command(helper)
+    if _PLUGIN_API is None:
+        return
+    try:
+        _PLUGIN_API.prewarm_persistent_helper(
+            PERSISTENT_WORKER,
+            site_paths=PERSISTENT_SITE_PATHS,
+            timeout=60.0,
+            inherit_environment=True,
+        )
+    except Exception as exc:
+        _PLUGIN_API.logger.warning("OCR 常驻运行时预热失败，将在执行时回退: %s", exc)
 
 
 def _run_helper_as_result(helper_args: list[str]) -> CommandResult:
@@ -108,6 +126,17 @@ def _run_helper_as_result(helper_args: list[str]) -> CommandResult:
 def _run_helper(helper_args: list[str]) -> dict:
     if _PLUGIN_API is None:
         return {"status": "error", "message": "插件 API 未初始化"}
+    try:
+        return _PLUGIN_API.request_persistent_helper(
+            PERSISTENT_WORKER,
+            {"operation": "capture", "args": list(helper_args or [])},
+            site_paths=PERSISTENT_SITE_PATHS,
+            timeout=HELPER_TIMEOUT_SECONDS,
+            inherit_environment=True,
+        )
+    except Exception as exc:
+        _PLUGIN_API.logger.warning("OCR 常驻运行时请求失败，回退到单次 helper: %s", exc)
+
     helper = Path(__file__).resolve().parent / "ocr_runner.py"
     helper_cmd = _find_helper_command(helper)
     if not helper_cmd:

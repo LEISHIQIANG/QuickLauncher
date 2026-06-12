@@ -159,4 +159,5 @@ extern "C" {
     HOOKS_API unsigned long GetLastHookError();
     HOOKS_API bool GetHooksRuntimeStats(HooksRuntimeStats* stats, unsigned int statsSize);
     HOOKS_API void ResetHooksRuntimeStats();
+    HOOKS_API bool AreHooksQuiescent();
 }

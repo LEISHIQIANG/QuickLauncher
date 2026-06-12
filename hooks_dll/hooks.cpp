@@ -103,7 +103,10 @@ static bool g_hotkeyCaptureCompleted = false;
 static DWORD g_hotkeyCaptureStartedTick = 0;
 static DWORD g_hotkeyCaptureTimeoutMs = 10000;
 static bool g_hotkeyCapturePressed[256] = {false};
+static bool g_hotkeyCapturePreexisting[256] = {false};
+static bool g_hotkeyCaptureSwallowed[256] = {false};
 static bool g_keyboardPressed[256] = {false};
+static bool g_triggerBlockedKeys[256] = {false};
 static int g_hotkeyCaptureSideModifiers = 0;
 static std::mutex g_hotkeyCaptureMutex;
 
@@ -230,7 +233,7 @@ constexpr double ALT_DOUBLE_TAP_COOLDOWN = 0.50;
 constexpr double ALT_LCLICK_DOUBLE_INTERVAL = 0.40;
 constexpr double ALT_LCLICK_COOLDOWN = 0.50;
 constexpr double BLOCKED_STATE_TIMEOUT = 2.0;  // 2秒超时自动释放
-constexpr int HOOKS_VERSION = 9;
+constexpr int HOOKS_VERSION = 10;
 constexpr unsigned int HOOKS_CAP_MOUSE = 0x0001;
 constexpr unsigned int HOOKS_CAP_KEYBOARD = 0x0002;
 constexpr unsigned int HOOKS_CAP_GLOBAL_HOTKEY = 0x0004;
@@ -588,6 +591,8 @@ static int HotkeyModifiersFromSides(int sideModifiers) {
 
 static void ResetHotkeyCaptureStateLocked() {
     std::fill(g_hotkeyCapturePressed, g_hotkeyCapturePressed + 256, false);
+    std::fill(g_hotkeyCapturePreexisting, g_hotkeyCapturePreexisting + 256, false);
+    std::fill(g_hotkeyCaptureSwallowed, g_hotkeyCaptureSwallowed + 256, false);
     g_hotkeyCaptureSideModifiers = 0;
     g_hotkeyCaptureCompleted = false;
 }
@@ -632,8 +637,15 @@ static bool HandleHotkeyCapture(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* pKbd) {
         bool isUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
 
         if (normalizedVk >= 0 && normalizedVk < 256) {
+            if (g_hotkeyCapturePreexisting[normalizedVk]) {
+                if (isUp) {
+                    g_hotkeyCapturePreexisting[normalizedVk] = false;
+                }
+                return false;
+            }
             if (isDown) {
                 g_hotkeyCapturePressed[normalizedVk] = true;
+                g_hotkeyCaptureSwallowed[normalizedVk] = true;
                 int sideBit = HotkeySideBitForVk(normalizedVk);
                 if (sideBit) g_hotkeyCaptureSideModifiers |= sideBit;
 
@@ -646,12 +658,15 @@ static bool HandleHotkeyCapture(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* pKbd) {
                 }
             } else if (isUp) {
                 g_hotkeyCapturePressed[normalizedVk] = false;
+                bool swallowed = g_hotkeyCaptureSwallowed[normalizedVk];
+                g_hotkeyCaptureSwallowed[normalizedVk] = false;
                 int sideBit = HotkeySideBitForVk(normalizedVk);
                 if (sideBit) g_hotkeyCaptureSideModifiers &= ~sideBit;
 
                 if (g_hotkeyCaptureCompleted && !AnyHotkeyCaptureKeyPressedLocked()) {
                     StopHotkeyCaptureLocked();
                 }
+                if (!swallowed) return false;
             }
         }
     }
@@ -888,9 +903,6 @@ static bool InstallHookGeneric(
         return ctx.hook != NULL;
     }
 
-    if (mouseCb) g_mouseCallback = mouseCb;
-    if (kbdCb)   g_altDoubleTapCallback = kbdCb;
-
     // 等待旧线程安全退出
     if (!WaitForHookThreadExit(ctx.threadAlive, ctx.exitedEvent, ctx.threadHandle)) {
         ctx.installing = false;
@@ -956,12 +968,17 @@ static bool InstallHookGeneric(
         return false;
     }
 
+    bool installed = ctx.hook != NULL || (mouseCb && g_rawInputActive.load());
+    if (installed) {
+        if (mouseCb) g_mouseCallback = mouseCb;
+        if (kbdCb) g_altDoubleTapCallback = kbdCb;
+    }
     ctx.installing = false;
-    return ctx.hook != NULL;
+    return installed;
 }
 
 // 通用钩子卸载：通知线程退出、清理句柄
-static void UninstallHookGeneric(HookContext& ctx) {
+static bool UninstallHookGeneric(HookContext& ctx) {
     ctx.running = false;
     if (ctx.threadId) {
         if (!PostThreadMessage(ctx.threadId, WM_QUIT, 0, 0)) {
@@ -975,7 +992,7 @@ static void UninstallHookGeneric(HookContext& ctx) {
             ctx.threadHandle = NULL;
         } else {
             g_lastHookError = result == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError();
-            return;
+            return false;
         }
     }
     if (ctx.readyEvent) {
@@ -986,6 +1003,7 @@ static void UninstallHookGeneric(HookContext& ctx) {
         CloseHandle(ctx.exitedEvent);
         ctx.exitedEvent = NULL;
     }
+    return !ctx.threadAlive.load();
 }
 
 // ============================================================
@@ -1400,6 +1418,69 @@ static bool ShouldTriggerRawKeyboard(int vk) {
         if (targetVk < 0 || targetVk >= 256 || !g_rawKeyboardPressed[targetVk]) return false;
     }
     return currentIsTarget;
+}
+
+static bool HandleKeyboardPopupTrigger(int vk, bool isDown, bool isUp, bool wasPressed) {
+    if (vk < 0 || vk >= 256) return false;
+    if (isUp && g_triggerBlockedKeys[vk]) {
+        g_triggerBlockedKeys[vk] = false;
+        return true;
+    }
+    if (!isDown) return false;
+
+    int normalMode, specialMode, normalMod, specialMod;
+    std::vector<int> normalKeys, specialKeys;
+    {
+        std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+        normalMode = g_normalTriggerMode;
+        specialMode = g_specialTriggerMode;
+        normalKeys = g_normalTriggerKeys;
+        specialKeys = g_specialTriggerKeys;
+        normalMod = g_normalTriggerModifiers;
+        specialMod = g_specialTriggerModifiers;
+    }
+
+    bool isSpecial = IsSpecialApp();
+    int targetMode = isSpecial ? specialMode : normalMode;
+    const std::vector<int>& targetKeys = isSpecial ? specialKeys : normalKeys;
+    int targetMod = isSpecial ? specialMod : normalMod;
+    if (targetMode != 1 || targetKeys.empty() || !g_mouseCallback.load()) return false;
+
+    bool isTargetKey = std::find(targetKeys.begin(), targetKeys.end(), vk) != targetKeys.end();
+    if (!isTargetKey) return false;
+
+    int currentMod = 0;
+    if (IsCtrlPressedNow()) currentMod |= HOTKEY_MOD_CTRL;
+    if (IsAltPressedNow()) currentMod |= HOTKEY_MOD_ALT;
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) currentMod |= HOTKEY_MOD_SHIFT;
+    if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) {
+        currentMod |= HOTKEY_MOD_WIN;
+    }
+    if (currentMod != targetMod) return false;
+
+    g_triggerBlockedKeys[vk] = true;
+    bool allKeysPressed = true;
+    for (int targetVk : targetKeys) {
+        if (targetVk < 0 || targetVk >= 256 || !g_keyboardPressed[targetVk]) {
+            allKeysPressed = false;
+            break;
+        }
+    }
+    if (allKeysPressed && !wasPressed) {
+        MouseCallback callback = g_mouseCallback.load();
+        if (callback) {
+            POINT pt = {};
+            GetCursorPos(&pt);
+            bool rawAlreadyTriggered =
+                g_lastRawKeyboardFallbackVk.load() == vk &&
+                (GetTickCount64() - g_lastRawKeyboardFallbackTick.load()) <=
+                    RAW_FALLBACK_LATE_LL_WINDOW_MS;
+            if (!rawAlreadyTriggered) {
+                InvokeMouseCallbackAsync(CallbackEvent::MouseTrigger, pt.x, pt.y);
+            }
+        }
+    }
+    return true;
 }
 
 static void InvokeRawInputFallback(int button, int buttonIndex) {
@@ -1956,73 +2037,8 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                 }
             }
 
-            // keyboard模式触发检测
-            int normalMode, specialMode;
-            std::vector<int> normalKeys, specialKeys;
-            int normalMod, specialMod;
-            {
-                std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
-                normalMode = g_normalTriggerMode;
-                normalKeys = g_normalTriggerKeys;
-                normalMod = g_normalTriggerModifiers;
-                specialMode = g_specialTriggerMode;
-                specialKeys = g_specialTriggerKeys;
-                specialMod = g_specialTriggerModifiers;
-            }
-
-            if (normalMode == 1 || specialMode == 1) {
-                bool isSpecial = IsSpecialApp();
-                int targetMode = isSpecial ? specialMode : normalMode;
-                const std::vector<int>& targetKeys = isSpecial ? specialKeys : normalKeys;
-                int targetMod = isSpecial ? specialMod : normalMod;
-
-                if (targetMode == 1 && !targetKeys.empty() && !wasPressed) {  // 纯keyboard模式
-                // 检查当前按键是否在目标按键列表中
-                bool isTargetKey = false;
-                for (int targetVk : targetKeys) {
-                    if (vk == targetVk) {
-                        isTargetKey = true;
-                        break;
-                    }
-                }
-
-                if (isTargetKey) {
-                    // 检查所有目标按键是否都被按下
-                    // 对于当前按键，我们知道它肯定被按下了（KEYDOWN事件）
-                    bool allKeysPressed = true;
-                    for (int targetVk : targetKeys) {
-                        if (targetVk != vk) {  // 跳过当前按键
-                            if (!(GetAsyncKeyState(targetVk) & 0x8000)) {
-                                allKeysPressed = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    // 检查修饰键
-                    int currentMod = 0;
-                    if (IsCtrlPressedNow()) currentMod |= 2;
-                    if (IsAltPressedNow()) currentMod |= 1;
-                    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) currentMod |= 4;
-                    if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) currentMod |= 8;
-
-                    if (allKeysPressed && currentMod == targetMod) {
-                        // 触发弹窗
-                        MouseCallback callback = g_mouseCallback.load();
-                        if (callback) {
-                            POINT pt;
-                            GetCursorPos(&pt);
-                            bool rawAlreadyTriggered =
-                                g_lastRawKeyboardFallbackVk.load() == vk &&
-                                (GetTickCount64() - g_lastRawKeyboardFallbackTick.load()) <=
-                                    RAW_FALLBACK_LATE_LL_WINDOW_MS;
-                            if (!rawAlreadyTriggered) {
-                                InvokeMouseCallbackAsync(CallbackEvent::MouseTrigger, pt.x, pt.y);
-                            }
-                        }
-                    }
-                }
-            }
+            if (HandleKeyboardPopupTrigger(vk, isDown, isUp, wasPressed)) {
+                return 1;
             }
         }
     } else if (isUp) {
@@ -2063,6 +2079,9 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                 return 1;
             }
         }
+        if (HandleKeyboardPopupTrigger(vk, isDown, isUp, wasPressed)) {
+            return 1;
+        }
     }
 
     return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
@@ -2076,6 +2095,7 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
     MSG bootstrapMessage;
     PeekMessage(&bootstrapMessage, NULL, WM_USER, WM_USER, PM_NOREMOVE);
     std::fill(g_keyboardPressed, g_keyboardPressed + 256, false);
+    std::fill(g_triggerBlockedKeys, g_triggerBlockedKeys + 256, false);
     g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookProc, GetCurrentDllModule(), 0);
 
     if (!g_keyboardHook) {
@@ -2165,6 +2185,7 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
     g_ctrlHeld = false;
     g_altTapCount = 0;
     g_otherKeyPressed = false;
+    std::fill(g_triggerBlockedKeys, g_triggerBlockedKeys + 256, false);
     g_keyboardThreadId = 0;
     g_keyboardRunning = false;
     g_keyboardThreadAlive = false;
@@ -2178,7 +2199,6 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
 // ============================================================
 
 bool InstallMouseHook(MouseCallback callback) {
-    g_mouseCallback = nullptr;
     PurgeCallbackEvents(CallbackEvent::MouseTrigger);
     WaitForCallbacksToDrain();
     HookContext ctx{
@@ -2186,8 +2206,8 @@ bool InstallMouseHook(MouseCallback callback) {
         g_mouseReadyEvent, g_mouseExitedEvent,
         g_mouseRunning, g_mouseInstalling, g_mouseThreadAlive
     };
-    InstallHookGeneric(ctx, MouseHookThread, callback, nullptr);
-    return g_mouseThreadAlive.load() && (g_mouseHook != NULL || g_rawInputActive.load());
+    bool result = InstallHookGeneric(ctx, MouseHookThread, callback, nullptr);
+    return result && g_mouseThreadAlive.load() && (g_mouseHook != NULL || g_rawInputActive.load());
 }
 
 void UninstallMouseHook() {
@@ -2201,12 +2221,14 @@ void UninstallMouseHook() {
         g_mouseReadyEvent, g_mouseExitedEvent,
         g_mouseRunning, g_mouseInstalling, g_mouseThreadAlive
     };
-    UninstallHookGeneric(ctx);
+    bool stopped = UninstallHookGeneric(ctx);
     PurgeCallbackEvents(CallbackEvent::MouseTrigger);
     PurgeCallbackEvents(CallbackEvent::AltDoubleClick);
     WaitForCallbacksToDrain();
-    g_mouseCallback = nullptr;
-    g_altDoubleClickCallback = nullptr;
+    if (stopped) {
+        g_mouseCallback = nullptr;
+        g_altDoubleClickCallback = nullptr;
+    }
     StopDebugLogThread();
     StopCallbackThreadIfIdle();
 }
@@ -2242,7 +2264,6 @@ void SetAltDoubleClickCallback(MouseCallback callback) {
 }
 
 bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
-    g_altDoubleTapCallback = nullptr;
     PurgeCallbackEvents(CallbackEvent::AltDoubleTap);
     WaitForCallbacksToDrain();
     HookContext ctx{
@@ -2264,12 +2285,12 @@ void UninstallKeyboardHook() {
         g_keyboardReadyEvent, g_keyboardExitedEvent,
         g_keyboardRunning, g_keyboardInstalling, g_keyboardThreadAlive
     };
-    UninstallHookGeneric(ctx);
+    bool stopped = UninstallHookGeneric(ctx);
     PurgeCallbackEvents(CallbackEvent::AltDoubleTap);
     PurgeCallbackEvents(CallbackEvent::GlobalHotkey);
     PurgeCallbackEvents(CallbackEvent::HotkeyCapture);
     WaitForCallbacksToDrain();
-    g_altDoubleTapCallback = nullptr;
+    if (stopped) g_altDoubleTapCallback = nullptr;
     g_altHeld = false;
     g_ctrlHeld = false;
     g_altTapCount = 0;
@@ -2277,7 +2298,7 @@ void UninstallKeyboardHook() {
     {
         std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
         g_hotkeyCaptureEnabled = false;
-        g_hotkeyCaptureCallback = nullptr;
+        if (stopped) g_hotkeyCaptureCallback = nullptr;
         ResetHotkeyCaptureStateLocked();
     }
     StopCallbackThreadIfIdle();
@@ -2526,6 +2547,9 @@ HOOKS_API bool StartHotkeyCapture(HotkeyCaptureCallback callback, int timeoutMs)
 
     std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
     ResetHotkeyCaptureStateLocked();
+    for (int vk = 0; vk < 256; ++vk) {
+        g_hotkeyCapturePreexisting[vk] = (GetAsyncKeyState(vk) & 0x8000) != 0;
+    }
     g_hotkeyCaptureCallback = callback;
     g_hotkeyCaptureTimeoutMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : 10000;
     g_hotkeyCaptureStartedTick = GetTickCount();
@@ -2853,7 +2877,8 @@ HOOKS_API bool StartInputCapture(InputEventCallback callback, unsigned int filte
         return false;
     }
     if (g_inputCaptureActive.load()) {
-        StopInputCapture();
+        g_lastHookError = ERROR_BUSY;
+        return false;
     }
     if (!EnsureInputCaptureThread()) return false;
 
@@ -3180,4 +3205,28 @@ HOOKS_API void ResetHooksRuntimeStats() {
     g_injectedKeyboardIgnoredCount = 0;
     g_queueOverflowCount = 0;
     g_callbackExceptionCount = 0;
+}
+
+static bool IsThreadHandleStopped(HANDLE threadHandle) {
+    return threadHandle == NULL || WaitForSingleObject(threadHandle, 0) == WAIT_OBJECT_0;
+}
+
+HOOKS_API bool AreHooksQuiescent() {
+    return !g_mouseThreadAlive.load() &&
+           !g_keyboardThreadAlive.load() &&
+           !g_mouseRunning.load() &&
+           !g_keyboardRunning.load() &&
+           !g_callbackThreadRunning.load() &&
+           !g_inputCaptureThreadRunning.load() &&
+           !g_debugLogThreadRunning.load() &&
+           !g_inputCaptureActive.load() &&
+           !g_macroPlaybackActive.load() &&
+           g_callbacksInFlight.load() == 0 &&
+           g_inputCaptureCallbacksInFlight.load() == 0 &&
+           IsThreadHandleStopped(g_mouseThreadHandle) &&
+           IsThreadHandleStopped(g_keyboardThreadHandle) &&
+           IsThreadHandleStopped(g_callbackThread) &&
+           IsThreadHandleStopped(g_inputCaptureThread) &&
+           IsThreadHandleStopped(g_debugLogThread) &&
+           IsThreadHandleStopped(g_macroPlaybackThread);
 }

@@ -190,12 +190,8 @@ class HooksMixin:
             logger.debug("检查钩子健康状态失败: %s", exc, exc_info=True)
 
     def _install_keyboard_hook_and_hotkey(self):
-        """安装键盘钩子并启动热键管理器（延迟执行）"""
+        """安装键盘钩子（延迟执行）。"""
         self._install_keyboard_hook()
-        # 共享键盘钩子的DLL实例
-        if self.keyboard_hook and hasattr(self.keyboard_hook, "_dll"):
-            self.hotkey_manager._dll = self.keyboard_hook._dll
-        self.hotkey_manager.start()
 
     def _reinstall_hooks(self, *, mouse: bool = True, keyboard: bool = True):
         """重装钩子以保持优先级（轻量级，仅卸载重装）"""
@@ -219,11 +215,6 @@ class HooksMixin:
                 self._install_keyboard_hook()
                 keyboard_ok = bool(self.keyboard_hook and self.keyboard_hook.is_installed())
                 success = success and keyboard_ok
-                if keyboard_ok:
-                    self.hotkey_manager._dll = self.keyboard_hook._dll
-                    current_hotkey = getattr(self.hotkey_manager, "_current_hotkey", None)
-                    if current_hotkey:
-                        success = bool(self.hotkey_manager.set_hotkey(current_hotkey)) and success
 
             if success:
                 self._hook_reinstall_failures = 0
@@ -298,13 +289,6 @@ class HooksMixin:
             self._alt_double_tap_signal.emit()
         except Exception as exc:
             logger.debug("发送Alt双击信号失败: %s", exc, exc_info=True)
-
-    def _on_hook_hotkey_from_hook(self):
-        """键盘钩子热键回调 (从钩子线程调用，必须极快返回)"""
-        try:
-            self._hook_hotkey_signal.emit()
-        except Exception as exc:
-            logger.debug("发送热键信号失败: %s", exc, exc_info=True)
 
     def _on_alt_double_tap(self):
         """处理 Alt 双击 - 切换鼠标中键钩子暂停状态 (主线程)"""

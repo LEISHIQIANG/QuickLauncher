@@ -1,6 +1,9 @@
+import os
+import subprocess
+
 import pytest
 
-from core.path_security import UnsafePathError, resolve_under, safe_rmtree_child
+from core.path_security import UnsafePathError, is_link_or_reparse_point, resolve_under, safe_rmtree_child
 
 pytestmark = pytest.mark.integration
 
@@ -31,14 +34,22 @@ def test_safe_rmtree_child_removes_directory(tmp_path):
     assert not target.exists()
 
 
-def test_safe_rmtree_child_refuses_symlink_even_when_target_is_inside_root(tmp_path):
+def test_safe_rmtree_child_refuses_link_even_when_target_is_inside_root(tmp_path):
     real = tmp_path / "real"
     real.mkdir()
     link = tmp_path / "link"
-    try:
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(link), str(real)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+    else:
         link.symlink_to(real, target_is_directory=True)
-    except (OSError, NotImplementedError):
-        pytest.skip("symlink creation is not available on this system")
+
+    assert is_link_or_reparse_point(link) is True
 
     with pytest.raises(UnsafePathError):
         safe_rmtree_child(tmp_path, link)

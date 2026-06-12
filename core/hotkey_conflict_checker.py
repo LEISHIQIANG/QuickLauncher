@@ -4,8 +4,12 @@
 
 import ctypes
 import logging
+import os
+import threading
+import uuid
 
 logger = logging.getLogger(__name__)
+_probe_lock = threading.Lock()
 
 # Windows 系统快捷键列表
 SYSTEM_HOTKEYS = {
@@ -153,6 +157,7 @@ def is_hotkey_registered(modifiers: list, key: str) -> bool:
     """
     try:
         user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
 
         # 转换修饰键
         mod_flags = 0
@@ -172,16 +177,20 @@ def is_hotkey_registered(modifiers: list, key: str) -> bool:
         if vk_code == 0:
             return False
 
-        # 尝试注册，如果失败说明已被占用
-        result = user32.RegisterHotKey(None, 1, mod_flags, vk_code)
-
-        if result:
-            # 注册成功，立即取消注册
-            user32.UnregisterHotKey(None, 1)
-            return False
-        else:
-            # 注册失败，可能已被占用
-            return True
+        atom_name = f"QuickLauncher.HotkeyProbe.{os.getpid()}.{uuid.uuid4().hex}"
+        with _probe_lock:
+            atom = int(kernel32.GlobalAddAtomW(atom_name) or 0)
+            if not atom:
+                logger.debug("创建快捷键探测 atom 失败")
+                return False
+            try:
+                result = user32.RegisterHotKey(None, atom, mod_flags, vk_code)
+                if result:
+                    user32.UnregisterHotKey(None, atom)
+                    return False
+                return True
+            finally:
+                kernel32.GlobalDeleteAtom(atom)
 
     except Exception as e:
         logger.debug(f"检查快捷键注册状态失败: {e}")

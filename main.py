@@ -413,6 +413,52 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
                 sys.stderr = old_stderr
 
 
+def _run_plugin_worker_from_argv(argv: list[str]) -> int:
+    """Run a persistent heavyweight-plugin worker in a child process."""
+
+    if len(argv) < 3:
+        return 2
+
+    script_path = os.path.abspath(argv[2])
+    site_paths: list[str] = []
+    port = 0
+    token = ""
+    i = 3
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--plugin-site" and i + 1 < len(argv):
+            site_paths.append(os.path.abspath(argv[i + 1]))
+            i += 2
+            continue
+        if arg == "--plugin-port" and i + 1 < len(argv):
+            try:
+                port = int(argv[i + 1])
+            except ValueError:
+                return 2
+            i += 2
+            continue
+        if arg == "--plugin-token" and i + 1 < len(argv):
+            token = argv[i + 1]
+            i += 2
+            continue
+        return 2
+
+    if not port or not token:
+        return 2
+    try:
+        from core.plugin_worker_runtime import run_worker_process
+
+        return run_worker_process(
+            script_path,
+            site_paths=site_paths,
+            port=port,
+            token=token,
+        )
+    except Exception:
+        traceback.print_exc()
+        return 1
+
+
 def _run_smoke_test_from_argv(argv: list[str]) -> int:
     """Run a non-interactive packaged-runtime smoke test and exit."""
 
@@ -635,6 +681,8 @@ if __name__ == "__main__":
             sys.exit(0)
         elif sys.argv[1] == "--plugin-helper":
             sys.exit(_run_plugin_helper_from_argv(sys.argv))
+        elif sys.argv[1] == "--plugin-worker":
+            sys.exit(_run_plugin_worker_from_argv(sys.argv))
         elif sys.argv[1] == "--install-service":
             from core.service_manager import enable_service_autostart
 

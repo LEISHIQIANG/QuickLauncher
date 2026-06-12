@@ -33,13 +33,13 @@ screenshot_ocr/
 
 ## 运行依赖
 
-插件包已包含 OCR 相关资源、OCR Python 模块和 `wxPython` 运行库。编译后的 QuickLauncher 会通过 `--plugin-helper` 子进程加载插件内的 `runtime/site-packages`，用户电脑不需要额外安装 Python 或 wxPython。
+插件包已包含 OCR 相关资源、OCR Python 模块和 `wxPython` 运行库。QuickLauncher 会在启动空闲期通过常驻 worker 提前加载 wx、OCR DLL 和识别模型。执行命令时复用已经就绪的进程，不再为每次截图重新启动完整主程序。
 
-源码运行时也会优先走主程序 helper 入口；如果插件包缺少内置 `wxPython`，才会回退查找系统 Python。
+如果常驻 worker 启动失败，插件会自动回退到原有的单次 `--plugin-helper` 路径，避免因为预热失败导致功能不可用。
 
 ## 权限
 
 - `builtin.command`：允许插件把这个命令注册到 QuickLauncher 的内置命令表面。
 - `file.read`：读取截图临时文件。
 - `clipboard.write`：结果动作允许复制文字。
-- `process.run`：OCR 截图流程在独立 helper 进程中运行。
+- `process.run`：OCR 截图流程在宿主管理的独立常驻进程中运行。

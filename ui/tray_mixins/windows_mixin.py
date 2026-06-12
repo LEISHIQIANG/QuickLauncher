@@ -46,15 +46,6 @@ class WindowsMixin:
                     finally:
                         self._pending_config_window_view_state = None
 
-            if not getattr(self, "_hotkey_signal_connected", False):
-                try:
-                    panel = getattr(self.config_window, "settings_panel", None)
-                    if panel and hasattr(panel, "hotkey_recording_changed"):
-                        panel.hotkey_recording_changed.connect(self._on_hotkey_recording_changed)
-                        self._hotkey_signal_connected = True
-                except Exception as exc:
-                    logger.debug("连接热键录制信号失败: %s", exc, exc_info=True)
-
             if not getattr(self, "_special_apps_signal_connected", False):
                 try:
                     panel = getattr(self.config_window, "settings_panel", None)
@@ -160,7 +151,6 @@ class WindowsMixin:
                 logger.debug("全局缩放后预热弹窗图标失败: %s", exc, exc_info=True)
 
             self.config_window = None
-            self._hotkey_signal_connected = False
             self._special_apps_signal_connected = False
             if old_center is not None:
                 self._pending_config_window_center = old_center
@@ -187,18 +177,6 @@ class WindowsMixin:
         except Exception as exc:
             logger.debug("缩放重开设置窗口失败: %s", exc, exc_info=True)
             reopen()
-
-    def _on_hotkey_recording_changed(self, recording: bool):
-        try:
-            self._is_hotkey_recording = bool(recording)
-            if recording:
-                self.hotkey_manager.stop()
-                if self.keyboard_hook:
-                    self.keyboard_hook.set_hotkey("", None)
-                return
-            pass
-        except Exception as exc:
-            logger.debug("设置热键录制状态失败: %s", exc, exc_info=True)
 
     def _show_log(self):
         """显示日志窗口"""

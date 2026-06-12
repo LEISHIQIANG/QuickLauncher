@@ -300,6 +300,8 @@ class PluginAPI:
         self._staged_search_handlers: dict[str, Callable[[str], list[dict]] | None] = {}
         self._registered_modules: dict[str, str] = {}
         self._registered_chain_processors: list[str] = []
+        self._persistent_helpers: dict[str, Any] = {}
+        self._persistent_helpers_lock = threading.Lock()
         self._committed = False
 
     def _check_permission(self, perm: str) -> None:
@@ -1076,6 +1078,110 @@ class PluginAPI:
             "truncated": truncated,
         }
 
+    def prewarm_persistent_helper(
+        self,
+        script_path: str | Path,
+        *,
+        site_paths: list[str | Path] | None = None,
+        timeout: float = 45.0,
+        inherit_environment: bool = True,
+    ) -> bool:
+        """Start a reusable plugin worker and wait until its heavy runtime is ready."""
+        self._check_permission("process.run")
+        worker = self._get_persistent_helper(
+            script_path,
+            site_paths=site_paths,
+            inherit_environment=inherit_environment,
+        )
+        worker.start(timeout=timeout)
+        return True
+
+    def request_persistent_helper(
+        self,
+        script_path: str | Path,
+        payload: dict[str, Any] | None = None,
+        *,
+        site_paths: list[str | Path] | None = None,
+        timeout: float = 300.0,
+        inherit_environment: bool = True,
+    ) -> dict[str, Any]:
+        """Send one request to a reusable plugin worker."""
+        self._check_permission("process.run")
+        worker = self._get_persistent_helper(
+            script_path,
+            site_paths=site_paths,
+            inherit_environment=inherit_environment,
+        )
+        started = time.perf_counter()
+        result = worker.request(dict(payload or {}), timeout=timeout)
+        self.logger.info(
+            "persistent worker request completed: worker=%s operation=%s elapsed=%.1f ms",
+            script_path,
+            str((payload or {}).get("operation") or ""),
+            (time.perf_counter() - started) * 1000,
+        )
+        return result
+
+    def stop_persistent_helper(self, script_path: str | Path) -> None:
+        safe_path = _safe_relative_plugin_path(str(script_path))
+        if safe_path is None:
+            return
+        key = str(safe_path).replace("\\", "/").lower()
+        with self._persistent_helpers_lock:
+            worker = self._persistent_helpers.pop(key, None)
+        if worker is not None:
+            worker.close()
+
+    def close(self) -> None:
+        """Release plugin-owned runtime resources."""
+        with self._persistent_helpers_lock:
+            workers = list(self._persistent_helpers.values())
+            self._persistent_helpers.clear()
+        for worker in workers:
+            try:
+                worker.close()
+            except Exception:
+                logger.debug("关闭插件常驻运行时失败: %s", self._plugin_id, exc_info=True)
+
+    def _get_persistent_helper(
+        self,
+        script_path: str | Path,
+        *,
+        site_paths: list[str | Path] | None,
+        inherit_environment: bool,
+    ):
+        safe_script = _safe_relative_plugin_path(str(script_path))
+        if safe_script is None:
+            raise ValueError(f"plugin worker path is unsafe: {script_path}")
+        script = resolve_under(self._plugin_dir.resolve(strict=False), self._plugin_dir / safe_script)
+        if not script.is_file():
+            raise FileNotFoundError(str(script))
+
+        resolved_sites: list[Path] = []
+        for raw_path in site_paths or []:
+            safe_site = _safe_relative_plugin_path(str(raw_path))
+            if safe_site is None:
+                raise ValueError(f"plugin site path is unsafe: {raw_path}")
+            site = resolve_under(self._plugin_dir.resolve(strict=False), self._plugin_dir / safe_site)
+            if site.is_dir():
+                resolved_sites.append(site)
+
+        key = str(safe_script).replace("\\", "/").lower()
+        with self._persistent_helpers_lock:
+            worker = self._persistent_helpers.get(key)
+            if worker is None:
+                from .plugin_worker_runtime import PersistentPluginWorker
+
+                worker = PersistentPluginWorker(
+                    plugin_id=self._plugin_id,
+                    script_path=script,
+                    site_paths=resolved_sites,
+                    cwd=self._plugin_dir,
+                    inherit_environment=inherit_environment,
+                )
+                self._persistent_helpers[key] = worker
+            return worker
+
     @staticmethod
     def _decode_process_output(data: bytes) -> str:
         if not data:
@@ -1717,6 +1823,8 @@ class PluginManager:
                         logger.info("已执行插件 %s 的清理钩子 %s", plugin_id, hook_name)
                     except Exception as e:
                         logger.warning("执行插件 %s 的清理钩子 %s 失败: %s", plugin_id, hook_name, e)
+        if api is not None:
+            api.close()
 
         # Remove registered commands via owner index for consistency
         owner_id = f"plugin:{plugin_id}"
@@ -1824,6 +1932,14 @@ class PluginManager:
         if failed:
             logger.warning("以下插件自动启用失败: %s", "; ".join(failed))
         return count
+
+    def shutdown(self) -> None:
+        """Disable all active plugins and release their owned workers."""
+        for plugin_id in list(self._active_apis):
+            try:
+                self.disable_plugin(plugin_id, persist=False)
+            except Exception:
+                logger.debug("关闭插件失败: %s", plugin_id, exc_info=True)
 
     # ---- installation ----
 

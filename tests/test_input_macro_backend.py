@@ -13,7 +13,8 @@ class FakeDLL:
         self.capture_kwargs = kwargs
         return True
 
-    def stop_input_capture(self):
+    def stop_input_capture(self, **kwargs):
+        self.stop_kwargs = kwargs
         return None
 
     def is_input_capture_active(self):
@@ -57,6 +58,8 @@ def test_input_macro_backend_records_builds_and_plays():
         False,
     )
     assert dll.capture_kwargs["filter_flags"] != 0
+    assert dll.capture_kwargs["owner"] is backend
+    assert dll.stop_kwargs["owner"] is backend
 
 
 def test_input_macro_backend_cancel_wait_and_status():

@@ -76,11 +76,12 @@ class InputMacroBackend:
             include_injected=include_injected,
             include_own_playback=include_own_playback,
             coalesce_mouse_moves=coalesce_mouse_moves,
+            owner=self,
         )
         return self._recording
 
     def stop_recording(self) -> list[dict]:
-        self._dll.stop_input_capture()
+        self._dll.stop_input_capture(owner=self)
         self._recording = False
         self._event_callback = None
         return self.recorded_events()

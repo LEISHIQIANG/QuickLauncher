@@ -68,7 +68,6 @@ class _CleanupHarness(SleepMixin):
     def __init__(self):
         self.popup_window = _VisiblePopup()
         self._extra_popup_windows = []
-        self.hotkey_manager = type("Hotkey", (), {"stop": lambda self: None})()
         self.memory_guard = type("MemoryGuard", (), {"check_and_optimize": lambda self: False})()
 
 
@@ -194,6 +193,21 @@ def test_hooks_reset_uninstalls_native_hooks():
     calls = []
 
     class FakeDLL:
+        def StopInputCapture(self):
+            pass
+
+        def CancelMacroPlayback(self):
+            pass
+
+        def WaitForMacroPlayback(self, _timeout_ms):
+            return True
+
+        def ReleaseMacroPressedInputs(self):
+            pass
+
+        def StopHotkeyCapture(self):
+            pass
+
         def UninstallMouseHook(self):
             calls.append("mouse")
 
@@ -203,10 +217,27 @@ def test_hooks_reset_uninstalls_native_hooks():
         def ClearGlobalHotkey(self):
             calls.append("hotkey")
 
+        def AreHooksQuiescent(self):
+            return True
+
     instance = object.__new__(HooksDLL)
     instance.dll = FakeDLL()
     instance.loaded = True
     instance.compatible = True
+    instance._has_input_capture = True
+    instance._lifecycle_lock = __import__("threading").RLock()
+    instance._retired_callback_refs = __import__("collections").deque(maxlen=64)
+    instance._input_capture_filter_flags = 0
+    instance._input_capture_owner = None
+    for attr_name in (
+        "_mouse_callback_ref",
+        "_alt_dclick_callback_ref",
+        "_keyboard_callback_ref",
+        "_hotkey_callback_ref",
+        "_hotkey_capture_callback_ref",
+        "_input_event_callback_ref",
+    ):
+        setattr(instance, attr_name, None)
 
     HooksDLL._instance = instance
     HooksDLL._load_attempted = True

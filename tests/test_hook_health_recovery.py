@@ -14,7 +14,6 @@ def test_reinstall_hooks_can_recover_mouse_only(monkeypatch):
         _install_mouse_backend=lambda: calls.append("mouse") or True,
         _install_keyboard_hook=lambda: calls.append("keyboard"),
         keyboard_hook=None,
-        hotkey_manager=SimpleNamespace(),
     )
     monkeypatch.setattr("ui.tray_mixins.hooks_mixin.time.monotonic", lambda: 100.0)
 
@@ -31,7 +30,6 @@ def test_reinstall_hooks_uses_backoff_after_failure(monkeypatch):
         _hook_reinstall_failures=0,
         _install_mouse_backend=lambda: False,
         keyboard_hook=None,
-        hotkey_manager=SimpleNamespace(),
     )
     monkeypatch.setattr("ui.tray_mixins.hooks_mixin.time.monotonic", lambda: 50.0)
 
@@ -49,7 +47,6 @@ def test_reinstall_hooks_backs_off_when_only_raw_input_recovers(monkeypatch):
         _install_mouse_backend=lambda: True,
         mouse_hook=raw_only_hook,
         keyboard_hook=None,
-        hotkey_manager=SimpleNamespace(),
     )
     monkeypatch.setattr("ui.tray_mixins.hooks_mixin.time.monotonic", lambda: 75.0)
 
@@ -58,25 +55,19 @@ def test_reinstall_hooks_backs_off_when_only_raw_input_recovers(monkeypatch):
     assert tray._hook_reinstall_cooldown_until == 77.0
 
 
-def test_reinstall_hooks_tracks_hotkey_restore_failure(monkeypatch):
+def test_reinstall_hooks_recovers_keyboard_without_duplicate_hotkey_channel(monkeypatch):
     keyboard_hook = SimpleNamespace(is_installed=lambda: True, _dll=object())
-    hotkey_manager = SimpleNamespace(
-        _current_hotkey="<ctrl>+p",
-        set_hotkey=lambda _hotkey: False,
-    )
     tray = SimpleNamespace(
         _hook_reinstall_in_progress=False,
         _hook_reinstall_cooldown_until=0.0,
         _hook_reinstall_failures=0,
         _install_keyboard_hook=lambda: None,
         keyboard_hook=keyboard_hook,
-        hotkey_manager=hotkey_manager,
     )
     monkeypatch.setattr("ui.tray_mixins.hooks_mixin.time.monotonic", lambda: 90.0)
 
-    assert HooksMixin._reinstall_hooks(tray, mouse=False, keyboard=True) is False
-    assert tray._hook_reinstall_failures == 1
-    assert tray._hook_reinstall_cooldown_until == 92.0
+    assert HooksMixin._reinstall_hooks(tray, mouse=False, keyboard=True) is True
+    assert tray._hook_reinstall_failures == 0
 
 
 def test_check_hook_health_logs_runtime_stat_increase(caplog):

@@ -521,15 +521,13 @@ class TestUpdateInstaller:
         installer = UpdateInstaller()
         events = []
         installer.add_listener(lambda event, data: events.append((event, data)))
-        real = tmp_path / "QuickLauncher_Setup.exe"
         link = tmp_path / "link.exe"
-        real.write_bytes(b"installer")
-        try:
-            link.symlink_to(real)
-        except (OSError, NotImplementedError):
-            pytest.skip("symlink creation is not available on this system")
 
-        installer.install(str(link))
+        with (
+            patch("services.update.installer.os.path.isfile", return_value=True),
+            patch("services.update.installer.os.path.islink", return_value=True),
+        ):
+            installer.install(str(link))
 
         mock_popen.assert_not_called()
         assert any(event == "failed" and "symlink" in str(data) for event, data in events)

@@ -158,7 +158,11 @@ class InputTriggerRecorderWidget(QWidget):
                     return False
                 self._capture_hook_installed_by_us = True
 
-            if not dll.start_hotkey_capture(self._on_native_capture, timeout_ms=CAPTURE_TIMEOUT_MS):
+            if not dll.start_hotkey_capture(
+                self._on_native_capture,
+                timeout_ms=CAPTURE_TIMEOUT_MS,
+                owner=self,
+            ):
                 if self._capture_hook_installed_by_us:
                     try:
                         dll.uninstall_keyboard_hook()
@@ -207,15 +211,9 @@ class InputTriggerRecorderWidget(QWidget):
         dll = self._capture_dll
         if dll is not None and stop_native and self._native_capture_active:
             try:
-                dll.stop_hotkey_capture()
+                dll.stop_hotkey_capture(owner=self)
             except Exception as exc:
                 logger.debug("停止触发按键受保护录制失败: %s", exc, exc_info=True)
-        should_cleanup_native = self._native_capture_active or self._capture_hook_installed_by_us
-        if dll is not None and stop_native and should_cleanup_native:
-            try:
-                dll.release_all_modifier_keys()
-            except Exception as exc:
-                logger.debug("释放触发按键录制残留修饰键失败: %s", exc, exc_info=True)
         if dll is not None and self._capture_hook_installed_by_us and stop_native:
             try:
                 dll.uninstall_keyboard_hook()
@@ -232,11 +230,12 @@ class InputTriggerRecorderWidget(QWidget):
             self._capture_hook_installed_by_us = False
             return
         try:
+            if not dll.hotkey_capture_owned_by(self):
+                return
             if dll.is_hotkey_capture_active() and attempt < 20:
                 QTimer.singleShot(250, lambda: self._cleanup_capture_hook_after_result(attempt + 1))
                 return
-            if dll.is_hotkey_capture_active():
-                dll.stop_hotkey_capture()
+            dll.stop_hotkey_capture(owner=self)
             dll.uninstall_keyboard_hook()
         except Exception as exc:
             logger.debug("清理触发按键录制临时键盘钩子失败: %s", exc, exc_info=True)

@@ -111,20 +111,24 @@ class Win32GlobalHotkey:
     def _ensure_filter(self):
         """确保 Qt 原生事件过滤器已安装。"""
         if self._filter_installed:
-            return
+            return True
         try:
             from PyQt5.QtWidgets import QApplication
 
             app = QApplication.instance()
             if app is None:
                 logger.warning("QApplication 未就绪，无法安装原生事件过滤器")
-                return
+                return False
             self._filter = _HotkeyEventFilter(self._hotkeys)
             app.installNativeEventFilter(self._filter)
             self._filter_installed = True
             logger.debug("已安装 Qt 原生事件过滤器")
+            return True
         except Exception as exc:
             logger.error("安装 Qt 原生事件过滤器失败: %s", exc, exc_info=True)
+            self._filter = None
+            self._filter_installed = False
+            return False
 
     def register(self, hotkey_str: str, callback) -> int:
         """
@@ -145,7 +149,9 @@ class Win32GlobalHotkey:
             logger.error("无法解析热键: %s", hotkey_str)
             return 0
 
-        self._ensure_filter()
+        if not self._ensure_filter():
+            logger.error("全局热键注册中止: Qt 原生事件过滤器不可用")
+            return 0
 
         hotkey_id = self._next_id
         self._next_id += 1
@@ -178,7 +184,9 @@ class Win32GlobalHotkey:
             return False
         try:
             user32 = ctypes.windll.user32
-            user32.UnregisterHotKey(None, hotkey_id)
+            if not user32.UnregisterHotKey(None, hotkey_id):
+                logger.warning("全局热键取消失败: id=%d", hotkey_id)
+                return False
             entry = self._hotkeys.pop(hotkey_id, None)
             logger.info(
                 "全局热键已取消: %s (id=%d)",
@@ -239,6 +247,8 @@ class Win32GlobalHotkey:
             elif lower in ("win", "windows", "meta", "super"):
                 modifiers |= MOD_WIN
             else:
+                if key is not None:
+                    return 0, 0
                 key = part
 
         if key is None:

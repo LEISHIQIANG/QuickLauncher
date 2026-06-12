@@ -70,8 +70,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
     show_config_signal = pyqtSignal()  # 用于跨线程安全地请求显示配置窗口
     # Alt 双击信号 (从钩子线程发到主线程)
     _alt_double_tap_signal = pyqtSignal()
-    # 键盘钩子热键信号 (从钩子线程发到主线程)
-    _hook_hotkey_signal = pyqtSignal()
     _update_event_signal = pyqtSignal(str, object)
     _download_event_signal = pyqtSignal(str, object)
     _install_event_signal = pyqtSignal(str, object)
@@ -216,10 +214,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         # 安装键盘钩子 (Alt双击检测 + Alt按住状态跟踪)
         self.keyboard_hook = None
 
-        # 快捷键管理器（钩子安装后再共享DLL）
-        from hooks.hotkey_manager import HotkeyManager
-
-        self.hotkey_manager = HotkeyManager()
         self._quitting = False
         self._atexit_shutdown_registered = False
         try:
@@ -678,11 +672,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         except Exception as e:
             logger.debug(f"stop update checker failed: {e}")
 
-        try:
-            self.hotkey_manager.stop()
-        except Exception as e:
-            logger.debug(f"stop hotkey manager failed: {e}")
-
         # 清理 Win32 全局快捷键
         try:
             self._win32_hotkey.unregister_all()
@@ -696,6 +685,14 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             shutdown_watcher_manager()
         except Exception as e:
             logger.debug(f"stop folder watcher failed: {e}")
+
+        try:
+            import core
+
+            if core.plugin_manager is not None:
+                core.plugin_manager.shutdown()
+        except Exception as exc:
+            logger.debug("关闭插件运行时失败: %s", exc, exc_info=True)
 
         mouse_hook = self.mouse_hook
         self.mouse_hook = None
@@ -730,6 +727,10 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
         ):
             self._close_widget_if_present(attr_name)
         self._close_extra_popup_windows()
+        try:
+            self.data_manager.shutdown()
+        except Exception as exc:
+            logger.error("退出时刷新配置失败: %s", exc, exc_info=True)
 
     def _close_extra_popup_windows(self):
         for popup in list(getattr(self, "_extra_popup_windows", []) or []):
@@ -924,11 +925,6 @@ fso.DeleteFile WScript.ScriptFullName
                 self._install_hook()
             if not self.keyboard_hook:
                 self._install_keyboard_hook_and_hotkey()
-            else:
-                try:
-                    self.hotkey_manager.start()
-                except Exception as exc:
-                    logger.debug("启动热键管理器: %s", exc, exc_info=True)
 
             self._sync_special_apps_to_hook()
             theme = self.data_manager.get_settings().theme

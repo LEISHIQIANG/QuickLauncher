@@ -1,0 +1,12 @@
+{
+  "id": "qr_code_scanner",
+  "name": "截图二维码识别",
+  "version": "1.1.0",
+  "author": "QuickLauncher",
+  "description": "框选屏幕矩形区域，识别单个二维码，直接显示二维码内容，并提供复制/打开动作。",
+  "entry": "main.py",
+  "icon": "",
+  "keywords": ["qr_code_scanner", "二维码识别", "截图二维码", "qr scan", "qrcode"],
+  "permissions": ["builtin.command", "clipboard.write", "open.url", "process.run"],
+  "commands": []
+}

@@ -66,7 +66,10 @@ def _tray_like(multi_open=True):
     tray = TrayApp.__new__(TrayApp)
     tray._extra_popup_windows = []
     tray._max_extra_popup_windows = 2
-    tray.data_manager = SimpleNamespace(get_settings=lambda: SimpleNamespace(popup_multi_open_when_pinned=multi_open))
+    tray.data_manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(popup_multi_open_when_pinned=multi_open),
+        shutdown=lambda: None,
+    )
     tray.popup_window = None
     tray.config_window = None
     tray.log_window = None
@@ -124,6 +127,8 @@ def test_prune_extra_popup_windows_handles_closed_popups():
 
 def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch):
     tray = _tray_like(multi_open=True)
+    data_shutdown = []
+    tray.data_manager.shutdown = lambda: data_shutdown.append(True)
     tray._settings_sync_timer = FakeTimer()
     tray._sleep_timer = FakeTimer()
     tray._deferred_startup_timer = FakeTimer()
@@ -131,7 +136,6 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
     tray._memory_check_timer = FakeTimer()
     tray._process_check_timer = FakeTimer()
     tray._update_checker = FakeRuntimeComponent()
-    tray.hotkey_manager = FakeRuntimeComponent()
     tray.mouse_hook = FakeRuntimeComponent()
     tray.keyboard_hook = FakeRuntimeComponent()
     tray.tray_icon = FakeRuntimeComponent()
@@ -149,12 +153,12 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
 
     assert tray._settings_sync_timer.stopped is True
     assert tray._update_checker.stopped is True
-    assert tray.hotkey_manager.stopped is True
     assert tray.mouse_hook is None
     assert tray.keyboard_hook is None
     assert tray.tray_icon.hidden is True
     assert tray.config_window is None
     assert tray.diagnostics_window is None
+    assert data_shutdown == [True]
 
 
 def test_start_defers_runtime_components_until_called(monkeypatch):

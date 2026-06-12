@@ -76,7 +76,7 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "--exclude-dir",
         "tools",
         "--max-total",
-        "1360",
+        "1366",
         "--max-unlogged",
         "300",
     ]

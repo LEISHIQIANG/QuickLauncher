@@ -339,7 +339,7 @@ class HotkeyExecutionMixin:
 
     @staticmethod
     def _execute_hotkey_sendinput(modifiers: list[str], key: str) -> bool:
-        """使用 keybd_event + 随机延迟模拟真实按键"""
+        """使用 SendInput 发送快捷键，并只释放本次实际注入的按键。"""
         import random
 
         vk_main = ShortcutExecutor._vk_from_key(key)
@@ -358,48 +358,44 @@ class HotkeyExecutionMixin:
                     vk = 0xA4
                 mod_vks.append(vk)
 
+        pressed_by_us: list[int] = []
         try:
-            # 按下修饰键
             for vk in mod_vks:
-                logger.debug(f"[SendInput] 按下修饰键: {vk}")
-                user32.keybd_event(vk, 0, 0, 0)
+                if user32.GetAsyncKeyState(vk) & 0x8000:
+                    logger.debug("[SendInput] 保留用户已按住的修饰键: %s", vk)
+                    continue
+                logger.debug("[SendInput] 按下修饰键: %s", vk)
+                if not ShortcutExecutor._sendinput_key_event(vk, False):
+                    return False
+                pressed_by_us.append(vk)
                 time.sleep(random.uniform(0.015, 0.025))
 
-            # 按下主键
-            logger.debug(f"[SendInput] 按下主键: {vk_main}")
-            user32.keybd_event(vk_main, 0, 0, 0)
+            logger.debug("[SendInput] 按下主键: %s", vk_main)
+            if not ShortcutExecutor._sendinput_key_event(vk_main, False):
+                return False
+            pressed_by_us.append(vk_main)
             time.sleep(random.uniform(0.040, 0.060))
 
-            # 释放主键
-            logger.debug(f"[SendInput] 释放主键: {vk_main}")
-            user32.keybd_event(vk_main, 0, KEYEVENTF_KEYUP, 0)
+            if not ShortcutExecutor._sendinput_key_event(vk_main, True):
+                return False
+            pressed_by_us.pop()
             time.sleep(random.uniform(0.015, 0.025))
 
-            # 释放修饰键（逆序，带 EXTENDEDKEY 标志）
             for vk in reversed(mod_vks):
-                logger.debug(f"[SendInput] 释放修饰键: {vk}")
-                flags = KEYEVENTF_KEYUP
-                if ShortcutExecutor._is_extended_vk(vk):
-                    flags |= KEYEVENTF_EXTENDEDKEY
-                user32.keybd_event(vk, 0, flags, 0)
+                if vk not in pressed_by_us:
+                    continue
+                logger.debug("[SendInput] 释放修饰键: %s", vk)
+                if not ShortcutExecutor._sendinput_key_event(vk, True):
+                    return False
+                pressed_by_us.remove(vk)
                 time.sleep(0.010)
-
-            # 强制释放所有修饰键
-            time.sleep(0.020)
-            for vk in [0x12, 0xA4, 0xA5, 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1]:
-                flags = KEYEVENTF_KEYUP
-                if ShortcutExecutor._is_extended_vk(vk):
-                    flags |= KEYEVENTF_EXTENDEDKEY
-                user32.keybd_event(vk, 0, flags, 0)
-
             return True
-
-        except Exception as e:
-            logger.error(f"[Hotkey] 错误: {e}")
-            # 只在异常时清理修饰键
-            for vk in [0x12, 0xA4, 0xA5, 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1]:
-                user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+        except Exception as exc:
+            logger.error("[Hotkey] 错误: %s", exc)
             return False
+        finally:
+            for vk in reversed(pressed_by_us):
+                ShortcutExecutor._sendinput_key_event(vk, True)
 
     @staticmethod
     def _force_release_modifiers():

@@ -8,6 +8,7 @@ import hashlib
 import logging
 import os
 import threading
+import time
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime
@@ -121,8 +122,8 @@ INPUT_EVENT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.POINTER(HookInputEvent))
 
 
 class HooksDLL:
-    EXPECTED_VERSION = 9
-    EXPECTED_DLL_SHA256 = "ab4ea474971bf6bdf1f9b6b4a4f1be6e08d567791bb1871d067658d200bdd7a0"
+    EXPECTED_VERSION = 10
+    EXPECTED_DLL_SHA256 = "fca4375a27fab35b27081312f11de7ae779f5f29fee8e2b5e210f38041d737b7"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -139,6 +140,7 @@ class HooksDLL:
         "StopHotkeyCapture",
         "IsHotkeyCaptureActive",
         "ReleaseAllModifierKeys",
+        "AreHooksQuiescent",
     )
     _last_probe = {}
     _instance = None
@@ -154,9 +156,12 @@ class HooksDLL:
         with cls._instance_lock:
             if cls._instance is not None:
                 try:
-                    cls._instance.shutdown_hooks()
+                    if not cls._instance.shutdown_hooks():
+                        logger.error("hooks.dll reset aborted because native callbacks are still active")
+                        return
                 except Exception as exc:
                     logger.warning("hooks.dll reset 卸载钩子失败: %s", exc, exc_info=True)
+                    return
             cls._instance = None
             cls._load_attempted = False
 
@@ -243,9 +248,11 @@ class HooksDLL:
         self._keyboard_callback_ref = None
         self._hotkey_callback_ref = None
         self._hotkey_capture_callback_ref = None
+        self._hotkey_capture_owner = None
         self._retire_callback_ref(getattr(self, "_input_event_callback_ref", None))
         self._input_event_callback_ref = None
         self._input_capture_filter_flags = 0
+        self._input_capture_owner = None
 
     def _retire_callback_ref(self, callback_ref) -> None:
         """Keep native callback thunks alive after replacement or timeout.
@@ -276,6 +283,17 @@ class HooksDLL:
         if actual != expected:
             return f"hooks.dll SHA-256 mismatch: expected {expected}, actual {actual}"
         return ""
+
+    @property
+    def expected_sha256(self) -> str:
+        return self._expected_sha256
+
+    def verify_integrity(self) -> bool:
+        """Recompute and compare the configured hooks.dll SHA-256."""
+        if not self._verify_integrity or not self._expected_sha256:
+            return False
+        file_info = _dll_file_info(self.dll_path)
+        return bool(file_info["exists"] and str(file_info["sha256"] or "").strip().lower() == self._expected_sha256)
 
     def _bind_required_exports(self):
         for name in self.REQUIRED_EXPORTS:
@@ -311,6 +329,8 @@ class HooksDLL:
         self.dll.ClearGlobalHotkey.restype = None
         self.dll.ReleaseAllModifierKeys.argtypes = []
         self.dll.ReleaseAllModifierKeys.restype = None
+        self.dll.AreHooksQuiescent.argtypes = []
+        self.dll.AreHooksQuiescent.restype = ctypes.c_bool
 
     def _bind_optional_exports(self):
         # 特殊应用支持（可选，兼容旧DLL）
@@ -536,7 +556,17 @@ class HooksDLL:
         with self._lifecycle_lock:
             return self._ready()
 
-    def shutdown_hooks(self) -> None:
+    def are_hooks_quiescent(self) -> bool:
+        with self._lifecycle_lock:
+            if self.dll is None:
+                return True
+            try:
+                return bool(self.dll.AreHooksQuiescent())
+            except Exception as exc:
+                logger.debug("hooks.dll AreHooksQuiescent failed: %s", exc, exc_info=True)
+                return False
+
+    def shutdown_hooks(self) -> bool:
         """Uninstall native hooks before dropping the DLL reference."""
         lifecycle_lock = getattr(self, "_lifecycle_lock", None)
         if lifecycle_lock is None:
@@ -545,9 +575,14 @@ class HooksDLL:
         with lifecycle_lock:
             dll = self.dll
             if dll is None:
-                return
+                return True
 
-            for func_name in ("StopInputCapture", "CancelMacroPlayback"):
+            try:
+                self.stop_input_capture(force=True)
+            except Exception as exc:
+                logger.debug("hooks.dll StopInputCapture failed during shutdown: %s", exc, exc_info=True)
+
+            for func_name in ("CancelMacroPlayback",):
                 try:
                     func = getattr(dll, func_name, None)
                     if func is not None:
@@ -576,6 +611,24 @@ class HooksDLL:
                 except Exception as exc:
                     logger.debug("hooks.dll %s failed during shutdown: %s", func_name, exc, exc_info=True)
 
+            deadline = time.monotonic() + 2.5
+            while time.monotonic() < deadline:
+                try:
+                    if bool(dll.AreHooksQuiescent()):
+                        break
+                except Exception:
+                    break
+                time.sleep(0.02)
+            try:
+                quiescent = bool(dll.AreHooksQuiescent())
+            except Exception:
+                quiescent = False
+            if not quiescent:
+                logger.error(
+                    "hooks.dll shutdown timed out; retaining DLL and callback references to prevent a native crash"
+                )
+                return False
+
             for attr_name in (
                 "_mouse_callback_ref",
                 "_alt_dclick_callback_ref",
@@ -590,6 +643,7 @@ class HooksDLL:
             self.loaded = False
             self.compatible = False
             self._init_callback_refs()
+            return True
 
     def install_mouse_hook(self, callback: Callable[[int, int], None]) -> bool:
         """安装鼠标钩子"""
@@ -599,8 +653,9 @@ class HooksDLL:
             callback_ref = MOUSE_CALLBACK(callback)
             previous_ref = self._mouse_callback_ref
             ok = bool(self.dll.InstallMouseHook(callback_ref))
-            self._retire_callback_ref(previous_ref)
-            self._mouse_callback_ref = callback_ref if ok else None
+            if ok:
+                self._retire_callback_ref(previous_ref)
+                self._mouse_callback_ref = callback_ref
             if not ok:
                 logger.warning("InstallMouseHook failed, last_error=%s", self.get_last_hook_error())
             return ok
@@ -609,7 +664,7 @@ class HooksDLL:
         """卸载鼠标钩子"""
         mouse_filters = CAPTURE_MOUSE_MOVE | CAPTURE_MOUSE_BUTTON | CAPTURE_MOUSE_WHEEL
         if getattr(self, "_input_capture_filter_flags", 0) & mouse_filters:
-            self.stop_input_capture()
+            self.stop_input_capture(force=True)
         with self._lifecycle_lock:
             if self._ready():
                 self.dll.UninstallMouseHook()
@@ -656,8 +711,9 @@ class HooksDLL:
                 return False
             previous_ref = self._keyboard_callback_ref
             ok = bool(self.dll.InstallKeyboardHook(callback_ref))
-            self._retire_callback_ref(previous_ref)
-            self._keyboard_callback_ref = callback_ref if ok else None
+            if ok:
+                self._retire_callback_ref(previous_ref)
+                self._keyboard_callback_ref = callback_ref
             if not ok:
                 logger.warning("InstallKeyboardHook failed, last_error=%s", self.get_last_hook_error())
             return ok
@@ -665,7 +721,7 @@ class HooksDLL:
     def uninstall_keyboard_hook(self):
         """卸载键盘钩子"""
         if getattr(self, "_input_capture_filter_flags", 0) & CAPTURE_KEYBOARD:
-            self.stop_input_capture()
+            self.stop_input_capture(force=True)
         with self._lifecycle_lock:
             if self._ready():
                 self.dll.UninstallKeyboardHook()
@@ -704,25 +760,50 @@ class HooksDLL:
             self._retire_callback_ref(self._hotkey_callback_ref)
             self._hotkey_callback_ref = None
 
-    def start_hotkey_capture(self, callback: Callable[[int, int, int], None], timeout_ms: int = 10000) -> bool:
+    def start_hotkey_capture(
+        self,
+        callback: Callable[[int, int, int], None],
+        timeout_ms: int = 10000,
+        *,
+        owner=None,
+    ) -> bool:
         """启动受保护快捷键录制，录制期间 DLL 会吞掉所有键盘事件。"""
         with self._lifecycle_lock:
             if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:
+                return False
+            capture_owner = owner if owner is not None else self
+            if self._hotkey_capture_owner is not None:
+                logger.warning("StartHotkeyCapture rejected because another owner is recording")
                 return False
             callback_ref = HOTKEY_CAPTURE_CALLBACK(callback)
             ok = bool(self.dll.StartHotkeyCapture(callback_ref, int(timeout_ms)))
             if ok:
                 self._retire_callback_ref(self._hotkey_capture_callback_ref)
                 self._hotkey_capture_callback_ref = callback_ref
+                self._hotkey_capture_owner = capture_owner
             return ok
 
-    def stop_hotkey_capture(self):
+    def stop_hotkey_capture(self, *, owner=None, force: bool = False) -> bool:
         """停止受保护快捷键录制。"""
         with self._lifecycle_lock:
+            requested_owner = owner if owner is not None else self
+            if (
+                not force
+                and self._hotkey_capture_owner is not None
+                and self._hotkey_capture_owner is not requested_owner
+            ):
+                logger.warning("StopHotkeyCapture rejected for non-owner")
+                return False
             if self._ready() and getattr(self, "_has_hotkey_capture", False):
                 self.dll.StopHotkeyCapture()
             self._retire_callback_ref(self._hotkey_capture_callback_ref)
             self._hotkey_capture_callback_ref = None
+            self._hotkey_capture_owner = None
+            return True
+
+    def hotkey_capture_owned_by(self, owner) -> bool:
+        with self._lifecycle_lock:
+            return self._hotkey_capture_owner is owner
 
     def is_hotkey_capture_active(self) -> bool:
         """返回 DLL 当前是否处于快捷键录制模式。"""
@@ -745,6 +826,7 @@ class HooksDLL:
         include_injected: bool = False,
         include_own_playback: bool = False,
         coalesce_mouse_moves: bool = False,
+        owner=None,
     ) -> bool:
         """Start non-blocking keyboard/mouse macro capture.
 
@@ -771,25 +853,34 @@ class HooksDLL:
                     logger.exception("input capture callback failed")
 
             callback_ref = INPUT_EVENT_CALLBACK(_dispatch)
+            capture_owner = owner if owner is not None else self
+            if self._input_capture_owner is not None:
+                logger.warning("StartInputCapture rejected because another owner is recording")
+                return False
             previous_ref = self._input_event_callback_ref
             ok = bool(self.dll.StartInputCapture(callback_ref, flags))
-            self._retire_callback_ref(previous_ref)
             if not ok:
-                self._input_event_callback_ref = None
-                self._input_capture_filter_flags = 0
                 logger.warning("StartInputCapture failed, last_error=%s", self.get_last_hook_error())
             else:
+                self._retire_callback_ref(previous_ref)
                 self._input_event_callback_ref = callback_ref
                 self._input_capture_filter_flags = flags
+                self._input_capture_owner = capture_owner
             return ok
 
-    def stop_input_capture(self) -> None:
+    def stop_input_capture(self, *, owner=None, force: bool = False) -> bool:
         with self._lifecycle_lock:
+            requested_owner = owner if owner is not None else self
+            if not force and self._input_capture_owner is not None and self._input_capture_owner is not requested_owner:
+                logger.warning("StopInputCapture rejected for non-owner")
+                return False
             if self._ready() and self._has_input_capture:
                 self.dll.StopInputCapture()
             self._retire_callback_ref(self._input_event_callback_ref)
             self._input_event_callback_ref = None
             self._input_capture_filter_flags = 0
+            self._input_capture_owner = None
+            return True
 
     def is_input_capture_active(self) -> bool:
         if not self._ready() or not self._has_input_capture:
