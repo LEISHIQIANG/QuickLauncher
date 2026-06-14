@@ -79,7 +79,10 @@ class PopupDragDropMixin:
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
-            icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+            shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+            icons_bottom = (
+                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+            )
 
             if pos.y() <= icons_bottom:
                 col = (pos.x() - self.padding) // self.cell_size

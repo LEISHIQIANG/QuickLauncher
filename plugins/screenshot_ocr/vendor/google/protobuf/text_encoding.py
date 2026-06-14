@@ -29,6 +29,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """Encoding related utilities."""
+
 import re
 
 _cescape_chr_to_symbol_map = {}

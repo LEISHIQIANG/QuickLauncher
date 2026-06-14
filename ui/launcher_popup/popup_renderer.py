@@ -355,8 +355,8 @@ class PopupRendererMixin:
         if self.dock_items and dirty_rect.intersects(dock_rect):
             self._draw_dock(painter, text_color, hover_color, dock_bg, drop_highlight_color, bg_mode, border_color)
 
-        pin_y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else 0
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        pin_y_offset = (self._body_y_offset() if hasattr(self, "_body_y_offset") else 0) + shadow_margin
         pinned_rect = QRect(max(0, self.width() - shadow_margin - sp(18)), pin_y_offset, sp(18), sp(18))
         if self.is_pinned and dirty_rect.intersects(pinned_rect):
             painter.setBrush(QBrush(accent_color))
@@ -384,6 +384,9 @@ class PopupRendererMixin:
         page_fraction = page_pos - page_base
         w = self.width()
 
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        visual_w = w - 2 * shadow_margin
+
         if page_fraction > 0.001 and len(self.pages) > 1:
             first_index = page_base % len(self.pages)
             second_index = (page_base + 1) % len(self.pages)
@@ -394,48 +397,76 @@ class PopupRendererMixin:
                 second_index, text_color, hover_color, drop_highlight_color, bg_mode
             )
             if first_pixmap is not None and second_pixmap is not None:
-                offset1 = int(w * page_fraction)
-                visible1 = w - offset1
+                offset1 = int(visual_w * page_fraction)
+                visible1 = visual_w - offset1
                 if visible1 > 0:
                     painter.save()
-                    painter.setClipRect(0, y_offset, visible1, max(0, self.content_height - y_offset))
+                    painter.setClipRect(
+                        shadow_margin,
+                        y_offset + shadow_margin,
+                        visible1,
+                        max(0, self.content_height - y_offset - shadow_margin),
+                    )
                     painter.drawPixmap(-offset1, 0, first_pixmap)
                     painter.restore()
-                offset2 = int(w * (1.0 - page_fraction))
-                visible2 = w - offset2
+                offset2 = int(visual_w * (1.0 - page_fraction))
+                visible2 = visual_w - offset2
                 if visible2 > 0:
                     painter.save()
-                    painter.setClipRect(offset2, y_offset, visible2, max(0, self.content_height - y_offset))
+                    painter.setClipRect(
+                        shadow_margin + offset2,
+                        y_offset + shadow_margin,
+                        visible2,
+                        max(0, self.content_height - y_offset - shadow_margin),
+                    )
                     painter.drawPixmap(offset2, 0, second_pixmap)
                     painter.restore()
             else:
-                painter.save()
-                painter.translate(int(-w * page_fraction), 0)
-                self._draw_page_items(
-                    painter,
-                    first_index,
-                    text_color,
-                    hover_color,
-                    drop_highlight_color,
-                    bg_mode,
-                    is_prev=True,
-                    y_offset=y_offset,
-                )
-                painter.restore()
+                offset1 = int(visual_w * page_fraction)
+                visible1 = visual_w - offset1
+                if visible1 > 0:
+                    painter.save()
+                    painter.setClipRect(
+                        shadow_margin,
+                        y_offset + shadow_margin,
+                        visible1,
+                        max(0, self.content_height - y_offset - shadow_margin),
+                    )
+                    painter.translate(-offset1, 0)
+                    self._draw_page_items(
+                        painter,
+                        first_index,
+                        text_color,
+                        hover_color,
+                        drop_highlight_color,
+                        bg_mode,
+                        is_prev=True,
+                        y_offset=y_offset,
+                    )
+                    painter.restore()
 
-                painter.save()
-                painter.translate(int(w * (1.0 - page_fraction)), 0)
-                self._draw_page_items(
-                    painter,
-                    second_index,
-                    text_color,
-                    hover_color,
-                    drop_highlight_color,
-                    bg_mode,
-                    is_prev=False,
-                    y_offset=y_offset,
-                )
-                painter.restore()
+                offset2 = int(visual_w * (1.0 - page_fraction))
+                visible2 = visual_w - offset2
+                if visible2 > 0:
+                    painter.save()
+                    painter.setClipRect(
+                        shadow_margin + offset2,
+                        y_offset + shadow_margin,
+                        visible2,
+                        max(0, self.content_height - y_offset - shadow_margin),
+                    )
+                    painter.translate(offset2, 0)
+                    self._draw_page_items(
+                        painter,
+                        second_index,
+                        text_color,
+                        hover_color,
+                        drop_highlight_color,
+                        bg_mode,
+                        is_prev=False,
+                        y_offset=y_offset,
+                    )
+                    painter.restore()
             return
 
         display_page = round(page_pos) % len(self.pages)

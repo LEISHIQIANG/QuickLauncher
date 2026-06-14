@@ -749,16 +749,20 @@ class PopupSearchMixin:
                 temp_dock_folder = Folder(id="dock", name="Dock", is_dock=True, items=self.dock_items)
                 search_folders.append(temp_dock_folder)
 
+            # Include the Icon Repository (图标仓库)
+            repo_folder = None
+            data_manager = self.__dict__.get("data_manager")
+            if data_manager is not None:
+                repo_folder = data_manager.data.get_folder_by_id("icon_repo")
+                if repo_folder is None:
+                    repo_folder = getattr(data_manager, "_icon_repo_folder", None)
+            if repo_folder is not None:
+                if repo_folder not in search_folders:
+                    search_folders.append(repo_folder)
+
             sort_mode = getattr(self.settings, "sort_mode", "smart")
             local_results = search_shortcuts(search_folders, query, sort_mode=sort_mode)
             results.extend(local_results)
-
-            if len(query) >= 2:
-                try:
-                    matched_cmds = find_matching_commands(query)
-                    append_command_results(matched_cmds, "Commands", 80.0)
-                except Exception:
-                    logger.exception("命令搜索失败: %s", query)
 
         self.search_results = results
         if results:

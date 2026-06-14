@@ -367,6 +367,8 @@ class _Win10ShadowWindow:
         self._window_handle = None
         self._last_shadow_state = None
         self._last_paint_state = None
+        self._cached_shadow_pixmap = None
+        self._cached_shadow_key = None
         self._event_hooks_installed = False
         self._method_hooks_installed = False
         try:
@@ -389,6 +391,8 @@ class _Win10ShadowWindow:
         self._window_handle = None
         self._last_shadow_state = None
         self._last_paint_state = None
+        self._cached_shadow_pixmap = None
+        self._cached_shadow_key = None
         self._event_hooks_installed = False
         self._method_hooks_installed = False
         self._sync_timer = None
@@ -701,81 +705,126 @@ class _Win10ShadowWindow:
         QRectF = self._QRectF
         Qt = self._Qt
 
-        painter = QPainter(widget)
         try:
-            painter.setRenderHint(QPainter.Antialiasing, True)
-            painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
-            painter.setCompositionMode(QPainter.CompositionMode_Source)
-            painter.fillRect(widget.rect(), QColor(0, 0, 0, 0))
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            w = widget.width()
+            h = widget.height()
+            try:
+                dpr = float(widget.devicePixelRatioF() or 1.0)
+            except Exception:
+                try:
+                    dpr = float(widget.devicePixelRatio() or 1.0)
+                except Exception:
+                    dpr = 1.0
 
-            content = QRectF(
-                getattr(self, "_content_x", 18),
-                getattr(self, "_content_y", 18),
-                getattr(self, "_content_w", max(1, widget.width() - 36)),
-                getattr(self, "_content_h", max(1, widget.height() - 43)),
-            )
             radius = max(0.0, float(self._radius))
             margin = max(1, int(getattr(self, "_shadow_margin", 18)))
             shadow_size = max(1, int(getattr(self, "_shadow_size_px", max(1, margin - 2))))
             shadow_distance = max(0, int(getattr(self, "_shadow_distance_px", 3)))
-            alpha_scale = max(
-                _WIN10_SHADOW_ALPHA_SCALE_MIN,
-                min(_WIN10_SHADOW_ALPHA_SCALE_MAX, 12.0 / float(shadow_size)),
+            bottom_extra = int(getattr(self, "_shadow_bottom_extra", 0))
+
+            cache_key = (w, h, radius, shadow_size, shadow_distance, margin, bottom_extra, dpr)
+
+            cached_pixmap = getattr(self, "_cached_shadow_pixmap", None)
+            cached_key = getattr(self, "_cached_shadow_key", None)
+
+            if cached_pixmap is not None and cached_key == cache_key:
+                painter = QPainter(widget)
+                try:
+                    painter.drawPixmap(0, 0, cached_pixmap)
+                finally:
+                    painter.end()
+                return
+
+            import math
+
+            from qt_compat import QImage, QPixmap
+
+            # 创建高DPI透明QImage
+            image = QImage(
+                max(1, int(math.ceil(w * dpr))),
+                max(1, int(math.ceil(h * dpr))),
+                QImage.Format_ARGB32_Premultiplied,
             )
+            image.setDevicePixelRatio(dpr)
+            image.fill(0)
 
-            painter.setPen(Qt.NoPen)
-            for i in range(shadow_size, 0, -1):
-                t = i / float(shadow_size)
-                spread = float(i)
-                strength = (1.0 - t) * (1.0 - t)
-                alpha = max(1, int((2 + 12 * strength) * alpha_scale))
-                shadow_rect = content.adjusted(
-                    -spread,
-                    -spread * 0.88,
-                    spread,
-                    spread * 0.88,
-                ).translated(0, shadow_distance)
-                path = QPainterPath()
-                path.addRoundedRect(shadow_rect, radius + spread, radius + spread)
-                painter.fillPath(path, QColor(0, 0, 0, alpha))
+            image_painter = QPainter(image)
+            try:
+                image_painter.setRenderHint(QPainter.Antialiasing, True)
+                image_painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
+                image_painter.setPen(Qt.NoPen)
 
-            contact_margin = max(4, int(round(shadow_size * 0.48)))
-            for i in range(contact_margin, 0, -1):
-                t = i / float(contact_margin)
-                spread = float(i)
-                strength = (1.0 - t) * (1.0 - t)
-                alpha = max(1, int((3 + 14 * strength) * alpha_scale))
-                shadow_rect = content.adjusted(
-                    -spread * 0.42,
-                    0,
-                    spread * 0.42,
-                    spread * 0.55 + max(1.0, shadow_size * 0.12),
-                ).translated(0, 1.0 + shadow_distance)
-                path = QPainterPath()
-                path.addRoundedRect(shadow_rect, radius + spread * 0.42, radius + spread * 0.42)
-                painter.fillPath(path, QColor(0, 0, 0, alpha))
+                content = QRectF(
+                    getattr(self, "_content_x", 18),
+                    getattr(self, "_content_y", 18),
+                    getattr(self, "_content_w", max(1, w - 36)),
+                    getattr(self, "_content_h", max(1, h - 43)),
+                )
+                alpha_scale = max(
+                    _WIN10_SHADOW_ALPHA_SCALE_MIN,
+                    min(_WIN10_SHADOW_ALPHA_SCALE_MAX, 12.0 / float(shadow_size)),
+                )
 
-            near = QPainterPath()
-            near_spread = max(2.0, shadow_size * 0.12)
-            near.addRoundedRect(
-                content.adjusted(-near_spread, -near_spread * 0.65, near_spread, near_spread).translated(
-                    0, min(float(shadow_distance), near_spread)
-                ),
-                radius + near_spread,
-                radius + near_spread,
-            )
-            painter.fillPath(near, QColor(0, 0, 0, max(6, int(18 * alpha_scale))))
+                for i in range(shadow_size, 0, -1):
+                    t = i / float(shadow_size)
+                    spread = float(i)
+                    strength = (1.0 - t) * (1.0 - t)
+                    alpha = max(1, int((2 + 12 * strength) * alpha_scale))
+                    shadow_rect = content.adjusted(
+                        -spread,
+                        -spread * 0.88,
+                        spread,
+                        spread * 0.88,
+                    ).translated(0, shadow_distance)
+                    path = QPainterPath()
+                    path.addRoundedRect(shadow_rect, radius + spread, radius + spread)
+                    image_painter.fillPath(path, QColor(0, 0, 0, alpha))
 
-            inner = QPainterPath()
-            inner.addRoundedRect(content, radius, radius)
-            painter.setCompositionMode(QPainter.CompositionMode_Clear)
-            painter.fillPath(inner, QColor(0, 0, 0, 0))
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+                contact_margin = max(4, int(round(shadow_size * 0.48)))
+                for i in range(contact_margin, 0, -1):
+                    t = i / float(contact_margin)
+                    spread = float(i)
+                    strength = (1.0 - t) * (1.0 - t)
+                    alpha = max(1, int((3 + 14 * strength) * alpha_scale))
+                    shadow_rect = content.adjusted(
+                        -spread * 0.42,
+                        0,
+                        spread * 0.42,
+                        spread * 0.55 + max(1.0, shadow_size * 0.12),
+                    ).translated(0, 1.0 + shadow_distance)
+                    path = QPainterPath()
+                    path.addRoundedRect(shadow_rect, radius + spread * 0.42, radius + spread * 0.42)
+                    image_painter.fillPath(path, QColor(0, 0, 0, alpha))
+
+                near = QPainterPath()
+                near_spread = max(2.0, shadow_size * 0.12)
+                near.addRoundedRect(
+                    content.adjusted(-near_spread, -near_spread * 0.65, near_spread, near_spread).translated(
+                        0, min(float(shadow_distance), near_spread)
+                    ),
+                    radius + near_spread,
+                    radius + near_spread,
+                )
+                image_painter.fillPath(near, QColor(0, 0, 0, max(6, int(18 * alpha_scale))))
+
+                inner = QPainterPath()
+                inner.addRoundedRect(content, radius, radius)
+                image_painter.setCompositionMode(QPainter.CompositionMode_Clear)
+                image_painter.fillPath(inner, QColor(0, 0, 0, 0))
+            finally:
+                image_painter.end()
+
+            pixmap = QPixmap.fromImage(image)
+            self._cached_shadow_pixmap = pixmap
+            self._cached_shadow_key = cache_key
+
+            painter = QPainter(widget)
+            try:
+                painter.drawPixmap(0, 0, pixmap)
+            finally:
+                painter.end()
         except _WINDOW_EFFECT_ERRORS:
             logger.debug("绘制 Win10 阴影失败", exc_info=True)
-        finally:
-            painter.end()
 
 
 def _find_qt_widget_for_hwnd(hwnd: int):

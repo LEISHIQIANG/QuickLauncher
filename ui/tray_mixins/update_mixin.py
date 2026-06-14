@@ -129,6 +129,7 @@ class UpdateMixin:
                 getattr(self._update_checker._config, "allowed_download_hosts", None) if self._update_checker else None
             ),
             version=getattr(update_info, "version", ""),
+            verify_ssl=getattr(self._update_checker._config, "verify_ssl", True) if self._update_checker else True,
         )
 
     def _on_download_event(self, event: str, data=None):

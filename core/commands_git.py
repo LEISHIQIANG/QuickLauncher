@@ -45,6 +45,10 @@ def _run_git(repo: str, extra: list[str], timeout: float = 20.0) -> tuple[int, s
     return proc.returncode, stdout or "", stderr or "", time.perf_counter() - started
 
 
+def _is_path_arg(arg: str) -> bool:
+    return not arg.startswith("-") and (os.path.isdir(arg) or os.path.isabs(arg) or "/" in arg or "\\" in arg)
+
+
 def cmd_git(context: CommandContext) -> CommandResult:
     args = shlex.split(context.args_text or "", posix=False)
     subcommand = (args[0].lower() if args else "status").strip()
@@ -59,9 +63,32 @@ def cmd_git(context: CommandContext) -> CommandResult:
 
     rest = args[1:]
     cwd = os.getcwd()
-    branch = ""
+
+    # Extract repo path if specified in the arguments
+    repo = cwd
+    git_extra_args = []
+
+    if rest:
+        # Check if the last argument is a path argument (exists or looks like a path)
+        if _is_path_arg(rest[-1]):
+            repo = os.path.abspath(rest[-1])
+            git_extra_args = rest[:-1]
+        # Check if the first argument is a path argument and doesn't look like a flag
+        elif len(rest) > 0 and _is_path_arg(rest[0]):
+            repo = os.path.abspath(rest[0])
+            git_extra_args = rest[1:]
+        else:
+            # Check if any argument in the middle is a path argument
+            for i, arg in enumerate(rest):
+                if _is_path_arg(arg):
+                    repo = os.path.abspath(arg)
+                    git_extra_args = rest[:i] + rest[i + 1 :]
+                    break
+            else:
+                git_extra_args = rest
+
     if subcommand == "checkout":
-        if not rest:
+        if not git_extra_args:
             return CommandResult(
                 success=False,
                 message="用法: /git checkout <branch> [repo]",
@@ -69,11 +96,7 @@ def cmd_git(context: CommandContext) -> CommandResult:
                 error="缺少分支名",
                 payload=_large_log_payload(),
             )
-        branch = rest[0]
-        repo = rest[1] if len(rest) > 1 else ""
-    else:
-        repo = rest[0] if rest else ""
-    repo = os.path.abspath(repo or cwd)
+
     if not os.path.isdir(repo):
         return CommandResult(
             success=False,
@@ -107,15 +130,21 @@ def cmd_git(context: CommandContext) -> CommandResult:
             ),
         )
 
-    git_args = {
-        "status": ["status", "--short", "--branch"],
-        "branch": ["branch", "--all", "--verbose", "--no-abbrev"],
-        "log": ["log", "--oneline", "--decorate", "-n", "30"],
-        "diff": ["diff", "--stat"],
-        "fetch": ["fetch", "--all", "--prune"],
-        "pull": ["pull", "--ff-only"],
-        "checkout": ["checkout", branch],
-    }[subcommand]
+    git_args = [subcommand]
+    if git_extra_args:
+        git_args.extend(git_extra_args)
+    else:
+        # Use default arguments for the subcommand when no extra arguments are specified
+        default_args = {
+            "status": ["--short", "--branch"],
+            "branch": ["--all", "--verbose", "--no-abbrev"],
+            "log": ["--oneline", "--decorate", "-n", "30"],
+            "diff": ["--stat"],
+            "fetch": ["--all", "--prune"],
+            "pull": ["--ff-only"],
+            "checkout": [],
+        }.get(subcommand, [])
+        git_args.extend(default_args)
 
     try:
         code, stdout, stderr, duration = _run_git(repo, git_args, timeout=60.0)

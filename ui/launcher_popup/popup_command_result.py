@@ -426,8 +426,11 @@ class PopupCommandResultMixin:
         """Compute the card bounding rect for hit-testing."""
         if self._command_result is None:
             return QRect()
-        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
-        y_bottom = getattr(self, "dock_y", self.height() - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))())
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
+        y_bottom = getattr(
+            self, "dock_y", self.height() - shadow_margin - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))()
+        )
         panel_h = y_bottom - y_top
         card_x = sp(_RESULT_PAD)
         card_y = y_top + sp(8)
@@ -665,8 +668,11 @@ class PopupCommandResultMixin:
             return
 
         w = self.width()
-        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
-        y_bottom = getattr(self, "dock_y", self.height() - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))())
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
+        y_bottom = getattr(
+            self, "dock_y", self.height() - shadow_margin - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))()
+        )
         panel_h = y_bottom - y_top
 
         card_rect = self._result_card_rect()

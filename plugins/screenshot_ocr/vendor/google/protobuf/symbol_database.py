@@ -57,7 +57,6 @@ Example usage::
   my_message_instance = db.GetSymbol('MyMessage')()
 """
 
-
 from google.protobuf import descriptor_pool, message_factory
 from google.protobuf.internal import api_implementation
 

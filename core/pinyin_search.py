@@ -218,7 +218,99 @@ _PINYIN = {
     "式": "shi",
     "辅": "fu",
     "助": "zhu",
+    # Expanded common UI/launcher characters
+    "连": "lian",
+    "记": "ji",
+    "事": "shi",
+    "终": "zhong",
+    "统": "tong",
+    "关": "guan",
+    "于": "yu",
+    "更": "geng",
+    "属": "shu",
+    "性": "xing",
+    "投": "tou",
+    "垃": "la",
+    "圾": "ji",
+    "重": "zhong",
+    "退": "tui",
+    "出": "chu",
+    "高": "gao",
+    "级": "ji",
+    "防": "fang",
+    "墙": "qiang",
+    "诊": "zhen",
+    "断": "duan",
+    "修": "xiu",
+    "片": "pian",
+    "找": "zhao",
+    "匹": "pi",
+    "历": "li",
+    "史": "shi",
+    "扫": "sao",
+    "描": "miao",
+    "口": "kou",
+    "库": "ku",
 }
+
+
+def _gb2312_initial(char: str) -> str | None:
+    """Get the first letter of a Chinese character using GB2312 encoding."""
+    try:
+        gb_bytes = char.encode("gb2312")
+        if len(gb_bytes) != 2:
+            return None
+        val = gb_bytes[0] * 256 + gb_bytes[1]
+        if 45217 <= val <= 45252:
+            return "a"
+        if 45253 <= val <= 45760:
+            return "b"
+        if 45761 <= val <= 46317:
+            return "c"
+        if 46318 <= val <= 46825:
+            return "d"
+        if 46826 <= val <= 47009:
+            return "e"
+        if 47010 <= val <= 47296:
+            return "f"
+        if 47297 <= val <= 47613:
+            return "g"
+        if 47614 <= val <= 48118:
+            return "h"
+        if 48119 <= val <= 49061:
+            return "j"
+        if 49062 <= val <= 49323:
+            return "k"
+        if 49324 <= val <= 49895:
+            return "l"
+        if 49896 <= val <= 50370:
+            return "m"
+        if 50371 <= val <= 50613:
+            return "n"
+        if 50614 <= val <= 50621:
+            return "o"
+        if 50622 <= val <= 50905:
+            return "p"
+        if 50906 <= val <= 51386:
+            return "q"
+        if 51387 <= val <= 51445:
+            return "r"
+        if 51446 <= val <= 52217:
+            return "s"
+        if 52218 <= val <= 52697:
+            return "t"
+        if 52698 <= val <= 52979:
+            return "w"
+        if 52980 <= val <= 53688:
+            return "x"
+        if 53689 <= val <= 54480:
+            return "y"
+        if 54481 <= val <= 55289:
+            return "z"
+    except Exception:
+        return None
+    return None
+
 
 _HAS_PYPINYIN = None
 _HAS_XPINYIN = None
@@ -317,6 +409,12 @@ def pinyin_variants(text: str) -> list[str]:
             has_mapped_cjk = True
             full_parts.append(py)
             initials.append(py[0])
+        elif "\u4e00" <= ch <= "\u9fff" or "\u3400" <= ch <= "\u4dbf" or "\uf900" <= ch <= "\ufa5f":
+            initial = _gb2312_initial(ch)
+            if initial:
+                has_mapped_cjk = True
+                full_parts.append(initial)
+                initials.append(initial)
         elif ch.isascii() and ch.isalnum():
             full_parts.append(ch.lower())
             initials.append(ch.lower())

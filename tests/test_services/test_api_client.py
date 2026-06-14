@@ -79,3 +79,30 @@ class TestApiClient:
         from core.version import APP_VERSION
 
         assert self.client._headers["User-Agent"] == f"QuickLauncher/{APP_VERSION}"
+
+    @patch("services.api.base_client.ssl.create_default_context")
+    @patch("services.api.base_client.ssl.enum_certificates")
+    @patch("sys.platform", "win32")
+    def test_make_verified_ssl_context_advanced(self, mock_enum_certs, mock_create_context):
+        ctx = MagicMock()
+        mock_create_context.return_value = ctx
+        mock_enum_certs.return_value = [
+            (b"cert_data_1", "x509_asn", {"dummy_trust"}),
+            (b"cert_data_2", "other_encoding", {"dummy_trust"}),
+        ]
+
+        mock_certifi = MagicMock()
+        mock_certifi.where.return_value = "dummy_cacert.pem"
+
+        with patch.dict("sys.modules", {"certifi": mock_certifi}):
+            from services.api.base_client import _make_verified_ssl_context
+
+            res = _make_verified_ssl_context()
+
+        assert res is ctx
+        # Check certifi was loaded
+        ctx.load_verify_locations.assert_any_call(cafile="dummy_cacert.pem")
+        # Check Windows cert store was loaded
+        ctx.load_verify_locations.assert_any_call(cadata=b"cert_data_1")
+        # Ensure default certs also called
+        ctx.load_default_certs.assert_called_once_with(ssl.Purpose.SERVER_AUTH)

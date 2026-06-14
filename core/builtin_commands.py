@@ -229,6 +229,15 @@ BUILTIN_COMMAND_ALIASES = {
     "git-status": "git",
     "git-pull": "git",
     "git-checkout": "git",
+    "env": "env",
+    "environment": "env",
+    "env-edit": "env",
+    "环境变量编辑": "env",
+    "编辑环境变量": "env",
+    "god": "god",
+    "godmode": "god",
+    "god-mode": "god",
+    "上帝模式": "god",
 }
 
 

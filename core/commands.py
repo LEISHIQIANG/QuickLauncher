@@ -555,11 +555,11 @@ def _start_qr_file_server(dir_path: str, file_path: str):
     import http.server
     import socketserver
 
-    with socketserver.TCPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler) as s:
+    with socketserver.TCPServer(("0.0.0.0", 0), http.server.SimpleHTTPRequestHandler) as s:
         port = s.server_address[1]
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=dir_path)
-    httpd = socketserver.TCPServer(("127.0.0.1", port), handler)
+    httpd = socketserver.TCPServer(("0.0.0.0", port), handler)
     httpd.timeout = 0.5
     t = start_background_thread(
         name=f"QRFileServer-{port}",
@@ -1177,10 +1177,10 @@ def cmd_wifi(context: CommandContext) -> CommandResult:
             if ":" in line or "：" in line:
                 delim = ":" if ":" in line else "："
                 key, val = line.split(delim, 1)
-                key_strip = key.strip()
+                key_lower = key.strip().lower()
                 val_strip = val.strip()
                 if any(
-                    k in key_strip for k in ["All User Profile", "所有用户配置文件", "用户配置文件", "User Profile"]
+                    k in key_lower for k in ["all user profile", "所有用户配置文件", "用户配置文件", "user profile"]
                 ):
                     if val_strip:
                         profiles.append(val_strip)
@@ -1194,7 +1194,7 @@ def cmd_wifi(context: CommandContext) -> CommandResult:
         )
     else:
         # 查询特定 Wi-Fi 的明文密码
-        name = args
+        name = args.strip("'\"")
         success, out = _run_cmd(["netsh", "wlan", "show", "profile", f"name={name}", "key=clear"])
         if not success:
             return CommandResult(
@@ -1206,11 +1206,11 @@ def cmd_wifi(context: CommandContext) -> CommandResult:
             if ":" in line or "：" in line:
                 delim = ":" if ":" in line else "："
                 key, val = line.split(delim, 1)
-                key_strip = key.strip()
+                key_lower = key.strip().lower()
                 val_strip = val.strip()
-                if any(sk in key_strip for sk in ["Security key", "安全密钥", "安全金鑰"]):
+                if "security key" in key_lower or "安全密钥" in key_lower or "安全金鑰" in key_lower:
                     continue
-                if any(k in key_strip for k in ["Key Content", "关键内容", "金鑰內容", "关键", "金鑰", "Key"]):
+                if any(k in key_lower for k in ["key content", "关键内容", "金鑰內容", "关键", "金鑰", "key"]):
                     password = val_strip
                     break
 

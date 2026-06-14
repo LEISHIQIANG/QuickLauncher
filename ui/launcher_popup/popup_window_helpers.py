@@ -183,7 +183,10 @@ class IconFlashOverlay(QWidget):
             dock_height = int(getattr(launcher, "dock_height", 0) or 0)
             if not (getattr(launcher, "dock_items", None) and dock_height > 0):
                 dock_height = 0
-            icons_bottom = launcher.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+            shadow_margin = int(launcher.__dict__.get("shadow_margin", 0) or 0)
+            icons_bottom = (
+                launcher.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+            )
             for i, item in enumerate(items[: cols * fixed_rows]):
                 row = i // cols
                 col = i % cols

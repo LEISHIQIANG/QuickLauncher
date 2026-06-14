@@ -177,7 +177,10 @@ class PopupEventsMixin:
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
-            icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+            shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+            icons_bottom = (
+                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+            )
 
             if pos.y() <= icons_bottom:
                 col = (pos.x() - self.padding) // self.cell_size
@@ -211,7 +214,10 @@ class PopupEventsMixin:
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
-            icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+            shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+            icons_bottom = (
+                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+            )
             x = int(self.padding + col * self.cell_size)
             y = int(icons_bottom - (self.fixed_rows - row) * self.cell_h)
             pad = sp(3)
@@ -297,10 +303,11 @@ class PopupEventsMixin:
         if self.__dict__.get("_command_result") is None:
             return False
         # 获取结果面板区域的顶部和底部
-        y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
         y_bottom = self.__dict__.get("dock_y")
         if y_bottom is None:
-            y_bottom = self.height() - sp(6)
+            y_bottom = self.height() - shadow_margin - sp(6)
         return y_top <= pos.y() < y_bottom
 
     def _search_query_matches_result_command(self) -> bool:
@@ -412,7 +419,10 @@ class PopupEventsMixin:
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
-            icons_bottom = self.height() - bottom_margin - dock_height - indicator_height - indicator_spacing
+            shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+            icons_bottom = (
+                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+            )
 
             if pos.y() <= icons_bottom:
                 col = (pos.x() - self.padding) // self.cell_size

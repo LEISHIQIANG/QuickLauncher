@@ -1090,7 +1090,7 @@ def test_plugin_search_results_drop_stale_query():
     assert [result.shortcut.id for result in popup.search_results] == ["plugin-new"]
 
 
-def test_plain_search_includes_command_results(monkeypatch):
+def test_plain_search_excludes_built_in_command_results(monkeypatch):
     import ui.launcher_popup.popup_search as popup_search_mod
     from core.slash_commands import SlashCommand
 
@@ -1111,12 +1111,18 @@ def test_plain_search_includes_command_results(monkeypatch):
     popup.search_query = "text"
     popup._refresh_search_results()
 
+    # Plain search should not return unregistered built-in commands
+    assert len(popup.search_results) == 0
+
+    # Slash command search should return them
+    popup.search_query = "/text"
+    popup._refresh_search_results()
     assert len(popup.search_results) == 1
     result = popup.search_results[0]
     assert result.shortcut.id == "text_tools.count"
     assert result.shortcut.type == ShortcutType.COMMAND
     assert result.shortcut.command == "text_tools.count"
-    assert result.folder_name == "Commands"
+    assert result.folder_name == "Slash Commands"
 
 
 def test_command_result_keys_and_autofill(monkeypatch):

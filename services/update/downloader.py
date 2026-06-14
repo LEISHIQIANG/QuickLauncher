@@ -46,12 +46,13 @@ class UpdateDownloader:
         max_bytes: int = 0,
         allowed_hosts: tuple[str, ...] | None = None,
         version: str = "",
+        verify_ssl: bool = True,
     ):
         self._cancel_flag = False
         self._download_thread = start_background_thread(
             name="UpdateDownloader",
             target=self._do_download,
-            args=(url, target_dir, expected_hash, expected_size, max_bytes, allowed_hosts, version),
+            args=(url, target_dir, expected_hash, expected_size, max_bytes, allowed_hosts, version, verify_ssl),
             owner=self,
         )
 
@@ -75,6 +76,7 @@ class UpdateDownloader:
         max_bytes: int = 0,
         allowed_hosts: tuple[str, ...] | None = None,
         version: str = "",
+        verify_ssl: bool = True,
     ):
         tmp_path = None
         session_dir = ""
@@ -102,8 +104,12 @@ class UpdateDownloader:
                 download={"status": "started", "started_at": utc_now_text()},
             )
 
+            from services.api.base_client import _make_unverified_ssl_context, _make_verified_ssl_context
+
+            ssl_context = _make_verified_ssl_context() if verify_ssl else _make_unverified_ssl_context()
+
             req = Request(url, headers={"User-Agent": f"QuickLauncher/{APP_VERSION}"})
-            with safe_urlopen(req, timeout=30) as resp:
+            with safe_urlopen(req, timeout=30, context=ssl_context) as resp:
                 self._validate_final_url(resp, allowed_hosts)
                 total = int(resp.headers.get("Content-Length", 0) or 0)
                 if max_bytes and total > max_bytes:

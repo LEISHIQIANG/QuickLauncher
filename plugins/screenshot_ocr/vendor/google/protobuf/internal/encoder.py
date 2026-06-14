@@ -628,11 +628,11 @@ def _FloatingPointEncoder(wire_type, format):
         def EncodeNonFiniteOrRaise(write, value):
             # Remember that the serialized form uses little-endian byte order.
             if value == _POS_INF:
-                write(b"\x00\x00\x80\x7F")
+                write(b"\x00\x00\x80\x7f")
             elif value == _NEG_INF:
-                write(b"\x00\x00\x80\xFF")
+                write(b"\x00\x00\x80\xff")
             elif value != value:  # NaN
-                write(b"\x00\x00\xC0\x7F")
+                write(b"\x00\x00\xc0\x7f")
             else:
                 raise
 
@@ -640,11 +640,11 @@ def _FloatingPointEncoder(wire_type, format):
 
         def EncodeNonFiniteOrRaise(write, value):
             if value == _POS_INF:
-                write(b"\x00\x00\x00\x00\x00\x00\xF0\x7F")
+                write(b"\x00\x00\x00\x00\x00\x00\xf0\x7f")
             elif value == _NEG_INF:
-                write(b"\x00\x00\x00\x00\x00\x00\xF0\xFF")
+                write(b"\x00\x00\x00\x00\x00\x00\xf0\xff")
             elif value != value:  # NaN
-                write(b"\x00\x00\x00\x00\x00\x00\xF8\x7F")
+                write(b"\x00\x00\x00\x00\x00\x00\xf8\x7f")
             else:
                 raise
 

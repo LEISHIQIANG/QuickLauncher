@@ -325,3 +325,78 @@ def test_popup_menu_reclamps_after_inline_submenu_expands(monkeypatch, qapp):
     assert menu.y() + menu.height() <= FakeScreen().availableGeometry().bottom() + 1
 
     menu.deleteLater()
+
+
+def test_launcher_popup_pin_indicator_y_adaptation(qapp):
+    from types import SimpleNamespace
+
+    from core.data_models import Folder
+    from ui.launcher_popup.popup_window import LauncherPopup
+
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.pages = [Folder(id="page-1", name="Page 1", items=[])]
+    popup.current_page = 0
+    popup.dock_items = []
+    popup.settings = SimpleNamespace(theme="dark")
+
+    # Mock _body_y_offset to return a base offset (like 32)
+    popup._body_y_offset = lambda: 32
+
+    # Case 1: Windows 11 (shadow_margin = 0)
+    popup.__dict__["shadow_margin"] = 0
+    popup.is_pinned = True
+
+    shadow_margin_w11 = int(popup.__dict__.get("shadow_margin", 0) or 0)
+    pin_y_offset_w11 = (popup._body_y_offset() if hasattr(popup, "_body_y_offset") else 0) + shadow_margin_w11
+    assert pin_y_offset_w11 == 32
+
+    # Case 2: Windows 10 (shadow_margin = 18)
+    popup.__dict__["shadow_margin"] = 18
+    shadow_margin_w10 = int(popup.__dict__.get("shadow_margin", 0) or 0)
+    pin_y_offset_w10 = (popup._body_y_offset() if hasattr(popup, "_body_y_offset") else 0) + shadow_margin_w10
+    assert pin_y_offset_w10 == 32 + 18
+
+
+def test_launcher_popup_coordinate_adaptation(qapp):
+    from types import SimpleNamespace
+
+    from core.data_models import Folder
+    from ui.launcher_popup.popup_window import LauncherPopup
+
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.pages = [Folder(id="page-1", name="Page 1", items=[])]
+    popup.current_page = 0
+    popup.dock_items = []
+    popup.settings = SimpleNamespace(theme="dark", dock_enabled=False)
+    popup.dock_height = 0
+    popup.fixed_rows = 3
+    popup.cols = 4
+    popup.cell_size = 40
+    popup.cell_h = 40
+    popup.padding = 8
+
+    popup._dock_outer_bottom_gap = lambda: 6
+    popup._body_y_offset = lambda: 32
+    popup.height = lambda: 200
+
+    # Verify icons_bottom with shadow_margin = 0
+    popup.__dict__["shadow_margin"] = 0
+
+    bottom_margin = popup._dock_outer_bottom_gap()
+    indicator_height = 16 if len(popup.pages) > 1 else 0
+    indicator_spacing = 4 if len(popup.pages) > 1 else 0
+    dock_height = popup.dock_height
+    shadow_margin = int(popup.__dict__.get("shadow_margin", 0) or 0)
+
+    icons_bottom_w11 = (
+        popup.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+    )
+    assert icons_bottom_w11 == 200 - 0 - 6 - 0 - 0 - 0
+
+    # Verify icons_bottom with shadow_margin = 18
+    popup.__dict__["shadow_margin"] = 18
+    shadow_margin = int(popup.__dict__.get("shadow_margin", 0) or 0)
+    icons_bottom_w10 = (
+        popup.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+    )
+    assert icons_bottom_w10 == 200 - 18 - 6 - 0 - 0 - 0

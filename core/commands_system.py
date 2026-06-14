@@ -66,15 +66,39 @@ def cmd_process(context: CommandContext) -> CommandResult:
         keyword = args.lower()
 
     rows: list[dict] = []
-    for proc in psutil.process_iter(["pid", "name", "exe", "memory_info", "cpu_percent"]):
-        try:
-            info = dict(proc.info)
-        except Exception:
-            continue
-        haystack = f"{info.get('name') or ''} {info.get('exe') or ''}".lower()
-        if keyword and keyword not in haystack:
-            continue
-        rows.append(info)
+    sort_cpu = mode == "cpu"
+    if sort_cpu:
+        import time
+
+        proc_list = []
+        for proc in psutil.process_iter(["pid", "name", "exe", "memory_info"]):
+            try:
+                if hasattr(proc, "cpu_percent"):
+                    proc.cpu_percent()
+                proc_list.append(proc)
+            except Exception:
+                continue
+        time.sleep(0.1)
+        for proc in proc_list:
+            try:
+                info = dict(proc.info)
+                if hasattr(proc, "cpu_percent"):
+                    info["cpu_percent"] = proc.cpu_percent()
+                else:
+                    info["cpu_percent"] = info.get("cpu_percent") or 0.0
+                rows.append(info)
+            except Exception:
+                continue
+    else:
+        for proc in psutil.process_iter(["pid", "name", "exe", "memory_info", "cpu_percent"]):
+            try:
+                info = dict(proc.info)
+            except Exception:
+                continue
+            haystack = f"{info.get('name') or ''} {info.get('exe') or ''}".lower()
+            if keyword and keyword not in haystack:
+                continue
+            rows.append(info)
 
     if keyword:
         rows.sort(key=lambda item: getattr(item.get("memory_info"), "rss", 0) or 0, reverse=True)

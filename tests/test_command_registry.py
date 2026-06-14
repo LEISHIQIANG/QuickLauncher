@@ -492,7 +492,8 @@ class TestSlashCommandsRedirect:
         assert registry.get("hosts").metadata.modifies_system is True
         assert registry.get("netdiag").metadata.uses_network is True
         assert registry.get("git").metadata.modifies_system is True
-        assert registry.get("env") is None
+        assert registry.get("env").interaction_mode == COMMAND_INTERACTION_PANEL
+        assert registry.get("god").interaction_mode == COMMAND_INTERACTION_PANEL
         assert registry.get("netdiag").interaction_mode == COMMAND_INTERACTION_PANEL
         assert registry.get("cidr").interaction_mode == COMMAND_INTERACTION_PANEL
         assert registry.get("tls").interaction_mode == COMMAND_INTERACTION_PANEL

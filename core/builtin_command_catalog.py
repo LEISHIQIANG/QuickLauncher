@@ -13,8 +13,10 @@ from .commands import (
     cmd_conflict,
     cmd_copy_path,
     cmd_dns,
+    cmd_env,
     cmd_explorer,
     cmd_git,
+    cmd_god,
     cmd_hash,
     cmd_hosts,
     cmd_ip,
@@ -65,6 +67,8 @@ PANEL_COMMAND_IDS = {
     "git",
     "selected",
     "clip",
+    "env",
+    "god",
 }
 
 
@@ -364,5 +368,21 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             description="显示剪贴板内容与类型",
             category="system",
             handler=cmd_clip,
+        ),
+        CommandDefinition(
+            id="env",
+            title="环境变量",
+            aliases=["env", "environment", "环境变量", "环境变量编辑", "编辑环境变量"],
+            description="打开 Windows 系统环境变量编辑器",
+            category="system",
+            handler=cmd_env,
+        ),
+        CommandDefinition(
+            id="god",
+            title="上帝模式",
+            aliases=["god", "godmode", "god-mode", "上帝模式"],
+            description="打开 Windows 上帝模式 (God Mode) 文件夹",
+            category="system",
+            handler=cmd_god,
         ),
     ]

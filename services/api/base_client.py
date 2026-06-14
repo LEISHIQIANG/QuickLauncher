@@ -1,6 +1,7 @@
 """Small JSON API client used by background service modules."""
 
 import json
+import logging
 import ssl
 import urllib.parse
 from urllib.error import HTTPError, URLError
@@ -10,6 +11,7 @@ from core.network_security import read_limited_response, safe_urlopen
 from core.version import APP_VERSION
 
 API_CLIENT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
@@ -25,7 +27,36 @@ def _make_unverified_ssl_context() -> ssl.SSLContext:
 
 def _make_verified_ssl_context() -> ssl.SSLContext:
     ctx = ssl.create_default_context()
-    ctx.load_default_certs(ssl.Purpose.SERVER_AUTH)
+
+    # Try using certifi's bundle first if available
+    try:
+        import certifi
+
+        ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        logger.debug("Failed to load certifi locations", exc_info=True)
+
+    # Load Windows registry certificates to support corporate proxies / local custom CAs
+    import sys
+
+    if sys.platform == "win32":
+        for store in ("ROOT", "CA"):
+            try:
+                for cert, encoding, _ in ssl.enum_certificates(store):
+                    if encoding == "x509_asn":
+                        try:
+                            ctx.load_verify_locations(cadata=cert)
+                        except Exception:
+                            logger.debug("Failed to load registry certificate cadata", exc_info=True)
+            except Exception:
+                logger.debug("Failed to enumerate registry certificates", exc_info=True)
+
+    # Load default certificates as fallback
+    try:
+        ctx.load_default_certs(ssl.Purpose.SERVER_AUTH)
+    except Exception:
+        logger.debug("Failed to load default certs as fallback", exc_info=True)
+
     return ctx
 
 

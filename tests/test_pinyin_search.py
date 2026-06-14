@@ -40,3 +40,16 @@ def test_long_query():
     variants = pinyin_variants(long_text)
     assert isinstance(variants, list)
     assert len(variants) > 0
+
+
+def test_pinyin_fallback_initials():
+    # "蓝牙" is not in _PINYIN dict, but both characters are in GB2312 level-1.
+    # So "蓝牙" should be mapped to initials "ly".
+    variants = pinyin_variants("蓝牙")
+    assert "ly" in variants
+
+    # "连接" has "连" (expanded in _PINYIN) and "接" (already in _PINYIN).
+    # It should have both full "lianjie" and initials "lj"
+    variants_lianjie = pinyin_variants("连接")
+    assert "lianjie" in variants_lianjie
+    assert "lj" in variants_lianjie

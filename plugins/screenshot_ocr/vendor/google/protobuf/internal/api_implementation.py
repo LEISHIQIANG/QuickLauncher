@@ -28,8 +28,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""Determine which implementation of the protobuf API is used in this process.
-"""
+"""Determine which implementation of the protobuf API is used in this process."""
 
 import os
 import sys

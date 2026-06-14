@@ -783,3 +783,92 @@ def _assert_plugin_network_tools(mock_run):
     res = handle_dns(ctx)
     assert res.success is True
     assert "nslookup successful output" in res.message
+
+
+def test_cmd_wifi_quote_stripping_and_case_insensitive(monkeypatch):
+    calls = []
+
+    def mock_run(args):
+        calls.append(args)
+        return (True, "Security Key           : Present\nKey Content            : MyPass123")
+
+    monkeypatch.setattr("core.commands._run_cmd", mock_run)
+
+    # 1. Strip quotes and check
+    res = cmd_wifi(CommandContext(args_text='"My-Wifi-Profile"'))
+    assert res.success is True
+    assert "MyPass123" in res.message
+    # Check that name was stripped of quotes when querying
+    assert calls[0][4] == "name=My-Wifi-Profile"
+
+
+def test_cmd_git_custom_args(monkeypatch, tmp_path):
+    calls = []
+
+    class Proc:
+        def __init__(self, argv, cwd=None, **kwargs):
+            self.argv = argv
+            self.cwd = cwd
+            self.returncode = 0
+            calls.append((argv, cwd))
+
+        def communicate(self, timeout=None):
+            if self.argv[1:3] == ["rev-parse", "--is-inside-work-tree"]:
+                return "true\n", ""
+            return "git log custom output\n", ""
+
+    monkeypatch.setattr("subprocess.Popen", Proc)
+
+    res = cmd_git(CommandContext(args_text=f"log -n 5 {tmp_path}"))
+    assert res.success is True
+    # The last call is the log call
+    assert calls[1][0] == ["git", "log", "-n", "5"]
+    assert calls[1][1] == str(tmp_path)
+
+
+def test_cmd_process_cpu_sorting(monkeypatch):
+    proc_a = MagicMock()
+    proc_a.info = {
+        "pid": 10,
+        "name": "alpha.exe",
+        "exe": "C:\\alpha.exe",
+        "memory_info": SimpleNamespace(rss=200 * 1024 * 1024),
+    }
+    # Initial call to cpu_percent returns 0.0, second returns 5.0
+    proc_a.cpu_percent.side_effect = [0.0, 5.0]
+
+    proc_b = MagicMock()
+    proc_b.info = {
+        "pid": 11,
+        "name": "beta.exe",
+        "exe": "C:\\beta.exe",
+        "memory_info": SimpleNamespace(rss=50 * 1024 * 1024),
+    }
+    proc_b.cpu_percent.side_effect = [0.0, 95.0]
+
+    monkeypatch.setattr("psutil.process_iter", lambda attrs: [proc_a, proc_b])
+
+    res = cmd_process(CommandContext(args_text="cpu"))
+    assert res.success is True
+    # beta.exe (95%) should be listed before alpha.exe (5%) when sorted by cpu
+    assert "beta.exe" in res.message
+    assert "alpha.exe" in res.message
+    assert res.message.index("beta.exe") < res.message.index("alpha.exe")
+    assert "CPU: 95.0%" in res.message
+    assert "CPU: 5.0%" in res.message
+
+
+def test_cmd_env_and_god_registration():
+    from core.builtin_command_catalog import PANEL_COMMAND_IDS, build_builtin_command_definitions
+    from core.builtin_commands import canonical_builtin_command
+
+    defs = build_builtin_command_definitions()
+    ids = {d.id for d in defs}
+    assert "env" in ids
+    assert "god" in ids
+    assert "env" in PANEL_COMMAND_IDS
+    assert "god" in PANEL_COMMAND_IDS
+
+    # Test alias resolution
+    assert canonical_builtin_command("env-edit") == "env"
+    assert canonical_builtin_command("godmode") == "god"

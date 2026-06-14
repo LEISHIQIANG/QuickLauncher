@@ -28,8 +28,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""Contains _ExtensionDict class to represent extensions.
-"""
+"""Contains _ExtensionDict class to represent extensions."""
 
 from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.internal import type_checkers
