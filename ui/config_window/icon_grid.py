@@ -193,7 +193,7 @@ class MoveFolderDialog(BaseDialog):
         super().__init__(parent)
         self.folders = folders
         self.selected_folder = None
-        self.setWindowTitle(tr("移动到文件夹"))
+        self.setWindowTitle(tr("移动所选到"))
         self.setFixedSize(sp(240), sp(135))
         self._setup_ui()
         self._apply_theme_colors()
@@ -205,7 +205,7 @@ class MoveFolderDialog(BaseDialog):
         main_layout.setContentsMargins(sp(16), sp(16), sp(16), sp(16))
         main_layout.setSpacing(sp(10))
 
-        label = QLabel(tr("目标文件夹:"))
+        label = QLabel(tr("目标位置:"))
         label.setStyleSheet(scale_qss("font-size: 11px;"))
         main_layout.addWidget(label)
 
@@ -950,10 +950,6 @@ class IconWidget(QFrame):
         return pixmap
 
     def _start_drag(self):
-        # 系统图标不允许拖动
-        if getattr(self.shortcut, "_icon_repo_source", "") == "system":
-            return
-
         grid_parent = None
         try:
             parent = self.parent()
@@ -1529,22 +1525,10 @@ class IconGrid(QWidget):
         self.hint_container.show()
         self._shortcut_map = {}
 
-    @staticmethod
-    def _is_system_icon_repo_item(shortcut: ShortcutItem | None) -> bool:
-        return getattr(shortcut, "_icon_repo_source", "") == "system"
-
     def _filter_mutable_shortcut_ids(self, ids) -> list[str]:
-        shortcut_map = vars(self).get("_shortcut_map", {}) or {}
-        result = []
-        for sid in ids or []:
-            if self._is_system_icon_repo_item(shortcut_map.get(sid)):
-                continue
-            result.append(sid)
-        return result
+        return list(ids or [])
 
     def _emit_edit_if_allowed(self, shortcut: ShortcutItem):
-        if self._is_system_icon_repo_item(shortcut):
-            return
         self.shortcut_edit_requested.emit(shortcut)
 
     def _stop_icon_thread(self):
@@ -1890,7 +1874,7 @@ class IconGrid(QWidget):
         if not ids:
             return
         try:
-            folders = [f for f in self.data_manager.data.folders if not f.is_dock and f.id != self.current_folder_id]
+            folders = [f for f in self.data_manager.data.folders if f.id != self.current_folder_id]
             if not folders:
                 return
             dialog = MoveFolderDialog(folders, self)
@@ -1971,28 +1955,22 @@ class IconGrid(QWidget):
 
         ids = self._selected_ids_for(shortcut)
         multi = len(ids) > 1
-        mutable_ids = self._filter_mutable_shortcut_ids(ids)
-        system_item = self._is_system_icon_repo_item(shortcut)
         has_url_shortcuts = self._has_url_shortcuts(ids)
 
         menu = PopupMenu(theme=theme, radius=12, parent=None)
-        menu.add_action("编辑", lambda: self._emit_edit_if_allowed(shortcut), enabled=not multi and not system_item)
+        menu.add_action("编辑", lambda: self._emit_edit_if_allowed(shortcut), enabled=not multi)
         menu.add_separator()
-        menu.add_action(
-            "启用所选", lambda ids=mutable_ids: self._batch_set_enabled(ids, True), enabled=bool(mutable_ids)
-        )
-        menu.add_action(
-            "禁用所选", lambda ids=mutable_ids: self._batch_set_enabled(ids, False), enabled=bool(mutable_ids)
-        )
+        menu.add_action("启用所选", lambda ids=ids: self._batch_set_enabled(ids, True), enabled=bool(ids))
+        menu.add_action("禁用所选", lambda ids=ids: self._batch_set_enabled(ids, False), enabled=bool(ids))
         menu.add_action("移动所选到...", lambda ids=ids: self._batch_move(ids), enabled=bool(ids))
         if multi and has_url_shortcuts:
             menu.add_separator()
             menu.add_action(tr("批量获取图标"), lambda ids=ids: self._batch_fetch_icons(ids), enabled=True)
         menu.add_separator()
         if multi:
-            menu.add_action(tr("删除所选"), lambda ids=mutable_ids: self._batch_delete(ids), enabled=bool(mutable_ids))
+            menu.add_action(tr("删除所选"), lambda ids=ids: self._batch_delete(ids), enabled=bool(ids))
         else:
-            menu.add_action(tr("删除"), lambda: self.shortcut_delete_requested.emit(shortcut), enabled=not system_item)
+            menu.add_action(tr("删除"), lambda: self.shortcut_delete_requested.emit(shortcut), enabled=True)
         if self._batch_undo_snapshot:
             menu.add_separator()
             menu.add_action(tr("撤销上次批量操作"), self._restore_batch_snapshot, enabled=True)
@@ -2160,33 +2138,6 @@ class IconGrid(QWidget):
         if target_id in moving_ids:
             return False
 
-        shortcut_map = vars(self).get("_shortcut_map", {}) or {}
-        if vars(self).get("current_folder_id") == "icon_repo":
-            if any(self._is_system_icon_repo_item(shortcut_map.get(sid)) for sid in moving_ids):
-                return False
-            if self._is_system_icon_repo_item(shortcut_map.get(target_id)):
-                first_user_id = None
-                for w in self.icon_widgets:
-                    sid = self._widget_shortcut_id(w)
-                    if sid and sid not in moving_ids and not self._is_system_icon_repo_item(shortcut_map.get(sid)):
-                        first_user_id = sid
-                        break
-                if first_user_id:
-                    target_id = first_user_id
-                else:
-                    return False
-            # 用户图标不能拖到系统图标前面
-            is_user_icon_moving = any(not self._is_system_icon_repo_item(shortcut_map.get(sid)) for sid in moving_ids)
-            if is_user_icon_moving:
-                target_idx = next(
-                    (i for i, w in enumerate(self.icon_widgets) if self._widget_shortcut_id(w) == target_id), -1
-                )
-                if target_idx >= 0:
-                    for i in range(target_idx + 1, len(self.icon_widgets)):
-                        if self._is_system_icon_repo_item(
-                            shortcut_map.get(self._widget_shortcut_id(self.icon_widgets[i]))
-                        ):
-                            return False
         try:
             current_ids = {self._widget_shortcut_id(w) for w in self.icon_widgets}
             current_ids.discard(None)

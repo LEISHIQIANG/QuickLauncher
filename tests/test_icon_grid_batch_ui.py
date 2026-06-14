@@ -984,8 +984,8 @@ def test_drag_move_triggers_swap_and_updates_highlight(qapp):
         widget.deleteLater()
 
 
-def test_realtime_swap_redirects_system_icon_to_first_user_icon(qapp):
-    """handle_realtime_swap redirects the target system icon to the first user icon in icon_repo."""
+def test_realtime_swap_allows_system_icon_interleaving(qapp):
+    """handle_realtime_swap allows dragging user icons over system icons (no redirection needed)."""
     from core import DataManager, ShortcutItem
     from ui.config_window.icon_grid import IconGrid
 
@@ -1018,23 +1018,18 @@ def test_realtime_swap_redirects_system_icon_to_first_user_icon(qapp):
         grid.icon_widgets = [w_sys, w_user1, w_user2]
         grid._active_drag_ids = ["user2"]
 
-        # If we drag user2 and hover over sys1:
-        # It should redirect target_id from sys1 to user1 (the first user icon in the list)
-        # And then attempt to move user2 before/after user1.
-        # Let's mock _move_drag_group to verify the redirection
+        # System icons are now fully sortable — dragging user2 over sys1 works directly
         calls = []
         original_move = grid._move_drag_group
         grid._move_drag_group = lambda src, tgt, m_ids: (calls.append((src, tgt, m_ids)) or True)
 
         try:
-            # Call handle_realtime_swap with target_id = "sys1" (system icon)
             res = grid.handle_realtime_swap(source_id="user2", target_id="sys1")
             assert res is True
-            # Verify it redirected target_id from sys1 to user1!
             assert len(calls) == 1
             src, tgt, m_ids = calls[0]
             assert src == "user2"
-            assert tgt == "user1"  # Success! Redirection happened.
+            assert tgt == "sys1"  # No redirection — system icon is a valid drop target
         finally:
             grid._move_drag_group = original_move
             w_sys.deleteLater()

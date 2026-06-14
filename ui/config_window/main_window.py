@@ -1286,8 +1286,6 @@ class ConfigWindow(QMainWindow):
 
     def _on_shortcut_edit(self, shortcut: ShortcutItem):
         """编辑快捷方式"""
-        if getattr(shortcut, "_icon_repo_source", "") == "system":
-            return
         if not self._begin_shortcut_dialog_action():
             return
         folder_id = self.icon_grid.current_folder_id
@@ -1342,8 +1340,6 @@ class ConfigWindow(QMainWindow):
 
     def _on_shortcut_delete(self, shortcut: ShortcutItem):
         """删除快捷方式 - 使用自定义主题对话框"""
-        if getattr(shortcut, "_icon_repo_source", "") == "system":
-            return
         theme = self.data_manager.get_settings().theme
         shortcut_id = shortcut.id
         shortcut_name = shortcut.name

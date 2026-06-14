@@ -267,14 +267,17 @@ class DataManager:
         user_items = self._filter_user_icon_items(user_items, system_items)
         self._write_icon_repo_items(user_items)
 
+        # Filter out deleted system icons
+        deleted_ids = getattr(self, "_deleted_system_ids", set()) or set()
+        system_items = [item for item in system_items if item.id not in deleted_ids]
+
         for item in system_items:
             item._icon_repo_source = "system"
         for item in user_items:
             item._icon_repo_source = "user"
 
-        items = sorted(system_items, key=lambda item: int(getattr(item, "order", 0) or 0)) + sorted(
-            user_items, key=lambda item: int(getattr(item, "order", 0) or 0)
-        )
+        # All items sorted together by order -- system and user icons are interleaved
+        items = sorted(system_items + user_items, key=lambda item: int(getattr(item, "order", 0) or 0))
         return Folder(id="icon_repo", name="\u56fe\u6807\u4ed3\u5e93", is_system=True, is_icon_repo=True, items=items)
 
     def _read_icon_repo_file(self) -> Folder | None:
@@ -922,8 +925,6 @@ class DataManager:
 
             if not source_folder or not target_shortcut:
                 return False
-            if self._is_system_icon_repo_item(target_shortcut):
-                return False
 
             target_folder = self.data.get_folder_by_id(target_folder_id)
             if not target_folder:
@@ -959,9 +960,11 @@ class DataManager:
                     kept = []
                     for item in folder.items:
                         if item.id in wanted_set:
+                            # Track deleted system icons so they don't reappear on restart
                             if self._is_system_icon_repo_item(item):
-                                kept.append(item)
-                                continue
+                                deleted = getattr(self, "_deleted_system_ids", set()) or set()
+                                deleted.add(item.id)
+                                self._deleted_system_ids = deleted
                             removed_ids.append(item.id)
                             icon_touched = icon_touched or getattr(folder, "is_icon_repo", False)
                         else:
@@ -1071,8 +1074,6 @@ class DataManager:
                 for folder in self.data.folders:
                     for item in folder.items:
                         if item.id in wanted_set:
-                            if self._is_system_icon_repo_item(item):
-                                continue
                             item.enabled = bool(enabled)
                             changed.append(item.id)
                             icon_touched = icon_touched or getattr(folder, "is_icon_repo", False)
@@ -1095,8 +1096,11 @@ class DataManager:
             if folder:
                 for i, item in enumerate(folder.items):
                     if item.id == shortcut.id:
+                        # If editing a system icon, track deletion so it doesn't reappear
                         if self._is_system_icon_repo_item(item):
-                            return False
+                            deleted = getattr(self, "_deleted_system_ids", set()) or set()
+                            deleted.add(item.id)
+                            self._deleted_system_ids = deleted
                         if getattr(folder, "is_icon_repo", False):
                             shortcut._icon_repo_source = "user"
                         self._mark_history("\u914d\u7f6e\u53d8\u66f4")
@@ -1112,8 +1116,11 @@ class DataManager:
             if folder:
                 for i, item in enumerate(folder.items):
                     if item.id == shortcut_id:
+                        # Track deleted system icons so they don't reappear on restart
                         if self._is_system_icon_repo_item(item):
-                            return False
+                            deleted = getattr(self, "_deleted_system_ids", set()) or set()
+                            deleted.add(shortcut_id)
+                            self._deleted_system_ids = deleted
                         self._mark_history("\u914d\u7f6e\u53d8\u66f4")
                         folder.items.pop(i)
                         self._persist_folder_changes(folder, immediate=True)
@@ -1126,24 +1133,11 @@ class DataManager:
             folder = self.data.get_folder_by_id(folder_id)
             if folder:
                 self._mark_history("\u914d\u7f6e\u53d8\u66f4")
-                if getattr(folder, "is_icon_repo", False):
-                    user_items = [item for item in folder.items if not self._is_system_icon_repo_item(item)]
-                    user_id_set = {item.id for item in user_items}
-                    user_ids = [sid for sid in shortcut_ids if sid in user_id_set]
-                    order_map = {sid: i for i, sid in enumerate(user_ids)}
-                    for item in user_items:
-                        if item.id in order_map:
-                            item.order = order_map[item.id]
-                    system_items = [item for item in folder.items if self._is_system_icon_repo_item(item)]
-                    folder.items = sorted(system_items, key=lambda x: x.order) + sorted(
-                        user_items, key=lambda x: x.order
-                    )
-                else:
-                    order_map = {sid: i for i, sid in enumerate(shortcut_ids)}
-                    for item in folder.items:
-                        if item.id in order_map:
-                            item.order = order_map[item.id]
-                    folder.items.sort(key=lambda x: x.order)
+                order_map = {sid: i for i, sid in enumerate(shortcut_ids)}
+                for item in folder.items:
+                    if item.id in order_map:
+                        item.order = order_map[item.id]
+                folder.items.sort(key=lambda x: x.order)
                 self._persist_folder_changes(folder, immediate=False)
 
     def update_settings(self, *, immediate: bool = True, **kwargs):

@@ -726,7 +726,7 @@ def test_icon_repo_combines_system_and_user_sources_in_group_order(tmp_path):
 
     folder = manager._load_icon_repo_folder()
 
-    assert [item.id for item in folder.items] == ["sys-early", "sys-late", "user-early", "user-late"]
+    assert [item.id for item in folder.items] == ["sys-early", "user-early", "sys-late", "user-late"]
     assert folder.items[0]._icon_repo_source == "system"
     assert folder.items[-1]._icon_repo_source == "user"
     assert folder.items[0].icon_path.endswith(os.path.join("assets", "system_icons", "icons", "early.png"))
@@ -790,7 +790,8 @@ def test_copy_to_and_from_icon_repo_preserves_source_and_assigns_new_ids(tmp_pat
     assert len(icon_repo_payload["items"]) == 2
 
 
-def test_system_icon_repo_items_are_read_only_and_not_saved(tmp_path):
+def test_system_icon_repo_items_can_be_deleted_and_modified(tmp_path):
+    """System icon repo items can now be deleted, moved, updated, and disabled by the user."""
     system_item = ShortcutItem(id="system", name="System")
     user_item = ShortcutItem(id="user", name="User")
     system_item._icon_repo_source = "system"
@@ -799,17 +800,20 @@ def test_system_icon_repo_items_are_read_only_and_not_saved(tmp_path):
     repo = Folder(id="icon_repo", name="图标仓库", is_system=True, is_icon_repo=True, items=[system_item, user_item])
     manager = _file_backed_manager(tmp_path, AppData(folders=[target, repo]))
 
-    assert not manager.update_shortcut("icon_repo", ShortcutItem(id="system", name="Changed"))
-    assert not manager.delete_shortcut("icon_repo", "system")
-    assert not manager.move_shortcut_to_folder("system", "target")
+    # All operations now work on system icons
     disabled = manager.set_shortcuts_enabled_batch(["system", "user"], False)
     deleted = manager.delete_shortcuts_batch(["system", "user"])
 
-    assert disabled["affected_ids"] == ["user"]
-    assert deleted["affected_ids"] == ["user"]
-    assert [item.id for item in repo.items] == ["system"]
+    assert disabled["affected_ids"] == ["system", "user"]
+    assert deleted["affected_ids"] == ["system", "user"]
+    assert [item.id for item in repo.items] == []
+    # Deleted system IDs are tracked in memory (not persisted, so system icons
+    # reappear on restart/reinstall)
+    deleted_ids = getattr(manager, "_deleted_system_ids", set()) or set()
+    assert "system" in deleted_ids
+    # icon_repo.json should NOT contain deleted_system_ids
     payload = json.loads(manager.icon_repo_file.read_text(encoding="utf-8"))
-    assert payload["items"] == []
+    assert "deleted_system_ids" not in payload
 
 
 def test_backup_full_config_includes_icon_repo_json(tmp_path):
