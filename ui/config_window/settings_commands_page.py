@@ -549,7 +549,7 @@ class SettingsCommandsPageMixin:
                     unfav_btn.setMinimumHeight(sp(20))
                     unfav_btn.setProperty("is_compact_btn", True)
                     unfav_btn.setStyleSheet(scale_qss("QPushButton { font-size: 10px; padding: 2px 4px; }"))
-                    unfav_btn.clicked.connect(lambda checked, cmd_id=fid: self._on_unfavorite_command(cmd_id))
+                    unfav_btn.clicked.connect(lambda checked=False, cmd_id=fid: self._on_unfavorite_command(cmd_id))
                     item_layout.addWidget(unfav_btn, 0, 2, 2, 1, QtCompat.AlignVCenter)
 
                     item_layout.setColumnStretch(0, 0)
@@ -681,6 +681,7 @@ class SettingsCommandsPageMixin:
                 getattr(self, "_command_refresh_apply_theme", True)
                 and hasattr(self, "page_commands")
                 and self.page_commands
+                and hasattr(self.page_commands, "apply_theme")
             ):
                 self.page_commands.apply_theme(self.current_theme)
 
@@ -768,9 +769,9 @@ class SettingsCommandsPageMixin:
                 except Exception as exc:
                     logger.debug("断开收藏按钮信号失败: %s", exc, exc_info=True)
                 if is_fav:
-                    fav_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_unfavorite_command(cid))
+                    fav_btn.clicked.connect(lambda checked=False, cid=cmd.id: self._on_unfavorite_command(cid))
                 else:
-                    fav_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_favorite_command(cid))
+                    fav_btn.clicked.connect(lambda checked=False, cid=cmd.id: self._on_favorite_command(cid))
 
                 toggle_btn = entry["toggle_btn"]
                 toggle_btn.setText(tr("启用") if is_disabled else tr("禁用"))
@@ -779,9 +780,13 @@ class SettingsCommandsPageMixin:
                 except Exception as exc:
                     logger.debug("断开启用按钮信号失败: %s", exc, exc_info=True)
                 if is_disabled:
-                    toggle_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_toggle_builtin_command(cid, True))
+                    toggle_btn.clicked.connect(
+                        lambda checked=False, cid=cmd.id: self._on_toggle_builtin_command(cid, True)
+                    )
                 else:
-                    toggle_btn.clicked.connect(lambda checked, cid=cmd.id: self._on_toggle_builtin_command(cid, False))
+                    toggle_btn.clicked.connect(
+                        lambda checked=False, cid=cmd.id: self._on_toggle_builtin_command(cid, False)
+                    )
 
                 visible = True
                 if query:
@@ -791,17 +796,11 @@ class SettingsCommandsPageMixin:
                         or (cmd.description and query in cmd.description.lower())
                     )
                 entry["widget"].setVisible(visible)
-        except Exception as e:
-            logger.debug("更新内置命令行状态失败: %s", e)
+        except Exception:
+            logger.exception("更新内置命令行状态失败")
 
     def _refresh_builtin_command_rows_only(self):
-        if hasattr(self, "builtin_container"):
-            self.builtin_container.setUpdatesEnabled(False)
-        try:
-            self._update_builtin_command_rows()
-        finally:
-            if hasattr(self, "builtin_container"):
-                self.builtin_container.setUpdatesEnabled(True)
+        self._refresh_command_settings()
 
     def _schedule_refresh(self):
         """Debounced refresh — coalesces rapid clicks into one rebuild."""
@@ -823,6 +822,7 @@ class SettingsCommandsPageMixin:
                 logger.debug("停止定时器失败: %s", exc, exc_info=True)
 
     def _on_unfavorite_command(self, cmd_id):
+        logger.info("触发取消收藏: %s", cmd_id)
         try:
             from core import data_manager
 
@@ -830,8 +830,9 @@ class SettingsCommandsPageMixin:
                 return
             settings = data_manager.get_settings()
             if cmd_id in settings.favorite_commands:
-                settings.favorite_commands.remove(cmd_id)
-            data_manager.save()
+                new_favs = list(settings.favorite_commands)
+                new_favs.remove(cmd_id)
+                data_manager.update_settings(favorite_commands=new_favs)
             if hasattr(self, "command_settings_changed"):
                 self.command_settings_changed.emit()
             self._refresh_builtin_command_rows_only()
@@ -840,6 +841,7 @@ class SettingsCommandsPageMixin:
             ThemedMessageBox.critical(self, tr("操作失败"), tr("取消收藏失败:\n{error}", error=e))
 
     def _on_toggle_builtin_command(self, cmd_id, enable):
+        logger.info("触发切换内置命令状态: %s, enable=%s", cmd_id, enable)
         try:
             from core import data_manager
 
@@ -847,14 +849,15 @@ class SettingsCommandsPageMixin:
                 return
             settings = data_manager.get_settings()
 
+            new_disabled = list(settings.disabled_builtin_commands)
             if enable:
-                if cmd_id in settings.disabled_builtin_commands:
-                    settings.disabled_builtin_commands.remove(cmd_id)
+                if cmd_id in new_disabled:
+                    new_disabled.remove(cmd_id)
             else:
-                if cmd_id not in settings.disabled_builtin_commands:
-                    settings.disabled_builtin_commands.append(cmd_id)
+                if cmd_id not in new_disabled:
+                    new_disabled.append(cmd_id)
 
-            data_manager.save()
+            data_manager.update_settings(disabled_builtin_commands=new_disabled)
             if hasattr(self, "command_settings_changed"):
                 self.command_settings_changed.emit()
             self._refresh_builtin_command_rows_only()
@@ -863,6 +866,7 @@ class SettingsCommandsPageMixin:
             ThemedMessageBox.critical(self, tr("操作失败"), tr("保存命令状态失败:\n{error}", error=e))
 
     def _on_favorite_command(self, cmd_id):
+        logger.info("触发收藏: %s", cmd_id)
         try:
             from core import data_manager
 
@@ -870,8 +874,9 @@ class SettingsCommandsPageMixin:
                 return
             settings = data_manager.get_settings()
             if cmd_id not in settings.favorite_commands:
-                settings.favorite_commands.append(cmd_id)
-            data_manager.save()
+                new_favs = list(settings.favorite_commands)
+                new_favs.append(cmd_id)
+                data_manager.update_settings(favorite_commands=new_favs)
             if hasattr(self, "command_settings_changed"):
                 self.command_settings_changed.emit()
             self._refresh_builtin_command_rows_only()
@@ -886,11 +891,11 @@ class SettingsCommandsPageMixin:
             if data_manager is None:
                 return
             settings = data_manager.get_settings()
-            favs = settings.favorite_commands
+            favs = list(settings.favorite_commands)
             if 0 <= source_row < len(favs) and 0 <= dest_row < len(favs):
                 item = favs.pop(source_row)
                 favs.insert(dest_row, item)
-                data_manager.save()
+                data_manager.update_settings(favorite_commands=favs)
                 if hasattr(self, "command_settings_changed"):
                     self.command_settings_changed.emit()
                 self._schedule_refresh()
