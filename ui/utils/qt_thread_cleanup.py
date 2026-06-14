@@ -61,8 +61,17 @@ def _is_running(thread) -> bool:
 
 
 def _disconnect_named_signals(obj, names: Iterable[str] | None) -> None:
+    if obj is None:
+        return
     for name in names or ():
-        signal = getattr(obj, name, None)
+        try:
+            signal = getattr(obj, name, None)
+        except RuntimeError as exc:
+            logger.debug("断开线程信号时对象已失效: %s", exc, exc_info=True)
+            return
+        except (AttributeError, TypeError) as exc:
+            logger.debug("读取线程信号失败: %s", exc, exc_info=True)
+            continue
         if signal is not None:
             _safe_disconnect(signal)
 

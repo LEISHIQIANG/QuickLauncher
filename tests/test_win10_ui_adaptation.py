@@ -108,6 +108,25 @@ def test_popup_menu_disables_native_shadow_on_win11(monkeypatch, qapp):
     menu.deleteLater()
 
 
+def test_popup_menu_disables_native_shadow_on_win10(monkeypatch, qapp):
+    import ui.utils.window_effect as window_effect
+    from ui.styles.style import PopupMenu
+
+    monkeypatch.setattr(window_effect, "_windows_version_cache", "win10")
+
+    menu = PopupMenu(theme="dark", radius=12)
+
+    assert menu.windowFlags() & QtCompat.NoDropShadowWindowHint
+    shadow = getattr(menu, "_quicklauncher_win10_shadow", None)
+    assert shadow is not None
+    assert shadow._radius == 12
+    assert shadow._shadow_size == PopupMenu._WIN10_SHADOW_SIZE
+    assert shadow._shadow_distance == PopupMenu._WIN10_SHADOW_DISTANCE
+
+    shadow.detach()
+    menu.deleteLater()
+
+
 def test_popup_menu_retains_until_hidden(monkeypatch, qapp):
     from ui.styles.style import PopupMenu
 

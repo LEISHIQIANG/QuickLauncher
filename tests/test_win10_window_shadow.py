@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from qt_compat import QWidget
+from qt_compat import QPoint, QtCompat, QWidget
 
 
 def test_win10_shadow_installs_without_hidden_window_delete_crash(monkeypatch, qapp):
@@ -217,6 +217,64 @@ def test_popup_menu_uses_win10_shadow_with_menu_radius(monkeypatch, qapp):
     menu._apply_blur_effect()
 
     assert shadow._radius == 12
+    assert shadow._shadow_size == PopupMenu._WIN10_SHADOW_SIZE
+    assert shadow._shadow_distance == PopupMenu._WIN10_SHADOW_DISTANCE
+    assert menu.windowFlags() & QtCompat.NoDropShadowWindowHint
+
+    shadow.detach()
+    menu.close()
+    menu.deleteLater()
+    qapp.processEvents()
+
+
+def test_popup_menu_win10_shadow_is_ready_when_popup_returns(monkeypatch, qapp):
+    import ui.utils.window_effect as window_effect
+    from ui.styles.style import PopupMenu
+
+    monkeypatch.setattr(window_effect, "_windows_version_cache", "win10")
+
+    menu = PopupMenu(theme="dark", radius=12)
+    menu.add_action("Open", lambda: None)
+    menu.popup(QPoint(-10000, -10000))
+
+    shadow = getattr(menu, "_quicklauncher_win10_shadow", None)
+    assert menu._blur_applied is True
+    assert shadow is not None
+    assert shadow.widget is not None
+    assert shadow.widget.isVisible()
+    assert shadow._synchronous is True
+
+    shadow.detach()
+    menu.close()
+    menu.deleteLater()
+    qapp.processEvents()
+
+
+def test_popup_menu_win10_shadow_follows_geometry_and_opacity_synchronously(monkeypatch, qapp):
+    import ui.utils.window_effect as window_effect
+    from ui.styles.style import PopupMenu
+
+    monkeypatch.setattr(window_effect, "_windows_version_cache", "win10")
+
+    menu = PopupMenu(theme="dark", radius=12)
+    menu.add_action("Open", lambda: None)
+    menu.popup(QPoint(-10000, -10000))
+
+    shadow = getattr(menu, "_quicklauncher_win10_shadow", None)
+    assert shadow is not None
+    assert shadow.widget is not None
+
+    margin, bottom_extra = shadow._shadow_margins(menu)
+    menu.move(-9800, -9700)
+    frame = menu.frameGeometry()
+    shadow_geo = shadow.widget.geometry()
+    assert shadow_geo.x() == frame.x() - margin
+    assert shadow_geo.y() == frame.y() - margin
+    assert shadow_geo.width() == frame.width() + margin * 2
+    assert shadow_geo.height() == frame.height() + margin * 2 + bottom_extra
+
+    menu.setWindowOpacity(0.4)
+    assert abs(shadow.widget.windowOpacity() - 0.4) < 0.01
 
     shadow.detach()
     menu.close()

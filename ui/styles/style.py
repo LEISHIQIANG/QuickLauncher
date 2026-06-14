@@ -133,6 +133,8 @@ class PopupMenu(QWidget):
     """
 
     _active_popups = set()
+    _WIN10_SHADOW_SIZE = 10
+    _WIN10_SHADOW_DISTANCE = 1
 
     def __init__(self, theme: str = "dark", radius: int = 12, parent=None, native_effects: bool = True):
         if parent is None and not isinstance(theme, str):
@@ -141,17 +143,18 @@ class PopupMenu(QWidget):
         if theme not in ("dark", "light"):
             theme = "dark"
         super().__init__(parent)
-        apply_custom_window_chrome(
-            self,
-            kind="popup",
-            translucent=True,
-            no_shadow=not self._uses_win10_companion_shadow(),
-        )
         self._theme = theme
         self._radius = self._effective_radius(radius)
         self._blur_applied = False
         self._native_effects_enabled = bool(native_effects)
         self._effect_generation = 0
+        apply_custom_window_chrome(
+            self,
+            kind="popup",
+            translucent=True,
+            no_shadow=True,
+        )
+        self._install_win10_companion_shadow()
         self._leave_timer = QTimer(self)
         self._leave_timer.setSingleShot(True)
         self._leave_timer.setInterval(220)
@@ -327,9 +330,17 @@ class PopupMenu(QWidget):
         self.adjustSize()
         self._move_into_screen(global_pos)
         self._retain_until_hidden()
+        win10_shadow = self._uses_win10_companion_shadow()
+        if win10_shadow and bool(getattr(self, "_native_effects_enabled", False)):
+            # Configure the Win10 surface before the first paint. Other custom
+            # windows hide delayed effects behind a fade-in; menus appear at
+            # full opacity, so deferring this work makes the shadow visibly lag.
+            self._apply_blur_effect()
         self.show()
         self.adjustSize()
         self._move_into_screen(self.pos())
+        if win10_shadow:
+            self._sync_win10_companion_shadow_now()
         self.raise_()
         try:
             self.activateWindow()
@@ -337,7 +348,8 @@ class PopupMenu(QWidget):
         except Exception as exc:
             logger.debug("激活菜单窗口失败: %s", exc, exc_info=True)
         # Apply the same OS-specific surface treatment as the owning window.
-        self._schedule_blur_effect()
+        if not win10_shadow:
+            self._schedule_blur_effect()
         QTimer.singleShot(0, self._reposition_after_show)
 
     def _retain_until_hidden(self):
@@ -362,6 +374,45 @@ class PopupMenu(QWidget):
             return is_win10()
         except Exception as exc:
             logger.debug("判断菜单阴影策略失败: %s", exc, exc_info=True)
+            return False
+
+    def _install_win10_companion_shadow(self) -> bool:
+        if not self._uses_win10_companion_shadow():
+            return False
+        try:
+            from ui.utils.window_effect import install_win10_window_shadow
+
+            return install_win10_window_shadow(
+                self,
+                self._radius,
+                shadow_size=self._WIN10_SHADOW_SIZE,
+                shadow_distance=self._WIN10_SHADOW_DISTANCE,
+                synchronous=True,
+            )
+        except (ImportError, AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.debug("安装菜单 Win10 阴影失败: %s", exc, exc_info=True)
+            return False
+
+    def _sync_win10_companion_shadow_now(self) -> bool:
+        """Create, position, and paint the Win10 shadow before the menu's first frame."""
+        if not self._uses_win10_companion_shadow():
+            return False
+        try:
+            shadow = getattr(self, "_quicklauncher_win10_shadow", None)
+            if shadow is None:
+                if not self._install_win10_companion_shadow():
+                    return False
+                shadow = getattr(self, "_quicklauncher_win10_shadow", None)
+            if shadow is None:
+                return False
+            shadow.sync()
+            shadow_widget = getattr(shadow, "widget", None)
+            if shadow_widget is None:
+                return False
+            shadow_widget.repaint()
+            return bool(shadow_widget.isVisible())
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.debug("同步菜单 Win10 阴影失败: %s", exc, exc_info=True)
             return False
 
     def _next_effect_generation(self) -> int:
@@ -425,7 +476,10 @@ class PopupMenu(QWidget):
         try:
             self.adjustSize()
             self._move_into_screen(self.pos())
-            self._schedule_blur_effect()
+            if self._uses_win10_companion_shadow():
+                self._sync_win10_companion_shadow_now()
+            else:
+                self._schedule_blur_effect()
         except RuntimeError:
             return
         except Exception as exc:
@@ -560,7 +614,6 @@ class PopupMenu(QWidget):
         try:
             from ui.utils.window_effect import (
                 get_window_effect,
-                install_win10_window_shadow,
                 is_win10,
                 is_win11,
                 remove_win10_window_shadow,
@@ -592,21 +645,23 @@ class PopupMenu(QWidget):
                 else:
                     gradient_color = "e8f7f7fb"
                 effect.set_acrylic(hwnd, gradient_color, enable=True, blur=True)
+            elif is_win10():
+                # A single Qt-painted shadow avoids the doubled rectangular
+                # system shadow that Win10 adds to translucent popup windows.
+                effect.clear_window_region(hwnd)
+                self._install_win10_companion_shadow()
+                effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
             else:
-                # Win10: 使用窗口区域裁剪，背景由 Qt 自绘
-                install_win10_window_shadow(self, r)
+                remove_win10_window_shadow(self)
                 if w > 0 and h > 0:
                     effect.set_window_region(hwnd, w, h, r)
-                if is_win10():
-                    effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
+                effect.set_dwm_blur_behind(hwnd, w, h, r, enable=True)
+                # 应用半透明着色层
+                if self._theme == "dark":
+                    gradient_color = "c81c1c1e"
                 else:
-                    effect.set_dwm_blur_behind(hwnd, w, h, r, enable=True)
-                    # 应用半透明着色层
-                    if self._theme == "dark":
-                        gradient_color = "c81c1c1e"
-                    else:
-                        gradient_color = "c8f2f2f7"
-                    effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
+                    gradient_color = "c8f2f2f7"
+                effect.set_acrylic(hwnd, gradient_color, enable=True, blur=False)
 
             self._blur_applied = True
         except Exception as e:
@@ -670,7 +725,7 @@ class PopupMenu(QWidget):
         )
 
         if win10_qt_fallback:
-            paint_win10_rounded_surface(painter, self, bg, border, self._radius)
+            paint_win10_rounded_surface(painter, self, bg, border, self._radius, inset=0.5)
             painter.end()
             return
 

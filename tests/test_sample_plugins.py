@@ -1,18 +1,54 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
-
-import pytest
 
 from core.command_registry import CommandContext, CommandRegistry
 from core.plugin_manager import PluginManager
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_PACKAGE_DIR = ROOT / ".plugins"
+
+
+def _python_312_command() -> list[str]:
+    candidates: list[list[str]] = []
+    if sys.version_info[:2] == (3, 12):
+        candidates.append([sys.executable])
+
+    configured = os.environ.get("QUICKLAUNCHER_TEST_PYTHON312")
+    if configured:
+        candidates.append([configured])
+
+    py_launcher = shutil.which("py")
+    if py_launcher:
+        candidates.append([py_launcher, "-3.12"])
+
+    for executable_name in ("python3.12", "python312"):
+        executable = shutil.which(executable_name)
+        if executable:
+            candidates.append([executable])
+
+    for command in candidates:
+        completed = subprocess.run(
+            [
+                *command,
+                "-c",
+                "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)",
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        if completed.returncode == 0:
+            return command
+
+    raise AssertionError(
+        "screenshot_ocr runtime validation requires CPython 3.12; " "install it or set QUICKLAUNCHER_TEST_PYTHON312"
+    )
 
 
 def _load_module(plugin_dir: Path, plugin_id: str):
@@ -117,9 +153,7 @@ def test_qr_code_scanner_prefers_host_helper_for_bundled_qt_runtime():
 
 
 def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
-    if sys.version_info[:2] != (3, 12):
-        pytest.skip("screenshot_ocr bundles wxPython cp312 binaries; runtime import requires Python 3.12")
-
+    python_command = _python_312_command()
     _registry, manager = _install_sample_packages(tmp_path, ("screenshot_ocr",))
     plugin_dir = Path(manager.plugins_dir) / "screenshot_ocr"
     site_packages = plugin_dir / "runtime" / "site-packages"
@@ -131,7 +165,7 @@ def test_host_plugin_helper_loads_screenshot_ocr_bundled_wx(tmp_path):
 
     completed = subprocess.run(
         [
-            sys.executable,
+            *python_command,
             str(ROOT / "main.py"),
             "--plugin-helper",
             str(helper),

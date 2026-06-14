@@ -236,7 +236,14 @@ def configure_win10_window_shadow(shadow_size: int | None = None, shadow_distanc
 class _Win10ShadowWindow:
     """Transparent companion window that paints a Win10-like rounded shadow."""
 
-    def __init__(self, target, radius: int, shadow_size: int | None = None, shadow_distance: int | None = None):
+    def __init__(
+        self,
+        target,
+        radius: int,
+        shadow_size: int | None = None,
+        shadow_distance: int | None = None,
+        synchronous: bool = False,
+    ):
         from qt_compat import QColor, QEvent, QPainter, QPainterPath, QRectF, Qt, QWidget
 
         self._QColor = QColor
@@ -249,6 +256,7 @@ class _Win10ShadowWindow:
         self._radius = max(0, int(radius))
         self._shadow_size = _optional_non_negative_int(shadow_size)
         self._shadow_distance = _optional_non_negative_int(shadow_distance)
+        self._synchronous = bool(synchronous)
         self._sync_pending = False
         self._attached = False
         self._window_handle = None
@@ -340,7 +348,7 @@ class _Win10ShadowWindow:
         try:
             if target.isVisible():
                 self._set_sync_timer_active(True)
-                self.sync_later()
+                self._sync_or_schedule()
         except _WINDOW_EFFECT_ERRORS:
             logger.debug("检查目标窗口可见性失败", exc_info=True)
 
@@ -413,7 +421,7 @@ class _Win10ShadowWindow:
         self._last_paint_state = None
         if self.widget is not None:
             self.widget.update()
-        self.sync_later()
+        self._sync_or_schedule()
 
     def set_shadow_options(
         self,
@@ -421,20 +429,34 @@ class _Win10ShadowWindow:
         radius: int | None = None,
         shadow_size: int | None = None,
         shadow_distance: int | None = None,
+        synchronous: bool | None = None,
     ):
         next_radius = self._radius if radius is None else max(0, int(radius))
         next_size = _optional_non_negative_int(shadow_size)
         next_distance = _optional_non_negative_int(shadow_distance)
-        if next_radius == self._radius and next_size == self._shadow_size and next_distance == self._shadow_distance:
+        next_synchronous = self._synchronous if synchronous is None else bool(synchronous)
+        if (
+            next_radius == self._radius
+            and next_size == self._shadow_size
+            and next_distance == self._shadow_distance
+            and next_synchronous == self._synchronous
+        ):
             return
         self._radius = next_radius
         self._shadow_size = next_size
         self._shadow_distance = next_distance
+        self._synchronous = next_synchronous
         self._last_shadow_state = None
         self._last_paint_state = None
         if self.widget is not None:
             self.widget.update()
-        self.sync_later()
+        self._sync_or_schedule()
+
+    def _sync_or_schedule(self):
+        if self._synchronous:
+            self.sync()
+        else:
+            self.sync_later()
 
     def sync_later(self):
         if self._sync_pending:
@@ -585,12 +607,12 @@ class _Win10ShadowWindow:
 
             setattr(target, name, wrapped)
 
-        wrap_event("moveEvent", self.sync_later)
-        wrap_event("resizeEvent", self.sync_later)
-        wrap_event("showEvent", self.sync_later)
+        wrap_event("moveEvent", self._sync_or_schedule)
+        wrap_event("resizeEvent", self._sync_or_schedule)
+        wrap_event("showEvent", self._sync_or_schedule)
         wrap_event("hideEvent", self._hide_shadow_widget)
         wrap_event("closeEvent", self.detach)
-        wrap_event("changeEvent", self.sync_later)
+        wrap_event("changeEvent", self._sync_or_schedule)
         self._install_target_method_hooks(target)
 
     def _install_target_method_hooks(self, target):
@@ -613,13 +635,13 @@ class _Win10ShadowWindow:
 
             setattr(target, name, wrapped)
 
-        wrap_method("raise_", self._sync_z_order_later)
-        wrap_method("activateWindow", self._sync_z_order_later)
-        wrap_method("show", self.sync_later)
-        wrap_method("showNormal", self.sync_later)
-        wrap_method("showFullScreen", self.sync_later)
-        wrap_method("showMaximized", self.sync_later)
-        wrap_method("setWindowOpacity", self.sync_later)
+        wrap_method("raise_", self._sync_or_schedule)
+        wrap_method("activateWindow", self._sync_or_schedule)
+        wrap_method("show", self._sync_or_schedule)
+        wrap_method("showNormal", self._sync_or_schedule)
+        wrap_method("showFullScreen", self._sync_or_schedule)
+        wrap_method("showMaximized", self._sync_or_schedule)
+        wrap_method("setWindowOpacity", self._sync_or_schedule)
 
     def _ensure_widget(self, target):
         if self.widget is not None:
@@ -848,6 +870,7 @@ def install_win10_window_shadow(
     radius: int = 12,
     shadow_size: int | None = None,
     shadow_distance: int | None = None,
+    synchronous: bool = False,
 ):
     """Install or update the custom Win10 rounded shadow for a frameless widget.
 
@@ -869,15 +892,21 @@ def install_win10_window_shadow(
             normalized_distance = None
         shadow = getattr(widget, _WIN10_SHADOW_ATTR, None)
         if shadow is None:
-            shadow = _Win10ShadowWindow(widget, radius, normalized_size, normalized_distance)
+            shadow = _Win10ShadowWindow(
+                widget,
+                radius,
+                normalized_size,
+                normalized_distance,
+                synchronous=synchronous,
+            )
             setattr(widget, _WIN10_SHADOW_ATTR, shadow)
         else:
             shadow.set_shadow_options(
                 radius=radius,
                 shadow_size=normalized_size,
                 shadow_distance=normalized_distance,
+                synchronous=synchronous,
             )
-            shadow.sync_later()
         return True
     except RuntimeError:
         return False

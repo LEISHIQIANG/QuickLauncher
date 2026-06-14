@@ -49,6 +49,12 @@ def test_commands_page_buttons(qapp, monkeypatch, tmp_path):
         def save():
             pass
 
+        @staticmethod
+        def update_settings(**kwargs):
+            for key, value in kwargs.items():
+                setattr(settings, key, value)
+            return True
+
     class FakeRegistry:
         @staticmethod
         def list():
