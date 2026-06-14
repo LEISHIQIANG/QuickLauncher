@@ -311,11 +311,14 @@ class PopupRendererMixin:
                 painter.drawPath(make_border_path(1.0))
 
         # 绘制内容。滚轮翻页动画只刷新主体和指示器区域，避免每帧重画 Dock 图标。
-        search_visible = bool(
-            getattr(self, "search_query", "")
-            or getattr(self, "_search_forced_active", False)
-            or getattr(self, "_search_reveal_progress", 0.0) > 0.001
-            or getattr(self, "_search_target_progress", 0.0) > 0.001
+        search_visible = (
+            bool(self._is_search_bar_visible())
+            if hasattr(self, "_is_search_bar_visible")
+            else (
+                bool(self._is_search_active())
+                if hasattr(self, "_is_search_active")
+                else bool(getattr(self, "search_query", ""))
+            )
         )
 
         body_bottom = max(
@@ -328,12 +331,15 @@ class PopupRendererMixin:
         if content_dirty:
             if search_visible:
                 self._draw_search_bar(painter, text_color, accent_color)
-            if getattr(self, "search_query", ""):
-                self._draw_search_results(painter, text_color, hover_color, drop_highlight_color, bg_mode)
-            elif not search_visible or getattr(self, "_search_reveal_progress", 0.0) >= 0.999:
-                self._draw_icons(painter, text_color, hover_color, drop_highlight_color, bg_mode)
             else:
-                # During search reveal animation, still draw icons underneath
+                self._draw_page_header(painter, text_color, accent_color)
+            if (
+                self._is_search_active()
+                if hasattr(self, "_is_search_active")
+                else bool(getattr(self, "search_query", ""))
+            ):
+                self._draw_search_results(painter, text_color, hover_color, drop_highlight_color, bg_mode)
+            else:
                 self._draw_icons(painter, text_color, hover_color, drop_highlight_color, bg_mode)
 
         indicator_rect = QRect(0, max(0, int(getattr(self, "indicator_y", 0) or 0) - sp(6)), self.width(), sp(24))
@@ -392,15 +398,15 @@ class PopupRendererMixin:
                 visible1 = w - offset1
                 if visible1 > 0:
                     painter.save()
-                    painter.setClipRect(0, y_offset, visible1, self.content_height)
-                    painter.drawPixmap(-offset1, y_offset, first_pixmap)
+                    painter.setClipRect(0, y_offset, visible1, max(0, self.content_height - y_offset))
+                    painter.drawPixmap(-offset1, 0, first_pixmap)
                     painter.restore()
                 offset2 = int(w * (1.0 - page_fraction))
                 visible2 = w - offset2
                 if visible2 > 0:
                     painter.save()
-                    painter.setClipRect(offset2, y_offset, visible2, self.content_height)
-                    painter.drawPixmap(offset2, y_offset, second_pixmap)
+                    painter.setClipRect(offset2, y_offset, visible2, max(0, self.content_height - y_offset))
+                    painter.drawPixmap(offset2, 0, second_pixmap)
                     painter.restore()
             else:
                 painter.save()
@@ -624,39 +630,44 @@ class PopupRendererMixin:
 
     def _draw_search_bar(self, painter: QPainter, text_color: QColor, accent_color: QColor):
         query = getattr(self, "search_query", "")
-        full_h = self._search_bar_full_height() if hasattr(self, "_search_bar_full_height") else 34
-        clip_top = self._search_visible_top_inset() if hasattr(self, "_search_visible_top_inset") else 0
-        clip_h = max(0, full_h - int(clip_top))
-        if clip_h <= 0:
-            return
-        # Compute opacity from reveal progress for smooth fade
-        progress = max(0.0, min(1.0, float(getattr(self, "_search_reveal_progress", 1.0))))
-        x = self.padding
-        w = self.width() - self.padding * 2
-        rect_h = max(sp(6), full_h - sp(8))
-        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
-        rect_y = shadow_margin + sp(4)
-        rect = QRectF(x, rect_y, w, rect_h)
-        bg = QColor(255, 255, 255, 34 if self.settings.theme == "dark" else 150)
+        preedit = getattr(self, "_search_preedit_text", "") or ""
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"
+
+        if hasattr(self, "_search_bar_rect"):
+            rect = self._search_bar_rect()
+        else:
+            shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+            rect = QRectF(
+                self.padding + sp(0), shadow_margin + sp(8), self.width() - (self.padding + sp(0)) * 2, sp(28)
+            )
+
+        rect_h = rect.height()
+        radius = sp(8)
+
         painter.save()
-        painter.setClipRect(0, shadow_margin + clip_top, self.width(), clip_h)
-        painter.setOpacity(progress)
+
+        # 1. 绘制阴影（仅在浅色模式下绘制精致投影）
+        if not is_dark:
+            for i in range(3, 0, -1):
+                shadow_color = QColor(0, 0, 0, int(7 - i * 1.5))
+                shadow_rect = rect.adjusted(-i * 0.5, -i * 0.2 + 0.5, i * 0.5, i * 0.8 + 0.5)
+                shadow_radius = radius + i * 0.5
+                painter.setPen(QtCompat.NoPen)
+                painter.setBrush(QBrush(shadow_color))
+                painter.drawRoundedRect(shadow_rect, shadow_radius, shadow_radius)
+
+        # 2. 绘制胶囊背景
+        bg = QColor(255, 255, 255, 12 if is_dark else 160)
+        border = QColor(255, 255, 255, 30) if is_dark else QColor(0, 0, 0, 8)
         painter.setBrush(QBrush(bg))
-        painter.setPen(QPen(accent_color, 1))
-        painter.drawRoundedRect(rect, sp(8), sp(8))
-        painter.setPen(text_color)
+        painter.setPen(QPen(border, 1))
+        painter.drawRoundedRect(rect, radius, radius)
+
+        # 3. 字体设置
         font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)
         if font.pixelSize() <= 0:
             font.setPixelSize(font_px(10))
         painter.setFont(font)
-        preedit = getattr(self, "_search_preedit_text", "") or ""
-        prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ("搜索: " if query else "搜索")
-        cursor = self._get_search_cursor_pos() if hasattr(self, "_get_search_cursor_pos") else len(query)
-        label = f"{prefix}{query[:cursor]}{preedit}{query[cursor:]}"
-        text_rect = rect.adjusted(sp(9), 0, -sp(9), 0)
-        scroll_x = int(getattr(self, "__dict__", {}).get("_search_scroll_x", 0) or 0)
-        draw_text_rect = QRectF(text_rect)
-        draw_text_rect.moveLeft(text_rect.left() - scroll_x)
         metrics = painter.fontMetrics()
 
         def text_width(value: str) -> int:
@@ -664,25 +675,86 @@ class PopupRendererMixin:
                 return metrics.horizontalAdvance(value)
             return metrics.width(value)
 
+        # 4. 判断是否居中显示占位符
+        show_centered = not bool(query) and not bool(preedit) and not getattr(self, "_search_forced_active", False)
+        icon_size = sp(14)
+        gap = sp(6)
+
+        icon_color = QColor(text_color)
+        icon_color.setAlpha(128 if is_dark else 100)
+
+        if show_centered:
+            text_w = text_width("搜索")
+            total_w = icon_size + gap + text_w
+            icon_x = rect.left() + (rect.width() - total_w) / 2
+            text_x = icon_x + icon_size + gap
+            draw_text_rect = QRectF(text_x, rect.top(), text_w + sp(4), rect_h)
+        else:
+            icon_x = rect.left() + sp(12)
+
+        # 5. 绘制搜索图标
+        painter.save()
+        painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setBrush(QtCompat.NoBrush)
+        painter.setPen(QPen(icon_color, max(1.5, sp(1.8)), QtCompat.SolidLine, QtCompat.RoundCap, QtCompat.RoundJoin))
+
+        icon_y = rect.center().y() - icon_size / 2
+        circle_size = icon_size * 0.72
+        painter.drawEllipse(QRectF(icon_x, icon_y, circle_size, circle_size))
+
+        handle_start_x = icon_x + circle_size * 0.8
+        handle_start_y = icon_y + circle_size * 0.8
+        painter.drawLine(
+            int(handle_start_x),
+            int(handle_start_y),
+            int(icon_x + icon_size),
+            int(icon_y + icon_size),
+        )
+        painter.restore()
+
+        # 6. 绘制文本
+        text_rect = (
+            self._search_text_rect() if hasattr(self, "_search_text_rect") else rect.adjusted(sp(32), 0, -sp(14), 0)
+        )
+        scroll_x = int(getattr(self, "__dict__", {}).get("_search_scroll_x", 0) or 0)
+        draw_text_rect_typing = QRectF(text_rect)
+        draw_text_rect_typing.moveLeft(text_rect.left() - scroll_x)
+
+        # 绘制选中文本背景
         selection = self._search_selection_bounds() if hasattr(self, "_search_selection_bounds") else None
-        if selection:
+        if selection and not show_centered:
             sel_start, sel_end = selection
+            prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ""
             sel_x = int(text_rect.left() + text_width(prefix + query[:sel_start]) - scroll_x)
             sel_w = max(1, int(text_width(query[sel_start:sel_end])))
-            sel_rect = QRectF(sel_x, text_rect.top() + sp(5), sel_w, max(sp(12), text_rect.height() - sp(10)))
+            sel_rect = QRectF(sel_x, text_rect.top() + sp(6), sel_w, max(sp(12), text_rect.height() - sp(12)))
             sel_rect = sel_rect.intersected(text_rect)
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 95)))
             if sel_rect.width() > 0:
                 painter.drawRoundedRect(sel_rect, sp(3), sp(3))
-            painter.setPen(text_color)
 
         painter.save()
         painter.setClipRect(text_rect)
-        painter.drawText(draw_text_rect, QtCompat.AlignVCenter | QtCompat.AlignLeft, label)
+        if show_centered:
+            painter.setPen(icon_color)
+            painter.drawText(draw_text_rect, QtCompat.AlignVCenter | QtCompat.AlignLeft, "搜索")
+        else:
+            if not query and not preedit:
+                painter.setPen(icon_color)
+                painter.drawText(draw_text_rect_typing, QtCompat.AlignVCenter | QtCompat.AlignLeft, "搜索")
+            else:
+                painter.setPen(text_color)
+                prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ""
+                cursor = self._get_search_cursor_pos() if hasattr(self, "_get_search_cursor_pos") else len(query)
+                label = f"{prefix}{query[:cursor]}{preedit}{query[cursor:]}"
+                painter.drawText(draw_text_rect_typing, QtCompat.AlignVCenter | QtCompat.AlignLeft, label)
         painter.restore()
 
-        if preedit:
+        # 绘制输入法拼音下划线
+        if preedit and not show_centered:
+            prefix = self._search_text_prefix() if hasattr(self, "_search_text_prefix") else ""
+            cursor = self._get_search_cursor_pos() if hasattr(self, "_get_search_cursor_pos") else len(query)
             underline_x = int(text_rect.left() + text_width(prefix + query[:cursor]) - scroll_x)
             underline_w = max(1, int(text_width(preedit)))
             underline_y = int(text_rect.center().y() + metrics.ascent() / 2 + sp(2))
@@ -691,16 +763,89 @@ class PopupRendererMixin:
             painter.setClipRect(text_rect)
             painter.drawLine(underline_x, underline_y, underline_x + underline_w, underline_y)
             painter.restore()
-            painter.setPen(text_color)
 
+        # 7. 绘制光标
         if (
             self._is_search_active()
             and getattr(self, "_search_cursor_visible", True)
             and hasattr(self, "_search_cursor_rect")
+            and not show_centered
         ):
             cursor_rect = self._search_cursor_rect()
             if text_rect.intersects(QRectF(cursor_rect)):
                 painter.fillRect(cursor_rect, accent_color)
+        painter.restore()
+
+    def _draw_page_header(self, painter: QPainter, text_color: QColor, accent_color: QColor):
+        pages = list(getattr(self, "pages", None) or [])
+        if not pages:
+            return
+
+        if hasattr(self, "_page_header_rect"):
+            rect = self._page_header_rect()
+        else:
+            shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+            rect = QRectF(
+                self.padding + sp(0), shadow_margin + sp(8), self.width() - (self.padding + sp(0)) * 2, sp(28)
+            )
+
+        radius = sp(8)
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"
+
+        painter.save()
+
+        # 1. 绘制阴影（仅在浅色模式下绘制）
+        if not is_dark:
+            for i in range(3, 0, -1):
+                shadow_color = QColor(0, 0, 0, int(7 - i * 1.5))
+                shadow_rect = rect.adjusted(-i * 0.5, -i * 0.2 + 0.5, i * 0.5, i * 0.8 + 0.5)
+                shadow_radius = radius + i * 0.5
+                painter.setPen(QtCompat.NoPen)
+                painter.setBrush(QBrush(shadow_color))
+                painter.drawRoundedRect(shadow_rect, shadow_radius, shadow_radius)
+
+        # 2. 绘制胶囊背景
+        bg = QColor(255, 255, 255, 12 if is_dark else 160)
+        border = QColor(255, 255, 255, 30) if is_dark else QColor(0, 0, 0, 8)
+        painter.setBrush(QBrush(bg))
+        painter.setPen(QPen(border, 1))
+        painter.drawRoundedRect(rect, radius, radius)
+
+        # 3. 字体与标签设置
+        font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)
+        if font.pixelSize() <= 0:
+            font.setPixelSize(font_px(10))
+        painter.setFont(font)
+        metrics = painter.fontMetrics()
+        active_index = max(0, min(int(getattr(self, "current_page", 0) or 0), len(pages) - 1))
+
+        painter.save()
+        painter.setClipRect(rect.adjusted(1, 0, -1, 0))
+
+        tab_rects = self._page_header_tab_rects() if hasattr(self, "_page_header_tab_rects") else []
+        for page_index, tab_rect in tab_rects:
+            name = str(getattr(pages[page_index], "name", "") or "")
+            label = metrics.elidedText(name, QtCompat.ElideRight, max(1, int(tab_rect.width() - sp(12))))
+            color = QColor(accent_color) if page_index == active_index else QColor(text_color)
+            color.setAlpha(255 if page_index == active_index else (128 if is_dark else 138))
+            painter.setPen(color)
+
+            # 文本垂直和水平居中
+            painter.drawText(tab_rect, QtCompat.AlignCenter, label)
+
+            if page_index == active_index:
+                # 绘制选中指示器的微小胶囊线
+                adv_width = (
+                    metrics.horizontalAdvance(label) if hasattr(metrics, "horizontalAdvance") else metrics.width(label)
+                )
+                line_w = min(max(sp(18), adv_width // 2), max(sp(18), int(tab_rect.width() - sp(20))))
+                line_h = sp(3)
+                line_x = tab_rect.center().x() - line_w / 2
+                line_y = rect.bottom() - sp(4)
+                painter.setPen(QtCompat.NoPen)
+                painter.setBrush(QBrush(accent_color))
+                painter.drawRoundedRect(QRectF(line_x, line_y, line_w, line_h), line_h / 2, line_h / 2)
+        painter.restore()
         painter.restore()
 
     def _draw_search_results(
@@ -810,7 +955,7 @@ class PopupRendererMixin:
         icon_size = self.icon_size
         fixed_rows = self.fixed_rows
         padding = self.padding
-        bottom_margin = sp(6)
+        bottom_margin = self._dock_outer_bottom_gap()
         has_indicator = len(self.pages) > 1
         indicator_height = sp(16) if has_indicator else 0
         indicator_spacing = sp(4) if has_indicator else 0
@@ -1067,11 +1212,11 @@ class PopupRendererMixin:
         start_x = (self.width() - line_width) // 2
         cell_size = self.cell_size
         icon_size = self.icon_size
-        dock_row_stride = icon_size + sp(6)
+        display_rows = self._dock_display_rows(visible_count, max_cols)
+        dock_row_stride = self._get_dock_row_stride(display_rows)
         is_dark = self.settings.theme == "dark"
         card_pad = sp(2)
         card_r = sp(6)
-        display_rows = self._dock_display_rows(visible_count, max_cols)
         first_icon_y = self._dock_first_icon_y(display_rows)
 
         for i in range(visible_count):
@@ -1116,6 +1261,18 @@ class PopupRendererMixin:
                 painter.setOpacity(self.settings.icon_alpha)
                 painter.drawPixmap(icon_x, icon_y, pixmap)
                 painter.setOpacity(1.0)
+
+            # ===== 绘制文本标签 =====
+            if self._dock_shows_text(display_rows):
+                name_str = getattr(item, "name", "") or ""
+                label = self._elided_label(name_str)
+                painter.setFont(self._label_font)
+                painter.setPen(QPen(text_color))
+                fm = painter.fontMetrics()
+                text_h = fm.height()
+                text_spacing = sp(1)
+                text_y = card_y + card_size + text_spacing
+                painter.drawText(x, text_y, cell_size, text_h, QtCompat.AlignHCenter | QtCompat.AlignTop, label)
 
     def preload_page_animation_pixmaps(self):
         """Pre-render and cache page animation pixmaps to prevent frame drops on first slide."""

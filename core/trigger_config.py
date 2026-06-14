@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from hooks.key_map import key_to_vk
+
 VALID_TRIGGER_MODES = {"mouse", "keyboard", "hybrid"}
 VALID_TRIGGER_BUTTONS = {"left", "right", "middle", "x1", "x2"}
 VALID_TRIGGER_MODIFIERS = {"ctrl", "alt", "shift", "win"}
@@ -22,25 +24,6 @@ _KEY_ALIASES = {
     "pgup": "pageup",
     "pgdn": "pagedown",
     "prtscr": "printscreen",
-}
-_NAMED_KEYS = {
-    "space",
-    "enter",
-    "tab",
-    "backspace",
-    "esc",
-    "delete",
-    "insert",
-    "home",
-    "end",
-    "pageup",
-    "pagedown",
-    "left",
-    "right",
-    "up",
-    "down",
-    "pause",
-    "printscreen",
 }
 
 
@@ -63,14 +46,7 @@ def normalize_trigger_key(value: str) -> str:
     if not text:
         return ""
     text = _KEY_ALIASES.get(text, text)
-    if len(text) == 1 and ("a" <= text <= "z" or "0" <= text <= "9"):
-        return text
-    if text.startswith("f") and text[1:].isdigit():
-        number = int(text[1:])
-        if 1 <= number <= 24:
-            return f"f{number}"
-        return ""
-    return text if text in _NAMED_KEYS else ""
+    return text if key_to_vk(text) else ""
 
 
 def _dedupe_normalized(values, normalizer) -> list[str]:
@@ -120,19 +96,6 @@ def normalize_trigger_config(
         normalized_keys = []
         normalized_button = "middle"
         normalized_modifiers = _dedupe_normalized(default_modifiers or [], normalize_trigger_modifier)
-
-    if fill_defaults:
-        fallback_modifiers = _dedupe_normalized(default_modifiers or [], normalize_trigger_modifier)
-        alt_only = set(normalized_modifiers) == {"alt"}
-        unsafe_left_right = normalized_button in {"left", "right"} and not normalized_modifiers
-        unsafe_keyboard = normalized_mode == "keyboard" and not normalized_modifiers
-        unsafe_hybrid = normalized_mode == "hybrid" and unsafe_left_right
-        unsafe_alt_only = alt_only and (bool(normalized_keys) or normalized_button in {"left", "right", "middle"})
-        if unsafe_left_right or unsafe_keyboard or unsafe_hybrid or unsafe_alt_only:
-            normalized_mode = "mouse"
-            normalized_keys = []
-            normalized_button = "middle"
-            normalized_modifiers = fallback_modifiers
 
     return TriggerConfig(
         mode=normalized_mode,

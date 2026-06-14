@@ -52,6 +52,7 @@ static std::atomic<MouseCallback> g_altDoubleClickCallback(nullptr);
 static std::atomic<KeyboardCallback> g_altDoubleTapCallback(nullptr);
 static std::atomic<KeyboardCallback> g_hotkeyCallback(nullptr);
 static std::atomic<HotkeyCaptureCallback> g_hotkeyCaptureCallback(nullptr);
+static std::atomic<ProtectedChordCaptureCallback> g_protectedChordCaptureCallback(nullptr);
 static std::atomic<InputEventCallback> g_inputEventCallback(nullptr);
 
 // 状态
@@ -76,6 +77,8 @@ struct PendingRawKeyboardEvent {
 static std::deque<PendingRawKeyboardEvent> g_pendingRawKeyboardEvents;
 static std::atomic<unsigned long long> g_lastRawKeyboardFallbackTick(0);
 static std::atomic<int> g_lastRawKeyboardFallbackVk(0);
+static std::atomic<unsigned long long> g_lastKeyboardTriggerCallbackTick(0);
+static std::atomic<bool> g_asyncKeyboardTriggerLatched(false);
 
 // 时间戳
 static double g_lastBlockTime = 0.0;
@@ -100,8 +103,8 @@ static std::atomic<bool> g_hotkeyCommandResult(false);
 // 快捷键录制模式：启用后吞掉所有键盘事件，只把最终组合回调给 UI。
 static std::atomic<bool> g_hotkeyCaptureEnabled(false);
 static bool g_hotkeyCaptureCompleted = false;
-static DWORD g_hotkeyCaptureStartedTick = 0;
-static DWORD g_hotkeyCaptureTimeoutMs = 10000;
+static std::atomic<DWORD> g_hotkeyCaptureStartedTick(0);
+static std::atomic<DWORD> g_hotkeyCaptureTimeoutMs(10000);
 static bool g_hotkeyCapturePressed[256] = {false};
 static bool g_hotkeyCapturePreexisting[256] = {false};
 static bool g_hotkeyCaptureSwallowed[256] = {false};
@@ -109,6 +112,31 @@ static bool g_keyboardPressed[256] = {false};
 static bool g_triggerBlockedKeys[256] = {false};
 static int g_hotkeyCaptureSideModifiers = 0;
 static std::mutex g_hotkeyCaptureMutex;
+
+// 受保护组合录制：同时支持键盘与五键鼠标，并吞掉本次组合的按下/抬起事件。
+static std::atomic<bool> g_protectedChordCaptureEnabled(false);
+static std::atomic<unsigned int> g_protectedChordCaptureFlags(0);
+static std::atomic<DWORD> g_protectedChordCaptureStartedTick(0);
+static std::atomic<DWORD> g_protectedChordCaptureTimeoutMs(10000);
+static bool g_protectedChordCaptureStarted = false;
+static bool g_protectedChordPressed[256] = {false};
+static bool g_protectedChordPreexisting[256] = {false};
+static bool g_protectedChordSwallowed[256] = {false};
+static int g_protectedChordMousePressed = 0;
+static int g_protectedChordMousePreexisting = 0;
+static int g_protectedChordMouseSwallowed = 0;
+static int g_protectedChordCurrentSideModifiers = 0;
+static int g_protectedChordSeenSideModifiers = 0;
+static std::mutex g_protectedChordCaptureMutex;
+static HANDLE g_protectedChordProcessLock = NULL;
+
+enum CaptureMode {
+    CAPTURE_MODE_NONE = 0,
+    CAPTURE_MODE_HOTKEY = 1,
+    CAPTURE_MODE_PROTECTED_CHORD = 2,
+    CAPTURE_MODE_INPUT = 3,
+};
+static std::atomic<int> g_activeCaptureMode(CAPTURE_MODE_NONE);
 
 // 特殊应用列表
 static std::vector<std::string> g_specialApps;
@@ -124,6 +152,8 @@ static int g_specialTriggerButton = 4;     // 默认中键
 static std::vector<int> g_specialTriggerKeys;
 static int g_specialTriggerModifiers = 2;  // 默认Ctrl
 static std::mutex g_triggerConfigMutex;
+static std::atomic<bool> g_normalTriggerHotkeyRegistered(false);
+static std::atomic<bool> g_specialTriggerHotkeyRegistered(false);
 
 static std::mutex g_debugLogMutex;
 static std::mutex g_debugLogStartMutex;
@@ -149,6 +179,21 @@ struct MouseDebugEvent {
 
 static std::vector<MouseDebugEvent> g_pendingDebugEvents;
 
+struct CaptureDebugEvent {
+    SYSTEMTIME time;
+    DWORD processId;
+    DWORD threadId;
+    char phase[40];
+    int inputCode;
+    WPARAM message;
+    DWORD flags;
+    int modifiers;
+    int sideModifiers;
+    char detail[128];
+};
+
+static std::vector<CaptureDebugEvent> g_pendingCaptureDebugEvents;
+
 // 回调线程 (单线程 + Event 模式，替代每次 CreateThread)
 static HANDLE g_callbackThread = NULL;
 static HANDLE g_callbackEvent = NULL;
@@ -159,11 +204,13 @@ struct CallbackEvent {
         MouseTrigger,
         AltDoubleClick,
         GlobalHotkey,
-        HotkeyCapture
+        HotkeyCapture,
+        ProtectedChordCapture
     } type;
     int x;
     int y;
     HotkeyCaptureCallback hotkeyCaptureCallback;
+    ProtectedChordCaptureCallback protectedChordCaptureCallback;
     int vkCode;
     int modifiers;
     int sideModifiers;
@@ -233,7 +280,7 @@ constexpr double ALT_DOUBLE_TAP_COOLDOWN = 0.50;
 constexpr double ALT_LCLICK_DOUBLE_INTERVAL = 0.40;
 constexpr double ALT_LCLICK_COOLDOWN = 0.50;
 constexpr double BLOCKED_STATE_TIMEOUT = 2.0;  // 2秒超时自动释放
-constexpr int HOOKS_VERSION = 10;
+constexpr int HOOKS_VERSION = 15;
 constexpr unsigned int HOOKS_CAP_MOUSE = 0x0001;
 constexpr unsigned int HOOKS_CAP_KEYBOARD = 0x0002;
 constexpr unsigned int HOOKS_CAP_GLOBAL_HOTKEY = 0x0004;
@@ -246,6 +293,7 @@ constexpr unsigned int HOOKS_CAP_RUNTIME_STATS = 0x0100;
 constexpr unsigned int HOOKS_CAP_REGISTER_HOTKEY = 0x0200;
 constexpr unsigned int HOOKS_CAP_INPUT_CAPTURE = 0x0400;
 constexpr unsigned int HOOKS_CAP_MACRO_PLAYBACK = 0x0800;
+constexpr unsigned int HOOKS_CAP_PROTECTED_CHORD_CAPTURE = 0x1000;
 constexpr size_t CALLBACK_QUEUE_LIMIT = 256;
 constexpr size_t INPUT_CAPTURE_QUEUE_LIMIT = 8192;
 constexpr unsigned int MAX_MACRO_EVENTS = 100000;
@@ -254,14 +302,19 @@ constexpr DWORD CALLBACK_DRAIN_TIMEOUT_MS = 1000;
 constexpr DWORD HOOK_COMMAND_TIMEOUT_MS = 1000;
 constexpr UINT_PTR RAW_FALLBACK_TIMER_BASE = 0x5140;
 constexpr UINT_PTR RAW_KEYBOARD_RECONCILE_TIMER = 0x5145;
+constexpr UINT_PTR ASYNC_KEYBOARD_TRIGGER_TIMER = 0x5146;
 constexpr UINT RAW_FALLBACK_RECONCILE_MS = 20;
+constexpr UINT ASYNC_KEYBOARD_TRIGGER_POLL_MS = 10;
 constexpr unsigned long long RAW_FALLBACK_LATE_LL_WINDOW_MS = 80;
 constexpr UINT WM_QL_REGISTER_HOTKEY = WM_APP + 0x51;
 constexpr UINT WM_QL_CLEAR_HOTKEY = WM_APP + 0x52;
 constexpr UINT WM_QL_START_CAPTURE_TIMER = WM_APP + 0x53;
 constexpr UINT WM_QL_STOP_CAPTURE_TIMER = WM_APP + 0x54;
+constexpr UINT WM_QL_REFRESH_TRIGGER_HOTKEYS = WM_APP + 0x55;
 constexpr int QL_GLOBAL_HOTKEY_ID = 0x514C;
 constexpr UINT_PTR QL_CAPTURE_TIMER_ID = 0x514D;
+constexpr int QL_NORMAL_TRIGGER_HOTKEY_ID = 0x514E;
+constexpr int QL_SPECIAL_TRIGGER_HOTKEY_ID = 0x514F;
 constexpr unsigned long long QL_MACRO_EXTRA_INFO = 0x514C4D4143524F31ULL;
 
 constexpr unsigned int HOOK_HEALTH_MOUSE_THREAD = 0x0001;
@@ -334,6 +387,20 @@ static bool IsOwnMacroInput(ULONG_PTR extraInfo) {
     return static_cast<unsigned long long>(extraInfo) == QL_MACRO_EXTRA_INFO;
 }
 
+static bool TryClaimCaptureMode(CaptureMode mode) {
+    int expected = CAPTURE_MODE_NONE;
+    if (g_activeCaptureMode.compare_exchange_strong(expected, mode)) {
+        return true;
+    }
+    g_lastHookError = ERROR_BUSY;
+    return false;
+}
+
+static void ReleaseCaptureMode(CaptureMode mode) {
+    int expected = mode;
+    g_activeCaptureMode.compare_exchange_strong(expected, CAPTURE_MODE_NONE);
+}
+
 static bool CaptureFilterAllows(const HookInputEvent& eventData) {
     unsigned int filter = g_inputCaptureFilter.load();
     unsigned int category = 0;
@@ -400,6 +467,7 @@ static DWORD WINAPI InputCaptureThreadProc(LPVOID) {
         }
     }
     if (g_inputCaptureIdleEvent) SetEvent(g_inputCaptureIdleEvent);
+    ReleaseCaptureMode(CAPTURE_MODE_INPUT);
     return 0;
 }
 
@@ -531,6 +599,20 @@ static bool IsModifierPressedNow(int bit) {
 }
 
 static void InvokeHotkeyCaptureCallbackAsync(HotkeyCaptureCallback callback, int vkCode, int modifiers, int sideModifiers);
+static void InvokeProtectedChordCaptureCallbackAsync(
+    ProtectedChordCaptureCallback callback,
+    int inputCode,
+    int modifiers,
+    int sideModifiers);
+static bool HookDebugLoggingEnabled();
+static void LogProtectedCaptureEvent(
+    const char* phase,
+    int inputCode,
+    WPARAM message,
+    DWORD flags,
+    int modifiers,
+    int sideModifiers,
+    const char* detail);
 
 static bool IsHotkeyModifierVk(int vk) {
     switch (vk) {
@@ -589,6 +671,19 @@ static int HotkeyModifiersFromSides(int sideModifiers) {
     return modifiers;
 }
 
+static int CurrentSideModifiers() {
+    int sides = 0;
+    if (GetAsyncKeyState(VK_LSHIFT) & 0x8000) sides |= HOTKEY_SIDE_LSHIFT;
+    if (GetAsyncKeyState(VK_RSHIFT) & 0x8000) sides |= HOTKEY_SIDE_RSHIFT;
+    if (GetAsyncKeyState(VK_LCONTROL) & 0x8000) sides |= HOTKEY_SIDE_LCTRL;
+    if (GetAsyncKeyState(VK_RCONTROL) & 0x8000) sides |= HOTKEY_SIDE_RCTRL;
+    if (GetAsyncKeyState(VK_LMENU) & 0x8000) sides |= HOTKEY_SIDE_LALT;
+    if (GetAsyncKeyState(VK_RMENU) & 0x8000) sides |= HOTKEY_SIDE_RALT;
+    if (GetAsyncKeyState(VK_LWIN) & 0x8000) sides |= HOTKEY_SIDE_LWIN;
+    if (GetAsyncKeyState(VK_RWIN) & 0x8000) sides |= HOTKEY_SIDE_RWIN;
+    return sides;
+}
+
 static void ResetHotkeyCaptureStateLocked() {
     std::fill(g_hotkeyCapturePressed, g_hotkeyCapturePressed + 256, false);
     std::fill(g_hotkeyCapturePreexisting, g_hotkeyCapturePreexisting + 256, false);
@@ -608,6 +703,7 @@ static void StopHotkeyCaptureLocked() {
     g_hotkeyCaptureEnabled = false;
     g_hotkeyCaptureCallback = nullptr;
     ResetHotkeyCaptureStateLocked();
+    ReleaseCaptureMode(CAPTURE_MODE_HOTKEY);
 }
 
 static bool HandleHotkeyCapture(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* pKbd) {
@@ -624,11 +720,11 @@ static bool HandleHotkeyCapture(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* pKbd) {
         if (!g_hotkeyCaptureEnabled.load()) return false;
         captureWasActive = true;
 
-        if (g_hotkeyCaptureTimeoutMs > 0) {
-            DWORD elapsed = GetTickCount() - g_hotkeyCaptureStartedTick;
-            if (elapsed > g_hotkeyCaptureTimeoutMs) {
+        if (g_hotkeyCaptureTimeoutMs.load() > 0) {
+            DWORD elapsed = GetTickCount() - g_hotkeyCaptureStartedTick.load();
+            if (elapsed > g_hotkeyCaptureTimeoutMs.load()) {
                 StopHotkeyCaptureLocked();
-                return true;
+                return false;
             }
         }
 
@@ -677,6 +773,363 @@ static bool HandleHotkeyCapture(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* pKbd) {
     return captureWasActive;
 }
 
+static void ResetProtectedChordCaptureStateLocked() {
+    std::fill(g_protectedChordPressed, g_protectedChordPressed + 256, false);
+    std::fill(g_protectedChordPreexisting, g_protectedChordPreexisting + 256, false);
+    std::fill(g_protectedChordSwallowed, g_protectedChordSwallowed + 256, false);
+    g_protectedChordMousePressed = 0;
+    g_protectedChordMousePreexisting = 0;
+    g_protectedChordMouseSwallowed = 0;
+    g_protectedChordCurrentSideModifiers = 0;
+    g_protectedChordSeenSideModifiers = 0;
+    g_protectedChordCaptureStarted = false;
+}
+
+static bool AcquireProtectedChordProcessLockLocked() {
+    if (g_protectedChordProcessLock) return true;
+
+    HANDLE lockHandle = CreateSemaphoreW(
+        NULL,
+        1,
+        1,
+        L"Local\\QuickLauncher.ProtectedChordCapture.v2");
+    if (!lockHandle) {
+        g_lastHookError = GetLastError();
+        return false;
+    }
+
+    DWORD waitResult = WaitForSingleObject(lockHandle, 0);
+    if (waitResult != WAIT_OBJECT_0) {
+        g_lastHookError = waitResult == WAIT_TIMEOUT ? ERROR_BUSY : GetLastError();
+        CloseHandle(lockHandle);
+        return false;
+    }
+
+    g_protectedChordProcessLock = lockHandle;
+    return true;
+}
+
+static void ReleaseProtectedChordProcessLockLocked() {
+    if (!g_protectedChordProcessLock) return;
+    if (!ReleaseSemaphore(g_protectedChordProcessLock, 1, NULL)) {
+        g_lastHookError = GetLastError();
+    }
+    CloseHandle(g_protectedChordProcessLock);
+    g_protectedChordProcessLock = NULL;
+}
+
+static bool AnyProtectedChordInputPressedLocked() {
+    if (g_protectedChordMousePressed != 0) return true;
+    for (bool pressed : g_protectedChordPressed) {
+        if (pressed) return true;
+    }
+    return false;
+}
+
+static void StopProtectedChordCaptureLocked() {
+    g_protectedChordCaptureEnabled = false;
+    g_protectedChordCaptureFlags = 0;
+    g_protectedChordCaptureCallback = nullptr;
+    ResetProtectedChordCaptureStateLocked();
+    ReleaseProtectedChordProcessLockLocked();
+    ReleaseCaptureMode(CAPTURE_MODE_PROTECTED_CHORD);
+}
+
+static bool ProtectedChordCaptureTimedOutLocked() {
+    DWORD timeoutMs = g_protectedChordCaptureTimeoutMs.load();
+    if (timeoutMs == 0) return false;
+    DWORD elapsed = GetTickCount() - g_protectedChordCaptureStartedTick.load();
+    if (elapsed <= timeoutMs) return false;
+    StopProtectedChordCaptureLocked();
+    return true;
+}
+
+static bool RuntimeTriggerSuppressedByCapture() {
+    if (g_protectedChordCaptureEnabled.load()) {
+        std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+        if (g_protectedChordCaptureEnabled.load() &&
+            !ProtectedChordCaptureTimedOutLocked()) {
+            return true;
+        }
+    }
+    if (g_hotkeyCaptureEnabled.load()) {
+        std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
+        if (g_hotkeyCaptureEnabled.load()) {
+            DWORD timeoutMs = g_hotkeyCaptureTimeoutMs.load();
+            DWORD elapsed = GetTickCount() - g_hotkeyCaptureStartedTick.load();
+            if (timeoutMs == 0 || elapsed <= timeoutMs) {
+                return true;
+            }
+            StopHotkeyCaptureLocked();
+        }
+    }
+    return g_inputCaptureActive.load();
+}
+
+static bool HandleProtectedChordKeyboard(int vk, WPARAM wParam, KBDLLHOOKSTRUCT* keyboard) {
+    if (!g_protectedChordCaptureEnabled.load() ||
+        (g_protectedChordCaptureFlags.load() & HOOK_CHORD_CAPTURE_KEYBOARD) == 0) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+        if (!g_protectedChordCaptureEnabled.load() ||
+            ProtectedChordCaptureTimedOutLocked()) {
+            return false;
+        }
+    }
+
+    bool injected = keyboard &&
+        (keyboard->flags & (LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED)) != 0;
+    if (injected &&
+        (g_protectedChordCaptureFlags.load() & HOOK_CHORD_CAPTURE_INCLUDE_INJECTED) == 0) {
+        LogProtectedCaptureEvent(
+            "keyboard_ignored",
+            vk,
+            wParam,
+            keyboard->flags,
+            0,
+            0,
+            "injected input is disabled for this capture");
+        return false;
+    }
+
+    LogProtectedCaptureEvent(
+        "keyboard_seen",
+        vk,
+        wParam,
+        keyboard ? keyboard->flags : 0,
+        0,
+        0,
+        "entered protected keyboard handler");
+
+    ProtectedChordCaptureCallback eventCallback = nullptr;
+    ProtectedChordCaptureCallback completionCallback = nullptr;
+    int eventCode = 0;
+    int eventModifiers = 0;
+    int eventSideModifiers = 0;
+    int completionModifiers = 0;
+    int completionSideModifiers = 0;
+    bool captureWasActive = false;
+
+    {
+        std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+        if (!g_protectedChordCaptureEnabled.load()) return false;
+        captureWasActive = true;
+        if (ProtectedChordCaptureTimedOutLocked()) return false;
+
+        int normalizedVk = NormalizeModifierVk(vk, keyboard);
+        bool isDown = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+        bool isUp = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
+        if (normalizedVk < 0 || normalizedVk >= 256) return true;
+
+        if (g_protectedChordPreexisting[normalizedVk]) {
+            if (isUp) g_protectedChordPreexisting[normalizedVk] = false;
+            return false;
+        }
+
+        if (isDown) {
+            bool repeated = g_protectedChordPressed[normalizedVk];
+            g_protectedChordPressed[normalizedVk] = true;
+            g_protectedChordSwallowed[normalizedVk] = true;
+            int sideBit = HotkeySideBitForVk(normalizedVk);
+            if (sideBit) {
+                g_protectedChordCurrentSideModifiers |= sideBit;
+                g_protectedChordSeenSideModifiers |= sideBit;
+            } else if (!repeated) {
+                g_protectedChordCaptureStarted = true;
+                eventCallback = g_protectedChordCaptureCallback.load();
+                eventCode = normalizedVk;
+                eventSideModifiers = g_protectedChordCurrentSideModifiers;
+                eventModifiers = HotkeyModifiersFromSides(eventSideModifiers);
+            }
+        } else if (isUp) {
+            bool swallowed = g_protectedChordSwallowed[normalizedVk];
+            g_protectedChordPressed[normalizedVk] = false;
+            g_protectedChordSwallowed[normalizedVk] = false;
+            int sideBit = HotkeySideBitForVk(normalizedVk);
+            if (sideBit) g_protectedChordCurrentSideModifiers &= ~sideBit;
+            if (!swallowed) return false;
+
+            if (g_protectedChordCaptureStarted && !AnyProtectedChordInputPressedLocked()) {
+                completionCallback = g_protectedChordCaptureCallback.load();
+                completionSideModifiers = g_protectedChordSeenSideModifiers;
+                completionModifiers = HotkeyModifiersFromSides(completionSideModifiers);
+                g_protectedChordCaptureEnabled = false;
+                g_protectedChordCaptureFlags = 0;
+                ResetProtectedChordCaptureStateLocked();
+                ReleaseProtectedChordProcessLockLocked();
+                ReleaseCaptureMode(CAPTURE_MODE_PROTECTED_CHORD);
+            }
+        }
+    }
+
+    if (eventCallback) {
+        LogProtectedCaptureEvent(
+            "keyboard_emit",
+            eventCode,
+            wParam,
+            keyboard ? keyboard->flags : 0,
+            eventModifiers,
+            eventSideModifiers,
+            "queue main key callback");
+        InvokeProtectedChordCaptureCallbackAsync(
+            eventCallback,
+            eventCode,
+            eventModifiers,
+            eventSideModifiers);
+    }
+    if (completionCallback) {
+        LogProtectedCaptureEvent(
+            "keyboard_complete",
+            0,
+            wParam,
+            keyboard ? keyboard->flags : 0,
+            completionModifiers,
+            completionSideModifiers,
+            "queue automatic completion callback");
+        InvokeProtectedChordCaptureCallbackAsync(
+            completionCallback,
+            0,
+            completionModifiers,
+            completionSideModifiers);
+    }
+    return captureWasActive;
+}
+
+static int MouseButtonFromMessage(WPARAM wParam, const MSLLHOOKSTRUCT* mouse) {
+    if (wParam == WM_LBUTTONDOWN || wParam == WM_LBUTTONUP) return 1;
+    if (wParam == WM_RBUTTONDOWN || wParam == WM_RBUTTONUP) return 2;
+    if (wParam == WM_MBUTTONDOWN || wParam == WM_MBUTTONUP) return 4;
+    if (wParam == WM_XBUTTONDOWN || wParam == WM_XBUTTONUP) {
+        return mouse && HIWORD(mouse->mouseData) == XBUTTON1 ? 8 : 16;
+    }
+    return 0;
+}
+
+static bool HandleProtectedChordMouse(WPARAM wParam, MSLLHOOKSTRUCT* mouse) {
+    if (!g_protectedChordCaptureEnabled.load() ||
+        (g_protectedChordCaptureFlags.load() & HOOK_CHORD_CAPTURE_MOUSE_BUTTON) == 0) {
+        return false;
+    }
+
+    int button = MouseButtonFromMessage(wParam, mouse);
+    if (button == 0) return false;
+    {
+        std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+        if (!g_protectedChordCaptureEnabled.load() ||
+            ProtectedChordCaptureTimedOutLocked()) {
+            return false;
+        }
+    }
+    bool injected = mouse &&
+        (mouse->flags & (LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED)) != 0;
+    if (injected &&
+        (g_protectedChordCaptureFlags.load() & HOOK_CHORD_CAPTURE_INCLUDE_INJECTED) == 0) {
+        LogProtectedCaptureEvent(
+            "mouse_ignored",
+            -button,
+            wParam,
+            mouse->flags,
+            0,
+            0,
+            "injected input is disabled for this capture");
+        return false;
+    }
+    LogProtectedCaptureEvent(
+        "mouse_seen",
+        -button,
+        wParam,
+        mouse ? mouse->flags : 0,
+        0,
+        0,
+        "entered protected mouse handler");
+    bool isDown = wParam == WM_LBUTTONDOWN || wParam == WM_RBUTTONDOWN ||
+                  wParam == WM_MBUTTONDOWN || wParam == WM_XBUTTONDOWN;
+    bool isUp = wParam == WM_LBUTTONUP || wParam == WM_RBUTTONUP ||
+                wParam == WM_MBUTTONUP || wParam == WM_XBUTTONUP;
+    ProtectedChordCaptureCallback eventCallback = nullptr;
+    ProtectedChordCaptureCallback completionCallback = nullptr;
+    int eventModifiers = 0;
+    int eventSideModifiers = 0;
+    int completionModifiers = 0;
+    int completionSideModifiers = 0;
+    bool captureWasActive = false;
+
+    {
+        std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+        if (!g_protectedChordCaptureEnabled.load()) return false;
+        captureWasActive = true;
+        if (ProtectedChordCaptureTimedOutLocked()) return false;
+
+        if ((g_protectedChordMousePreexisting & button) != 0) {
+            if (isUp) g_protectedChordMousePreexisting &= ~button;
+            return false;
+        }
+
+        if (isDown) {
+            bool repeated = (g_protectedChordMousePressed & button) != 0;
+            g_protectedChordMousePressed |= button;
+            g_protectedChordMouseSwallowed |= button;
+            if (!repeated) {
+                g_protectedChordCaptureStarted = true;
+                eventSideModifiers = CurrentSideModifiers();
+                g_protectedChordSeenSideModifiers |= eventSideModifiers;
+                eventModifiers = HotkeyModifiersFromSides(eventSideModifiers);
+                eventCallback = g_protectedChordCaptureCallback.load();
+            }
+        } else if (isUp) {
+            bool swallowed = (g_protectedChordMouseSwallowed & button) != 0;
+            g_protectedChordMousePressed &= ~button;
+            g_protectedChordMouseSwallowed &= ~button;
+            if (!swallowed) return false;
+            if (g_protectedChordCaptureStarted && !AnyProtectedChordInputPressedLocked()) {
+                completionCallback = g_protectedChordCaptureCallback.load();
+                completionSideModifiers = g_protectedChordSeenSideModifiers;
+                completionModifiers = HotkeyModifiersFromSides(completionSideModifiers);
+                g_protectedChordCaptureEnabled = false;
+                g_protectedChordCaptureFlags = 0;
+                ResetProtectedChordCaptureStateLocked();
+                ReleaseProtectedChordProcessLockLocked();
+                ReleaseCaptureMode(CAPTURE_MODE_PROTECTED_CHORD);
+            }
+        }
+    }
+
+    if (eventCallback) {
+        LogProtectedCaptureEvent(
+            "mouse_emit",
+            -button,
+            wParam,
+            mouse ? mouse->flags : 0,
+            eventModifiers,
+            eventSideModifiers,
+            "queue mouse button callback");
+        InvokeProtectedChordCaptureCallbackAsync(
+            eventCallback,
+            -button,
+            eventModifiers,
+            eventSideModifiers);
+    }
+    if (completionCallback) {
+        LogProtectedCaptureEvent(
+            "mouse_complete",
+            0,
+            wParam,
+            mouse ? mouse->flags : 0,
+            completionModifiers,
+            completionSideModifiers,
+            "queue automatic completion callback");
+        InvokeProtectedChordCaptureCallbackAsync(
+            completionCallback,
+            0,
+            completionModifiers,
+            completionSideModifiers);
+    }
+    return captureWasActive;
+}
+
 // ============================================================
 // 回调线程 - 单线程排队执行，避免每次 CreateThread
 // ============================================================
@@ -705,6 +1158,16 @@ static void SafeInvokeAny(const CallbackEvent& ev) {
         if (callback) SAFE_INVOKE_CALLBACK(callback())
     } else if (ev.type == CallbackEvent::HotkeyCapture && ev.hotkeyCaptureCallback) {
         SAFE_INVOKE_CALLBACK(ev.hotkeyCaptureCallback(ev.vkCode, ev.modifiers, ev.sideModifiers))
+    } else if (ev.type == CallbackEvent::ProtectedChordCapture && ev.protectedChordCaptureCallback) {
+        LogProtectedCaptureEvent(
+            "callback_invoke",
+            ev.vkCode,
+            0,
+            0,
+            ev.modifiers,
+            ev.sideModifiers,
+            "native callback thread invoking Python callback");
+        SAFE_INVOKE_CALLBACK(ev.protectedChordCaptureCallback(ev.vkCode, ev.modifiers, ev.sideModifiers))
     }
 }
 
@@ -855,11 +1318,11 @@ static void WaitForCallbacksToDrain() {
 
 // 统一回调入队 — 替代原先的两个独立函数
 static void InvokeKeyboardCallbackAsync(CallbackEvent::Type type) {
-    EnqueueCallbackEvent(CallbackEvent{type, 0, 0, nullptr, 0, 0, 0});
+    EnqueueCallbackEvent(CallbackEvent{type, 0, 0, nullptr, nullptr, 0, 0, 0});
 }
 
 static void InvokeMouseCallbackAsync(CallbackEvent::Type type, int x, int y) {
-    EnqueueCallbackEvent(CallbackEvent{type, x, y, nullptr, 0, 0, 0});
+    EnqueueCallbackEvent(CallbackEvent{type, x, y, nullptr, nullptr, 0, 0, 0});
 }
 
 static void InvokeHotkeyCaptureCallbackAsync(HotkeyCaptureCallback callback, int vkCode, int modifiers, int sideModifiers) {
@@ -869,7 +1332,27 @@ static void InvokeHotkeyCaptureCallbackAsync(HotkeyCaptureCallback callback, int
         0,
         0,
         callback,
+        nullptr,
         vkCode,
+        modifiers,
+        sideModifiers,
+    });
+}
+
+static void InvokeProtectedChordCaptureCallbackAsync(
+    ProtectedChordCaptureCallback callback,
+    int inputCode,
+    int modifiers,
+    int sideModifiers)
+{
+    if (!callback) return;
+    EnqueueCallbackEvent(CallbackEvent{
+        CallbackEvent::ProtectedChordCapture,
+        0,
+        0,
+        nullptr,
+        callback,
+        inputCode,
         modifiers,
         sideModifiers,
     });
@@ -901,6 +1384,14 @@ static bool InstallHookGeneric(
     bool expected = false;
     if (!ctx.installing.compare_exchange_strong(expected, true)) {
         return ctx.hook != NULL;
+    }
+
+    if (ctx.running.load() && ctx.threadAlive.load()) {
+        if (mouseCb) g_mouseCallback = mouseCb;
+        if (kbdCb) g_altDoubleTapCallback = kbdCb;
+        bool installed = ctx.hook != NULL || (mouseCb && g_rawInputActive.load());
+        ctx.installing = false;
+        return installed;
     }
 
     // 等待旧线程安全退出
@@ -1066,6 +1557,29 @@ static std::string GetHookDebugLogPath() {
     return path;
 }
 
+static std::string GetCaptureDebugLogPath() {
+    static std::string path;
+    if (!path.empty()) return path;
+
+    HMODULE module = NULL;
+    char modulePath[MAX_PATH] = {0};
+    if (GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCSTR>(&GetCaptureDebugLogPath),
+            &module) &&
+        GetModuleFileNameA(module, modulePath, MAX_PATH) > 0) {
+        path = modulePath;
+        size_t slashPos = path.find_last_of("\\/");
+        if (slashPos != std::string::npos) {
+            path = path.substr(0, slashPos + 1);
+        } else {
+            path.clear();
+        }
+    }
+    path += "capture_debug.log";
+    return path;
+}
+
 static std::string WindowSummary(HWND hwnd) {
     if (!hwnd) return "hwnd=0";
 
@@ -1122,6 +1636,48 @@ static void WriteMiddleMouseEvent(const MouseDebugEvent& ev) {
     if (out) out << oss.str();
 }
 
+static const char* CaptureMessageName(WPARAM message) {
+    switch (message) {
+        case WM_KEYDOWN: return "WM_KEYDOWN";
+        case WM_KEYUP: return "WM_KEYUP";
+        case WM_SYSKEYDOWN: return "WM_SYSKEYDOWN";
+        case WM_SYSKEYUP: return "WM_SYSKEYUP";
+        case WM_LBUTTONDOWN: return "WM_LBUTTONDOWN";
+        case WM_LBUTTONUP: return "WM_LBUTTONUP";
+        case WM_RBUTTONDOWN: return "WM_RBUTTONDOWN";
+        case WM_RBUTTONUP: return "WM_RBUTTONUP";
+        case WM_MBUTTONDOWN: return "WM_MBUTTONDOWN";
+        case WM_MBUTTONUP: return "WM_MBUTTONUP";
+        case WM_XBUTTONDOWN: return "WM_XBUTTONDOWN";
+        case WM_XBUTTONUP: return "WM_XBUTTONUP";
+        default: return "NONE";
+    }
+}
+
+static void WriteCaptureDebugEvent(const CaptureDebugEvent& ev) {
+    std::ostringstream oss;
+    oss << ev.time.wYear << "-"
+        << (ev.time.wMonth < 10 ? "0" : "") << ev.time.wMonth << "-"
+        << (ev.time.wDay < 10 ? "0" : "") << ev.time.wDay << " "
+        << (ev.time.wHour < 10 ? "0" : "") << ev.time.wHour << ":"
+        << (ev.time.wMinute < 10 ? "0" : "") << ev.time.wMinute << ":"
+        << (ev.time.wSecond < 10 ? "0" : "") << ev.time.wSecond << "."
+        << ev.time.wMilliseconds
+        << " pid=" << ev.processId
+        << " tid=" << ev.threadId
+        << " phase=" << ev.phase
+        << " input=" << ev.inputCode
+        << " message=" << CaptureMessageName(ev.message)
+        << " flags=0x" << std::hex << ev.flags << std::dec
+        << " modifiers=" << ev.modifiers
+        << " side_modifiers=" << ev.sideModifiers
+        << " detail=\"" << ev.detail << "\""
+        << "\n";
+
+    std::ofstream out(GetCaptureDebugLogPath(), std::ios::app);
+    if (out) out << oss.str();
+}
+
 static DWORD WINAPI DebugLogThreadProc(LPVOID) {
     while (g_debugLogThreadRunning.load()) {
         DWORD result = WaitForSingleObject(g_debugLogEvent, 500);
@@ -1129,12 +1685,17 @@ static DWORD WINAPI DebugLogThreadProc(LPVOID) {
         if (result != WAIT_OBJECT_0) continue;
 
         std::vector<MouseDebugEvent> events;
+        std::vector<CaptureDebugEvent> captureEvents;
         {
             std::lock_guard<std::mutex> lock(g_debugLogMutex);
             events.swap(g_pendingDebugEvents);
+            captureEvents.swap(g_pendingCaptureDebugEvents);
         }
         for (const auto& ev : events) {
             WriteMiddleMouseEvent(ev);
+        }
+        for (const auto& ev : captureEvents) {
+            WriteCaptureDebugEvent(ev);
         }
     }
     return 0;
@@ -1158,6 +1719,42 @@ static void EnsureDebugLogThread() {
     if (!g_debugLogThread) {
         g_debugLogThreadRunning = false;
     }
+}
+
+static void LogProtectedCaptureEvent(
+    const char* phase,
+    int inputCode,
+    WPARAM message,
+    DWORD flags,
+    int modifiers,
+    int sideModifiers,
+    const char* detail)
+{
+    if (!HookDebugLoggingEnabled()) return;
+
+    CaptureDebugEvent ev = {};
+    GetLocalTime(&ev.time);
+    ev.processId = GetCurrentProcessId();
+    ev.threadId = GetCurrentThreadId();
+    ev.inputCode = inputCode;
+    ev.message = message;
+    ev.flags = flags;
+    ev.modifiers = modifiers;
+    ev.sideModifiers = sideModifiers;
+    lstrcpynA(ev.phase, phase ? phase : "", sizeof(ev.phase));
+    lstrcpynA(ev.detail, detail ? detail : "", sizeof(ev.detail));
+
+    EnsureDebugLogThread();
+    {
+        std::lock_guard<std::mutex> lock(g_debugLogMutex);
+        if (g_pendingCaptureDebugEvents.size() > 1024) {
+            g_pendingCaptureDebugEvents.erase(
+                g_pendingCaptureDebugEvents.begin(),
+                g_pendingCaptureDebugEvents.begin() + 512);
+        }
+        g_pendingCaptureDebugEvents.push_back(ev);
+    }
+    if (g_debugLogEvent) SetEvent(g_debugLogEvent);
 }
 
 static void StopDebugLogThread() {
@@ -1245,7 +1842,7 @@ static void LogMiddleMouseEvent(const char* phase, WPARAM wParam, const MSLLHOOK
     if (g_debugLogEvent) SetEvent(g_debugLogEvent);
 }
 
-static HWND GetTargetWindowForSpecialAppCheck() {
+static HWND GetCursorTargetWindowForSpecialAppCheck() {
     POINT point;
     if (GetCursorPos(&point)) {
         HWND hwnd = WindowFromPoint(point);
@@ -1266,8 +1863,14 @@ static HWND GetTargetWindowForSpecialAppCheck() {
     return NULL;
 }
 
-// 检查当前目标窗口是否为特殊应用
-static bool IsSpecialApp() {
+static HWND GetForegroundTargetWindowForSpecialAppCheck() {
+    HWND hwnd = GetForegroundWindow();
+    if (!hwnd) return NULL;
+    HWND root = GetAncestor(hwnd, GA_ROOT);
+    return root ? root : hwnd;
+}
+
+static bool IsSpecialAppWindow(HWND hwnd) {
     std::vector<std::string> appsSnapshot;
     {
         std::lock_guard<std::mutex> lock(g_specialAppsMutex);
@@ -1275,7 +1878,6 @@ static bool IsSpecialApp() {
         appsSnapshot = g_specialApps;
     }
 
-    HWND hwnd = GetTargetWindowForSpecialAppCheck();
     if (!hwnd) return false;
 
     std::string processLower = GetProcessNameForWindow(hwnd);
@@ -1299,6 +1901,20 @@ static bool IsSpecialApp() {
         }
     }
     return false;
+}
+
+static bool HasSpecialAppsConfigured() {
+    std::lock_guard<std::mutex> lock(g_specialAppsMutex);
+    return !g_specialApps.empty();
+}
+
+// 鼠标触发以指针所在窗口为目标；键盘触发以实际前台窗口为目标。
+static bool IsSpecialAppForMouse() {
+    return IsSpecialAppWindow(GetCursorTargetWindowForSpecialAppCheck());
+}
+
+static bool IsSpecialAppForKeyboard() {
+    return IsSpecialAppWindow(GetForegroundTargetWindowForSpecialAppCheck());
 }
 
 // 检查所有指定的键盘按键是否都按下
@@ -1336,6 +1952,177 @@ static int CurrentMouseModifiers() {
     return currentMod;
 }
 
+static bool SingleKeyTriggerConfigEqual(
+    int firstMode,
+    const std::vector<int>& firstKeys,
+    int firstModifiers,
+    int secondMode,
+    const std::vector<int>& secondKeys,
+    int secondModifiers)
+{
+    return firstMode == 1 &&
+           secondMode == 1 &&
+           firstKeys.size() == 1 &&
+           secondKeys.size() == 1 &&
+           firstKeys[0] == secondKeys[0] &&
+           firstModifiers == secondModifiers;
+}
+
+static void RefreshRegisteredTriggerHotkeys() {
+    UnregisterHotKey(NULL, QL_NORMAL_TRIGGER_HOTKEY_ID);
+    UnregisterHotKey(NULL, QL_SPECIAL_TRIGGER_HOTKEY_ID);
+    g_normalTriggerHotkeyRegistered = false;
+    g_specialTriggerHotkeyRegistered = false;
+
+    int normalMode, normalModifiers, specialMode, specialModifiers;
+    std::vector<int> normalKeys, specialKeys;
+    {
+        std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+        normalMode = g_normalTriggerMode;
+        normalKeys = g_normalTriggerKeys;
+        normalModifiers = g_normalTriggerModifiers;
+        specialMode = g_specialTriggerMode;
+        specialKeys = g_specialTriggerKeys;
+        specialModifiers = g_specialTriggerModifiers;
+    }
+
+    bool normalEligible = normalMode == 1 && normalKeys.size() == 1;
+    bool specialEligible = specialMode == 1 && specialKeys.size() == 1;
+    bool hasSpecialApps = HasSpecialAppsConfigured();
+
+    if (!hasSpecialApps) {
+        if (normalEligible) {
+            bool registered = RegisterHotKey(
+                NULL,
+                QL_NORMAL_TRIGGER_HOTKEY_ID,
+                static_cast<UINT>(normalModifiers) | MOD_NOREPEAT,
+                static_cast<UINT>(normalKeys[0]));
+            g_normalTriggerHotkeyRegistered = registered;
+        }
+        return;
+    }
+
+    // RegisterHotKey is process-global and cannot be scoped to the active
+    // foreground application. Register only when both application contexts
+    // use the exact same chord; otherwise the inactive context would still
+    // consume its key before the low-level hook can decide whether to trigger.
+    if (!normalEligible ||
+        !specialEligible ||
+        !SingleKeyTriggerConfigEqual(
+            normalMode,
+            normalKeys,
+            normalModifiers,
+            specialMode,
+            specialKeys,
+            specialModifiers)) {
+        return;
+    }
+
+    bool registered = RegisterHotKey(
+        NULL,
+        QL_NORMAL_TRIGGER_HOTKEY_ID,
+        static_cast<UINT>(normalModifiers) | MOD_NOREPEAT,
+        static_cast<UINT>(normalKeys[0]));
+    g_normalTriggerHotkeyRegistered = registered;
+    g_specialTriggerHotkeyRegistered = registered;
+}
+
+static bool IsActiveKeyboardTriggerRegistered(bool isSpecial) {
+    return isSpecial
+        ? g_specialTriggerHotkeyRegistered.load()
+        : g_normalTriggerHotkeyRegistered.load();
+}
+
+static bool InvokeKeyboardTriggerCallback() {
+    if (g_mousePaused.load() || !g_mouseCallback.load()) return false;
+
+    unsigned long long now = GetTickCount64();
+    unsigned long long previous = g_lastKeyboardTriggerCallbackTick.load();
+    if (previous != 0 && now - previous <= RAW_FALLBACK_LATE_LL_WINDOW_MS) {
+        return false;
+    }
+    g_lastKeyboardTriggerCallbackTick = now;
+
+    POINT point = {};
+    if (!GetCursorPos(&point)) return false;
+    InvokeMouseCallbackAsync(CallbackEvent::MouseTrigger, point.x, point.y);
+    return true;
+}
+
+static bool HandleRegisteredKeyboardTrigger(LPARAM hotkeyData) {
+    if (RuntimeTriggerSuppressedByCapture()) {
+        return true;
+    }
+
+    bool isSpecial = IsSpecialAppForKeyboard();
+    int targetMode, targetModifiers;
+    std::vector<int> targetKeys;
+    {
+        std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+        targetMode = isSpecial ? g_specialTriggerMode : g_normalTriggerMode;
+        targetKeys = isSpecial ? g_specialTriggerKeys : g_normalTriggerKeys;
+        targetModifiers = isSpecial ? g_specialTriggerModifiers : g_normalTriggerModifiers;
+    }
+
+    int messageModifiers = LOWORD(hotkeyData) & (HOTKEY_MOD_ALT | HOTKEY_MOD_CTRL | HOTKEY_MOD_SHIFT | HOTKEY_MOD_WIN);
+    int messageVk = HIWORD(hotkeyData);
+    if (targetMode == 1 &&
+        targetKeys.size() == 1 &&
+        targetKeys[0] == messageVk &&
+        targetModifiers == messageModifiers) {
+        InvokeKeyboardTriggerCallback();
+    }
+    return true;
+}
+
+static void PollAsyncKeyboardTrigger() {
+    if (RuntimeTriggerSuppressedByCapture() ||
+        g_mousePaused.load() ||
+        !g_mouseCallback.load()) {
+        g_asyncKeyboardTriggerLatched = false;
+        return;
+    }
+
+    int normalMode, normalModifiers, specialMode, specialModifiers;
+    std::vector<int> normalKeys, specialKeys;
+    {
+        std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+        normalMode = g_normalTriggerMode;
+        normalKeys = g_normalTriggerKeys;
+        normalModifiers = g_normalTriggerModifiers;
+        specialMode = g_specialTriggerMode;
+        specialKeys = g_specialTriggerKeys;
+        specialModifiers = g_specialTriggerModifiers;
+    }
+    if (normalMode != 1 && specialMode != 1) {
+        g_asyncKeyboardTriggerLatched = false;
+        return;
+    }
+
+    static unsigned long long lastSpecialCheckTick = 0;
+    static bool cachedSpecial = false;
+    unsigned long long now = GetTickCount64();
+    if (lastSpecialCheckTick == 0 || now - lastSpecialCheckTick >= 100) {
+        cachedSpecial = IsSpecialAppForKeyboard();
+        lastSpecialCheckTick = now;
+    }
+
+    int targetMode = cachedSpecial ? specialMode : normalMode;
+    const std::vector<int>& targetKeys = cachedSpecial ? specialKeys : normalKeys;
+    int targetModifiers = cachedSpecial ? specialModifiers : normalModifiers;
+    bool matched = targetMode == 1 &&
+                   !targetKeys.empty() &&
+                   CurrentMouseModifiers() == targetModifiers &&
+                   CheckKeysPressed(targetKeys);
+    if (!matched) {
+        g_asyncKeyboardTriggerLatched = false;
+        return;
+    }
+    if (g_asyncKeyboardTriggerLatched.exchange(true)) return;
+    if (IsActiveKeyboardTriggerRegistered(cachedSpecial)) return;
+    InvokeKeyboardTriggerCallback();
+}
+
 static bool ShouldTriggerMouseButton(
     int currentButton,
     int* targetButtonOut = nullptr,
@@ -1358,7 +2145,7 @@ static bool ShouldTriggerMouseButton(
     }
 
     int currentMod = CurrentMouseModifiers();
-    bool isSpecial = IsSpecialApp();
+    bool isSpecial = IsSpecialAppForMouse();
     int targetMode = isSpecial ? specialMode : normalMode;
     int targetBtn = isSpecial ? specialBtn : normalBtn;
     int targetMod = isSpecial ? specialMod : normalMod;
@@ -1390,7 +2177,33 @@ static int RawKeyboardModifiers() {
     return modifiers;
 }
 
+static bool HookKeyboardKeyPressed(int vk) {
+    if (vk < 0 || vk >= 256) return false;
+    if (g_keyboardPressed[vk]) return true;
+    switch (vk) {
+        case VK_SHIFT:
+            return g_keyboardPressed[VK_LSHIFT] || g_keyboardPressed[VK_RSHIFT];
+        case VK_CONTROL:
+            return g_keyboardPressed[VK_LCONTROL] || g_keyboardPressed[VK_RCONTROL];
+        case VK_MENU:
+            return g_keyboardPressed[VK_LMENU] || g_keyboardPressed[VK_RMENU];
+        default:
+            return false;
+    }
+}
+
+static int HookKeyboardModifiers() {
+    int modifiers = 0;
+    if (HookKeyboardKeyPressed(VK_MENU)) modifiers |= HOTKEY_MOD_ALT;
+    if (HookKeyboardKeyPressed(VK_CONTROL)) modifiers |= HOTKEY_MOD_CTRL;
+    if (HookKeyboardKeyPressed(VK_SHIFT)) modifiers |= HOTKEY_MOD_SHIFT;
+    if (HookKeyboardKeyPressed(VK_LWIN) || HookKeyboardKeyPressed(VK_RWIN)) modifiers |= HOTKEY_MOD_WIN;
+    return modifiers;
+}
+
 static bool ShouldTriggerRawKeyboard(int vk) {
+    if (RuntimeTriggerSuppressedByCapture()) return false;
+
     int normalMode, specialMode, normalMod, specialMod;
     std::vector<int> normalKeys, specialKeys;
     {
@@ -1404,10 +2217,13 @@ static bool ShouldTriggerRawKeyboard(int vk) {
         specialMod = g_specialTriggerModifiers;
     }
 
-    bool isSpecial = IsSpecialApp();
+    bool isSpecial = IsSpecialAppForKeyboard();
     int targetMode = isSpecial ? specialMode : normalMode;
     const std::vector<int>& targetKeys = isSpecial ? specialKeys : normalKeys;
     int targetModifiers = isSpecial ? specialMod : normalMod;
+    if (IsActiveKeyboardTriggerRegistered(isSpecial)) {
+        return false;
+    }
     if (targetMode != 1 || targetKeys.empty() || RawKeyboardModifiers() != targetModifiers) {
         return false;
     }
@@ -1440,51 +2256,51 @@ static bool HandleKeyboardPopupTrigger(int vk, bool isDown, bool isUp, bool wasP
         specialMod = g_specialTriggerModifiers;
     }
 
-    bool isSpecial = IsSpecialApp();
+    bool isSpecial = IsSpecialAppForKeyboard();
     int targetMode = isSpecial ? specialMode : normalMode;
     const std::vector<int>& targetKeys = isSpecial ? specialKeys : normalKeys;
     int targetMod = isSpecial ? specialMod : normalMod;
-    if (targetMode != 1 || targetKeys.empty() || !g_mouseCallback.load()) return false;
+    if ((targetMode != 1 && targetMode != 2) || targetKeys.empty() || !g_mouseCallback.load()) return false;
 
     bool isTargetKey = std::find(targetKeys.begin(), targetKeys.end(), vk) != targetKeys.end();
     if (!isTargetKey) return false;
 
-    int currentMod = 0;
-    if (IsCtrlPressedNow()) currentMod |= HOTKEY_MOD_CTRL;
-    if (IsAltPressedNow()) currentMod |= HOTKEY_MOD_ALT;
-    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) currentMod |= HOTKEY_MOD_SHIFT;
-    if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) {
-        currentMod |= HOTKEY_MOD_WIN;
-    }
+    int currentMod = HookKeyboardModifiers();
     if (currentMod != targetMod) return false;
+
+    if (targetMode == 1 && IsActiveKeyboardTriggerRegistered(isSpecial)) {
+        // RegisterHotKey needs the physical key event to reach Windows before it
+        // can post WM_HOTKEY back to this thread. Swallowing it here suppresses
+        // the registered channel and leaves the trigger silent.
+        return false;
+    }
 
     g_triggerBlockedKeys[vk] = true;
     bool allKeysPressed = true;
     for (int targetVk : targetKeys) {
-        if (targetVk < 0 || targetVk >= 256 || !g_keyboardPressed[targetVk]) {
+        if (!HookKeyboardKeyPressed(targetVk)) {
             allKeysPressed = false;
             break;
         }
     }
-    if (allKeysPressed && !wasPressed) {
-        MouseCallback callback = g_mouseCallback.load();
-        if (callback) {
-            POINT pt = {};
-            GetCursorPos(&pt);
-            bool rawAlreadyTriggered =
-                g_lastRawKeyboardFallbackVk.load() == vk &&
-                (GetTickCount64() - g_lastRawKeyboardFallbackTick.load()) <=
-                    RAW_FALLBACK_LATE_LL_WINDOW_MS;
-            if (!rawAlreadyTriggered) {
-                InvokeMouseCallbackAsync(CallbackEvent::MouseTrigger, pt.x, pt.y);
-            }
+    if (targetMode == 1 && allKeysPressed && !wasPressed) {
+        bool rawAlreadyTriggered =
+            g_lastRawKeyboardFallbackVk.load() == vk &&
+            (GetTickCount64() - g_lastRawKeyboardFallbackTick.load()) <=
+                RAW_FALLBACK_LATE_LL_WINDOW_MS;
+        if (!rawAlreadyTriggered) {
+            InvokeKeyboardTriggerCallback();
         }
     }
     return true;
 }
 
 static void InvokeRawInputFallback(int button, int buttonIndex) {
-    if (g_mousePaused.load() || !g_mouseCallback.load()) return;
+    if (g_mousePaused.load() ||
+        !g_mouseCallback.load() ||
+        RuntimeTriggerSuppressedByCapture()) {
+        return;
+    }
 
     // Raw Input is independent from WH_MOUSE_LL. An unmatched physical event
     // means the low-level hook was skipped or silently removed by Windows.
@@ -1556,11 +2372,9 @@ static void ReconcileRawKeyboardEvents() {
         if (!event.down || !event.shouldTrigger || g_mousePaused.load()) continue;
 
         if (!g_mouseCallback.load()) continue;
-        POINT point = {};
-        if (!GetCursorPos(&point)) continue;
         g_lastRawKeyboardFallbackVk = event.vk;
         g_lastRawKeyboardFallbackTick = GetTickCount64();
-        InvokeMouseCallbackAsync(CallbackEvent::MouseTrigger, point.x, point.y);
+        InvokeKeyboardTriggerCallback();
     }
 }
 
@@ -1619,6 +2433,10 @@ static LRESULT CALLBACK RawInputWindowProc(HWND hwnd, UINT message, WPARAM wPara
         ReconcileRawKeyboardEvents();
         return 0;
     }
+    if (message == WM_TIMER && wParam == ASYNC_KEYBOARD_TRIGGER_TIMER) {
+        PollAsyncKeyboardTrigger();
+        return 0;
+    }
     return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
@@ -1659,6 +2477,11 @@ static bool CreateRawInputWindow() {
     }
 
     g_rawInputActive = true;
+    SetTimer(
+        g_rawInputWindow,
+        ASYNC_KEYBOARD_TRIGGER_TIMER,
+        ASYNC_KEYBOARD_TRIGGER_POLL_MS,
+        NULL);
     return true;
 }
 
@@ -1680,6 +2503,7 @@ static void DestroyRawInputWindow() {
             g_pendingRawDownCount[i] = 0;
         }
         KillTimer(g_rawInputWindow, RAW_KEYBOARD_RECONCILE_TIMER);
+        KillTimer(g_rawInputWindow, ASYNC_KEYBOARD_TRIGGER_TIMER);
         g_pendingRawKeyboardEvents.clear();
         DestroyWindow(g_rawInputWindow);
         g_rawInputWindow = NULL;
@@ -1764,6 +2588,14 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
     if (pMouse->flags & (LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED)) {
         g_injectedMouseIgnoredCount.fetch_add(1);
+        return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+    }
+
+    // 受保护组合录制优先于暂停状态和弹窗触发，确保录制点击不会传给系统或其它程序。
+    if (HandleProtectedChordMouse(wParam, pMouse)) {
+        return 1;
+    }
+    if (g_inputCaptureActive.load()) {
         return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
     }
 
@@ -1981,22 +2813,37 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     g_lowLevelKeyboardHealthy = true;
     CaptureKeyboardHookEvent(wParam, pKbd, wasPressed);
 
+    // 录制优先于 injected 过滤。部分键盘驱动、远程输入和辅助输入工具
+    // 会把真实用户按键标记为 injected，录制窗口仍需捕获并吞掉系统组合键。
+    if (HandleProtectedChordKeyboard(vk, wParam, pKbd)) {
+        return 1;
+    }
+
+    // 旧快捷键录制接口同样保持最高优先级。
+    if (HandleHotkeyCapture(vk, wParam, pKbd)) {
+        return 1;
+    }
+
     if (pKbd->flags & (LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED)) {
         g_injectedKeyboardIgnoredCount.fetch_add(1);
         return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
     }
     g_lowLevelPhysicalKeyboardCount.fetch_add(1);
 
-    // 快捷键录制模式拥有最高优先级：录制期间所有键盘事件都不继续传给系统或其它程序。
-    if (HandleHotkeyCapture(vk, wParam, pKbd)) {
-        return 1;
-    }
-
     bool isAlt = (vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU);
     bool isCtrl = (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL);
     if (vk >= 0 && vk < 256) {
         if (isDown) g_keyboardPressed[vk] = true;
         if (isUp) g_keyboardPressed[vk] = false;
+    }
+    if (g_inputCaptureActive.load()) {
+        g_altHeld = IsAltPressedNow();
+        g_ctrlHeld = IsCtrlPressedNow();
+        if (!g_altHeld.load()) {
+            g_altTapCount = 0;
+            g_otherKeyPressed = false;
+        }
+        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
     }
 
     // 物理键状态同步 — 修正 g_altHeld 与物理键状态的不一致
@@ -2119,6 +2966,7 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
         g_registeredHotkeyActive = registered;
         if (!registered) g_lastHookError = GetLastError();
     }
+    RefreshRegisteredTriggerHotkeys();
 
     // 通知主线程钩子安装成功
     if (readyEvent) SetEvent(readyEvent);
@@ -2157,6 +3005,10 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
             KillTimer(NULL, QL_CAPTURE_TIMER_ID);
             continue;
         }
+        if (msg.message == WM_QL_REFRESH_TRIGGER_HOTKEYS) {
+            RefreshRegisteredTriggerHotkeys();
+            continue;
+        }
         if (msg.message == WM_TIMER && msg.wParam == QL_CAPTURE_TIMER_ID) {
             KillTimer(NULL, QL_CAPTURE_TIMER_ID);
             std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
@@ -2170,13 +3022,23 @@ DWORD WINAPI KeyboardHookThread(LPVOID param) {
             }
             continue;
         }
+        if (msg.message == WM_HOTKEY &&
+            (msg.wParam == QL_NORMAL_TRIGGER_HOTKEY_ID ||
+             msg.wParam == QL_SPECIAL_TRIGGER_HOTKEY_ID)) {
+            HandleRegisteredKeyboardTrigger(msg.lParam);
+            continue;
+        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
 
     UnregisterHotKey(NULL, QL_GLOBAL_HOTKEY_ID);
+    UnregisterHotKey(NULL, QL_NORMAL_TRIGGER_HOTKEY_ID);
+    UnregisterHotKey(NULL, QL_SPECIAL_TRIGGER_HOTKEY_ID);
     KillTimer(NULL, QL_CAPTURE_TIMER_ID);
     g_registeredHotkeyActive = false;
+    g_normalTriggerHotkeyRegistered = false;
+    g_specialTriggerHotkeyRegistered = false;
     if (g_keyboardHook) {
         UnhookWindowsHookEx(g_keyboardHook);
         g_keyboardHook = NULL;
@@ -2211,6 +3073,10 @@ bool InstallMouseHook(MouseCallback callback) {
 }
 
 void UninstallMouseHook() {
+    if (g_protectedChordCaptureEnabled.load() &&
+        (g_protectedChordCaptureFlags.load() & HOOK_CHORD_CAPTURE_MOUSE_BUTTON) != 0) {
+        StopProtectedChordCapture();
+    }
     if (g_inputCaptureActive.load() &&
         (g_inputCaptureFilter.load() &
          (HOOK_CAPTURE_MOUSE_MOVE | HOOK_CAPTURE_MOUSE_BUTTON | HOOK_CAPTURE_MOUSE_WHEEL)) != 0) {
@@ -2276,6 +3142,13 @@ bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback) {
 }
 
 void UninstallKeyboardHook() {
+    if (g_hotkeyCaptureEnabled.load()) {
+        StopHotkeyCapture();
+    }
+    if (g_protectedChordCaptureEnabled.load() &&
+        (g_protectedChordCaptureFlags.load() & HOOK_CHORD_CAPTURE_KEYBOARD) != 0) {
+        StopProtectedChordCapture();
+    }
     if (g_inputCaptureActive.load() &&
         (g_inputCaptureFilter.load() & HOOK_CAPTURE_KEYBOARD) != 0) {
         StopInputCapture();
@@ -2295,12 +3168,6 @@ void UninstallKeyboardHook() {
     g_ctrlHeld = false;
     g_altTapCount = 0;
     g_otherKeyPressed = false;
-    {
-        std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
-        g_hotkeyCaptureEnabled = false;
-        if (stopped) g_hotkeyCaptureCallback = nullptr;
-        ResetHotkeyCaptureStateLocked();
-    }
     StopCallbackThreadIfIdle();
 }
 
@@ -2334,6 +3201,79 @@ static std::string NormalizeHotkeyToken(std::string token) {
     return token;
 }
 
+static int ParseNamedVirtualKey(const std::string& token) {
+    if (token.length() == 1 && token[0] >= 'a' && token[0] <= 'z') {
+        return static_cast<int>(std::toupper(static_cast<unsigned char>(token[0])));
+    }
+    if (token.length() == 1 && token[0] >= '0' && token[0] <= '9') {
+        return static_cast<int>(token[0]);
+    }
+    if (token.length() >= 2 && token[0] == 'f') {
+        int n = atoi(token.substr(1).c_str());
+        if (n >= 1 && n <= 24) return VK_F1 + (n - 1);
+    }
+    if (token.rfind("vk_", 0) == 0 && token.length() == 5) {
+        char* end = nullptr;
+        long parsed = strtol(token.substr(3).c_str(), &end, 16);
+        if (end && *end == '\0' && parsed > 0 && parsed <= 0xFF) {
+            return static_cast<int>(parsed);
+        }
+    }
+
+    struct NamedVk {
+        const char* name;
+        int vk;
+    };
+    static const NamedVk namedKeys[] = {
+        {"backspace", VK_BACK}, {"back", VK_BACK}, {"tab", VK_TAB},
+        {"clear", VK_CLEAR}, {"enter", VK_RETURN}, {"return", VK_RETURN},
+        {"pause", VK_PAUSE}, {"capslock", VK_CAPITAL}, {"caps", VK_CAPITAL}, {"esc", VK_ESCAPE},
+        {"escape", VK_ESCAPE}, {"space", VK_SPACE}, {"pageup", VK_PRIOR},
+        {"pgup", VK_PRIOR}, {"pagedown", VK_NEXT}, {"pgdn", VK_NEXT},
+        {"end", VK_END}, {"home", VK_HOME}, {"left", VK_LEFT},
+        {"up", VK_UP}, {"right", VK_RIGHT}, {"down", VK_DOWN},
+        {"select", VK_SELECT}, {"print", VK_PRINT}, {"execute", VK_EXECUTE},
+        {"printscreen", VK_SNAPSHOT}, {"prtscr", VK_SNAPSHOT},
+        {"insert", VK_INSERT}, {"ins", VK_INSERT}, {"delete", VK_DELETE},
+        {"del", VK_DELETE}, {"help", VK_HELP}, {"apps", VK_APPS},
+        {"sleep", VK_SLEEP}, {"num0", VK_NUMPAD0}, {"numpad0", VK_NUMPAD0},
+        {"num1", VK_NUMPAD1}, {"numpad1", VK_NUMPAD1},
+        {"num2", VK_NUMPAD2}, {"numpad2", VK_NUMPAD2},
+        {"num3", VK_NUMPAD3}, {"numpad3", VK_NUMPAD3},
+        {"num4", VK_NUMPAD4}, {"numpad4", VK_NUMPAD4},
+        {"num5", VK_NUMPAD5}, {"numpad5", VK_NUMPAD5},
+        {"num6", VK_NUMPAD6}, {"numpad6", VK_NUMPAD6},
+        {"num7", VK_NUMPAD7}, {"numpad7", VK_NUMPAD7},
+        {"num8", VK_NUMPAD8}, {"numpad8", VK_NUMPAD8},
+        {"num9", VK_NUMPAD9}, {"numpad9", VK_NUMPAD9},
+        {"multiply", VK_MULTIPLY}, {"add", VK_ADD}, {"separator", VK_SEPARATOR},
+        {"subtract", VK_SUBTRACT}, {"decimal", VK_DECIMAL}, {"divide", VK_DIVIDE},
+        {"numlock", VK_NUMLOCK}, {"scrolllock", VK_SCROLL},
+        {"browserback", VK_BROWSER_BACK}, {"browserforward", VK_BROWSER_FORWARD},
+        {"browserrefresh", VK_BROWSER_REFRESH}, {"browserstop", VK_BROWSER_STOP},
+        {"browsersearch", VK_BROWSER_SEARCH}, {"browserfavorites", VK_BROWSER_FAVORITES},
+        {"browserhome", VK_BROWSER_HOME}, {"volumemute", VK_VOLUME_MUTE},
+        {"mute", VK_VOLUME_MUTE}, {"volumedown", VK_VOLUME_DOWN},
+        {"volumeup", VK_VOLUME_UP}, {"medianext", VK_MEDIA_NEXT_TRACK},
+        {"mediaprev", VK_MEDIA_PREV_TRACK}, {"mediastop", VK_MEDIA_STOP},
+        {"mediaplay", VK_MEDIA_PLAY_PAUSE}, {"playpause", VK_MEDIA_PLAY_PAUSE},
+        {"launchmail", VK_LAUNCH_MAIL}, {"launchmedia", VK_LAUNCH_MEDIA_SELECT},
+        {"launchapp1", VK_LAUNCH_APP1}, {"launchapp2", VK_LAUNCH_APP2},
+        {";", VK_OEM_1}, {"=", VK_OEM_PLUS}, {",", VK_OEM_COMMA},
+        {"-", VK_OEM_MINUS}, {".", VK_OEM_PERIOD}, {"/", VK_OEM_2},
+        {"`", VK_OEM_3}, {"[", VK_OEM_4}, {"\\", VK_OEM_5},
+        {"]", VK_OEM_6}, {"'", VK_OEM_7}, {"processkey", VK_PROCESSKEY},
+        {"packet", VK_PACKET}, {"attn", VK_ATTN}, {"crsel", VK_CRSEL},
+        {"exsel", VK_EXSEL}, {"ereof", VK_EREOF}, {"play", VK_PLAY},
+        {"zoom", VK_ZOOM}, {"noname", VK_NONAME}, {"pa1", VK_PA1},
+        {"oemclear", VK_OEM_CLEAR},
+    };
+    for (const NamedVk& named : namedKeys) {
+        if (token == named.name) return named.vk;
+    }
+    return 0;
+}
+
 static bool ParseGlobalHotkey(const std::string& hotkeyStr, int* modifiers, int* vk) {
     if (!modifiers || !vk) return false;
     *modifiers = 0;
@@ -2349,99 +3289,19 @@ static bool ParseGlobalHotkey(const std::string& hotkeyStr, int* modifiers, int*
         token = NormalizeHotkeyToken(token);
 
         if (!token.empty()) {
-            if (token == "alt") {
+            if (token == "alt" || token == "lalt" || token == "ralt") {
                 *modifiers |= 1;
-            } else if (token == "ctrl" || token == "control") {
+            } else if (token == "ctrl" || token == "control" || token == "lctrl" || token == "rctrl") {
                 *modifiers |= 2;
-            } else if (token == "shift") {
+            } else if (token == "shift" || token == "lshift" || token == "rshift") {
                 *modifiers |= 4;
             } else if (token == "win" || token == "windows" || token == "cmd" ||
-                       token == "meta" || token == "super") {
+                       token == "meta" || token == "super" || token == "lwin" || token == "rwin") {
                 *modifiers |= 8;
-            } else if (token.length() == 1 && token[0] >= 'a' && token[0] <= 'z') {
-                if (*vk != 0) return false;
-                *vk = static_cast<int>(std::toupper(static_cast<unsigned char>(token[0])));
-            } else if (token.length() == 1 && token[0] >= '0' && token[0] <= '9') {
-                if (*vk != 0) return false;
-                *vk = static_cast<int>(token[0]);
-            } else if (token == "space") {
-                if (*vk != 0) return false;
-                *vk = VK_SPACE;
-            } else if (token == "tab") {
-                if (*vk != 0) return false;
-                *vk = VK_TAB;
-            } else if (token == "enter" || token == "return") {
-                if (*vk != 0) return false;
-                *vk = VK_RETURN;
-            } else if (token == "esc" || token == "escape") {
-                if (*vk != 0) return false;
-                *vk = VK_ESCAPE;
-            } else if (token == "backspace" || token == "back") {
-                if (*vk != 0) return false;
-                *vk = VK_BACK;
-            } else if (token == "delete" || token == "del") {
-                if (*vk != 0) return false;
-                *vk = VK_DELETE;
-            } else if (token == "insert" || token == "ins") {
-                if (*vk != 0) return false;
-                *vk = VK_INSERT;
-            } else if (token == "home") {
-                if (*vk != 0) return false;
-                *vk = VK_HOME;
-            } else if (token == "end") {
-                if (*vk != 0) return false;
-                *vk = VK_END;
-            } else if (token == "pageup" || token == "pgup") {
-                if (*vk != 0) return false;
-                *vk = VK_PRIOR;
-            } else if (token == "pagedown" || token == "pgdn") {
-                if (*vk != 0) return false;
-                *vk = VK_NEXT;
-            } else if (token == "left") {
-                if (*vk != 0) return false;
-                *vk = VK_LEFT;
-            } else if (token == "up") {
-                if (*vk != 0) return false;
-                *vk = VK_UP;
-            } else if (token == "right") {
-                if (*vk != 0) return false;
-                *vk = VK_RIGHT;
-            } else if (token == "down") {
-                if (*vk != 0) return false;
-                *vk = VK_DOWN;
-            } else if (token == "pause") {
-                if (*vk != 0) return false;
-                *vk = VK_PAUSE;
-            } else if (token == "printscreen" || token == "prtscr") {
-                if (*vk != 0) return false;
-                *vk = VK_SNAPSHOT;
-            } else if (token == "volumeup") {
-                if (*vk != 0) return false;
-                *vk = VK_VOLUME_UP;
-            } else if (token == "volumedown") {
-                if (*vk != 0) return false;
-                *vk = VK_VOLUME_DOWN;
-            } else if (token == "volumemute" || token == "mute") {
-                if (*vk != 0) return false;
-                *vk = VK_VOLUME_MUTE;
-            } else if (token == "medianext") {
-                if (*vk != 0) return false;
-                *vk = VK_MEDIA_NEXT_TRACK;
-            } else if (token == "mediaprev") {
-                if (*vk != 0) return false;
-                *vk = VK_MEDIA_PREV_TRACK;
-            } else if (token == "mediastop") {
-                if (*vk != 0) return false;
-                *vk = VK_MEDIA_STOP;
-            } else if (token == "mediaplay" || token == "playpause") {
-                if (*vk != 0) return false;
-                *vk = VK_MEDIA_PLAY_PAUSE;
-            } else if (token.length() >= 2 && token[0] == 'f') {
-                int n = atoi(token.substr(1).c_str());
-                if (n < 1 || n > 24 || *vk != 0) return false;
-                *vk = VK_F1 + (n - 1);
             } else {
-                return false;
+                int parsedVk = ParseNamedVirtualKey(token);
+                if (parsedVk == 0 || *vk != 0) return false;
+                *vk = parsedVk;
             }
         }
 
@@ -2537,6 +3397,7 @@ HOOKS_API bool StartHotkeyCapture(HotkeyCaptureCallback callback, int timeoutMs)
         g_lastHookError = ERROR_NOT_READY;
         return false;
     }
+    if (!TryClaimCaptureMode(CAPTURE_MODE_HOTKEY)) return false;
 
     {
         std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
@@ -2554,11 +3415,13 @@ HOOKS_API bool StartHotkeyCapture(HotkeyCaptureCallback callback, int timeoutMs)
     g_hotkeyCaptureTimeoutMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : 10000;
     g_hotkeyCaptureStartedTick = GetTickCount();
     g_hotkeyCaptureEnabled = true;
-    PostThreadMessage(
+    if (!PostThreadMessage(
         g_keyboardThreadId,
         WM_QL_START_CAPTURE_TIMER,
-        static_cast<WPARAM>(g_hotkeyCaptureTimeoutMs),
-        0);
+        static_cast<WPARAM>(g_hotkeyCaptureTimeoutMs.load()),
+        0)) {
+        g_lastHookError = GetLastError();
+    }
     return true;
 }
 
@@ -2567,6 +3430,7 @@ HOOKS_API void StopHotkeyCapture() {
         std::lock_guard<std::mutex> lock(g_hotkeyCaptureMutex);
         g_hotkeyCaptureEnabled = false;
         ResetHotkeyCaptureStateLocked();
+        ReleaseCaptureMode(CAPTURE_MODE_HOTKEY);
     }
     PurgeCallbackEvents(CallbackEvent::HotkeyCapture);
     WaitForCallbacksToDrain();
@@ -2580,13 +3444,121 @@ HOOKS_API void StopHotkeyCapture() {
 }
 
 HOOKS_API bool IsHotkeyCaptureActive() {
-    if (g_hotkeyCaptureEnabled.load() && g_hotkeyCaptureTimeoutMs > 0) {
-        DWORD elapsed = GetTickCount() - g_hotkeyCaptureStartedTick;
-        if (elapsed > g_hotkeyCaptureTimeoutMs) {
+    DWORD timeoutMs = g_hotkeyCaptureTimeoutMs.load();
+    if (g_hotkeyCaptureEnabled.load() && timeoutMs > 0) {
+        DWORD elapsed = GetTickCount() - g_hotkeyCaptureStartedTick.load();
+        if (elapsed > timeoutMs) {
             StopHotkeyCapture();
         }
     }
     return g_hotkeyCaptureEnabled.load();
+}
+
+HOOKS_API bool StartProtectedChordCapture(
+    ProtectedChordCaptureCallback callback,
+    unsigned int captureFlags,
+    int timeoutMs)
+{
+    LogProtectedCaptureEvent(
+        "capture_start_request",
+        0,
+        0,
+        0,
+        static_cast<int>(captureFlags),
+        0,
+        "StartProtectedChordCapture called");
+    unsigned int supportedFlags =
+        HOOK_CHORD_CAPTURE_KEYBOARD |
+        HOOK_CHORD_CAPTURE_MOUSE_BUTTON |
+        HOOK_CHORD_CAPTURE_INCLUDE_INJECTED;
+    captureFlags &= supportedFlags;
+    if (!callback || captureFlags == 0) {
+        g_lastHookError = ERROR_INVALID_PARAMETER;
+        return false;
+    }
+    if ((captureFlags & HOOK_CHORD_CAPTURE_KEYBOARD) != 0 && !IsKeyboardHookInstalled()) {
+        g_lastHookError = ERROR_NOT_READY;
+        return false;
+    }
+    if ((captureFlags & HOOK_CHORD_CAPTURE_MOUSE_BUTTON) != 0 && !IsMouseHookInstalled()) {
+        g_lastHookError = ERROR_NOT_READY;
+        return false;
+    }
+    if (!TryClaimCaptureMode(CAPTURE_MODE_PROTECTED_CHORD)) return false;
+
+    PurgeCallbackEvents(CallbackEvent::ProtectedChordCapture);
+    WaitForCallbacksToDrain();
+    std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+    if (!AcquireProtectedChordProcessLockLocked()) {
+        ReleaseCaptureMode(CAPTURE_MODE_PROTECTED_CHORD);
+        LogProtectedCaptureEvent(
+            "capture_rejected",
+            0,
+            0,
+            0,
+            static_cast<int>(captureFlags),
+            0,
+            "another process owns protected capture");
+        return false;
+    }
+    ResetProtectedChordCaptureStateLocked();
+    for (int vk = 0; vk < 256; ++vk) {
+        g_protectedChordPreexisting[vk] = (GetAsyncKeyState(vk) & 0x8000) != 0;
+    }
+    if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) g_protectedChordMousePreexisting |= 1;
+    if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) g_protectedChordMousePreexisting |= 2;
+    if (GetAsyncKeyState(VK_MBUTTON) & 0x8000) g_protectedChordMousePreexisting |= 4;
+    if (GetAsyncKeyState(VK_XBUTTON1) & 0x8000) g_protectedChordMousePreexisting |= 8;
+    if (GetAsyncKeyState(VK_XBUTTON2) & 0x8000) g_protectedChordMousePreexisting |= 16;
+    g_protectedChordCaptureCallback = callback;
+    g_protectedChordCaptureFlags = captureFlags;
+    g_protectedChordCaptureTimeoutMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : 10000;
+    g_protectedChordCaptureStartedTick = GetTickCount();
+    g_protectedChordCaptureEnabled = true;
+    g_lastHookError = ERROR_SUCCESS;
+    LogProtectedCaptureEvent(
+        "capture_started",
+        0,
+        0,
+        0,
+        static_cast<int>(captureFlags),
+        0,
+        "protected capture is active");
+    return true;
+}
+
+HOOKS_API void StopProtectedChordCapture() {
+    LogProtectedCaptureEvent(
+        "capture_stop_request",
+        0,
+        0,
+        0,
+        static_cast<int>(g_protectedChordCaptureFlags.load()),
+        0,
+        "StopProtectedChordCapture called");
+    {
+        std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+        g_protectedChordCaptureEnabled = false;
+        ResetProtectedChordCaptureStateLocked();
+        ReleaseProtectedChordProcessLockLocked();
+        ReleaseCaptureMode(CAPTURE_MODE_PROTECTED_CHORD);
+    }
+    PurgeCallbackEvents(CallbackEvent::ProtectedChordCapture);
+    WaitForCallbacksToDrain();
+    std::lock_guard<std::mutex> lock(g_protectedChordCaptureMutex);
+    g_protectedChordCaptureCallback = nullptr;
+    g_protectedChordCaptureFlags = 0;
+}
+
+HOOKS_API bool IsProtectedChordCaptureActive() {
+    DWORD timeoutMs = g_protectedChordCaptureTimeoutMs.load();
+    if (g_protectedChordCaptureEnabled.load() && timeoutMs > 0) {
+        DWORD elapsed = GetTickCount() - g_protectedChordCaptureStartedTick.load();
+        if (elapsed > timeoutMs) {
+            StopProtectedChordCapture();
+        }
+    }
+    return g_protectedChordCaptureEnabled.load();
 }
 
 static DWORD MouseButtonDownFlag(int button) {
@@ -2876,11 +3848,11 @@ HOOKS_API bool StartInputCapture(InputEventCallback callback, unsigned int filte
         g_lastHookError = ERROR_NOT_READY;
         return false;
     }
-    if (g_inputCaptureActive.load()) {
-        g_lastHookError = ERROR_BUSY;
+    if (!TryClaimCaptureMode(CAPTURE_MODE_INPUT)) return false;
+    if (!EnsureInputCaptureThread()) {
+        ReleaseCaptureMode(CAPTURE_MODE_INPUT);
         return false;
     }
-    if (!EnsureInputCaptureThread()) return false;
 
     {
         std::lock_guard<std::mutex> lock(g_inputCaptureMutex);
@@ -2918,6 +3890,7 @@ HOOKS_API void StopInputCapture() {
         }
     }
     StopInputCaptureThread();
+    ReleaseCaptureMode(CAPTURE_MODE_INPUT);
 }
 
 HOOKS_API bool IsInputCaptureActive() {
@@ -3067,26 +4040,50 @@ void ReleaseAllModifierKeys() {
 }
 
 HOOKS_API void SetSpecialApps(const char** apps, int count) {
-    std::lock_guard<std::mutex> lock(g_specialAppsMutex);
-    g_specialApps.clear();
-    for (int i = 0; i < count; i++) {
-        if (apps[i]) {
-            g_specialApps.push_back(apps[i]);
+    {
+        std::lock_guard<std::mutex> lock(g_specialAppsMutex);
+        g_specialApps.clear();
+        if (apps && count > 0) {
+            for (int i = 0; i < count; i++) {
+                if (apps[i]) {
+                    g_specialApps.push_back(apps[i]);
+                }
+            }
         }
+    }
+    g_asyncKeyboardTriggerLatched = false;
+    if (g_keyboardThreadId != 0) {
+        PostThreadMessage(g_keyboardThreadId, WM_QL_REFRESH_TRIGGER_HOTKEYS, 0, 0);
     }
 }
 
 HOOKS_API void ClearSpecialApps() {
-    std::lock_guard<std::mutex> lock(g_specialAppsMutex);
-    g_specialApps.clear();
+    {
+        std::lock_guard<std::mutex> lock(g_specialAppsMutex);
+        g_specialApps.clear();
+    }
+    g_asyncKeyboardTriggerLatched = false;
+    if (g_keyboardThreadId != 0) {
+        PostThreadMessage(g_keyboardThreadId, WM_QL_REFRESH_TRIGGER_HOTKEYS, 0, 0);
+    }
 }
 
 HOOKS_API void SetTriggerConfig(int normalButton, int normalModifiers, int specialButton, int specialModifiers) {
-    std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
-    g_normalTriggerButton = normalButton;
-    g_normalTriggerModifiers = normalModifiers;
-    g_specialTriggerButton = specialButton;
-    g_specialTriggerModifiers = specialModifiers;
+    {
+        std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+        g_normalTriggerMode = 0;
+        g_normalTriggerButton = normalButton;
+        g_normalTriggerKeys.clear();
+        g_normalTriggerModifiers = normalModifiers;
+        g_specialTriggerMode = 0;
+        g_specialTriggerButton = specialButton;
+        g_specialTriggerKeys.clear();
+        g_specialTriggerModifiers = specialModifiers;
+    }
+    g_asyncKeyboardTriggerLatched = false;
+    if (g_keyboardThreadId != 0) {
+        PostThreadMessage(g_keyboardThreadId, WM_QL_REFRESH_TRIGGER_HOTKEYS, 0, 0);
+    }
 }
 
 static std::vector<int> ParseVkList(const char* rawKeys) {
@@ -3107,7 +4104,9 @@ static std::vector<int> ParseVkList(const char* rawKeys) {
         try {
             if (!token.empty()) {
                 int vk = std::stoi(token);
-                if (vk > 0 && vk <= 0xFF) {
+                if (vk > 0 &&
+                    vk <= 0xFF &&
+                    std::find(parsed.begin(), parsed.end(), vk) == parsed.end()) {
                     parsed.push_back(vk);
                 }
             }
@@ -3123,17 +4122,22 @@ static std::vector<int> ParseVkList(const char* rawKeys) {
 
 HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* normalKeys, int normalModifiers,
                                    int specialMode, int specialButton, const char* specialKeys, int specialModifiers) {
-    std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+    {
+        std::lock_guard<std::mutex> lock(g_triggerConfigMutex);
+        g_normalTriggerMode = normalMode;
+        g_normalTriggerButton = normalButton;
+        g_normalTriggerModifiers = normalModifiers;
+        g_specialTriggerMode = specialMode;
+        g_specialTriggerButton = specialButton;
+        g_specialTriggerModifiers = specialModifiers;
 
-    g_normalTriggerMode = normalMode;
-    g_normalTriggerButton = normalButton;
-    g_normalTriggerModifiers = normalModifiers;
-    g_specialTriggerMode = specialMode;
-    g_specialTriggerButton = specialButton;
-    g_specialTriggerModifiers = specialModifiers;
-
-    g_normalTriggerKeys = ParseVkList(normalKeys);
-    g_specialTriggerKeys = ParseVkList(specialKeys);
+        g_normalTriggerKeys = ParseVkList(normalKeys);
+        g_specialTriggerKeys = ParseVkList(specialKeys);
+    }
+    g_asyncKeyboardTriggerLatched = false;
+    if (g_keyboardThreadId != 0) {
+        PostThreadMessage(g_keyboardThreadId, WM_QL_REFRESH_TRIGGER_HOTKEYS, 0, 0);
+    }
 }
 
 HOOKS_API int GetHooksVersion() {
@@ -3152,7 +4156,8 @@ HOOKS_API unsigned int GetHooksCapabilities() {
            HOOKS_CAP_RUNTIME_STATS |
            HOOKS_CAP_REGISTER_HOTKEY |
            HOOKS_CAP_INPUT_CAPTURE |
-           HOOKS_CAP_MACRO_PLAYBACK;
+           HOOKS_CAP_MACRO_PLAYBACK |
+           HOOKS_CAP_PROTECTED_CHORD_CAPTURE;
 }
 
 HOOKS_API unsigned long GetLastHookError() {
@@ -3220,6 +4225,8 @@ HOOKS_API bool AreHooksQuiescent() {
            !g_inputCaptureThreadRunning.load() &&
            !g_debugLogThreadRunning.load() &&
            !g_inputCaptureActive.load() &&
+           !g_protectedChordCaptureEnabled.load() &&
+           g_activeCaptureMode.load() == CAPTURE_MODE_NONE &&
            !g_macroPlaybackActive.load() &&
            g_callbacksInFlight.load() == 0 &&
            g_inputCaptureCallbacksInFlight.load() == 0 &&

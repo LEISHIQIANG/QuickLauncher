@@ -34,27 +34,19 @@ def check_trigger_conflict(
         if not keys:
             return True, "键盘模式必须指定至少一个按键"
 
-        # 必须有修饰键
-        if not modifiers:
-            return True, "键盘触发必须配合修饰键（Ctrl/Shift/Win）\n否则可能影响正常输入"
-
         # 检查系统热键冲突
         hotkey_str = trigger_config_to_hotkey(mode, keys, modifiers)
         is_conflict, msg = check_conflict(hotkey_str)
         if is_conflict:
-            return True, f"键盘触发冲突：{msg}"
+            return False, f"键盘触发会覆盖现有组合：{msg}"
         duplicate = _find_shortcut_hotkey_duplicate(hotkey_str, shortcuts or [])
         if duplicate:
-            return True, f"键盘触发与快捷方式「{duplicate}」的快捷键重复"
+            return False, f"键盘触发与快捷方式「{duplicate}」的快捷键重复"
 
     # hybrid 模式验证
     elif mode == "hybrid":
         if not keys or not button:
             return True, "混合模式必须同时指定键盘按键和鼠标按键"
-
-        # 检查鼠标按键部分
-        if button in ("left", "right") and not modifiers:
-            return True, f"「{_button_name(button)}」必须配合修饰键使用"
 
     # mouse 模式验证（原有逻辑）
     elif mode == "mouse":
@@ -62,17 +54,8 @@ def check_trigger_conflict(
         if not button:
             return True, "鼠标模式必须指定鼠标按键\n请录制或选择一个按键"
 
-        # 左键/右键必须配合修饰键
         if button in ("left", "right") and not modifiers:
-            return True, f"「{_button_name(button)}」必须配合修饰键使用（如 Ctrl、Shift）\n否则会影响正常点击操作"
-
-    # 系统快捷键冲突警告（所有模式）
-    if modifiers:
-        mod_set = set(modifiers)
-        if mod_set == {"alt"} and (button in ("left", "right", "middle") or keys):
-            return True, "Alt 键组合可能与系统快捷键冲突\n建议使用 Ctrl 或 Shift"
-        if "alt" in modifiers and "ctrl" not in modifiers and "shift" not in modifiers:
-            return False, "提示：Alt 组合可能与系统快捷键冲突（如 Alt+Tab）"
+            return False, f"「{_button_name(button)}」会拦截正常点击并触发弹窗"
 
     return False, ""
 
@@ -91,8 +74,11 @@ def _find_shortcut_hotkey_duplicate(hotkey_str: str, shortcuts: list) -> str:
         raw_hotkey = getattr(shortcut, "hotkey", "") or ""
         if not raw_hotkey:
             mods = getattr(shortcut, "hotkey_modifiers", []) or []
-            key = getattr(shortcut, "hotkey_key", "") or ""
-            raw_hotkey = "+".join([*mods, key]) if key else ""
+            keys = list(getattr(shortcut, "hotkey_keys", []) or [])
+            if not keys:
+                key = getattr(shortcut, "hotkey_key", "") or ""
+                keys = [key] if key else []
+            raw_hotkey = "+".join([*mods, *keys]) if keys else ""
         if raw_hotkey and normalize_hotkey(raw_hotkey) == target:
             return str(getattr(shortcut, "name", "") or getattr(shortcut, "id", "") or raw_hotkey)
     return ""

@@ -314,6 +314,11 @@ class LauncherPopup(
         self._search_drag_selecting = False
         self._search_drag_anchor = 0
         self._search_scroll_x = 0
+        self._page_header_scroll_x = 0.0
+        self._page_header_target_scroll_x = 0.0
+        self._page_tab_widths = []
+        self._page_tab_x = []
+        self._page_tab_total_width = 0.0
         self._search_cursor_visible = True
         self._search_cursor_timer = QTimer(self)
         self._search_cursor_timer.setInterval(530)
@@ -627,24 +632,13 @@ class LauncherPopup(
         if preserve_search_state:
             current_query = getattr(self, "search_query", "") or ""
             current_forced_active = bool(getattr(self, "_search_forced_active", False))
-            current_progress = float(getattr(self, "_search_reveal_progress", 0.0) or 0.0)
-            if current_query or current_forced_active or current_progress > 0.001:
-                current_progress = max(0.0, min(1.0, current_progress))
-                body_anchor_y = int(getattr(self, "_search_body_anchor_y", 0) or 0)
-                if body_anchor_y <= 0:
-                    try:
-                        body_anchor_y = int(self.geometry().y()) + int(
-                            current_progress * self._current_search_bar_height()
-                        )
-                    except Exception:
-                        body_anchor_y = 0
+            if current_query or current_forced_active:
                 preserved_search_state = {
                     "query": current_query,
                     "cursor_pos": int(getattr(self, "search_cursor_pos", len(current_query)) or 0),
                     "selection_anchor": getattr(self, "search_selection_anchor", None),
                     "forced_active": current_forced_active,
                     "scroll_x": int(getattr(self, "_search_scroll_x", 0) or 0),
-                    "body_anchor_y": body_anchor_y,
                 }
 
         self._search_body_anchor_y = 0
@@ -654,7 +648,7 @@ class LauncherPopup(
         self.search_cursor_pos = 0
         self.search_selection_anchor = None
         self._search_preedit_text = ""
-        self._search_forced_active = False
+        self._search_forced_active = bool(getattr(self.settings, "search_default_active", False))
         self._search_drag_selecting = False
         self._search_drag_anchor = 0
         self._search_scroll_x = 0
@@ -665,8 +659,8 @@ class LauncherPopup(
                 timer.stop()
         except Exception as exc:
             logger.debug("停止搜索光标定时器失败: %s", exc, exc_info=True)
-        self._search_reveal_progress = 0.0
-        self._search_target_progress = 0.0
+        self._search_reveal_progress = 1.0 if self._search_forced_active else 0.0
+        self._search_target_progress = 1.0 if self._search_forced_active else 0.0
         self._search_hide_geometry_pending = False
         if preserved_search_state is not None:
             self.search_query = preserved_search_state["query"]
@@ -679,7 +673,6 @@ class LauncherPopup(
             self._search_scroll_x = preserved_search_state["scroll_x"]
             self._search_reveal_progress = 1.0
             self._search_target_progress = 1.0
-            self._search_body_anchor_y = preserved_search_state["body_anchor_y"]
         try:
             self.clearMask()
         except Exception as exc:
@@ -708,6 +701,7 @@ class LauncherPopup(
 
         # 重新获取数据
         self.pages = [f for f in self.data_manager.data.get_pages() if not getattr(f, "is_icon_repo", False)]
+        self._update_page_header_layout()
         dock = self.data_manager.data.get_dock()
         self.dock_items = dock.items if dock else []
 

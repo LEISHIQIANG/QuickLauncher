@@ -408,6 +408,21 @@ class HooksMixin:
                 special_button = trigger_settings["popup_special_trigger_button"]
                 special_modifiers = trigger_settings["popup_special_trigger_modifiers"]
 
+                requires_keyboard_hook = normal_mode in {"keyboard", "hybrid"} or special_mode in {
+                    "keyboard",
+                    "hybrid",
+                }
+                keyboard_hook = getattr(self, "keyboard_hook", None)
+                keyboard_hook_ready = bool(
+                    keyboard_hook and (not hasattr(keyboard_hook, "is_installed") or keyboard_hook.is_installed())
+                )
+                if requires_keyboard_hook and not keyboard_hook_ready:
+                    logger.info("键盘触发配置需要键盘钩子，立即安装")
+                    self._install_keyboard_hook()
+                    keyboard_hook = getattr(self, "keyboard_hook", None)
+                    if keyboard_hook and self.mouse_hook:
+                        self.mouse_hook.set_keyboard_hook(keyboard_hook)
+
                 self.mouse_hook.set_trigger_config_ex(
                     normal_mode,
                     normal_button,

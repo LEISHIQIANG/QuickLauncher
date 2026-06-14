@@ -66,6 +66,27 @@ def test_hotkey_sendinput_preserves_physically_held_modifier(monkeypatch):
     assert calls == [(0x50, False), (0x50, True)]
 
 
+def test_hotkey_sendinput_sends_multiple_main_keys_as_one_chord(monkeypatch):
+    calls = []
+    monkeypatch.setattr(shortcut_hotkey, "user32", _FakeUser32())
+    monkeypatch.setattr(shortcut_hotkey.time, "sleep", lambda _delay: None)
+    monkeypatch.setattr(
+        ShortcutExecutor,
+        "_sendinput_key_event",
+        staticmethod(lambda vk, is_up: calls.append((vk, is_up)) or True),
+    )
+
+    assert ShortcutExecutor._execute_hotkey_sendinput(["win"], ["a", "b"]) is True
+    assert calls == [
+        (0x5B, False),
+        (0x41, False),
+        (0x42, False),
+        (0x42, True),
+        (0x41, True),
+        (0x5B, True),
+    ]
+
+
 def test_hotkey_sendinput_reports_failure_and_releases_only_injected_keys(monkeypatch):
     calls = []
 

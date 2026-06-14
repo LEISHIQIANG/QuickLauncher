@@ -1745,6 +1745,7 @@ class DataManager:
                                 "hotkey": shortcut.get("hotkey", ""),
                                 "hotkey_modifiers": shortcut.get("hotkey_modifiers", []),
                                 "hotkey_key": shortcut.get("hotkey_key", ""),
+                                "hotkey_keys": shortcut.get("hotkey_keys", []),
                                 "url": shortcut.get("url", ""),
                                 "preferred_browser_path": shortcut.get("preferred_browser_path", ""),
                                 "preferred_browser_args": shortcut.get("preferred_browser_args", ""),

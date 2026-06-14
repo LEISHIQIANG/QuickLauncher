@@ -115,7 +115,10 @@ class SettingsPopupPageMixin:
         normal_row = QHBoxLayout()
         normal_row.addWidget(self._create_label("普通触发"))
         self.normal_trigger_recorder = InputTriggerRecorderWidget()
-        install_tooltip(self.normal_trigger_recorder, tr("点击录制框后按下鼠标按键或键盘按键（可同时按住修饰键）"))
+        install_tooltip(
+            self.normal_trigger_recorder,
+            tr("录入任意键盘、五键鼠标或混合组合，全部松开后自动完成"),
+        )
         normal_row.addWidget(self.normal_trigger_recorder, 1)
         layout.addLayout(normal_row)
 
@@ -344,6 +347,11 @@ class SettingsPopupPageMixin:
 
             ThemedMessageBox.warning(self, "配置冲突", msg)
             return False
+        if msg:
+            from ui.styles.themed_messagebox import ThemedMessageBox
+
+            if not ThemedMessageBox.question(self, "触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                return False
 
         is_conflict, msg = check_trigger_conflict(
             button=special_btn,
@@ -357,6 +365,11 @@ class SettingsPopupPageMixin:
 
             ThemedMessageBox.warning(self, "配置冲突", f"特殊触发：{msg}")
             return False
+        if msg:
+            from ui.styles.themed_messagebox import ThemedMessageBox
+
+            if not ThemedMessageBox.question(self, "特殊触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                return False
 
         # 保存配置
         self.data_manager.update_settings(
@@ -388,7 +401,31 @@ class SettingsPopupPageMixin:
     def _on_trigger_config_changed(self):
         """应用触发配置变更"""
         logger.info("触发配置变更按钮被点击")
-        self._try_apply_trigger_config()
+        try:
+            applied = self._try_apply_trigger_config()
+        except Exception as exc:
+            logger.error("应用触发配置失败: %s", exc, exc_info=True)
+            applied = False
+        self._show_trigger_apply_toast(applied)
+
+    def _show_trigger_apply_toast(self, applied: bool):
+        """使用 Alt 双击同款 Toast 显示触发配置应用结果。"""
+        try:
+            from ui.toast_notification import ToastNotification
+
+            toast = getattr(self, "_trigger_apply_toast", None)
+            if toast is None:
+                toast = ToastNotification()
+                self._trigger_apply_toast = toast
+            toast.show_toast(
+                tr("应用成功") if applied else tr("应用失败"),
+                theme=getattr(self, "current_theme", "dark"),
+                duration_ms=800,
+                target_widget=self,
+                center_on_target=True,
+            )
+        except Exception as exc:
+            logger.error("显示触发配置应用提示失败: %s", exc, exc_info=True)
 
     # === Special Apps ===
 
@@ -437,24 +474,33 @@ class SettingsPopupPageMixin:
             return True, ""
 
         parts = [p.strip() for p in hotkey_str.split("+")]
-        modifiers = []
-        main_key = None
+        main_keys = []
 
         for part in parts:
             part_lower = part.lower().replace("<", "").replace(">", "")
-            if part_lower in ("ctrl", "alt", "shift", "cmd", "win"):
-                modifiers.append(part_lower)
-            else:
-                main_key = part
+            if part_lower not in (
+                "ctrl",
+                "control",
+                "alt",
+                "shift",
+                "cmd",
+                "win",
+                "windows",
+                "meta",
+                "super",
+                "lctrl",
+                "rctrl",
+                "lalt",
+                "ralt",
+                "lshift",
+                "rshift",
+                "lwin",
+                "rwin",
+            ):
+                main_keys.append(part)
 
-        if "alt" in modifiers:
-            return False, "不允许使用 Alt 键\n请使用 Ctrl、Shift 或 Win"
-
-        if not main_key:
+        if not main_keys:
             return False, "必须包含一个主键（字母、数字或功能键）"
-
-        if not modifiers:
-            return False, "必须包含至少一个修饰键（Ctrl、Shift、Win）"
 
         try:
             from core.hotkey_conflict_checker import check_conflict

@@ -6,7 +6,7 @@ import time
 import pytest
 
 from hooks import hooks_wrapper
-from hooks.key_map import KEY_TO_VK
+from hooks.key_map import KEY_TO_VK, MODIFIER_KEY_NAMES
 
 
 class _FakeFunc:
@@ -124,6 +124,71 @@ def test_hotkey_capture_owner_prevents_stale_recorder_stop(monkeypatch):
     assert dll.hotkey_capture_owned_by(first_owner) is True
     assert dll.stop_hotkey_capture(owner=first_owner) is True
     assert dll.hotkey_capture_owned_by(first_owner) is False
+
+
+def test_protected_chord_capture_uses_flags_and_owner(monkeypatch):
+    calls = []
+    fake = _FakeDLL()
+    fake.StartProtectedChordCapture = lambda callback, flags, timeout: calls.append((callback, flags, timeout)) or True
+    fake.StopProtectedChordCapture = _FakeFunc(None)
+    fake.IsProtectedChordCaptureActive = _FakeFunc(True)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("protected-chord.dll")
+    owner = object()
+
+    assert dll.start_protected_chord_capture(
+        lambda *_args: None,
+        keyboard=True,
+        mouse_buttons=True,
+        include_injected=True,
+        timeout_ms=4321,
+        owner=owner,
+    )
+    assert calls[-1][1:] == (
+        hooks_wrapper.CHORD_CAPTURE_KEYBOARD
+        | hooks_wrapper.CHORD_CAPTURE_MOUSE_BUTTON
+        | hooks_wrapper.CHORD_CAPTURE_INCLUDE_INJECTED,
+        4321,
+    )
+    assert dll.protected_chord_capture_owned_by(owner) is True
+    assert dll.is_protected_chord_capture_active() is True
+    assert dll.stop_protected_chord_capture(owner=owner) is True
+
+
+def test_capture_owners_are_mutually_exclusive_across_capture_types(monkeypatch):
+    input_start_calls = []
+    fake = _FakeDLL()
+    fake.StartHotkeyCapture = _FakeFunc(True)
+    fake.IsHotkeyCaptureActive = _FakeFunc(True)
+    fake.StartInputCapture = lambda callback, flags: input_start_calls.append((callback, flags)) or True
+    fake.StopInputCapture = _FakeFunc(None)
+    fake.IsInputCaptureActive = _FakeFunc(True)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("cross-capture-owner.dll")
+
+    assert dll.start_hotkey_capture(lambda *_args: None, owner=object()) is True
+    assert dll.start_input_capture(lambda _event: None, owner=object()) is False
+    assert input_start_calls == []
+
+
+def test_native_auto_completion_clears_stale_capture_owner(monkeypatch):
+    hotkey_active = _FakeFunc(True)
+    protected_calls = []
+    fake = _FakeDLL()
+    fake.StartHotkeyCapture = _FakeFunc(True)
+    fake.IsHotkeyCaptureActive = hotkey_active
+    fake.StartProtectedChordCapture = (
+        lambda callback, flags, timeout: protected_calls.append((callback, flags, timeout)) or True
+    )
+    fake.IsProtectedChordCaptureActive = _FakeFunc(False)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path: fake)
+    dll = hooks_wrapper.HooksDLL("stale-capture-owner.dll")
+
+    assert dll.start_hotkey_capture(lambda *_args: None, owner=object()) is True
+    hotkey_active.result = False
+    assert dll.start_protected_chord_capture(lambda *_args: None, owner=object()) is True
+    assert protected_calls
+    assert dll._hotkey_capture_owner is None
 
 
 def test_hooks_wrapper_reports_runtime_stats(monkeypatch):
@@ -364,6 +429,59 @@ def test_failed_hook_replacement_keeps_previous_callbacks_alive(monkeypatch):
     assert dll._keyboard_callback_ref is keyboard_ref
 
 
+def test_rearm_keyboard_hook_for_capture_reinstalls_existing_hook():
+    calls = []
+    existing_ref = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
+
+    class NativeDLL:
+        def UninstallKeyboardHook(self):
+            calls.append(("uninstall", None))
+
+        def InstallKeyboardHook(self, callback):
+            calls.append(("install", callback))
+            return True
+
+    dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
+    dll.dll = NativeDLL()
+    dll.loaded = True
+    dll.compatible = True
+    dll._lifecycle_lock = __import__("threading").RLock()
+    dll._keyboard_callback_ref = existing_ref
+
+    success, installed_temporarily = dll.rearm_keyboard_hook_for_capture()
+
+    assert success is True
+    assert installed_temporarily is False
+    assert calls == [("uninstall", None), ("install", existing_ref)]
+    assert dll._keyboard_callback_ref is existing_ref
+
+
+def test_rearm_keyboard_hook_for_capture_tracks_temporary_hook():
+    calls = []
+
+    class NativeDLL:
+        def UninstallKeyboardHook(self):
+            calls.append("uninstall")
+
+        def InstallKeyboardHook(self, callback):
+            calls.append(callback)
+            return True
+
+    dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
+    dll.dll = NativeDLL()
+    dll.loaded = True
+    dll.compatible = True
+    dll._lifecycle_lock = __import__("threading").RLock()
+    dll._keyboard_callback_ref = None
+
+    success, installed_temporarily = dll.rearm_keyboard_hook_for_capture()
+
+    assert success is True
+    assert installed_temporarily is True
+    assert calls[0] == "uninstall"
+    assert dll._keyboard_callback_ref is calls[1]
+
+
 def test_input_capture_owner_cannot_be_replaced_or_stopped(monkeypatch):
     fake = _FakeDLL()
     fake.StartInputCapture = _FakeFunc(True)
@@ -440,7 +558,11 @@ def test_dll_global_hotkey_parser_accepts_shared_key_map():
         pytest.skip(f"hooks.dll unavailable: {dll.load_error or dll.missing_exports}")
 
     callback = hooks_wrapper.KEYBOARD_CALLBACK(lambda: None)
-    rejected = [key for key in sorted(KEY_TO_VK) if not dll.dll.SetGlobalHotkey(f"ctrl+{key}".encode(), callback)]
+    rejected = [
+        key
+        for key in sorted(KEY_TO_VK)
+        if key not in MODIFIER_KEY_NAMES and not dll.dll.SetGlobalHotkey(f"ctrl+{key}".encode(), callback)
+    ]
     dll.dll.ClearGlobalHotkey()
 
     assert rejected == []

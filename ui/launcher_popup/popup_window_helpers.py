@@ -219,12 +219,13 @@ class IconFlashOverlay(QWidget):
             )
             start_x = (launcher.width() - line_width) // 2
             dock_y = int(getattr(launcher, "dock_y", 0) or 0)
-            dock_row_stride = icon_size + sp(6)
             try:
                 display_rows = launcher._dock_display_rows(visible_count, cols)
+                dock_row_stride = launcher._get_dock_row_stride(display_rows)
                 first_icon_y = launcher._dock_first_icon_y(display_rows)
             except Exception:
-                first_icon_y = dock_y + sp(8)
+                dock_row_stride = icon_size + sp(6)
+                first_icon_y = dock_y + sp(11)
             for i in range(visible_count):
                 row = i // cols
                 if row >= dock_height_mode:

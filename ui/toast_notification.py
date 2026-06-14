@@ -118,7 +118,14 @@ class ToastNotification(QWidget):
         finally:
             painter.end()
 
-    def show_toast(self, text: str, theme: str = "dark", duration_ms: int = 1500, target_widget=None):
+    def show_toast(
+        self,
+        text: str,
+        theme: str = "dark",
+        duration_ms: int = 1500,
+        target_widget=None,
+        center_on_target: bool = False,
+    ):
         """显示 Toast 通知
 
         Args:
@@ -126,6 +133,7 @@ class ToastNotification(QWidget):
             theme: 主题 ("dark" / "light" / "error")
             duration_ms: 显示时长(毫秒)
             target_widget: 目标定位挂接控件，若传入则定位至该控件所在主窗口的右下角
+            center_on_target: 是否改为始终居中显示在目标控件上
         """
         # 关闭已有的 toast
         if ToastNotification._current_instance and ToastNotification._current_instance is not self:
@@ -176,11 +184,16 @@ class ToastNotification(QWidget):
         positioned = False
         if target_widget is not None:
             try:
-                target_window = target_widget.window()
-                geo = target_window.geometry()
-                # 动作链窗口右下角弹窗提示，保留一些边距（24px）
-                x = geo.right() - self.width() - sp(24)
-                y = geo.bottom() - self.height() - sp(24)
+                if center_on_target:
+                    top_left = target_widget.mapToGlobal(target_widget.rect().topLeft())
+                    x = top_left.x() + (target_widget.width() - self.width()) // 2
+                    y = top_left.y() + (target_widget.height() - self.height()) // 2
+                else:
+                    target_window = target_widget.window()
+                    geo = target_window.geometry()
+                    # 动作链窗口右下角弹窗提示，保留一些边距（24px）
+                    x = geo.right() - self.width() - sp(24)
+                    y = geo.bottom() - self.height() - sp(24)
                 self.move(x, y)
                 positioned = True
             except Exception as exc:

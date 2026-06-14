@@ -64,6 +64,7 @@ def test_shortcut_item_defaults():
     assert item.hotkey == ""
     assert item.hotkey_modifiers == []
     assert item.hotkey_key == ""
+    assert item.hotkey_keys == []
     assert item.url == ""
     assert item.preferred_browser_path == ""
     assert item.preferred_browser_args == ""
@@ -182,6 +183,23 @@ def test_shortcut_item_to_dict_type_is_string():
     data = item.to_dict()
     assert data["type"] == "hotkey"
     assert isinstance(data["type"], str)
+
+
+def test_hotkey_multiple_main_keys_round_trip_and_legacy_fallback():
+    item = ShortcutItem(
+        type=ShortcutType.HOTKEY,
+        hotkey="Win + A + B",
+        hotkey_modifiers=["win"],
+        hotkey_key="a",
+        hotkey_keys=["a", "b"],
+    )
+
+    restored = ShortcutItem.from_dict(item.to_dict())
+    legacy = ShortcutItem.from_dict({"type": "hotkey", "hotkey_key": "f8"})
+
+    assert restored.hotkey_keys == ["a", "b"]
+    assert restored.hotkey_key == "a"
+    assert legacy.hotkey_keys == ["f8"]
 
 
 def test_batch_launch_steps_round_trip():

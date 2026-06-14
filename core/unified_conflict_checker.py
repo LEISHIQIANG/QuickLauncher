@@ -157,14 +157,6 @@ class UnifiedConflictChecker:
                 if system_conflict:
                     conflicts.append(system_conflict)
 
-                # 必须有修饰键
-                if not modifiers:
-                    conflicts.append(
-                        Conflict(
-                            type="validation", source="触发配置", details="键盘触发必须配合修饰键（Ctrl/Shift/Win）"
-                        )
-                    )
-
         # hybrid 模式验证
         elif mode == "hybrid":
             if not keys or not button:
@@ -172,22 +164,5 @@ class UnifiedConflictChecker:
                     Conflict(type="validation", source="触发配置", details="混合模式必须同时指定键盘按键和鼠标按键")
                 )
 
-        # mouse 模式验证（基本检查）
-        elif mode == "mouse":
-            if button in ("left", "right") and not modifiers:
-                conflicts.append(
-                    Conflict(
-                        type="validation",
-                        source="触发配置",
-                        details=f"「{self._button_name(button)}」必须配合修饰键使用",
-                    )
-                )
-
         severity = "error" if conflicts else "info"
         return ConflictReport(has_conflict=len(conflicts) > 0, severity=severity, conflicts=conflicts)
-
-    @staticmethod
-    def _button_name(button: str) -> str:
-        """按键显示名称"""
-        mapping = {"left": "左键", "right": "右键", "middle": "中键", "x1": "侧键后", "x2": "侧键前"}
-        return mapping.get(button, button)

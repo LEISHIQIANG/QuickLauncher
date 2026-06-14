@@ -1478,8 +1478,11 @@ def cmd_conflict(context: CommandContext) -> CommandResult:
         if has_sys_conflict:
             system_conflicts.append(f"- 项目 '{item.name}' 的快捷键 '{item.hotkey}' {sys_desc}")
 
-        if item.hotkey_modifiers and item.hotkey_key:
-            occupied = is_hotkey_registered(item.hotkey_modifiers, item.hotkey_key)
+        hotkey_keys = list(getattr(item, "hotkey_keys", []) or [])
+        if not hotkey_keys and item.hotkey_key:
+            hotkey_keys = [item.hotkey_key]
+        if item.hotkey_modifiers and len(hotkey_keys) == 1:
+            occupied = is_hotkey_registered(item.hotkey_modifiers, hotkey_keys[0])
             if occupied:
                 registration_status.append(
                     f"- 项目 '{item.name}' 的快捷键 '{item.hotkey}' 注册失败，已被其他外部软件占用！"

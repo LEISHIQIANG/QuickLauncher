@@ -182,7 +182,7 @@ def test_dock_hover_and_drag_frames_match_acrylic_across_background_modes():
             assert rect == acrylic_rect
 
         _, y, _, height = acrylic_rect
-        assert y + height <= acrylic_bg_rect[1] + acrylic_bg_rect[3] - sp(6)
+        assert y + height <= acrylic_bg_rect[1] + acrylic_bg_rect[3] - sp(3)
 
 
 def test_dock_height_leaves_bottom_padding_for_shared_card_frame():
@@ -196,8 +196,8 @@ def test_dock_height_leaves_bottom_padding_for_shared_card_frame():
     popup.dock_height = dock_height
 
     card_block_height = LauncherPopup._dock_card_block_height(popup, 1)
-    assert dock_height - card_block_height >= sp(16)
-    assert LauncherPopup._dock_background_height(popup) - card_block_height >= sp(12)
+    assert dock_height - card_block_height >= sp(12)
+    assert LauncherPopup._dock_background_height(popup) - card_block_height >= sp(6)
 
 
 def test_dock_hover_update_rect_covers_shared_card_frame_bottom():
@@ -252,7 +252,7 @@ def test_typing_starts_search_escape_clears_and_arrows_select():
     assert popup.search_selected_index == -1
 
 
-def test_first_space_opens_search_without_querying():
+def test_first_space_keeps_page_header_visible():
     popup = _popup_with_items(
         [
             ShortcutItem(id="space-tool", name="Space Tool"),
@@ -262,8 +262,7 @@ def test_first_space_opens_search_without_querying():
     event = _FakeKeyEvent(Qt.Key_Space, " ")
     LauncherPopup.keyPressEvent(popup, event)
 
-    assert event.accepted
-    assert popup._is_search_active()
+    assert not popup._is_search_active()
     assert popup.search_query == ""
     assert popup.search_results == []
     assert popup.search_cursor_pos == 0
@@ -284,6 +283,19 @@ def test_search_font_uses_scaled_label_font_without_second_scaling(qapp):
         assert font.pixelSize() != font_px(font_px(10) + sp(2))
     finally:
         set_scale(100)
+
+
+def test_search_text_has_no_prefix_and_leaves_room_for_icon():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.padding = 8
+    popup.shadow_margin = 0
+    popup.width = lambda: 320
+
+    bar = LauncherPopup._search_bar_rect(popup)
+    text = LauncherPopup._search_text_rect(popup)
+
+    assert LauncherPopup._search_text_prefix(popup) == ""
+    assert text.left() - bar.left() == sp(32)
 
 
 def test_space_before_slash_enters_command_mode(monkeypatch):
@@ -723,17 +735,17 @@ def test_hover_change_repaints_only_changed_grid_region():
     assert updates[0].height() < popup.height()
 
 
-def test_search_reveal_height_tracks_animation_progress():
+def test_fixed_header_height_does_not_depend_on_search_state():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup.search_query = "p"
     popup._search_reveal_progress = 0.5
     popup._search_target_progress = 1.0
     popup._search_hide_geometry_pending = False
 
-    assert LauncherPopup._search_visible_height(popup) == 17
-    assert LauncherPopup._current_search_bar_height(popup) == 34
-    assert LauncherPopup._body_y_offset(popup) == 17
-    assert LauncherPopup._search_visible_top_inset(popup) == 17
+    assert LauncherPopup._search_visible_height(popup) == 32
+    assert LauncherPopup._current_search_bar_height(popup) == 32
+    assert LauncherPopup._body_y_offset(popup) == 32
+    assert LauncherPopup._search_visible_top_inset(popup) == 0
 
 
 def test_hidden_popup_height_does_not_depend_on_background_mode():
@@ -756,7 +768,7 @@ def test_hidden_popup_height_does_not_depend_on_background_mode():
     assert heights["theme"] == heights["image"] == heights["acrylic"]
 
 
-def test_search_reveal_extends_height_upward_from_existing_body():
+def test_search_state_does_not_change_fixed_popup_height():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup.settings = SimpleNamespace(popup_max_rows=3, bg_mode="theme")
     popup.padding = 8
@@ -773,10 +785,10 @@ def test_search_reveal_extends_height_upward_from_existing_body():
     popup._search_reveal_progress = 1.0
     search_height = LauncherPopup._calculate_fixed_size(popup)[1]
 
-    assert search_height - base_height == 34
+    assert search_height == base_height
 
 
-def test_background_inset_only_applies_while_search_is_visible():
+def test_fixed_header_never_insets_background():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup.search_query = ""
     popup._search_reveal_progress = 0.0
@@ -789,61 +801,16 @@ def test_background_inset_only_applies_while_search_is_visible():
     popup._search_reveal_progress = 0.5
     popup._search_target_progress = 1.0
 
-    assert LauncherPopup._background_top_inset(popup) == 17
+    assert LauncherPopup._background_top_inset(popup) == 0
 
 
-def test_search_start_expands_final_geometry_then_animates_reveal():
+def test_search_state_switches_in_place_without_geometry_animation():
     popup = LauncherPopup.__new__(LauncherPopup)
     popup._search_reveal_progress = 0.25
     popup._search_target_progress = 0.0
-    popup._search_anim_from_progress = 0.0
-    popup._search_hide_geometry_pending = False
-    popup._remember_search_body_anchor = lambda: None
-    popup._search_animation_update_rect = lambda: "search-rect"
-    geometry_calls = []
-    clears = []
-    updates = []
-    repaints = []
-
-    class _Timer:
-        def __init__(self):
-            self.started = False
-
-        def isActive(self):
-            return self.started
-
-        def start(self):
-            self.started = True
-
-    popup._search_anim_timer = _Timer()
-    popup._apply_search_geometry = lambda **kwargs: geometry_calls.append(kwargs)
-    popup._clear_search_mask_for_animation = lambda: clears.append(True)
-    popup.setUpdatesEnabled = lambda enabled: None
-    popup.update = lambda rect=None: updates.append(rect)
-    popup.repaint = lambda: repaints.append(True)
-
-    LauncherPopup._start_search_reveal_animation(popup, True)
-
-    assert geometry_calls == [{"progress_override": 1.0, "repaint": False}]
-    assert popup._search_reveal_progress == 0.25
-    assert popup._search_target_progress == 1.0
-    assert popup._search_anim_timer.started is True
-    assert clears == [True]
-    assert updates == ["search-rect"]
-    assert repaints == []
-
-
-def test_search_reveal_tick_updates_visual_progress_without_geometry():
-    popup = LauncherPopup.__new__(LauncherPopup)
-    popup._search_reveal_progress = 0.0
-    popup._search_target_progress = 1.0
-    popup._search_anim_from_progress = 0.0
-    popup._search_anim_started_at = 10.0
-    popup._search_anim_duration_ms = 100
     popup._search_hide_geometry_pending = False
     popup._search_animation_update_rect = lambda: "search-rect"
     updates = []
-    geometry_calls = []
 
     class _Timer:
         def __init__(self):
@@ -853,107 +820,49 @@ def test_search_reveal_tick_updates_visual_progress_without_geometry():
             self.stopped = True
 
     popup._search_anim_timer = _Timer()
-    popup._apply_search_mask = lambda force=False: (_ for _ in ()).throw(
-        AssertionError("native search mask should settle only at animation boundaries")
-    )
     popup.update = lambda rect=None: updates.append(rect)
-    popup.repaint = lambda: None
-    popup._apply_search_geometry = lambda **kwargs: geometry_calls.append(kwargs)
 
-    import ui.launcher_popup.popup_search as popup_search_mod
+    LauncherPopup._start_search_reveal_animation(popup, True)
 
-    original = popup_search_mod.time.perf_counter
-    try:
-        popup_search_mod.time.perf_counter = lambda: 10.05
-        LauncherPopup._tick_search_reveal(popup)
-    finally:
-        popup_search_mod.time.perf_counter = original
-
-    assert 0.0 < popup._search_reveal_progress < 1.0
+    assert popup._search_reveal_progress == 1.0
+    assert popup._search_target_progress == 1.0
+    assert popup._search_anim_timer.stopped is True
     assert updates == ["search-rect"]
-    assert geometry_calls == []
 
 
-def test_search_geometry_expands_only_from_top_edge():
+def test_search_state_tick_converges_immediately():
     popup = LauncherPopup.__new__(LauncherPopup)
-    popup.search_query = "p"
-    popup._search_reveal_progress = 0.5
+    popup._search_reveal_progress = 0.0
     popup._search_target_progress = 1.0
     popup._search_hide_geometry_pending = False
-    popup._search_body_anchor_y = 200
-
-    class _Geometry:
-        def x(self):
-            return 40
-
-        def y(self):
-            return 190
-
-        def width(self):
-            return 180
-
-        def height(self):
-            return 120
-
-    applied = []
-
-    def calculate_fixed_size(apply_size=False, y_offset_override=None):
-        y_offset = LauncherPopup._body_y_offset(popup) if y_offset_override is None else int(y_offset_override)
-        return 180, 120 + y_offset
-
-    popup.geometry = lambda: _Geometry()
-    popup._calculate_fixed_size = calculate_fixed_size
-    popup._set_fixed_geometry_atomically = lambda left, top, width, height: applied.append((left, top, width, height))
-    popup.setUpdatesEnabled = lambda enabled: None
-    popup.repaint = lambda: None
-
-    LauncherPopup._apply_search_geometry(popup)
-
-    assert applied == [(40, 183, 180, 137)]
-
-
-def test_search_geometry_schedules_window_effect_once():
-    popup = LauncherPopup.__new__(LauncherPopup)
-    popup.search_query = "p"
-    popup._search_reveal_progress = 0.5
-    popup._search_target_progress = 1.0
-    popup._search_hide_geometry_pending = False
-    popup._search_body_anchor_y = 200
-
-    class _Geometry:
-        def x(self):
-            return 40
-
-        def y(self):
-            return 190
-
-        def width(self):
-            return 180
-
-        def height(self):
-            return 120
-
-    effects = []
-    scheduled = []
+    popup._search_animation_update_rect = lambda: "search-rect"
     updates = []
-    update_states = []
-    geometries = []
 
-    popup.geometry = lambda: _Geometry()
-    popup._calculate_fixed_size = lambda y_offset_override=None: (180, 120 + int(y_offset_override or 0))
-    popup.setGeometry = lambda left, top, width, height: geometries.append((left, top, width, height))
-    popup._update_window_effect = lambda: effects.append(True)
-    popup._schedule_window_effect_update = lambda delay=0: scheduled.append(delay)
-    popup.setUpdatesEnabled = lambda enabled: update_states.append(enabled)
+    class _Timer:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    popup._search_anim_timer = _Timer()
+    popup.update = lambda rect=None: updates.append(rect)
+    LauncherPopup._tick_search_reveal(popup)
+
+    assert popup._search_reveal_progress == 1.0
+    assert popup._search_anim_timer.stopped is True
+    assert updates == ["search-rect"]
+
+
+def test_search_geometry_update_only_repaints_fixed_header():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    updates = []
+    popup._search_animation_update_rect = lambda: "header-rect"
     popup.update = lambda rect=None: updates.append(rect)
 
     LauncherPopup._apply_search_geometry(popup)
 
-    assert geometries == [(40, 183, 180, 137)]
-    assert effects == []
-    assert scheduled == [0]
-    assert update_states == [False, True]
-    assert updates == [None]
+    assert updates == ["header-rect"]
 
 
 def test_search_animation_updates_only_top_region():
@@ -967,73 +876,95 @@ def test_search_animation_updates_only_top_region():
     assert rect.x() == 0
     assert rect.y() == 0
     assert rect.width() == 240
-    assert rect.height() == 46
+    assert rect.height() == 44
 
 
-def test_search_mask_reuses_current_mask_for_same_scaled_geometry(qapp, monkeypatch):
-    import ui.launcher_popup.popup_search as popup_search_mod
-
-    monkeypatch.setattr(popup_search_mod, "is_win10", lambda: False)
+def test_fixed_header_search_mask_is_always_cleared():
     popup = LauncherPopup.__new__(LauncherPopup)
-    popup.search_query = "p"
-    popup._search_reveal_progress = 0.5
-    popup._search_target_progress = 1.0
-    popup._search_hide_geometry_pending = False
-    popup.width = lambda: 240
-    popup.height = lambda: 180
-    popup._get_paint_corner_radius = lambda: 10
-    popup._search_visible_top_inset = lambda: 12
-    masks = []
-
-    popup.setMask = lambda mask: masks.append(mask)
-    popup.clearMask = lambda: None
+    popup._search_mask_cleared = False
+    clears = []
+    popup.clearMask = lambda: clears.append(True)
 
     LauncherPopup._apply_search_mask(popup)
-    LauncherPopup._apply_search_mask(popup)
 
-    assert len(masks) == 1
-
-    popup._search_visible_top_inset = lambda: 14
-    LauncherPopup._apply_search_mask(popup)
-
-    assert len(masks) == 2
+    assert clears == [True]
+    assert popup._search_mask_cleared is True
+    assert popup._search_mask_cache_key is None
 
 
-def test_finishing_search_hide_shrinks_after_visual_edge_is_hidden():
+def test_clearing_search_restores_page_header_state():
     popup = LauncherPopup.__new__(LauncherPopup)
-    popup.search_query = ""
+    popup.search_query = "tool"
+    popup.search_cursor_pos = 4
+    popup.search_selection_anchor = None
+    popup._search_preedit_text = ""
+    popup._search_forced_active = True
     popup._search_reveal_progress = 1.0
-    popup._search_target_progress = 0.0
-    popup._search_anim_from_progress = 1.0
-    popup._search_anim_started_at = 1.0
-    popup._search_anim_last_ts = 1.0
-    popup._search_anim_duration_ms = 1
-    popup._search_hide_geometry_pending = True
-    popup.settings = SimpleNamespace(corner_radius=10)
-    popup.width = lambda: 240
-    popup.height = lambda: 180
-    applied = []
-    updates = []
-    repaints = []
+    popup._search_target_progress = 1.0
+    popup._start_search_reveal_animation = lambda active: setattr(popup, "_search_target_progress", float(active))
+    popup._debounce_refresh_search = lambda: None
+    popup._ensure_search_cursor_visible = lambda: None
+    popup._restart_search_cursor_blink = lambda: None
+
+    LauncherPopup._clear_search_text(popup)
+
+    assert popup.search_query == ""
+    assert popup._search_forced_active is False
+    assert popup._search_target_progress == 0.0
+    assert not LauncherPopup._is_search_active(popup)
+
+
+def test_page_header_tabs_fill_width_and_hit_expected_page():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.pages = [
+        Folder(id="common", name="常用"),
+        Folder(id="tools", name="TOOL"),
+        Folder(id="urls", name="网址"),
+    ]
+    popup.current_page = 0
+    popup.search_query = ""
+    popup._search_preedit_text = ""
+    popup._search_forced_active = False
+    popup.padding = 8
+    popup.shadow_margin = 0
+    popup.width = lambda: 308
+
+    tabs = LauncherPopup._page_header_tab_rects(popup)
+
+    assert len(tabs) == 3
+    assert round(sum(rect.width() for _, rect in tabs)) == round(LauncherPopup._page_header_rect(popup).width())
+    assert LauncherPopup._page_index_at_header(popup, tabs[1][1].center().toPoint()) == 1
+
+
+def test_switch_to_page_uses_existing_slide_animation():
+    popup = LauncherPopup.__new__(LauncherPopup)
+    popup.pages = [Folder(id=str(i), name=str(i)) for i in range(4)]
+    popup.current_page = 0
+    popup._page_position = 0.0
+    popup._target_page = 0.0
+    popup.hover_index = 2
+    popup._defer_blank_area_refresh_for_interaction = lambda: None
+    popup._schedule_last_page_index_save = lambda: None
+    popup.update = lambda: None
 
     class _Timer:
-        def stop(self):
-            pass
+        def __init__(self):
+            self.started = False
 
-    popup._search_anim_timer = _Timer()
-    popup._apply_search_geometry = lambda: applied.append(True)
-    popup._apply_search_mask = lambda force=False: None
-    popup.setUpdatesEnabled = lambda enabled: None
-    popup.clearMask = lambda: None
-    popup.update = lambda rect=None: updates.append(rect)
-    popup.repaint = lambda: repaints.append(True)
+        def isActive(self):
+            return self.started
 
-    LauncherPopup._tick_search_reveal(popup)
+        def start(self):
+            self.started = True
 
-    assert popup._search_reveal_progress == 0.0
-    assert popup._search_hide_geometry_pending is False
-    assert applied == [True]
-    assert repaints == [True]
+    popup._indicator_timer = _Timer()
+
+    LauncherPopup._switch_to_page(popup, 3)
+
+    assert popup.current_page == 3
+    assert popup._target_page == -1.0
+    assert popup.hover_index == -1
+    assert popup._indicator_timer.started is True
 
 
 def test_search_hover_and_click_target_search_results():
@@ -2142,3 +2073,128 @@ def test_search_context_menu_paste_replaces_selection():
     assert popup.search_query == "abX Yef"
     assert popup.search_cursor_pos == 5
     assert popup.search_selection_anchor is None
+
+
+def test_tab_key_toggles_default_header_mode():
+    popup = _popup_with_items([])
+    popup.settings = SimpleNamespace(search_default_active=False, sort_mode="custom", dock_height_mode=1)
+    popup._command_result = None
+
+    class FakeEvent:
+        def key(self):
+            return Qt.Key_Tab
+
+        def accept(self):
+            self.accepted = True
+
+    event = FakeEvent()
+    event.accepted = False
+
+    popup.keyPressEvent(event)
+
+    assert event.accepted
+    assert popup.settings.search_default_active is True
+    assert popup._search_forced_active is True
+
+
+def test_app_settings_search_default_active_serialization():
+    from core.data_models import AppSettings
+
+    settings = AppSettings()
+    assert settings.search_default_active is False
+
+    settings.search_default_active = True
+    d = settings.to_dict()
+    assert d["search_default_active"] is True
+
+    restored = AppSettings.from_dict(d)
+    assert restored.search_default_active is True
+
+
+def test_empty_search_query_is_inactive_and_switches_pages():
+    popup = _popup_with_items([ShortcutItem(id="item1", name="Item 1")])
+    popup.pages = [
+        Folder(id="p1", name="Page 1"),
+        Folder(id="p2", name="Page 2"),
+    ]
+    popup.current_page = 0
+    popup._search_forced_active = True
+    popup.search_query = ""
+    popup._search_preedit_text = ""
+
+    # Search bar is visible, but search is inactive
+    assert popup._is_search_bar_visible() is True
+    assert popup._is_search_active() is False
+
+    # Pressing Left key should switch page instead of moving cursor
+    switched = []
+    popup._switch_page = lambda direction: switched.append(direction)
+
+    event = _FakeKeyEvent(Qt.Key_Left)
+    popup.keyPressEvent(event)
+    assert switched == [-1]
+
+
+def test_non_empty_search_query_is_active_and_moves_cursor():
+    popup = _popup_with_items([ShortcutItem(id="item1", name="Item 1")])
+    popup.pages = [
+        Folder(id="p1", name="Page 1"),
+        Folder(id="p2", name="Page 2"),
+    ]
+    popup.current_page = 0
+    popup.search_query = "hello"
+    popup.search_cursor_pos = 5
+
+    assert popup._is_search_bar_visible() is True
+    assert popup._is_search_active() is True
+
+    # Pressing Left key should move search cursor, not switch page
+    switched = []
+    popup._switch_page = lambda direction: switched.append(direction)
+
+    event = _FakeKeyEvent(Qt.Key_Left)
+    popup.keyPressEvent(event)
+    assert switched == []
+    assert popup.search_cursor_pos == 4
+
+
+def test_search_cursor_hidden_when_query_is_empty():
+    popup = _popup_with_items([])
+    popup.search_query = ""
+    popup._search_preedit_text = ""
+    popup._search_forced_active = True
+    assert popup._is_search_bar_visible() is True
+    assert popup._is_search_active() is False
+
+
+def test_tab_key_saves_default_header_mode_to_data_manager():
+    popup = _popup_with_items([])
+    popup.settings = SimpleNamespace(search_default_active=False)
+
+    saved_settings = {}
+
+    class FakeDataManager:
+        def update_settings(self, **kwargs):
+            saved_settings.update(kwargs)
+
+        def get_settings(self):
+            return SimpleNamespace(search_default_active=saved_settings.get("search_default_active", False))
+
+    popup.data_manager = FakeDataManager()
+    popup._command_result = None
+
+    class FakeEvent:
+        def key(self):
+            return Qt.Key_Tab
+
+        def accept(self):
+            self.accepted = True
+
+    event = FakeEvent()
+    event.accepted = False
+
+    popup.keyPressEvent(event)
+
+    assert event.accepted
+    assert saved_settings.get("search_default_active") is True
+    assert popup.settings.search_default_active is True

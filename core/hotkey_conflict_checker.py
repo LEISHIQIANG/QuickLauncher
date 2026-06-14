@@ -58,7 +58,7 @@ def normalize_hotkey(hotkey_str: str) -> str:
 
     # 排序修饰键
     modifiers = []
-    key = ""
+    keys = []
 
     for part in parts:
         if part in ["ctrl", "control"]:
@@ -80,14 +80,17 @@ def normalize_hotkey(hotkey_str: str) -> str:
                 "prtscr": "printscreen",
             }
             key = aliases.get(part, part)
+            if key and key not in keys:
+                keys.append(key)
 
     # 按固定顺序排列
     order = {"ctrl": 0, "alt": 1, "shift": 2, "win": 3}
     modifiers.sort(key=lambda x: order.get(x, 99))
 
     result = "+".join(modifiers)
-    if key:
-        result = result + "+" + key if result else key
+    if keys:
+        key_text = "+".join(keys)
+        result = result + "+" + key_text if result else key_text
 
     titled = []
     for part in result.split("+"):

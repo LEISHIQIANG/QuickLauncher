@@ -5,6 +5,7 @@ import logging
 from qt_compat import (
     QApplication,
     QFont,
+    QFontMetrics,
     QPainterPath,
     QPoint,
     QRectF,
@@ -307,7 +308,7 @@ class PopupLayoutMixin:
         return min(max(1, actual_rows), max_rows)
 
     def _dock_background_top_gap(self) -> int:
-        return max(1, sp(5))
+        return max(1, sp(6))
 
     def _dock_outer_bottom_gap(self) -> int:
         return sp(6)
@@ -316,11 +317,42 @@ class PopupLayoutMixin:
         total_h = int(getattr(self, "dock_height", 0) or 0) + self._dock_outer_bottom_gap()
         return max(0, total_h - self._dock_background_top_gap() * 2)
 
+    def _dock_shows_text(self, display_rows: int) -> bool:
+        return display_rows >= 2
+
+    def _get_dock_row_stride(self, display_rows: int) -> int:
+        card_pad = sp(2)
+        card_size = self.icon_size + card_pad * 2
+        if self._dock_shows_text(display_rows):
+            if hasattr(self, "_label_font") and self._label_font:
+                fm = QFontMetrics(self._label_font)
+            else:
+                fm = QFontMetrics(QFont())
+            text_h = fm.height()
+            text_spacing = sp(1)
+            row_height = card_size + text_spacing + text_h
+            return row_height + sp(6)
+        else:
+            return self.icon_size + sp(6)
+
     def _dock_card_block_height(self, display_rows: int) -> int:
         rows = max(1, int(display_rows or 1))
         card_pad = sp(2)
-        dock_row_stride = self.icon_size + sp(6)
-        return self.icon_size + card_pad * 2 + (rows - 1) * dock_row_stride
+        card_size = self.icon_size + card_pad * 2
+
+        if self._dock_shows_text(rows):
+            if hasattr(self, "_label_font") and self._label_font:
+                fm = QFontMetrics(self._label_font)
+            else:
+                fm = QFontMetrics(QFont())
+            text_h = fm.height()
+            text_spacing = sp(1)
+            row_height = card_size + text_spacing + text_h
+        else:
+            row_height = card_size
+
+        dock_row_stride = self._get_dock_row_stride(rows)
+        return row_height + (rows - 1) * dock_row_stride
 
     def _dock_first_icon_y(self, display_rows: int | None = None) -> int:
         rows = self._dock_display_rows() if display_rows is None else max(1, int(display_rows or 1))
@@ -340,7 +372,7 @@ class PopupLayoutMixin:
         display_rows = self._dock_display_rows()
         if display_rows <= 0:
             return 0
-        return self._dock_card_block_height(display_rows) + sp(16)
+        return self._dock_card_block_height(display_rows) + sp(12)
 
     def _win10_internal_shadow_metrics(self) -> tuple[int, int, int]:
         if not self._uses_win10_internal_popup_shadow():
@@ -398,7 +430,7 @@ class PopupLayoutMixin:
         self._update_grid_text_metrics()
 
         width = self.padding * 2 + self.cols * self.cell_size
-        # 增加搜索框导致的Y偏移
+        # 顶部标题/搜索栏始终占用固定高度。
         if y_offset_override is None:
             y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else 0
         else:

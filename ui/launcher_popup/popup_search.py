@@ -7,25 +7,10 @@ from core.data_models import ShortcutItem, ShortcutType
 from core.fuzzy_search import FuzzyMatchResult, search_shortcuts
 from core.search_engines import build_search_url, parse_search_action
 from core.slash_commands import find_matching_commands
-from qt_compat import (
-    QApplication,
-    QBitmap,
-    QColor,
-    QFont,
-    QFontMetrics,
-    QPainter,
-    QPainterPath,
-    QPoint,
-    QRect,
-    QRectF,
-    Qt,
-    QtCompat,
-    QTimer,
-)
+from qt_compat import QApplication, QColor, QFont, QFontMetrics, QPoint, QRect, QRectF, Qt, QTimer
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
 from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import font_px, sp
-from ui.utils.window_effect import is_win10
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +123,10 @@ class PopupSearchMixin:
         return self._clamp_search_pos(getattr(self, "search_cursor_pos", 0))
 
     def _search_bar_full_height(self) -> int:
-        return sp(34)
+        return sp(32)
 
     def _search_text_prefix(self) -> str:
-        return "搜索: " if (getattr(self, "search_query", "") or getattr(self, "_search_preedit_text", "")) else "搜索"
+        return ""
 
     def _search_font(self) -> QFont:
         base_font = self.__dict__.get("_label_font")
@@ -203,21 +188,167 @@ class PopupSearchMixin:
         return width
 
     def _search_bar_rect(self) -> QRectF:
-        full_h = self._search_bar_full_height()
-        x = self.padding
-        w = self.width() - self.padding * 2
-        return QRectF(x, sp(4), w, max(sp(6), full_h - sp(8)))
+        side_inset = sp(0)
+        x = self.padding + side_inset
+        w = self.width() - (self.padding + side_inset) * 2
+        shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
+        return QRectF(x, shadow_margin + sp(8), w, sp(24))
 
     def _search_text_rect(self) -> QRectF:
-        return self._search_bar_rect().adjusted(sp(9), 0, -sp(9), 0)
+        return self._search_bar_rect().adjusted(sp(32), 0, -sp(14), 0)
 
     def _search_bar_contains(self, pos: QPoint) -> bool:
         try:
-            if not self._is_search_layout_visible() and not self._is_search_active():
+            if not self._is_search_bar_visible():
                 return False
             return self._search_bar_rect().contains(pos)
         except Exception:
             return False
+
+    def _page_header_rect(self) -> QRectF:
+        return self._search_bar_rect()
+
+    def _update_page_header_layout(self):
+        pages = list(getattr(self, "pages", None) or [])
+        rect = self._page_header_rect()
+
+        # Cache key values to prevent redundant calculations
+        self.__dict__["_page_tab_cached_width"] = rect.width()
+        self.__dict__["_page_tab_cached_names"] = tuple(str(getattr(p, "name", "") or "") for p in pages)
+
+        if not pages:
+            self.__dict__["_page_tab_widths"] = []
+            self.__dict__["_page_tab_x"] = []
+            self.__dict__["_page_tab_total_width"] = 0.0
+            return
+
+        base_font = self.__dict__.get("_label_font")
+        if hasattr(self, "_search_font"):
+            font = self._search_font()
+        else:
+            font = QFont(base_font) if base_font is not None else QFont()
+        if font.pixelSize() <= 0:
+            font.setPixelSize(font_px(10))
+
+        metrics = QFontMetrics(font)
+        count = len(pages)
+
+        pref_widths = []
+        for p in pages:
+            name = str(getattr(p, "name", "") or "")
+            pref_w = (
+                metrics.horizontalAdvance(name) if hasattr(metrics, "horizontalAdvance") else metrics.width(name)
+            ) + sp(12)
+            pref_widths.append(pref_w)
+
+        total_pref_width = sum(pref_widths)
+
+        tab_widths = []
+        if total_pref_width <= rect.width():
+            extra_padding = (rect.width() - total_pref_width) / count
+            for w in pref_widths:
+                tab_widths.append(w + extra_padding)
+        else:
+            tab_widths = pref_widths
+
+        tab_x = []
+        curr_x = 0.0
+        for w in tab_widths:
+            tab_x.append(curr_x)
+            curr_x += w
+
+        self.__dict__["_page_tab_widths"] = tab_widths
+        self.__dict__["_page_tab_x"] = tab_x
+        self.__dict__["_page_tab_total_width"] = curr_x
+
+    def _get_page_header_scroll_for_pos(self, page_pos: float) -> float:
+        import math
+
+        pages = list(getattr(self, "pages", None) or [])
+        rect = self._page_header_rect()
+        page_names = tuple(str(getattr(p, "name", "") or "") for p in pages)
+
+        if (
+            not self.__dict__.get("_page_tab_widths")
+            or self.__dict__.get("_page_tab_cached_width") != rect.width()
+            or self.__dict__.get("_page_tab_cached_names") != page_names
+        ):
+            self._update_page_header_layout()
+
+        tab_widths = self.__dict__.get("_page_tab_widths")
+        tab_x = self.__dict__.get("_page_tab_x")
+        total_width = self.__dict__.get("_page_tab_total_width", 0.0)
+
+        if not pages or not tab_widths or not tab_x:
+            return 0.0
+
+        max_scroll = max(0.0, total_width - rect.width())
+        if max_scroll <= 0.0:
+            return 0.0
+
+        n = len(pages)
+        idx1 = int(math.floor(page_pos)) % n
+        idx2 = (idx1 + 1) % n
+        weight = page_pos - math.floor(page_pos)
+
+        def get_center_scroll(idx):
+            w = tab_widths[idx]
+            x = tab_x[idx]
+            center = x + w / 2.0
+            scroll = center - rect.width() / 2.0
+            return max(0.0, min(scroll, max_scroll))
+
+        scroll1 = get_center_scroll(idx1)
+        scroll2 = get_center_scroll(idx2)
+        return scroll1 + (scroll2 - scroll1) * weight
+
+    def _page_header_tab_rects(self) -> list[tuple[int, QRectF]]:
+        pages = list(getattr(self, "pages", None) or [])
+        if not pages:
+            return []
+
+        rect = self._page_header_rect()
+        page_names = tuple(str(getattr(p, "name", "") or "") for p in pages)
+        if (
+            not self.__dict__.get("_page_tab_widths")
+            or self.__dict__.get("_page_tab_cached_width") != rect.width()
+            or self.__dict__.get("_page_tab_cached_names") != page_names
+        ):
+            self._update_page_header_layout()
+
+        page_pos = float(
+            self.__dict__.get("_page_position")
+            if self.__dict__.get("_page_position") is not None
+            else self.__dict__.get("current_page", 0.0)
+        )
+        scroll_x = self._get_page_header_scroll_for_pos(page_pos)
+        self.__dict__["_page_header_scroll_x"] = scroll_x
+
+        rect = self._page_header_rect()
+        tab_widths = self.__dict__.get("_page_tab_widths") or []
+        tab_x = self.__dict__.get("_page_tab_x") or []
+        res = []
+        for index in range(len(pages)):
+            if index < len(tab_widths) and index < len(tab_x):
+                w = tab_widths[index]
+                x = tab_x[index]
+                shifted_left = rect.left() + x - scroll_x
+                res.append((index, QRectF(shifted_left, rect.top(), w, rect.height())))
+        return res
+
+    def _page_header_contains(self, pos: QPoint) -> bool:
+        try:
+            return not self._is_search_bar_visible() and self._page_header_rect().contains(pos)
+        except Exception:
+            return False
+
+    def _page_index_at_header(self, pos: QPoint) -> int:
+        if not self._page_header_contains(pos):
+            return -1
+        for index, rect in self._page_header_tab_rects():
+            if rect.contains(pos):
+                return index
+        return -1
 
     def _ensure_search_cursor_visible(self):
         try:
@@ -254,8 +385,9 @@ class PopupSearchMixin:
             + self._search_text_width(prefix + query[:cursor] + preedit)
             - int(self.__dict__.get("_search_scroll_x", 0) or 0)
         )
-        y = int(text_rect.top() + sp(7))
-        return QRect(x, y, sp(1), max(sp(12), int(text_rect.height() - sp(14))))
+        cursor_h = sp(16)
+        y = int(text_rect.center().y() - cursor_h / 2)
+        return QRect(x, y, max(1, sp(1.5)), cursor_h)
 
     def _search_pos_from_point(self, pos: QPoint) -> int:
         text_rect = self._search_text_rect()
@@ -278,13 +410,13 @@ class PopupSearchMixin:
         self._search_cursor_visible = True
         timer = self.__dict__.get("_search_cursor_timer")
         try:
-            if timer is not None and self._is_search_active():
+            if timer is not None and self._is_search_bar_visible():
                 timer.start()
         except Exception as exc:
             logger.debug("启动搜索光标定时器失败: %s", exc, exc_info=True)
 
     def _toggle_search_cursor(self):
-        if not self._is_search_active():
+        if not self._is_search_bar_visible():
             try:
                 self._search_cursor_timer.stop()
             except Exception as exc:
@@ -415,8 +547,9 @@ class PopupSearchMixin:
         self._insert_or_replace_text(text_to_paste.replace("\r\n", " ").replace("\n", " ").replace("\r", " "))
 
     def _clear_search_text(self):
+        self._search_forced_active = False
+        self._search_preedit_text = ""
         self._set_search_query("", cursor_pos=0, selection_anchor=None)
-        self._search_forced_active = True
 
     def _show_search_context_menu(self, event):
         pos = self._get_event_pos(event)
@@ -455,8 +588,10 @@ class PopupSearchMixin:
     # ── Search logic ─────────────────────────────────────────────────
 
     def _set_search_query(self, query: str, cursor_pos: int = None, selection_anchor: int = None):
-        """设置搜索查询文本，并触发更新与动画"""
+        """设置搜索查询文本，并刷新固定顶部栏与结果。"""
         self.search_query = query or ""
+        if not self.search_query and not getattr(self, "_search_preedit_text", ""):
+            self._search_forced_active = False
         if cursor_pos is None:
             self.search_cursor_pos = len(self.search_query)
         else:
@@ -467,8 +602,7 @@ class PopupSearchMixin:
         if self.__dict__.get("_command_result") is not None and not self._search_query_matches_result_command():
             self.clear_command_result()
 
-        is_active = bool(self.search_query) or self._search_forced_active
-        self._start_search_reveal_animation(is_active)
+        self._start_search_reveal_animation(self._is_search_bar_visible())
         self._debounce_refresh_search()
 
     _SEARCH_DEBOUNCE_MS = 100
@@ -725,61 +859,51 @@ class PopupSearchMixin:
     # ── Search layout / geometry helpers ─────────────────────────────
 
     def _current_search_bar_height(self) -> int:
-        """返回搜索框高度 (常量 34)"""
-        return sp(34)
+        """返回固定顶部栏高度。"""
+        return self._search_bar_full_height()
 
     def _search_visible_height(self) -> int:
-        """返回当前动画进度下的搜索框可见高度"""
-        return int(self._search_reveal_progress * sp(34))
+        """顶部栏始终完整可见。"""
+        return self._current_search_bar_height()
 
     def _body_y_offset(self) -> int:
-        """返回由于搜索框显示而导致主体区域下移的Y偏移量"""
-        if not hasattr(self, "_search_reveal_progress"):
-            return 0
-        return int(self._search_reveal_progress * sp(34))
+        """主体始终为固定顶部栏预留空间。"""
+        return self._current_search_bar_height()
 
     def _search_visible_top_inset(self) -> int:
-        """返回搜索框渲染所需的顶部剪切偏移 (0 代表完全可见, 34 代表完全隐藏)"""
-        progress_px = int(self._search_reveal_progress * sp(34))
-        return sp(34) - progress_px
+        """固定顶部栏不需要揭示裁剪。"""
+        return 0
 
     def _background_top_inset(self) -> int:
-        """Return the outer background inset used only during search reveal."""
-        if not self._is_search_layout_visible():
-            return 0
-        return self._search_visible_top_inset()
+        """固定布局始终绘制完整背景。"""
+        return 0
 
     def _is_search_layout_visible(self) -> bool:
-        """返回搜索框布局在视觉上是否可见"""
-        if not hasattr(self, "search_query"):
-            return False
-        return (
-            bool(self.search_query)
-            or self._search_reveal_progress > 0.001
-            or self._search_target_progress > 0.0
-            or self._search_hide_geometry_pending
-        )
+        """顶部标题栏布局始终可见。"""
+        return True
 
     def _is_search_active(self) -> bool:
-        """搜索模式是否处于激活状态"""
+        """搜索模式是否处于激活状态（仅当有键入内容或命令结果时激活）"""
         if self.__dict__.get("_command_result", None) is not None:
             return self._search_query_matches_result_command()
-        return bool(self.search_query) or self._search_forced_active
+        return bool(self.search_query or getattr(self, "_search_preedit_text", ""))
+
+    def _is_search_bar_visible(self) -> bool:
+        """搜索框胶囊是否在顶部显示"""
+        return bool(
+            self.search_query
+            or getattr(self, "_search_preedit_text", "")
+            or getattr(self, "_search_forced_active", False)
+        )
 
     def _search_animation_update_rect(self) -> QRect:
         """返回用于重绘搜索栏区域的 QRect"""
-        return QRect(0, 0, self.width(), sp(34) + self._get_paint_corner_radius() + sp(2))
+        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(2))
 
     def _remember_search_body_anchor(self):
-        """记录弹窗主体的基准 Y 坐标 (无搜索状态时的窗口顶部 Y)"""
-        old_anchor = getattr(self, "_search_body_anchor_y", 0)
-        if old_anchor == 0:
+        """记录固定布局的位置，兼容刷新期间的旧状态字段。"""
+        if not getattr(self, "_search_body_anchor_y", 0):
             self._search_body_anchor_y = self.geometry().y()
-            logger.debug(
-                f"[ANCHOR] 记录基准点: y={self._search_body_anchor_y}, geometry={self.geometry()}, search_progress={getattr(self, '_search_reveal_progress', 'N/A')}"
-            )
-        else:
-            logger.debug(f"[ANCHOR] 使用已有基准点: y={old_anchor}")
 
     def _set_fixed_geometry_atomically(self, left: int, top: int, width: int, height: int):
         """原子级设置窗口尺寸与位置，减少透明窗口重绘闪烁"""
@@ -788,116 +912,16 @@ class PopupSearchMixin:
     def _apply_search_geometry(
         self, skip_effect_update=False, repaint=True, restore_updates=True, progress_override=None
     ):
-        """物理几何体位置/尺寸调整"""
-        self._remember_search_body_anchor()
-        base_y = self._search_body_anchor_y
-        geom = self.geometry()
-        x = geom.x()
-        w = geom.width()
-
-        progress = self._search_reveal_progress if progress_override is None else float(progress_override)
-        y_offset = int(progress * sp(34))
-
-        if hasattr(self, "_calculate_fixed_size"):
-            calc_w, calc_h = self._calculate_fixed_size(y_offset_override=y_offset)
-        else:
-            calc_w = w
-            calc_h = geom.height()
-
-        target_h = calc_h
-        target_y = base_y - y_offset
-
-        if geom.y() != target_y or geom.height() != target_h or geom.width() != calc_w:
-            logger.debug(
-                f"[GEOM] 调整窗口: progress={self._search_reveal_progress:.3f}, "
-                f"old=({geom.x()},{geom.y()},{geom.width()}x{geom.height()}), "
-                f"new=({x},{target_y},{calc_w}x{target_h})"
-            )
-
-            # 设置标志，避免重复更新窗口效果
-            self._geometry_adjusting = True
-
-            try:
-                # 禁用更新
-                self.setUpdatesEnabled(False)
-
-                # 使用 Qt 方法调整几何
-                if skip_effect_update:
-                    self.setGeometry(x, target_y, calc_w, target_h)
-                else:
-                    self._set_fixed_geometry_atomically(x, target_y, calc_w, target_h)
-
-                # 更新窗口效果（只更新一次）
-                if not skip_effect_update:
-                    try:
-                        self._geometry_adjusting = False
-                        if hasattr(self, "_schedule_window_effect_update"):
-                            self._schedule_window_effect_update(0)
-                        else:
-                            self._update_window_effect()
-                        self._geometry_adjusting = True
-                    except Exception as exc:
-                        logger.debug("更新窗口特效: %s", exc, exc_info=True)
-
-            finally:
-                if restore_updates:
-                    try:
-                        self.setUpdatesEnabled(True)
-                        if repaint:
-                            self.update()
-                    except Exception as exc:
-                        logger.debug("恢复搜索动画更新状态: %s", exc, exc_info=True)
-                self._geometry_adjusting = False
+        """固定标题栏不再因搜索状态改变窗口几何。"""
+        if repaint:
+            self.update(self._search_animation_update_rect())
 
     def _apply_search_mask(self, force: bool = False):
-        """采用遮罩掩码裁剪顶部搜索区域"""
-        if is_win10():
-            if force or not self.__dict__.get("_search_mask_cleared", False):
-                self.clearMask()
-                self._search_mask_cleared = True
-                self._search_mask_cache_key = None
-            return
-
-        if not self._is_search_layout_visible() and not force:
-            logger.debug(f"[SEARCH_MASK] 清除搜索遮罩: window={self.width()}x{self.height()}")
-            if force or not self.__dict__.get("_search_mask_cleared", False):
-                self.clearMask()
-                self._search_mask_cleared = True
-                self._search_mask_cache_key = None
-            return
-
-        inset = self._search_visible_top_inset()
-        w = self.width()
-        h = self.height()
-        r = self._get_paint_corner_radius()
-        cache_key = (int(w), int(h), int(inset), int(r))
-        if not force and self.__dict__.get("_search_mask_cache_key") == cache_key:
-            return
-
-        logger.debug(
-            f"[SEARCH_MASK] 应用搜索遮罩: window={w}x{h}, inset={inset}, visible_y={inset}, visible_h={h - inset}, radius={r}"
-        )
-
-        mask = QBitmap(w, h)
-        mask.fill(Qt.color0)
-
-        painter = QPainter(mask)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-        painter.setBrush(Qt.color1)
-        painter.setPen(Qt.NoPen)
-
-        path = QPainterPath()
-        visible_y = inset
-        visible_h = h - inset
-        path.addRoundedRect(QRectF(0, visible_y, w, visible_h), r, r)
-        painter.drawPath(path)
-        painter.end()
-
-        self.setMask(mask)
-        self._search_mask_cleared = False
-        self._search_mask_cache_key = cache_key
-        logger.debug("[SEARCH_MASK] 遮罩已应用")
+        """固定顶部栏不再需要原生遮罩。"""
+        if force or not self.__dict__.get("_search_mask_cleared", False):
+            self.clearMask()
+        self._search_mask_cleared = True
+        self._search_mask_cache_key = None
 
     def _clear_search_mask_for_animation(self):
         """Avoid rebuilding native masks on every search animation frame."""
@@ -913,101 +937,37 @@ class PopupSearchMixin:
     # ── Search reveal animation ──────────────────────────────────────
 
     def _start_search_reveal_animation(self, active: bool):
-        """启动展开或收起动画"""
-        self._remember_search_body_anchor()
+        """在固定标题栏内切换标题和搜索状态。"""
         target = 1.0 if active else 0.0
-
         timer = self.__dict__.get("_search_anim_timer")
-        same_target = abs(self._search_target_progress - target) < 1e-9
-        if same_target and abs(self._search_reveal_progress - target) < 1e-9:
-            return
-        if same_target and timer is not None:
+        if timer is not None:
             try:
-                if timer.isActive():
-                    return
+                timer.stop()
             except Exception as exc:
-                logger.debug("检查搜索动画定时器失败: %s", exc, exc_info=True)
-
-        if timer is None:
-            return
-
-        if active:
-            # Expand the native window to its final size once, then animate only
-            # the reveal progress. This keeps the body visually anchored while
-            # avoiding DWM/region rebuilds on every frame.
-            self._search_hide_geometry_pending = False
-            self._apply_search_geometry(progress_override=target, repaint=False)
-        else:
-            self._search_hide_geometry_pending = True
-
+                logger.debug("停止旧搜索动画定时器失败: %s", exc, exc_info=True)
+        changed = abs(getattr(self, "_search_target_progress", 0.0) - target) > 1e-9
         self._search_target_progress = target
-        if abs(self._search_reveal_progress - target) < 1e-9:
-            self._search_reveal_progress = target
-            if not active:
-                self._finish_search_hide_geometry()
-            return
-
-        self._search_anim_from_progress = self._search_reveal_progress
-        self._search_anim_started_at = time.perf_counter()
-        self._search_anim_last_ts = self._search_anim_started_at
-
-        self._clear_search_mask_for_animation()
-        self.update(self._search_animation_update_rect())
-
-        try:
-            if not timer.isActive():
-                set_precise_timer(timer, owner="LauncherPopup._search_anim_timer")
-                timer.start()
-        except Exception as exc:
-            logger.debug("启动搜索展开动画定时器失败: %s", exc, exc_info=True)
-
-    def _tick_search_reveal(self):
-        """处理动画每帧更新"""
-        now = time.perf_counter()
-        elapsed_ms = (now - self._search_anim_started_at) * 1000.0
-        duration = self._search_anim_duration_ms
-
-        if elapsed_ms >= duration:
-            self._search_reveal_progress = self._search_target_progress
-            self._search_anim_timer.stop()
-
-            if self._search_target_progress == 0.0:
-                self._finish_search_hide_geometry()
-                return
-            else:
-                self._search_hide_geometry_pending = False
-                self._apply_search_mask()
-                self.update(self._search_animation_update_rect())
-        else:
-            t = elapsed_ms / duration
-            ease_t = 1.0 - (1.0 - t) ** 3
-
-            diff = self._search_target_progress - self._search_anim_from_progress
-            self._search_reveal_progress = self._search_anim_from_progress + diff * ease_t
-
+        self._search_reveal_progress = target
+        self._search_hide_geometry_pending = False
+        if changed:
             self.update(self._search_animation_update_rect())
 
+    def _tick_search_reveal(self):
+        """兼容旧定时器回调，立即收敛到标题/搜索目标状态。"""
+        self._search_reveal_progress = self._search_target_progress
+        self._search_hide_geometry_pending = False
         try:
-            import sys
-
-            if "pytest" in sys.modules:
-                self.repaint()
+            self._search_anim_timer.stop()
         except Exception as exc:
-            logger.debug("pytest模式重绘检测失败: %s", exc, exc_info=True)
+            logger.debug("停止搜索状态定时器失败: %s", exc, exc_info=True)
+        self.update(self._search_animation_update_rect())
 
     def _finish_search_hide_geometry(self):
-        """收尾隐藏动画并恢复尺寸"""
+        """兼容旧调用；固定布局无需收缩窗口。"""
         self._search_hide_geometry_pending = False
-        self._apply_search_geometry()
-        self.clearMask()
-        self.update()
-        try:
-            import sys
-
-            if "pytest" in sys.modules:
-                self.repaint()
-        except Exception as exc:
-            logger.debug("pytest模式重绘检测失败: %s", exc, exc_info=True)
+        self._search_reveal_progress = 0.0
+        self._search_target_progress = 0.0
+        self.update(self._search_animation_update_rect())
 
     def _reset_search_state(self):
         """重置所有搜索状态"""
@@ -1041,10 +1001,9 @@ class PopupSearchMixin:
             self._reveal_progress = 1.0
 
         try:
-            self._apply_search_geometry()
             self.clearMask()
         except Exception as exc:
-            logger.debug("重置搜索框几何和遮罩失败: %s", exc, exc_info=True)
+            logger.debug("重置搜索框遮罩失败: %s", exc, exc_info=True)
         self.update()
 
     # ── Page animation preloading ────────────────────────────────────

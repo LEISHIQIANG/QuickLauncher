@@ -427,7 +427,7 @@ class PopupCommandResultMixin:
         if self._command_result is None:
             return QRect()
         y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
-        y_bottom = getattr(self, "dock_y", self.height() - sp(6))
+        y_bottom = getattr(self, "dock_y", self.height() - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))())
         panel_h = y_bottom - y_top
         card_x = sp(_RESULT_PAD)
         card_y = y_top + sp(8)
@@ -666,7 +666,7 @@ class PopupCommandResultMixin:
 
         w = self.width()
         y_top = self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)
-        y_bottom = getattr(self, "dock_y", self.height() - sp(6))
+        y_bottom = getattr(self, "dock_y", self.height() - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))())
         panel_h = y_bottom - y_top
 
         card_rect = self._result_card_rect()

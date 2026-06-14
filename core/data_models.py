@@ -74,6 +74,7 @@ class ShortcutItem:
     hotkey: str = ""
     hotkey_modifiers: list[str] = field(default_factory=list)
     hotkey_key: str = ""
+    hotkey_keys: list[str] = field(default_factory=list)
 
     # URL类型
     url: str = ""
@@ -139,6 +140,7 @@ class ShortcutItem:
             "hotkey": self.hotkey,
             "hotkey_modifiers": self.hotkey_modifiers,
             "hotkey_key": self.hotkey_key,
+            "hotkey_keys": list(self.hotkey_keys or []),
             "url": self.url,
             "preferred_browser_path": self.preferred_browser_path,
             "preferred_browser_args": self.preferred_browser_args,
@@ -198,6 +200,11 @@ class ShortcutItem:
         item.hotkey = data.get("hotkey", "")
         item.hotkey_modifiers = data.get("hotkey_modifiers", [])
         item.hotkey_key = data.get("hotkey_key", "")
+        item.hotkey_keys = _binding_value_items(data.get("hotkey_keys", []))
+        if not item.hotkey_keys and item.hotkey_key:
+            item.hotkey_keys = [item.hotkey_key]
+        if item.hotkey_keys:
+            item.hotkey_key = item.hotkey_keys[0]
         item.url = data.get("url", "")
         item.preferred_browser_path = data.get("preferred_browser_path", "")
         item.preferred_browser_args = data.get("preferred_browser_args", "")
@@ -721,6 +728,7 @@ class AppSettings:
     popup_auto_close: bool = True  # 自动关闭弹窗（鼠标离开后自动关闭），False 则需要点击才关闭
     popup_multi_open_when_pinned: bool = False  # 固定时再次中键是否新开弹窗
     double_click_interval: int = 300  # 双击间隔 (ms)
+    search_default_active: bool = False  # 是否默认显示搜索框而不是标题栏
 
     # 弹窗触发按键配置
     popup_trigger_mode: str = "mouse"  # 触发模式: keyboard, mouse, hybrid
@@ -821,6 +829,7 @@ class AppSettings:
             "popup_multi_open_when_pinned": self.popup_multi_open_when_pinned,
             "hover_leave_delay": self.hover_leave_delay,
             "double_click_interval": self.double_click_interval,
+            "search_default_active": self.search_default_active,
             "popup_trigger_mode": self.popup_trigger_mode,
             "popup_trigger_keys": self.popup_trigger_keys,
             "popup_trigger_button": self.popup_trigger_button,

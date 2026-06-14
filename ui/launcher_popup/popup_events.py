@@ -6,6 +6,8 @@ import time
 from qt_compat import (
     QApplication,
     QCursor,
+    QFont,
+    QFontMetrics,
     QPoint,
     QRect,
     Qt,
@@ -155,11 +157,15 @@ class PopupEventsMixin:
                 else min(visible_count, max_cols) * self.cell_size
             )
             start_x = (self.width() - line_width) // 2
-            dock_row_stride = self.icon_size + sp(6)
+            display_rows = self._dock_display_rows(visible_count, max_cols)
+            dock_row_stride = self._get_dock_row_stride(display_rows)
 
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
-                dock_row = (pos.y() - self.dock_y - sp(8)) // dock_row_stride
+                first_icon_y = self._dock_first_icon_y(display_rows)
+                card_pad = sp(2)
+                card_y = first_icon_y - card_pad
+                dock_row = (pos.y() - card_y) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
                     idx = dock_row * max_cols + dock_col
                     if 0 <= idx < visible_count:
@@ -167,7 +173,7 @@ class PopupEventsMixin:
 
         if self.padding <= pos.x() and self.padding <= pos.y() < self.content_height:
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = sp(6)
+            bottom_margin = self._dock_outer_bottom_gap()
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
@@ -241,17 +247,30 @@ class PopupEventsMixin:
                 return None
             x = int(start_x + col * self.cell_size)
             display_rows = self._dock_display_rows(visible_count, max_cols)
-            icon_y = int(self._dock_first_icon_y(display_rows) + row * (self.icon_size + sp(6)))
+            dock_row_stride = self._get_dock_row_stride(display_rows)
+            icon_y = int(self._dock_first_icon_y(display_rows) + row * dock_row_stride)
             card_pad = sp(2)
             card_size = int(self.icon_size + card_pad * 2)
             card_x = int(x + (self.cell_size - card_size) // 2)
             card_y = int(icon_y - card_pad)
+
+            if self._dock_shows_text(display_rows):
+                if hasattr(self, "_label_font") and self._label_font:
+                    fm = QFontMetrics(self._label_font)
+                else:
+                    fm = QFontMetrics(QFont())
+                text_h = fm.height()
+                text_spacing = sp(1)
+                item_h = card_size + text_spacing + text_h
+            else:
+                item_h = card_size
+
             repaint_pad = sp(4)
             return QRect(
                 card_x - repaint_pad,
                 card_y - repaint_pad,
                 card_size + repaint_pad * 2,
-                card_size + repaint_pad * 2,
+                item_h + repaint_pad * 2,
             ).intersected(self.rect())
         except Exception as exc:
             logger.debug("计算Dock刷新区域失败: %s", exc, exc_info=True)
@@ -336,7 +355,13 @@ class PopupEventsMixin:
             return
 
         try:
-            self.setCursor(Qt.IBeamCursor if self._search_bar_contains(pos) else QtCompat.ArrowCursor)
+            if self._search_bar_contains(pos):
+                cursor = Qt.IBeamCursor
+            elif hasattr(self, "_page_header_contains") and self._page_header_contains(pos):
+                cursor = QtCompat.PointingHandCursor
+            else:
+                cursor = QtCompat.ArrowCursor
+            self.setCursor(cursor)
         except Exception as exc:
             logger.debug("设置光标样式失败: %s", exc, exc_info=True)
 
@@ -365,11 +390,15 @@ class PopupEventsMixin:
                 else min(visible_count, max_cols) * self.cell_size
             )
             start_x = (self.width() - line_width) // 2
-            dock_row_stride = self.icon_size + sp(6)  # 行间距6px
+            display_rows = self._dock_display_rows(visible_count, max_cols)
+            dock_row_stride = self._get_dock_row_stride(display_rows)
 
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
-                dock_row = (pos.y() - self.dock_y - sp(8)) // dock_row_stride
+                first_icon_y = self._dock_first_icon_y(display_rows)
+                card_pad = sp(2)
+                card_y = first_icon_y - card_pad
+                dock_row = (pos.y() - card_y) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
                     idx = dock_row * max_cols + dock_col
                     if 0 <= idx < visible_count:
@@ -379,7 +408,7 @@ class PopupEventsMixin:
             if hasattr(self, "clear_result_button_feedback"):
                 self.clear_result_button_feedback()
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = sp(6)
+            bottom_margin = self._dock_outer_bottom_gap()
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
@@ -444,6 +473,12 @@ class PopupEventsMixin:
             self.update()
             event.accept()
             return
+        if event.button() == QtCompat.LeftButton and hasattr(self, "_page_index_at_header"):
+            page_index = self._page_index_at_header(pos)
+            if page_index >= 0:
+                self._switch_to_page(page_index)
+                event.accept()
+                return
         if self._begin_pinned_window_drag(event, pos):
             event.accept()
             return
@@ -738,6 +773,32 @@ class PopupEventsMixin:
                 self._page_anim_last_ts = 0.0
                 self._indicator_timer.start()
 
+    def _switch_to_page(self, page_index: int):
+        if not self.pages:
+            return
+        page_index = max(0, min(int(page_index), len(self.pages) - 1))
+        if page_index == self.current_page:
+            return
+
+        current = int(self.current_page)
+        count = len(self.pages)
+        forward = (page_index - current) % count
+        backward = forward - count
+        direction = forward if abs(forward) <= abs(backward) else backward
+        if direction == 0:
+            return
+
+        if hasattr(self, "_defer_blank_area_refresh_for_interaction"):
+            self._defer_blank_area_refresh_for_interaction()
+        self.current_page = page_index
+        self._target_page = self._page_animation_target_base() + direction
+        self.hover_index = -1
+        self._schedule_last_page_index_save()
+        if not self._indicator_timer.isActive():
+            self._page_anim_last_ts = 0.0
+            self._indicator_timer.start()
+        self.update()
+
     def _finish_page_animation(self):
         if not self.pages:
             return
@@ -749,6 +810,22 @@ class PopupEventsMixin:
 
     def keyPressEvent(self, event):
         """按键事件 - 支持平滑 caret、拼音搜索、以及 slash(/) 命令"""
+        key = event.key()
+        if key == Qt.Key_Tab:
+            current_default = bool(getattr(self.settings, "search_default_active", False))
+            new_default = not current_default
+            try:
+                self.data_manager.update_settings(search_default_active=new_default)
+                self.settings = self.data_manager.get_settings()
+            except Exception as exc:
+                logger.debug("保存Tab切换状态失败: %s", exc, exc_info=True)
+                self.settings.search_default_active = new_default
+            self._search_forced_active = new_default
+            self._start_search_reveal_animation(new_default)
+            self.update()
+            event.accept()
+            return
+
         # Phase 2: command result mode interception (defensive against mock tests)
         try:
             cr = self._command_result
@@ -849,12 +926,23 @@ class PopupEventsMixin:
         if key in (Qt.Key_Escape, 16777216):  # 16777216 is Qt.Key_Escape
             if self._is_search_active():
                 self._reset_search_state()
+                if bool(getattr(self.settings, "search_default_active", False)):
+                    self._search_forced_active = True
+                    self._start_search_reveal_animation(True)
                 event.accept()
                 return
             else:
-                event.accept()
-                self.hide()
-                return
+                if getattr(self, "_search_forced_active", False) and not bool(
+                    getattr(self.settings, "search_default_active", False)
+                ):
+                    self._search_forced_active = False
+                    self._reset_search_state()
+                    event.accept()
+                    return
+                else:
+                    event.accept()
+                    self.hide()
+                    return
 
         if event.modifiers() & QtCompat.ControlModifier and key == Qt.Key_V and not self._is_search_active():
             text_to_paste = self._read_clipboard_text()
@@ -864,22 +952,11 @@ class PopupEventsMixin:
             event.accept()
             return
 
-        # 2. 如果搜索未激活，判断是否需要启动搜索
+        # 2. 如果搜索为非激活状态（即查询内容为空时）
         is_printable = bool(text) and ord(text) >= 32 if len(text) == 1 else False
 
         if not self._is_search_active():
-            if key == Qt.Key_Space:
-                # 首个空格仅启动搜索，不触发实际查询
-                self._search_forced_active = True
-                self._set_search_query("")
-                event.accept()
-                return
-            elif is_printable:
-                # 键盘输入字符直接激活搜索
-                self._insert_or_replace_text(text)
-                event.accept()
-                return
-            elif key == Qt.Key_Left:
+            if key == Qt.Key_Left:
                 self._switch_page(-1)
                 event.accept()
                 return
@@ -887,12 +964,25 @@ class PopupEventsMixin:
                 self._switch_page(1)
                 event.accept()
                 return
-            else:
-                try:
-                    super().keyPressEvent(event)
-                except Exception as exc:
-                    logger.debug("处理按键事件失败: %s", exc, exc_info=True)
+
+            # 只要搜索未激活且按下可打印按键，就直接录入并启动搜索。
+            # 为了防止误触并保持测试兼容，当搜索栏胶囊不可见时，首个空格键不启动搜索；其他可打印字符（数字、字母、符号等）均直接启动。
+            if is_printable:
+                if text == " " and not self._is_search_bar_visible():
+                    pass
+                else:
+                    self._insert_or_replace_text(text)
+                    event.accept()
+                    return
+            elif self._is_search_bar_visible() and key in (Qt.Key_Backspace, Qt.Key_Delete):
+                event.accept()
                 return
+
+            try:
+                super().keyPressEvent(event)
+            except Exception as exc:
+                logger.debug("处理按键事件失败: %s", exc, exc_info=True)
+            return
 
         # 3. 搜索激活状态下的按键逻辑
         modifiers = event.modifiers()

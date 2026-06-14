@@ -19,6 +19,7 @@ from runtime_paths import app_root
 MOUSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
 KEYBOARD_CALLBACK = ctypes.CFUNCTYPE(None)
 HOTKEY_CAPTURE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int)
+PROTECTED_CHORD_CAPTURE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 logger = logging.getLogger(__name__)
 
 INPUT_MOUSE_MOVE = 1
@@ -47,6 +48,10 @@ CAPTURE_ALL_PHYSICAL = 0x000F
 CAPTURE_INCLUDE_INJECTED = 0x0100
 CAPTURE_INCLUDE_OWN_PLAYBACK = 0x0200
 CAPTURE_COALESCE_MOUSE_MOVE = 0x0400
+
+CHORD_CAPTURE_KEYBOARD = 0x0001
+CHORD_CAPTURE_MOUSE_BUTTON = 0x0002
+CHORD_CAPTURE_INCLUDE_INJECTED = 0x0100
 
 PLAYBACK_NO_TIMING = 0x0001
 PLAYBACK_KEEP_PRESSED_ON_CANCEL = 0x0002
@@ -122,8 +127,8 @@ INPUT_EVENT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.POINTER(HookInputEvent))
 
 
 class HooksDLL:
-    EXPECTED_VERSION = 10
-    EXPECTED_DLL_SHA256 = "fca4375a27fab35b27081312f11de7ae779f5f29fee8e2b5e210f38041d737b7"
+    EXPECTED_VERSION = 15
+    EXPECTED_DLL_SHA256 = "359e466191362f263d42897f8343b7009f181642a632f3a0463d3b296393fd20"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -139,6 +144,9 @@ class HooksDLL:
         "StartHotkeyCapture",
         "StopHotkeyCapture",
         "IsHotkeyCaptureActive",
+        "StartProtectedChordCapture",
+        "StopProtectedChordCapture",
+        "IsProtectedChordCaptureActive",
         "ReleaseAllModifierKeys",
         "AreHooksQuiescent",
     )
@@ -209,6 +217,7 @@ class HooksDLL:
         self._has_hook_health = False
         self._has_raw_input_status = False
         self._has_hotkey_capture = False
+        self._has_protected_chord_capture = False
         self._has_runtime_stats = False
         self._has_input_capture = False
         self._has_macro_playback = False
@@ -249,6 +258,9 @@ class HooksDLL:
         self._hotkey_callback_ref = None
         self._hotkey_capture_callback_ref = None
         self._hotkey_capture_owner = None
+        self._protected_chord_capture_callback_ref = None
+        self._protected_chord_capture_owner = None
+        self._protected_chord_capture_flags = 0
         self._retire_callback_ref(getattr(self, "_input_event_callback_ref", None))
         self._input_event_callback_ref = None
         self._input_capture_filter_flags = 0
@@ -265,6 +277,47 @@ class HooksDLL:
             if not hasattr(self, "_retired_callback_refs"):
                 self._retired_callback_refs = deque(maxlen=64)
             self._retired_callback_refs.append(callback_ref)
+
+    def _clear_inactive_capture_owners_locked(self) -> None:
+        """Drop stale Python owners after native timeout or auto-completion."""
+        if not self._ready():
+            return
+        captures = (
+            (
+                "_hotkey_capture_owner",
+                "_hotkey_capture_callback_ref",
+                "_has_hotkey_capture",
+                "IsHotkeyCaptureActive",
+            ),
+            (
+                "_protected_chord_capture_owner",
+                "_protected_chord_capture_callback_ref",
+                "_has_protected_chord_capture",
+                "IsProtectedChordCaptureActive",
+            ),
+            (
+                "_input_capture_owner",
+                "_input_event_callback_ref",
+                "_has_input_capture",
+                "IsInputCaptureActive",
+            ),
+        )
+        for owner_attr, callback_attr, capability_attr, active_func_name in captures:
+            if getattr(self, owner_attr, None) is None or not getattr(self, capability_attr, False):
+                continue
+            try:
+                active = bool(getattr(self.dll, active_func_name)())
+            except Exception:
+                continue
+            if active:
+                continue
+            self._retire_callback_ref(getattr(self, callback_attr, None))
+            setattr(self, callback_attr, None)
+            setattr(self, owner_attr, None)
+            if owner_attr == "_protected_chord_capture_owner":
+                self._protected_chord_capture_flags = 0
+            elif owner_attr == "_input_capture_owner":
+                self._input_capture_filter_flags = 0
 
     @classmethod
     def _default_dll_path(cls) -> str:
@@ -390,6 +443,21 @@ class HooksDLL:
             self._has_hotkey_capture = True
         except AttributeError:
             self._has_hotkey_capture = False
+
+        try:
+            self.dll.StartProtectedChordCapture.argtypes = [
+                PROTECTED_CHORD_CAPTURE_CALLBACK,
+                ctypes.c_uint,
+                ctypes.c_int,
+            ]
+            self.dll.StartProtectedChordCapture.restype = ctypes.c_bool
+            self.dll.StopProtectedChordCapture.argtypes = []
+            self.dll.StopProtectedChordCapture.restype = None
+            self.dll.IsProtectedChordCaptureActive.argtypes = []
+            self.dll.IsProtectedChordCaptureActive.restype = ctypes.c_bool
+            self._has_protected_chord_capture = True
+        except AttributeError:
+            self._has_protected_chord_capture = False
 
         try:
             self.dll.GetHooksRuntimeStats.argtypes = [ctypes.POINTER(HooksRuntimeStats), ctypes.c_uint]
@@ -528,6 +596,7 @@ class HooksDLL:
             "has_hook_health": bool(getattr(self, "_has_hook_health", False)),
             "has_raw_input_status": bool(getattr(self, "_has_raw_input_status", False)),
             "has_hotkey_capture": bool(getattr(self, "_has_hotkey_capture", False)),
+            "has_protected_chord_capture": bool(getattr(self, "_has_protected_chord_capture", False)),
             "has_runtime_stats": bool(getattr(self, "_has_runtime_stats", False)),
             "has_input_capture": bool(getattr(self, "_has_input_capture", False)),
             "has_macro_playback": bool(getattr(self, "_has_macro_playback", False)),
@@ -599,6 +668,7 @@ class HooksDLL:
 
             for func_name in (
                 "ReleaseMacroPressedInputs",
+                "StopProtectedChordCapture",
                 "StopHotkeyCapture",
                 "UninstallMouseHook",
                 "UninstallKeyboardHook",
@@ -635,6 +705,7 @@ class HooksDLL:
                 "_keyboard_callback_ref",
                 "_hotkey_callback_ref",
                 "_hotkey_capture_callback_ref",
+                "_protected_chord_capture_callback_ref",
                 "_input_event_callback_ref",
             ):
                 self._retire_callback_ref(getattr(self, attr_name, None))
@@ -718,6 +789,51 @@ class HooksDLL:
                 logger.warning("InstallKeyboardHook failed, last_error=%s", self.get_last_hook_error())
             return ok
 
+    def rearm_keyboard_hook_for_capture(self) -> tuple[bool, bool]:
+        """Reinstall the low-level keyboard hook before protected recording.
+
+        Windows may silently detach a low-level hook while its thread and
+        handle still appear active. Reinstalling here gives both recorder
+        widgets the same known-good keyboard input path.
+
+        Returns ``(success, installed_temporarily)``.
+        """
+        with self._lifecycle_lock:
+            if not self._ready():
+                logger.debug("键盘捕获重装被拒绝: hooks.dll 未就绪")
+                return False, False
+
+            previous_ref = self._keyboard_callback_ref
+            installed_temporarily = previous_ref is None
+            callback_ref = previous_ref or KEYBOARD_CALLBACK(lambda: None)
+            logger.debug(
+                "键盘捕获重装开始: installed=%s temporary=%s callback_ref=%s",
+                self.is_keyboard_hook_installed(),
+                installed_temporarily,
+                hex(id(callback_ref)),
+            )
+
+            try:
+                self.dll.UninstallKeyboardHook()
+                ok = bool(self.dll.InstallKeyboardHook(callback_ref))
+            except Exception as exc:
+                logger.warning("重新装载录制键盘钩子失败: %s", exc, exc_info=True)
+                return False, installed_temporarily
+
+            if not ok:
+                logger.warning("重新装载录制键盘钩子失败, last_error=%s", self.get_last_hook_error())
+                return False, installed_temporarily
+
+            if installed_temporarily:
+                self._keyboard_callback_ref = callback_ref
+            logger.debug(
+                "键盘捕获重装完成: ok=%s installed=%s last_error=%s",
+                ok,
+                self.is_keyboard_hook_installed(),
+                self.get_last_hook_error(),
+            )
+            return True, installed_temporarily
+
     def uninstall_keyboard_hook(self):
         """卸载键盘钩子"""
         if getattr(self, "_input_capture_filter_flags", 0) & CAPTURE_KEYBOARD:
@@ -771,8 +887,13 @@ class HooksDLL:
         with self._lifecycle_lock:
             if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:
                 return False
+            self._clear_inactive_capture_owners_locked()
             capture_owner = owner if owner is not None else self
-            if self._hotkey_capture_owner is not None:
+            if (
+                self._hotkey_capture_owner is not None
+                or self._protected_chord_capture_owner is not None
+                or self._input_capture_owner is not None
+            ):
                 logger.warning("StartHotkeyCapture rejected because another owner is recording")
                 return False
             callback_ref = HOTKEY_CAPTURE_CALLBACK(callback)
@@ -807,12 +928,113 @@ class HooksDLL:
 
     def is_hotkey_capture_active(self) -> bool:
         """返回 DLL 当前是否处于快捷键录制模式。"""
-        if not self._ready() or not getattr(self, "_has_hotkey_capture", False):
-            return False
-        try:
-            return bool(self.dll.IsHotkeyCaptureActive())
-        except Exception:
-            return False
+        with self._lifecycle_lock:
+            if not self._ready() or not getattr(self, "_has_hotkey_capture", False):
+                return False
+            try:
+                active = bool(self.dll.IsHotkeyCaptureActive())
+            except Exception:
+                return False
+            if not active:
+                self._clear_inactive_capture_owners_locked()
+            return active
+
+    def start_protected_chord_capture(
+        self,
+        callback: Callable[[int, int, int], None],
+        *,
+        keyboard: bool = True,
+        mouse_buttons: bool = False,
+        include_injected: bool = False,
+        timeout_ms: int = 10000,
+        owner=None,
+    ) -> bool:
+        """Capture a physical chord while swallowing its keyboard/mouse events."""
+        with self._lifecycle_lock:
+            if not self._ready() or not self._has_protected_chord_capture or not callback:
+                return False
+            self._clear_inactive_capture_owners_locked()
+            if (
+                self._protected_chord_capture_owner is not None
+                or self._hotkey_capture_owner is not None
+                or self._input_capture_owner is not None
+            ):
+                logger.warning("StartProtectedChordCapture rejected because another owner is recording")
+                return False
+            flags = 0
+            if keyboard:
+                flags |= CHORD_CAPTURE_KEYBOARD
+            if mouse_buttons:
+                flags |= CHORD_CAPTURE_MOUSE_BUTTON
+            if include_injected:
+                flags |= CHORD_CAPTURE_INCLUDE_INJECTED
+            if not flags:
+                return False
+            callback_ref = PROTECTED_CHORD_CAPTURE_CALLBACK(callback)
+            capture_owner = owner if owner is not None else self
+            logger.debug(
+                "受保护组合捕获开始: owner=%s flags=%s keyboard_installed=%s mouse_installed=%s",
+                hex(id(capture_owner)),
+                flags,
+                self.is_keyboard_hook_installed(),
+                self.is_mouse_hook_installed(),
+            )
+            ok = bool(self.dll.StartProtectedChordCapture(callback_ref, flags, int(timeout_ms)))
+            if ok:
+                self._retire_callback_ref(self._protected_chord_capture_callback_ref)
+                self._protected_chord_capture_callback_ref = callback_ref
+                self._protected_chord_capture_owner = capture_owner
+                self._protected_chord_capture_flags = flags
+            logger.debug(
+                "受保护组合捕获结果: owner=%s ok=%s active=%s last_error=%s",
+                hex(id(capture_owner)),
+                ok,
+                self.is_protected_chord_capture_active(),
+                self.get_last_hook_error(),
+            )
+            return ok
+
+    def stop_protected_chord_capture(self, *, owner=None, force: bool = False) -> bool:
+        with self._lifecycle_lock:
+            requested_owner = owner if owner is not None else self
+            logger.debug(
+                "受保护组合捕获停止: requested_owner=%s current_owner=%s force=%s active=%s",
+                hex(id(requested_owner)),
+                hex(id(self._protected_chord_capture_owner)) if self._protected_chord_capture_owner is not None else "",
+                force,
+                self.is_protected_chord_capture_active(),
+            )
+            if (
+                not force
+                and self._protected_chord_capture_owner is not None
+                and self._protected_chord_capture_owner is not requested_owner
+            ):
+                logger.warning("StopProtectedChordCapture rejected for non-owner")
+                return False
+            if self._ready() and self._has_protected_chord_capture:
+                self.dll.StopProtectedChordCapture()
+            self._retire_callback_ref(self._protected_chord_capture_callback_ref)
+            self._protected_chord_capture_callback_ref = None
+            self._protected_chord_capture_owner = None
+            self._protected_chord_capture_flags = 0
+            logger.debug("受保护组合捕获已停止并清除所有者")
+            return True
+
+    def protected_chord_capture_owned_by(self, owner) -> bool:
+        with self._lifecycle_lock:
+            return self._protected_chord_capture_owner is owner
+
+    def is_protected_chord_capture_active(self) -> bool:
+        with self._lifecycle_lock:
+            if not self._ready() or not self._has_protected_chord_capture:
+                return False
+            try:
+                active = bool(self.dll.IsProtectedChordCaptureActive())
+            except Exception:
+                return False
+            if not active:
+                self._clear_inactive_capture_owners_locked()
+            return active
 
     @staticmethod
     def _input_event_to_dict(event: HookInputEvent) -> dict:
@@ -836,6 +1058,7 @@ class HooksDLL:
         with self._lifecycle_lock:
             if not self._ready() or not self._has_input_capture or not callback:
                 return False
+            self._clear_inactive_capture_owners_locked()
             flags = int(filter_flags)
             if include_injected:
                 flags |= CAPTURE_INCLUDE_INJECTED
@@ -854,7 +1077,11 @@ class HooksDLL:
 
             callback_ref = INPUT_EVENT_CALLBACK(_dispatch)
             capture_owner = owner if owner is not None else self
-            if self._input_capture_owner is not None:
+            if (
+                self._input_capture_owner is not None
+                or self._hotkey_capture_owner is not None
+                or self._protected_chord_capture_owner is not None
+            ):
                 logger.warning("StartInputCapture rejected because another owner is recording")
                 return False
             previous_ref = self._input_event_callback_ref
@@ -883,9 +1110,13 @@ class HooksDLL:
             return True
 
     def is_input_capture_active(self) -> bool:
-        if not self._ready() or not self._has_input_capture:
-            return False
-        return bool(self.dll.IsInputCaptureActive())
+        with self._lifecycle_lock:
+            if not self._ready() or not self._has_input_capture:
+                return False
+            active = bool(self.dll.IsInputCaptureActive())
+            if not active:
+                self._clear_inactive_capture_owners_locked()
+            return active
 
     @staticmethod
     def captured_events_to_macro(

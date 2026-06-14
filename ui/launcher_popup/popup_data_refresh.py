@@ -75,6 +75,8 @@ class PopupDataRefreshMixin:
         self.cell_size = sp(self.settings.cell_size)
         self.icon_size = sp(self.settings.icon_size)
         self._update_grid_text_metrics()
+        self._page_tab_widths = []
+        self._page_tab_x = []
 
         layout_changed = (
             self.cols != prev_cols

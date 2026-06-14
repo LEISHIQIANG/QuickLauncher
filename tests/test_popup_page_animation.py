@@ -169,6 +169,41 @@ def test_page_animation_update_area_stays_above_dock():
     assert updates[0].bottom() < popup.dock_y
 
 
+def test_page_animation_pixmaps_keep_static_vertical_origin():
+    popup = _popup_for_animation()
+    popup.__dict__["_label_font"] = QFont()
+    popup.__dict__["_page_offset"] = 0.5
+    popup._page_position = 0.5
+    popup._body_y_offset = lambda: 46
+    popup._get_page_animation_pixmap = lambda page_index, *_args: f"page-{page_index}"
+
+    class _Painter:
+        def __init__(self):
+            self.clips = []
+            self.pixmaps = []
+
+        def setFont(self, _font):
+            pass
+
+        def save(self):
+            pass
+
+        def restore(self):
+            pass
+
+        def setClipRect(self, *args):
+            self.clips.append(args)
+
+        def drawPixmap(self, *args):
+            self.pixmaps.append(args)
+
+    painter = _Painter()
+    LauncherPopup._draw_icons(popup, painter, None, None, None, "theme")
+
+    assert [args[1] for args in painter.pixmaps] == [0, 0]
+    assert [args[1] for args in painter.clips] == [46, 46]
+
+
 def test_wheel_page_delta_clamps_large_angle_steps():
     popup = _popup_for_animation()
 

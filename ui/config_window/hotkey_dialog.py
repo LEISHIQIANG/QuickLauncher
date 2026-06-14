@@ -6,6 +6,7 @@ import os
 
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
+from hooks.key_map import key_display_name
 from qt_compat import (
     QButtonGroup,
     QCheckBox,
@@ -38,6 +39,7 @@ from ui.utils.ui_scale import font_px, scale_qss, sp
 from .base_dialog import BaseDialog
 from .hotkey_capture_helpers import (
     CAPTURE_TIMEOUT_MS,
+    KeyboardStatePoller,
     apply_recorder_display_style,
     generic_modifiers_from_capture,
     key_name_from_vk,
@@ -74,18 +76,24 @@ _LEFT_RIGHT_LABELS = {
 class HotkeyRecorderWidget(QWidget):
     """Compact hotkey recorder with optional left/right modifiers."""
 
-    _native_capture_result = pyqtSignal(int, int, int)
+    _native_capture_result = pyqtSignal(int, int, int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.modifiers = []
-        self.key = ""
+        self.keys = []
         self.advanced_sides = False
         self._recording = False
         self._native_capture_active = False
         self._native_capture_available = True
         self._capture_dll = None
         self._capture_hook_installed_by_us = False
+        self._capture_session = 0
+        self._keyboard_state_poller = KeyboardStatePoller(
+            self,
+            self._handle_state_poll_result,
+            log_label="hotkey",
+        )
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -115,15 +123,12 @@ class HotkeyRecorderWidget(QWidget):
         self._capture_timer = QTimer(self)
         self._capture_timer.setSingleShot(True)
         self._capture_timer.timeout.connect(self._on_capture_timeout)
-        self._native_capture_result.connect(self._handle_native_capture_result)
+        self._native_capture_result.connect(self._handle_native_capture_signal)
 
     def eventFilter(self, obj, event):
         if obj is self.display:
             if event.type() == QEvent.MouseButtonPress:
                 self.start_recording()
-                return False
-            if event.type() == QEvent.FocusOut:
-                self.stop_recording()
                 return False
             if event.type() == QEvent.KeyPress:
                 return True
@@ -138,10 +143,16 @@ class HotkeyRecorderWidget(QWidget):
     def start_recording(self):
         if self._recording:
             return
+        self.modifiers = []
+        self.keys = []
+        self._refresh_display()
         self._recording = True
+        self._capture_session += 1
+        self._keyboard_state_poller.start()
         if self._start_native_capture():
             self._set_recording_ui(True)
             return
+        self._finish_native_capture(stop_native=True)
         self._recording = False
         self._set_recording_ui(False)
         self.display.setPlaceholderText("hooks.dll 需要更新后才能录制")
@@ -151,7 +162,7 @@ class HotkeyRecorderWidget(QWidget):
         self._recording = False
         self._set_recording_ui(False)
 
-    def _start_native_capture(self) -> bool:
+    def _start_native_capture(self, capture_session: int | None = None) -> bool:
         if not self._native_capture_available:
             return False
         try:
@@ -159,27 +170,31 @@ class HotkeyRecorderWidget(QWidget):
 
             dll = HooksDLL.get_instance()
             self._capture_dll = dll
-            if not dll.loaded or not dll.compatible or not getattr(dll, "_has_hotkey_capture", False):
+            if not dll.loaded or not dll.compatible or not getattr(dll, "_has_protected_chord_capture", False):
                 self._native_capture_available = False
                 return False
 
             self._capture_hook_installed_by_us = False
-            if not dll.is_keyboard_hook_installed():
-                if not dll.install_keyboard_hook(None):
-                    return False
-                self._capture_hook_installed_by_us = True
+            keyboard_ready, installed_temporarily = dll.rearm_keyboard_hook_for_capture()
+            if not keyboard_ready:
+                return False
+            self._capture_hook_installed_by_us = installed_temporarily
+            session = self._capture_session if capture_session is None else int(capture_session)
 
-            if not dll.start_hotkey_capture(
-                self._on_native_capture,
+            if not dll.start_protected_chord_capture(
+                lambda input_code, modifiers, side_modifiers: self._on_native_capture(
+                    session,
+                    input_code,
+                    modifiers,
+                    side_modifiers,
+                ),
+                keyboard=True,
+                mouse_buttons=False,
+                include_injected=True,
                 timeout_ms=CAPTURE_TIMEOUT_MS,
                 owner=self,
             ):
-                if self._capture_hook_installed_by_us:
-                    try:
-                        dll.uninstall_keyboard_hook()
-                    except Exception as exc:
-                        logger.debug("卸载录制临时键盘钩子失败: %s", exc, exc_info=True)
-                    self._capture_hook_installed_by_us = False
+                self._cleanup_temporary_hook()
                 return False
 
             self._native_capture_active = True
@@ -188,73 +203,114 @@ class HotkeyRecorderWidget(QWidget):
         except Exception as exc:
             logger.debug("启动受保护快捷键录制失败: %s", exc, exc_info=True)
             self._native_capture_available = False
-            self._capture_hook_installed_by_us = False
             self._native_capture_active = False
+            self._cleanup_temporary_hook()
             return False
 
-    def _on_native_capture(self, vk_code: int, modifiers: int, side_modifiers: int):
-        self._native_capture_result.emit(int(vk_code), int(modifiers), int(side_modifiers))
+    def _on_native_capture(self, capture_session: int, input_code: int, modifiers: int, side_modifiers: int):
+        self._native_capture_result.emit(
+            int(capture_session),
+            int(input_code),
+            int(modifiers),
+            int(side_modifiers),
+        )
 
-    def _handle_native_capture_result(self, vk_code: int, modifiers: int, side_modifiers: int):
-        key_name = key_name_from_vk(vk_code)
-        if key_name:
-            self.modifiers = self._modifiers_from_capture(modifiers, side_modifiers)
-            self.key = key_name
+    def _handle_native_capture_signal(
+        self,
+        capture_session: int,
+        input_code: int,
+        modifiers: int,
+        side_modifiers: int,
+    ):
+        self._handle_native_capture_result(
+            input_code,
+            modifiers,
+            side_modifiers,
+            capture_session,
+        )
+
+    def _handle_native_capture_result(
+        self,
+        input_code: int,
+        modifiers: int,
+        side_modifiers: int,
+        capture_session: int | None = None,
+    ):
+        if capture_session is not None and (int(capture_session) != self._capture_session or not self._recording):
+            logger.debug(
+                "忽略过期快捷键捕获回调: widget=%s session=%s current_session=%s recording=%s",
+                hex(id(self)),
+                capture_session,
+                self._capture_session,
+                self._recording,
+            )
+            return
+        if input_code > 0:
+            key_name = key_name_from_vk(input_code)
+            if key_name and key_name not in self.keys:
+                self.keys.append(key_name)
+            self.modifiers = self._merge_modifiers(
+                self.modifiers,
+                self._modifiers_from_capture(modifiers, side_modifiers),
+            )
             self._refresh_display()
-        # DLL 会继续吞掉后续 keyup，直到本次组合键全部松开。
-        self._finish_native_capture(stop_native=False)
+            return
+
+        self.modifiers = self._merge_modifiers(
+            self.modifiers,
+            self._modifiers_from_capture(modifiers, side_modifiers),
+        )
+        # input_code=0 表示本次组合的全部按键已经松开。
+        self._finish_native_capture(stop_native=True)
         self._recording = False
         self._set_recording_ui(False)
-        if self._capture_hook_installed_by_us:
-            QTimer.singleShot(250, self._cleanup_capture_hook_after_result)
+        self._refresh_display()
+        logger.debug(
+            "快捷键捕获完成: widget=%s keys=%s modifiers=%s text=%r",
+            hex(id(self)),
+            self.keys,
+            self.modifiers,
+            self.display.text(),
+        )
+
+    def _handle_state_poll_result(self, input_code: int, modifiers: int, side_modifiers: int):
+        if not self._recording:
+            return
+        self._handle_native_capture_result(input_code, modifiers, side_modifiers)
 
     def _on_capture_timeout(self):
         if self._native_capture_active:
-            logger.debug("快捷键录制超时，停止受保护录制")
+            logger.debug("快捷键捕获超时: widget=%s", hex(id(self)))
         self.stop_recording()
 
     def _finish_native_capture(self, stop_native: bool):
+        self._keyboard_state_poller.stop()
         if self._capture_timer.isActive():
             self._capture_timer.stop()
         dll = self._capture_dll
         if dll is not None and stop_native and self._native_capture_active:
             try:
-                dll.stop_hotkey_capture(owner=self)
+                dll.stop_protected_chord_capture(owner=self)
             except Exception as exc:
                 logger.debug("停止受保护快捷键录制失败: %s", exc, exc_info=True)
-        if dll is not None and self._capture_hook_installed_by_us and stop_native:
+        if stop_native:
+            self._cleanup_temporary_hook()
+        self._native_capture_active = False
+
+    def _cleanup_temporary_hook(self):
+        dll = self._capture_dll
+        if dll is not None and self._capture_hook_installed_by_us:
             try:
                 dll.uninstall_keyboard_hook()
             except Exception as exc:
                 logger.debug("卸载录制临时键盘钩子失败: %s", exc, exc_info=True)
-            self._capture_hook_installed_by_us = False
-        self._native_capture_active = False
-
-    def _cleanup_capture_hook_after_result(self, attempt: int = 0):
-        if not self._capture_hook_installed_by_us:
-            return
-        dll = self._capture_dll
-        if dll is None:
-            self._capture_hook_installed_by_us = False
-            return
-        try:
-            if not dll.hotkey_capture_owned_by(self):
-                return
-            if dll.is_hotkey_capture_active() and attempt < 20:
-                QTimer.singleShot(250, lambda: self._cleanup_capture_hook_after_result(attempt + 1))
-                return
-            dll.stop_hotkey_capture(owner=self)
-            dll.uninstall_keyboard_hook()
-        except Exception as exc:
-            logger.debug("清理录制临时键盘钩子失败: %s", exc, exc_info=True)
-        finally:
-            self._capture_hook_installed_by_us = False
+        self._capture_hook_installed_by_us = False
 
     def _set_recording_ui(self, native_active: bool):
         if self._recording:
             self.record_btn.setText("停止")
             if native_active:
-                self.display.setPlaceholderText("录制中，按下快捷键")
+                self.display.setPlaceholderText("录制中，请按下组合并全部松开")
                 apply_recorder_display_style(self.display, True)
             else:
                 self.display.setPlaceholderText("按下快捷键")
@@ -269,28 +325,33 @@ class HotkeyRecorderWidget(QWidget):
         self._normalize_modifiers()
         self._refresh_display()
 
-    def set_hotkey(self, hotkey: str, modifiers: list, key: str):
+    def set_hotkey(self, hotkey: str, modifiers: list, key: str, keys: list[str] | None = None):
+        del hotkey
         self.modifiers = list(modifiers or [])
-        self.key = key or ""
+        self.keys = list(keys or [])
+        if not self.keys and key:
+            self.keys = [key]
         self._normalize_modifiers()
         self._refresh_display()
 
     def clear_hotkey(self):
         self.stop_recording()
         self.modifiers = []
-        self.key = ""
+        self.keys = []
         self._refresh_display()
 
     def get_modifiers(self) -> list:
         return list(self.modifiers)
 
     def get_key(self) -> str:
-        return self.key
+        return self.keys[0] if self.keys else ""
+
+    def get_keys(self) -> list[str]:
+        return list(self.keys)
 
     def get_hotkey_string(self) -> str:
         parts = [self._label_for_modifier(m) for m in self.modifiers]
-        if self.key:
-            parts.append(self._label_for_key(self.key))
+        parts.extend(self._label_for_key(key) for key in self.keys)
         return " + ".join(parts)
 
     def keyPressEvent(self, event):
@@ -313,7 +374,7 @@ class HotkeyRecorderWidget(QWidget):
         }:
             return
         self.modifiers = self._current_modifiers(event)
-        self.key = key_name
+        self.keys = [key_name]
         self._refresh_display()
         if self._recording and not self._native_capture_active:
             self.stop_recording()
@@ -348,6 +409,12 @@ class HotkeyRecorderWidget(QWidget):
             return side_modifiers_from_capture(side_modifiers)
         return generic_modifiers_from_capture(modifiers)
 
+    @staticmethod
+    def _merge_modifiers(existing: list[str], incoming: list[str]) -> list[str]:
+        order = ("ctrl", "alt", "shift", "win", "lctrl", "rctrl", "lalt", "ralt", "lshift", "rshift", "lwin", "rwin")
+        values = set(existing) | set(incoming)
+        return [name for name in order if name in values]
+
     def _normalize_modifiers(self):
         if self.advanced_sides:
             return
@@ -379,9 +446,7 @@ class HotkeyRecorderWidget(QWidget):
         return mod
 
     def _label_for_key(self, key: str) -> str:
-        if len(key) == 1:
-            return key.upper()
-        return key.upper() if key.startswith("f") and key[1:].isdigit() else key.title()
+        return key_display_name(key)
 
     def _key_name(self, event) -> str:
         key = event.key()
@@ -659,7 +724,12 @@ class HotkeyDialog(BaseDialog):
         has_lr = any(m in _LEFT_RIGHT_LABELS for m in modifiers)
         self.advanced_sides_cb.setChecked(has_lr)
         self.hotkey_input.set_advanced_sides(has_lr)
-        self.hotkey_input.set_hotkey(self.shortcut.hotkey or "", modifiers, self.shortcut.hotkey_key or "")
+        self.hotkey_input.set_hotkey(
+            self.shortcut.hotkey or "",
+            modifiers,
+            self.shortcut.hotkey_key or "",
+            getattr(self.shortcut, "hotkey_keys", []),
+        )
         if getattr(self.shortcut, "trigger_mode", "immediate") == "after_close":
             self.trigger_after_close_rb.setChecked(True)
         else:
@@ -727,6 +797,7 @@ class HotkeyDialog(BaseDialog):
         shortcut.hotkey = self.hotkey_input.get_hotkey_string()
         shortcut.hotkey_modifiers = self.hotkey_input.get_modifiers()
         shortcut.hotkey_key = self.hotkey_input.get_key()
+        shortcut.hotkey_keys = self.hotkey_input.get_keys()
         shortcut.trigger_mode = "after_close" if self.trigger_after_close_rb.isChecked() else "immediate"
         return shortcut
 
@@ -821,6 +892,7 @@ class HotkeyDialog(BaseDialog):
         self.shortcut.hotkey = self.hotkey_input.get_hotkey_string()
         self.shortcut.hotkey_modifiers = self.hotkey_input.get_modifiers()
         self.shortcut.hotkey_key = self.hotkey_input.get_key()
+        self.shortcut.hotkey_keys = self.hotkey_input.get_keys()
         self.shortcut.trigger_mode = "after_close" if self.trigger_after_close_rb.isChecked() else "immediate"
         self.shortcut.icon_path = self._custom_icon_path
         self.shortcut.type = ShortcutType.HOTKEY

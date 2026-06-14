@@ -11,6 +11,13 @@ extern "C" {
     typedef void (*MouseCallback)(int x, int y);
     typedef void (*KeyboardCallback)();
     typedef void (*HotkeyCaptureCallback)(int vkCode, int modifiers, int sideModifiers);
+    typedef void (*ProtectedChordCaptureCallback)(int inputCode, int modifiers, int sideModifiers);
+
+    enum ProtectedChordCaptureFlags {
+        HOOK_CHORD_CAPTURE_KEYBOARD = 0x0001,
+        HOOK_CHORD_CAPTURE_MOUSE_BUTTON = 0x0002,
+        HOOK_CHORD_CAPTURE_INCLUDE_INJECTED = 0x0100,
+    };
 
     enum HookInputEventType {
         HOOK_INPUT_MOUSE_MOVE = 1,
@@ -131,6 +138,12 @@ extern "C" {
     HOOKS_API bool StartHotkeyCapture(HotkeyCaptureCallback callback, int timeoutMs);
     HOOKS_API void StopHotkeyCapture();
     HOOKS_API bool IsHotkeyCaptureActive();
+    HOOKS_API bool StartProtectedChordCapture(
+        ProtectedChordCaptureCallback callback,
+        unsigned int captureFlags,
+        int timeoutMs);
+    HOOKS_API void StopProtectedChordCapture();
+    HOOKS_API bool IsProtectedChordCaptureActive();
 
     // 宏录制与回放基础接口
     HOOKS_API bool StartInputCapture(InputEventCallback callback, unsigned int filterFlags);

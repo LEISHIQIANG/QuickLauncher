@@ -198,125 +198,9 @@ class HotkeyExecutionMixin:
 
     @staticmethod
     def _vk_from_key(key_str: str) -> int:
-        k = (key_str or "").strip()
-        k_lower = k.lower()
-        if not k_lower:
-            return 0
+        from hooks.key_map import key_to_vk
 
-        vk_codes = {
-            "ctrl": 0x11,
-            "control": 0x11,
-            "lctrl": 0xA2,
-            "rctrl": 0xA3,
-            "alt": 0x12,
-            "menu": 0x12,
-            "lalt": 0xA4,
-            "ralt": 0xA5,
-            "shift": 0x10,
-            "lshift": 0xA0,
-            "rshift": 0xA1,
-            "win": 0x5B,
-            "lwin": 0x5B,
-            "rwin": 0x5C,
-            "backspace": 0x08,
-            "back": 0x08,
-            "tab": 0x09,
-            "enter": 0x0D,
-            "return": 0x0D,
-            "pause": 0x13,
-            "capslock": 0x14,
-            "caps": 0x14,
-            "escape": 0x1B,
-            "esc": 0x1B,
-            "space": 0x20,
-            "pageup": 0x21,
-            "pgup": 0x21,
-            "pagedown": 0x22,
-            "pgdn": 0x22,
-            "end": 0x23,
-            "home": 0x24,
-            "left": 0x25,
-            "up": 0x26,
-            "right": 0x27,
-            "down": 0x28,
-            "printscreen": 0x2C,
-            "prtscr": 0x2C,
-            "insert": 0x2D,
-            "ins": 0x2D,
-            "delete": 0x2E,
-            "del": 0x2E,
-            "f1": 0x70,
-            "f2": 0x71,
-            "f3": 0x72,
-            "f4": 0x73,
-            "f5": 0x74,
-            "f6": 0x75,
-            "f7": 0x76,
-            "f8": 0x77,
-            "f9": 0x78,
-            "f10": 0x79,
-            "f11": 0x7A,
-            "f12": 0x7B,
-            "f13": 0x7C,
-            "f14": 0x7D,
-            "f15": 0x7E,
-            "f16": 0x7F,
-            "f17": 0x80,
-            "f18": 0x81,
-            "f19": 0x82,
-            "f20": 0x83,
-            "f21": 0x84,
-            "f22": 0x85,
-            "f23": 0x86,
-            "f24": 0x87,
-            "num0": 0x60,
-            "num1": 0x61,
-            "num2": 0x62,
-            "num3": 0x63,
-            "num4": 0x64,
-            "num5": 0x65,
-            "num6": 0x66,
-            "num7": 0x67,
-            "num8": 0x68,
-            "num9": 0x69,
-            "numpad0": 0x60,
-            "numpad1": 0x61,
-            "numpad2": 0x62,
-            "numpad3": 0x63,
-            "numpad4": 0x64,
-            "numpad5": 0x65,
-            "numpad6": 0x66,
-            "numpad7": 0x67,
-            "numpad8": 0x68,
-            "numpad9": 0x69,
-            "multiply": 0x6A,
-            "add": 0x6B,
-            "subtract": 0x6D,
-            "decimal": 0x6E,
-            "divide": 0x6F,
-            "numlock": 0x90,
-            "scrolllock": 0x91,
-            ";": 0xBA,
-            "=": 0xBB,
-            ",": 0xBC,
-            "-": 0xBD,
-            ".": 0xBE,
-            "/": 0xBF,
-            "`": 0xC0,
-            "[": 0xDB,
-            "\\": 0xDC,
-            "]": 0xDD,
-            "'": 0xDE,
-        }
-
-        if k_lower in vk_codes:
-            return vk_codes[k_lower]
-
-        if len(k) == 1 and k.isalpha():
-            return ord(k.upper())
-        if len(k) == 1 and k.isdigit():
-            return ord(k)
-        return 0
+        return key_to_vk(key_str)
 
     @staticmethod
     def _is_extended_vk(vk: int) -> bool:
@@ -338,12 +222,14 @@ class HotkeyExecutionMixin:
         }
 
     @staticmethod
-    def _execute_hotkey_sendinput(modifiers: list[str], key: str) -> bool:
-        """使用 SendInput 发送快捷键，并只释放本次实际注入的按键。"""
+    def _execute_hotkey_sendinput(modifiers: list[str], key: str | list[str]) -> bool:
+        """使用 SendInput 发送键盘组合，并只释放本次实际注入的按键。"""
         import random
 
-        vk_main = ShortcutExecutor._vk_from_key(key)
-        if not vk_main:
+        keys = key if isinstance(key, list | tuple) else [key]
+        main_vks = [ShortcutExecutor._vk_from_key(item) for item in keys]
+        main_vks = [vk for vk in main_vks if vk]
+        if not main_vks:
             return False
 
         mod_vks: list[int] = []
@@ -370,16 +256,19 @@ class HotkeyExecutionMixin:
                 pressed_by_us.append(vk)
                 time.sleep(random.uniform(0.015, 0.025))
 
-            logger.debug("[SendInput] 按下主键: %s", vk_main)
-            if not ShortcutExecutor._sendinput_key_event(vk_main, False):
-                return False
-            pressed_by_us.append(vk_main)
+            for vk_main in main_vks:
+                logger.debug("[SendInput] 按下主键: %s", vk_main)
+                if not ShortcutExecutor._sendinput_key_event(vk_main, False):
+                    return False
+                pressed_by_us.append(vk_main)
+                time.sleep(random.uniform(0.015, 0.025))
             time.sleep(random.uniform(0.040, 0.060))
 
-            if not ShortcutExecutor._sendinput_key_event(vk_main, True):
-                return False
-            pressed_by_us.pop()
-            time.sleep(random.uniform(0.015, 0.025))
+            for vk_main in reversed(main_vks):
+                if not ShortcutExecutor._sendinput_key_event(vk_main, True):
+                    return False
+                pressed_by_us.remove(vk_main)
+                time.sleep(random.uniform(0.015, 0.025))
 
             for vk in reversed(mod_vks):
                 if vk not in pressed_by_us:
@@ -641,10 +530,12 @@ class HotkeyExecutionMixin:
                 logger.info(f"[Hotkey] 当前焦点窗口: {current_hwnd}")
 
             modifiers = shortcut.hotkey_modifiers or []
-            key = shortcut.hotkey_key or ""
+            keys = list(getattr(shortcut, "hotkey_keys", []) or [])
+            if not keys and shortcut.hotkey_key:
+                keys = [shortcut.hotkey_key]
 
-            logger.info(f"[Hotkey] 发送快捷键: modifiers={modifiers}, key={key}")
-            result = ShortcutExecutor._execute_hotkey_sendinput(modifiers, key)
+            logger.info("[Hotkey] 发送快捷键: modifiers=%s, key_count=%d", modifiers, len(keys))
+            result = ShortcutExecutor._execute_hotkey_sendinput(modifiers, keys)
 
             # 不自动释放修饰键，避免干扰正常按键
             # 如果用户遇到Alt卡住，可以手动按一下Alt键解决

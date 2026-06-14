@@ -1,7 +1,13 @@
 """Shared helpers for protected hotkey capture widgets."""
 
-from hooks.key_map import VK_TO_KEY
+import ctypes
+import logging
+
+from hooks.key_map import vk_to_key
+from qt_compat import QTimer
 from ui.utils.ui_scale import sp
+
+logger = logging.getLogger(__name__)
 
 SIDE_MODIFIER_BITS = {
     "lshift": 0x0001,
@@ -20,6 +26,35 @@ CAPTURE_MOD_CTRL = 2
 CAPTURE_MOD_SHIFT = 4
 CAPTURE_MOD_WIN = 8
 CAPTURE_TIMEOUT_MS = 10000
+KEYBOARD_POLL_INTERVAL_MS = 5
+
+_GENERIC_MODIFIER_VKS = {
+    0x10: CAPTURE_MOD_SHIFT,
+    0x11: CAPTURE_MOD_CTRL,
+    0x12: CAPTURE_MOD_ALT,
+}
+_SIDE_MODIFIER_VKS = {
+    0xA0: ("lshift", CAPTURE_MOD_SHIFT),
+    0xA1: ("rshift", CAPTURE_MOD_SHIFT),
+    0xA2: ("lctrl", CAPTURE_MOD_CTRL),
+    0xA3: ("rctrl", CAPTURE_MOD_CTRL),
+    0xA4: ("lalt", CAPTURE_MOD_ALT),
+    0xA5: ("ralt", CAPTURE_MOD_ALT),
+    0x5B: ("lwin", CAPTURE_MOD_WIN),
+    0x5C: ("rwin", CAPTURE_MOD_WIN),
+}
+_SIDE_NAME_TO_BIT = {
+    "lshift": 0x0001,
+    "rshift": 0x0002,
+    "lctrl": 0x0004,
+    "rctrl": 0x0008,
+    "lalt": 0x0010,
+    "ralt": 0x0020,
+    "lwin": 0x0040,
+    "rwin": 0x0080,
+}
+_MODIFIER_VKS = set(_GENERIC_MODIFIER_VKS) | set(_SIDE_MODIFIER_VKS)
+_POLLABLE_VKS = tuple(range(0x08, 0xFF))
 
 VK_TO_KEY_NAME = {
     0x08: "backspace",
@@ -104,7 +139,109 @@ def key_name_from_vk(vk_code: int) -> str:
         return f"f{vk - 0x70 + 1}"
     if vk in VK_TO_KEY_NAME:
         return VK_TO_KEY_NAME[vk]
-    return VK_TO_KEY.get(vk, "")
+    return vk_to_key(vk)
+
+
+class KeyboardStatePoller:
+    """Fallback chord capture for environments where WH_KEYBOARD_LL is silent."""
+
+    def __init__(self, parent, callback, *, log_label: str):
+        self._callback = callback
+        self._log_label = log_label
+        self._timer = QTimer(parent)
+        self._timer.setInterval(KEYBOARD_POLL_INTERVAL_MS)
+        self._timer.timeout.connect(self._poll)
+        self._previous = set()
+        self._preexisting = set()
+        self._captured = set()
+        self._started = False
+        self._seen_modifiers = 0
+        self._seen_side_modifiers = 0
+
+    def start(self):
+        current = self._pressed_vks()
+        self._previous = current
+        self._preexisting = set(current)
+        self._captured.clear()
+        self._started = False
+        self._seen_modifiers = 0
+        self._seen_side_modifiers = 0
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+        self._previous.clear()
+        self._preexisting.clear()
+        self._captured.clear()
+        self._started = False
+
+    def is_active(self) -> bool:
+        return self._timer.isActive()
+
+    @staticmethod
+    def _pressed_vks() -> set[int]:
+        try:
+            get_state = ctypes.windll.user32.GetAsyncKeyState
+            return {vk for vk in _POLLABLE_VKS if get_state(vk) & 0x8000}
+        except Exception:
+            return set()
+
+    @staticmethod
+    def _modifier_state(current: set[int]) -> tuple[int, int]:
+        modifiers = 0
+        side_modifiers = 0
+        for vk, bit in _GENERIC_MODIFIER_VKS.items():
+            if vk in current:
+                modifiers |= bit
+        for vk, (name, bit) in _SIDE_MODIFIER_VKS.items():
+            if vk in current:
+                modifiers |= bit
+                side_modifiers |= _SIDE_NAME_TO_BIT[name]
+        return modifiers, side_modifiers
+
+    def _poll(self):
+        if not self._timer.isActive():
+            return
+        current = self._pressed_vks()
+        released_preexisting = self._preexisting - current
+        if released_preexisting:
+            self._preexisting.difference_update(released_preexisting)
+
+        effective_current = current - self._preexisting
+        new_down = effective_current - self._previous
+        modifiers, side_modifiers = self._modifier_state(effective_current)
+        self._seen_modifiers |= modifiers
+        self._seen_side_modifiers |= side_modifiers
+
+        for vk in sorted(new_down):
+            if vk in _MODIFIER_VKS:
+                self._captured.add(vk)
+                continue
+            if not key_name_from_vk(vk):
+                continue
+            self._captured.add(vk)
+            self._started = True
+            logger.debug(
+                "%s 键盘状态后备捕获: input=%s modifiers=%s side_modifiers=%s",
+                self._log_label,
+                vk,
+                modifiers,
+                side_modifiers,
+            )
+            self._callback(vk, modifiers, side_modifiers)
+
+        self._previous = current
+        if self._started and not (self._captured & current):
+            seen_modifiers = self._seen_modifiers
+            seen_side_modifiers = self._seen_side_modifiers
+            logger.debug(
+                "%s 键盘状态后备完成: modifiers=%s side_modifiers=%s",
+                self._log_label,
+                seen_modifiers,
+                seen_side_modifiers,
+            )
+            self.stop()
+            self._callback(0, seen_modifiers, seen_side_modifiers)
 
 
 def apply_recorder_display_style(display, active: bool):

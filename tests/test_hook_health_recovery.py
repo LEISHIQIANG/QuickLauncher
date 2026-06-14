@@ -114,3 +114,48 @@ def test_process_check_executor_can_shutdown_and_restart():
     hooks_mixin.shutdown_process_check_executor()
 
     assert first is not second
+
+
+def test_apply_keyboard_trigger_installs_missing_keyboard_hook():
+    calls = []
+    keyboard_hook = SimpleNamespace(is_installed=lambda: True)
+
+    class MouseHook:
+        def set_special_apps(self, apps):
+            calls.append(("special_apps", apps))
+
+        def set_keyboard_hook(self, hook):
+            calls.append(("keyboard_hook", hook))
+
+        def set_trigger_config_ex(self, *args):
+            calls.append(("trigger", args))
+
+    settings = SimpleNamespace(
+        popup_trigger_mode="keyboard",
+        popup_trigger_keys=["q"],
+        popup_trigger_button="",
+        popup_trigger_modifiers=["ctrl"],
+        popup_special_trigger_mode="mouse",
+        popup_special_trigger_keys=[],
+        popup_special_trigger_button="middle",
+        popup_special_trigger_modifiers=["ctrl"],
+    )
+    tray = SimpleNamespace(
+        mouse_hook=MouseHook(),
+        keyboard_hook=None,
+        data_manager=SimpleNamespace(get_settings=lambda: settings),
+        _get_special_apps_for_hook=lambda: [],
+    )
+
+    def install_keyboard_hook():
+        calls.append(("install_keyboard",))
+        tray.keyboard_hook = keyboard_hook
+
+    tray._install_keyboard_hook = install_keyboard_hook
+
+    HooksMixin._apply_mouse_hook_settings(tray)
+
+    assert ("install_keyboard",) in calls
+    assert ("keyboard_hook", keyboard_hook) in calls
+    trigger_call = next(call for call in calls if call[0] == "trigger")
+    assert trigger_call[1][:4] == ("keyboard", "", ["q"], ["ctrl"])
