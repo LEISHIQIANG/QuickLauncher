@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -93,6 +94,18 @@ def _require_dir(errors: list[str], path: Path) -> None:
         errors.append(f"missing directory: {path}")
 
 
+def _taskkill_tree_lines(text: str) -> list[str]:
+    matches = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if not stripped or lowered.startswith((";", "//", "rem ", "::")):
+            continue
+        if re.search(r"\btaskkill\b[^\r\n]*?/T\b", stripped, flags=re.IGNORECASE):
+            matches.append(stripped)
+    return matches
+
+
 def check_source_metadata(
     root: Path = ROOT,
     version: str | None = None,
@@ -114,6 +127,14 @@ def check_source_metadata(
             errors.append(f"installer.iss missing {expected}")
     if 'OutputBaseFilename "QuickLauncher_Setup_" + MyAppVersion' not in installer:
         errors.append("installer.iss output filename must include MyAppVersion")
+    if _taskkill_tree_lines(installer):
+        errors.append("installer.iss must stop QuickLauncher without taskkill /T")
+
+    build_script_path = root / "scripts" / "build_win11_setup.bat"
+    if build_script_path.is_file():
+        build_script = build_script_path.read_text(encoding="utf-8")
+        if _taskkill_tree_lines(build_script):
+            errors.append("build_win11_setup.bat must stop QuickLauncher without taskkill /T")
 
     manifest_path = root / "QuickLauncher.manifest"
     _require_file(errors, manifest_path)

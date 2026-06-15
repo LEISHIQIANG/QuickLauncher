@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -422,6 +423,11 @@ class TestUpdateInstaller:
             installer.install(path, expected_hash=expected_hash)
 
         mock_popen.assert_called_once()
+        popen_kwargs = mock_popen.call_args.kwargs
+        assert popen_kwargs["creationflags"] & subprocess.CREATE_NEW_PROCESS_GROUP
+        assert popen_kwargs["creationflags"] & subprocess.DETACHED_PROCESS
+        assert popen_kwargs["creationflags"] & 0x01000000
+        assert popen_kwargs["close_fds"] is True
         mock_exit.assert_called_once_with(0)
 
     @patch("services.update.installer.sys.exit")

@@ -62,13 +62,9 @@ def test_slash_commands_have_unique_canonicals():
     assert len(canonicals) == len(set(canonicals))
 
 
-def test_selected_high_value_commands_use_fixed_code_icons():
-    commands = {command.canonical: command for command in SLASH_COMMANDS}
-
-    assert commands["config"].icon_path == builtin_command_icon_path("config")
-    assert commands["restart"].icon_path == builtin_command_icon_path("restart")
-    assert commands["topmost"].icon_path == builtin_command_icon_path("topmost")
-    assert commands["help"].icon_path == builtin_command_icon_path("help")
+def test_all_system_commands_use_fixed_code_icons():
+    for command in SLASH_COMMANDS:
+        assert command.icon_path == builtin_command_icon_path(command.canonical)
 
 
 # ── _ALIAS_TO_COMMAND dict ──────────────────────────────────────────────

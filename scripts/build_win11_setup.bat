@@ -82,7 +82,8 @@ REM ====================
 
 REM 1. Check Python 3.10+ (recommended)
 echo [0/4] Stopping any running QuickLauncher process...
-taskkill /IM QuickLauncher.exe /T /F >nul 2>&1
+REM Stop QuickLauncher only. Programs launched through it must remain independent.
+taskkill /IM QuickLauncher.exe /F >nul 2>&1
 powershell -NoProfile -Command "Start-Sleep -Seconds 3" >nul 2>&1
 taskkill /IM QuickLauncher.exe /F >nul 2>&1
 powershell -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1

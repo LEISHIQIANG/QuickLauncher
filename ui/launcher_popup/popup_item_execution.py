@@ -539,8 +539,30 @@ class PopupItemExecutionMixin:
         except Exception as e:
             logger.error(f"显示错误弹窗失败: {e}")
 
+    def _show_toast_notification(self, text: str):
+        """Show a lightweight toast notification."""
+        try:
+            from ui.toast_notification import ToastNotification
+
+            toast = ToastNotification()
+            toast.show_toast(text, theme="dark", duration_ms=1500)
+        except (ImportError, RuntimeError, TypeError, ValueError, AttributeError) as e:
+            logger.error(f"显示 Toast 通知失败: {e}")
+
     def _on_command_panel_result_ready(self, result, command_id: str, command_title: str):
         """Show captured command output in the independent command panel."""
+        payload = getattr(result, "payload", {}) if isinstance(getattr(result, "payload", {}), dict) else {}
+        if isinstance(payload, dict) and payload.get("_suppress_result_panel"):
+            if getattr(result, "success", True) and getattr(result, "message", ""):
+                msg = result.message
+                if command_id == "copy-path":
+                    clean_msg = msg.replace("\n", ", ")
+                    if len(clean_msg) > 40:
+                        clean_msg = clean_msg[:37] + "..."
+                    msg = f"已复制路径: {clean_msg}"
+                self._show_toast_notification(msg)
+            return
+
         tray_app = getattr(self, "tray_app", None)
         if tray_app is not None and hasattr(tray_app, "show_command_panel"):
             try:

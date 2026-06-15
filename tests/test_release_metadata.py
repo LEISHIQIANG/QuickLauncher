@@ -98,6 +98,27 @@ def test_installer_preserves_user_plugins_on_upgrade():
     assert "Config migration incomplete; source files were preserved" in installer
 
 
+def test_installer_and_build_only_stop_quicklauncher_process():
+    installer = (ROOT / "scripts" / "installer.iss").read_text(encoding="utf-8")
+    build_script = (ROOT / "scripts" / "build_win11_setup.bat").read_text(encoding="utf-8")
+
+    installer_taskkill_lines = [
+        line
+        for line in installer.splitlines()
+        if "taskkill" in line.lower() and not line.strip().lower().startswith(("//", ";"))
+    ]
+    build_taskkill_lines = [
+        line
+        for line in build_script.splitlines()
+        if "taskkill" in line.lower() and not line.strip().lower().startswith(("rem ", "::"))
+    ]
+
+    assert installer_taskkill_lines
+    assert build_taskkill_lines
+    assert all("/T" not in line.upper() for line in installer_taskkill_lines)
+    assert all("/T" not in line.upper() for line in build_taskkill_lines)
+
+
 def test_release_source_gate_passes_current_tree():
     result = check_source_metadata(ROOT, APP_VERSION, allow_source_runtime_plugins=True)
 

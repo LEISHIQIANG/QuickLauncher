@@ -566,6 +566,32 @@ def test_param_inputs_required_validation_and_execution(qapp):
     assert win._run_token == "token"
 
 
+def test_param_line_edits_match_command_input_style(qapp):
+    win = _window(qapp)
+    cmd = CommandDefinition(
+        id="tls",
+        title="TLS",
+        aliases=[],
+        description="",
+        category="",
+        handler=lambda ctx: CommandResult(),
+        params=[
+            CommandParam(name="host", type="text", label="域名"),
+            CommandParam(name="port", type="number", label="端口", default="443"),
+        ],
+    )
+
+    win._render_params(cmd)
+
+    for name in ("host", "port"):
+        style = win._param_widgets[name][1].styleSheet()
+        assert "min-height: 28px" in style
+        assert "padding: 0 10px" in style
+        assert "border-radius: 8px" in style
+        assert "rgba(10, 132, 255, 0.82)" in style
+        assert "rgba(255, 255, 255, 0.13)" in style
+
+
 def test_shortcut_params_execute_through_panel(qapp):
     win = _window(qapp)
     captured = {}

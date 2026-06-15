@@ -1115,7 +1115,7 @@ class TestCmdTlsEdgeCases:
 
     @patch("core.commands.socket.create_connection")
     @patch("core.commands.ssl.create_default_context")
-    def test_many_sans_truncated(self, mock_ssl, mock_conn):
+    def test_many_sans_are_fully_displayed(self, mock_ssl, mock_conn):
         raw_sock = MagicMock()
         raw_sock.__enter__.return_value = object()
         raw_sock.__exit__.return_value = None
@@ -1138,7 +1138,9 @@ class TestCmdTlsEdgeCases:
         mock_ssl.return_value = ctx
         res = cmd_tls(CommandContext(args_text="example.com"))
         assert res.success is True
-        assert "(+4)" in res.message
+        assert "s0.example.com" in res.message
+        assert "s11.example.com" in res.message
+        assert "(+" not in res.message
 
 
 # ===========================================================================

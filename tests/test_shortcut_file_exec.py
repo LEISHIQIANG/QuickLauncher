@@ -6,9 +6,9 @@ from core.shortcut_file_exec import FileExecutionMixin
 def test_launch_privilege_four_quadrants(monkeypatch):
     scenarios = [
         # current_elevated, run_as_admin, expected_path, expected_verb
-        (False, False, "shell", "open"),
+        (False, False, "owner", None),
         (False, True, "shell", "runas"),
-        (True, False, "downgrade", None),
+        (True, False, "owner", None),
         (True, True, "shell", "open"),
     ]
 
@@ -23,6 +23,11 @@ def test_launch_privilege_four_quadrants(monkeypatch):
             @staticmethod
             def _launch_as_standard_user_direct(target, parameters="", directory="", show_cmd=1, _calls=calls):
                 _calls.append(("downgrade", target, parameters, directory, show_cmd))
+                return True, ""
+
+            @staticmethod
+            def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1, _calls=calls):
+                _calls.append(("owner", target, parameters, directory, show_cmd))
                 return True, ""
 
             @staticmethod
@@ -55,13 +60,42 @@ def test_privilege_route_selector_encodes_four_quadrants():
     assert FileExecutionMixin._select_privilege_launch_route(True, True) == "open"
 
 
-def test_non_elevated_context_non_admin_item_uses_open(monkeypatch):
+def test_non_elevated_context_non_admin_item_prefers_explorer_owner(monkeypatch):
     captured = {}
 
     class FakeExecutor(FileExecutionMixin):
         @staticmethod
         def _is_launch_context_elevated():
             return False
+
+        @staticmethod
+        def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1):
+            captured["target"] = target
+            return True, ""
+
+    monkeypatch.setattr(file_exec, "ShortcutExecutor", FakeExecutor)
+
+    success, error = FileExecutionMixin._launch_with_privilege(
+        r"C:\Tools\App.exe",
+        run_as_admin=False,
+    )
+
+    assert success is True
+    assert error == ""
+    assert captured["target"] == r"C:\Tools\App.exe"
+
+
+def test_non_elevated_context_falls_back_to_shell_execute(monkeypatch):
+    captured = {}
+
+    class FakeExecutor(FileExecutionMixin):
+        @staticmethod
+        def _is_launch_context_elevated():
+            return False
+
+        @staticmethod
+        def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1):
+            return False, "Explorer unavailable"
 
         @staticmethod
         def _shell_execute_open_raw_result(target, parameters=None, directory=None, show_cmd=1, verb="open"):
@@ -114,6 +148,10 @@ def test_elevated_context_non_admin_item_uses_standard_user_channel(monkeypatch)
             return True
 
         @staticmethod
+        def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1):
+            return False, "Explorer unavailable"
+
+        @staticmethod
         def _launch_as_standard_user_direct(target, parameters="", directory="", show_cmd=1):
             calls.append(("channel", target, parameters, directory, show_cmd))
             return True, ""
@@ -135,6 +173,10 @@ def test_elevated_context_non_admin_item_does_not_use_legacy_standard_user_fallb
         @staticmethod
         def _is_launch_context_elevated():
             return True
+
+        @staticmethod
+        def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1):
+            return False, "Explorer unavailable"
 
         @staticmethod
         def _launch_as_standard_user_direct(target, parameters="", directory="", show_cmd=1):
@@ -162,6 +204,10 @@ def test_elevated_context_non_admin_item_prefers_standard_user_channel(monkeypat
         @staticmethod
         def _is_launch_context_elevated():
             return True
+
+        @staticmethod
+        def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1):
+            return False, "Explorer unavailable"
 
         @staticmethod
         def _launch_as_standard_user_direct(target, parameters="", directory="", show_cmd=1):
@@ -209,6 +255,35 @@ def test_elevated_context_admin_item_reuses_current_admin_token(monkeypatch):
     assert success is True
     assert error == ""
     assert captured["verb"] == "open"
+
+
+def test_elevated_context_non_admin_item_stops_after_explorer_owned_launch(monkeypatch):
+    calls = []
+
+    class FakeExecutor(FileExecutionMixin):
+        @staticmethod
+        def _is_launch_context_elevated():
+            return True
+
+        @staticmethod
+        def _launch_via_shell_owner(target, parameters="", directory="", show_cmd=1):
+            calls.append(("owner", target))
+            return True, ""
+
+        @staticmethod
+        def _launch_as_standard_user_direct(*args, **kwargs):
+            raise AssertionError("token fallback must not run after Explorer-owned launch succeeds")
+
+    monkeypatch.setattr(file_exec, "ShortcutExecutor", FakeExecutor)
+
+    success, error = FileExecutionMixin._launch_with_privilege(
+        r"C:\Tools\App.exe",
+        run_as_admin=False,
+    )
+
+    assert success is True
+    assert error == ""
+    assert calls == [("owner", r"C:\Tools\App.exe")]
 
 
 def test_admin_item_launch_skips_post_launch_activation(monkeypatch):

@@ -132,18 +132,20 @@ procedure KillRunningProcesses();
 var
   ResultCode: Integer;
 begin
-  // Force kill all QuickLauncher processes (use cmd taskkill to avoid env path issues)
+  // Stop QuickLauncher itself only. Never use taskkill /T here: applications
+  // launched by QuickLauncher have an independent lifetime and must survive
+  // upgrades or reinstalls.
   if not IsQuickLauncherRunning() then
     Exit;
 
-  Exec(ExpandConstant('{cmd}'), '/c taskkill /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   if WaitForQuickLauncherExit(3000) then
   begin
     Sleep(400);
     Exit;
   end;
 
-  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   WaitForQuickLauncherExit(5000);
   Sleep(800);
 end;

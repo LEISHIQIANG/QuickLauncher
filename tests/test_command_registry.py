@@ -205,6 +205,27 @@ class TestCommandRegistry:
         assert reg.get("hello.world") is cmd
         assert reg.count() == 1
 
+    def test_register_strictly_binds_system_command_icon(self):
+        reg = CommandRegistry()
+        cmd = self._make_cmd("hosts")
+        cmd.icon_path = "C:/user/override.png"
+
+        assert reg.register(cmd) is True
+        assert cmd.icon_path == "builtin-command:hosts"
+
+    def test_register_preserves_plugin_command_icon(self):
+        reg = CommandRegistry()
+        with_icon = self._make_cmd("plugin.with-icon")
+        with_icon.source = "plugin-builtin:demo"
+        with_icon.icon_path = "C:/plugin/icon.png"
+        without_icon = self._make_cmd("plugin.without-icon")
+        without_icon.source = "plugin-builtin:demo"
+
+        assert reg.register(with_icon) is True
+        assert reg.register(without_icon) is True
+        assert with_icon.icon_path == "C:/plugin/icon.png"
+        assert without_icon.icon_path == ""
+
     def test_register_rejects_duplicate_id(self):
         reg = CommandRegistry()
         cmd1 = self._make_cmd("dup")
@@ -493,7 +514,7 @@ class TestSlashCommandsRedirect:
         assert registry.get("netdiag").metadata.uses_network is True
         assert registry.get("git").metadata.modifies_system is True
         assert registry.get("env").interaction_mode == COMMAND_INTERACTION_DIRECT
-        assert registry.get("god").interaction_mode == COMMAND_INTERACTION_PANEL
+        assert registry.get("god").interaction_mode == COMMAND_INTERACTION_DIRECT
         assert registry.get("netdiag").interaction_mode == COMMAND_INTERACTION_PANEL
         assert registry.get("cidr").interaction_mode == COMMAND_INTERACTION_PANEL
         assert registry.get("tls").interaction_mode == COMMAND_INTERACTION_PANEL

@@ -310,6 +310,18 @@ def cmd_copy_path(context: CommandContext) -> CommandResult:
         parts = files
     result = "\n".join(parts)
     label = "复制路径" if not mode else {"name": "复制文件名", "dir": "复制目录"}.get(mode, "复制")
+    try:
+        from core.clipboard_service import clipboard_service
+
+        if clipboard_service.write_text(result):
+            return CommandResult(
+                success=True,
+                message=result,
+                payload={"_suppress_result_panel": True},
+                actions=[CommandAction(type="copy", label=label, value=result)],
+            )
+    except ImportError as exc:
+        logger.debug("直接写入剪贴板失败: %s", exc, exc_info=True)
     return CommandResult(
         success=True,
         message=result,
@@ -987,9 +999,7 @@ def cmd_tls(context: CommandContext) -> CommandResult:
         logger.debug("解析TLS证书到期时间失败: %s", exc, exc_info=True)
 
     san_entries = [value for key, value in cert.get("subjectAltName", []) if key.lower() == "dns"]
-    san_display = ", ".join(san_entries[:8])
-    if len(san_entries) > 8:
-        san_display += f" ... (+{len(san_entries) - 8})"
+    san_display = ", ".join(san_entries)
 
     lines = [
         f"目标: {display_host or host}:{port}",
@@ -1240,7 +1250,11 @@ def cmd_hosts(context: CommandContext) -> CommandResult:
             run_as_admin=True,
         )
         if ok:
-            return CommandResult(success=True, message="已请求以管理员权限打开 hosts 文件...")
+            return CommandResult(
+                success=True,
+                message="已请求以管理员权限打开 hosts 文件...",
+                payload={"_suppress_result_panel": True},
+            )
         return CommandResult(success=False, message=error or "管理员权限请求被拒绝或失败", error="打开失败")
     except Exception as e:
         return CommandResult(success=False, message=f"无法打开 hosts 文件: {e}", error="错误")
@@ -1386,7 +1400,11 @@ def cmd_port(context: CommandContext) -> CommandResult:
 def cmd_dns(context: CommandContext) -> CommandResult:
     success, out = _run_cmd(["ipconfig", "/flushdns"])
     if success:
-        return CommandResult(success=True, message="已成功清理 Windows DNS 缓存！")
+        return CommandResult(
+            success=True,
+            message="已成功清理 Windows DNS 缓存！",
+            payload={"_suppress_result_panel": True},
+        )
     else:
         return CommandResult(success=False, message=f"清理 DNS 缓存失败：{out}", error="清理失败")
 
@@ -1419,7 +1437,11 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
         logger.debug("检测explorer进程状态失败: %s", exc, exc_info=True)
 
     if already_running:
-        return CommandResult(success=True, message="Windows 资源管理器已成功自动重启！")
+        return CommandResult(
+            success=True,
+            message="Windows 资源管理器已成功自动重启！",
+            payload={"_suppress_result_panel": True},
+        )
 
     explorer_path = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "explorer.exe")
     if not os.path.exists(explorer_path):
@@ -1427,12 +1449,20 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
 
     try:
         subprocess.Popen([explorer_path], creationflags=0x00000008)  # DETACHED_PROCESS
-        return CommandResult(success=True, message="Windows 资源管理器已安全重启！")
+        return CommandResult(
+            success=True,
+            message="Windows 资源管理器已安全重启！",
+            payload={"_suppress_result_panel": True},
+        )
     except Exception:
         logger.debug("Explorer restart with DETACHED_PROCESS failed, retrying without flags", exc_info=True)
         try:
             subprocess.Popen([explorer_path])
-            return CommandResult(success=True, message="Windows 资源管理器已安全重启！")
+            return CommandResult(
+                success=True,
+                message="Windows 资源管理器已安全重启！",
+                payload={"_suppress_result_panel": True},
+            )
         except Exception as e:
             return CommandResult(success=False, message=f"重启资源管理器失败: {e}", error="重启失败")
 

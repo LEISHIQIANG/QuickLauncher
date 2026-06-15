@@ -60,9 +60,14 @@ def cmd_plugin_reload(context: CommandContext) -> CommandResult:
         return CommandResult(
             success=True,
             message=f"已重载 {count} 个已启用的插件",
+            payload={"_suppress_result_panel": True},
         )
     if pm.reload_plugin(plugin_id):
-        return CommandResult(success=True, message=f"插件已重载: {plugin_id}")
+        return CommandResult(
+            success=True,
+            message=f"插件已重载: {plugin_id}",
+            payload={"_suppress_result_panel": True},
+        )
     return CommandResult(success=False, message=f"重载失败: {plugin_id}", error="重载错误")
 
 

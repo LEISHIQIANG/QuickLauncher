@@ -101,12 +101,20 @@ def test_action_executor_copies_and_audits(monkeypatch):
 
 def test_action_executor_open_url_uses_single_core_path(monkeypatch):
     opened = {}
-    monkeypatch.setattr("core.action_executor.webbrowser.open", lambda url: opened.setdefault("url", url))
+
+    def fake_launch(target, **_kwargs):
+        opened["target"] = target
+        return True, ""
+
+    monkeypatch.setattr(
+        "core.shortcut_executor.ShortcutExecutor._launch_with_privilege",
+        fake_launch,
+    )
 
     ok = execute_command_action(CommandAction(type="open_url", label="Open", value="https://example.com"))
 
     assert ok
-    assert opened["url"] == "https://example.com"
+    assert opened["target"] == "https://example.com"
 
 
 def test_action_executor_saves_text_and_files(tmp_path):

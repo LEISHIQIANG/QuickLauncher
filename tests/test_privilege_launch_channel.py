@@ -1,10 +1,45 @@
 from __future__ import annotations
 
 import logging
+import sys
+from types import SimpleNamespace
 
 import core.privilege_launch_channel as channel
 
 logger = logging.getLogger(__name__)
+
+
+def test_explorer_com_uses_registered_shell_application(monkeypatch):
+    calls = []
+
+    class ExplorerApplication:
+        def ShellExecute(self, target, parameters, directory, verb, show):
+            calls.append((target, parameters, directory, verb, show))
+
+    desktop_window = SimpleNamespace(HWND=101, Document=SimpleNamespace(Application=ExplorerApplication()))
+    shell_windows = SimpleNamespace(
+        Count=0,
+        FindWindowSW=lambda *_args: desktop_window,
+        Item=lambda index: desktop_window,
+    )
+    shell_application = SimpleNamespace(Windows=lambda: shell_windows)
+    client = SimpleNamespace(Dispatch=lambda prog_id: (calls.append(("dispatch", prog_id)), shell_application)[1])
+    ctypes_module = SimpleNamespace(windll=SimpleNamespace(user32=SimpleNamespace(GetShellWindow=lambda: 101)))
+    monkeypatch.setitem(
+        sys.modules, "pythoncom", SimpleNamespace(CoInitialize=lambda: None, CoUninitialize=lambda: None)
+    )
+    monkeypatch.setitem(sys.modules, "ctypes", ctypes_module)
+    monkeypatch.setitem(sys.modules, "win32com", SimpleNamespace(client=client))
+    monkeypatch.setitem(sys.modules, "win32com.client", client)
+
+    ok, error = channel.launch_via_explorer_com(r"C:\Tools\App.exe", "--flag", r"C:\Tools", 0)
+
+    assert ok is True
+    assert error == ""
+    assert calls == [
+        ("dispatch", "Shell.Application"),
+        (r"C:\Tools\App.exe", "--flag", r"C:\Tools", "open", 0),
+    ]
 
 
 def test_standard_user_channel_keeps_single_three_second_budget(monkeypatch):

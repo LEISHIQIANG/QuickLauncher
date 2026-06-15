@@ -867,7 +867,7 @@ def test_cmd_env_and_god_registration():
     assert "env" in ids
     assert "god" in ids
     assert "env" not in PANEL_COMMAND_IDS
-    assert "god" in PANEL_COMMAND_IDS
+    assert "god" not in PANEL_COMMAND_IDS
 
     # Test alias resolution
     assert canonical_builtin_command("env-edit") == "env"

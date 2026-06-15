@@ -39,26 +39,31 @@ def launch_via_explorer_com(target: str, parameters: str = "", directory: str = 
 
         import win32com.client
 
-        hwnd = ctypes.windll.user32.GetShellWindow()
-        if not hwnd:
+        shell_app = win32com.client.Dispatch("Shell.Application")
+        if not shell_app:
+            return False, "Failed to dispatch Shell.Application"
+        shell_windows = shell_app.Windows()
+        shell_hwnd = ctypes.windll.user32.GetShellWindow()
+        if not shell_hwnd:
             return False, "GetShellWindow returned null"
 
-        shell_windows = win32com.client.Dispatch("Shell.Windows")
-        if not shell_windows:
-            return False, "Failed to dispatch Shell.Windows"
+        desktop_window = shell_windows.FindWindowSW(0, 0, 8, 0, 1)
+        if desktop_window is None:
+            for index in range(int(shell_windows.Count)):
+                window = shell_windows.Item(index)
+                if window and hasattr(window, "HWND") and int(window.HWND) == int(shell_hwnd):
+                    desktop_window = window
+                    break
+        if desktop_window is None:
+            return False, "Explorer desktop window not found"
 
-        for i in range(int(shell_windows.Count)):
-            window = shell_windows.Item(i)
-            if window and hasattr(window, "HWND") and int(window.HWND) == hwnd:
-                doc = window.Document
-                if doc:
-                    shell_app = doc.Application
-                    if shell_app:
-                        shell_app.ShellExecute(target, parameters or "", directory or "", "open", show)
-                        logger.info("Successfully launched standard-user process via Explorer COM fallback: %s", target)
-                        return True, ""
-
-        return False, "Desktop shell window not found in Shell.Windows"
+        document = getattr(desktop_window, "Document", None)
+        explorer_app = getattr(document, "Application", None) if document is not None else None
+        if explorer_app is None:
+            return False, "Explorer desktop application is unavailable"
+        explorer_app.ShellExecute(target, parameters or "", directory or "", "open", show)
+        logger.info("Successfully launched standard-user process via Explorer desktop COM: %s", target)
+        return True, ""
     except Exception as exc:
         logger.debug("Explorer COM launch failed: %s", exc)
         return False, str(exc)

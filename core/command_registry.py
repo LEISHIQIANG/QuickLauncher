@@ -436,6 +436,12 @@ class CommandRegistry:
         if cmd.id in self._commands:
             logger.warning("重复命令 ID，拒绝注册: %s", cmd.id)
             return False
+        if cmd.source == "builtin":
+            from core.command_icon_catalog import builtin_command_icon_path
+
+            fixed_icon_path = builtin_command_icon_path(cmd.id)
+            if fixed_icon_path:
+                cmd.icon_path = fixed_icon_path
         self._commands[cmd.id] = cmd
         self._category_index.setdefault(cmd.category, []).append(cmd.id)
         self._merge_aliases(cmd, cmd.aliases)

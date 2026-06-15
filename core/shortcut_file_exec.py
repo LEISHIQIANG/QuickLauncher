@@ -362,9 +362,9 @@ class FileExecutionMixin:
         """Launch with the expected privilege boundary.
 
         Four Windows cases:
-        - current normal + target normal: ShellExecute open
+        - current normal + target normal: Explorer-owned shell launch
         - current normal + target admin: ShellExecute runas
-        - current admin + target normal: Explorer-token downgrade channel
+        - current admin + target normal: Explorer-owned shell launch, then token fallback
         - current admin + target admin: ShellExecute open with current token
         """
         if os.name != "nt":
@@ -384,6 +384,16 @@ class FileExecutionMixin:
         )
 
         if route == PRIVILEGE_ROUTE_DOWNGRADE:
+            shell_owned, shell_error = ShortcutExecutor._launch_via_shell_owner(
+                target,
+                parameters or "",
+                directory or "",
+                show_cmd,
+            )
+            if shell_owned:
+                logger.debug("Explorer-owned standard-user launch succeeded: %s", target)
+                return True, ""
+            logger.debug("Explorer-owned launch unavailable, trying token channel: %s", shell_error)
             logger.debug("Attempting standard-user launch from elevated context: %s", target)
             downgraded, downgrade_error = ShortcutExecutor._launch_as_standard_user_direct(
                 target,
@@ -396,6 +406,18 @@ class FileExecutionMixin:
                 return True, ""
             logger.warning("Standard-user launch failed, returning error: %s (%s)", target, downgrade_error)
             return False, standard_user_failure_message
+
+        if route == PRIVILEGE_ROUTE_OPEN and not current_elevated:
+            shell_owned, shell_error = ShortcutExecutor._launch_via_shell_owner(
+                target,
+                parameters or "",
+                directory or "",
+                show_cmd,
+            )
+            if shell_owned:
+                logger.debug("Explorer-owned launch succeeded: %s", target)
+                return True, ""
+            logger.debug("Explorer-owned launch unavailable, falling back to ShellExecute: %s", shell_error)
 
         verb = PRIVILEGE_ROUTE_RUNAS if route == PRIVILEGE_ROUTE_RUNAS else "open"
         raw_result = getattr(ShortcutExecutor, "_shell_execute_open_raw_result", None)
@@ -444,6 +466,23 @@ class FileExecutionMixin:
             error = str(exc)
 
         return False, error or "standard-user launch failed"
+
+    @staticmethod
+    def _launch_via_shell_owner(
+        target: str,
+        parameters: str = "",
+        directory: str = "",
+        show_cmd: int = 1,
+    ) -> tuple[bool, str]:
+        """Ask Explorer to own a normal-user launch."""
+        if os.name != "nt":
+            return False, "unsupported platform"
+        try:
+            from .privilege_launch_channel import launch_via_explorer_com
+        except ImportError as exc:
+            logger.debug("Explorer-owned launch failed: %s", exc, exc_info=True)
+            return False, str(exc)
+        return launch_via_explorer_com(target, parameters, directory, show_cmd)
 
     @staticmethod
     def _shell_execute_open(

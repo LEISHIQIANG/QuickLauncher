@@ -6,7 +6,6 @@ import logging
 import os
 import shutil
 import subprocess
-import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +44,7 @@ def execute_command_action(action: CommandAction | dict | Any, context: ActionEx
                 return False
             _set_clipboard(context, normalized.value)
         elif action_type == "open_url":
-            webbrowser.open(normalized.value)
+            _open_shell_target(normalized.value)
         elif action_type in {"open_file", "open_folder"}:
             _open_path(normalized.value)
         elif action_type == "save_text":
@@ -130,10 +129,18 @@ def _get_save_path(context: ActionExecutionContext, title: str, default_name: st
 
 
 def _open_path(path: str) -> None:
-    if hasattr(os, "startfile"):
-        os.startfile(path)  # type: ignore[attr-defined]
+    if os.name == "nt":
+        _open_shell_target(path)
         return
     subprocess.Popen(["explorer", path])
+
+
+def _open_shell_target(target: str) -> None:
+    from core.shortcut_executor import ShortcutExecutor
+
+    launched, error = ShortcutExecutor._launch_with_privilege(target, run_as_admin=False)
+    if not launched:
+        raise OSError(error or f"failed to open target: {target}")
 
 
 def _audit_action(action: CommandAction, context: ActionExecutionContext, *, ok: bool, error: str = "") -> None:

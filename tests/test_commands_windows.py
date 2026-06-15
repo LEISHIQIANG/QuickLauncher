@@ -11,6 +11,7 @@ def test_cmd_env_launches_environment_editor(monkeypatch):
     result = cmd_env(CommandContext())
 
     assert result.success is True
+    assert result.payload.get("_suppress_result_panel") is True
     assert calls == [["rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"]]
     assert facade_cmd_env is cmd_env
 
@@ -34,6 +35,7 @@ def test_cmd_god_uses_startfile_first(monkeypatch):
     result = cmd_god(CommandContext())
 
     assert result.success is True
+    assert result.payload.get("_suppress_result_panel") is True
     assert calls == ["shell:::{ED7BA470-8E54-465E-825C-99712043E01C}"]
     assert facade_cmd_god is cmd_god
 
@@ -50,6 +52,7 @@ def test_cmd_god_falls_back_to_explorer(monkeypatch):
     result = cmd_god(CommandContext())
 
     assert result.success is True
+    assert result.payload.get("_suppress_result_panel") is True
     assert popen_calls == [["explorer.exe", "shell:::{ED7BA470-8E54-465E-825C-99712043E01C}"]]
 
 

@@ -115,7 +115,7 @@ class UpdateInstaller:
             ]
             if log_path:
                 command.append(f"/LOG={log_path}")
-            subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+            _launch_independent_installer(command)
             sys.exit(0)
         except (OSError, ValueError) as exc:
             self._fail_session(session_dir, f"failed to start installer: {exc}")
@@ -136,3 +136,29 @@ def _verify_sha256(path: str, expected_hash: str) -> bool:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest() == expected
+
+
+def _launch_independent_installer(command: list[str]) -> None:
+    create_new_process_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    create_breakaway_from_job = 0x01000000
+    creationflags = create_new_process_group | detached_process | create_breakaway_from_job
+    try:
+        subprocess.Popen(
+            command,
+            creationflags=creationflags,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        logger.debug("Installer breakaway flag unavailable; retrying detached launch", exc_info=True)
+        subprocess.Popen(
+            command,
+            creationflags=creationflags & ~create_breakaway_from_job,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )

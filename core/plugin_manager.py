@@ -16,7 +16,6 @@ import threading
 import time
 import traceback
 import types
-import webbrowser
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -867,7 +866,9 @@ class PluginAPI:
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             return False, "only http(s) URLs are allowed"
         try:
-            return bool(webbrowser.open(parsed.geturl())), ""
+            from .shortcut_executor import ShortcutExecutor
+
+            return ShortcutExecutor._launch_with_privilege(parsed.geturl(), run_as_admin=False)
         except Exception as exc:
             return False, str(exc)
 
@@ -878,8 +879,9 @@ class PluginAPI:
         if not target.is_file():
             return False, f"file not found: {target}"
         try:
-            os.startfile(str(target))
-            return True, ""
+            from .shortcut_executor import ShortcutExecutor
+
+            return ShortcutExecutor._launch_with_privilege(str(target), run_as_admin=False)
         except Exception as exc:
             return False, str(exc)
 
@@ -890,8 +892,9 @@ class PluginAPI:
         if not target.is_dir():
             return False, f"folder not found: {target}"
         try:
-            os.startfile(str(target))
-            return True, ""
+            from .shortcut_executor import ShortcutExecutor
+
+            return ShortcutExecutor._launch_with_privilege(str(target), run_as_admin=False)
         except Exception as exc:
             return False, str(exc)
 

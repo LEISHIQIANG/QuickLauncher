@@ -47,7 +47,6 @@ PANEL_COMMAND_IDS = {
     "urlencode",
     "color",
     "ip",
-    "copy-path",
     "hash",
     "qr",
     "json",
@@ -68,7 +67,6 @@ PANEL_COMMAND_IDS = {
     "git",
     "selected",
     "clip",
-    "god",
 }
 
 

@@ -41,7 +41,7 @@ SLASH_COMMANDS = [
         "配置",
     ),
     SlashCommand(
-        "quit", ["quit", "exit", "退出"], "退出应用", "system", "quit_app", "assets/command_icons/quit.png", "退出"
+        "quit", ["quit", "exit", "退出"], "退出应用", "system", "quit_app", builtin_command_icon_path("quit"), "退出"
     ),
     SlashCommand(
         "restart",
@@ -52,14 +52,16 @@ SLASH_COMMANDS = [
         builtin_command_icon_path("restart"),
         "重启",
     ),
-    SlashCommand("log", ["log", "日志"], "显示日志窗口", "system", "show_log", "assets/command_icons/log.png", "日志"),
+    SlashCommand(
+        "log", ["log", "日志"], "显示日志窗口", "system", "show_log", builtin_command_icon_path("log"), "日志"
+    ),
     SlashCommand(
         "diagnostics",
         ["diagnostics", "diag", "诊断", "诊断中心"],
         "打开诊断中心",
         "internal",
         "show_diagnostics",
-        "assets/command_icons/diagnostics.png",
+        builtin_command_icon_path("diagnostics"),
         "诊断中心",
     ),
     SlashCommand(
@@ -68,7 +70,7 @@ SLASH_COMMANDS = [
         "检查图标、路径和命令风险",
         "internal",
         "show_shortcut_health",
-        "assets/command_icons/shortcut-health.png",
+        builtin_command_icon_path("shortcut-health"),
         "图标检查",
     ),
     SlashCommand(
@@ -77,7 +79,7 @@ SLASH_COMMANDS = [
         "查看配置历史快照",
         "internal",
         "show_config_history",
-        "assets/command_icons/config-history.png",
+        builtin_command_icon_path("config-history"),
         "配置历史",
     ),
     SlashCommand(
@@ -86,7 +88,7 @@ SLASH_COMMANDS = [
         "立即清理图标缓存",
         "internal",
         "clean_icon_cache",
-        "assets/command_icons/icon-cache.png",
+        builtin_command_icon_path("clean-icons"),
         "清理图标",
     ),
     SlashCommand(
@@ -95,7 +97,7 @@ SLASH_COMMANDS = [
         "清理项目目录下未使用的临时缓存",
         "internal",
         "clean-cache",
-        "assets/command_icons/icon-cache.png",
+        builtin_command_icon_path("clean-cache"),
         "清理缓存",
         "panel",
     ),
@@ -105,7 +107,7 @@ SLASH_COMMANDS = [
         "重装鼠标和键盘钩子",
         "internal",
         "reload_hooks",
-        "assets/command_icons/hooks.png",
+        builtin_command_icon_path("reload-hooks"),
         "重装钩子",
     ),
     SlashCommand(
@@ -114,7 +116,7 @@ SLASH_COMMANDS = [
         "打开配置数据目录",
         "internal",
         "open_data_dir",
-        "assets/command_icons/data-dir.png",
+        builtin_command_icon_path("data-dir"),
         "数据目录",
     ),
     SlashCommand(
@@ -123,7 +125,7 @@ SLASH_COMMANDS = [
         "打开软件安装目录",
         "internal",
         "open_install_dir",
-        "assets/command_icons/install-dir.png",
+        builtin_command_icon_path("install-dir"),
         "安装目录",
     ),
     SlashCommand(
@@ -132,7 +134,7 @@ SLASH_COMMANDS = [
         "打开 data.json 配置文件",
         "internal",
         "open_config_file",
-        "assets/command_icons/config-file.png",
+        builtin_command_icon_path("config-file"),
         "配置文件",
     ),
     SlashCommand(
@@ -141,7 +143,7 @@ SLASH_COMMANDS = [
         "打开用户图标目录",
         "internal",
         "open_icons_dir",
-        "assets/command_icons/icons-dir.png",
+        builtin_command_icon_path("icons-dir"),
         "图标目录",
     ),
     SlashCommand(
@@ -150,7 +152,7 @@ SLASH_COMMANDS = [
         "打开配置历史快照目录",
         "internal",
         "open_history_dir",
-        "assets/command_icons/history-dir.png",
+        builtin_command_icon_path("history-dir"),
         "历史目录",
     ),
     SlashCommand(
@@ -159,7 +161,7 @@ SLASH_COMMANDS = [
         "打开自动备份目录",
         "internal",
         "open_auto_backups_dir",
-        "assets/command_icons/auto-backups.png",
+        builtin_command_icon_path("auto-backups"),
         "自动备份",
     ),
     SlashCommand(
@@ -168,7 +170,7 @@ SLASH_COMMANDS = [
         "打开 error.log 或日志目录",
         "internal",
         "open_error_log",
-        "assets/command_icons/error-log.png",
+        builtin_command_icon_path("error-log"),
         "错误日志",
     ),
     SlashCommand(
@@ -184,7 +186,13 @@ SLASH_COMMANDS = [
         "help", ["help", "帮助"], "显示所有命令", "help", "show_help", builtin_command_icon_path("help"), "帮助"
     ),
     SlashCommand(
-        "about", ["about", "关于"], "关于 QuickLauncher", "help", "show_about", "assets/command_icons/about.png", "关于"
+        "about",
+        ["about", "关于"],
+        "关于 QuickLauncher",
+        "help",
+        "show_about",
+        builtin_command_icon_path("about"),
+        "关于",
     ),
     # ── Phase 3: Power-User Superpower Commands ──
     SlashCommand(
@@ -193,27 +201,43 @@ SLASH_COMMANDS = [
         "列出已保存的 Wi-Fi 或查询明文密码",
         "system",
         "wifi",
-        "",
+        builtin_command_icon_path("wifi"),
         "Wi-Fi 密码查询",
     ),
-    SlashCommand("hosts", ["hosts", "host"], "以管理员权限编辑系统 hosts 文件", "system", "hosts", "", "编辑 Hosts"),
+    SlashCommand(
+        "hosts",
+        ["hosts", "host"],
+        "以管理员权限编辑系统 hosts 文件",
+        "system",
+        "hosts",
+        builtin_command_icon_path("hosts"),
+        "编辑 Hosts",
+    ),
     SlashCommand(
         "port",
         ["port", "端口", "netstat"],
         "查询端口占用进程，支持 kill 子命令释放",
         "developer",
         "port",
-        "",
+        builtin_command_icon_path("port"),
         "端口占用查询",
     ),
-    SlashCommand("dns", ["dns", "flushdns", "清理dns"], "静默刷新 Windows DNS 缓存", "network", "dns", "", "清理 DNS"),
+    SlashCommand(
+        "dns",
+        ["dns", "flushdns", "清理dns"],
+        "静默刷新 Windows DNS 缓存",
+        "network",
+        "dns",
+        builtin_command_icon_path("dns"),
+        "清理 DNS",
+    ),
     SlashCommand(
         "cidr",
         ["cidr", "subnet", "子网", "网段"],
         "计算网段、掩码、广播地址和可用地址范围",
         "network",
         "cidr",
-        "",
+        builtin_command_icon_path("cidr"),
         "CIDR 子网计算",
     ),
     SlashCommand(
@@ -222,7 +246,7 @@ SLASH_COMMANDS = [
         "检查域名 TLS 协议、证书颁发者与到期时间",
         "network",
         "tls",
-        "",
+        builtin_command_icon_path("tls"),
         "TLS 证书检查",
     ),
     SlashCommand(
@@ -231,7 +255,7 @@ SLASH_COMMANDS = [
         "检查 PATH 失效目录、重复目录和常用命令遮蔽",
         "developer",
         "path-audit",
-        "",
+        builtin_command_icon_path("path-audit"),
         "PATH 体检",
     ),
     SlashCommand(
@@ -240,7 +264,7 @@ SLASH_COMMANDS = [
         "安全重启 Windows Explorer 进程",
         "system",
         "explorer",
-        "",
+        builtin_command_icon_path("explorer"),
         "重启资源管理器",
     ),
     SlashCommand(
@@ -249,7 +273,7 @@ SLASH_COMMANDS = [
         "扫描快捷键冲突和占用报告",
         "internal",
         "conflict",
-        "",
+        builtin_command_icon_path("conflict"),
         "快捷键冲突",
     ),
 ]

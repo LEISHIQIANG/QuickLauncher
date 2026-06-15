@@ -493,6 +493,8 @@ class CommandPanelWindow(ThemedToolWindow):
         self.style_buttons(*(button for button in buttons if button is not None))
         if hasattr(self, "command_input"):
             self._style_command_input()
+        if hasattr(self, "_param_widgets"):
+            self._style_param_inputs()
         if hasattr(self, "status_label"):
             self._style_status_label()
         if hasattr(self, "param_error_label"):
@@ -507,16 +509,7 @@ class CommandPanelWindow(ThemedToolWindow):
             self.history_label.setStyleSheet(getattr(self.status_label, "styleSheet", lambda: "")())
 
     def _style_command_input(self):
-        if self._theme == "dark":
-            text = "rgba(255, 255, 255, 0.9)"
-            placeholder = "rgba(255, 255, 255, 0.42)"
-            border = "rgba(10, 132, 255, 0.82)"
-            bg = "rgba(255, 255, 255, 0.13)"
-        else:
-            text = "rgba(28, 28, 30, 0.9)"
-            placeholder = "rgba(60, 60, 67, 0.45)"
-            border = "rgba(0, 122, 255, 0.78)"
-            bg = "rgba(255, 255, 255, 0.70)"
+        text, placeholder, border, bg = self._command_input_colors()
         selection_bg = Colors.get_selection_bg(self._theme)
         selection_text = Colors.get_selection_text(self._theme)
         if hasattr(self, "command_input_group"):
@@ -583,6 +576,54 @@ class CommandPanelWindow(ThemedToolWindow):
             """
                 )
             )
+
+    def _command_input_colors(self):
+        if self._theme == "dark":
+            return (
+                "rgba(255, 255, 255, 0.9)",
+                "rgba(255, 255, 255, 0.42)",
+                "rgba(10, 132, 255, 0.82)",
+                "rgba(255, 255, 255, 0.13)",
+            )
+        return (
+            "rgba(28, 28, 30, 0.9)",
+            "rgba(60, 60, 67, 0.45)",
+            "rgba(0, 122, 255, 0.78)",
+            "rgba(255, 255, 255, 0.70)",
+        )
+
+    def _style_param_input(self, edit: QLineEdit):
+        text, placeholder, border, bg = self._command_input_colors()
+        selection_bg = Colors.get_selection_bg(self._theme)
+        selection_text = Colors.get_selection_text(self._theme)
+        edit.setStyleSheet(
+            scale_qss(
+                f"""
+            QLineEdit {{
+                min-height: 28px;
+                padding: 0 10px;
+                border: 1px solid {border};
+                border-radius: 8px;
+                background: {bg};
+                color: {text};
+                selection-background-color: {selection_bg};
+                selection-color: {selection_text};
+            }}
+            QLineEdit::placeholder {{
+                color: {placeholder};
+            }}
+        """
+            )
+        )
+
+    def _style_param_inputs(self):
+        for _param, widget in self._param_widgets.values():
+            if isinstance(widget, QLineEdit):
+                self._style_param_input(widget)
+                continue
+            edit = widget.findChild(QLineEdit) if hasattr(widget, "findChild") else None
+            if edit is not None:
+                self._style_param_input(edit)
 
     def _style_status_label(self):
         kind = str(self.status_label.property("status_kind") or "neutral")
@@ -1253,6 +1294,7 @@ class CommandPanelWindow(ThemedToolWindow):
             edit = QLineEdit(value)
             edit.setCursor(Qt.IBeamCursor)
             edit.setProperty("param_editor", True)
+            self._style_param_input(edit)
             if getattr(param, "placeholder", ""):
                 edit.setPlaceholderText(str(param.placeholder))
             if getattr(param, "help", ""):
@@ -1274,6 +1316,7 @@ class CommandPanelWindow(ThemedToolWindow):
             return row
         edit = QLineEdit(value)
         edit.setCursor(Qt.IBeamCursor)
+        self._style_param_input(edit)
         if getattr(param, "placeholder", ""):
             edit.setPlaceholderText(str(param.placeholder))
         if getattr(param, "help", ""):

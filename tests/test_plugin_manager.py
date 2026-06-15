@@ -1027,8 +1027,14 @@ class TestPluginAPI:
     def test_open_helpers_require_permissions_and_validate_targets(self, monkeypatch):
         opened = []
 
-        monkeypatch.setattr("core.plugin_manager.webbrowser.open", lambda url: opened.append(("url", url)) or True)
-        monkeypatch.setattr(os, "startfile", lambda path: opened.append(("path", path)), raising=False)
+        def fake_launch(target, **_kwargs):
+            opened.append(("target", target))
+            return True, ""
+
+        monkeypatch.setattr(
+            "core.shortcut_executor.ShortcutExecutor._launch_with_privilege",
+            fake_launch,
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             file_path = os.path.join(tmp, "note.txt")
@@ -1048,7 +1054,7 @@ class TestPluginAPI:
             with pytest.raises(PermissionError):
                 PluginAPI("test", tmp, [], CommandRegistry()).open_file(file_path)
 
-        assert ("url", "https://example.com/path") in opened
+        assert ("target", "https://example.com/path") in opened
 
     def test_http_request_requires_permission_and_bounds_response(self, monkeypatch):
         from email.message import Message
