@@ -114,11 +114,25 @@ class HotkeyExecutionMixin:
     def save_foreground_window(cls):
         """保存当前前台窗口句柄"""
         try:
-            cls._previous_hwnd = user32.GetForegroundWindow()
-            logger.debug(f"保存前台窗口: {cls._previous_hwnd}")
+            hwnd = int(user32.GetForegroundWindow() or 0)
+            process_id = cls._window_process_id(hwnd) if hwnd and user32.IsWindow(hwnd) else 0
+            if not hwnd or not process_id:
+                logger.debug("未保存无效的前台窗口: hwnd=%s pid=%s", hwnd, process_id)
+                return False
+
+            current_process_id = int(ctypes.windll.kernel32.GetCurrentProcessId())
+            if process_id == current_process_id:
+                logger.debug("前台窗口属于 QuickLauncher，保留已有外部目标: hwnd=%s", hwnd)
+                return False
+
+            with cls._foreground_window_lock:
+                cls._previous_hwnd = hwnd
+                cls._previous_hwnd_process_id = process_id
+            logger.debug("保存前台窗口: hwnd=%s pid=%s", hwnd, process_id)
+            return True
         except Exception as e:
             logger.debug("Failed to save foreground window: %s", e, exc_info=True)
-            cls._previous_hwnd = None
+            return False
 
     @classmethod
     def restore_foreground_window(cls):
@@ -129,15 +143,25 @@ class HotkeyExecutionMixin:
         - 如果目标窗口无效或恢复失败，尝试激活桌面作为后备
         - 这可以修复 Win10 上弹窗隐藏后左键选择失效的问题
         """
-        hwnd = cls._previous_hwnd
+        with cls._foreground_window_lock:
+            hwnd = cls._previous_hwnd
+            expected_process_id = int(cls._previous_hwnd_process_id or 0)
 
         # 检查窗口句柄是否有效
         if hwnd:
             try:
-                if not user32.IsWindow(hwnd):
-                    logger.debug(f"之前的窗口已无效: {hwnd}")
+                actual_process_id = cls._window_process_id(hwnd) if user32.IsWindow(hwnd) else 0
+                if not actual_process_id or (expected_process_id and actual_process_id != expected_process_id):
+                    logger.debug(
+                        "之前的窗口已无效或句柄已复用: hwnd=%s expected_pid=%s actual_pid=%s",
+                        hwnd,
+                        expected_process_id,
+                        actual_process_id,
+                    )
                     hwnd = None
-                    cls._previous_hwnd = None
+                    with cls._foreground_window_lock:
+                        cls._previous_hwnd = None
+                        cls._previous_hwnd_process_id = None
             except Exception:
                 hwnd = None
 

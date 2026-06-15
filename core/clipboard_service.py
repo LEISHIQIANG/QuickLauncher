@@ -181,6 +181,7 @@ def _get_format_name(format_id: int) -> str:
         _REGISTERED_FORMAT_NAMES[format_id] = name
         return name
     except Exception:
+        logger.debug("GetClipboardFormatName failed for %d", format_id, exc_info=True)
         return f"format_{format_id}"
 
 
@@ -276,6 +277,7 @@ class Win32ClipboardImpl:
                         try:
                             rq.put(cmd(*a, **kw))
                         except Exception as e:
+                            logger.debug("STA command failed: %s", e, exc_info=True)
                             rq.put(e)
                     except Exception as exc:
                         logger.debug("STA线程队列操作失败: %s", exc, exc_info=True)
@@ -311,6 +313,7 @@ class Win32ClipboardImpl:
                         try:
                             return data.decode("mbcs", errors="replace")
                         except Exception:
+                            logger.debug("MBCS decode failed, using utf-8 replace", exc_info=True)
                             return data.decode(errors="replace")
                     return data or ""
             finally:
@@ -346,6 +349,7 @@ class Win32ClipboardImpl:
         try:
             return int(ctypes.windll.user32.GetClipboardSequenceNumber())
         except Exception:
+            logger.debug("GetClipboardSequenceNumber failed", exc_info=True)
             return 0
 
     @staticmethod
@@ -441,6 +445,7 @@ class Win32ClipboardImpl:
                 try:
                     data = win32clipboard.GetClipboardData(fmt)
                 except Exception:
+                    logger.debug("GetClipboardData failed for format %d", fmt, exc_info=True)
                     continue
 
                 # Check size limit for large data
@@ -465,6 +470,7 @@ class Win32ClipboardImpl:
                             try:
                                 snapshot.text = data.decode("mbcs", errors="replace")
                             except Exception:
+                                logger.debug("Snapshot MBCS decode failed, using utf-8 replace", exc_info=True)
                                 snapshot.text = data.decode(errors="replace")
                         else:
                             snapshot.text = str(data or "")
@@ -478,6 +484,7 @@ class Win32ClipboardImpl:
                         try:
                             snapshot.html = data.decode("utf-8", errors="replace")
                         except Exception:
+                            logger.debug("Snapshot HTML decode failed, using str()", exc_info=True)
                             snapshot.html = str(data)
                     elif isinstance(data, str):
                         snapshot.html = data
@@ -537,6 +544,7 @@ class Win32ClipboardImpl:
                     try:
                         win32clipboard.SetClipboardData(fmt, data)
                     except Exception:
+                        logger.debug("SetClipboardData failed for format %d", fmt, exc_info=True)
                         ok = False
 
                 return ok
@@ -684,6 +692,7 @@ class QtClipboardBridge:
 
                 cls._instance = _Bridge()
             except Exception:
+                logger.warning("QtClipboardBridge singleton creation failed", exc_info=True)
                 cls._instance = None
         return cls._instance
 
@@ -795,6 +804,7 @@ class ClipboardService:
                 error="open_timeout",
             )
         except Exception as e:
+            logger.debug("read_snapshot failed: %s", e, exc_info=True)
             return ClipboardSnapshot(
                 sequence=0,
                 captured_at=time.time(),

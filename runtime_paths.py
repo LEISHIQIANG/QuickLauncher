@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import logging
 import os
 import sys
 from pathlib import Path
@@ -18,6 +19,8 @@ def is_nuitka_compiled() -> bool:
     try:
         return "__compiled__" in sys.builtin_module_names
     except Exception:
+        logger = logging.getLogger(__name__)
+        logger.debug("is_nuitka_compiled check failed", exc_info=True)
         return False
 
 

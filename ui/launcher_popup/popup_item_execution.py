@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from copy import copy
 
 from core.background_tasks import start_background_thread
 from core.data_models import ShortcutItem, ShortcutType
@@ -115,6 +116,8 @@ class PopupItemExecutionMixin:
         execute_item = item
         force_close_builtin_direct = False
         destructive_confirmed = False
+        topmost_target_captured = False
+        topmost_target = None
 
         # Phase 2: route builtin slash commands by explicit interaction metadata.
         cmd_text = (item.command or "").strip()
@@ -235,6 +238,20 @@ class PopupItemExecutionMixin:
             finally:
                 if self.__dict__.get("_executing", False):
                     self._executing = False
+
+        if item.type == ShortcutType.COMMAND and item.command_type == "builtin" and HAS_EXECUTOR:
+            try:
+                from core.builtin_commands import canonical_builtin_command
+
+                command_text = (getattr(execute_item, "command", "") or "").strip().lstrip("/")
+                command_word = command_text.split(None, 1)[0].lower() if command_text else ""
+                command_name = canonical_builtin_command(command_word) or command_word
+                if command_name in {"toggle_topmost", "pin_on", "pin_off"}:
+                    # Capture before hide/background dispatch so a second popup cannot replace the target.
+                    topmost_target_captured = True
+                    topmost_target = ShortcutExecutor._take_topmost_target()
+            except (AttributeError, OSError, TypeError, ValueError):
+                logger.exception("捕获置顶目标窗口失败")
 
         self._executing = True
         self._launched_app = True  # 启动外部程序，隐藏时不恢复焦点
@@ -413,6 +430,10 @@ class PopupItemExecutionMixin:
                             )
                         except Exception:
                             logger.debug("构建运行时快捷方式副本失败", exc_info=True)
+                    if topmost_target_captured:
+                        runtime_execute_item = copy(runtime_execute_item)
+                        runtime_execute_item._topmost_target_captured = True
+                        runtime_execute_item._topmost_target = topmost_target
                     success, error_msg = ShortcutExecutor.execute(runtime_execute_item, force_new)
                     had_pending_result = False
                     try:

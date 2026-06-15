@@ -205,7 +205,7 @@
       "hotkey_key": "",
       "url": "",
       "command": "topmost",
-      "command_type": "cmd",
+      "command_type": "builtin",
       "trigger_mode": "after_close",
       "icon_data": "",
       "icon_invert_with_theme": false,

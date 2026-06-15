@@ -49,6 +49,7 @@ def runtime_chain_data(chain_data: Any) -> Any:
         runtime_chain.chain_steps = steps
         runtime_chain.chain_canvas = canonical
     except Exception:
+        logger.debug("chain_data_field attribute assignment failed", exc_info=True)
         return chain_data
     return runtime_chain
 

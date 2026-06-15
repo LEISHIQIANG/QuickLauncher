@@ -221,8 +221,6 @@ QuickLauncher 拥有统一的命令注册系统 `CommandRegistry`：
 | 命令 | 别名 | 功能 |
 |------|------|------|
 | `/topmost` | `置顶`, `pin`, `toggle_topmost` | 切换窗口置顶 |
-| `/pin-on` | `置顶开`, `topmost_on` | 强制开启置顶 |
-| `/pin-off` | `置顶关`, `unpin`, `topmost_off` | 强制关闭置顶 |
 
 #### 配置与诊断
 

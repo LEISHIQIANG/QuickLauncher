@@ -614,30 +614,34 @@ class CommandRegistry:
     def migrate_builtin_aliases(self) -> int:
         from core.builtin_commands import BUILTIN_COMMAND_ALIASES
 
-        # Collect callback names already covered by SLASH_COMMANDS migration
-        # so we don't create duplicate entries (e.g. both id="services"
-        # and id="open_services" pointing to the same callback).
-        covered_callbacks: set[str] = set()
+        # Reuse commands already covered by SLASH_COMMANDS and merge every alias
+        # instead of keeping only whichever set-derived alias happens to appear first.
+        callback_commands: dict[str, CommandDefinition] = {}
         for cmd in self._commands.values():
             if isinstance(cmd.handler, _CallbackHandler):
-                covered_callbacks.add(cmd.handler._callback_name)
+                callback_commands.setdefault(cmd.handler._callback_name, cmd)
 
         count = 0
         for alias, canonical in BUILTIN_COMMAND_ALIASES.items():
-            if canonical not in self._commands and canonical not in covered_callbacks:
-                handler = _CallbackHandler(canonical)
-                cmd = CommandDefinition(
-                    id=canonical,
-                    title=canonical.replace("_", " ").title(),
-                    aliases=[alias, canonical],
-                    description="",
-                    category="system",
-                    handler=handler,
-                    source="builtin",
-                    interaction_mode=COMMAND_INTERACTION_DIRECT,
-                )
-                if self.register(cmd):
-                    count += 1
+            existing = self._commands.get(canonical) or callback_commands.get(canonical)
+            if existing is not None:
+                self._merge_aliases(existing, [alias, canonical])
+                continue
+
+            handler = _CallbackHandler(canonical)
+            cmd = CommandDefinition(
+                id=canonical,
+                title=canonical.replace("_", " ").title(),
+                aliases=[alias, canonical],
+                description="",
+                category="system",
+                handler=handler,
+                source="builtin",
+                interaction_mode=COMMAND_INTERACTION_DIRECT,
+            )
+            if self.register(cmd):
+                callback_commands[canonical] = cmd
+                count += 1
         if count:
             logger.info("已从 BUILTIN_COMMAND_ALIASES 迁移 %d 个额外命令", count)
         return count

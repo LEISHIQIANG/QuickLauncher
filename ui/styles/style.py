@@ -331,10 +331,10 @@ class PopupMenu(QWidget):
         self._move_into_screen(global_pos)
         self._retain_until_hidden()
         win10_shadow = self._uses_win10_companion_shadow()
-        if win10_shadow and bool(getattr(self, "_native_effects_enabled", False)):
-            # Configure the Win10 surface before the first paint. Other custom
-            # windows hide delayed effects behind a fade-in; menus appear at
-            # full opacity, so deferring this work makes the shadow visibly lag.
+        if bool(getattr(self, "_native_effects_enabled", False)):
+            # Menus appear at full opacity. Prepare the native surface before
+            # show() so the first Qt paint already uses the final tint instead
+            # of changing color on the first hover-triggered repaint.
             self._apply_blur_effect()
         self.show()
         self.adjustSize()
@@ -347,9 +347,6 @@ class PopupMenu(QWidget):
             self.setFocus()
         except Exception as exc:
             logger.debug("激活菜单窗口失败: %s", exc, exc_info=True)
-        # Apply the same OS-specific surface treatment as the owning window.
-        if not win10_shadow:
-            self._schedule_blur_effect()
         QTimer.singleShot(0, self._reposition_after_show)
 
     def _retain_until_hidden(self):
@@ -478,7 +475,7 @@ class PopupMenu(QWidget):
             self._move_into_screen(self.pos())
             if self._uses_win10_companion_shadow():
                 self._sync_win10_companion_shadow_now()
-            else:
+            elif not bool(getattr(self, "_blur_applied", False)):
                 self._schedule_blur_effect()
         except RuntimeError:
             return
@@ -552,6 +549,13 @@ class PopupMenu(QWidget):
         if event.type() == QEvent.WindowDeactivate:
             self.hide()
         return super().event(event)
+
+    def showEvent(self, event):
+        """Ensure direct show() callers also paint the final surface first."""
+        native_effects = bool(getattr(self, "_native_effects_enabled", False))
+        if native_effects and not bool(getattr(self, "_blur_applied", False)):
+            self._apply_blur_effect()
+        return super().showEvent(event)
 
     def eventFilter(self, obj, event):
         role = obj.property("popup_menu_role") if isinstance(obj, QPushButton) else None

@@ -401,7 +401,7 @@ def _run_plugin_helper_from_argv(argv: list[str]) -> int:
         code = exc.code
         return int(code) if isinstance(code, int) else 0
     except Exception:
-        traceback.print_exc()
+        logger.error("插件辅助脚本执行失败", exc_info=True)
         return 1
     finally:
         if output_handle is not None:
@@ -455,7 +455,7 @@ def _run_plugin_worker_from_argv(argv: list[str]) -> int:
             token=token,
         )
     except Exception:
-        traceback.print_exc()
+        logger.error("插件工作进程执行失败", exc_info=True)
         return 1
 
 
@@ -471,6 +471,7 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
         try:
             checks[name] = callback()
         except Exception as exc:
+            logger.debug("Smoke check '%s' failed: %s: %s", name, type(exc).__name__, exc)
             checks[name] = "failed"
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
 

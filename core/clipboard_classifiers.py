@@ -294,6 +294,7 @@ def _make_summary(text: str, kind: str) -> str:
             header = json.loads(decoded)
             return f"JWT: alg={header.get('alg', '?')}, typ={header.get('typ', '?')}"
         except Exception:
+            logger.debug("JWT header parse failed, using fallback label", exc_info=True)
             return f"JWT: {len(text)} chars"
     elif kind == "color":
         return text[:50]

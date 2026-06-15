@@ -338,8 +338,6 @@ print(uuid.uuid4())
 
 - `show_config_window`: 打开配置窗口
 - `toggle_topmost`: 切换置顶状态
-- `pin_on`: 开启置顶
-- `pin_off`: 关闭置顶
 - `open_control_panel`: 打开控制面板
 - `open_this_pc`: 打开此电脑
 - `open_recycle_bin`: 打开回收站

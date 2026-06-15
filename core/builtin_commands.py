@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 
 CONFIG_WINDOW_COMMANDS = {"show_config", "show_config_window", "config_window"}
 TOPMOST_TOGGLE_COMMANDS = {"topmost", "置顶", "pin", "toggle_topmost"}
-TOPMOST_ON_COMMANDS = {"topmost_on", "置顶开", "pin_on"}
-TOPMOST_OFF_COMMANDS = {"topmost_off", "置顶关", "unpin", "pin_off"}
+TOPMOST_ON_COMMANDS = {"topmost_on", "置顶开", "pin_on", "pin-on"}
+TOPMOST_OFF_COMMANDS = {"topmost_off", "置顶关", "unpin", "pin_off", "pin-off"}
 WINDOWS_SYSTEM_BUILTIN_COMMANDS = {
     "open_control_panel",
     "open_this_pc",

@@ -172,26 +172,45 @@ def test_popup_menu_native_blur_can_be_disabled(monkeypatch, qapp):
     menu.deleteLater()
 
 
-def test_popup_menu_native_blur_is_delayed(monkeypatch, qapp):
-    import ui.styles.style as style_mod
+def test_popup_menu_native_surface_is_ready_before_show(monkeypatch, qapp):
     from ui.styles.style import PopupMenu
 
     calls = []
-    scheduled = []
-    monkeypatch.setattr(PopupMenu, "_apply_blur_effect", lambda self: calls.append(True))
-    monkeypatch.setattr(style_mod.QTimer, "singleShot", lambda delay, callback: scheduled.append((delay, callback)))
+
+    def apply_surface(menu):
+        calls.append(True)
+        menu._blur_applied = True
+
+    monkeypatch.setattr(PopupMenu, "_apply_blur_effect", apply_surface)
 
     menu = PopupMenu(theme="dark")
     menu.add_action("one", lambda: None)
     menu.popup(QPoint(-10000, -10000))
 
-    assert calls == []
-    assert scheduled
-    assert scheduled[0][0] == 40
+    assert calls == [True]
 
-    scheduled[0][1]()
+    menu.hide()
+    menu.deleteLater()
+
+
+def test_popup_menu_direct_show_prepares_native_surface(monkeypatch, qapp):
+    from ui.styles.style import PopupMenu
+
+    calls = []
+
+    def apply_surface(menu):
+        calls.append(True)
+        menu._blur_applied = True
+
+    monkeypatch.setattr(PopupMenu, "_apply_blur_effect", apply_surface)
+
+    menu = PopupMenu(theme="dark")
+    menu.add_action("one", lambda: None)
+    menu.show()
+    qapp.processEvents()
 
     assert calls == [True]
+    assert menu._blur_applied is True
 
     menu.hide()
     menu.deleteLater()
@@ -285,6 +304,30 @@ def test_popup_menu_repaints_parent_when_action_hover_moves(monkeypatch, qapp):
     assert first.property("popup_menu_role") == "action"
     assert second.property("popup_menu_role") == "action"
     assert len(updates) >= 3
+    menu.deleteLater()
+
+
+def test_popup_menu_hover_keeps_final_surface_state(monkeypatch, qapp):
+    from ui.styles.style import PopupMenu
+
+    def apply_surface(menu):
+        menu._blur_applied = True
+
+    monkeypatch.setattr(PopupMenu, "_apply_blur_effect", apply_surface)
+
+    menu = PopupMenu(theme="light")
+    action = menu.add_action("one", lambda: None)
+    menu.popup(QPoint(-10000, -10000))
+
+    before = PopupMenu._surface_colors("light", menu._blur_applied, win10=False, win11=True)
+    menu.eventFilter(action, QEvent(QEvent.Enter))
+    after = PopupMenu._surface_colors("light", menu._blur_applied, win10=False, win11=True)
+
+    assert menu._blur_applied is True
+    assert before[0].getRgb() == after[0].getRgb() == (242, 242, 247, 100)
+    assert before[1].getRgb() == after[1].getRgb() == (229, 229, 234, 120)
+
+    menu.hide()
     menu.deleteLater()
 
 

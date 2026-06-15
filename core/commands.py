@@ -168,6 +168,7 @@ def _get_primary_local_ip() -> str:
         finally:
             s.close()
     except Exception:
+        logger.debug("Failed to get primary local IP via UDP, falling back to gethostbyname", exc_info=True)
         hostname = socket.gethostname()
         return socket.gethostbyname(hostname)
 
@@ -912,6 +913,7 @@ def _normalize_tls_target(text: str) -> tuple[str, int, str]:
     try:
         ascii_host = host.encode("idna").decode("ascii")
     except Exception:
+        logger.debug("IDNA encoding failed for host %s, using raw value", host, exc_info=True)
         ascii_host = host
     return ascii_host, port, host
 
@@ -1427,6 +1429,7 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
         subprocess.Popen([explorer_path], creationflags=0x00000008)  # DETACHED_PROCESS
         return CommandResult(success=True, message="Windows 资源管理器已安全重启！")
     except Exception:
+        logger.debug("Explorer restart with DETACHED_PROCESS failed, retrying without flags", exc_info=True)
         try:
             subprocess.Popen([explorer_path])
             return CommandResult(success=True, message="Windows 资源管理器已安全重启！")

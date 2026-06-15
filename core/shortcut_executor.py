@@ -92,6 +92,8 @@ class ShortcutExecutor(
 
     # 记录弹窗显示前的前台窗口
     _previous_hwnd = None
+    _previous_hwnd_process_id = None
+    _foreground_window_lock = threading.RLock()
     _hotkey_lock = threading.Lock()
     _hotkey_lock_timeout = 2.0
 

@@ -221,8 +221,6 @@ QuickLauncher has a unified command registration system `CommandRegistry`:
 | Command | Alias | Function |
 |---------|-------|----------|
 | `/topmost` | `pin`, `toggle_topmost` | Toggle window topmost |
-| `/pin-on` | `topmost_on` | Force enable topmost |
-| `/pin-off` | `unpin`, `topmost_off` | Force disable topmost |
 
 #### Configuration and Diagnostics
 

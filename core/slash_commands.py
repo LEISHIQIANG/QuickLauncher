@@ -165,24 +165,12 @@ SLASH_COMMANDS = [
     ),
     SlashCommand(
         "topmost",
-        ["topmost", "pin", "置顶"],
-        "切换窗口置顶",
+        ["topmost", "pin", "置顶", "toggle_topmost"],
+        "置顶或取消置顶当前窗口",
         "window",
         "toggle_topmost",
         "assets/command_icons/topmost.png",
-        "置顶",
-    ),
-    SlashCommand(
-        "pin-on", ["pin-on", "置顶开"], "开启窗口置顶", "window", "pin_on", "assets/command_icons/pin-on.png", "置顶开"
-    ),
-    SlashCommand(
-        "pin-off",
-        ["pin-off", "unpin", "置顶关"],
-        "关闭窗口置顶",
-        "window",
-        "pin_off",
-        "assets/command_icons/pin-off.png",
-        "置顶关",
+        "置顶/取消置顶",
     ),
     SlashCommand(
         "help", ["help", "帮助"], "显示所有命令", "help", "show_help", "assets/command_icons/help.png", "帮助"

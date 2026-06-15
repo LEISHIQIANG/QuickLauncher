@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - 优化项目的打断动画。
 - 优化弹出窗口的图标文字显示。
 - 优化窗口动画流畅度及打断动画应用。
+- 优化置顶窗口的功能与逻辑
 
 ### Fixed
 

@@ -2,35 +2,34 @@
 
 from __future__ import annotations
 
-import base64
-import ctypes
 import hashlib
 import logging
 import os
 import queue
-import shutil
+import shutil  # noqa: F401 — kept for test monkeypatch access
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 from qt_compat import QObject, pyqtSignal
-from runtime_paths import app_root, is_packaged_runtime
+from runtime_paths import is_packaged_runtime
 
 from .background_tasks import start_background_thread
 from .command_exec import (
     SUPPORTED_COMMAND_TYPES,
+    build_bash_fallback_result,
     chain_values,
     command_panel_size,
     command_param_defs,
     command_param_values,
     decode_command_output,
     merge_runtime_env,
-    normalize_command_type,
     truncate_command_output,
 )
+from .command_exec.launcher_mixin import CommandLauncherMixin
+from .command_exec.standalone import _write_atomic
 from .command_param_validation import validate_param_values
 from .command_registry import (
     CommandAction,
@@ -61,6 +60,7 @@ from .runtime_constants import (
 
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
+_TOPMOST_TARGET_UNSET = object()
 WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS = 30000
 
 
@@ -87,99 +87,7 @@ def init_main_thread_invoker():
         _main_thread_invoker = MainThreadInvoker()
 
 
-def _write_atomic(path: str, content: str) -> None:
-    """Write content to path atomically via tempfile + rename to avoid races."""
-    dir_name = os.path.dirname(path)
-    tmp_path = None
-    try:
-        fd, tmp_path = tempfile.mkstemp(
-            suffix=os.path.splitext(path)[1],
-            dir=dir_name if dir_name else None,
-        )
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(fd)
-        os.replace(tmp_path, path)
-        tmp_path = None
-    except Exception:
-        if tmp_path is not None:
-            try:
-                os.unlink(tmp_path)
-            except Exception as exc:
-                logger.debug("删除临时文件失败: %s", exc, exc_info=True)
-        raise
-
-
-def _bash_fallback_result(
-    stdout_bytes,
-    stderr_bytes,
-    returncode,
-    cancelled,
-    timed_out,
-    shortcut,
-    command,
-    max_chars,
-    panel_size,
-    command_type,
-    start,
-) -> CommandResult:
-    """Build a CommandResult for the bash script-fallback capture path."""
-    stdout, stdout_encoding, stdout_fallback = decode_command_output(
-        stdout_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type=command_type
-    )
-    stderr, stderr_encoding, stderr_fallback = decode_command_output(
-        stderr_bytes or b"", getattr(shortcut, "command_encoding", "auto"), command_type=command_type
-    )
-    stdout, stdout_truncated = truncate_command_output(stdout or "", max_chars)
-    stderr, stderr_truncated = truncate_command_output(stderr or "", max_chars)
-    message_parts = []
-    if cancelled:
-        message_parts.append("命令执行已取消。")
-    if stdout:
-        message_parts.append(stdout)
-    if stderr and not (returncode == 0 and not timed_out and not cancelled):
-        message_parts.append(stderr)
-    if not message_parts:
-        message_parts.append("(无输出)")
-    message = "\n".join(message_parts)
-    if timed_out:
-        message = f"命令执行超时，已终止。\n\n{message}"
-    error = ""
-    if cancelled:
-        error = "已取消"
-    elif timed_out:
-        error = "执行超时"
-    elif returncode != 0:
-        error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
-    payload = {
-        "window_size": panel_size,
-        "wrap": False,
-        "exit_code": returncode,
-        "duration": time.monotonic() - start,
-        "stdout": stdout,
-        "stderr": stderr,
-        "stdout_truncated": stdout_truncated,
-        "stderr_truncated": stderr_truncated,
-        "stdout_encoding": stdout_encoding,
-        "stderr_encoding": stderr_encoding,
-        "decode_fallback_used": stdout_fallback or stderr_fallback,
-        "command": command,
-        "cancelled": cancelled,
-        "timed_out": timed_out,
-        "fallback_script": True,
-    }
-    return CommandResult(
-        success=(returncode == 0) and not timed_out and not cancelled,
-        message=message,
-        display_type="log",
-        payload=payload,
-        actions=[CommandAction(type="copy", label="复制输出", value=message)],
-        error=error,
-    )
-
-
-class CommandExecutionMixin:
+class CommandExecutionMixin(CommandLauncherMixin):
     _SUPPORTED_COMMAND_TYPES = SUPPORTED_COMMAND_TYPES
     _DESTRUCTIVE_CONFIRMATION_ATTR = "_destructive_command_confirmed"
     _executor: ThreadPoolExecutor | None = None
@@ -192,72 +100,6 @@ class CommandExecutionMixin:
                 if cls._executor is None:
                     cls._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="CmdExec")
         return cls._executor
-
-    @staticmethod
-    def _normalize_command_type(command_type: str) -> str:
-        return normalize_command_type(command_type)
-
-    @staticmethod
-    def _cmd_launcher() -> str | None:
-        candidates = []
-        if os.name == "nt":
-            candidates.extend(
-                [
-                    os.environ.get("ComSpec"),
-                    os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Sysnative", "cmd.exe"),
-                    os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"),
-                    shutil.which("cmd.exe"),
-                    shutil.which("cmd"),
-                ]
-            )
-        else:
-            candidates.extend([os.environ.get("SHELL"), shutil.which("sh")])
-        for candidate in candidates:
-            if candidate and os.path.isfile(candidate):
-                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
-        return None
-
-    @staticmethod
-    def _cmd_launcher_error() -> str:
-        return "CMD shell is not available. Check ComSpec or the Windows system directory."
-
-    @staticmethod
-    def _cmd_argv(command: str, *, keep_open: bool = False) -> list[str]:
-        cmd_exe = ShortcutExecutor._cmd_launcher()
-        if not cmd_exe:
-            raise FileNotFoundError(ShortcutExecutor._cmd_launcher_error())
-        if os.name == "nt":
-            return [cmd_exe, "/d", "/s", "/k" if keep_open else "/c", command]
-        return [cmd_exe, "-c", command]
-
-    @staticmethod
-    def _cmd_has_newline(command: str) -> bool:
-        return "\n" in (command or "") or "\r" in (command or "")
-
-    @staticmethod
-    def _cmd_stdin_argv() -> list[str]:
-        cmd_exe = ShortcutExecutor._cmd_launcher()
-        if not cmd_exe:
-            raise FileNotFoundError(ShortcutExecutor._cmd_launcher_error())
-        if os.name == "nt":
-            return [cmd_exe, "/d", "/q", "/k", "prompt $H"]
-        return [cmd_exe]
-
-    @staticmethod
-    def _cmd_stdin_script(command: str) -> bytes:
-        normalized = str(command or "").replace("\r\n", "\n").replace("\r", "\n")
-        script = "@echo off\r\nchcp 65001 >nul\r\n" + normalized.replace("\n", "\r\n")
-        if not script.endswith("\r\n"):
-            script += "\r\n"
-        script += "exit /b %ERRORLEVEL%\r\n"
-        return script.encode("utf-8")
-
-    @staticmethod
-    def _clean_cmd_stdin_output_bytes(data: bytes) -> bytes:
-        cleaned = data or b""
-        for token in (b"\r\n\x08 \x08", b"\n\x08 \x08", b"\x08 \x08"):
-            cleaned = cleaned.replace(token, b"")
-        return cleaned
 
     @staticmethod
     def _command_preprocessing_result(shortcut: ShortcutItem, command: str, command_type: str):
@@ -802,209 +644,6 @@ class CommandExecutionMixin:
         return None
 
     @staticmethod
-    def _python_launcher() -> str | None:
-        """Return a Python executable suitable for user scripts."""
-        if not ShortcutExecutor._is_packaged_runtime() and sys.executable:
-            resolved = ShortcutExecutor._resolve_long_path(sys.executable)
-            if os.path.isfile(resolved):
-                return resolved
-        return ShortcutExecutor._find_system_python_launcher()
-
-    @staticmethod
-    def _is_packaged_runtime() -> bool:
-        return is_packaged_runtime()
-
-    @staticmethod
-    def _app_install_dir() -> str:
-        return str(app_root())
-
-    @staticmethod
-    def _probe_python_launcher(candidate: str) -> bool:
-        try:
-            completed = subprocess.run(
-                [candidate, "-c", "import sys; print(sys.version_info[0])"],
-                capture_output=True,
-                text=True,
-                timeout=2.0,
-                shell=False,
-                **ShortcutExecutor._capture_popen_platform_kwargs(),
-            )
-            return completed.returncode == 0
-        except Exception:
-            logger.debug("_probe_python_launcher check failed", exc_info=True)
-            return False
-
-    @staticmethod
-    def _resolve_long_path(path: str) -> str:
-        """Convert a Windows short (8.3) path to its long form."""
-        if os.name != "nt" or not path:
-            return path
-        try:
-            buf = ctypes.create_unicode_buffer(4096)
-            result = ctypes.windll.kernel32.GetLongPathNameW(path, buf, 4096)
-            if 0 < result < 4096:
-                return buf.value
-        except Exception as exc:
-            logger.debug("获取长路径名失败: %s", exc, exc_info=True)
-        # If GetLongPathNameW fails (e.g. 8.3 names disabled on this volume),
-        # verify the path actually exists — a stale short-path will break .cmd wrappers.
-        if not os.path.exists(path):
-            logger.debug("_resolve_long_path: path does not exist after GetLongPathNameW: %s", path)
-        return path
-
-    @staticmethod
-    def _find_system_python_launcher() -> str | None:
-        candidates = [shutil.which("py"), shutil.which("python3"), shutil.which("python")]
-        app_dir = os.path.normcase(
-            ShortcutExecutor._resolve_long_path(os.path.abspath(ShortcutExecutor._app_install_dir()))
-        )
-        for candidate in candidates:
-            if not candidate:
-                continue
-            long_path = ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
-            norm = os.path.normcase(long_path)
-            candidate_dir = os.path.normcase(os.path.dirname(long_path))
-            if "windowsapps" in norm or (ShortcutExecutor._is_packaged_runtime() and candidate_dir == app_dir):
-                continue
-            if ShortcutExecutor._is_packaged_runtime() and not ShortcutExecutor._probe_python_launcher(long_path):
-                continue
-            return long_path
-        return None
-
-    @staticmethod
-    def _python_launcher_error() -> str:
-        return (
-            "找不到可用的系统 Python。打包版不能直接复用程序目录内的 python312.dll；请安装系统 Python 或 py launcher。"
-        )
-
-    @staticmethod
-    def _powershell_launcher() -> str | None:
-        candidates = [
-            shutil.which("powershell.exe"),
-            shutil.which("powershell"),
-            shutil.which("pwsh.exe"),
-            shutil.which("pwsh"),
-        ]
-        if os.name == "nt":
-            system_root = os.environ.get("SystemRoot", r"C:\Windows")
-            candidates.extend(
-                [
-                    os.path.join(system_root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe"),
-                    os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-                ]
-            )
-        for candidate in candidates:
-            if candidate and os.path.isfile(candidate):
-                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
-        return None
-
-    @staticmethod
-    def _powershell_launcher_error() -> str:
-        return "PowerShell is not available. Install Windows PowerShell or add powershell.exe to PATH."
-
-    @staticmethod
-    def _encode_powershell_command(command: str) -> str:
-        """Encode PowerShell text for -EncodedCommand without writing a script file."""
-        return base64.b64encode(str(command or "").encode("utf-16le")).decode("ascii")
-
-    @staticmethod
-    def _powershell_argv(command: str, *, no_exit: bool = False) -> list[str]:
-        powershell_exe = ShortcutExecutor._powershell_launcher()
-        if not powershell_exe:
-            raise FileNotFoundError(ShortcutExecutor._powershell_launcher_error())
-        argv = [powershell_exe, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"]
-        if no_exit:
-            argv.append("-NoExit")
-        argv.extend(["-EncodedCommand", ShortcutExecutor._encode_powershell_command(command)])
-        return argv
-
-    @staticmethod
-    def _direct_command_line_length(argv: list[str]) -> int:
-        try:
-            return len(subprocess.list2cmdline([str(part) for part in argv]))
-        except Exception:
-            logger.debug("_direct_command_line_length failed", exc_info=True)
-            return sum(len(str(part)) + 1 for part in argv)
-
-    @staticmethod
-    def _direct_command_line_too_long(argv: list[str]) -> bool:
-        return (
-            os.name == "nt"
-            and ShortcutExecutor._direct_command_line_length(argv) > WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS
-        )
-
-    @staticmethod
-    def _direct_command_line_length_error(command_type: str, argv: list[str]) -> str:
-        label = {"cmd": "CMD", "powershell": "PowerShell", "bash": "Git Bash"}.get(command_type, command_type)
-        length = ShortcutExecutor._direct_command_line_length(argv)
-        return (
-            f"{label} 命令过长，绝不落盘策略下无法直接运行。"
-            f"当前命令行长度 {length}，上限 {WINDOWS_DIRECT_COMMAND_LINE_MAX_CHARS}。"
-        )
-
-    @staticmethod
-    def _bash_launcher() -> str | None:
-        """Find Git Bash executable."""
-        candidates = []
-        # 1. shutil.which
-        candidates.append(shutil.which("bash"))
-        # 2. Registry: GitForWindows InstallPath
-        if os.name == "nt":
-            try:
-                import winreg
-
-                for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-                    try:
-                        key = winreg.OpenKey(hive, r"SOFTWARE\GitForWindows")
-                        install_path, _ = winreg.QueryValueEx(key, "InstallPath")
-                        winreg.CloseKey(key)
-                        if install_path:
-                            candidates.append(os.path.join(install_path, "bin", "bash.exe"))
-                    except (OSError, FileNotFoundError):
-                        logger.debug("查找GitForWindows注册表项失败", exc_info=True)
-            except ImportError:
-                logger.debug("winreg模块不可用", exc_info=True)
-            # 3. Common install paths
-            program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-            program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-            local_appdata = os.environ.get("LOCALAPPDATA", "")
-            candidates.extend(
-                [
-                    os.path.join(program_files, "Git", "bin", "bash.exe"),
-                    os.path.join(program_files_x86, "Git", "bin", "bash.exe"),
-                ]
-            )
-            if local_appdata:
-                candidates.append(os.path.join(local_appdata, "Programs", "Git", "bin", "bash.exe"))
-        for candidate in candidates:
-            if candidate and os.path.isfile(candidate):
-                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
-        return None
-
-    @staticmethod
-    def _bash_launcher_error() -> str:
-        return "Git Bash is not available. Install Git for Windows or add bash.exe to PATH."
-
-    @staticmethod
-    def _bash_direct_capture_denied(text: str) -> bool:
-        lowered = str(text or "").lower()
-        return "signal pipe" in lowered or "win32 error 5" in lowered
-
-    @staticmethod
-    def _bash_direct_capture_denied_message(detail: str) -> str:
-        return "Git Bash 直接捕获启动失败且在回退模式下也失败了。" + (f"\n\n{detail}" if detail else "")
-
-    @staticmethod
-    def _bash_write_script(command: str) -> str:
-        """Write a bash script file to disk as fallback for pipe capture failures."""
-        hash_ = hashlib.md5(command.encode("utf-8")).hexdigest()
-        cache_dir = CommandExecutionMixin._get_cmd_cache_dir()
-        path = os.path.join(cache_dir, f"{hash_}.sh")
-        if not os.path.exists(path):
-            _write_atomic(path, "#!/usr/bin/env bash\n" + command + "\n")
-        return path
-
-    @staticmethod
     def _bash_capture_via_script(
         command: str,
         cwd: str | None,
@@ -1049,7 +688,7 @@ class CommandExecutionMixin:
                 returncode = process.returncode
                 timed_out = True
 
-            return _bash_fallback_result(
+            return build_bash_fallback_result(
                 stdout_bytes,
                 stderr_bytes,
                 returncode,
@@ -1071,42 +710,6 @@ class CommandExecutionMixin:
                     os.remove(script_path)
             except Exception as exc:
                 logger.debug("删除临时脚本失败: %s", exc, exc_info=True)
-
-    @staticmethod
-    def _bash_argv(command: str, *, login: bool = False) -> list[str]:
-        bash_exe = ShortcutExecutor._bash_launcher()
-        if not bash_exe:
-            raise FileNotFoundError(ShortcutExecutor._bash_launcher_error())
-        argv = [bash_exe]
-        if login:
-            argv.append("--login")
-        argv.extend(["-c", command])
-        return argv
-
-    _CMD_CACHE_DIR: str | None = None
-    _CMD_CACHE_DIR_LOCK = threading.Lock()
-
-    @classmethod
-    def _get_cmd_cache_dir(cls) -> str:
-        if cls._CMD_CACHE_DIR is None:
-            with cls._CMD_CACHE_DIR_LOCK:
-                if cls._CMD_CACHE_DIR is None:
-                    cache_dir = os.path.join(tempfile.gettempdir(), "QuickLauncher", "cmd_cache")
-                    os.makedirs(cache_dir, exist_ok=True)
-                    cls._CMD_CACHE_DIR = cache_dir
-        return cls._CMD_CACHE_DIR
-
-    @classmethod
-    def _cleanup_cmd_cache(cls) -> None:
-        """Clean all cached wrapper scripts. Safe to call multiple times."""
-        cache_dir = cls._get_cmd_cache_dir()
-        for fname in os.listdir(cache_dir):
-            fpath = os.path.join(cache_dir, fname)
-            try:
-                if os.path.isfile(fpath):
-                    os.remove(fpath)
-            except Exception as exc:
-                logger.debug("删除缓存文件失败 %s: %s", fpath, exc, exc_info=True)
 
     @staticmethod
     def _write_temp_python_script(command: str) -> str:
@@ -1283,7 +886,7 @@ class CommandExecutionMixin:
         if command_type == "python":
             return ShortcutExecutor._execute_python_command(shortcut, command)
         if command_type == "builtin":
-            success = ShortcutExecutor._execute_builtin_command(command)
+            success = ShortcutExecutor._execute_builtin_for_shortcut(shortcut, command)
             return success, "" if success else "内置命令执行失败"
         return ShortcutExecutor._execute_cmd_command(shortcut, command)
 
@@ -1915,7 +1518,7 @@ class CommandExecutionMixin:
 
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
         if command_type == "builtin":
-            success = ShortcutExecutor._execute_builtin_command(command)
+            success = ShortcutExecutor._execute_builtin_for_shortcut(shortcut, command)
             pending = take_pending_command_result()
             if pending is not None:
                 pending.payload.setdefault("window_size", panel_size)
@@ -2477,7 +2080,16 @@ class CommandExecutionMixin:
         }
 
     @staticmethod
-    def _execute_builtin_command(command: str) -> bool:
+    def _execute_builtin_for_shortcut(shortcut: ShortcutItem, command: str) -> bool:
+        if bool(getattr(shortcut, "_topmost_target_captured", False)):
+            return ShortcutExecutor._execute_builtin_command(
+                command,
+                topmost_target=getattr(shortcut, "_topmost_target", None),
+            )
+        return ShortcutExecutor._execute_builtin_command(command)
+
+    @staticmethod
+    def _execute_builtin_command(command: str, *, topmost_target=_TOPMOST_TARGET_UNSET) -> bool:
         """执行内置命令"""
         from core.builtin_commands import (
             INTERNAL_PATH_BUILTIN_COMMANDS,
@@ -2582,16 +2194,20 @@ class CommandExecutionMixin:
                 logger.error(f"内置命令执行失败 ({canonical}): {e}")
                 return False
 
-        # 切换置顶（自动判断当前状态）
-        if cmd_name in ("topmost", "置顶", "pin", "toggle_topmost"):
+        if command_name == "toggle_topmost":
+            if topmost_target is not _TOPMOST_TARGET_UNSET:
+                return ShortcutExecutor._toggle_topmost(topmost_target)
             return ShortcutExecutor._toggle_topmost()
 
-        # 强制置顶
-        if cmd_name in ("topmost_on", "置顶开", "pin_on"):
+        # 旧版强制开关命令继续兼容已有配置，但主界面只推荐状态切换入口。
+        if command_name == "pin_on":
+            if topmost_target is not _TOPMOST_TARGET_UNSET:
+                return ShortcutExecutor._set_topmost(True, topmost_target)
             return ShortcutExecutor._set_topmost(True)
 
-        # 强制取消置顶
-        if cmd_name in ("topmost_off", "置顶关", "unpin", "pin_off"):
+        if command_name == "pin_off":
+            if topmost_target is not _TOPMOST_TARGET_UNSET:
+                return ShortcutExecutor._set_topmost(False, topmost_target)
             return ShortcutExecutor._set_topmost(False)
 
         if command_name in filesystem_builtin_commands:

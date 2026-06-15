@@ -1730,6 +1730,72 @@ def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
     assert calls == [("env", False)]
 
 
+def test_topmost_target_is_captured_before_popup_hide_and_worker_dispatch(monkeypatch):
+    from core.command_registry import COMMAND_INTERACTION_DIRECT, CommandDefinition, _CallbackHandler
+
+    popup = _popup_with_items([])
+    popup._executing = False
+    popup.is_pinned = True
+    popup.search_query = "/topmost"
+    events = []
+    popup.hide = lambda: events.append("hide")
+
+    cmd_def = CommandDefinition(
+        id="topmost",
+        title="Topmost",
+        aliases=["topmost"],
+        description="Toggle topmost",
+        category="window",
+        handler=_CallbackHandler("toggle_topmost"),
+        interaction_mode=COMMAND_INTERACTION_DIRECT,
+    )
+
+    class FakeRegistry:
+        def count(self):
+            return 1
+
+        def get_canonical(self, alias):
+            return "topmost" if alias == "topmost" else ""
+
+        def get(self, command_id):
+            return cmd_def if command_id == "topmost" else None
+
+    class FakeExecutor:
+        @staticmethod
+        def _take_topmost_target():
+            events.append("capture")
+            return 321, 42
+
+        @staticmethod
+        def execute(shortcut, force_new=False):
+            events.append("execute")
+            assert shortcut._topmost_target_captured is True
+            assert shortcut._topmost_target == (321, 42)
+            return True, ""
+
+    import core
+    import ui.launcher_popup.popup_item_execution as popup_exec_mod
+
+    monkeypatch.setattr(core, "registry", FakeRegistry())
+    monkeypatch.setattr(popup_exec_mod, "HAS_EXECUTOR", True)
+    monkeypatch.setattr(popup_exec_mod, "ShortcutExecutor", FakeExecutor)
+    from core import background_tasks
+
+    monkeypatch.setattr(background_tasks.threading.Thread, "start", lambda self: self.run())
+
+    item = ShortcutItem(
+        id="topmost",
+        name="Topmost",
+        type=ShortcutType.COMMAND,
+        command="/topmost",
+        command_type="builtin",
+    )
+
+    popup._execute_item(item)
+
+    assert events == ["capture", "hide", "execute"]
+
+
 def test_panel_command_with_params_does_not_use_popup_input_dialog(monkeypatch):
     from core.command_registry import COMMAND_INTERACTION_PANEL, CommandDefinition, CommandParam, CommandResult
 

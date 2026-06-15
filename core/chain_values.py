@@ -174,6 +174,7 @@ def _coerce_value(value: Any, kind: str) -> Any:
         try:
             return json.loads(text)
         except Exception:
+            logger.debug("JSON value parse failed, returning raw text", exc_info=True)
             return text
     if kind == ChainValueKind.LIST:
         if isinstance(value, list):

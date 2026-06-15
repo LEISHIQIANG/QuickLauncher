@@ -60,8 +60,6 @@ class CommandDialog(BaseDialog):
 
     BUILTIN_COMMANDS = [
         ("置顶/取消置顶 (Toggle Topmost)", "toggle_topmost"),
-        ("开启置顶 (Pin Window)", "pin_on"),
-        ("关闭置顶 (Unpin Window)", "pin_off"),
         ("配置窗口 (Config Window)", "show_config_window"),
         ("运行日志 (Log Window)", "show_log"),
         ("斜杠命令帮助 (Slash Help)", "show_help"),
@@ -88,10 +86,12 @@ class CommandDialog(BaseDialog):
         "topmost_on": "pin_on",
         "置顶开": "pin_on",
         "pin_on": "pin_on",
+        "pin-on": "pin_on",
         "topmost_off": "pin_off",
         "置顶关": "pin_off",
         "unpin": "pin_off",
         "pin_off": "pin_off",
+        "pin-off": "pin_off",
         "show_config": "show_config_window",
         "show_config_window": "show_config_window",
         "config_window": "show_config_window",
@@ -175,10 +175,9 @@ class CommandDialog(BaseDialog):
         options = list(cls.BUILTIN_COMMANDS)
         seen = {command for _name, command in options}
         try:
-            from core import ensure_plugin_manager_initialized, ensure_registry_initialized, registry
+            from core import ensure_registry_initialized, registry
 
             ensure_registry_initialized()
-            ensure_plugin_manager_initialized()
             if registry is not None:
                 for cmd in registry.list():
                     source = getattr(cmd, "source", "")

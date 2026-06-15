@@ -566,6 +566,7 @@ def _validate_task_launch_spec(
 
         return True, f"ok: mode={task_mode} trigger_delay={expected_delay or 'none'}"
     except Exception as exc:
+        logger.debug("任务定义读取失败: %s", exc, exc_info=True)
         return False, f"task_definition_read_failed: {exc}"
 
 
@@ -681,6 +682,7 @@ def _get_last_error_text() -> str:
     try:
         return f"error={code} ({ctypes.FormatError(code).strip()})"
     except Exception:
+        logger.debug("FormatError failed for code %d", code, exc_info=True)
         return f"error={code}"
 
 
@@ -1230,6 +1232,7 @@ def get_task_scheduler_check_result(
         task = root_folder.GetTask(TASK_NAME)
         return _validate_task_launch_spec(task, exe_path, arguments, working_dir)
     except Exception as exc:
+        logger.debug("任务调度器检查失败: %s", exc, exc_info=True)
         return False, f"task_missing_or_inaccessible: {exc}"
 
 
