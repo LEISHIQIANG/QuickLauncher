@@ -180,6 +180,40 @@ def test_popup_icon_for_paint_loads_folder_default(monkeypatch, tmp_path, qapp):
     assert ("from_file", str(icon_path), 24, 48, False) in harness._icon_pixmap_cache
 
 
+def test_popup_renders_builtin_command_icon_without_file_io(monkeypatch, qapp):
+    import ui.launcher_popup.popup_icons as icons_mod
+
+    calls = []
+
+    class _IconExtractor:
+        @staticmethod
+        def from_file(*args, **kwargs):
+            calls.append(("from_file", args, kwargs))
+            raise AssertionError("virtual built-in icons must not load files")
+
+        @staticmethod
+        def extract(*args, **kwargs):
+            calls.append(("extract", args, kwargs))
+            raise AssertionError("virtual built-in icons must not use shell extraction")
+
+    monkeypatch.setattr(icons_mod, "HAS_ICON_EXTRACTOR", True)
+    monkeypatch.setattr(icons_mod, "IconExtractor", _IconExtractor)
+
+    harness = _IconHarness()
+    shortcut = ShortcutItem(
+        id="json",
+        name="JSON",
+        type=ShortcutType.COMMAND,
+        icon_path="builtin-command:json",
+    )
+
+    pixmap = harness._get_icon(shortcut)
+
+    assert pixmap and not pixmap.isNull()
+    assert calls == []
+    assert ("builtin-command", "json", 24, "dark") in harness._icon_pixmap_cache
+
+
 def test_popup_icon_cache_change_requests_repaint():
     harness = _IconHarness()
     harness._page_pixmap_cache["page"] = "pixmap"

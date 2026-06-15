@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .command_icon_catalog import builtin_command_icon_path
 from .command_registry import CommandDefinition, CommandParam
 from .commands import (
     cmd_base64,
@@ -67,14 +68,13 @@ PANEL_COMMAND_IDS = {
     "git",
     "selected",
     "clip",
-    "env",
     "god",
 }
 
 
 def build_builtin_command_definitions() -> list[CommandDefinition]:
     """Return fresh CommandDefinition objects for built-in commands."""
-    return [
+    commands = [
         CommandDefinition(
             id="uuid",
             title="UUID",
@@ -386,3 +386,6 @@ def build_builtin_command_definitions() -> list[CommandDefinition]:
             handler=cmd_god,
         ),
     ]
+    for command in commands:
+        command.icon_path = builtin_command_icon_path(command.id)
+    return commands

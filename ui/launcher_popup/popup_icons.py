@@ -4,8 +4,10 @@ import logging
 import os
 
 from core import ShortcutItem, ShortcutType
+from core.command_icon_catalog import builtin_command_id_from_icon_path
 from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
 from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QRectF, Qt, QtCompat
+from ui.command_icon_renderer import render_builtin_command_icon_path
 from ui.utils.ui_scale import font_px
 
 try:
@@ -99,6 +101,14 @@ class PopupIconMixin:
         source_size = self._get_icon_source_size()
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
+        command_id = builtin_command_id_from_icon_path(icon_path)
+        if command_id:
+            theme = getattr(self.settings, "theme", "dark")
+            cache_key = ("builtin-command", command_id, self.icon_size, theme)
+            cached = self._icon_pixmap_cache.get(cache_key)
+            if cached is not None:
+                self._icon_pixmap_cache.move_to_end(cache_key)
+            return cached
 
         # Resolve folder icon path to match _get_icon behavior,
         # otherwise the cache key won't match and folder icons
@@ -141,6 +151,8 @@ class PopupIconMixin:
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         item_type = getattr(item, "type", None)
+        if builtin_command_id_from_icon_path(icon_path):
+            return True
         if icon_path:
             return False
         if target_path:
@@ -184,6 +196,17 @@ class PopupIconMixin:
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         folder_icon_path = None
+        command_id = builtin_command_id_from_icon_path(icon_path)
+        if command_id:
+            theme = getattr(self.settings, "theme", "dark")
+            cache_key = ("builtin-command", command_id, self.icon_size, theme)
+            cached = icon_cache.get(cache_key)
+            if cached is None:
+                cached = render_builtin_command_icon_path(icon_path, self.icon_size, theme)
+                if cached is not None:
+                    icon_cache[cache_key] = cached
+                    self._trim_icon_pixmap_cache(icon_cache)
+            return cached or self._get_default_icon_cached(item)
 
         if not icon_path and shortcut_uses_folder_icon(
             getattr(item, "type", None),
@@ -238,6 +261,9 @@ class PopupIconMixin:
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         item_type = getattr(item, "type", None)
+        command_id = builtin_command_id_from_icon_path(icon_path)
+        if command_id:
+            return self._get_icon_for_paint(item)
 
         need_invert = self._icon_should_invert(item)
 

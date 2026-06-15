@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.command_icon_catalog import builtin_command_icon_path
 from core.slash_commands import (
     _ALIAS_TO_COMMAND,
     SLASH_COMMANDS,
@@ -59,6 +60,15 @@ def test_slash_commands_list_has_entries():
 def test_slash_commands_have_unique_canonicals():
     canonicals = [c.canonical for c in SLASH_COMMANDS]
     assert len(canonicals) == len(set(canonicals))
+
+
+def test_selected_high_value_commands_use_fixed_code_icons():
+    commands = {command.canonical: command for command in SLASH_COMMANDS}
+
+    assert commands["config"].icon_path == builtin_command_icon_path("config")
+    assert commands["restart"].icon_path == builtin_command_icon_path("restart")
+    assert commands["topmost"].icon_path == builtin_command_icon_path("topmost")
+    assert commands["help"].icon_path == builtin_command_icon_path("help")
 
 
 # ── _ALIAS_TO_COMMAND dict ──────────────────────────────────────────────

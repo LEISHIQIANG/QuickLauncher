@@ -26,6 +26,7 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.command_icon_renderer import render_builtin_command_icon
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.ui_scale import scale_qss, sp
@@ -526,8 +527,14 @@ class SettingsCommandsPageMixin:
                     item_layout.setHorizontalSpacing(sp(8))
                     item_layout.setVerticalSpacing(sp(2))
 
-                    star_lbl = QLabel("⭐")
-                    item_layout.addWidget(star_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
+                    icon_lbl = QLabel()
+                    icon_pixmap = render_builtin_command_icon(fid, sp(22), self.current_theme)
+                    if icon_pixmap is not None:
+                        icon_lbl.setPixmap(icon_pixmap)
+                    else:
+                        icon_lbl.setText("⭐")
+                    icon_lbl.setFixedSize(sp(24), sp(24))
+                    item_layout.addWidget(icon_lbl, 0, 0, 2, 1, QtCompat.AlignTop)
 
                     fid_display = fid.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
                     name_display = name.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
@@ -607,6 +614,10 @@ class SettingsCommandsPageMixin:
                         dot_lbl = QLabel("●")
                         item_layout.addWidget(dot_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
 
+                        icon_lbl = QLabel()
+                        icon_lbl.setFixedSize(sp(24), sp(24))
+                        item_layout.addWidget(icon_lbl, 0, 1, 2, 1, QtCompat.AlignTop)
+
                         cmd_title_display = (
                             cmd.title.replace("_", "_\u200b").replace("-", "-\u200b").replace("/", "/\u200b")
                         )
@@ -615,12 +626,12 @@ class SettingsCommandsPageMixin:
                         title_lbl = QLabel(cmd_title_display)
                         title_lbl.setWordWrap(True)
                         title_lbl.setMinimumWidth(0)
-                        item_layout.addWidget(title_lbl, 0, 1, 1, 1)
+                        item_layout.addWidget(title_lbl, 0, 2, 1, 1)
 
                         key_lbl = QLabel(f"/{cmd_id_display}")
                         key_lbl.setWordWrap(True)
                         key_lbl.setMinimumWidth(0)
-                        item_layout.addWidget(key_lbl, 1, 1, 1, 1)
+                        item_layout.addWidget(key_lbl, 1, 2, 1, 1)
 
                         actions_layout = QHBoxLayout()
                         actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -640,7 +651,7 @@ class SettingsCommandsPageMixin:
                         toggle_btn.setStyleSheet(scale_qss("QPushButton { font-size: 10px; padding: 2px 4px; }"))
                         actions_layout.addWidget(toggle_btn)
 
-                        item_layout.addLayout(actions_layout, 0, 2, 2, 1, QtCompat.AlignVCenter)
+                        item_layout.addLayout(actions_layout, 0, 3, 2, 1, QtCompat.AlignVCenter)
 
                         desc_lbl = None
                         if cmd.description:
@@ -650,17 +661,19 @@ class SettingsCommandsPageMixin:
                             desc_lbl = QLabel(desc_display)
                             desc_lbl.setWordWrap(True)
                             desc_lbl.setMinimumWidth(0)
-                            item_layout.addWidget(desc_lbl, 2, 1, 1, 1)
+                            item_layout.addWidget(desc_lbl, 2, 2, 1, 1)
 
                         item_layout.setColumnStretch(0, 0)
-                        item_layout.setColumnStretch(1, 1)
-                        item_layout.setColumnStretch(2, 0)
+                        item_layout.setColumnStretch(1, 0)
+                        item_layout.setColumnStretch(2, 1)
+                        item_layout.setColumnStretch(3, 0)
 
                         self.builtin_layout.addWidget(item_widget)
 
                         self._builtin_widgets[cmd.id] = {
                             "widget": item_widget,
                             "dot_lbl": dot_lbl,
+                            "icon_lbl": icon_lbl,
                             "fav_btn": fav_btn,
                             "toggle_btn": toggle_btn,
                             "title_lbl": title_lbl,
@@ -754,6 +767,10 @@ class SettingsCommandsPageMixin:
                 )
                 entry["title_lbl"].setStyleSheet(scale_qss(f"font-weight: 400; color: {text_color}; font-size: 12px;"))
                 entry["key_lbl"].setStyleSheet(scale_qss("color: rgba(10,132,255,0.85); font-size: 11px;"))
+                icon_pixmap = render_builtin_command_icon(cmd.id, sp(22), self.current_theme)
+                entry["icon_lbl"].setVisible(icon_pixmap is not None)
+                if icon_pixmap is not None:
+                    entry["icon_lbl"].setPixmap(icon_pixmap)
                 if entry["desc_lbl"]:
                     entry["desc_lbl"].setStyleSheet(
                         scale_qss(f"color: {sub_text_color}; font-size: 11px; margin-left: 14px;")

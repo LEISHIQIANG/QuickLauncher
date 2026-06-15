@@ -866,7 +866,7 @@ def test_cmd_env_and_god_registration():
     ids = {d.id for d in defs}
     assert "env" in ids
     assert "god" in ids
-    assert "env" in PANEL_COMMAND_IDS
+    assert "env" not in PANEL_COMMAND_IDS
     assert "god" in PANEL_COMMAND_IDS
 
     # Test alias resolution

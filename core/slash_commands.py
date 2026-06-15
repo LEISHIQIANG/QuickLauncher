@@ -10,6 +10,8 @@ The static SLASH_COMMANDS list is kept for backward compatibility
 import logging
 from dataclasses import dataclass
 
+from core.command_icon_catalog import builtin_command_icon_path
+
 # Avoid circular import at module level — imported lazily inside functions
 # from core.command_registry import _CallbackHandler
 
@@ -35,14 +37,20 @@ SLASH_COMMANDS = [
         "打开配置窗口",
         "system",
         "show_config_window",
-        "assets/command_icons/config.png",
+        builtin_command_icon_path("config"),
         "配置",
     ),
     SlashCommand(
         "quit", ["quit", "exit", "退出"], "退出应用", "system", "quit_app", "assets/command_icons/quit.png", "退出"
     ),
     SlashCommand(
-        "restart", ["restart", "重启"], "重启应用", "system", "restart_app", "assets/command_icons/restart.png", "重启"
+        "restart",
+        ["restart", "重启"],
+        "重启应用",
+        "system",
+        "restart_app",
+        builtin_command_icon_path("restart"),
+        "重启",
     ),
     SlashCommand("log", ["log", "日志"], "显示日志窗口", "system", "show_log", "assets/command_icons/log.png", "日志"),
     SlashCommand(
@@ -169,11 +177,11 @@ SLASH_COMMANDS = [
         "置顶或取消置顶当前窗口",
         "window",
         "toggle_topmost",
-        "assets/command_icons/topmost.png",
+        builtin_command_icon_path("topmost"),
         "置顶/取消置顶",
     ),
     SlashCommand(
-        "help", ["help", "帮助"], "显示所有命令", "help", "show_help", "assets/command_icons/help.png", "帮助"
+        "help", ["help", "帮助"], "显示所有命令", "help", "show_help", builtin_command_icon_path("help"), "帮助"
     ),
     SlashCommand(
         "about", ["about", "关于"], "关于 QuickLauncher", "help", "show_about", "assets/command_icons/about.png", "关于"
