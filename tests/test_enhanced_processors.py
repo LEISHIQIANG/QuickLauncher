@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from core.chain.enhanced_processors import (
@@ -42,6 +44,7 @@ from core.chain.enhanced_processors import (
     # Text processors
     text_trim,
 )
+from core.path_security import UnsafePathError
 
 
 class TestTextProcessors:
@@ -176,6 +179,15 @@ class TestFileProcessors:
         result = file_copy(str(src), str(dst))
         assert result == str(dst)
         assert dst.read_text() == "hello"
+
+    def test_file_copy_rejects_protected_source(self, tmp_path):
+        src = Path(__file__).resolve()
+        dst = tmp_path / "dest.txt"
+
+        with pytest.raises(UnsafePathError, match="protected path"):
+            file_copy(str(src), str(dst))
+
+        assert not dst.exists()
 
     def test_file_move(self, tmp_path):
         src = tmp_path / "source.txt"

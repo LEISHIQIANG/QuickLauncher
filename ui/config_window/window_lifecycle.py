@@ -45,7 +45,7 @@ class WindowLifecycleController:
     def defer(self, delay_ms: int, callback, *args, generation: int | None = None) -> None:
         QTimer.singleShot(
             int(delay_ms),
-            lambda generation=generation, callback=callback, args=args: self.run_if_current(
+            lambda generation=generation, callback=callback, args=args: self.run_if_current(  # type: ignore[arg-type]
                 generation, callback, *args
             ),
         )

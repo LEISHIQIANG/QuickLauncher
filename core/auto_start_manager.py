@@ -68,11 +68,11 @@ if os.name == "nt":
     advapi32 = ctypes.windll.advapi32
     userenv = ctypes.windll.userenv
 else:
-    user32 = None
-    shell32 = None
-    kernel32 = None
-    advapi32 = None
-    userenv = None
+    user32 = None  # type: ignore[assignment]
+    shell32 = None  # type: ignore[assignment]
+    kernel32 = None  # type: ignore[assignment]
+    advapi32 = None  # type: ignore[assignment]
+    userenv = None  # type: ignore[assignment]
 
 
 class SHELLEXECUTEINFO(ctypes.Structure):
@@ -1250,7 +1250,7 @@ def _read_registry_value() -> str | None:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_KEY_PATH, 0, winreg.KEY_READ)
         try:
             value, _ = winreg.QueryValueEx(key, APP_NAME)
-            return value
+            return value  # type: ignore[no-any-return]
         except FileNotFoundError:
             return None
         finally:

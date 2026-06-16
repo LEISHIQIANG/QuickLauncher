@@ -37,7 +37,7 @@ class TemplateVariableHighlighter(QSyntaxHighlighter):
         self._format.setFontWeight(QFont.DemiBold)
         self.rehighlight()
 
-    def highlightBlock(self, text: str) -> None:  # noqa: N802 - Qt API name
+    def highlightBlock(self, text: str) -> None:  # type: ignore[override]  # noqa: N802 - Qt API name
         for match in _VARIABLE_TOKEN_RE.finditer(text):
             self.setFormat(match.start(), match.end() - match.start(), self._format)
 
@@ -69,10 +69,10 @@ class TemplateLineEdit(QPlainTextEdit):
         self.setPlainText(text)
         self.setCursorPosition(len(self.text()))
 
-    def setPlainText(self, text: str) -> None:  # noqa: N802 - Qt API name
+    def setPlainText(self, text: str) -> None:  # type: ignore[override]  # noqa: N802 - Qt API name
         super().setPlainText(self._single_line(text))
 
-    def insertPlainText(self, text: str) -> None:  # noqa: N802 - Qt API name
+    def insertPlainText(self, text: str) -> None:  # type: ignore[override]  # noqa: N802 - Qt API name
         super().insertPlainText(self._single_line(text))
 
     def insertFromMimeData(self, source) -> None:  # noqa: N802 - Qt API name
@@ -90,7 +90,7 @@ class TemplateLineEdit(QPlainTextEdit):
         self.setTextCursor(cursor)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt API name
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):  # type: ignore[attr-defined]
             self.focusNextChild()
             event.accept()
             return

@@ -80,7 +80,7 @@ class DefaultActionChainHostAPI:
         settings = getattr(data, "settings", None)
         to_dict = getattr(settings, "to_dict", None)
         if callable(to_dict):
-            return to_dict()
+            return to_dict()  # type: ignore[no-any-return]
         return {}
 
     def get_theme(self) -> str:
@@ -183,7 +183,7 @@ class DefaultActionChainHostAPI:
             details = str(request.get("details") or "")
             text = message if not details else f"{message}\n\n{details}"
             result = QMessageBox.question(None, title, text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            return result == QMessageBox.Yes
+            return result == QMessageBox.Yes  # type: ignore[no-any-return]
         except Exception as exc:
             logger.warning("拒绝危险动作链操作：无法显示确认对话框: %s", exc, exc_info=True)
             return False

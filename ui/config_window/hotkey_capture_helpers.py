@@ -151,9 +151,9 @@ class KeyboardStatePoller:
         self._timer = QTimer(parent)
         self._timer.setInterval(KEYBOARD_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
-        self._previous = set()
-        self._preexisting = set()
-        self._captured = set()
+        self._previous = set()  # type: ignore[var-annotated]
+        self._preexisting = set()  # type: ignore[var-annotated]
+        self._captured = set()  # type: ignore[var-annotated]
         self._started = False
         self._seen_modifiers = 0
         self._seen_side_modifiers = 0

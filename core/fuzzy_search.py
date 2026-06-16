@@ -255,7 +255,7 @@ def _single_term_score(term: str, value: str) -> float | None:
             if compact_subsequence is not None:
                 candidates.append(compact_subsequence - 4.0)
 
-        near_word = _near_word_score(term_norm, tokens)
+        near_word = _near_word_score(term_norm, tokens)  # type: ignore[arg-type]
         if near_word is not None:
             candidates.append(near_word)
 

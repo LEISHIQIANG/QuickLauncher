@@ -93,7 +93,7 @@ def canonical_canvas(canvas: Any) -> dict[str, Any]:
                 "args": {str(k).strip(): str(v) for k, v in args.items() if str(k).strip()},
             }
         )
-    nodes.sort(key=lambda item: (int(item.get("order", 0) or 0), float(item.get("x", 0) or 0)))
+    nodes.sort(key=lambda item: (int(item.get("order", 0) or 0), float(item.get("x", 0) or 0)))  # type: ignore[arg-type, call-overload]
 
     connections = []
     for raw in list(canvas.get("connections") or []):

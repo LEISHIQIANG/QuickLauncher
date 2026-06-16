@@ -94,7 +94,7 @@ class ApiClient:
         try:
             with safe_urlopen(req, timeout=self._timeout, context=self._ssl_context) as resp:
                 raw = read_limited_response(resp, API_CLIENT_MAX_RESPONSE_BYTES)
-                return json.loads(raw.decode("utf-8") or "{}")
+                return json.loads(raw.decode("utf-8") or "{}")  # type: ignore[no-any-return]
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise ApiError(f"HTTP {exc.code}: {body}") from exc

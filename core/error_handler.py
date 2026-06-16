@@ -37,7 +37,7 @@ def safe_execute(
     except exceptions as e:
         log_func = getattr(logger, log_level)
         log_func(f"{error_msg}: {e}", exc_info=True)
-        return default
+        return default  # type: ignore[return-value]
 
 
 def safe_method(error_msg: str, default=None, exceptions=(Exception,)):

@@ -76,25 +76,36 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
         "--exclude-dir",
         "tools",
         "--max-total",
-        "1373",
+        "1385",
         "--max-unlogged",
         "300",
     ]
     assert envs[2]["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    assert commands[3][:3] == ["py-test", "-m", "compileall"]
-    assert envs[3]["PYTHONPYCACHEPREFIX"] == str(release_gate.COMPILE_PYCACHE_PREFIX)
+    assert commands[3] == [
+        "py-test",
+        "scripts/check_i18n_coverage.py",
+        "--max-untranslated-pct",
+        "3",
+    ]
+    assert envs[3]["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    assert commands[4] == [
+    assert commands[4] == ["py-test", "scripts/check_mypy_progress.py"]
+    assert envs[4]["PYTHONDONTWRITEBYTECODE"] == "1"
+
+    assert commands[5][:3] == ["py-test", "-m", "compileall"]
+    assert envs[5]["PYTHONPYCACHEPREFIX"] == str(release_gate.COMPILE_PYCACHE_PREFIX)
+
+    assert commands[6] == [
         "py-test",
         "scripts/check_release_artifacts.py",
         "--source-only",
         "--allow-source-runtime-plugins",
     ]
-    assert envs[4]["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert envs[6]["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    assert commands[5] == ["py-test", "scripts/post_package_smoke.py"]
-    assert envs[5]["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert commands[7] == ["py-test", "scripts/post_package_smoke.py"]
+    assert envs[7]["PYTHONDONTWRITEBYTECODE"] == "1"
 
 
 def test_release_gate_step_order_matches_spec():
@@ -103,6 +114,8 @@ def test_release_gate_step_order_matches_spec():
         "ruff",
         "pytest",
         "broad exception audit",
+        "i18n coverage",
+        "mypy progress",
         "compileall",
         "release metadata",
         "post-package smoke",

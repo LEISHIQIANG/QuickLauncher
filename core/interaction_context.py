@@ -71,9 +71,9 @@ class TriggerContext:
                     window_title = buf.value or ""
 
                     # Get process ID and name
-                    process_id = ctypes.wintypes.DWORD()
-                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-                    pid = process_id.value
+                    process_id = ctypes.wintypes.DWORD()  # type: ignore[assignment]
+                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))  # type: ignore[arg-type]
+                    pid = process_id.value  # type: ignore[attr-defined]
 
                     if pid:
                         try:
@@ -134,7 +134,7 @@ class InteractionContext:
     trigger: TriggerContext | None = None
     clipboard: ClipboardSnapshot | None = None
     clipboard_classification: ClipboardClassification | None = None
-    selected_text: SelectedTextResult | None = None  # noqa: F821
+    selected_text: SelectedTextResult | None = None  # type: ignore[name-defined]  # noqa: F821
     selected_files: list[str] = field(default_factory=list)
     selected_files_status: str = "idle"
 

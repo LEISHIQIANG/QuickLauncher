@@ -298,7 +298,7 @@ class SettingsPopupPageMixin:
 
     def _try_apply_trigger_config(self) -> bool:
         """尝试应用触发配置，返回是否成功"""
-        if self._updating:
+        if self._updating:  # type: ignore[attr-defined]
             logger.warning("当前正在更新中，跳过配置应用")
             return False
 
@@ -372,7 +372,7 @@ class SettingsPopupPageMixin:
                 return False
 
         # 保存配置
-        self.data_manager.update_settings(
+        self.data_manager.update_settings(  # type: ignore[attr-defined]
             popup_trigger_mode=normal_mode,
             popup_trigger_keys=normal_keys,
             popup_trigger_button=normal_btn,
@@ -385,13 +385,13 @@ class SettingsPopupPageMixin:
         self.normal_trigger_recorder.set_trigger(normal_mode, normal_keys, normal_btn, normal_mods)
         self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)
         logger.info("配置已保存到数据模型，准备发射信号")
-        self.trigger_config_changed.emit()
+        self.trigger_config_changed.emit()  # type: ignore[attr-defined]
         logger.info("trigger_config_changed 信号已发射")
         return True
 
     def _shortcut_conflict_candidates(self) -> list:
         try:
-            data = getattr(self.data_manager, "data", None)
+            data = getattr(self.data_manager, "data", None)  # type: ignore[attr-defined]
             folders = getattr(data, "folders", []) or []
             return [item for folder in folders for item in (getattr(folder, "items", []) or [])]
         except Exception as exc:

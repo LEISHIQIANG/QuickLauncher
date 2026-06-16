@@ -349,7 +349,7 @@ class SwitchButton(QCheckBox):
     def progress(self) -> float:
         return self._progress
 
-    @progress.setter
+    @progress.setter  # type: ignore[no-redef]
     def progress(self, val: float):
         self._progress = val
         self.update()

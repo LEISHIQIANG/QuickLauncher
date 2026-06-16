@@ -34,7 +34,7 @@ try:
 
     HAS_WINDOW_MANAGER = True
 except ImportError:
-    WindowManager = None
+    WindowManager = None  # type: ignore[assignment, misc]
     HAS_WINDOW_MANAGER = False
 
 
@@ -75,7 +75,7 @@ class FileExecutionMixin:
                 target_path, _ = link.GetPath(shell.SLGP_RAWPATH)
                 if target_path:
                     logger.debug(f"解析快捷方式: {path} -> {target_path}")
-                    return target_path
+                    return target_path  # type: ignore[no-any-return]
             finally:
                 pythoncom.CoUninitialize()
         except ImportError:
@@ -105,12 +105,12 @@ class FileExecutionMixin:
                 base64.b64encode(ps_script.encode("utf-16-le")).decode("ascii"),
             ]
 
-            output = ShortcutExecutor._run_silent_output(ps_cmd)
+            output = ShortcutExecutor._run_silent_output(ps_cmd)  # type: ignore[attr-defined]
 
             if output and output.strip():
                 target = output.strip()
                 logger.debug(f"PowerShell 解析快捷方式: {path} -> {target}")
-                return target
+                return target  # type: ignore[no-any-return]
         except Exception as e:
             logger.debug(f"PowerShell 解析快捷方式失败: {e}")
 
@@ -135,7 +135,7 @@ class FileExecutionMixin:
 
             # 简单处理：打开目标文件夹
             if os.name == "nt":
-                launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                     folder,
                     run_as_admin=run_as_admin,
                     admin_failure_message="Administrator launch failed.",
@@ -182,7 +182,7 @@ class FileExecutionMixin:
 
             # 添加额外参数
             if extra_args:
-                cmd_args.extend(ShortcutExecutor._safe_split_args(extra_args))
+                cmd_args.extend(ShortcutExecutor._safe_split_args(extra_args))  # type: ignore[attr-defined]
 
             # 添加所有文件
             cmd_args.extend(files)
@@ -193,7 +193,7 @@ class FileExecutionMixin:
             cwd = working_dir.strip() if working_dir else ""
             if os.name == "nt":
                 parameters = subprocess.list2cmdline(cmd_args[1:]) if len(cmd_args) > 1 else ""
-                launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                     exe_path,
                     parameters or None,
                     cwd or exe_dir or None,
@@ -209,10 +209,10 @@ class FileExecutionMixin:
                     logger.warning("Privilege-boundary launch failed without fallback: %s", exe_path)
                     return False
 
-            ShortcutExecutor._popen_silent(
+            ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                 cmd_args,
                 cwd=cwd or exe_dir or None,
-                env=ShortcutExecutor._sanitized_child_env(),
+                env=ShortcutExecutor._sanitized_child_env(),  # type: ignore[attr-defined]
             )
 
             return True
@@ -225,13 +225,13 @@ class FileExecutionMixin:
             try:
                 cmd = [exe_path]
                 if extra_args:
-                    cmd.extend(ShortcutExecutor._safe_split_args(extra_args))
+                    cmd.extend(ShortcutExecutor._safe_split_args(extra_args))  # type: ignore[attr-defined]
                 cmd.append(file_path)
                 exe_dir = os.path.dirname(os.path.abspath(exe_path)) if exe_path else None
                 cwd = working_dir.strip() if working_dir else ""
                 if os.name == "nt":
                     parameters = subprocess.list2cmdline(cmd[1:]) if len(cmd) > 1 else ""
-                    launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                    launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                         exe_path,
                         parameters or None,
                         cwd or exe_dir or None,
@@ -248,8 +248,8 @@ class FileExecutionMixin:
                         logger.warning("Privilege-boundary launch failed without fallback: %s", exe_path)
                         return False
 
-                ShortcutExecutor._popen_silent(
-                    cmd, cwd=cwd or exe_dir or None, env=ShortcutExecutor._sanitized_child_env()
+                ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
+                    cmd, cwd=cwd or exe_dir or None, env=ShortcutExecutor._sanitized_child_env()  # type: ignore[attr-defined]
                 )
                 logger.debug(f"用 {exe_path} 打开: {file_path}")
             except Exception as e:
@@ -267,7 +267,7 @@ class FileExecutionMixin:
                 launch_error = ""
                 if os.name == "nt":
                     parameters = subprocess.list2cmdline([file_path])
-                    launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                    launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                         target,
                         parameters or None,
                         target_dir,
@@ -286,7 +286,7 @@ class FileExecutionMixin:
 
                 # 使用 start 命令，让 Windows 决定用什么程序打开
                 cmd = ["cmd", "/c", "start", "", target, file_path]
-                ShortcutExecutor._popen_silent(cmd, shell=False)
+                ShortcutExecutor._popen_silent(cmd, shell=False)  # type: ignore[attr-defined]
                 logger.debug(f"Start 命令打开: {cmd}")
             except Exception as e:
                 logger.error(f"打开文件失败 {file_path}: {e}")
@@ -317,8 +317,8 @@ class FileExecutionMixin:
             if os.name != "nt":
                 argv = [target]
                 if parameters:
-                    argv.extend(ShortcutExecutor._safe_split_args(parameters))
-                ShortcutExecutor._popen_silent(argv, env=ShortcutExecutor._sanitized_child_env())
+                    argv.extend(ShortcutExecutor._safe_split_args(parameters))  # type: ignore[attr-defined]
+                ShortcutExecutor._popen_silent(argv, env=ShortcutExecutor._sanitized_child_env())  # type: ignore[attr-defined]
                 return True
 
             result = shell32.ShellExecuteW(None, verb, target, parameters, directory, show_cmd)
@@ -345,7 +345,7 @@ class FileExecutionMixin:
         verb: str = "open",
     ) -> tuple[bool, str]:
         return (
-            ShortcutExecutor._shell_execute_open_raw(target, parameters, directory, show_cmd, verb=verb),
+            ShortcutExecutor._shell_execute_open_raw(target, parameters, directory, show_cmd, verb=verb),  # type: ignore[attr-defined]
             "",
         )
 
@@ -370,12 +370,12 @@ class FileExecutionMixin:
         if os.name != "nt":
             argv = [target]
             if parameters:
-                argv.extend(ShortcutExecutor._safe_split_args(parameters))
-            ShortcutExecutor._popen_silent(argv, env=ShortcutExecutor._sanitized_child_env())
+                argv.extend(ShortcutExecutor._safe_split_args(parameters))  # type: ignore[attr-defined]
+            ShortcutExecutor._popen_silent(argv, env=ShortcutExecutor._sanitized_child_env())  # type: ignore[attr-defined]
             return True, ""
 
-        current_elevated = ShortcutExecutor._is_launch_context_elevated()
-        route = ShortcutExecutor._select_privilege_launch_route(current_elevated, run_as_admin)
+        current_elevated = ShortcutExecutor._is_launch_context_elevated()  # type: ignore[attr-defined]
+        route = ShortcutExecutor._select_privilege_launch_route(current_elevated, run_as_admin)  # type: ignore[attr-defined]
         logger.info(
             "Launch privilege check: run_as_admin=%s current_elevated=%s route=%s",
             run_as_admin,
@@ -384,7 +384,7 @@ class FileExecutionMixin:
         )
 
         if route == PRIVILEGE_ROUTE_DOWNGRADE:
-            shell_owned, shell_error = ShortcutExecutor._launch_via_shell_owner(
+            shell_owned, shell_error = ShortcutExecutor._launch_via_shell_owner(  # type: ignore[attr-defined]
                 target,
                 parameters or "",
                 directory or "",
@@ -395,7 +395,7 @@ class FileExecutionMixin:
                 return True, ""
             logger.debug("Explorer-owned launch unavailable, trying token channel: %s", shell_error)
             logger.debug("Attempting standard-user launch from elevated context: %s", target)
-            downgraded, downgrade_error = ShortcutExecutor._launch_as_standard_user_direct(
+            downgraded, downgrade_error = ShortcutExecutor._launch_as_standard_user_direct(  # type: ignore[attr-defined]
                 target,
                 parameters or "",
                 directory or "",
@@ -408,7 +408,7 @@ class FileExecutionMixin:
             return False, standard_user_failure_message
 
         if route == PRIVILEGE_ROUTE_OPEN and not current_elevated:
-            shell_owned, shell_error = ShortcutExecutor._launch_via_shell_owner(
+            shell_owned, shell_error = ShortcutExecutor._launch_via_shell_owner(  # type: ignore[attr-defined]
                 target,
                 parameters or "",
                 directory or "",
@@ -424,7 +424,7 @@ class FileExecutionMixin:
         if callable(raw_result):
             opened, open_error = raw_result(target, parameters, directory, show_cmd, verb=verb)
         else:
-            opened = ShortcutExecutor._shell_execute_open_raw(target, parameters, directory, show_cmd, verb=verb)
+            opened = ShortcutExecutor._shell_execute_open_raw(target, parameters, directory, show_cmd, verb=verb)  # type: ignore[attr-defined]
             open_error = ""
         if opened:
             return True, ""
@@ -492,14 +492,14 @@ class FileExecutionMixin:
         show_cmd: int = 1,
         run_as_admin: bool = False,
     ) -> bool:
-        success, _ = ShortcutExecutor._launch_with_privilege(
+        success, _ = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
             target,
             parameters,
             directory,
             show_cmd,
             run_as_admin=run_as_admin,
         )
-        return success
+        return success  # type: ignore[no-any-return]
 
     @staticmethod
     def _activate_launched_app_async(exe_path: str):
@@ -564,16 +564,16 @@ class FileExecutionMixin:
         parameters = subprocess.list2cmdline(["/d", "/s", "/c", command])
         if not run_as_admin:
             try:
-                ShortcutExecutor._popen_silent(
+                ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                     [comspec, "/d", "/s", "/c", command],
                     cwd=cwd,
-                    env=ShortcutExecutor._sanitized_child_env(),
+                    env=ShortcutExecutor._sanitized_child_env(),  # type: ignore[attr-defined]
                     shell=False,
                 )
                 return True
             except Exception as exc:
                 logger.debug("Silent cmd launch failed before ShellExecute fallback: %s", exc, exc_info=True)
-        return ShortcutExecutor._shell_execute_open(
+        return ShortcutExecutor._shell_execute_open(  # type: ignore[attr-defined, no-any-return]
             comspec,
             parameters,
             cwd,
@@ -603,7 +603,7 @@ class FileExecutionMixin:
         except CommandVariableError as exc:
             return False, f"启动参数变量解析失败: {exc}"
         working_dir = (getattr(shortcut, "working_dir", "") or "").strip()
-        real_target = ShortcutExecutor._resolve_shortcut(target) or target
+        real_target = ShortcutExecutor._resolve_shortcut(target) or target  # type: ignore[attr-defined]
         t1 = time.perf_counter()
         logger.info(
             "Launch: name=%s target=%s admin=%s resolve=%.1fms",
@@ -624,7 +624,7 @@ class FileExecutionMixin:
 
         cwd = working_dir or (os.path.dirname(os.path.abspath(real_target)) if os.path.isfile(real_target) else None)
         t2 = time.perf_counter()
-        launched, launch_error = ShortcutExecutor._launch_with_privilege(
+        launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
             real_target,
             params or None,
             cwd,
@@ -634,27 +634,27 @@ class FileExecutionMixin:
         if launched:
             logger.info("Launch OK: launch=%.1fms total=%.1fms", (t3 - t2) * 1000, (t3 - t0) * 1000)
             if not run_as_admin and real_target.lower().endswith(".exe"):
-                ShortcutExecutor._activate_launched_app_async(real_target)
+                ShortcutExecutor._activate_launched_app_async(real_target)  # type: ignore[attr-defined]
             return True, ""
         if launch_error:
             logger.warning(
                 "Launch failed: launch=%.1fms total=%.1fms error=%s", (t3 - t2) * 1000, (t3 - t0) * 1000, launch_error
             )
             return False, launch_error
-        if os.name == "nt" and (run_as_admin or ShortcutExecutor._is_launch_context_elevated()):
+        if os.name == "nt" and (run_as_admin or ShortcutExecutor._is_launch_context_elevated()):  # type: ignore[attr-defined]
             return False, "Privilege-boundary launch failed without fallback."
 
         try:
             cmd = [real_target]
             if params:
-                cmd.extend(ShortcutExecutor._safe_split_args(params))
-            ShortcutExecutor._popen_silent(
+                cmd.extend(ShortcutExecutor._safe_split_args(params))  # type: ignore[attr-defined]
+            ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                 cmd,
                 cwd=cwd,
-                env=ShortcutExecutor._sanitized_child_env(),
+                env=ShortcutExecutor._sanitized_child_env(),  # type: ignore[attr-defined]
             )
             if not run_as_admin and real_target.lower().endswith(".exe"):
-                ShortcutExecutor._activate_launched_app_async(real_target)
+                ShortcutExecutor._activate_launched_app_async(real_target)  # type: ignore[attr-defined]
             return True, ""
         except Exception as e:
             return False, f"Launch failed: {str(e)}"
@@ -716,11 +716,11 @@ class FileExecutionMixin:
         }
 
         if os.name == "nt":
-            startupinfo = ShortcutExecutor._get_silent_startupinfo()
+            startupinfo = ShortcutExecutor._get_silent_startupinfo()  # type: ignore[attr-defined]
             if startupinfo:
                 kwargs["startupinfo"] = startupinfo
 
-            creationflags = ShortcutExecutor._get_silent_creationflags(shell=shell)
+            creationflags = ShortcutExecutor._get_silent_creationflags(shell=shell)  # type: ignore[attr-defined]
             if creationflags:
                 kwargs["creationflags"] = creationflags
 

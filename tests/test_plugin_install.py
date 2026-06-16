@@ -13,7 +13,7 @@ import pytest
 
 from core.command_registry import CommandRegistry
 from core.path_security import UnsafePathError
-from core.plugin.constants import PLUGIN_PACKAGE_MAX_FILES
+from core.plugin.constants import PLUGIN_PACKAGE_MAX_FILES, PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES
 from core.plugin_manager import PluginManager
 
 pytestmark = [pytest.mark.integration, pytest.mark.ui]
@@ -303,6 +303,40 @@ class TestInstallFromZipValidation:
             pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
             with pytest.raises(ValueError, match=rf"文件过多|{PLUGIN_PACKAGE_MAX_FILES}"):
                 pm.install_from_package(zip_path)
+
+    def test_archive_limits_checked_before_manifest_read(self, monkeypatch):
+        class FakeLargePluginJson:
+            filename = "plugin.json"
+            flag_bits = 0
+            file_size = PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES + 1
+
+            def is_dir(self):
+                return False
+
+        class FakeLargeZip:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def namelist(self):
+                return ["plugin.json"]
+
+            def infolist(self):
+                return [FakeLargePluginJson()]
+
+            def read(self, *args, **kwargs):
+                raise AssertionError("plugin.json must not be read before archive limits are checked")
+
+        monkeypatch.setattr(zipfile, "ZipFile", FakeLargeZip)
+
+        pm = PluginManager(CommandRegistry(), plugins_dir=tempfile.gettempdir())
+        with pytest.raises(ValueError, match="uncompressed size exceeds limit"):
+            pm.install_from_package("large.qlzip")
 
     def test_rejects_encrypted_archive_entries(self, monkeypatch):
         with tempfile.TemporaryDirectory() as tmp:

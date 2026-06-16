@@ -179,7 +179,7 @@ def _get_format_name(format_id: int) -> str:
 
         name = win32clipboard.GetClipboardFormatName(format_id)
         _REGISTERED_FORMAT_NAMES[format_id] = name
-        return name
+        return name  # type: ignore[no-any-return]
     except Exception:
         logger.debug("GetClipboardFormatName failed for %d", format_id, exc_info=True)
         return f"format_{format_id}"
@@ -273,7 +273,7 @@ class Win32ClipboardImpl:
                 q = Win32ClipboardImpl._sta_queue
                 while True:
                     try:
-                        cmd, a, kw, rq = q.get()
+                        cmd, a, kw, rq = q.get()  # type: ignore[union-attr]
                         try:
                             rq.put(cmd(*a, **kw))
                         except Exception as e:
@@ -286,8 +286,8 @@ class Win32ClipboardImpl:
             t = start_background_thread(name="ClipboardSTA", target=_sta_worker, owner="clipboard")
             Win32ClipboardImpl._sta_thread = t
 
-        result_queue = _queue.Queue()
-        Win32ClipboardImpl._sta_queue.put((func, args, kwargs, result_queue))
+        result_queue = _queue.Queue()  # type: ignore[var-annotated]
+        Win32ClipboardImpl._sta_queue.put((func, args, kwargs, result_queue))  # type: ignore[union-attr]
         result = result_queue.get(timeout=10)
         if isinstance(result, Exception):
             raise result
@@ -379,7 +379,7 @@ class Win32ClipboardImpl:
         try:
             import win32clipboard
 
-            return win32clipboard.IsClipboardFormatAvailable(format_id)
+            return win32clipboard.IsClipboardFormatAvailable(format_id)  # type: ignore[no-any-return]
         except ImportError as exc:
             logger.debug("win32clipboard不可用，无法检测剪贴板格式: %s", exc, exc_info=True)
             return False
@@ -622,7 +622,7 @@ class QtClipboardImpl:
             from qt_compat import QApplication
 
             cb = QApplication.clipboard()
-            return cb.text() or ""
+            return cb.text() or ""  # type: ignore[union-attr]
         except (ImportError, RuntimeError, AttributeError) as exc:
             logger.debug("读取Qt剪贴板文本失败: %s", exc, exc_info=True)
             return ""
@@ -632,7 +632,7 @@ class QtClipboardImpl:
         try:
             from qt_compat import QApplication
 
-            QApplication.clipboard().setText(text)
+            QApplication.clipboard().setText(text)  # type: ignore[union-attr]
             return True
         except (ImportError, RuntimeError, AttributeError) as exc:
             logger.debug("写入Qt剪贴板文本失败: %s", exc, exc_info=True)
@@ -686,7 +686,7 @@ class QtClipboardBridge:
                                 return
                             text = Win32ClipboardImpl.read_text()
                             if text is not None:
-                                QApplication.clipboard().setText(text)
+                                QApplication.clipboard().setText(text)  # type: ignore[union-attr]
                         except Exception as exc:
                             logger.debug("Qt剪贴板同步失败: %s", exc, exc_info=True)
 

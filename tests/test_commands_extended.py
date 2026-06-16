@@ -171,8 +171,8 @@ class TestQrGetLocalIp:
 
         assert ip == "192.168.1.20"
 
-    @patch("core.commands.socket.getaddrinfo")
-    @patch("core.commands.socket.socket")
+    @patch("core.commands_utils.socket.getaddrinfo")
+    @patch("core.commands_utils.socket.socket")
     def test_fallback_on_exception(self, mock_socket_cls, mock_getaddrinfo):
         mock_getaddrinfo.side_effect = Exception("no addresses")
         mock_socket_cls.side_effect = Exception("no network")
@@ -502,9 +502,9 @@ class TestCmdColorEdgeCases:
 
 
 class TestCmdIpEdgeCases:
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_public_only_mode(self, mock_primary, mock_local, mock_public):
         mock_public.return_value = ("203.0.113.1", "")
         ctx = CommandContext(args_text="public")
@@ -513,9 +513,9 @@ class TestCmdIpEdgeCases:
         assert "203.0.113.1" in res.message
         mock_primary.assert_not_called()
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_local_only_mode(self, mock_primary, mock_local, mock_public):
         mock_primary.return_value = "192.168.1.1"
         mock_local.return_value = [("192.168.1.1", "eth0")]
@@ -525,9 +525,9 @@ class TestCmdIpEdgeCases:
         assert "192.168.1.1" in res.message
         mock_public.assert_not_called()
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_chinese_public_mode(self, mock_primary, mock_local, mock_public):
         mock_public.return_value = ("1.2.3.4", "")
         ctx = CommandContext(args_text="公网")
@@ -535,9 +535,9 @@ class TestCmdIpEdgeCases:
         assert res.success is True
         mock_primary.assert_not_called()
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_chinese_local_mode(self, mock_primary, mock_local, mock_public):
         mock_primary.return_value = "10.0.0.1"
         mock_local.return_value = [("10.0.0.1", "lo")]
@@ -546,9 +546,9 @@ class TestCmdIpEdgeCases:
         assert res.success is True
         mock_public.assert_not_called()
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_local_failure_when_not_wanting_public(self, mock_primary, mock_local, mock_public):
         mock_primary.side_effect = Exception("no network")
         ctx = CommandContext(args_text="local")
@@ -556,18 +556,18 @@ class TestCmdIpEdgeCases:
         assert res.success is False
         assert "无法获取内网 IP" in res.message
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_public_only_failure(self, mock_primary, mock_local, mock_public):
         mock_public.return_value = ("", "timeout")
         ctx = CommandContext(args_text="public")
         res = cmd_ip(ctx)
         assert res.success is False
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_primary_ip_marked_as_current_exit(self, mock_primary, mock_local, mock_public):
         mock_primary.return_value = "192.168.1.100"
         mock_local.return_value = [("192.168.1.100", "Wi-Fi"), ("10.0.0.1", "VPN")]
@@ -576,9 +576,9 @@ class TestCmdIpEdgeCases:
         res = cmd_ip(ctx)
         assert "[当前出口]" in res.message
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_local_no_entries_but_has_primary(self, mock_primary, mock_local, mock_public):
         mock_primary.return_value = "192.168.1.50"
         mock_local.return_value = []
@@ -588,9 +588,9 @@ class TestCmdIpEdgeCases:
         assert res.success is True
         assert "192.168.1.50" in res.message
 
-    @patch("core.commands._fetch_public_ip")
-    @patch("core.commands._get_local_ipv4_addresses")
-    @patch("core.commands._get_primary_local_ip")
+    @patch("core.commands_network._fetch_public_ip")
+    @patch("core.commands_network._get_local_ipv4_addresses")
+    @patch("core.commands_network._get_primary_local_ip")
     def test_copy_actions_for_local_ips(self, mock_primary, mock_local, mock_public):
         mock_primary.return_value = "192.168.1.1"
         mock_local.return_value = [("192.168.1.1", "eth0"), ("10.0.0.1", "tun0")]
@@ -982,7 +982,7 @@ class TestCmdNetdiagEdgeCases:
         with (
             patch("socket.getaddrinfo") as mock_dns,
             patch("socket.create_connection") as mock_conn,
-            patch("core.commands._run_cmd") as mock_run,
+            patch("core.commands_network._run_cmd") as mock_run,
         ):
             mock_dns.return_value = [(None, None, None, None, ("1.2.3.4", 80))]
             mock_conn.return_value.__enter__.return_value = object()
@@ -990,7 +990,7 @@ class TestCmdNetdiagEdgeCases:
             res = cmd_netdiag(CommandContext(args_text="", clipboard_text="example.com"))
             assert res.success is True
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     @patch("socket.create_connection")
     @patch("socket.getaddrinfo")
     def test_dns_failure(self, mock_dns, mock_conn, mock_run):
@@ -1000,7 +1000,7 @@ class TestCmdNetdiagEdgeCases:
         assert res.success is True
         assert "解析失败" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     @patch("socket.create_connection")
     @patch("socket.getaddrinfo")
     def test_tcp_connection_failure(self, mock_dns, mock_conn, mock_run):
@@ -1011,7 +1011,7 @@ class TestCmdNetdiagEdgeCases:
         assert res.success is True
         assert "失败" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     @patch("socket.create_connection")
     @patch("socket.getaddrinfo")
     def test_custom_port(self, mock_dns, mock_conn, mock_run):
@@ -1022,7 +1022,7 @@ class TestCmdNetdiagEdgeCases:
         assert res.success is True
         assert "TCP 8080" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     @patch("socket.create_connection")
     @patch("socket.getaddrinfo")
     def test_suggestion_shown_when_dns_ok(self, mock_dns, mock_conn, mock_run):
@@ -1032,7 +1032,7 @@ class TestCmdNetdiagEdgeCases:
         res = cmd_netdiag(CommandContext(args_text="example.com"))
         assert "建议" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     @patch("socket.create_connection")
     @patch("socket.getaddrinfo")
     def test_copy_action(self, mock_dns, mock_conn, mock_run):
@@ -1316,14 +1316,14 @@ class TestGetPrimaryLocalIp:
 
 
 class TestCmdDns:
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_flush_success(self, mock_run):
         mock_run.return_value = (True, "Successfully flushed")
         res = cmd_dns(CommandContext())
         assert res.success is True
         assert "成功" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_flush_failure(self, mock_run):
         mock_run.return_value = (False, "Access denied")
         res = cmd_dns(CommandContext())
@@ -1354,7 +1354,7 @@ class TestCmdPortParsing:
 
 
 class TestCmdWifiParsing:
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_list_profiles_parses_output(self, mock_run):
         mock_run.return_value = (
             True,
@@ -1365,28 +1365,28 @@ class TestCmdWifiParsing:
         assert "MyWiFi" in res.message
         assert "Guest" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_list_profiles_empty(self, mock_run):
         mock_run.return_value = (True, "No profiles found")
         res = cmd_wifi(CommandContext(args_text=""))
         assert res.success is True
         assert "未找到" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_list_profiles_failure_wlansvc(self, mock_run):
         mock_run.return_value = (False, "The wlansvc service is not running")
         res = cmd_wifi(CommandContext(args_text=""))
         assert res.success is False
         assert "wlansvc" in res.message.lower() or "提示" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_list_profiles_failure_no_wireless(self, mock_run):
         mock_run.return_value = (False, "No wireless interface")
         res = cmd_wifi(CommandContext(args_text=""))
         assert res.success is False
         assert "无线" in res.message or "提示" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_query_password_found(self, mock_run):
         mock_run.return_value = (
             True,
@@ -1396,20 +1396,20 @@ class TestCmdWifiParsing:
         assert res.success is True
         assert "mypassword123" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_query_password_not_found(self, mock_run):
         mock_run.return_value = (False, "Not found")
         res = cmd_wifi(CommandContext(args_text="UnknownWiFi"))
         assert res.success is False
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_query_no_password(self, mock_run):
         mock_run.return_value = (True, "Some output without key content")
         res = cmd_wifi(CommandContext(args_text="OpenWiFi"))
         assert res.success is True
         assert "无密码" in res.message or "开放网络" in res.message
 
-    @patch("core.commands._run_cmd")
+    @patch("core.commands_network._run_cmd")
     def test_chinese_profile_parsing(self, mock_run):
         mock_run.return_value = (True, "所有用户配置文件     : 我的WiFi\n")
         res = cmd_wifi(CommandContext(args_text=""))

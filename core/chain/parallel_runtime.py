@@ -393,7 +393,7 @@ class ParallelGraphRuntime(GraphRuntime):
             for future in done:
                 node_id = pending.pop(future)
                 self._collect_node_future(future, node_id, graph, context, result)
-                node_result = result.node_results.get(node_id)
+                node_result = result.node_results.get(node_id)  # type: ignore[assignment]
                 if node_result is None:
                     continue
                 if node_result.status == NodeStatus.FAILED:
@@ -492,7 +492,7 @@ class ParallelGraphRuntime(GraphRuntime):
                         from .values import make_chain_value
 
                         typed_value = make_chain_value(value, port.kind)
-                        node_result.typed_outputs[port_id] = typed_value
+                        node_result.typed_outputs[port_id] = typed_value  # type: ignore[assignment]
 
                 # Cache results
                 node.cached_outputs = outputs

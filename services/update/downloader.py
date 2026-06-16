@@ -47,12 +47,23 @@ class UpdateDownloader:
         allowed_hosts: tuple[str, ...] | None = None,
         version: str = "",
         verify_ssl: bool = True,
+        allow_insecure_http: bool = False,
     ):
         self._cancel_flag = False
         self._download_thread = start_background_thread(
             name="UpdateDownloader",
             target=self._do_download,
-            args=(url, target_dir, expected_hash, expected_size, max_bytes, allowed_hosts, version, verify_ssl),
+            args=(
+                url,
+                target_dir,
+                expected_hash,
+                expected_size,
+                max_bytes,
+                allowed_hosts,
+                version,
+                verify_ssl,
+                allow_insecure_http,
+            ),
             owner=self,
         )
 
@@ -77,6 +88,7 @@ class UpdateDownloader:
         allowed_hosts: tuple[str, ...] | None = None,
         version: str = "",
         verify_ssl: bool = True,
+        allow_insecure_http: bool = False,
     ):
         tmp_path = None
         session_dir = ""
@@ -86,6 +98,8 @@ class UpdateDownloader:
             host = (parsed.hostname or "").lower()
             if scheme not in ("http", "https"):
                 raise ValueError("invalid download URL scheme")
+            if scheme != "https" and not (allow_insecure_http or _is_local_download_host(host)):
+                raise ValueError("insecure update download URLs must use HTTPS")
             if allowed_hosts and not _is_allowed_host(host, allowed_hosts):
                 raise ValueError(f"untrusted download host: {host}")
 
@@ -226,6 +240,10 @@ def _is_allowed_host(host: str, allowed_hosts: tuple[str, ...]) -> bool:
         if host == allowed_host or host.endswith("." + allowed_host):
             return True
     return False
+
+
+def _is_local_download_host(host: str) -> bool:
+    return host in {"localhost", "127.0.0.1", "::1"}
 
 
 def _safe_file_name(path: str) -> str:

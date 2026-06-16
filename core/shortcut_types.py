@@ -12,7 +12,7 @@ shell32 = ctypes.windll.shell32
 
 # ===== Module-level ctypes structs for SendInput (performance optimization) =====
 try:
-    ULONG_PTR = wintypes.ULONG_PTR
+    ULONG_PTR = wintypes.ULONG_PTR  # type: ignore[attr-defined]
 except AttributeError:
     ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 

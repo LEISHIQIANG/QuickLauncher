@@ -493,9 +493,9 @@ class GraphRuntime:
 
         # Try to import from registry
         try:
-            from .registry import get_processor_handler
+            from .registry import get_processor_handler  # type: ignore[attr-defined]
 
-            return get_processor_handler(processor_id)
+            return get_processor_handler(processor_id)  # type: ignore[no-any-return]
         except ImportError as exc:
             logger.debug("无法从 registry 导入处理器 %s: %s", processor_id, exc, exc_info=True)
 

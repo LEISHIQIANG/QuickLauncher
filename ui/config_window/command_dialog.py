@@ -190,7 +190,7 @@ class CommandDialog(BaseDialog):
             logger.debug("读取插件内置命令选项失败: %s", exc, exc_info=True)
         return options
 
-    def __init__(self, parent=None, shortcut: ShortcutItem = None):
+    def __init__(self, parent=None, shortcut: ShortcutItem = None):  # type: ignore[assignment]
         super().__init__(parent)
         if shortcut:
             self.shortcut = shortcut

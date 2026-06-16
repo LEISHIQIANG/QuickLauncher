@@ -184,7 +184,7 @@ def assert_type(value: Any, expected_type: str) -> bool:
     if expected is None:
         raise ValueError(f"未知类型: {expected_type}")
 
-    return isinstance(value, expected)
+    return isinstance(value, expected)  # type: ignore[arg-type]
 
 
 def is_empty(value: Any) -> bool:
@@ -348,6 +348,7 @@ def file_copy(src: str, dst: str, overwrite: bool = False) -> str:
         raise FileNotFoundError(f"源文件不存在: {src}")
     if os.path.exists(dst) and not overwrite:
         raise FileExistsError(f"目标文件已存在: {dst}")
+    assert_safe_user_path(src, operation="copy source")
     assert_safe_user_path(dst, operation="copy file")
 
     dst_dir = os.path.dirname(dst)

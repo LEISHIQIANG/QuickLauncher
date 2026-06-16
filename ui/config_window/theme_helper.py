@@ -13,7 +13,7 @@ from ui.utils.ui_scale import scale_qss, sp
 logger = logging.getLogger(__name__)
 
 # 内存缓存，避免重复文件系统访问
-_icon_path_cache = {}
+_icon_path_cache = {}  # type: ignore[var-annotated]
 
 
 def log_error(msg):
@@ -37,7 +37,7 @@ def get_temp_icon_dir():
 
 def _get_cached_icon_path(cache_key: str) -> str:
     """从缓存获取图标路径"""
-    return _icon_path_cache.get(cache_key, "")
+    return _icon_path_cache.get(cache_key, "")  # type: ignore[no-any-return]
 
 
 def _set_cached_icon_path(cache_key: str, path: str):

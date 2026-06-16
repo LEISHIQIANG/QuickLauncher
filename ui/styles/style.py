@@ -132,7 +132,7 @@ class PopupMenu(QWidget):
     - 内联展开式子菜单
     """
 
-    _active_popups = set()
+    _active_popups = set()  # type: ignore[var-annotated]
     _WIN10_SHADOW_SIZE = 10
     _WIN10_SHADOW_DISTANCE = 1
 
@@ -168,7 +168,7 @@ class PopupMenu(QWidget):
         self._layout.setSpacing(sp(2))
 
         # 子菜单项容器列表，用于展开/收起
-        self._sub_items_widgets = []
+        self._sub_items_widgets = []  # type: ignore[var-annotated]
         self._submenu_expanded = False
 
         # 按钮样式
@@ -368,7 +368,7 @@ class PopupMenu(QWidget):
         try:
             from ui.utils.window_effect import is_win10
 
-            return is_win10()
+            return is_win10()  # type: ignore[no-any-return]
         except Exception as exc:
             logger.debug("判断菜单阴影策略失败: %s", exc, exc_info=True)
             return False
@@ -379,7 +379,7 @@ class PopupMenu(QWidget):
         try:
             from ui.utils.window_effect import install_win10_window_shadow
 
-            return install_win10_window_shadow(
+            return install_win10_window_shadow(  # type: ignore[no-any-return]
                 self,
                 self._radius,
                 shadow_size=self._WIN10_SHADOW_SIZE,

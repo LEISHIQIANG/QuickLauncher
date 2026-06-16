@@ -95,7 +95,7 @@ class StepCardWidget(QFrame):
         # 序号
         num_label = QLabel(f"{self.step_index + 1}")
         num_label.setFixedWidth(sp(18))
-        num_label.setAlignment(Qt.AlignCenter)
+        num_label.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
         num_label.setStyleSheet(
             scale_qss(
                 "color: rgba(128,128,128,180); font-size: 11px; font-weight: 400; "
@@ -107,9 +107,9 @@ class StepCardWidget(QFrame):
         # 快捷方式图标
         icon_label = QLabel()
         icon_label.setFixedSize(sp(24), sp(24))
-        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
         if icon and not icon.isNull():
-            icon_label.setPixmap(icon.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            icon_label.setPixmap(icon.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
         icon_label.setStyleSheet("background: transparent;")
         layout.addWidget(icon_label)
 
@@ -255,7 +255,7 @@ class GrasshopperGroupWidget(QWidget):
 
         # 底部小文字标题标签
         self.label = QLabel(title)
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
 
         # 配色与分割线样式
         if theme == "dark":
@@ -336,7 +336,7 @@ class ChainDialog(BaseDialog):
         self._refresh_risk_analysis()
 
     def eventFilter(self, watched, event) -> bool:
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Wheel:  # type: ignore[attr-defined]
             # 获取当前活动的 Tab 页面
             active_page = self.module_tabs.currentWidget()
             if active_page:
@@ -514,7 +514,7 @@ class ChainDialog(BaseDialog):
     def _build_module_bar(self) -> QTabWidget:
         tabs = QTabWidget()
         tabs.setFixedHeight(sp(138))
-        self._module_buttons = []
+        self._module_buttons = []  # type: ignore[var-annotated]
 
         theme = "dark"
         try:
@@ -629,8 +629,8 @@ class ChainDialog(BaseDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
@@ -712,8 +712,8 @@ class ChainDialog(BaseDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
@@ -751,8 +751,8 @@ class ChainDialog(BaseDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
@@ -911,7 +911,7 @@ class ChainDialog(BaseDialog):
         self.processor_list = QListWidget()
         for processor_id, title in processor_library_items():
             item = QListWidgetItem(title)
-            item.setData(Qt.UserRole, processor_id)
+            item.setData(Qt.UserRole, processor_id)  # type: ignore[attr-defined]
             self.processor_list.addItem(item)
         self.processor_list.itemDoubleClicked.connect(self._add_processor_from_item)
         library_layout.addWidget(QLabel(tr("处理节点")))
@@ -984,7 +984,7 @@ class ChainDialog(BaseDialog):
 
         result_row = QHBoxLayout()
         result_row.addWidget(QLabel(tr("结果显示:")))
-        self._result_checks: dict[str, QCheckBox] = {}
+        self._result_checks: dict[str, QCheckBox] = {}  # type: ignore[no-redef]
         for key in ("none", "small", "medium", "large"):
             label_map = {"none": tr("无"), "small": tr("小"), "medium": tr("中"), "large": tr("大")}
             cb = QCheckBox(label_map[key])
@@ -1338,19 +1338,19 @@ class ChainDialog(BaseDialog):
                 if "," in icon_path or os.path.exists(icon_path):
                     pm = IconExtractor.from_file(icon_path, source_size, return_image=False)
                     if pm and not pm.isNull():
-                        return pm
+                        return pm  # type: ignore[no-any-return]
             # 文件夹类型默认图标
             if not icon_path and shortcut_uses_folder_icon(shortcut.type, target_path):
                 folder_ico = default_folder_icon_path()
                 if folder_ico:
                     pm = IconExtractor.from_file(folder_ico, source_size, return_image=False)
                     if pm and not pm.isNull():
-                        return pm
+                        return pm  # type: ignore[no-any-return]
             if target_path:
                 if os.path.exists(target_path):
                     pm = IconExtractor.extract(target_path, target_path, source_size, return_image=False)
                     if pm and not pm.isNull():
-                        return pm
+                        return pm  # type: ignore[no-any-return]
         except Exception as exc:
             logger.debug("获取快捷方式图标失败: %s", exc, exc_info=True)
         return None
@@ -1526,7 +1526,7 @@ class ChainDialog(BaseDialog):
                     "id": getattr(item, "id", ""),
                     "title": getattr(item, "name", "") or getattr(item, "id", ""),
                     "subtitle": type_label,
-                    "item": item,
+                    "item": item,  # type: ignore[dict-item]
                     "search": " ".join(
                         [
                             str(getattr(item, "id", "")),

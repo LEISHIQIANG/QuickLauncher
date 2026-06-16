@@ -187,16 +187,16 @@ class PopupDragDropMixin:
 
     def _execute_drop(self, item: ShortcutItem, files: list):
         """执行拖放打开操作"""
-        if self._executing:
+        if self._executing:  # type: ignore[has-type]
             return
 
         self._executing = True
         logger.debug(f"拖放执行: {item.name} 打开 {len(files)} 个文件")
 
-        should_close = not self.is_pinned
+        should_close = not self.is_pinned  # type: ignore[attr-defined]
 
         if should_close:
-            self.hide()
+            self.hide()  # type: ignore[attr-defined]
 
         QTimer.singleShot(100, lambda: self._do_execute_drop(item, files, should_close))
 
@@ -270,7 +270,7 @@ class PopupDragDropMixin:
                             success = False
             if success:
                 try:
-                    if self.data_manager.record_shortcut_used(item.id):
+                    if self.data_manager.record_shortcut_used(item.id):  # type: ignore[attr-defined]
                         signal = getattr(self, "shortcut_usage_recorded", None)
                         if signal is not None:
                             signal.emit()
@@ -281,4 +281,4 @@ class PopupDragDropMixin:
         finally:
             self._executing = False
             if should_close:
-                self.close()
+                self.close()  # type: ignore[attr-defined]

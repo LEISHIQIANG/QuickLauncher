@@ -89,4 +89,4 @@ def _point_near_window(hwnd, x: int, y: int, margin: int = EXPLORER_WINDOW_PROXI
         logger.debug("_point_near_window GetWindowRect failed", exc_info=True)
         return False
     margin = max(0, int(margin or 0))
-    return (left - margin) <= int(x) <= (right + margin) and (top - margin) <= int(y) <= (bottom + margin)
+    return (left - margin) <= int(x) <= (right + margin) and (top - margin) <= int(y) <= (bottom + margin)  # type: ignore[no-any-return]

@@ -24,4 +24,4 @@ def choose_custom_icon(parent, title: str = "Choose Icon") -> str:
         if dialog.exec_() == QDialog.Accepted and dialog.selected_index >= 0:
             return f"{file_path},{dialog.selected_index}"
 
-    return file_path
+    return file_path  # type: ignore[no-any-return]

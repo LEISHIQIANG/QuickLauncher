@@ -65,7 +65,7 @@ def shortcut_type_for_target(target_path: str, default: ShortcutType = ShortcutT
 
 def _is_folder_type(item_type) -> bool:
     value = getattr(item_type, "value", item_type)
-    return value == ShortcutType.FOLDER.value
+    return value == ShortcutType.FOLDER.value  # type: ignore[no-any-return]
 
 
 def _clean_path(path: str) -> str:

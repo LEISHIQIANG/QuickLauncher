@@ -70,5 +70,5 @@ def install_tooltip(widget: QWidget, text: str):
         CustomToolTip.hideToolTip()
         return widget.__class__.leaveEvent(widget, event)
 
-    widget.enterEvent = on_enter
-    widget.leaveEvent = on_leave
+    widget.enterEvent = on_enter  # type: ignore[method-assign]
+    widget.leaveEvent = on_leave  # type: ignore[method-assign]

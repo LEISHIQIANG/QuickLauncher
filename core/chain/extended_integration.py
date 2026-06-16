@@ -533,7 +533,7 @@ def _get_handler(processor_id: str):
         ),
         # Environment processors
         "env_get": lambda args: _ok(env_get(str(args.get("key", "")), str(args.get("default", "")))),
-        "env_set": lambda args: _ok(env_set(str(args.get("key", "")), str(args.get("value", "")))),
+        "env_set": lambda args: _ok(env_set(str(args.get("key", "")), str(args.get("value", "")))),  # type: ignore[arg-type, func-returns-value]
         "env_list": lambda args: _ok_json(env_list()),
         "env_expand": lambda args: _ok(env_expand(str(args.get("text", "")))),
         # Math extended processors
@@ -559,6 +559,6 @@ def execute_extended_processor(processor_id: str, args: dict[str, Any]) -> Comma
         handler = _get_handler(processor_id)
         if handler is None:
             return _error(f"未知的扩展处理器: {processor_id}")
-        return handler(args)
+        return handler(args)  # type: ignore[no-any-return]
     except Exception as e:
         return _error(f"处理器执行失败: {e}")

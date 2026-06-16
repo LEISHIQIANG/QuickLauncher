@@ -260,7 +260,7 @@ class UpdateDialog:
         title_label = QLabel(tr("发现更新"))
         title_label.setFont(get_qfont(13, 400))
         title_label.setStyleSheet(scale_qss(f"font-size: 13px; font-weight: 400; color: {title_color};"))
-        title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # type: ignore[attr-defined]
         title_layout.addWidget(title_label, 1)
 
         layout.addLayout(title_layout)
@@ -286,7 +286,7 @@ class UpdateDialog:
         version_html += "</div>"
 
         version_label = QLabel()
-        version_label.setTextFormat(Qt.RichText)
+        version_label.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
         version_label.setText(version_html)
         layout.addWidget(version_label)
 
@@ -294,8 +294,8 @@ class UpdateDialog:
         text_browser = QTextBrowser()
         text_browser.setOpenExternalLinks(True)
         text_browser.setFrameShape(QTextBrowser.NoFrame)
-        text_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        text_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        text_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        text_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
         text_browser.setFont(get_qfont(12))
 
         html_content = _markdown_to_html(changelog, theme)
@@ -362,7 +362,7 @@ class UpdateDialog:
             finally:
                 painter.end()
 
-        dialog.paintEvent = paint_event
+        dialog.paintEvent = paint_event  # type: ignore[method-assign]
 
         # Show animation
         dialog._acrylic_applied = False
@@ -392,7 +392,7 @@ class UpdateDialog:
             dialog._anim_group.addAnimation(dialog._pos_anim)
             dialog._anim_group.start()
 
-        dialog.showEvent = show_event
+        dialog.showEvent = show_event  # type: ignore[method-assign]
 
         def _apply_acrylic():
             try:
@@ -426,7 +426,7 @@ class UpdateDialog:
                         logger.debug("停止动画失败: %s", exc, exc_info=True)
             QDialog.done(dialog, result)
 
-        dialog.done = done_result
+        dialog.done = done_result  # type: ignore[method-assign]
 
         result_val = {"value": 0}
 

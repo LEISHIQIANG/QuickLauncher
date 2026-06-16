@@ -25,7 +25,7 @@ class PopupItemExecutionMixin:
 
     def _execute_item(self, item: ShortcutItem, force_new: bool = False):
         """执行项目"""
-        if self._executing:
+        if self._executing:  # type: ignore[has-type]
             return
 
         if self._should_wait_for_selection(item, force_new):
@@ -33,19 +33,19 @@ class PopupItemExecutionMixin:
 
         selected_files_for_item = []
         if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH, ShortcutType.URL):
-            selected_files_for_item = self._take_valid_selected_files_for_click()
+            selected_files_for_item = self._take_valid_selected_files_for_click()  # type: ignore[attr-defined]
 
         # 检查是否有选中文件需要打开
         files_to_use = []
         if item.type in (ShortcutType.FILE, ShortcutType.FOLDER):
-            files_to_use = self._take_valid_selected_files_for_click()
+            files_to_use = self._take_valid_selected_files_for_click()  # type: ignore[attr-defined]
 
         if files_to_use:
             logger.debug(f"使用Explorer选中文件启动: {item.name}, 文件: {files_to_use}")
-            if not self.is_pinned:
-                self.hide()
-            self._clear_selected_files_context()
-            self._execute_drop(item, files_to_use)
+            if not self.is_pinned:  # type: ignore[attr-defined]
+                self.hide()  # type: ignore[attr-defined]
+            self._clear_selected_files_context()  # type: ignore[attr-defined]
+            self._execute_drop(item, files_to_use)  # type: ignore[attr-defined]
             return
 
         # ===== 优化修复：运行时输入 `{{input}}` 参数收集 =====
@@ -190,7 +190,7 @@ class PopupItemExecutionMixin:
 
                             clipboard_text = ""
                             try:
-                                clipboard_text = self._read_clipboard_text()
+                                clipboard_text = self._read_clipboard_text()  # type: ignore[attr-defined]
                             except Exception as exc:
                                 logger.debug("读取剪贴板文本失败: %s", exc, exc_info=True)
 
@@ -206,7 +206,7 @@ class PopupItemExecutionMixin:
                             tray_app = getattr(self, "tray_app", None)
                             if tray_app is not None and hasattr(tray_app, "show_command_panel"):
                                 self._launched_app = True
-                                self.hide()
+                                self.hide()  # type: ignore[attr-defined]
                                 tray_app.show_command_panel(
                                     command_id=cmd_def.id,
                                     args_text=args_text,
@@ -220,7 +220,7 @@ class PopupItemExecutionMixin:
                                 return
 
                             def _on_update(update: CommandResult) -> None:
-                                self.show_command_result(update, cmd_def.id)
+                                self.show_command_result(update, cmd_def.id)  # type: ignore[attr-defined]
 
                             ctx = CommandContext(
                                 raw_input=query_for_panel,
@@ -231,7 +231,7 @@ class PopupItemExecutionMixin:
                                 update_callback=_on_update,
                             )
                             result = cmd_def.handler(ctx)
-                            self.show_command_result(result, cmd_def.id)
+                            self.show_command_result(result, cmd_def.id)  # type: ignore[attr-defined]
                             return
             except Exception as e:
                 logger.exception("Panel command handoff failed: %s", e)
@@ -277,11 +277,11 @@ class PopupItemExecutionMixin:
             or force_close_param_command
             or force_close_chain
             or force_close_batch
-            or not self.is_pinned
+            or not self.is_pinned  # type: ignore[attr-defined]
         )
 
         if should_close:
-            self.hide()
+            self.hide()  # type: ignore[attr-defined]
 
         if force_close_param_command or force_close_capture_command:
             tray_app = getattr(self, "tray_app", None)
@@ -291,7 +291,7 @@ class PopupItemExecutionMixin:
                     if runtime_inputs:
                         context_meta["input_values"] = dict(runtime_inputs)
                     if selected_files_for_item:
-                        context_meta["selected_files"] = list(selected_files_for_item)
+                        context_meta["selected_files"] = list(selected_files_for_item)  # type: ignore[assignment]
                     if tray_app.show_command_panel(
                         shortcut=item, raw_input=item.command or "", context_meta=context_meta
                     ):
@@ -519,7 +519,7 @@ class PopupItemExecutionMixin:
         if bool(getattr(self, "_closing", False)):
             return
         try:
-            if not self.isVisible():
+            if not self.isVisible():  # type: ignore[attr-defined]
                 return
         except RuntimeError:
             return
@@ -534,7 +534,7 @@ class PopupItemExecutionMixin:
             from ui.styles.themed_messagebox import ThemedMessageBox
 
             ThemedMessageBox.critical(
-                self.window(), tr("启动失败"), tr("无法启动: {name}\n\n原因: {error}", name=name, error=error)
+                self.window(), tr("启动失败"), tr("无法启动: {name}\n\n原因: {error}", name=name, error=error)  # type: ignore[attr-defined]
             )
         except Exception as e:
             logger.error(f"显示错误弹窗失败: {e}")

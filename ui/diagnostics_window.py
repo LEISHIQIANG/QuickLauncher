@@ -374,7 +374,7 @@ class DiagnosticsWindow(ThemedToolWindow):
             lines.append("")
         if safe_items:
             lines.append(tr("安全修复：\n"))
-            action_counts = {}
+            action_counts = {}  # type: ignore[var-annotated]
             for preview in safe_items:
                 action_counts[preview.action] = action_counts.get(preview.action, 0) + 1
             for action, count in sorted(action_counts.items()):

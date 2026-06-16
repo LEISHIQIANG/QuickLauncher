@@ -114,6 +114,7 @@ def execute_extra_file_processor(processor_id: str, values: dict[str, Any]) -> C
             raise FileNotFoundError(f"源文件不存在: {src}")
         if os.path.exists(dst) and not overwrite:
             raise FileExistsError(f"目标文件已存在: {dst}")
+        assert_safe_user_path(src, operation="copy source")
         assert_safe_user_path(dst, operation="copy file")
         dst_dir = os.path.dirname(dst)
         if dst_dir:

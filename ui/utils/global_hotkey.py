@@ -170,7 +170,7 @@ class Win32GlobalHotkey:
                     "vk": vk,
                 }
                 logger.info("全局热键注册成功: %s (id=%d)", hotkey_str, hotkey_id)
-                return hotkey_id
+                return hotkey_id  # type: ignore[no-any-return]
             else:
                 logger.warning("全局热键注册失败: %s (可能已被其他程序占用)", hotkey_str)
                 return 0

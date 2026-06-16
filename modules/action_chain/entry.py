@@ -23,7 +23,7 @@ MANIFEST_PATH = MODULE_DIR / "module.json"
 
 def load_manifest() -> dict[str, Any]:
     with MANIFEST_PATH.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+        return json.load(fh)  # type: ignore[no-any-return]
 
 
 class ActionChainModule:
@@ -62,10 +62,10 @@ class ActionChainModule:
         try:
             from ui.config_window.chain_dialog import ChainDialog
 
-            dialog = ChainDialog(parent, chain_data=chain_data, host_api=self.host_api)
+            dialog = ChainDialog(parent, chain_data=chain_data, host_api=self.host_api)  # type: ignore[call-arg]
             result = dialog.exec_()
             if result == dialog.Accepted:
-                return dialog.get_shortcut()
+                return dialog.get_shortcut()  # type: ignore[return-value]
             return None
         except Exception as exc:
             logger.error("Failed to open action-chain editor: %s", exc, exc_info=True)

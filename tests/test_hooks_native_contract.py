@@ -148,6 +148,63 @@ def test_all_low_level_and_raw_trigger_channels_pause_during_macro_capture():
     assert "RuntimeTriggerSuppressedByCapture()" in raw_mouse
 
 
+def test_raw_keyboard_fallback_feeds_macro_capture_only_in_input_capture_mode():
+    raw_keyboard = SOURCE[
+        SOURCE.index("static void ReconcileRawKeyboardEvents") : SOURCE.index("static void HandleRawMouseInput")
+    ]
+
+    assert "g_inputCaptureActive.load()" in raw_keyboard
+    assert "g_inputCaptureFilter.load() & HOOK_CAPTURE_KEYBOARD" in raw_keyboard
+    assert "eventData.type = event.down ? HOOK_INPUT_KEY_DOWN : HOOK_INPUT_KEY_UP;" in raw_keyboard
+    assert "QueueCapturedInput(eventData);" in raw_keyboard
+
+
+def test_raw_keyboard_fallback_does_not_duplicate_low_level_macro_capture():
+    globals_slice = SOURCE[
+        SOURCE.index("static std::atomic<unsigned long long> g_lowLevelPhysicalKeyboardCount") : SOURCE.index(
+            "static bool g_rawKeyboardPressed"
+        )
+    ]
+    raw_keyboard = SOURCE[
+        SOURCE.index("static void ReconcileRawKeyboardEvents") : SOURCE.index("static void HandleRawMouseInput")
+    ]
+    low_level_capture = SOURCE[
+        SOURCE.index("static void CaptureKeyboardHookEvent") : SOURCE.index("LRESULT CALLBACK KeyboardHookProc")
+    ]
+
+    assert "g_lowLevelInputCaptureKeyboardCount" in globals_slice
+    assert "g_rawConsumedInputCaptureKeyboardCount" in globals_slice
+    assert "g_rawConsumedInputCaptureKeyboardCount < captureCount" in raw_keyboard
+    assert "g_lowLevelInputCaptureKeyboardCount.fetch_add(1);" in low_level_capture
+
+
+def test_async_keyboard_polling_is_limited_to_macro_input_capture():
+    poller = SOURCE[
+        SOURCE.index("static bool InputCaptureKeyboardPollingEnabled") : SOURCE.index("static bool IsAltPressedNow")
+    ]
+    raw_window = SOURCE[
+        SOURCE.index("static LRESULT CALLBACK RawInputWindowProc") : SOURCE.index("static bool CreateRawInputWindow")
+    ]
+    starter = SOURCE[SOURCE.index("HOOKS_API bool StartInputCapture") : SOURCE.index("HOOKS_API void StopInputCapture")]
+
+    assert "g_inputCaptureActive.load()" in poller
+    assert "HOOK_CAPTURE_KEYBOARD" in poller
+    assert "HOOK_CAPTURE_INCLUDE_INJECTED" in poller
+    assert "GetAsyncKeyState(vk)" in poller
+    assert "QueueCapturedInput(eventData);" in poller
+    assert "PollInputCaptureKeyboardState();" in raw_window
+    assert "ResetInputCaptureKeyboardPollState();" in starter
+
+
+def test_macro_button_playback_applies_recorded_absolute_click_position():
+    start = SOURCE.index("static void ApplyAbsoluteMousePosition")
+    playback = SOURCE[start : SOURCE.index("case HOOK_INPUT_MOUSE_WHEEL", start)]
+
+    assert "HOOK_INPUT_FLAG_ABSOLUTE" in playback
+    assert "MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK" in playback
+    assert "ApplyAbsoluteMousePosition(eventData, &input->mi);" in playback
+
+
 def test_native_capture_file_logging_requires_explicit_debug_switch():
     logger_body = SOURCE[
         SOURCE.index(

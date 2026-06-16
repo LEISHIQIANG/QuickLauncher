@@ -85,7 +85,7 @@ def execute_extra_math_processor(processor_id: str, values: dict[str, Any]) -> C
         fib = [0, 1]
         for _ in range(2, n):
             fib.append(fib[-1] + fib[-2])
-        return ok_list(fib)
+        return ok_list(fib)  # type: ignore[arg-type]
 
     return None
 

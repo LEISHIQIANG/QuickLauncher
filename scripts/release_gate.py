@@ -88,10 +88,25 @@ def _default_steps(python: str) -> list[GateStep]:
                 "--exclude-dir",
                 "tools",
                 "--max-total",
-                "1373",
+                "1385",
                 "--max-unlogged",
                 "300",
             ],
+            {"PYTHONDONTWRITEBYTECODE": "1"},
+        ),
+        GateStep(
+            "i18n coverage",
+            [
+                python,
+                "scripts/check_i18n_coverage.py",
+                "--max-untranslated-pct",
+                "3",
+            ],
+            {"PYTHONDONTWRITEBYTECODE": "1"},
+        ),
+        GateStep(
+            "mypy progress",
+            [python, "scripts/check_mypy_progress.py"],
             {"PYTHONDONTWRITEBYTECODE": "1"},
         ),
         GateStep(

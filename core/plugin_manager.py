@@ -814,7 +814,7 @@ class PluginAPI:
             from qt_compat import QApplication
 
             cb = QApplication.clipboard()
-            return cb.text() or ""
+            return cb.text() or ""  # type: ignore[union-attr]
         except Exception:
             logger.debug("read_clipboard failed", exc_info=True)
             return ""
@@ -824,7 +824,7 @@ class PluginAPI:
         try:
             from qt_compat import QApplication
 
-            QApplication.clipboard().setText(text)
+            QApplication.clipboard().setText(text)  # type: ignore[union-attr]
         except Exception as exc:
             logger.debug("写入剪贴板失败: %s", exc, exc_info=True)
 
@@ -1123,7 +1123,7 @@ class PluginAPI:
             str((payload or {}).get("operation") or ""),
             (time.perf_counter() - started) * 1000,
         )
-        return result
+        return result  # type: ignore[no-any-return]
 
     def stop_persistent_helper(self, script_path: str | Path) -> None:
         safe_path = _safe_relative_plugin_path(str(script_path))
@@ -1208,7 +1208,7 @@ class PluginAPI:
         try:
             import ctypes
 
-            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[no-any-return]
         except (AttributeError, ImportError, OSError):
             return False
 
@@ -1794,7 +1794,7 @@ class PluginManager:
             try:
                 confirmed = self._confirm_high_risk_callback(info)
             except TypeError:
-                confirmed = self._confirm_high_risk_callback(info.manifest.name)
+                confirmed = self._confirm_high_risk_callback(info.manifest.name)  # type: ignore[arg-type]
             if not confirmed:
                 logger.info("用户取消启用插件: %s", info.manifest.name)
                 return False
@@ -1968,7 +1968,7 @@ class PluginManager:
                 package_path,
                 self._plugins_dir,
                 manifest_from_dict=PluginManifest.from_dict,
-                validate_manifest=validate_manifest,
+                validate_manifest=validate_manifest,  # type: ignore[arg-type]
                 on_overwrite=on_overwrite,
             )
             if plugin_id:

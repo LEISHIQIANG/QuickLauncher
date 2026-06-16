@@ -22,7 +22,7 @@ def center_dialog_on_main_window(dialog: QWidget):
 
     # 找到顶级窗口（ConfigWindow）
     # window() 方法会返回顶级窗口，即使 parent 是子组件
-    top_window = parent.window()
+    top_window = parent.window()  # type: ignore[attr-defined]
     if not top_window:
         return
 
@@ -55,4 +55,4 @@ def get_main_window(widget: QWidget):
     if not parent:
         return None
 
-    return parent.window()
+    return parent.window()  # type: ignore[attr-defined]

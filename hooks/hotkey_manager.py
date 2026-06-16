@@ -22,7 +22,7 @@ class HotkeyManager(QObject):
         self._dispatch_timer.setSingleShot(True)
         self._dispatch_timer.setInterval(15)
         self._dispatch_timer.timeout.connect(self._drain_pending_activated)
-        self._dispatch_requested.connect(self._start_dispatch_timer, Qt.QueuedConnection)
+        self._dispatch_requested.connect(self._start_dispatch_timer, Qt.QueuedConnection)  # type: ignore[attr-defined, call-arg]
         self._dll = dll
 
     def set_dll(self, dll) -> None:

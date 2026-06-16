@@ -55,6 +55,19 @@ CHORD_CAPTURE_INCLUDE_INJECTED = 0x0100
 
 PLAYBACK_NO_TIMING = 0x0001
 PLAYBACK_KEEP_PRESSED_ON_CANCEL = 0x0002
+_POINTER_CONTEXT_KEYS = (
+    "screen_index",
+    "screen_left",
+    "screen_top",
+    "screen_width",
+    "screen_height",
+    "screen_ratio_x",
+    "screen_ratio_y",
+    "virtual_left",
+    "virtual_top",
+    "virtual_width",
+    "virtual_height",
+)
 
 
 class HooksRuntimeStats(ctypes.Structure):
@@ -126,9 +139,155 @@ class HookMacroStatus(ctypes.Structure):
 INPUT_EVENT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.POINTER(HookInputEvent))
 
 
+class _RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
+
+
+class _MONITORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_ulong),
+        ("rcMonitor", _RECT),
+        ("rcWork", _RECT),
+        ("dwFlags", ctypes.c_ulong),
+    ]
+
+
+def _virtual_screen_rect() -> dict:
+    if os.name != "nt":
+        return {"left": 0, "top": 0, "width": 0, "height": 0}
+    user32 = ctypes.windll.user32
+    return {
+        "left": int(user32.GetSystemMetrics(76)),  # SM_XVIRTUALSCREEN
+        "top": int(user32.GetSystemMetrics(77)),  # SM_YVIRTUALSCREEN
+        "width": max(1, int(user32.GetSystemMetrics(78))),  # SM_CXVIRTUALSCREEN
+        "height": max(1, int(user32.GetSystemMetrics(79))),  # SM_CYVIRTUALSCREEN
+    }
+
+
+def _monitor_rects() -> list[dict]:
+    if os.name != "nt":
+        return []
+    user32 = ctypes.windll.user32
+    rects: list[dict] = []
+    callback_type = ctypes.WINFUNCTYPE(
+        ctypes.c_bool,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(_RECT),
+        ctypes.c_void_p,
+    )
+    user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_MONITORINFO)]
+    user32.GetMonitorInfoW.restype = ctypes.c_bool
+    user32.EnumDisplayMonitors.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        callback_type,
+        ctypes.c_void_p,
+    ]
+    user32.EnumDisplayMonitors.restype = ctypes.c_bool
+
+    def _enum_proc(hmonitor, _hdc, _rect, _lparam):
+        info = _MONITORINFO()
+        info.cbSize = ctypes.sizeof(_MONITORINFO)
+        if user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+            rect = info.rcMonitor
+            rects.append(
+                {
+                    "left": int(rect.left),
+                    "top": int(rect.top),
+                    "width": max(1, int(rect.right - rect.left)),
+                    "height": max(1, int(rect.bottom - rect.top)),
+                    "primary": bool(info.dwFlags & 1),
+                }
+            )
+        return True
+
+    enum_proc = callback_type(_enum_proc)
+    user32.EnumDisplayMonitors(None, None, enum_proc, 0)
+    return sorted(rects, key=lambda item: (not item.get("primary", False), item["left"], item["top"]))
+
+
+def _monitor_for_point(x: int, y: int, rects: list[dict]) -> tuple[int, dict] | tuple[None, None]:
+    for index, rect in enumerate(rects):
+        if rect["left"] <= x < rect["left"] + rect["width"] and rect["top"] <= y < rect["top"] + rect["height"]:
+            return index, rect
+    return (0, rects[0]) if rects else (None, None)
+
+
+def enrich_pointer_context(event: dict) -> dict:
+    """Attach monitor-relative coordinates for resolution/DPI-resilient playback."""
+    event = dict(event)
+    if int(event.get("flags", 0)) & INPUT_FLAG_ABSOLUTE == 0:
+        return event
+    event_type = int(event.get("type", 0))
+    if event_type not in (
+        INPUT_MOUSE_MOVE,
+        INPUT_MOUSE_BUTTON_DOWN,
+        INPUT_MOUSE_BUTTON_UP,
+        INPUT_MOUSE_WHEEL,
+        INPUT_MOUSE_HWHEEL,
+    ):
+        return event
+
+    x = int(event.get("x", 0))
+    y = int(event.get("y", 0))
+    rects = _monitor_rects()
+    screen_index, screen = _monitor_for_point(x, y, rects)
+    if screen is None:
+        return event
+
+    virtual = _virtual_screen_rect()
+    width = max(1, int(screen["width"]))
+    height = max(1, int(screen["height"]))
+    event.update(
+        {
+            "screen_index": int(screen_index or 0),
+            "screen_left": int(screen["left"]),
+            "screen_top": int(screen["top"]),
+            "screen_width": width,
+            "screen_height": height,
+            "screen_ratio_x": max(0.0, min(1.0, (x - int(screen["left"])) / max(1, width - 1))),
+            "screen_ratio_y": max(0.0, min(1.0, (y - int(screen["top"])) / max(1, height - 1))),
+            "virtual_left": int(virtual["left"]),
+            "virtual_top": int(virtual["top"]),
+            "virtual_width": int(virtual["width"]),
+            "virtual_height": int(virtual["height"]),
+        }
+    )
+    return event
+
+
+def _remap_pointer_context(event: dict) -> dict:
+    if int(event.get("flags", 0)) & INPUT_FLAG_ABSOLUTE == 0:
+        return event
+    if "screen_ratio_x" not in event or "screen_ratio_y" not in event:
+        return event
+    rects = _monitor_rects()
+    if not rects:
+        return event
+    try:
+        index = int(event.get("screen_index", 0))
+    except (TypeError, ValueError):
+        index = 0
+    if not 0 <= index < len(rects):
+        index = 0
+    screen = rects[index]
+    ratio_x = max(0.0, min(1.0, float(event.get("screen_ratio_x", 0.0))))
+    ratio_y = max(0.0, min(1.0, float(event.get("screen_ratio_y", 0.0))))
+    event = dict(event)
+    event["x"] = int(round(screen["left"] + ratio_x * max(0, screen["width"] - 1)))
+    event["y"] = int(round(screen["top"] + ratio_y * max(0, screen["height"] - 1)))
+    return event
+
+
 class HooksDLL:
     EXPECTED_VERSION = 15
-    EXPECTED_DLL_SHA256 = "359e466191362f263d42897f8343b7009f181642a632f3a0463d3b296393fd20"
+    EXPECTED_DLL_SHA256 = "57f2ef1abc8a67975e70959bd469be1c85960927c15a929f83a1f227b7992c6e"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -150,7 +309,7 @@ class HooksDLL:
         "ReleaseAllModifierKeys",
         "AreHooksQuiescent",
     )
-    _last_probe = {}
+    _last_probe = {}  # type: ignore[var-annotated]
     _instance = None
     _instance_lock = threading.Lock()
     _load_attempted = False
@@ -174,7 +333,7 @@ class HooksDLL:
             cls._load_attempted = False
 
     @classmethod
-    def get_instance(cls, dll_path: str = None) -> "HooksDLL":
+    def get_instance(cls, dll_path: str = None) -> "HooksDLL":  # type: ignore[assignment]
         """获取单例实例，避免多次加载DLL导致GC回调问题"""
         if cls._instance is not None and cls._instance.dll is not None:
             return cls._instance
@@ -190,7 +349,7 @@ class HooksDLL:
 
     def __init__(
         self,
-        dll_path: str = None,
+        dll_path: str = None,  # type: ignore[assignment]
         *,
         expected_sha256: str | None = None,
         verify_integrity: bool = True,
@@ -209,7 +368,7 @@ class HooksDLL:
         self.loaded = False
         self.compatible = False
         self.load_error = ""
-        self.missing_exports = []
+        self.missing_exports = []  # type: ignore[var-annotated]
         self.version = None
         self.capabilities = 0
         self._has_special_apps = False
@@ -251,7 +410,7 @@ class HooksDLL:
 
     def _init_callback_refs(self):
         if not hasattr(self, "_retired_callback_refs"):
-            self._retired_callback_refs = deque(maxlen=64)
+            self._retired_callback_refs = deque(maxlen=64)  # type: ignore[var-annotated]
         self._mouse_callback_ref = None
         self._alt_dclick_callback_ref = None
         self._keyboard_callback_ref = None
@@ -357,156 +516,156 @@ class HooksDLL:
             logger.warning("hooks.dll missing exports: %s", self.missing_exports)
             return
 
-        self.dll.InstallMouseHook.argtypes = [MOUSE_CALLBACK]
-        self.dll.InstallMouseHook.restype = ctypes.c_bool
-        self.dll.UninstallMouseHook.argtypes = []
-        self.dll.UninstallMouseHook.restype = None
-        self.dll.SetMousePaused.argtypes = [ctypes.c_bool]
-        self.dll.SetMousePaused.restype = None
-        self.dll.IsMousePaused.argtypes = []
-        self.dll.IsMousePaused.restype = ctypes.c_bool
-        self.dll.SetAltDoubleClickCallback.argtypes = [MOUSE_CALLBACK]
-        self.dll.SetAltDoubleClickCallback.restype = None
+        self.dll.InstallMouseHook.argtypes = [MOUSE_CALLBACK]  # type: ignore[union-attr]
+        self.dll.InstallMouseHook.restype = ctypes.c_bool  # type: ignore[union-attr]
+        self.dll.UninstallMouseHook.argtypes = []  # type: ignore[union-attr]
+        self.dll.UninstallMouseHook.restype = None  # type: ignore[union-attr]
+        self.dll.SetMousePaused.argtypes = [ctypes.c_bool]  # type: ignore[union-attr]
+        self.dll.SetMousePaused.restype = None  # type: ignore[union-attr]
+        self.dll.IsMousePaused.argtypes = []  # type: ignore[union-attr]
+        self.dll.IsMousePaused.restype = ctypes.c_bool  # type: ignore[union-attr]
+        self.dll.SetAltDoubleClickCallback.argtypes = [MOUSE_CALLBACK]  # type: ignore[union-attr]
+        self.dll.SetAltDoubleClickCallback.restype = None  # type: ignore[union-attr]
 
-        self.dll.InstallKeyboardHook.argtypes = [KEYBOARD_CALLBACK]
-        self.dll.InstallKeyboardHook.restype = ctypes.c_bool
-        self.dll.UninstallKeyboardHook.argtypes = []
-        self.dll.UninstallKeyboardHook.restype = None
-        self.dll.IsAltHeld.argtypes = []
-        self.dll.IsAltHeld.restype = ctypes.c_bool
-        self.dll.IsCtrlHeld.argtypes = []
-        self.dll.IsCtrlHeld.restype = ctypes.c_bool
-        self.dll.SetGlobalHotkey.argtypes = [ctypes.c_char_p, KEYBOARD_CALLBACK]
-        self.dll.SetGlobalHotkey.restype = ctypes.c_bool
-        self.dll.ClearGlobalHotkey.argtypes = []
-        self.dll.ClearGlobalHotkey.restype = None
-        self.dll.ReleaseAllModifierKeys.argtypes = []
-        self.dll.ReleaseAllModifierKeys.restype = None
-        self.dll.AreHooksQuiescent.argtypes = []
-        self.dll.AreHooksQuiescent.restype = ctypes.c_bool
+        self.dll.InstallKeyboardHook.argtypes = [KEYBOARD_CALLBACK]  # type: ignore[union-attr]
+        self.dll.InstallKeyboardHook.restype = ctypes.c_bool  # type: ignore[union-attr]
+        self.dll.UninstallKeyboardHook.argtypes = []  # type: ignore[union-attr]
+        self.dll.UninstallKeyboardHook.restype = None  # type: ignore[union-attr]
+        self.dll.IsAltHeld.argtypes = []  # type: ignore[union-attr]
+        self.dll.IsAltHeld.restype = ctypes.c_bool  # type: ignore[union-attr]
+        self.dll.IsCtrlHeld.argtypes = []  # type: ignore[union-attr]
+        self.dll.IsCtrlHeld.restype = ctypes.c_bool  # type: ignore[union-attr]
+        self.dll.SetGlobalHotkey.argtypes = [ctypes.c_char_p, KEYBOARD_CALLBACK]  # type: ignore[union-attr]
+        self.dll.SetGlobalHotkey.restype = ctypes.c_bool  # type: ignore[union-attr]
+        self.dll.ClearGlobalHotkey.argtypes = []  # type: ignore[union-attr]
+        self.dll.ClearGlobalHotkey.restype = None  # type: ignore[union-attr]
+        self.dll.ReleaseAllModifierKeys.argtypes = []  # type: ignore[union-attr]
+        self.dll.ReleaseAllModifierKeys.restype = None  # type: ignore[union-attr]
+        self.dll.AreHooksQuiescent.argtypes = []  # type: ignore[union-attr]
+        self.dll.AreHooksQuiescent.restype = ctypes.c_bool  # type: ignore[union-attr]
 
     def _bind_optional_exports(self):
         # 特殊应用支持（可选，兼容旧DLL）
         try:
-            self.dll.SetSpecialApps.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
-            self.dll.SetSpecialApps.restype = None
-            self.dll.ClearSpecialApps.argtypes = []
-            self.dll.ClearSpecialApps.restype = None
+            self.dll.SetSpecialApps.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]  # type: ignore[union-attr]
+            self.dll.SetSpecialApps.restype = None  # type: ignore[union-attr]
+            self.dll.ClearSpecialApps.argtypes = []  # type: ignore[union-attr]
+            self.dll.ClearSpecialApps.restype = None  # type: ignore[union-attr]
             self._has_special_apps = True
         except AttributeError:
             self._has_special_apps = False
 
         try:
-            self.dll.GetHooksVersion.argtypes = []
-            self.dll.GetHooksVersion.restype = ctypes.c_int
-            self.version = int(self.dll.GetHooksVersion())
+            self.dll.GetHooksVersion.argtypes = []  # type: ignore[union-attr]
+            self.dll.GetHooksVersion.restype = ctypes.c_int  # type: ignore[union-attr]
+            self.version = int(self.dll.GetHooksVersion())  # type: ignore[union-attr]
         except AttributeError:
             self.version = None
 
         try:
-            self.dll.GetHooksCapabilities.argtypes = []
-            self.dll.GetHooksCapabilities.restype = ctypes.c_uint
-            self.capabilities = int(self.dll.GetHooksCapabilities())
+            self.dll.GetHooksCapabilities.argtypes = []  # type: ignore[union-attr]
+            self.dll.GetHooksCapabilities.restype = ctypes.c_uint  # type: ignore[union-attr]
+            self.capabilities = int(self.dll.GetHooksCapabilities())  # type: ignore[union-attr]
         except AttributeError:
             self.capabilities = 0
 
         try:
-            self.dll.GetLastHookError.argtypes = []
-            self.dll.GetLastHookError.restype = ctypes.c_ulong
+            self.dll.GetLastHookError.argtypes = []  # type: ignore[union-attr]
+            self.dll.GetLastHookError.restype = ctypes.c_ulong  # type: ignore[union-attr]
             self._has_last_error = True
         except AttributeError:
             self._has_last_error = False
 
         try:
-            self.dll.IsMouseHookInstalled.argtypes = []
-            self.dll.IsMouseHookInstalled.restype = ctypes.c_bool
-            self.dll.IsKeyboardHookInstalled.argtypes = []
-            self.dll.IsKeyboardHookInstalled.restype = ctypes.c_bool
+            self.dll.IsMouseHookInstalled.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsMouseHookInstalled.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.IsKeyboardHookInstalled.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsKeyboardHookInstalled.restype = ctypes.c_bool  # type: ignore[union-attr]
             self._has_hook_health = True
         except AttributeError:
             self._has_hook_health = False
 
         try:
-            self.dll.IsRawInputFallbackActive.argtypes = []
-            self.dll.IsRawInputFallbackActive.restype = ctypes.c_bool
+            self.dll.IsRawInputFallbackActive.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsRawInputFallbackActive.restype = ctypes.c_bool  # type: ignore[union-attr]
             self._has_raw_input_status = True
         except AttributeError:
             self._has_raw_input_status = False
 
         try:
-            self.dll.StartHotkeyCapture.argtypes = [HOTKEY_CAPTURE_CALLBACK, ctypes.c_int]
-            self.dll.StartHotkeyCapture.restype = ctypes.c_bool
-            self.dll.StopHotkeyCapture.argtypes = []
-            self.dll.StopHotkeyCapture.restype = None
-            self.dll.IsHotkeyCaptureActive.argtypes = []
-            self.dll.IsHotkeyCaptureActive.restype = ctypes.c_bool
+            self.dll.StartHotkeyCapture.argtypes = [HOTKEY_CAPTURE_CALLBACK, ctypes.c_int]  # type: ignore[union-attr]
+            self.dll.StartHotkeyCapture.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.StopHotkeyCapture.argtypes = []  # type: ignore[union-attr]
+            self.dll.StopHotkeyCapture.restype = None  # type: ignore[union-attr]
+            self.dll.IsHotkeyCaptureActive.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsHotkeyCaptureActive.restype = ctypes.c_bool  # type: ignore[union-attr]
             self._has_hotkey_capture = True
         except AttributeError:
             self._has_hotkey_capture = False
 
         try:
-            self.dll.StartProtectedChordCapture.argtypes = [
+            self.dll.StartProtectedChordCapture.argtypes = [  # type: ignore[union-attr]
                 PROTECTED_CHORD_CAPTURE_CALLBACK,
                 ctypes.c_uint,
                 ctypes.c_int,
             ]
-            self.dll.StartProtectedChordCapture.restype = ctypes.c_bool
-            self.dll.StopProtectedChordCapture.argtypes = []
-            self.dll.StopProtectedChordCapture.restype = None
-            self.dll.IsProtectedChordCaptureActive.argtypes = []
-            self.dll.IsProtectedChordCaptureActive.restype = ctypes.c_bool
+            self.dll.StartProtectedChordCapture.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.StopProtectedChordCapture.argtypes = []  # type: ignore[union-attr]
+            self.dll.StopProtectedChordCapture.restype = None  # type: ignore[union-attr]
+            self.dll.IsProtectedChordCaptureActive.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsProtectedChordCaptureActive.restype = ctypes.c_bool  # type: ignore[union-attr]
             self._has_protected_chord_capture = True
         except AttributeError:
             self._has_protected_chord_capture = False
 
         try:
-            self.dll.GetHooksRuntimeStats.argtypes = [ctypes.POINTER(HooksRuntimeStats), ctypes.c_uint]
-            self.dll.GetHooksRuntimeStats.restype = ctypes.c_bool
-            self.dll.ResetHooksRuntimeStats.argtypes = []
-            self.dll.ResetHooksRuntimeStats.restype = None
+            self.dll.GetHooksRuntimeStats.argtypes = [ctypes.POINTER(HooksRuntimeStats), ctypes.c_uint]  # type: ignore[union-attr]
+            self.dll.GetHooksRuntimeStats.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.ResetHooksRuntimeStats.argtypes = []  # type: ignore[union-attr]
+            self.dll.ResetHooksRuntimeStats.restype = None  # type: ignore[union-attr]
             self._has_runtime_stats = True
         except AttributeError:
             self._has_runtime_stats = False
 
         try:
-            self.dll.StartInputCapture.argtypes = [INPUT_EVENT_CALLBACK, ctypes.c_uint]
-            self.dll.StartInputCapture.restype = ctypes.c_bool
-            self.dll.StopInputCapture.argtypes = []
-            self.dll.StopInputCapture.restype = None
-            self.dll.IsInputCaptureActive.argtypes = []
-            self.dll.IsInputCaptureActive.restype = ctypes.c_bool
+            self.dll.StartInputCapture.argtypes = [INPUT_EVENT_CALLBACK, ctypes.c_uint]  # type: ignore[union-attr]
+            self.dll.StartInputCapture.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.StopInputCapture.argtypes = []  # type: ignore[union-attr]
+            self.dll.StopInputCapture.restype = None  # type: ignore[union-attr]
+            self.dll.IsInputCaptureActive.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsInputCaptureActive.restype = ctypes.c_bool  # type: ignore[union-attr]
             self._has_input_capture = True
         except AttributeError:
             self._has_input_capture = False
 
         try:
-            self.dll.PlayMacroEvents.argtypes = [ctypes.POINTER(HookMacroEvent), ctypes.c_uint, ctypes.c_uint]
-            self.dll.PlayMacroEvents.restype = ctypes.c_bool
-            self.dll.CancelMacroPlayback.argtypes = []
-            self.dll.CancelMacroPlayback.restype = None
-            self.dll.IsMacroPlaybackActive.argtypes = []
-            self.dll.IsMacroPlaybackActive.restype = ctypes.c_bool
-            self.dll.WaitForMacroPlayback.argtypes = [ctypes.c_uint]
-            self.dll.WaitForMacroPlayback.restype = ctypes.c_bool
-            self.dll.GetMacroStatus.argtypes = [ctypes.POINTER(HookMacroStatus), ctypes.c_uint]
-            self.dll.GetMacroStatus.restype = ctypes.c_bool
-            self.dll.ReleaseMacroPressedInputs.argtypes = []
-            self.dll.ReleaseMacroPressedInputs.restype = None
+            self.dll.PlayMacroEvents.argtypes = [ctypes.POINTER(HookMacroEvent), ctypes.c_uint, ctypes.c_uint]  # type: ignore[union-attr]
+            self.dll.PlayMacroEvents.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.CancelMacroPlayback.argtypes = []  # type: ignore[union-attr]
+            self.dll.CancelMacroPlayback.restype = None  # type: ignore[union-attr]
+            self.dll.IsMacroPlaybackActive.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsMacroPlaybackActive.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.WaitForMacroPlayback.argtypes = [ctypes.c_uint]  # type: ignore[union-attr]
+            self.dll.WaitForMacroPlayback.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.GetMacroStatus.argtypes = [ctypes.POINTER(HookMacroStatus), ctypes.c_uint]  # type: ignore[union-attr]
+            self.dll.GetMacroStatus.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.ReleaseMacroPressedInputs.argtypes = []  # type: ignore[union-attr]
+            self.dll.ReleaseMacroPressedInputs.restype = None  # type: ignore[union-attr]
             self._has_macro_playback = True
         except AttributeError:
             self._has_macro_playback = False
 
         # 触发配置支持（可选）
         try:
-            self.dll.SetTriggerConfig.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-            self.dll.SetTriggerConfig.restype = None
+            self.dll.SetTriggerConfig.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]  # type: ignore[union-attr]
+            self.dll.SetTriggerConfig.restype = None  # type: ignore[union-attr]
             self._has_trigger_config = True
         except AttributeError:
             self._has_trigger_config = False
 
         # 扩展触发配置支持（可选）
         try:
-            self.dll.SetTriggerConfigEx.argtypes = [
+            self.dll.SetTriggerConfigEx.argtypes = [  # type: ignore[union-attr]
                 ctypes.c_int,
                 ctypes.c_int,
                 ctypes.c_char_p,
@@ -516,7 +675,7 @@ class HooksDLL:
                 ctypes.c_char_p,
                 ctypes.c_int,
             ]
-            self.dll.SetTriggerConfigEx.restype = None
+            self.dll.SetTriggerConfigEx.restype = None  # type: ignore[union-attr]
             self._has_trigger_config_ex = True
         except AttributeError:
             self._has_trigger_config_ex = False
@@ -564,7 +723,7 @@ class HooksDLL:
             stats.size = ctypes.sizeof(HooksRuntimeStats)
             if not self.dll.GetHooksRuntimeStats(ctypes.byref(stats), stats.size):
                 return {}
-            return {name: int(getattr(stats, name)) for name, _ctype in HooksRuntimeStats._fields_}
+            return {name: int(getattr(stats, name)) for name, _ctype in HooksRuntimeStats._fields_}  # type: ignore[misc]
         except Exception as exc:
             logger.debug("hooks.dll GetHooksRuntimeStats failed: %s", exc, exc_info=True)
             return {}
@@ -723,7 +882,7 @@ class HooksDLL:
                 return False
             callback_ref = MOUSE_CALLBACK(callback)
             previous_ref = self._mouse_callback_ref
-            ok = bool(self.dll.InstallMouseHook(callback_ref))
+            ok = bool(self.dll.InstallMouseHook(callback_ref))  # type: ignore[union-attr]
             if ok:
                 self._retire_callback_ref(previous_ref)
                 self._mouse_callback_ref = callback_ref
@@ -738,7 +897,7 @@ class HooksDLL:
             self.stop_input_capture(force=True)
         with self._lifecycle_lock:
             if self._ready():
-                self.dll.UninstallMouseHook()
+                self.dll.UninstallMouseHook()  # type: ignore[union-attr]
             self._retire_callback_ref(self._mouse_callback_ref)
             self._retire_callback_ref(self._alt_dclick_callback_ref)
             self._mouse_callback_ref = None
@@ -748,13 +907,13 @@ class HooksDLL:
         """设置鼠标钩子暂停状态"""
         with self._lifecycle_lock:
             if self._ready():
-                self.dll.SetMousePaused(paused)
+                self.dll.SetMousePaused(paused)  # type: ignore[union-attr]
 
     def is_mouse_paused(self) -> bool:
         """获取鼠标钩子暂停状态"""
         if not self._ready():
             return False
-        return self.dll.IsMousePaused()
+        return self.dll.IsMousePaused()  # type: ignore[no-any-return, union-attr]
 
     def set_alt_double_click_callback(self, callback: Callable[[int, int], None] | None):
         """设置Alt+左键双击回调"""
@@ -763,11 +922,11 @@ class HooksDLL:
             if callback:
                 callback_ref = MOUSE_CALLBACK(callback)
                 if self._ready():
-                    self.dll.SetAltDoubleClickCallback(callback_ref)
+                    self.dll.SetAltDoubleClickCallback(callback_ref)  # type: ignore[union-attr]
                 self._alt_dclick_callback_ref = callback_ref
             else:
                 if self._ready():
-                    self.dll.SetAltDoubleClickCallback(None)
+                    self.dll.SetAltDoubleClickCallback(None)  # type: ignore[union-attr]
                 self._alt_dclick_callback_ref = None
             self._retire_callback_ref(previous_ref)
 
@@ -781,7 +940,7 @@ class HooksDLL:
             if not self._ready():
                 return False
             previous_ref = self._keyboard_callback_ref
-            ok = bool(self.dll.InstallKeyboardHook(callback_ref))
+            ok = bool(self.dll.InstallKeyboardHook(callback_ref))  # type: ignore[union-attr]
             if ok:
                 self._retire_callback_ref(previous_ref)
                 self._keyboard_callback_ref = callback_ref
@@ -814,8 +973,8 @@ class HooksDLL:
             )
 
             try:
-                self.dll.UninstallKeyboardHook()
-                ok = bool(self.dll.InstallKeyboardHook(callback_ref))
+                self.dll.UninstallKeyboardHook()  # type: ignore[union-attr]
+                ok = bool(self.dll.InstallKeyboardHook(callback_ref))  # type: ignore[union-attr]
             except Exception as exc:
                 logger.warning("重新装载录制键盘钩子失败: %s", exc, exc_info=True)
                 return False, installed_temporarily
@@ -840,7 +999,7 @@ class HooksDLL:
             self.stop_input_capture(force=True)
         with self._lifecycle_lock:
             if self._ready():
-                self.dll.UninstallKeyboardHook()
+                self.dll.UninstallKeyboardHook()  # type: ignore[union-attr]
             self._retire_callback_ref(self._keyboard_callback_ref)
             self._keyboard_callback_ref = None
 
@@ -848,13 +1007,13 @@ class HooksDLL:
         """获取Alt键按住状态"""
         if not self._ready():
             return False
-        return self.dll.IsAltHeld()
+        return self.dll.IsAltHeld()  # type: ignore[no-any-return, union-attr]
 
     def is_ctrl_held(self) -> bool:
         """获取Ctrl键按住状态"""
         if not self._ready():
             return False
-        return self.dll.IsCtrlHeld()
+        return self.dll.IsCtrlHeld()  # type: ignore[no-any-return, union-attr]
 
     def set_hotkey(self, hotkey_str: str, callback: Callable[[], None]):
         """设置全局热键"""
@@ -862,7 +1021,7 @@ class HooksDLL:
             if not self._ready():
                 return False
             callback_ref = KEYBOARD_CALLBACK(callback)
-            ok = bool(self.dll.SetGlobalHotkey(hotkey_str.encode("utf-8"), callback_ref))
+            ok = bool(self.dll.SetGlobalHotkey(hotkey_str.encode("utf-8"), callback_ref))  # type: ignore[union-attr]
             if ok:
                 self._retire_callback_ref(self._hotkey_callback_ref)
                 self._hotkey_callback_ref = callback_ref
@@ -872,7 +1031,7 @@ class HooksDLL:
         """清除全局热键"""
         with self._lifecycle_lock:
             if self._ready():
-                self.dll.ClearGlobalHotkey()
+                self.dll.ClearGlobalHotkey()  # type: ignore[union-attr]
             self._retire_callback_ref(self._hotkey_callback_ref)
             self._hotkey_callback_ref = None
 
@@ -885,7 +1044,7 @@ class HooksDLL:
     ) -> bool:
         """启动受保护快捷键录制，录制期间 DLL 会吞掉所有键盘事件。"""
         with self._lifecycle_lock:
-            if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:
+            if not self._ready() or not getattr(self, "_has_hotkey_capture", False) or not callback:  # type: ignore[truthy-function]
                 return False
             self._clear_inactive_capture_owners_locked()
             capture_owner = owner if owner is not None else self
@@ -897,7 +1056,7 @@ class HooksDLL:
                 logger.warning("StartHotkeyCapture rejected because another owner is recording")
                 return False
             callback_ref = HOTKEY_CAPTURE_CALLBACK(callback)
-            ok = bool(self.dll.StartHotkeyCapture(callback_ref, int(timeout_ms)))
+            ok = bool(self.dll.StartHotkeyCapture(callback_ref, int(timeout_ms)))  # type: ignore[union-attr]
             if ok:
                 self._retire_callback_ref(self._hotkey_capture_callback_ref)
                 self._hotkey_capture_callback_ref = callback_ref
@@ -916,7 +1075,7 @@ class HooksDLL:
                 logger.warning("StopHotkeyCapture rejected for non-owner")
                 return False
             if self._ready() and getattr(self, "_has_hotkey_capture", False):
-                self.dll.StopHotkeyCapture()
+                self.dll.StopHotkeyCapture()  # type: ignore[union-attr]
             self._retire_callback_ref(self._hotkey_capture_callback_ref)
             self._hotkey_capture_callback_ref = None
             self._hotkey_capture_owner = None
@@ -932,7 +1091,7 @@ class HooksDLL:
             if not self._ready() or not getattr(self, "_has_hotkey_capture", False):
                 return False
             try:
-                active = bool(self.dll.IsHotkeyCaptureActive())
+                active = bool(self.dll.IsHotkeyCaptureActive())  # type: ignore[union-attr]
             except Exception:
                 return False
             if not active:
@@ -951,7 +1110,7 @@ class HooksDLL:
     ) -> bool:
         """Capture a physical chord while swallowing its keyboard/mouse events."""
         with self._lifecycle_lock:
-            if not self._ready() or not self._has_protected_chord_capture or not callback:
+            if not self._ready() or not self._has_protected_chord_capture or not callback:  # type: ignore[truthy-function]
                 return False
             self._clear_inactive_capture_owners_locked()
             if (
@@ -979,7 +1138,7 @@ class HooksDLL:
                 self.is_keyboard_hook_installed(),
                 self.is_mouse_hook_installed(),
             )
-            ok = bool(self.dll.StartProtectedChordCapture(callback_ref, flags, int(timeout_ms)))
+            ok = bool(self.dll.StartProtectedChordCapture(callback_ref, flags, int(timeout_ms)))  # type: ignore[union-attr]
             if ok:
                 self._retire_callback_ref(self._protected_chord_capture_callback_ref)
                 self._protected_chord_capture_callback_ref = callback_ref
@@ -1012,7 +1171,7 @@ class HooksDLL:
                 logger.warning("StopProtectedChordCapture rejected for non-owner")
                 return False
             if self._ready() and self._has_protected_chord_capture:
-                self.dll.StopProtectedChordCapture()
+                self.dll.StopProtectedChordCapture()  # type: ignore[union-attr]
             self._retire_callback_ref(self._protected_chord_capture_callback_ref)
             self._protected_chord_capture_callback_ref = None
             self._protected_chord_capture_owner = None
@@ -1029,7 +1188,7 @@ class HooksDLL:
             if not self._ready() or not self._has_protected_chord_capture:
                 return False
             try:
-                active = bool(self.dll.IsProtectedChordCaptureActive())
+                active = bool(self.dll.IsProtectedChordCaptureActive())  # type: ignore[union-attr]
             except Exception:
                 return False
             if not active:
@@ -1038,7 +1197,7 @@ class HooksDLL:
 
     @staticmethod
     def _input_event_to_dict(event: HookInputEvent) -> dict:
-        return {name: int(getattr(event, name)) for name, _ctype in HookInputEvent._fields_}
+        return {name: int(getattr(event, name)) for name, _ctype in HookInputEvent._fields_}  # type: ignore[misc]
 
     def start_input_capture(
         self,
@@ -1056,7 +1215,7 @@ class HooksDLL:
         quickly. Event dictionaries are detached copies and may be retained.
         """
         with self._lifecycle_lock:
-            if not self._ready() or not self._has_input_capture or not callback:
+            if not self._ready() or not self._has_input_capture or not callback:  # type: ignore[truthy-function]
                 return False
             self._clear_inactive_capture_owners_locked()
             flags = int(filter_flags)
@@ -1085,7 +1244,7 @@ class HooksDLL:
                 logger.warning("StartInputCapture rejected because another owner is recording")
                 return False
             previous_ref = self._input_event_callback_ref
-            ok = bool(self.dll.StartInputCapture(callback_ref, flags))
+            ok = bool(self.dll.StartInputCapture(callback_ref, flags))  # type: ignore[union-attr]
             if not ok:
                 logger.warning("StartInputCapture failed, last_error=%s", self.get_last_hook_error())
             else:
@@ -1102,7 +1261,7 @@ class HooksDLL:
                 logger.warning("StopInputCapture rejected for non-owner")
                 return False
             if self._ready() and self._has_input_capture:
-                self.dll.StopInputCapture()
+                self.dll.StopInputCapture()  # type: ignore[union-attr]
             self._retire_callback_ref(self._input_event_callback_ref)
             self._input_event_callback_ref = None
             self._input_capture_filter_flags = 0
@@ -1113,7 +1272,7 @@ class HooksDLL:
         with self._lifecycle_lock:
             if not self._ready() or not self._has_input_capture:
                 return False
-            active = bool(self.dll.IsInputCaptureActive())
+            active = bool(self.dll.IsInputCaptureActive())  # type: ignore[union-attr]
             if not active:
                 self._clear_inactive_capture_owners_locked()
             return active
@@ -1139,18 +1298,20 @@ class HooksDLL:
             else:
                 delay = max(0, timestamp - previous_timestamp)
             previous_timestamp = timestamp
-            result.append(
-                {
-                    "type": int(raw.get("type", 0)),
-                    "flags": int(raw.get("flags", 0)) & (INPUT_FLAG_EXTENDED | INPUT_FLAG_ABSOLUTE),
-                    "delay_us": min(0xFFFFFFFF, round(delay / speed)),
-                    "x": int(raw.get("x", 0)),
-                    "y": int(raw.get("y", 0)),
-                    "data": int(raw.get("data", 0)),
-                    "vk_code": int(raw.get("vk_code", 0)),
-                    "scan_code": int(raw.get("scan_code", 0)),
-                }
-            )
+            item = {
+                "type": int(raw.get("type", 0)),
+                "flags": int(raw.get("flags", 0)) & (INPUT_FLAG_EXTENDED | INPUT_FLAG_ABSOLUTE),
+                "delay_us": min(0xFFFFFFFF, round(delay / speed)),
+                "x": int(raw.get("x", 0)),
+                "y": int(raw.get("y", 0)),
+                "data": int(raw.get("data", 0)),
+                "vk_code": int(raw.get("vk_code", 0)),
+                "scan_code": int(raw.get("scan_code", 0)),
+            }
+            for key in _POINTER_CONTEXT_KEYS:
+                if key in raw:
+                    item[key] = raw[key]
+            result.append(item)
         return result
 
     @staticmethod
@@ -1160,6 +1321,7 @@ class HooksDLL:
             if not event.size:
                 event.size = ctypes.sizeof(HookMacroEvent)
             return event
+        raw = _remap_pointer_context(raw)
         event = HookMacroEvent()
         event.size = ctypes.sizeof(HookMacroEvent)
         event.type = int(raw.get("type", 0))
@@ -1190,7 +1352,7 @@ class HooksDLL:
                 options |= PLAYBACK_NO_TIMING
             if keep_pressed_on_cancel:
                 options |= PLAYBACK_KEEP_PRESSED_ON_CANCEL
-            ok = bool(self.dll.PlayMacroEvents(array, len(native_events), options))
+            ok = bool(self.dll.PlayMacroEvents(array, len(native_events), options))  # type: ignore[union-attr]
             if not ok:
                 logger.warning("PlayMacroEvents failed, last_error=%s", self.get_last_hook_error())
             return ok
@@ -1198,36 +1360,36 @@ class HooksDLL:
     def cancel_macro_playback(self) -> None:
         with self._lifecycle_lock:
             if self._ready() and self._has_macro_playback:
-                self.dll.CancelMacroPlayback()
+                self.dll.CancelMacroPlayback()  # type: ignore[union-attr]
 
     def wait_for_macro_playback(self, timeout_ms: int = 0xFFFFFFFF) -> bool:
         if not self._ready() or not self._has_macro_playback:
             return False
-        return bool(self.dll.WaitForMacroPlayback(max(0, min(0xFFFFFFFF, int(timeout_ms)))))
+        return bool(self.dll.WaitForMacroPlayback(max(0, min(0xFFFFFFFF, int(timeout_ms)))))  # type: ignore[union-attr]
 
     def is_macro_playback_active(self) -> bool:
         if not self._ready() or not self._has_macro_playback:
             return False
-        return bool(self.dll.IsMacroPlaybackActive())
+        return bool(self.dll.IsMacroPlaybackActive())  # type: ignore[union-attr]
 
     def get_macro_status(self) -> dict:
         if not self._ready() or not self._has_macro_playback:
             return {}
         status = HookMacroStatus()
         status.size = ctypes.sizeof(HookMacroStatus)
-        if not self.dll.GetMacroStatus(ctypes.byref(status), status.size):
+        if not self.dll.GetMacroStatus(ctypes.byref(status), status.size):  # type: ignore[union-attr]
             return {}
-        return {name: int(getattr(status, name)) for name, _ctype in HookMacroStatus._fields_}
+        return {name: int(getattr(status, name)) for name, _ctype in HookMacroStatus._fields_}  # type: ignore[misc]
 
     def release_macro_pressed_inputs(self) -> None:
         with self._lifecycle_lock:
             if self._ready() and self._has_macro_playback:
-                self.dll.ReleaseMacroPressedInputs()
+                self.dll.ReleaseMacroPressedInputs()  # type: ignore[union-attr]
 
     def release_all_modifier_keys(self):
         """释放所有修饰键"""
         if self._ready():
-            self.dll.ReleaseAllModifierKeys()
+            self.dll.ReleaseAllModifierKeys()  # type: ignore[union-attr]
 
     def set_special_apps(self, apps: list):
         """设置特殊应用列表"""
@@ -1235,7 +1397,7 @@ class HooksDLL:
             return
 
         if not apps:
-            self.dll.ClearSpecialApps()
+            self.dll.ClearSpecialApps()  # type: ignore[union-attr]
             return
 
         # 转换为 C 字符串数组
@@ -1243,12 +1405,12 @@ class HooksDLL:
         for i, app in enumerate(apps):
             c_apps[i] = app.encode("utf-8")
 
-        self.dll.SetSpecialApps(c_apps, len(apps))
+        self.dll.SetSpecialApps(c_apps, len(apps))  # type: ignore[union-attr]
 
     def clear_special_apps(self):
         """清除特殊应用列表"""
         if self._ready() and self._has_special_apps:
-            self.dll.ClearSpecialApps()
+            self.dll.ClearSpecialApps()  # type: ignore[union-attr]
 
     def set_trigger_config(
         self, normal_button: str, normal_modifiers: list[str], special_button: str, special_modifiers: list[str]
@@ -1272,7 +1434,7 @@ class HooksDLL:
         special_btn = btn_map.get(special.button, 4)
         special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
 
-        self.dll.SetTriggerConfig(normal_btn, normal_mod, special_btn, special_mod)
+        self.dll.SetTriggerConfig(normal_btn, normal_mod, special_btn, special_mod)  # type: ignore[union-attr]
 
     def set_trigger_config_ex(
         self,
@@ -1317,7 +1479,7 @@ class HooksDLL:
         special_keys_vk = ",".join(str(vk) for vk in special_vks if vk)
         special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
 
-        self.dll.SetTriggerConfigEx(
+        self.dll.SetTriggerConfigEx(  # type: ignore[union-attr]
             normal_mode_int,
             normal_btn,
             normal_keys_vk.encode("utf-8"),

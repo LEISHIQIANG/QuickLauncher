@@ -239,8 +239,8 @@ class SubChainDefinition:
             chain_id=str(data.get("chain_id") or ""),
             chain_name=str(data.get("chain_name") or ""),
             description=str(data.get("description") or ""),
-            inputs=[ChainPortDefinition.from_dict(p) for p in data.get("inputs") or []],
-            outputs=[ChainPortDefinition.from_dict(p) for p in data.get("outputs") or []],
+            inputs=[ChainPortDefinition.from_dict(p) for p in data.get("inputs") or []],  # type: ignore[attr-defined]
+            outputs=[ChainPortDefinition.from_dict(p) for p in data.get("outputs") or []],  # type: ignore[attr-defined]
             graph=graph,
             version=str(data.get("version") or "1.0"),
             author=str(data.get("author") or ""),
@@ -251,8 +251,8 @@ class SubChainDefinition:
         return ChainProcessorDefinition(
             id=f"subchain.{self.chain_id}",
             title=self.chain_name,
-            inputs=self.inputs or [ChainPortDefinition(id="input", label="输入", kind="any")],
-            outputs=self.outputs or [ChainPortDefinition(id="output", label="输出", kind="any")],
+            inputs=self.inputs or [ChainPortDefinition(id="input", label="输入", kind="any")],  # type: ignore[arg-type]
+            outputs=self.outputs or [ChainPortDefinition(id="output", label="输出", kind="any")],  # type: ignore[arg-type]
             source="subchain",
             category="子链",
             description=self.description or f"子链: {self.chain_name}",

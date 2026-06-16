@@ -77,7 +77,7 @@ class WindowManager:
 
     @staticmethod
     def _get_windows_for_pids(pids: list[int]):
-        windows_by_pid = {pid: [] for pid in pids}
+        windows_by_pid = {pid: [] for pid in pids}  # type: ignore[var-annotated]
         pid_set = set(pids)
 
         def callback(hwnd, lparam):

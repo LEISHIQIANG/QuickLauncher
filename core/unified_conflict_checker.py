@@ -31,7 +31,7 @@ class UnifiedConflictChecker:
     def __init__(self):
         pass
 
-    def check_hotkey(self, hotkey_str: str, context: dict = None) -> ConflictReport:
+    def check_hotkey(self, hotkey_str: str, context: dict = None) -> ConflictReport:  # type: ignore[assignment]
         """检查快捷键冲突
 
         Args:
@@ -55,7 +55,7 @@ class UnifiedConflictChecker:
         if "shortcuts" in context:
             shortcuts = context["shortcuts"]
             exclude_id = context.get("exclude_id")
-            internal_conflicts = self._check_internal_hotkey_duplicates(hotkey_str, shortcuts, exclude_id)
+            internal_conflicts = self._check_internal_hotkey_duplicates(hotkey_str, shortcuts, exclude_id)  # type: ignore[arg-type]
             conflicts.extend(internal_conflicts)
 
         # 3. 检查与弹窗触发冲突
@@ -78,7 +78,7 @@ class UnifiedConflictChecker:
         return None
 
     def _check_internal_hotkey_duplicates(
-        self, hotkey_str: str, shortcuts: list, exclude_id: str = None
+        self, hotkey_str: str, shortcuts: list, exclude_id: str = None  # type: ignore[assignment]
     ) -> list[Conflict]:
         """检查快捷键是否与其他快捷方式重复"""
         conflicts = []

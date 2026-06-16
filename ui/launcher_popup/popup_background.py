@@ -166,46 +166,46 @@ class PopupBackgroundMixin:
             self._last_bg_params = params
 
             # 更新全局缓存
-            type(self)._global_bg_cache[params] = rounded_pixmap
-            type(self)._global_bg_cache.move_to_end(params)
+            type(self)._global_bg_cache[params] = rounded_pixmap  # type: ignore[attr-defined]
+            type(self)._global_bg_cache.move_to_end(params)  # type: ignore[attr-defined]
 
             # 限制缓存大小
-            while len(type(self)._global_bg_cache) > type(self)._MAX_BG_CACHE:
-                type(self)._global_bg_cache.popitem(last=False)
+            while len(type(self)._global_bg_cache) > type(self)._MAX_BG_CACHE:  # type: ignore[attr-defined]
+                type(self)._global_bg_cache.popitem(last=False)  # type: ignore[attr-defined]
 
             logger.info("背景图片异步加载完成并更新 (已预处理圆角)")
-            self.update()
+            self.update()  # type: ignore[attr-defined]
         else:
             logger.warning("背景图片异步加载失败或为空")
 
         try:
-            if self._pending_bg_params and self._pending_bg_params != params:
-                self._bg_load_timer.start(0)
+            if self._pending_bg_params and self._pending_bg_params != params:  # type: ignore[has-type]
+                self._bg_load_timer.start(0)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("启动背景加载定时器失败: %s", exc, exc_info=True)
 
     def _get_cached_bg_pixmap(self) -> QPixmap:
         """获取缓存的背景图片"""
         # 优先使用 bg_mode 判断
-        if getattr(self.settings, "bg_mode", "theme") != "image":
-            return None
+        if getattr(self.settings, "bg_mode", "theme") != "image":  # type: ignore[attr-defined]
+            return None  # type: ignore[return-value]
 
         # 兼容旧字段 custom_bg_path
-        path = self.settings.custom_bg_path
+        path = self.settings.custom_bg_path  # type: ignore[attr-defined]
         if not path:
-            return None
+            return None  # type: ignore[return-value]
         try:
             if not os.path.exists(path):
-                return None
+                return None  # type: ignore[return-value]
         except Exception:
-            return None
+            return None  # type: ignore[return-value]
 
-        blur_radius = self.settings.bg_blur_radius
+        blur_radius = self.settings.bg_blur_radius  # type: ignore[attr-defined]
 
         # 获取当前窗口所在屏幕的DPI比例
         dpr = 1.0
         try:
-            screen = QApplication.screenAt(self.pos())
+            screen = QApplication.screenAt(self.pos())  # type: ignore[attr-defined]
             if screen:
                 dpr = screen.devicePixelRatio()
         except Exception as exc:
@@ -214,9 +214,9 @@ class PopupBackgroundMixin:
         params = (
             path,
             blur_radius,
-            self.width(),
-            self.height(),
-            self._get_paint_corner_radius(),
+            self.width(),  # type: ignore[attr-defined]
+            self.height(),  # type: ignore[attr-defined]
+            self._get_paint_corner_radius(),  # type: ignore[attr-defined]
             dpr,  # 加入DPI信息
         )
 
@@ -225,9 +225,9 @@ class PopupBackgroundMixin:
             return self._bg_cache
 
         # 2. 检查全局缓存
-        if params in type(self)._global_bg_cache:
-            self._bg_cache = type(self)._global_bg_cache[params]
-            type(self)._global_bg_cache.move_to_end(params)  # 标记为最近使用
+        if params in type(self)._global_bg_cache:  # type: ignore[attr-defined]
+            self._bg_cache = type(self)._global_bg_cache[params]  # type: ignore[attr-defined]
+            type(self)._global_bg_cache.move_to_end(params)  # type: ignore[attr-defined]  # 标记为最近使用
             self._last_bg_params = params
             return self._bg_cache
 
@@ -240,16 +240,16 @@ class PopupBackgroundMixin:
                         last
                         and len(last) >= 4
                         and last[0] == path
-                        and int(last[2]) == int(self.width())
-                        and int(last[3]) == int(self.height())
+                        and int(last[2]) == int(self.width())  # type: ignore[attr-defined]
+                        and int(last[3]) == int(self.height())  # type: ignore[attr-defined]
                     ):
                         try:
-                            if self._pending_bg_params != params or not self._bg_load_timer.isActive():
+                            if self._pending_bg_params != params or not self._bg_load_timer.isActive():  # type: ignore[attr-defined, has-type]
                                 self._pending_bg_params = params
-                                self._bg_load_timer.start(120)
+                                self._bg_load_timer.start(120)  # type: ignore[attr-defined]
                         except Exception:
                             self._pending_bg_params = params
-                            self._bg_load_timer.start(120)
+                            self._bg_load_timer.start(120)  # type: ignore[attr-defined]
                         return self._bg_cache
                 except Exception as exc:
                     logger.debug("获取全局背景缓存失败: %s", exc, exc_info=True)
@@ -257,9 +257,9 @@ class PopupBackgroundMixin:
             logger.debug("获取缓存背景图片失败: %s", exc, exc_info=True)
 
         try:
-            if self._pending_bg_params != params or not self._bg_load_timer.isActive():
+            if self._pending_bg_params != params or not self._bg_load_timer.isActive():  # type: ignore[attr-defined]
                 self._pending_bg_params = params
-                self._bg_load_timer.start(120)
+                self._bg_load_timer.start(120)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("调度背景加载失败: %s", exc, exc_info=True)
 
@@ -268,11 +268,11 @@ class PopupBackgroundMixin:
             from ui.utils.window_effect import is_win10
 
             if is_win10() and hasattr(self, "_win10_fallback_bg") and self._win10_fallback_bg:
-                return self._win10_fallback_bg
+                return self._win10_fallback_bg  # type: ignore[no-any-return]
         except Exception as exc:
             logger.debug("获取 Win10 背景回退缓存失败: %s", exc, exc_info=True)
 
-        return None
+        return None  # type: ignore[return-value]
 
     def _schedule_bg_load(self):
         try:

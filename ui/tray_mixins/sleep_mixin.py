@@ -14,15 +14,15 @@ class SleepMixin:
     def _mark_activity(self, source: str = ""):
         settings = None
         try:
-            settings = self.data_manager.get_settings()
+            settings = self.data_manager.get_settings()  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as e:
             logger.debug("获取设置失败 (_mark_activity): %s", e)
             settings = None
 
         if not getattr(settings, "sleep_mode_enabled", True):
             try:
-                if self._sleep_timer.isActive():
-                    self._sleep_timer.stop()
+                if self._sleep_timer.isActive():  # type: ignore[attr-defined]
+                    self._sleep_timer.stop()  # type: ignore[attr-defined]
             except _SLEEP_MIXIN_ERRORS as e:
                 logger.debug("停止 sleep_timer 失败: %s", e)
             return
@@ -45,7 +45,7 @@ class SleepMixin:
                 logger.debug("检查控件可见性: %s", exc, exc_info=True)
 
         try:
-            self._sleep_timer.start(timeout_s * 1000)
+            self._sleep_timer.start(timeout_s * 1000)  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as e:
             logger.debug("启动 sleep_timer 失败: %s", e)
 
@@ -156,44 +156,44 @@ class SleepMixin:
         logger.info("退出轻睡眠模式: %s", source or "unknown")
 
         try:
-            self._apply_pending_settings_changes()
+            self._apply_pending_settings_changes()  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as exc:
             logger.debug("应用待处理设置变更: %s", exc, exc_info=True)
 
         try:
-            if not self._memory_check_timer.isActive():
-                self._memory_check_timer.start()
+            if not self._memory_check_timer.isActive():  # type: ignore[attr-defined]
+                self._memory_check_timer.start()  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as e:
             logger.debug("重启 memory_check_timer 失败: %s", e)
 
         try:
             if self._sleep_was_hw_accel:
-                self._apply_hardware_acceleration(True)
+                self._apply_hardware_acceleration(True)  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as exc:
             logger.debug("恢复硬件加速: %s", exc, exc_info=True)
         self._sleep_was_hw_accel = False
 
         try:
-            if self.keyboard_hook is None:
-                self._install_keyboard_hook_and_hotkey()
+            if self.keyboard_hook is None:  # type: ignore[attr-defined]
+                self._install_keyboard_hook_and_hotkey()  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as e:
             logger.debug("恢复键盘钩子失败: %s", e)
 
         try:
-            if self.mouse_hook and self._mouse_paused_state:
-                self.mouse_hook.set_paused(True)
+            if self.mouse_hook and self._mouse_paused_state:  # type: ignore[attr-defined]
+                self.mouse_hook.set_paused(True)  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as exc:
             logger.debug("设置鼠标钩子暂停状态: %s", exc, exc_info=True)
 
         try:
-            self._update_special_app_monitors(reset_state=True)
-            if self.mouse_hook:
-                if self.keyboard_hook:
+            self._update_special_app_monitors(reset_state=True)  # type: ignore[attr-defined]
+            if self.mouse_hook:  # type: ignore[attr-defined]
+                if self.keyboard_hook:  # type: ignore[attr-defined]
                     try:
-                        self.mouse_hook.set_keyboard_hook(self.keyboard_hook)
+                        self.mouse_hook.set_keyboard_hook(self.keyboard_hook)  # type: ignore[attr-defined]
                     except _SLEEP_MIXIN_ERRORS as exc:
                         logger.debug("关联键盘钩子到鼠标钩子: %s", exc, exc_info=True)
-                self._apply_mouse_hook_settings()
+                self._apply_mouse_hook_settings()  # type: ignore[attr-defined]
         except _SLEEP_MIXIN_ERRORS as exc:
             logger.debug("关联键盘钩子到鼠标钩子: %s", exc, exc_info=True)
 

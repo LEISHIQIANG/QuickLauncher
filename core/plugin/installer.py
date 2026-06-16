@@ -57,8 +57,10 @@ def install_zip_archive(
                     "Please make sure the archive contains plugin.json."
                 )
 
+            _validate_archive_limits(zf)
+
             try:
-                manifest_bytes = zf.read("plugin.json") if has_root else zf.read(sub_manifest)
+                manifest_bytes = zf.read("plugin.json") if has_root else zf.read(sub_manifest)  # type: ignore[arg-type]
                 manifest_data = json.loads(manifest_bytes.decode("utf-8"))
                 plugin_id = manifest_data.get("id")
                 plugin_name = str(manifest_data.get("name") or plugin_id)
@@ -72,8 +74,6 @@ def install_zip_archive(
             manifest_error = validate_manifest(manifest)
             if manifest_error:
                 raise ValueError(manifest_error)
-
-            _validate_archive_limits(zf)
 
             target_dir = resolve_under(plugins_root, plugins_root / plugin_id)
             if target_dir.exists():
@@ -101,7 +101,7 @@ def install_zip_archive(
             if target_dir.exists():
                 safe_rmtree_child(plugins_root, target_dir)
             shutil.move(str(staging_dir), str(target_dir))
-            staging_dir = None
+            staging_dir = None  # type: ignore[assignment]
 
         if backup_dir and backup_dir.exists():
             safe_rmtree_child(backup_dir.parent, backup_dir)
@@ -122,7 +122,7 @@ def install_zip_archive(
                 safe_rmtree_child(backup_dir.parent, backup_dir)
             except Exception as rollback_err:
                 logger.error("回滚插件安装失败: %s", rollback_err)
-        raise exc_info[1].with_traceback(exc_info[2]) from exc_info[1]
+        raise exc_info[1].with_traceback(exc_info[2]) from exc_info[1]  # type: ignore[union-attr]
     finally:
         if staging_dir and staging_dir.exists():
             try:

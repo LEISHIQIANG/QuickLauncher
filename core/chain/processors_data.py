@@ -71,14 +71,14 @@ def execute_extra_data_processor(processor_id: str, values: dict[str, Any]) -> C
 
     # -- Set operations --
     if processor_id == "set_union":
-        a, b = parse_list(values.get("set1", "")), parse_list(values.get("set2", ""))
-        return ok_list(list(set(a) | set(b)))
+        a, b = parse_list(values.get("set1", "")), parse_list(values.get("set2", ""))  # type: ignore[assignment]
+        return ok_list(list(set(a) | set(b)))  # type: ignore[call-overload]
     if processor_id == "set_intersection":
-        a, b = parse_list(values.get("set1", "")), parse_list(values.get("set2", ""))
-        return ok_list(list(set(a) & set(b)))
+        a, b = parse_list(values.get("set1", "")), parse_list(values.get("set2", ""))  # type: ignore[assignment]
+        return ok_list(list(set(a) & set(b)))  # type: ignore[call-overload]
     if processor_id == "set_difference":
-        a, b = parse_list(values.get("set1", "")), parse_list(values.get("set2", ""))
-        return ok_list(list(set(a) - set(b)))
+        a, b = parse_list(values.get("set1", "")), parse_list(values.get("set2", ""))  # type: ignore[assignment]
+        return ok_list(list(set(a) - set(b)))  # type: ignore[call-overload]
     if processor_id == "set_unique":
         lst = parse_list(values.get("list", ""))
         seen = set()
@@ -99,9 +99,9 @@ def execute_extra_data_processor(processor_id: str, values: dict[str, Any]) -> C
     if processor_id == "dict_merge":
         a = try_json_parse(values.get("a", "{}"))
         b = try_json_parse(values.get("b", "{}"))
-        result = dict(a) if isinstance(a, dict) else {}
+        result = dict(a) if isinstance(a, dict) else {}  # type: ignore[assignment]
         if isinstance(b, dict):
-            result.update(b)
+            result.update(b)  # type: ignore[attr-defined]
         return ok(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     if processor_id == "dict_get":
         d = try_json_parse(values.get("json", "{}"))

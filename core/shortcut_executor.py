@@ -8,6 +8,7 @@ import ctypes
 import logging
 import os
 import threading
+import time
 from ctypes import wintypes
 
 from .data_models import ShortcutItem, ShortcutType
@@ -97,8 +98,13 @@ class ShortcutExecutor(
     _hotkey_lock = threading.Lock()
     _hotkey_lock_timeout = 2.0
 
+    # 当前活跃的 LauncherPopup HWND 集合，用于在 save_foreground_window 中
+    # 精确区分弹窗自身与配置窗口等其他 QuickLauncher 窗口，避免配置窗口
+    # 被错误地排除在"恢复目标"之外。
+    _popup_hwnds: set[int] = set()
+
     # pynput 特殊键映射（懒加载，避免模块级 pynput 导入阻塞）
-    PYNPUT_SPECIAL_KEYS = {}
+    PYNPUT_SPECIAL_KEYS = {}  # type: ignore[var-annotated]
     _PYNPUT_KEYS_LOADED = False
 
     @classmethod
@@ -217,6 +223,9 @@ class ShortcutExecutor(
                 result = execute_batch_launch(shortcut, global_data_manager)
                 return bool(result.success), result.error or ""
 
+            elif shortcut.type == ShortcutType.MACRO:
+                return ShortcutExecutor._execute_macro(shortcut)
+
             else:
                 # 文件/文件夹执行
                 return ShortcutExecutor._execute_file(shortcut, force_new)
@@ -284,6 +293,62 @@ class ShortcutExecutor(
 
         return success
 
+    @staticmethod
+    def _execute_macro(shortcut: ShortcutItem) -> tuple[bool, str]:
+        """执行宏录制：将已录制的事件回放到系统。
+
+        使用统一的 InputMacroBackend，确保与诊断、测试播放使用同一套回放通道。
+        """
+        events = list(getattr(shortcut, "macro_events", []) or [])
+        if not events:
+            return False, "宏内容为空"
+
+        try:
+            from hooks.input_macro import InputMacroBackend
+        except Exception as exc:
+            logger.error("宏回放失败：无法导入 InputMacroBackend: %s", exc)
+            return False, f"宏回放模块不可用: {exc}"
+
+        speed = float(getattr(shortcut, "macro_speed", 1.0) or 1.0)
+        if speed <= 0:
+            speed = 1.0
+
+        trigger_mode = getattr(shortcut, "trigger_mode", "immediate")
+
+        def _do():
+            try:
+                if trigger_mode == "after_close":
+                    target_hwnd = ShortcutExecutor._previous_hwnd
+                    time.sleep(0.150)
+                    ShortcutExecutor.restore_foreground_window_fast(timeout_ms=300)
+                    if target_hwnd:
+                        for attempt in range(6):
+                            try:
+                                if user32.GetForegroundWindow() == target_hwnd:
+                                    break
+                            except Exception as exc:
+                                logger.debug("宏回放前检测前台窗口失败: %s", exc, exc_info=True)
+                                break
+                            if attempt < 5:
+                                time.sleep(0.050)
+                    # Give the restored target one more message-pump turn before the first macro event.
+                    time.sleep(0.250)
+                backend = InputMacroBackend()
+                ok = backend.play(events=events, speed=speed)
+                return bool(ok), "" if ok else "宏播放失败"
+            except Exception as exc:
+                logger.exception("宏播放异常")
+                return False, str(exc)
+
+        from .background_tasks import start_background_thread
+
+        start_background_thread(
+            name=f"ShortcutExecutor.macro.{shortcut.id}",
+            target=_do,
+            owner="ShortcutExecutor.macro",
+        )
+        return True, ""
+
     # ===== 窗口置顶功能（已修复）=====
 
 
@@ -297,7 +362,7 @@ def _bind_shortcut_executor_mixins():
         shortcut_url_exec,
         shortcut_window_control,
     ):
-        module.ShortcutExecutor = ShortcutExecutor
+        module.ShortcutExecutor = ShortcutExecutor  # type: ignore[attr-defined]
 
 
 _bind_shortcut_executor_mixins()

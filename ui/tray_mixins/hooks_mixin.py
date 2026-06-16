@@ -72,15 +72,15 @@ class HooksMixin:
         try:
             from hooks.mouse_hook_dll import MouseHook
 
-            if self.mouse_hook:
+            if self.mouse_hook:  # type: ignore[has-type]
                 try:
-                    self.mouse_hook.uninstall()
+                    self.mouse_hook.uninstall()  # type: ignore[has-type]
                 except Exception as exc:
                     logger.debug("卸载鼠标钩子失败: %s", exc, exc_info=True)
                 self.mouse_hook = None
 
             hook = MouseHook()
-            success = hook.install(self._on_middle_click_from_hook)
+            success = hook.install(self._on_middle_click_from_hook)  # type: ignore[attr-defined]
             if not success:
                 return False
 
@@ -199,7 +199,7 @@ class HooksMixin:
             return False
         try:
             now = time.monotonic()
-            if now < self._hook_reinstall_cooldown_until:
+            if now < self._hook_reinstall_cooldown_until:  # type: ignore[has-type]
                 return False
             self._hook_reinstall_in_progress = True
 
@@ -372,13 +372,13 @@ class HooksMixin:
             self._reset_special_app_monitor_state()
 
         if not special_apps:
-            if self._process_check_timer.isActive():
-                self._process_check_timer.stop()
+            if self._process_check_timer.isActive():  # type: ignore[attr-defined]
+                self._process_check_timer.stop()  # type: ignore[attr-defined]
             self._special_app_monitors_active = False
             return
 
         if not self._special_app_monitors_active:
-            self._process_check_timer.start()
+            self._process_check_timer.start()  # type: ignore[attr-defined]
             self._special_app_monitors_active = True
 
     def _apply_mouse_hook_settings(self):

@@ -126,8 +126,8 @@ def migrate_legacy_variable_syntax(text: str, *, include_url: bool = False) -> s
     def repl(match: re.Match) -> str:
         spec = match.group(1).strip()
         if _is_known_variable_spec(spec, include_url=include_url):
-            return "{{" + spec + "}}"
-        return match.group(0)
+            return "{{" + spec + "}}"  # type: ignore[no-any-return]
+        return match.group(0)  # type: ignore[no-any-return]
 
     return _LEGACY_TOKEN_RE.sub(repl, text)
 
@@ -176,7 +176,7 @@ def get_default_lan_ipv4() -> str:
             sock.close()
         parsed = ipaddress.ip_address(ip_text)
         if parsed.version == 4 and not parsed.is_loopback and not parsed.is_unspecified:
-            return ip_text
+            return ip_text  # type: ignore[no-any-return]
     except Exception as exc:
         errors.append(str(exc))
 
@@ -186,7 +186,7 @@ def get_default_lan_ipv4() -> str:
             ip_text = info[4][0]
             parsed = ipaddress.ip_address(ip_text)
             if parsed.version == 4 and not parsed.is_loopback and not parsed.is_unspecified:
-                return ip_text
+                return ip_text  # type: ignore[return-value]
     except Exception as exc:
         errors.append(str(exc))
 
@@ -390,7 +390,7 @@ def resolve_command_variables(
             value = _sanitize_external_input(_lookup_named_value(chain, name, "动作链变量"))
         else:
             if not strict_unknown:
-                return match.group(0)
+                return match.group(0)  # type: ignore[no-any-return]
             raise CommandVariableError("未知变量: {{" + spec + "}}")
 
         if should_quote:

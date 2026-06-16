@@ -3,9 +3,11 @@
 import json
 import os
 import sys
+import tempfile
 import threading
 import types
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +36,34 @@ def _manager_with_data(data):
     manager._suppress_next_history = False
     manager._last_saved_data_dict = data.to_dict()
     manager.history_manager = None
+    # Save-coordinator paths read ``data_file``; provide a tmp_path-free
+    # placeholder so tests don't need to call _file_backed_manager for
+    # monkeypatched ``_do_save`` invocations.
+    manager.install_dir = Path(tempfile.gettempdir())
+    manager.app_dir = Path(tempfile.gettempdir()) / "fake_app"
+    manager.icons_dir = manager.app_dir / "icons"
+    manager.auto_backup_dir = manager.app_dir / "auto_backups"
+    manager.history_dir = manager.app_dir / "history"
+    manager.recovery_dir = manager.app_dir / "recovery"
+    manager.data_file = manager.app_dir / "data.json"
+    manager.icon_repo_file = manager.app_dir / "icon_repo.json"
+    manager.system_icons_file = manager.install_dir / "assets" / "system_icons" / "config.json"
+    manager._max_auto_backups = 5
+    manager._max_history_snapshots = 20
+    manager._save_delay = 0.01
+    manager._config_status = {"status": "unknown", "source": "", "issues": []}
+    manager._last_import_report = {
+        "dry_run": False,
+        "mode": "",
+        "skipped_files": [],
+        "skipped_settings": [],
+        "warnings": [],
+        "imported_items": 0,
+    }
+    # Pre-create a real SaveCoordinator so the lazy accessor returns it.
+    from core.save_coordinator import SaveCoordinator
+
+    manager.save_coordinator = SaveCoordinator(manager)
     return manager
 
 
@@ -191,7 +221,7 @@ def test_record_shortcut_used_refreshes_smart_order(monkeypatch):
     data.settings.sort_mode = "smart"
     manager = _manager_with_data(data)
     saves = []
-    monkeypatch.setattr(manager, "_do_save", lambda: saves.append(True))
+    monkeypatch.setattr(manager.save_coordinator, "_do_save", lambda: saves.append(True))
     monkeypatch.setattr("core.data_models.time.time", lambda: 1000.0)
 
     assert manager.record_shortcut_used("low")
@@ -219,7 +249,7 @@ def test_recalculate_smart_order_does_not_change_custom_order(monkeypatch):
     low = ShortcutItem(id="low", name="Low", order=0, use_count=1, last_used_at=1)
     high = ShortcutItem(id="high", name="High", order=1, use_count=5, last_used_at=10)
     manager = _manager_with_data(AppData(folders=[Folder(id="default", name="常用", items=[low, high])]))
-    monkeypatch.setattr(manager, "_do_save", lambda: None)
+    monkeypatch.setattr(manager.save_coordinator, "_do_save", lambda: None)
 
     stats = manager.recalculate_smart_order()
 
@@ -254,7 +284,7 @@ def test_batch_delete_move_and_enable(monkeypatch):
 def test_batch_update_coalesces_multiple_saves(monkeypatch):
     manager = _manager_with_data(AppData())
     saves = []
-    monkeypatch.setattr(manager, "_do_save", lambda: saves.append("save"))
+    monkeypatch.setattr(manager.save_coordinator, "_do_save", lambda: saves.append("save"))
 
     with manager.batch_update(immediate=True):
         manager.save()
@@ -956,7 +986,7 @@ def test_restore_full_config_cleans_background_when_icon_restore_fails(monkeypat
         zf.writestr("icons/new.png", b"new-icon")
 
     monkeypatch.setattr(
-        data_manager_module.shutil, "move", lambda src, dst: (_ for _ in ()).throw(OSError("move failed"))
+        "core.backup_service.shutil.move", lambda src, dst: (_ for _ in ()).throw(OSError("move failed"))
     )
 
     assert not manager.restore_full_config(str(backup))

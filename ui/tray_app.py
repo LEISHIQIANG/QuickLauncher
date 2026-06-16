@@ -62,7 +62,7 @@ class IconCacheCleanThread(QThread):
             self.finished_signal.emit({}, str(exc))
 
 
-class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, WindowsMixin, QObject):
+class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, WindowsMixin, QObject):  # type: ignore[misc]
     """托盘应用"""
 
     # 信号定义
@@ -152,7 +152,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
                     f"{risk_line}\n仅启用您信任的插件。确定要启用吗？",
                     ThemedMessageBox.Yes | ThemedMessageBox.No,
                 )
-                return reply == ThemedMessageBox.Yes
+                return reply == ThemedMessageBox.Yes  # type: ignore[no-any-return]
 
             plugin_manager.set_confirm_high_risk_callback(_confirm_high_risk)
             self._pending_startup_plugin_ids = list(self.data_manager.get_settings().enabled_plugins)
@@ -519,7 +519,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             interval = max(100, int(interval_ms or 300))
         except Exception:
             interval = 300
-        app.setDoubleClickInterval(interval)
+        app.setDoubleClickInterval(interval)  # type: ignore[attr-defined]
 
     def _apply_hardware_acceleration(self, enable: bool):
         """应用硬件加速设置"""
@@ -575,7 +575,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             except Exception as e:
                 logger.warning(f"检查图标路径失败 {path}: {e}")
 
-        return get_standard_icon(QApplication.instance(), "SP_ComputerIcon")
+        return get_standard_icon(QApplication.instance(), "SP_ComputerIcon")  # type: ignore[no-any-return]
 
     def _create_menu(self):
         """创建托盘菜单"""

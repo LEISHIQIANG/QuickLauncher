@@ -131,7 +131,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     working_dir=(getattr(shortcut, "working_dir", "") or "").strip(),
                     raw_mode=bool(getattr(shortcut, "raw_mode", False)),
                     run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
-                    param_values=ShortcutExecutor._command_param_values(shortcut),
+                    param_values=ShortcutExecutor._command_param_values(shortcut),  # type: ignore[attr-defined]
                 )
             )
         except Exception as e:
@@ -175,7 +175,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
     ) -> CommandResult:
         payload = {"window_size": panel_size}
         if start is not None:
-            payload["duration"] = time.monotonic() - start
+            payload["duration"] = time.monotonic() - start  # type: ignore[assignment]
         if command is not None:
             payload["command"] = command
         return CommandResult(
@@ -215,15 +215,15 @@ class CommandExecutionMixin(CommandLauncherMixin):
          stdout_encoding, stderr_encoding, decode_fallback_used)
         """
         encoding = getattr(shortcut, "command_encoding", "auto")
-        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(  # type: ignore[attr-defined]
             stdout_bytes or b"", encoding, command_type
         )
-        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(  # type: ignore[attr-defined]
             stderr_bytes or b"", encoding, command_type
         )
-        stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-        stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
-        return (
+        stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)  # type: ignore[attr-defined]
+        stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)  # type: ignore[attr-defined]
+        return (  # type: ignore[return-value]
             stdout,
             stderr,
             stdout_truncated,
@@ -290,7 +290,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             success=False,
             message=message,
             display_type="log",
-            payload=ShortcutExecutor._build_capture_payload(
+            payload=ShortcutExecutor._build_capture_payload(  # type: ignore[attr-defined]
                 panel_size=panel_size,
                 returncode=returncode,
                 start=start,
@@ -346,7 +346,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             success=success,
             message=message,
             display_type="log",
-            payload=ShortcutExecutor._build_capture_payload(
+            payload=ShortcutExecutor._build_capture_payload(  # type: ignore[attr-defined]
                 panel_size=panel_size,
                 returncode=returncode,
                 start=start,
@@ -381,12 +381,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
         timed_out: bool,
     ) -> CommandResult:
         """Build a CommandResult when bash direct capture is denied."""
-        message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())
+        message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())  # type: ignore[attr-defined]
         return CommandResult(
             success=False,
             message=message,
             display_type="log",
-            payload=ShortcutExecutor._build_capture_payload(
+            payload=ShortcutExecutor._build_capture_payload(  # type: ignore[attr-defined]
                 panel_size=panel_size,
                 returncode=returncode,
                 start=start,
@@ -425,7 +425,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             )
 
         raw_mode = bool(getattr(shortcut, "raw_mode", False))
-        expand_variables = ShortcutExecutor._should_expand_command_variables(shortcut)
+        expand_variables = ShortcutExecutor._should_expand_command_variables(shortcut)  # type: ignore[attr-defined]
         if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
             if expand_variables:
                 return _invalid(
@@ -444,7 +444,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 return _invalid(message)
         try:
             if expand_variables:
-                command = ShortcutExecutor._resolve_command_variables(shortcut, command)
+                command = ShortcutExecutor._resolve_command_variables(shortcut, command)  # type: ignore[attr-defined]
         except CommandVariableError as e:
             return _invalid(str(e), "变量解析失败")
         return command, None
@@ -463,7 +463,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
     @staticmethod
     def _runtime_env(shortcut: ShortcutItem) -> dict:
-        return merge_runtime_env(shortcut, ShortcutExecutor._sanitized_child_env())
+        return merge_runtime_env(shortcut, ShortcutExecutor._sanitized_child_env())  # type: ignore[attr-defined]
 
     @staticmethod
     def _command_panel_size(shortcut: ShortcutItem) -> str:
@@ -476,7 +476,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         command_type: str | None = None,
     ) -> list[dict]:
         """Return only the severe destructive risks that must be confirmed before execution."""
-        effective_type = ShortcutExecutor._normalize_command_type(
+        effective_type = ShortcutExecutor._normalize_command_type(  # type: ignore[attr-defined]
             command_type if command_type is not None else getattr(shortcut, "command_type", "cmd")
         )
         return [
@@ -511,10 +511,10 @@ class CommandExecutionMixin(CommandLauncherMixin):
         *,
         panel_size: str | None = None,
     ) -> CommandResult | None:
-        risks = ShortcutExecutor.command_requires_confirmation(shortcut, command=command, command_type=command_type)
+        risks = ShortcutExecutor.command_requires_confirmation(shortcut, command=command, command_type=command_type)  # type: ignore[attr-defined]
         if not risks:
             return None
-        if ShortcutExecutor._consume_command_confirmation(shortcut):
+        if ShortcutExecutor._consume_command_confirmation(shortcut):  # type: ignore[attr-defined]
             return None
         risk_lines = [f"- {risk.get('message') or risk.get('code')}" for risk in risks]
         detail = "\n".join(risk_lines)
@@ -524,7 +524,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             display_type="confirm",
             error="需要确认",
             payload={
-                "window_size": panel_size or ShortcutExecutor._command_panel_size(shortcut),
+                "window_size": panel_size or ShortcutExecutor._command_panel_size(shortcut),  # type: ignore[attr-defined]
                 "requires_confirmation": True,
                 "risks": risks,
                 "detail": detail,
@@ -548,9 +548,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
         preprocess: bool = True,
     ):
         items = []
-        command_type = ShortcutExecutor._normalize_command_type(command_type)
+        command_type = ShortcutExecutor._normalize_command_type(command_type)  # type: ignore[attr-defined]
         cwd = (getattr(shortcut, "working_dir", "") or "").strip()
-        if command_type not in ShortcutExecutor._SUPPORTED_COMMAND_TYPES:
+        if command_type not in ShortcutExecutor._SUPPORTED_COMMAND_TYPES:  # type: ignore[attr-defined]
             items.append(
                 {
                     "title": "Command type",
@@ -565,16 +565,16 @@ class CommandExecutionMixin(CommandLauncherMixin):
             items.append({"title": "命令内容", "status": "failed", "detail": "命令内容为空。"})
         if cwd and not os.path.isdir(cwd):
             items.append({"title": "工作目录", "status": "failed", "detail": f"目录不存在: {cwd}"})
-        if command_type == "cmd" and not ShortcutExecutor._cmd_launcher():
-            items.append({"title": "CMD", "status": "failed", "detail": ShortcutExecutor._cmd_launcher_error()})
-        if command_type == "python" and not ShortcutExecutor._python_launcher():
-            items.append({"title": "Python", "status": "failed", "detail": ShortcutExecutor._python_launcher_error()})
-        if command_type == "powershell" and not ShortcutExecutor._powershell_launcher():
+        if command_type == "cmd" and not ShortcutExecutor._cmd_launcher():  # type: ignore[attr-defined]
+            items.append({"title": "CMD", "status": "failed", "detail": ShortcutExecutor._cmd_launcher_error()})  # type: ignore[attr-defined]
+        if command_type == "python" and not ShortcutExecutor._python_launcher():  # type: ignore[attr-defined]
+            items.append({"title": "Python", "status": "failed", "detail": ShortcutExecutor._python_launcher_error()})  # type: ignore[attr-defined]
+        if command_type == "powershell" and not ShortcutExecutor._powershell_launcher():  # type: ignore[attr-defined]
             items.append(
-                {"title": "PowerShell", "status": "failed", "detail": ShortcutExecutor._powershell_launcher_error()}
+                {"title": "PowerShell", "status": "failed", "detail": ShortcutExecutor._powershell_launcher_error()}  # type: ignore[attr-defined]
             )
-        if command_type == "bash" and not ShortcutExecutor._bash_launcher():
-            items.append({"title": "Git Bash", "status": "failed", "detail": ShortcutExecutor._bash_launcher_error()})
+        if command_type == "bash" and not ShortcutExecutor._bash_launcher():  # type: ignore[attr-defined]
+            items.append({"title": "Git Bash", "status": "failed", "detail": ShortcutExecutor._bash_launcher_error()})  # type: ignore[attr-defined]
         if capture and bool(getattr(shortcut, "show_window", False)):
             items.append({"title": "捕获输出", "status": "failed", "detail": "显示执行窗口时不能捕获输出。"})
         if capture and bool(getattr(shortcut, "run_as_admin", False)):
@@ -582,26 +582,26 @@ class CommandExecutionMixin(CommandLauncherMixin):
         if command_type in ("cmd", "powershell", "bash") and command:
             try:
                 if command_type == "cmd":
-                    argv = ShortcutExecutor._cmd_argv(
+                    argv = ShortcutExecutor._cmd_argv(  # type: ignore[attr-defined]
                         command,
                         keep_open=bool(getattr(shortcut, "show_window", False)) and not capture,
                     )
                 elif command_type == "powershell":
-                    argv = ShortcutExecutor._powershell_argv(
+                    argv = ShortcutExecutor._powershell_argv(  # type: ignore[attr-defined]
                         command,
                         no_exit=bool(getattr(shortcut, "show_window", False)) and not capture,
                     )
                 else:
-                    argv = ShortcutExecutor._bash_argv(
+                    argv = ShortcutExecutor._bash_argv(  # type: ignore[attr-defined]
                         command,
                         login=bool(getattr(shortcut, "show_window", False)) and not capture,
                     )
-                if ShortcutExecutor._direct_command_line_too_long(argv):
+                if ShortcutExecutor._direct_command_line_too_long(argv):  # type: ignore[attr-defined]
                     items.append(
                         {
                             "title": "命令长度",
                             "status": "failed",
-                            "detail": ShortcutExecutor._direct_command_line_length_error(command_type, argv),
+                            "detail": ShortcutExecutor._direct_command_line_length_error(command_type, argv),  # type: ignore[attr-defined]
                         }
                     )
             except FileNotFoundError:
@@ -617,8 +617,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
                         "detail": f"外部输入变量用于 CMD/PowerShell/Bash 时必须使用 :q 引用，例如: {examples}",
                     }
                 )
-        param_values = ShortcutExecutor._command_param_values(shortcut)
-        params = [CommandParam(**param) for param in ShortcutExecutor._command_param_defs(shortcut)]
+        param_values = ShortcutExecutor._command_param_values(shortcut)  # type: ignore[attr-defined]
+        params = [CommandParam(**param) for param in ShortcutExecutor._command_param_defs(shortcut)]  # type: ignore[attr-defined]
         for error in validate_param_values(params, param_values):
             items.append({"title": "命令参数", "status": "failed", "detail": error})
         if (
@@ -633,13 +633,13 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 success=False, message=message, display_type="list", payload={"items": items}, error="预检失败"
             )
         if preprocess:
-            preprocess_result = ShortcutExecutor._command_preprocessing_result(shortcut, command, command_type)
+            preprocess_result = ShortcutExecutor._command_preprocessing_result(shortcut, command, command_type)  # type: ignore[attr-defined]
             if preprocess_result is not None and (
                 getattr(preprocess_result, "should_block", False) or not getattr(preprocess_result, "success", True)
             ):
-                return ShortcutExecutor._preprocessing_result_to_command_result(
+                return ShortcutExecutor._preprocessing_result_to_command_result(  # type: ignore[attr-defined]
                     preprocess_result,
-                    panel_size=ShortcutExecutor._command_panel_size(shortcut),
+                    panel_size=ShortcutExecutor._command_panel_size(shortcut),  # type: ignore[attr-defined]
                 )
         return None
 
@@ -661,9 +661,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
         streaming so it works around bash.exe console-attachment restrictions.
         Returns a CommandResult on success/failure, or None if the fallback also fails.
         """
-        script_path = ShortcutExecutor._bash_write_script(command)
+        script_path = ShortcutExecutor._bash_write_script(command)  # type: ignore[attr-defined]
         try:
-            bash_exe = ShortcutExecutor._bash_launcher()
+            bash_exe = ShortcutExecutor._bash_launcher()  # type: ignore[attr-defined]
             if not bash_exe or not os.path.exists(script_path):
                 return None
 
@@ -675,7 +675,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL,
                 shell=False,
-                **ShortcutExecutor._capture_popen_platform_kwargs(),
+                **ShortcutExecutor._capture_popen_platform_kwargs(),  # type: ignore[attr-defined]
             )
 
             timed_out = False
@@ -683,12 +683,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_value)
                 returncode = process.returncode
             except subprocess.TimeoutExpired:
-                ShortcutExecutor._terminate_process_tree(process)
+                ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
                 stdout_bytes, stderr_bytes = process.communicate()
                 returncode = process.returncode
                 timed_out = True
 
-            return build_bash_fallback_result(
+            return build_bash_fallback_result(  # type: ignore[no-any-return]
                 stdout_bytes,
                 stderr_bytes,
                 returncode,
@@ -738,7 +738,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 if process is not None:
                     process.wait(timeout=5.0)
             except subprocess.TimeoutExpired:
-                ShortcutExecutor._terminate_process_tree(process)
+                ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
                 try:
                     process.wait(timeout=2.0)
                 except Exception as exc:
@@ -790,8 +790,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return ""
 
         try:
-            startupinfo = ShortcutExecutor._get_silent_startupinfo()
-            creationflags = ShortcutExecutor._get_silent_creationflags()
+            startupinfo = ShortcutExecutor._get_silent_startupinfo()  # type: ignore[attr-defined]
+            creationflags = ShortcutExecutor._get_silent_creationflags()  # type: ignore[attr-defined]
 
             # 关键：对于 PowerShell，即使设置了 Hidden WindowStyle，
             # 如果不通过 shell=True 启动，有时仍会短暂显示控制台。
@@ -833,7 +833,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         if creationflags:
-            kwargs["creationflags"] = creationflags
+            kwargs["creationflags"] = creationflags  # type: ignore[assignment]
         return kwargs
 
     @staticmethod
@@ -844,8 +844,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             logger.warning("命令为空")
             return False, "命令内容为空"
 
-        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
-        command, prepare_error = ShortcutExecutor._prepare_command_for_execution(
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))  # type: ignore[attr-defined]
+        command, prepare_error = ShortcutExecutor._prepare_command_for_execution(  # type: ignore[attr-defined]
             shortcut,
             command,
             command_type,
@@ -855,11 +855,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
         capture_output = bool(getattr(shortcut, "capture_output", False))
         if not capture_output:
-            confirmation = ShortcutExecutor._destructive_confirmation_result(shortcut, command, command_type)
+            confirmation = ShortcutExecutor._destructive_confirmation_result(shortcut, command, command_type)  # type: ignore[attr-defined]
             if confirmation is not None:
                 set_pending_command_result(confirmation)
                 return False, confirmation.message or confirmation.error
-        preflight = ShortcutExecutor._preflight_command(
+        preflight = ShortcutExecutor._preflight_command(  # type: ignore[attr-defined]
             shortcut,
             command,
             command_type,
@@ -875,20 +875,20 @@ class CommandExecutionMixin(CommandLauncherMixin):
             and not bool(getattr(shortcut, "show_window", False))
             and not bool(getattr(shortcut, "run_as_admin", False))
         ):
-            result = ShortcutExecutor.run_command_capture(shortcut)
+            result = ShortcutExecutor.run_command_capture(shortcut)  # type: ignore[attr-defined]
             set_pending_command_result(result)
             return result.success, result.error
 
         if command_type == "powershell":
-            return ShortcutExecutor._execute_powershell_command(shortcut, command)
+            return ShortcutExecutor._execute_powershell_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
         if command_type == "bash":
-            return ShortcutExecutor._execute_bash_command(shortcut, command)
+            return ShortcutExecutor._execute_bash_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
         if command_type == "python":
-            return ShortcutExecutor._execute_python_command(shortcut, command)
+            return ShortcutExecutor._execute_python_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
         if command_type == "builtin":
-            success = ShortcutExecutor._execute_builtin_for_shortcut(shortcut, command)
+            success = ShortcutExecutor._execute_builtin_for_shortcut(shortcut, command)  # type: ignore[attr-defined]
             return success, "" if success else "内置命令执行失败"
-        return ShortcutExecutor._execute_cmd_command(shortcut, command)
+        return ShortcutExecutor._execute_cmd_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
 
     @staticmethod
     def _execute_powershell_command(shortcut: ShortcutItem, command: str) -> tuple[bool, str]:
@@ -896,12 +896,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
             show_window = getattr(shortcut, "show_window", False)
             run_as_admin = getattr(shortcut, "run_as_admin", False)
             cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-            argv = ShortcutExecutor._powershell_argv(command, no_exit=show_window)
-            if ShortcutExecutor._direct_command_line_too_long(argv):
-                return False, ShortcutExecutor._direct_command_line_length_error("powershell", argv)
+            argv = ShortcutExecutor._powershell_argv(command, no_exit=show_window)  # type: ignore[attr-defined]
+            if ShortcutExecutor._direct_command_line_too_long(argv):  # type: ignore[attr-defined]
+                return False, ShortcutExecutor._direct_command_line_length_error("powershell", argv)  # type: ignore[attr-defined]
             show_cmd = 1 if show_window else 0
             if os.name == "nt" and (show_window or run_as_admin):
-                launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                     argv[0],
                     subprocess.list2cmdline(argv[1:]),
                     cwd,
@@ -914,17 +914,17 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 if launch_error:
                     return False, launch_error
             if show_window:
-                subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)
+                subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)  # type: ignore[attr-defined]
             else:
-                ShortcutExecutor._popen_silent(
+                ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                     argv,
                     cwd=cwd,
-                    env=ShortcutExecutor._runtime_env(shortcut),
+                    env=ShortcutExecutor._runtime_env(shortcut),  # type: ignore[attr-defined]
                     shell=False,
                 )
             return True, ""
         except FileNotFoundError:
-            return False, ShortcutExecutor._powershell_launcher_error()
+            return False, ShortcutExecutor._powershell_launcher_error()  # type: ignore[attr-defined]
         except Exception as e:
             return False, f"PowerShell command launch failed: {e}"
 
@@ -933,11 +933,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
         show_window = getattr(shortcut, "show_window", False)
         run_as_admin = getattr(shortcut, "run_as_admin", False)
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-        bash_env = ShortcutExecutor._runtime_env(shortcut)
+        bash_env = ShortcutExecutor._runtime_env(shortcut)  # type: ignore[attr-defined]
         bash_env["LANG"] = "en_US.UTF-8"
         if show_window:
-            return ShortcutExecutor._execute_visible_bash_command(command, cwd, bash_env, run_as_admin)
-        return ShortcutExecutor._execute_silent_bash_command(command, cwd, bash_env)
+            return ShortcutExecutor._execute_visible_bash_command(command, cwd, bash_env, run_as_admin)  # type: ignore[attr-defined, no-any-return]
+        return ShortcutExecutor._execute_silent_bash_command(command, cwd, bash_env)  # type: ignore[attr-defined, no-any-return]
 
     @staticmethod
     def _execute_visible_bash_command(
@@ -947,15 +947,15 @@ class CommandExecutionMixin(CommandLauncherMixin):
         run_as_admin: bool,
     ) -> tuple[bool, str]:
         try:
-            bash_exe = ShortcutExecutor._bash_launcher()
+            bash_exe = ShortcutExecutor._bash_launcher()  # type: ignore[attr-defined]
             if not bash_exe:
-                return False, ShortcutExecutor._bash_launcher_error()
+                return False, ShortcutExecutor._bash_launcher_error()  # type: ignore[attr-defined]
             logger.debug("Bash show-window: launcher=%s, route=shell-execute", bash_exe)
-            argv = ShortcutExecutor._bash_argv(command, login=True)
-            if ShortcutExecutor._direct_command_line_too_long(argv):
-                return False, ShortcutExecutor._direct_command_line_length_error("bash", argv)
+            argv = ShortcutExecutor._bash_argv(command, login=True)  # type: ignore[attr-defined]
+            if ShortcutExecutor._direct_command_line_too_long(argv):  # type: ignore[attr-defined]
+                return False, ShortcutExecutor._direct_command_line_length_error("bash", argv)  # type: ignore[attr-defined]
             if os.name == "nt":
-                launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                     bash_exe,
                     subprocess.list2cmdline(["--login", "-c", command]),
                     cwd,
@@ -970,7 +970,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             subprocess.Popen(argv, cwd=cwd, env=bash_env, shell=False)
             return True, ""
         except FileNotFoundError:
-            return False, ShortcutExecutor._bash_launcher_error()
+            return False, ShortcutExecutor._bash_launcher_error()  # type: ignore[attr-defined]
         except Exception as e:
             return False, f"Bash command launch failed: {e}"
 
@@ -981,14 +981,14 @@ class CommandExecutionMixin(CommandLauncherMixin):
         bash_env: dict[str, str],
     ) -> tuple[bool, str]:
         try:
-            bash_exe = ShortcutExecutor._bash_launcher()
+            bash_exe = ShortcutExecutor._bash_launcher()  # type: ignore[attr-defined]
             if not bash_exe:
-                return False, ShortcutExecutor._bash_launcher_error()
+                return False, ShortcutExecutor._bash_launcher_error()  # type: ignore[attr-defined]
             logger.debug("Bash silent: launcher=%s, route=popen-silent", bash_exe)
-            argv = ShortcutExecutor._bash_argv(command, login=False)
-            if ShortcutExecutor._direct_command_line_too_long(argv):
-                return False, ShortcutExecutor._direct_command_line_length_error("bash", argv)
-            ShortcutExecutor._popen_silent(
+            argv = ShortcutExecutor._bash_argv(command, login=False)  # type: ignore[attr-defined]
+            if ShortcutExecutor._direct_command_line_too_long(argv):  # type: ignore[attr-defined]
+                return False, ShortcutExecutor._direct_command_line_length_error("bash", argv)  # type: ignore[attr-defined]
+            ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                 argv,
                 cwd=cwd,
                 env=bash_env,
@@ -996,30 +996,30 @@ class CommandExecutionMixin(CommandLauncherMixin):
             )
             return True, ""
         except FileNotFoundError:
-            return False, ShortcutExecutor._bash_launcher_error()
+            return False, ShortcutExecutor._bash_launcher_error()  # type: ignore[attr-defined]
         except Exception as e:
             return False, f"Bash command launch failed: {e}"
 
     @staticmethod
     def _execute_python_command(shortcut: ShortcutItem, command: str) -> tuple[bool, str]:
         if getattr(shortcut, "show_window", False):
-            return ShortcutExecutor._execute_visible_python_command(shortcut, command)
-        return ShortcutExecutor._execute_silent_python_command(shortcut, command)
+            return ShortcutExecutor._execute_visible_python_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
+        return ShortcutExecutor._execute_silent_python_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
 
     @staticmethod
     def _execute_visible_python_command(shortcut: ShortcutItem, command: str) -> tuple[bool, str]:
         tmp_path = None
         try:
-            if not ShortcutExecutor._python_launcher():
-                return False, ShortcutExecutor._python_launcher_error()
-            tmp_path = ShortcutExecutor._write_temp_python_script(command)
-            python_exe = ShortcutExecutor._python_launcher()
+            if not ShortcutExecutor._python_launcher():  # type: ignore[attr-defined]
+                return False, ShortcutExecutor._python_launcher_error()  # type: ignore[attr-defined]
+            tmp_path = ShortcutExecutor._write_temp_python_script(command)  # type: ignore[attr-defined]
+            python_exe = ShortcutExecutor._python_launcher()  # type: ignore[attr-defined]
             if not python_exe:
-                return False, ShortcutExecutor._python_launcher_error()
+                return False, ShortcutExecutor._python_launcher_error()  # type: ignore[attr-defined]
             run_as_admin = getattr(shortcut, "run_as_admin", False)
             cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
             if os.name == "nt":
-                launched, launch_error = ShortcutExecutor._launch_with_privilege(
+                launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                     python_exe,
                     subprocess.list2cmdline([tmp_path]),
                     cwd,
@@ -1034,16 +1034,16 @@ class CommandExecutionMixin(CommandLauncherMixin):
             process = subprocess.Popen(
                 [python_exe, tmp_path],
                 cwd=cwd,
-                env=ShortcutExecutor._runtime_env(shortcut),
+                env=ShortcutExecutor._runtime_env(shortcut),  # type: ignore[attr-defined]
                 shell=False,
             )
-            ShortcutExecutor._cleanup_file_later(process, tmp_path)
+            ShortcutExecutor._cleanup_file_later(process, tmp_path)  # type: ignore[attr-defined]
             return True, ""
         except FileNotFoundError:
-            ShortcutExecutor._remove_temp_python_script(tmp_path)
-            return False, ShortcutExecutor._python_launcher_error()
+            ShortcutExecutor._remove_temp_python_script(tmp_path)  # type: ignore[attr-defined]
+            return False, ShortcutExecutor._python_launcher_error()  # type: ignore[attr-defined]
         except Exception as e:
-            ShortcutExecutor._remove_temp_python_script(tmp_path)
+            ShortcutExecutor._remove_temp_python_script(tmp_path)  # type: ignore[attr-defined]
             return False, f"Python 代码执行失败: {e}"
 
     @staticmethod
@@ -1057,16 +1057,16 @@ class CommandExecutionMixin(CommandLauncherMixin):
     @staticmethod
     def _execute_silent_python_command(shortcut: ShortcutItem, command: str) -> tuple[bool, str]:
         try:
-            python_exe = ShortcutExecutor._python_launcher()
+            python_exe = ShortcutExecutor._python_launcher()  # type: ignore[attr-defined]
             if not python_exe:
-                raise FileNotFoundError(ShortcutExecutor._python_launcher_error())
+                raise FileNotFoundError(ShortcutExecutor._python_launcher_error())  # type: ignore[attr-defined]
 
             def _launch_python_stdin():
                 try:
-                    si = ShortcutExecutor._get_silent_startupinfo()
-                    cf = ShortcutExecutor._get_silent_creationflags(shell=False)
+                    si = ShortcutExecutor._get_silent_startupinfo()  # type: ignore[attr-defined]
+                    cf = ShortcutExecutor._get_silent_creationflags(shell=False)  # type: ignore[attr-defined]
                     cwd_dir = (getattr(shortcut, "working_dir", "") or "").strip() or None
-                    env_dict = ShortcutExecutor._runtime_env(shortcut)
+                    env_dict = ShortcutExecutor._runtime_env(shortcut)  # type: ignore[attr-defined]
                     try:
                         process = subprocess.Popen(
                             [python_exe],
@@ -1109,7 +1109,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             logger.debug("执行命令(Silent Python stdin): %s", command)
             return True, ""
         except FileNotFoundError:
-            return False, ShortcutExecutor._python_launcher_error()
+            return False, ShortcutExecutor._python_launcher_error()  # type: ignore[attr-defined]
         except Exception as e:
             return False, f"Python 代码启动失败: {e}"
 
@@ -1118,10 +1118,10 @@ class CommandExecutionMixin(CommandLauncherMixin):
         process = None
         run_as_admin = getattr(shortcut, "run_as_admin", False)
         show_window = getattr(shortcut, "show_window", False)
-        if ShortcutExecutor._cmd_has_newline(command) and not show_window and not run_as_admin:
-            return ShortcutExecutor._execute_cmd_stdin_command(shortcut, command)
+        if ShortcutExecutor._cmd_has_newline(command) and not show_window and not run_as_admin:  # type: ignore[attr-defined]
+            return ShortcutExecutor._execute_cmd_stdin_command(shortcut, command)  # type: ignore[attr-defined, no-any-return]
         try:
-            launch_result = ShortcutExecutor._launch_cmd_process(shortcut, command, run_as_admin, show_window)
+            launch_result = ShortcutExecutor._launch_cmd_process(shortcut, command, run_as_admin, show_window)  # type: ignore[attr-defined]
             if launch_result is True:
                 return True, ""
             process = launch_result
@@ -1132,18 +1132,18 @@ class CommandExecutionMixin(CommandLauncherMixin):
             error_msg = f"命令启动失败: {e}"
             logger.error(error_msg)
         if process is not None:
-            ShortcutExecutor._restore_focus_after_process(process)
+            ShortcutExecutor._restore_focus_after_process(process)  # type: ignore[attr-defined]
         return (process is not None), error_msg
 
     @staticmethod
     def _execute_cmd_stdin_command(shortcut: ShortcutItem, command: str) -> tuple[bool, str]:
         try:
             cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-            argv = ShortcutExecutor._cmd_stdin_argv()
+            argv = ShortcutExecutor._cmd_stdin_argv()  # type: ignore[attr-defined]
             process = subprocess.Popen(
                 argv,
                 cwd=cwd,
-                env=ShortcutExecutor._runtime_env(shortcut),
+                env=ShortcutExecutor._runtime_env(shortcut),  # type: ignore[attr-defined]
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -1153,7 +1153,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             )
             stdin_pipe = getattr(process, "stdin", None)
             if stdin_pipe is not None:
-                stdin_pipe.write(ShortcutExecutor._cmd_stdin_script(command))
+                stdin_pipe.write(ShortcutExecutor._cmd_stdin_script(command))  # type: ignore[attr-defined]
                 stdin_pipe.close()
             logger.debug("执行命令(Silent CMD stdin): %s", command)
             return True, ""
@@ -1169,11 +1169,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
         run_as_admin: bool,
         show_window: bool,
     ):
-        parsed = ShortcutExecutor._safe_split_args(command)
+        parsed = ShortcutExecutor._safe_split_args(command)  # type: ignore[attr-defined]
         exe_path = parsed[0] if parsed else ""
         if exe_path and exe_path.lower().endswith(".exe") and os.path.exists(exe_path):
-            return ShortcutExecutor._launch_direct_exe_command(shortcut, parsed, exe_path, run_as_admin, show_window)
-        return ShortcutExecutor._launch_cmd_text_command(shortcut, command, run_as_admin, show_window)
+            return ShortcutExecutor._launch_direct_exe_command(shortcut, parsed, exe_path, run_as_admin, show_window)  # type: ignore[attr-defined]
+        return ShortcutExecutor._launch_cmd_text_command(shortcut, command, run_as_admin, show_window)  # type: ignore[attr-defined]
 
     @staticmethod
     def _launch_direct_exe_command(
@@ -1183,15 +1183,15 @@ class CommandExecutionMixin(CommandLauncherMixin):
         run_as_admin: bool,
         show_window: bool,
     ):
-        if ShortcutExecutor._direct_command_line_too_long(parsed):
-            raise ValueError(ShortcutExecutor._direct_command_line_length_error("cmd", parsed))
+        if ShortcutExecutor._direct_command_line_too_long(parsed):  # type: ignore[attr-defined]
+            raise ValueError(ShortcutExecutor._direct_command_line_length_error("cmd", parsed))  # type: ignore[attr-defined]
         exe_dir = os.path.dirname(os.path.abspath(exe_path))
         cwd = (getattr(shortcut, "working_dir", "") or "").strip()
         show_cmd = 1 if show_window else 0
 
         if os.name == "nt" and (show_window or run_as_admin):
             parameters = subprocess.list2cmdline(parsed[1:]) if len(parsed) > 1 else ""
-            launched, launch_error = ShortcutExecutor._launch_with_privilege(
+            launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                 exe_path,
                 parameters or None,
                 cwd or exe_dir or None,
@@ -1207,8 +1207,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
         if show_window:
             process = subprocess.Popen(parsed, cwd=cwd or exe_dir or None)
         else:
-            process = ShortcutExecutor._popen_silent(
-                parsed, cwd=cwd or exe_dir or None, env=ShortcutExecutor._runtime_env(shortcut), shell=False
+            process = ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
+                parsed, cwd=cwd or exe_dir or None, env=ShortcutExecutor._runtime_env(shortcut), shell=False  # type: ignore[attr-defined]
             )
         logger.debug(f"执行程序({'Visible' if show_window else 'Silent'}): {exe_path}")
         return process
@@ -1221,13 +1221,13 @@ class CommandExecutionMixin(CommandLauncherMixin):
         show_window: bool,
     ):
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
-        argv = ShortcutExecutor._cmd_argv(command, keep_open=show_window)
-        if ShortcutExecutor._direct_command_line_too_long(argv):
-            raise ValueError(ShortcutExecutor._direct_command_line_length_error("cmd", argv))
+        argv = ShortcutExecutor._cmd_argv(command, keep_open=show_window)  # type: ignore[attr-defined]
+        if ShortcutExecutor._direct_command_line_too_long(argv):  # type: ignore[attr-defined]
+            raise ValueError(ShortcutExecutor._direct_command_line_length_error("cmd", argv))  # type: ignore[attr-defined]
 
         show_cmd = 1 if show_window else 0
         if os.name == "nt" and (show_window or run_as_admin):
-            launched, launch_error = ShortcutExecutor._launch_with_privilege(
+            launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                 argv[0],
                 subprocess.list2cmdline(argv[1:]),
                 cwd,
@@ -1242,10 +1242,10 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 raise RuntimeError(launch_error)
 
         if show_window:
-            process = subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)
+            process = subprocess.Popen(argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False)  # type: ignore[attr-defined]
         else:
-            process = ShortcutExecutor._popen_silent(
-                argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False
+            process = ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
+                argv, cwd=cwd, env=ShortcutExecutor._runtime_env(shortcut), shell=False  # type: ignore[attr-defined]
             )
         logger.debug(f"执行命令({'Visible' if show_window else 'Silent'} CMD): {command}")
         return process
@@ -1261,7 +1261,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 logger.debug(f"等待命令进程时出错: {e}")
             time.sleep(0.05)
             try:
-                ShortcutExecutor.restore_foreground_window()
+                ShortcutExecutor.restore_foreground_window()  # type: ignore[attr-defined]
                 logger.debug("CMD 命令执行后：已恢复焦点")
             except Exception as e:
                 logger.debug(f"CMD 命令执行后恢复焦点失败: {e}")
@@ -1274,18 +1274,18 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
     @staticmethod
     def _resolve_command_variables(shortcut: ShortcutItem, command: str) -> str:
-        if not ShortcutExecutor._should_expand_command_variables(shortcut):
+        if not ShortcutExecutor._should_expand_command_variables(shortcut):  # type: ignore[attr-defined]
             return command
         input_values = getattr(shortcut, "_runtime_input_values", None)
         selected_provider = None
         if getattr(shortcut, "trigger_mode", "immediate") == "after_close":
-            selected_provider = ShortcutExecutor._capture_selected_text
-        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
+            selected_provider = ShortcutExecutor._capture_selected_text  # type: ignore[attr-defined]
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))  # type: ignore[attr-defined]
         return resolve_command_variables(
             command,
             input_values=input_values,
-            param_values=ShortcutExecutor._command_param_values(shortcut),
-            chain_values=ShortcutExecutor._chain_values(shortcut),
+            param_values=ShortcutExecutor._command_param_values(shortcut),  # type: ignore[attr-defined]
+            chain_values=ShortcutExecutor._chain_values(shortcut),  # type: ignore[attr-defined]
             selected_files=getattr(shortcut, "_runtime_selected_files", None),
             clipboard_provider=read_clipboard_text,
             selected_text_provider=selected_provider,
@@ -1296,12 +1296,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
     @staticmethod
     def _should_expand_command_variables(shortcut: ShortcutItem) -> bool:
-        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))  # type: ignore[attr-defined]
         if bool(getattr(shortcut, "raw_mode", False)):
             return False
         enabled = getattr(shortcut, "command_variables_enabled", None)
-        if ShortcutExecutor._command_param_defs(shortcut) or ShortcutExecutor._chain_values(shortcut):
-            return command_type != "builtin"
+        if ShortcutExecutor._command_param_defs(shortcut) or ShortcutExecutor._chain_values(shortcut):  # type: ignore[attr-defined]
+            return command_type != "builtin"  # type: ignore[no-any-return]
         return should_expand_command_variables(command_type, enabled)
 
     @staticmethod
@@ -1314,12 +1314,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
         original_sequence = clipboard_service.get_sequence_number()
         try:
             try:
-                ShortcutExecutor.restore_foreground_window_fast(timeout_ms=300)
+                ShortcutExecutor.restore_foreground_window_fast(timeout_ms=300)  # type: ignore[attr-defined]
             except Exception:
-                ShortcutExecutor.restore_foreground_window()
+                ShortcutExecutor.restore_foreground_window()  # type: ignore[attr-defined]
             time.sleep(0.08)
             if hasattr(ShortcutExecutor, "_execute_hotkey_sendinput"):
-                ShortcutExecutor._execute_hotkey_sendinput(["ctrl"], "c")
+                ShortcutExecutor._execute_hotkey_sendinput(["ctrl"], "c")  # type: ignore[attr-defined]
             else:
                 return ""
             for _ in range(12):
@@ -1364,9 +1364,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
     def _open_builtin_directory(command: str) -> bool:
         try:
             if command == "open_data_dir":
-                path = os.path.join(ShortcutExecutor._app_install_dir(), "config")
+                path = os.path.join(ShortcutExecutor._app_install_dir(), "config")  # type: ignore[attr-defined]
             else:
-                path = ShortcutExecutor._app_install_dir()
+                path = ShortcutExecutor._app_install_dir()  # type: ignore[attr-defined]
             path = os.path.abspath(path)
             os.makedirs(path, exist_ok=True)
             os.startfile(path)
@@ -1394,7 +1394,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 opener(path)
                 logger.debug("Opened built-in filesystem target: %s", path)
                 return True
-            return ShortcutExecutor._shell_execute_open(path)
+            return ShortcutExecutor._shell_execute_open(path)  # type: ignore[attr-defined, no-any-return]
         except Exception as e:
             logger.error("Open built-in filesystem target failed %s: %s", path, e, exc_info=True)
             return False
@@ -1403,18 +1403,18 @@ class CommandExecutionMixin(CommandLauncherMixin):
     def _open_builtin_text_file(path: str) -> bool:
         path = os.path.abspath(path)
         if not os.path.exists(path):
-            return ShortcutExecutor._open_filesystem_target(path, create_dir=False)
+            return ShortcutExecutor._open_filesystem_target(path, create_dir=False)  # type: ignore[attr-defined, no-any-return]
 
         if os.name == "nt":
             try:
                 params = subprocess.list2cmdline([path])
-                if ShortcutExecutor._shell_execute_open("notepad.exe", params):
+                if ShortcutExecutor._shell_execute_open("notepad.exe", params):  # type: ignore[attr-defined]
                     logger.info("Opened built-in text file via notepad: %s", path)
                     return True
             except Exception:
                 logger.debug("Opening built-in text file via notepad failed: %s", path, exc_info=True)
 
-        return ShortcutExecutor._open_filesystem_target(
+        return ShortcutExecutor._open_filesystem_target(  # type: ignore[attr-defined, no-any-return]
             path,
             create_dir=False,
             fallback_to_parent=False,
@@ -1422,7 +1422,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
     @staticmethod
     def _open_builtin_filesystem_target(command: str) -> bool:
-        install_dir = ShortcutExecutor._app_install_dir()
+        install_dir = ShortcutExecutor._app_install_dir()  # type: ignore[attr-defined]
         config_dir = os.path.join(install_dir, "config")
         targets = {
             "open_data_dir": (config_dir, True),
@@ -1438,13 +1438,13 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return False
         path, create_dir = target
         if command in {"open_config_file", "open_error_log"}:
-            return ShortcutExecutor._open_builtin_text_file(path)
-        return ShortcutExecutor._open_filesystem_target(path, create_dir=create_dir)
+            return ShortcutExecutor._open_builtin_text_file(path)  # type: ignore[attr-defined, no-any-return]
+        return ShortcutExecutor._open_filesystem_target(path, create_dir=create_dir)  # type: ignore[attr-defined, no-any-return]
 
     @staticmethod
     def _open_windows_system_builtin(command: str) -> bool:
         if command == "open_windows_settings":
-            if ShortcutExecutor._shell_execute_open("ms-settings:"):
+            if ShortcutExecutor._shell_execute_open("ms-settings:"):  # type: ignore[attr-defined]
                 return True
             try:
                 opener = getattr(os, "startfile", None)
@@ -1471,12 +1471,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return False
 
         target, parameters, fallback_argv = spec
-        if ShortcutExecutor._shell_execute_open(target, parameters):
+        if ShortcutExecutor._shell_execute_open(target, parameters):  # type: ignore[attr-defined]
             return True
         try:
-            ShortcutExecutor._popen_silent(
+            ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                 fallback_argv,
-                env=ShortcutExecutor._sanitized_child_env(),
+                env=ShortcutExecutor._sanitized_child_env(),  # type: ignore[attr-defined]
             )
             return True
         except Exception as e:
@@ -1497,16 +1497,16 @@ class CommandExecutionMixin(CommandLauncherMixin):
         """Run a CMD/PowerShell/Python/Git Bash/builtin command and return captured output."""
         start = time.monotonic()
         command = shortcut.command or ""
-        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))
+        command_type = ShortcutExecutor._normalize_command_type(getattr(shortcut, "command_type", "cmd"))  # type: ignore[attr-defined]
         max_chars = getattr(shortcut, "command_output_max_chars", DEFAULT_COMMAND_OUTPUT_MAX_CHARS)
-        panel_size = ShortcutExecutor._command_panel_size(shortcut)
+        panel_size = ShortcutExecutor._command_panel_size(shortcut)  # type: ignore[attr-defined]
         timeout_value = normalize_command_timeout_seconds(
             timeout
             if timeout is not None
             else getattr(shortcut, "command_timeout_seconds", DEFAULT_COMMAND_TIMEOUT_SECONDS)
         )
 
-        command, prepare_error = ShortcutExecutor._prepare_command_for_execution(
+        command, prepare_error = ShortcutExecutor._prepare_command_for_execution(  # type: ignore[attr-defined]
             shortcut,
             command,
             command_type,
@@ -1514,39 +1514,39 @@ class CommandExecutionMixin(CommandLauncherMixin):
             display_type="log",
         )
         if prepare_error is not None:
-            return prepare_error
+            return prepare_error  # type: ignore[no-any-return]
 
         cwd = (getattr(shortcut, "working_dir", "") or "").strip() or None
         if command_type == "builtin":
-            success = ShortcutExecutor._execute_builtin_for_shortcut(shortcut, command)
+            success = ShortcutExecutor._execute_builtin_for_shortcut(shortcut, command)  # type: ignore[attr-defined]
             pending = take_pending_command_result()
             if pending is not None:
                 pending.payload.setdefault("window_size", panel_size)
                 return pending
-            return ShortcutExecutor._capture_builtin_result(success, panel_size, start)
+            return ShortcutExecutor._capture_builtin_result(success, panel_size, start)  # type: ignore[attr-defined, no-any-return]
 
-        preflight = ShortcutExecutor._preflight_command(shortcut, command, command_type, capture=True)
+        preflight = ShortcutExecutor._preflight_command(shortcut, command, command_type, capture=True)  # type: ignore[attr-defined]
         if preflight is not None:
             if isinstance(getattr(preflight, "payload", None), dict):
                 preflight.payload.setdefault("window_size", panel_size)
-            return preflight
+            return preflight  # type: ignore[no-any-return]
 
-        confirmation = ShortcutExecutor._destructive_confirmation_result(
+        confirmation = ShortcutExecutor._destructive_confirmation_result(  # type: ignore[attr-defined]
             shortcut,
             command,
             command_type,
             panel_size=panel_size,
         )
         if confirmation is not None:
-            return confirmation
+            return confirmation  # type: ignore[no-any-return]
 
         try:
-            launch_spec = ShortcutExecutor._capture_launch_spec(command, command_type, panel_size, start)
+            launch_spec = ShortcutExecutor._capture_launch_spec(command, command_type, panel_size, start)  # type: ignore[attr-defined]
             if isinstance(launch_spec, CommandResult):
                 return launch_spec
             popen_args, stdin_data, shell = launch_spec
             try:
-                env = ShortcutExecutor._runtime_env(shortcut)
+                env = ShortcutExecutor._runtime_env(shortcut)  # type: ignore[attr-defined]
                 process = subprocess.Popen(
                     popen_args,
                     cwd=cwd,
@@ -1556,11 +1556,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     stderr=subprocess.PIPE,
                     text=False,
                     shell=shell,
-                    **ShortcutExecutor._capture_popen_platform_kwargs(),
+                    **ShortcutExecutor._capture_popen_platform_kwargs(),  # type: ignore[attr-defined]
                 )
             except OSError as exc:
-                if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):
-                    fallback = ShortcutExecutor._bash_capture_via_script(
+                if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):  # type: ignore[attr-defined]
+                    fallback = ShortcutExecutor._bash_capture_via_script(  # type: ignore[attr-defined]
                         command,
                         cwd,
                         env,
@@ -1572,9 +1572,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
                         shortcut,
                     )
                     if fallback is not None:
-                        return fallback
-                    message = ShortcutExecutor._bash_direct_capture_denied_message(str(exc))
-                    return ShortcutExecutor._capture_error_result(
+                        return fallback  # type: ignore[no-any-return]
+                    message = ShortcutExecutor._bash_direct_capture_denied_message(str(exc))  # type: ignore[attr-defined]
+                    return ShortcutExecutor._capture_error_result(  # type: ignore[attr-defined, no-any-return]
                         message,
                         str(exc),
                         panel_size,
@@ -1585,7 +1585,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     raise
 
             if on_update is not None:
-                return ShortcutExecutor._run_command_capture_streaming(
+                return ShortcutExecutor._run_command_capture_streaming(  # type: ignore[attr-defined, no-any-return]
                     process=process,
                     stdin_data=stdin_data,
                     timeout_value=timeout_value,
@@ -1600,7 +1600,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     cancel_event=cancel_event,
                     on_update=on_update,
                 )
-            return ShortcutExecutor._run_command_capture_blocking(
+            return ShortcutExecutor._run_command_capture_blocking(  # type: ignore[attr-defined, no-any-return]
                 process=process,
                 stdin_data=stdin_data,
                 timeout_value=timeout_value,
@@ -1633,43 +1633,43 @@ class CommandExecutionMixin(CommandLauncherMixin):
     ) -> tuple[list[str], bytes | None, bool] | CommandResult:
         stdin_data = None
         if command_type == "python":
-            python_exe = ShortcutExecutor._python_launcher()
+            python_exe = ShortcutExecutor._python_launcher()  # type: ignore[attr-defined]
             if not python_exe:
-                return ShortcutExecutor._capture_error_result(
-                    ShortcutExecutor._python_launcher_error(),
+                return ShortcutExecutor._capture_error_result(  # type: ignore[attr-defined, no-any-return]
+                    ShortcutExecutor._python_launcher_error(),  # type: ignore[attr-defined]
                     "Python 不可用",
                     panel_size,
                 )
             return [python_exe, "-u"], command.encode("utf-8"), False
         if command_type == "powershell":
-            popen_args = ShortcutExecutor._powershell_argv(command)
-            if ShortcutExecutor._direct_command_line_too_long(popen_args):
-                message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
-                return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)
+            popen_args = ShortcutExecutor._powershell_argv(command)  # type: ignore[attr-defined]
+            if ShortcutExecutor._direct_command_line_too_long(popen_args):  # type: ignore[attr-defined]
+                message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)  # type: ignore[attr-defined]
+                return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)  # type: ignore[attr-defined, no-any-return]
             return popen_args, stdin_data, False
         if command_type == "bash":
-            bash_exe = ShortcutExecutor._bash_launcher()
+            bash_exe = ShortcutExecutor._bash_launcher()  # type: ignore[attr-defined]
             if not bash_exe:
-                return ShortcutExecutor._capture_error_result(
-                    ShortcutExecutor._bash_launcher_error(),
+                return ShortcutExecutor._capture_error_result(  # type: ignore[attr-defined, no-any-return]
+                    ShortcutExecutor._bash_launcher_error(),  # type: ignore[attr-defined]
                     "Git Bash 不可用",
                     panel_size,
                 )
             logger.debug("Bash capture: launcher=%s, route=capture-direct", bash_exe)
-            popen_args = ShortcutExecutor._bash_argv(command)
-            if ShortcutExecutor._direct_command_line_too_long(popen_args):
-                message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
-                return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)
+            popen_args = ShortcutExecutor._bash_argv(command)  # type: ignore[attr-defined]
+            if ShortcutExecutor._direct_command_line_too_long(popen_args):  # type: ignore[attr-defined]
+                message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)  # type: ignore[attr-defined]
+                return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)  # type: ignore[attr-defined, no-any-return]
             return popen_args, stdin_data, False
         if command_type == "cmd":
-            if ShortcutExecutor._cmd_has_newline(command):
-                return ShortcutExecutor._cmd_stdin_argv(), ShortcutExecutor._cmd_stdin_script(command), False
-            popen_args = ShortcutExecutor._cmd_argv(command)
-            if ShortcutExecutor._direct_command_line_too_long(popen_args):
-                message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)
-                return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)
+            if ShortcutExecutor._cmd_has_newline(command):  # type: ignore[attr-defined]
+                return ShortcutExecutor._cmd_stdin_argv(), ShortcutExecutor._cmd_stdin_script(command), False  # type: ignore[attr-defined]
+            popen_args = ShortcutExecutor._cmd_argv(command)  # type: ignore[attr-defined]
+            if ShortcutExecutor._direct_command_line_too_long(popen_args):  # type: ignore[attr-defined]
+                message = ShortcutExecutor._direct_command_line_length_error(command_type, popen_args)  # type: ignore[attr-defined]
+                return ShortcutExecutor._capture_error_result(message, "命令过长", panel_size, start=start)  # type: ignore[attr-defined, no-any-return]
             return popen_args, stdin_data, False
-        return ShortcutExecutor._capture_error_result(
+        return ShortcutExecutor._capture_error_result(  # type: ignore[attr-defined, no-any-return]
             f"Unsupported command type: {command_type}",
             "Unsupported command type",
             panel_size,
@@ -1697,7 +1697,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         if stdin_data is not None and stdin_pipe is not None:
             stdin_pipe.write(stdin_data)
             stdin_pipe.close()
-        output_queue = queue.Queue()
+        output_queue = queue.Queue()  # type: ignore[var-annotated]
 
         def _reader(pipe, name):
             try:
@@ -1712,21 +1712,21 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 except Exception as exc:
                     logger.debug("关闭输出管道失败: %s", exc, exc_info=True)
 
-        executor = ShortcutExecutor._get_executor()
+        executor = ShortcutExecutor._get_executor()  # type: ignore[attr-defined]
         executor.submit(_reader, process.stdout, "stdout")
         executor.submit(_reader, process.stderr, "stderr")
-        stdout_parts = []
-        stderr_parts = []
+        stdout_parts = []  # type: ignore[var-annotated]
+        stderr_parts = []  # type: ignore[var-annotated]
         deadline = time.monotonic() + timeout_value
         last_update = 0.0
         timed_out = False
         cancelled = False
 
         while process.poll() is None or not output_queue.empty():
-            ShortcutExecutor._drain_capture_queue(output_queue, stdout_parts, stderr_parts)
+            ShortcutExecutor._drain_capture_queue(output_queue, stdout_parts, stderr_parts)  # type: ignore[attr-defined]
             now = time.monotonic()
             if (stdout_parts or stderr_parts) and now - last_update >= COMMAND_CAPTURE_UPDATE_INTERVAL_SECONDS:
-                ShortcutExecutor._emit_capture_update(
+                ShortcutExecutor._emit_capture_update(  # type: ignore[attr-defined]
                     stdout_parts=stdout_parts,
                     stderr_parts=stderr_parts,
                     stdin_data=stdin_data,
@@ -1743,11 +1743,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
             if cancel_event is not None and cancel_event.is_set():
                 cancelled = True
-                ShortcutExecutor._terminate_process_tree(process)
+                ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
                 break
             if time.monotonic() >= deadline:
                 timed_out = True
-                ShortcutExecutor._terminate_process_tree(process)
+                ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
                 break
             time.sleep(COMMAND_CAPTURE_POLL_SECONDS)
 
@@ -1755,8 +1755,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             process.wait(timeout=PROCESS_TERMINATE_WAIT_SECONDS)
         except Exception as exc:
             logger.debug("等待进程结束失败: %s", exc, exc_info=True)
-        ShortcutExecutor._drain_capture_queue(output_queue, stdout_parts, stderr_parts)
-        return ShortcutExecutor._finalize_capture_bytes(
+        ShortcutExecutor._drain_capture_queue(output_queue, stdout_parts, stderr_parts)  # type: ignore[attr-defined]
+        return ShortcutExecutor._finalize_capture_bytes(  # type: ignore[attr-defined, no-any-return]
             stdout_bytes=b"".join(stdout_parts),
             stderr_bytes=b"".join(stderr_parts),
             returncode=process.returncode,
@@ -1804,16 +1804,16 @@ class CommandExecutionMixin(CommandLauncherMixin):
         update_stdout_bytes = b"".join(stdout_parts)
         update_stderr_bytes = b"".join(stderr_parts)
         if command_type == "cmd" and stdin_data is not None:
-            update_stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(update_stdout_bytes)
-            update_stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(update_stderr_bytes)
-        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(
+            update_stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(update_stdout_bytes)  # type: ignore[attr-defined]
+            update_stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(update_stderr_bytes)  # type: ignore[attr-defined]
+        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(  # type: ignore[attr-defined]
             update_stdout_bytes, getattr(shortcut, "command_encoding", "auto"), command_type
         )
-        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(
+        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(  # type: ignore[attr-defined]
             update_stderr_bytes, getattr(shortcut, "command_encoding", "auto")
         )
-        update_stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)
-        update_stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)
+        update_stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)  # type: ignore[attr-defined]
+        update_stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)  # type: ignore[attr-defined]
         parts = []
         if update_stdout:
             parts.append(update_stdout)
@@ -1864,7 +1864,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 else:
                     stdout_bytes, stderr_bytes = process.communicate(input=stdin_data, timeout=timeout_value)
             else:
-                cancel_result = ShortcutExecutor._wait_capture_with_cancel(
+                cancel_result = ShortcutExecutor._wait_capture_with_cancel(  # type: ignore[attr-defined]
                     process=process,
                     stdin_data=stdin_data,
                     timeout_value=timeout_value,
@@ -1883,12 +1883,12 @@ class CommandExecutionMixin(CommandLauncherMixin):
             returncode = process.returncode
             timed_out = False
         except subprocess.TimeoutExpired:
-            ShortcutExecutor._terminate_process_tree(process)
+            ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
             stdout_bytes, stderr_bytes = process.communicate()
             returncode = process.returncode
             timed_out = True
 
-        return ShortcutExecutor._finalize_capture_bytes(
+        return ShortcutExecutor._finalize_capture_bytes(  # type: ignore[attr-defined, no-any-return]
             stdout_bytes=stdout_bytes,
             stderr_bytes=stderr_bytes,
             returncode=returncode,
@@ -1928,9 +1928,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
         deadline = time.monotonic() + timeout_value
         while process.poll() is None:
             if cancel_event.is_set():
-                ShortcutExecutor._terminate_process_tree(process)
+                ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
                 stdout_bytes, stderr_bytes = process.communicate()
-                return ShortcutExecutor._build_cancel_result_from_bytes(
+                return ShortcutExecutor._build_cancel_result_from_bytes(  # type: ignore[attr-defined]
                     stdout_bytes=stdout_bytes,
                     stderr_bytes=stderr_bytes,
                     process=process,
@@ -1961,9 +1961,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
         start: float,
     ) -> CommandResult:
         stdout, stderr, stdout_truncated, stderr_truncated, stdout_encoding, stderr_encoding, decode_fallback_used = (
-            ShortcutExecutor._decode_capture_output(stdout_bytes, stderr_bytes, shortcut, command_type, max_chars)
+            ShortcutExecutor._decode_capture_output(stdout_bytes, stderr_bytes, shortcut, command_type, max_chars)  # type: ignore[attr-defined]
         )
-        return ShortcutExecutor._build_capture_cancel_result(
+        return ShortcutExecutor._build_capture_cancel_result(  # type: ignore[attr-defined, no-any-return]
             panel_size=panel_size,
             returncode=process.returncode,
             start=start,
@@ -1997,13 +1997,13 @@ class CommandExecutionMixin(CommandLauncherMixin):
         start: float,
     ) -> CommandResult:
         if command_type == "cmd" and stdin_data is not None:
-            stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stdout_bytes)
-            stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stderr_bytes)
+            stdout_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stdout_bytes)  # type: ignore[attr-defined]
+            stderr_bytes = ShortcutExecutor._clean_cmd_stdin_output_bytes(stderr_bytes)  # type: ignore[attr-defined]
         stdout, stderr, stdout_truncated, stderr_truncated, stdout_encoding, stderr_encoding, decode_fallback_used = (
-            ShortcutExecutor._decode_capture_output(stdout_bytes, stderr_bytes, shortcut, command_type, max_chars)
+            ShortcutExecutor._decode_capture_output(stdout_bytes, stderr_bytes, shortcut, command_type, max_chars)  # type: ignore[attr-defined]
         )
         if cancelled:
-            return ShortcutExecutor._build_capture_cancel_result(
+            return ShortcutExecutor._build_capture_cancel_result(  # type: ignore[attr-defined, no-any-return]
                 panel_size=panel_size,
                 returncode=returncode,
                 start=start,
@@ -2016,8 +2016,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 decode_fallback_used=decode_fallback_used,
                 command=command,
             )
-        if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):
-            fallback = ShortcutExecutor._bash_capture_via_script(
+        if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(stderr):  # type: ignore[attr-defined]
+            fallback = ShortcutExecutor._bash_capture_via_script(  # type: ignore[attr-defined]
                 command,
                 cwd,
                 env,
@@ -2029,8 +2029,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 shortcut,
             )
             if fallback is not None:
-                return fallback
-            return ShortcutExecutor._build_bash_fallback_result(
+                return fallback  # type: ignore[no-any-return]
+            return ShortcutExecutor._build_bash_fallback_result(  # type: ignore[attr-defined, no-any-return]
                 panel_size=panel_size,
                 returncode=returncode,
                 start=start,
@@ -2044,7 +2044,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 command=command,
                 timed_out=timed_out,
             )
-        return ShortcutExecutor._build_capture_success_result(
+        return ShortcutExecutor._build_capture_success_result(  # type: ignore[attr-defined, no-any-return]
             panel_size=panel_size,
             returncode=returncode,
             start=start,
@@ -2067,7 +2067,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         cancel_event: threading.Event | None = None,
     ) -> dict:
         """Run a command shortcut synchronously for the editor test button."""
-        captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout, cancel_event=cancel_event)
+        captured = ShortcutExecutor.run_command_capture(shortcut, timeout=timeout, cancel_event=cancel_event)  # type: ignore[attr-defined]
         payload = captured.payload if isinstance(captured.payload, dict) else {}
         return {
             "success": captured.success,
@@ -2082,11 +2082,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
     @staticmethod
     def _execute_builtin_for_shortcut(shortcut: ShortcutItem, command: str) -> bool:
         if bool(getattr(shortcut, "_topmost_target_captured", False)):
-            return ShortcutExecutor._execute_builtin_command(
+            return ShortcutExecutor._execute_builtin_command(  # type: ignore[attr-defined, no-any-return]
                 command,
                 topmost_target=getattr(shortcut, "_topmost_target", None),
             )
-        return ShortcutExecutor._execute_builtin_command(command)
+        return ShortcutExecutor._execute_builtin_command(command)  # type: ignore[attr-defined, no-any-return]
 
     @staticmethod
     def _execute_builtin_command(command: str, *, topmost_target=_TOPMOST_TARGET_UNSET) -> bool:
@@ -2164,10 +2164,10 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
                 if has_callback(canonical):
                     global _main_thread_invoker
-                    if _main_thread_invoker is not None and not ShortcutExecutor._is_qt_main_thread():
+                    if _main_thread_invoker is not None and not ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
                         _main_thread_invoker.execute_signal.emit(lambda: call_callback(canonical))
                         logger.info(f"UI内置命令(通过主线程): {canonical}")
-                    elif ShortcutExecutor._is_qt_main_thread():
+                    elif ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
                         result = call_callback(canonical)
                         if not result:
                             logger.error("UI内置命令回调返回失败: %s", canonical)
@@ -2185,9 +2185,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
                             except Exception as e:
                                 logger.debug("配置窗口直接回退失败: %s", e)
                         logger.debug("配置窗口: 回退到 IPC 方式")
-                        return ShortcutExecutor._send_ipc_command_deferred("show_config")
+                        return ShortcutExecutor._send_ipc_command_deferred("show_config")  # type: ignore[attr-defined, no-any-return]
                     if canonical in filesystem_builtin_commands:
-                        return ShortcutExecutor._open_builtin_filesystem_target(canonical)
+                        return ShortcutExecutor._open_builtin_filesystem_target(canonical)  # type: ignore[attr-defined, no-any-return]
                     logger.warning(f"内置命令: 回调未注册: {canonical}")
                     return False
             except Exception as e:
@@ -2196,25 +2196,25 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
         if command_name == "toggle_topmost":
             if topmost_target is not _TOPMOST_TARGET_UNSET:
-                return ShortcutExecutor._toggle_topmost(topmost_target)
-            return ShortcutExecutor._toggle_topmost()
+                return ShortcutExecutor._toggle_topmost(topmost_target)  # type: ignore[attr-defined, no-any-return]
+            return ShortcutExecutor._toggle_topmost()  # type: ignore[attr-defined, no-any-return]
 
         # 旧版强制开关命令继续兼容已有配置，但主界面只推荐状态切换入口。
         if command_name == "pin_on":
             if topmost_target is not _TOPMOST_TARGET_UNSET:
-                return ShortcutExecutor._set_topmost(True, topmost_target)
-            return ShortcutExecutor._set_topmost(True)
+                return ShortcutExecutor._set_topmost(True, topmost_target)  # type: ignore[attr-defined, no-any-return]
+            return ShortcutExecutor._set_topmost(True)  # type: ignore[attr-defined, no-any-return]
 
         if command_name == "pin_off":
             if topmost_target is not _TOPMOST_TARGET_UNSET:
-                return ShortcutExecutor._set_topmost(False, topmost_target)
-            return ShortcutExecutor._set_topmost(False)
+                return ShortcutExecutor._set_topmost(False, topmost_target)  # type: ignore[attr-defined, no-any-return]
+            return ShortcutExecutor._set_topmost(False)  # type: ignore[attr-defined, no-any-return]
 
         if command_name in filesystem_builtin_commands:
-            return ShortcutExecutor._open_builtin_filesystem_target(command_name)
+            return ShortcutExecutor._open_builtin_filesystem_target(command_name)  # type: ignore[attr-defined, no-any-return]
 
         if command_name in WINDOWS_SYSTEM_BUILTIN_COMMANDS:
-            return ShortcutExecutor._open_windows_system_builtin(command_name)
+            return ShortcutExecutor._open_windows_system_builtin(command_name)  # type: ignore[attr-defined, no-any-return]
 
         return False
 
@@ -2245,7 +2245,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
                 # 执行实际的 IPC 发送
                 logger.debug(f"开始发送延迟IPC命令: {command} (frozen={is_frozen})")
-                result = ShortcutExecutor._send_ipc_command(command)
+                result = ShortcutExecutor._send_ipc_command(command)  # type: ignore[attr-defined]
                 if result:
                     logger.debug(f"延迟IPC命令发送成功: {command}")
                 else:
@@ -2266,7 +2266,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         except Exception as e:
             logger.error(f"排队IPC命令失败: {e}, 尝试直接发送")
             # 回退到直接发送
-            return ShortcutExecutor._send_ipc_command(command)
+            return ShortcutExecutor._send_ipc_command(command)  # type: ignore[attr-defined, no-any-return]
 
     @staticmethod
     def _send_ipc_command(command: str) -> bool:
@@ -2290,7 +2290,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             # 首次调用时给Qt网络模块和IPC服务器更多初始化时间
             # 这对于打包后的exe在首次使用QLocalSocket尤为重要
             if not hasattr(ShortcutExecutor, "_ipc_initialized"):
-                ShortcutExecutor._ipc_initialized = True
+                ShortcutExecutor._ipc_initialized = True  # type: ignore[attr-defined]
                 # 打包版本需要更长的首次初始化延迟
                 # 因为Qt网络模块的DLL加载和初始化需要时间
                 init_delay = 0.35 if is_frozen else 0.15

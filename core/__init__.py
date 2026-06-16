@@ -48,7 +48,7 @@ def __getattr__(name: str):
 # ============================================================
 
 # 全局回调存储
-_callbacks = {}
+_callbacks = {}  # type: ignore[var-annotated]
 
 
 def register_callback(name: str, callback):

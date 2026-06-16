@@ -698,7 +698,7 @@ def test_rendering_history_result_does_not_mutate_store(qapp):
 
 
 def test_history_dropdown_uses_input_width_and_shows_recent_commands(qapp, monkeypatch):
-    import ui.command_panel_window as panel_mod
+    import ui.command_panel_history as history_mod
 
     store = CommandResultStore()
     store.add(CommandResult(message="old"), command_id="old", command_title="Old", raw_input="/old")
@@ -732,7 +732,7 @@ def test_history_dropdown_uses_input_width_and_shows_recent_commands(qapp, monke
         def popup(self, pos):
             popups.append(pos)
 
-    monkeypatch.setattr(panel_mod, "PopupMenu", FakeMenu)
+    monkeypatch.setattr(history_mod, "PopupMenu", FakeMenu)
 
     win._show_history_menu()
 

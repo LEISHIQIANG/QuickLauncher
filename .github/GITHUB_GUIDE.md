@@ -9,7 +9,7 @@
 | 项 | 当前值 |
 |---|---|
 | 默认分支 | `main` |
-| 当前源码版本 | 以 `core/version.py` 的 `APP_VERSION` 为准，目前为 `1.6.3.1` |
+| 当前源码版本 | 以 `core/version.py` 的 `APP_VERSION` 为准，目前为 `1.6.3.2` |
 | 发布状态 | `stable` |
 | 运行平台 | Windows 10 / 11 x64 |
 | 源码 Python | CPython 3.12 |

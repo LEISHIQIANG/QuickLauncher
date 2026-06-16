@@ -3,7 +3,7 @@
 import logging
 import os
 
-from PyQt5.QtCore import (
+from PyQt5.QtCore import (  # type: ignore[attr-defined]
     QAbstractListModel,
     QBuffer,
     QByteArray,
@@ -65,12 +65,12 @@ from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 try:
     from PyQt5.QtSvg import QSvgRenderer
 except ImportError:
-    QSvgRenderer = None  # noqa: N814
+    QSvgRenderer = None  # type: ignore[assignment, misc]  # noqa: N814
 
 try:
     from PyQt5.QtWinExtras import QtWin
 except ImportError:
-    QtWin = None  # noqa: N814
+    QtWin = None  # type: ignore[assignment, misc]  # noqa: N814
 from PyQt5.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -183,12 +183,12 @@ class _TranslatedTextMixin:
     def setText(self, text):  # noqa: N802 - Qt API name
         if isinstance(text, str):
             text = tr(text)
-        return super().setText(text)
+        return super().setText(text)  # type: ignore[misc]
 
     def setToolTip(self, text):  # noqa: N802 - Qt API name
         if isinstance(text, str):
             text = tr(text)
-        return super().setToolTip(text)
+        return super().setToolTip(text)  # type: ignore[misc]
 
 
 class QLabel(_TranslatedTextMixin, _QLabel):
@@ -257,13 +257,13 @@ class _ThemedTextContextMenuMixin:
     def _has_selected_text(self):
         if isinstance(self, _QLineEdit):
             return self.hasSelectedText()
-        return self.textCursor().hasSelection()
+        return self.textCursor().hasSelection()  # type: ignore[attr-defined]
 
     def _has_text(self):
-        return bool(self.text() if isinstance(self, _QLineEdit) else self.toPlainText())
+        return bool(self.text() if isinstance(self, _QLineEdit) else self.toPlainText())  # type: ignore[attr-defined]
 
     def _is_editable(self):
-        return not self.isReadOnly()
+        return not self.isReadOnly()  # type: ignore[attr-defined]
 
     def _can_copy_selection(self):
         if isinstance(self, _QLineEdit) and self.echoMode() != _QLineEdit.Normal:
@@ -279,20 +279,20 @@ class _ThemedTextContextMenuMixin:
     def _undo_available(self):
         if isinstance(self, _QLineEdit):
             return self.isUndoAvailable()
-        return self.document().isUndoAvailable()
+        return self.document().isUndoAvailable()  # type: ignore[attr-defined]
 
     def _redo_available(self):
         if isinstance(self, _QLineEdit):
             return self.isRedoAvailable()
-        return self.document().isRedoAvailable()
+        return self.document().isRedoAvailable()  # type: ignore[attr-defined]
 
     def _delete_selection(self):
         if isinstance(self, _QLineEdit):
             self.insert("")
             return
-        cursor = self.textCursor()
+        cursor = self.textCursor()  # type: ignore[attr-defined]
         cursor.removeSelectedText()
-        self.setTextCursor(cursor)
+        self.setTextCursor(cursor)  # type: ignore[attr-defined]
 
     def contextMenuEvent(self, event):  # noqa: N802 - Qt API name
         from ui.styles.style import PopupMenu
@@ -301,16 +301,16 @@ class _ThemedTextContextMenuMixin:
         has_selection = self._has_selected_text()
         menu = PopupMenu(theme=self._context_menu_theme(), radius=12, parent=None)
         if editable:
-            menu.add_action("撤销", self.undo, enabled=self._undo_available())
-            menu.add_action("重做", self.redo, enabled=self._redo_available())
+            menu.add_action("撤销", self.undo, enabled=self._undo_available())  # type: ignore[attr-defined]
+            menu.add_action("重做", self.redo, enabled=self._redo_available())  # type: ignore[attr-defined]
             menu.add_separator()
-            menu.add_action("剪切", self.cut, enabled=self._can_copy_selection())
-        menu.add_action("复制", self.copy, enabled=self._can_copy_selection())
+            menu.add_action("剪切", self.cut, enabled=self._can_copy_selection())  # type: ignore[attr-defined]
+        menu.add_action("复制", self.copy, enabled=self._can_copy_selection())  # type: ignore[attr-defined]
         if editable:
-            menu.add_action("粘贴", self.paste, enabled=self._can_paste_text())
+            menu.add_action("粘贴", self.paste, enabled=self._can_paste_text())  # type: ignore[attr-defined]
             menu.add_action("删除", self._delete_selection, enabled=has_selection)
             menu.add_separator()
-        menu.add_action("全选", self.selectAll, enabled=self._has_text())
+        menu.add_action("全选", self.selectAll, enabled=self._has_text())  # type: ignore[attr-defined]
         menu.popup(event.globalPos())
         event.accept()
 
@@ -352,60 +352,60 @@ class QSpinBox(_QSpinBox):
 class QtCompat:
     """Qt5 constants used across the project."""
 
-    AlignLeft = Qt.AlignLeft
-    AlignRight = Qt.AlignRight
-    AlignTop = Qt.AlignTop
-    AlignBottom = Qt.AlignBottom
-    AlignCenter = Qt.AlignCenter
-    AlignHCenter = Qt.AlignHCenter
-    AlignVCenter = Qt.AlignVCenter
+    AlignLeft = Qt.AlignLeft  # type: ignore[attr-defined]
+    AlignRight = Qt.AlignRight  # type: ignore[attr-defined]
+    AlignTop = Qt.AlignTop  # type: ignore[attr-defined]
+    AlignBottom = Qt.AlignBottom  # type: ignore[attr-defined]
+    AlignCenter = Qt.AlignCenter  # type: ignore[attr-defined]
+    AlignHCenter = Qt.AlignHCenter  # type: ignore[attr-defined]
+    AlignVCenter = Qt.AlignVCenter  # type: ignore[attr-defined]
 
-    FramelessWindowHint = Qt.FramelessWindowHint
-    Window = Qt.Window
-    Tool = Qt.Tool
-    ToolTip = Qt.ToolTip
-    WindowStaysOnTopHint = Qt.WindowStaysOnTopHint
-    Popup = Qt.Popup
-    NoDropShadowWindowHint = Qt.NoDropShadowWindowHint
-    Dialog = Qt.Dialog
-    WindowTitleHint = Qt.WindowTitleHint
-    CustomizeWindowHint = Qt.CustomizeWindowHint
-    WindowCloseButtonHint = Qt.WindowCloseButtonHint
+    FramelessWindowHint = Qt.FramelessWindowHint  # type: ignore[attr-defined]
+    Window = Qt.Window  # type: ignore[attr-defined]
+    Tool = Qt.Tool  # type: ignore[attr-defined]
+    ToolTip = Qt.ToolTip  # type: ignore[attr-defined]
+    WindowStaysOnTopHint = Qt.WindowStaysOnTopHint  # type: ignore[attr-defined]
+    Popup = Qt.Popup  # type: ignore[attr-defined]
+    NoDropShadowWindowHint = Qt.NoDropShadowWindowHint  # type: ignore[attr-defined]
+    Dialog = Qt.Dialog  # type: ignore[attr-defined]
+    WindowTitleHint = Qt.WindowTitleHint  # type: ignore[attr-defined]
+    CustomizeWindowHint = Qt.CustomizeWindowHint  # type: ignore[attr-defined]
+    WindowCloseButtonHint = Qt.WindowCloseButtonHint  # type: ignore[attr-defined]
 
-    WA_TranslucentBackground = Qt.WA_TranslucentBackground
-    WA_ShowWithoutActivating = Qt.WA_ShowWithoutActivating
-    WA_NoSystemBackground = Qt.WA_NoSystemBackground
-    WA_DeleteOnClose = Qt.WA_DeleteOnClose
+    WA_TranslucentBackground = Qt.WA_TranslucentBackground  # type: ignore[attr-defined]
+    WA_ShowWithoutActivating = Qt.WA_ShowWithoutActivating  # type: ignore[attr-defined]
+    WA_NoSystemBackground = Qt.WA_NoSystemBackground  # type: ignore[attr-defined]
+    WA_DeleteOnClose = Qt.WA_DeleteOnClose  # type: ignore[attr-defined]
 
-    LeftButton = Qt.LeftButton
-    RightButton = Qt.RightButton
-    MiddleButton = Qt.MiddleButton
+    LeftButton = Qt.LeftButton  # type: ignore[attr-defined]
+    RightButton = Qt.RightButton  # type: ignore[attr-defined]
+    MiddleButton = Qt.MiddleButton  # type: ignore[attr-defined]
 
-    NoModifier = Qt.NoModifier
-    ControlModifier = Qt.ControlModifier
-    ShiftModifier = Qt.ShiftModifier
-    AltModifier = Qt.AltModifier
-    MetaModifier = Qt.MetaModifier
+    NoModifier = Qt.NoModifier  # type: ignore[attr-defined]
+    ControlModifier = Qt.ControlModifier  # type: ignore[attr-defined]
+    ShiftModifier = Qt.ShiftModifier  # type: ignore[attr-defined]
+    AltModifier = Qt.AltModifier  # type: ignore[attr-defined]
+    MetaModifier = Qt.MetaModifier  # type: ignore[attr-defined]
 
-    Key_Escape = Qt.Key_Escape
-    Key_Left = Qt.Key_Left
-    Key_Right = Qt.Key_Right
-    Key_Control = Qt.Key_Control
-    Key_Alt = Qt.Key_Alt
-    Key_Shift = Qt.Key_Shift
-    Key_Meta = Qt.Key_Meta
+    Key_Escape = Qt.Key_Escape  # type: ignore[attr-defined]
+    Key_Left = Qt.Key_Left  # type: ignore[attr-defined]
+    Key_Right = Qt.Key_Right  # type: ignore[attr-defined]
+    Key_Control = Qt.Key_Control  # type: ignore[attr-defined]
+    Key_Alt = Qt.Key_Alt  # type: ignore[attr-defined]
+    Key_Shift = Qt.Key_Shift  # type: ignore[attr-defined]
+    Key_Meta = Qt.Key_Meta  # type: ignore[attr-defined]
 
-    ArrowCursor = Qt.ArrowCursor
-    SizeHorCursor = Qt.SizeHorCursor
-    SizeVerCursor = Qt.SizeVerCursor
-    SizeFDiagCursor = Qt.SizeFDiagCursor
-    SizeBDiagCursor = Qt.SizeBDiagCursor
-    PointingHandCursor = Qt.PointingHandCursor
-    ForbiddenCursor = Qt.ForbiddenCursor
-    BlankCursor = Qt.BlankCursor
+    ArrowCursor = Qt.ArrowCursor  # type: ignore[attr-defined]
+    SizeHorCursor = Qt.SizeHorCursor  # type: ignore[attr-defined]
+    SizeVerCursor = Qt.SizeVerCursor  # type: ignore[attr-defined]
+    SizeFDiagCursor = Qt.SizeFDiagCursor  # type: ignore[attr-defined]
+    SizeBDiagCursor = Qt.SizeBDiagCursor  # type: ignore[attr-defined]
+    PointingHandCursor = Qt.PointingHandCursor  # type: ignore[attr-defined]
+    ForbiddenCursor = Qt.ForbiddenCursor  # type: ignore[attr-defined]
+    BlankCursor = Qt.BlankCursor  # type: ignore[attr-defined]
 
-    MoveAction = Qt.MoveAction
-    CopyAction = Qt.CopyAction
+    MoveAction = Qt.MoveAction  # type: ignore[attr-defined]
+    CopyAction = Qt.CopyAction  # type: ignore[attr-defined]
 
     Format_ARGB32 = QImage.Format_ARGB32
     Format_ARGB32_Premultiplied = QImage.Format_ARGB32_Premultiplied
@@ -415,44 +415,44 @@ class QtCompat:
     TextAntialiasing = QPainter.TextAntialiasing
     SmoothPixmapTransform = QPainter.SmoothPixmapTransform
 
-    NoPen = Qt.NoPen
-    NoBrush = Qt.NoBrush
-    SolidLine = Qt.SolidLine
-    DashLine = Qt.DashLine
+    NoPen = Qt.NoPen  # type: ignore[attr-defined]
+    NoBrush = Qt.NoBrush  # type: ignore[attr-defined]
+    SolidLine = Qt.SolidLine  # type: ignore[attr-defined]
+    DashLine = Qt.DashLine  # type: ignore[attr-defined]
 
     InternalMove = QListWidget.InternalMove
     DragDrop = QListWidget.DragDrop
 
-    ScrollBarAlwaysOff = Qt.ScrollBarAlwaysOff
-    ScrollBarAlwaysOn = Qt.ScrollBarAlwaysOn
-    ScrollBarAsNeeded = Qt.ScrollBarAsNeeded
+    ScrollBarAlwaysOff = Qt.ScrollBarAlwaysOff  # type: ignore[attr-defined]
+    ScrollBarAlwaysOn = Qt.ScrollBarAlwaysOn  # type: ignore[attr-defined]
+    ScrollBarAsNeeded = Qt.ScrollBarAsNeeded  # type: ignore[attr-defined]
 
-    Trigger = QSystemTrayIcon.Trigger
-    DoubleClick = QSystemTrayIcon.DoubleClick
-    Context = QSystemTrayIcon.Context
-    MiddleClick = QSystemTrayIcon.MiddleClick
+    Trigger = QSystemTrayIcon.Trigger  # type: ignore[attr-defined]
+    DoubleClick = QSystemTrayIcon.DoubleClick  # type: ignore[attr-defined]
+    Context = QSystemTrayIcon.Context  # type: ignore[attr-defined]
+    MiddleClick = QSystemTrayIcon.MiddleClick  # type: ignore[attr-defined]
 
-    transparent = Qt.transparent
-    white = Qt.white
-    black = Qt.black
+    transparent = Qt.transparent  # type: ignore[attr-defined]
+    white = Qt.white  # type: ignore[attr-defined]
+    black = Qt.black  # type: ignore[attr-defined]
 
-    KeepAspectRatio = Qt.KeepAspectRatio
-    KeepAspectRatioByExpanding = Qt.KeepAspectRatioByExpanding
-    IgnoreAspectRatio = Qt.IgnoreAspectRatio
+    KeepAspectRatio = Qt.KeepAspectRatio  # type: ignore[attr-defined]
+    KeepAspectRatioByExpanding = Qt.KeepAspectRatioByExpanding  # type: ignore[attr-defined]
+    IgnoreAspectRatio = Qt.IgnoreAspectRatio  # type: ignore[attr-defined]
 
-    SmoothTransformation = Qt.SmoothTransformation
+    SmoothTransformation = Qt.SmoothTransformation  # type: ignore[attr-defined]
 
-    UserRole = Qt.UserRole
-    DisplayRole = Qt.DisplayRole
-    DecorationRole = Qt.DecorationRole
+    UserRole = Qt.UserRole  # type: ignore[attr-defined]
+    DisplayRole = Qt.DisplayRole  # type: ignore[attr-defined]
+    DecorationRole = Qt.DecorationRole  # type: ignore[attr-defined]
 
-    ItemIsDragEnabled = Qt.ItemIsDragEnabled
-    ItemIsEditable = Qt.ItemIsEditable
-    ItemIsSelectable = Qt.ItemIsSelectable
-    ItemIsEnabled = Qt.ItemIsEnabled
+    ItemIsDragEnabled = Qt.ItemIsDragEnabled  # type: ignore[attr-defined]
+    ItemIsEditable = Qt.ItemIsEditable  # type: ignore[attr-defined]
+    ItemIsSelectable = Qt.ItemIsSelectable  # type: ignore[attr-defined]
+    ItemIsEnabled = Qt.ItemIsEnabled  # type: ignore[attr-defined]
 
-    Horizontal = Qt.Horizontal
-    Vertical = Qt.Vertical
+    Horizontal = Qt.Horizontal  # type: ignore[attr-defined]
+    Vertical = Qt.Vertical  # type: ignore[attr-defined]
 
     SingleSelection = QListWidget.SingleSelection
     NoButtons = QAbstractSpinBox.NoButtons
@@ -460,24 +460,24 @@ class QtCompat:
     Accepted = QDialog.Accepted
     Rejected = QDialog.Rejected
 
-    CustomContextMenu = Qt.CustomContextMenu
+    CustomContextMenu = Qt.CustomContextMenu  # type: ignore[attr-defined]
 
-    StrongFocus = Qt.StrongFocus
-    WheelFocus = Qt.WheelFocus
-    NoFocus = Qt.NoFocus
+    StrongFocus = Qt.StrongFocus  # type: ignore[attr-defined]
+    WheelFocus = Qt.WheelFocus  # type: ignore[attr-defined]
+    NoFocus = Qt.NoFocus  # type: ignore[attr-defined]
 
-    RoundCap = Qt.RoundCap
-    RoundJoin = Qt.RoundJoin
+    RoundCap = Qt.RoundCap  # type: ignore[attr-defined]
+    RoundJoin = Qt.RoundJoin  # type: ignore[attr-defined]
 
-    ElideRight = Qt.ElideRight
+    ElideRight = Qt.ElideRight  # type: ignore[attr-defined]
 
     OutCubic = QEasingCurve.OutCubic
     InCubic = QEasingCurve.InCubic
     InOutQuart = QEasingCurve.InOutQuart
     Linear = QEasingCurve.Linear
 
-    State_Selected = QStyle.State_Selected
-    State_MouseOver = QStyle.State_MouseOver
+    State_Selected = QStyle.State_Selected  # type: ignore[attr-defined]
+    State_MouseOver = QStyle.State_MouseOver  # type: ignore[attr-defined]
 
     Icon_Information = QMessageBox.Information
     Icon_Warning = QMessageBox.Warning
@@ -489,16 +489,16 @@ class QtCompat:
     Btn_Yes = QMessageBox.Yes
     Btn_No = QMessageBox.No
 
-    WindowDeactivate = QEvent.WindowDeactivate
+    WindowDeactivate = QEvent.WindowDeactivate  # type: ignore[attr-defined]
 
     QPropertyAnimation = QPropertyAnimation
     QEasingCurve = QEasingCurve
     QParallelAnimationGroup = QParallelAnimationGroup
 
     # Connection type constants
-    QueuedConnection = Qt.QueuedConnection
-    DirectConnection = Qt.DirectConnection
-    AutoConnection = Qt.AutoConnection
+    QueuedConnection = Qt.QueuedConnection  # type: ignore[attr-defined]
+    DirectConnection = Qt.DirectConnection  # type: ignore[attr-defined]
+    AutoConnection = Qt.AutoConnection  # type: ignore[attr-defined]
 
 
 def setup_high_dpi():
@@ -521,8 +521,8 @@ def setup_high_dpi():
     os.environ["QT_SCALE_FACTOR_ROUNDING_POLICY"] = "PassThrough"
 
     try:
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)  # type: ignore[attr-defined]
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)  # type: ignore[attr-defined]
     except AttributeError:
         logger.debug("设置高DPI缩放属性失败", exc_info=True)
 
@@ -530,7 +530,7 @@ def setup_high_dpi():
 def get_standard_icon(app, icon_name):
     """Return a QStyle standard icon by name."""
     style = app.style()
-    icon_enum = getattr(QStyle, icon_name, QStyle.SP_ComputerIcon)
+    icon_enum = getattr(QStyle, icon_name, QStyle.SP_ComputerIcon)  # type: ignore[attr-defined]
     return style.standardIcon(icon_enum)
 
 

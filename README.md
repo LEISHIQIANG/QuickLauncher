@@ -10,7 +10,7 @@
 
 QuickLauncher 是一款面向 Windows 10 / 11 的桌面快速启动与轻量自动化工具。它可以启动应用、打开文件夹和 URL、发送热键、运行命令、执行动作链、批量启动一组目标，并通过本地插件继续扩展能力。
 
-当前源码版本以 [core/version.py](core/version.py) 为准：`1.6.3.1` stable。安装包和便携包自带运行时，普通用户不需要在电脑上安装 Python；只有从源码运行或构建时才需要 CPython 3.12。
+当前源码版本以 [core/version.py](core/version.py) 为准：`1.6.3.2` stable。安装包和便携包自带运行时，普通用户不需要在电脑上安装 Python；只有从源码运行或构建时才需要 CPython 3.12。
 
 ## 核心能力
 

@@ -88,7 +88,7 @@ def execute_extra_system_processor(processor_id: str, values: dict[str, Any]) ->
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(to)
-            r = sock.connect_ex((host, port))
+            r = sock.connect_ex((host, port))  # type: ignore[assignment]
             sock.close()
             return ok_bool(r == 0)
         except Exception:

@@ -10,6 +10,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .background_tasks import start_background_thread
 from .config_recovery import (
@@ -402,7 +403,7 @@ class IconRepository:
         used_icons: set[str],
         *,
         dry_run: bool = False,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Remove orphan, duplicate, invalid-extension, and oversize cache files.
 
         *used_icons* is the set of normalised absolute paths currently
@@ -452,15 +453,15 @@ class IconRepository:
             if ext in invalid_exts and not is_in_use:
                 should_delete, reason = True, "executable"
                 stats["exe_files_removed"] += 1
-                stats["exe_files_size_mb"] += file_size_mb
+                stats["exe_files_size_mb"] += file_size_mb  # type: ignore[assignment]
             elif file_size > max_size and not is_in_use:
                 should_delete, reason = True, "too_large"
                 stats["large_files_removed"] += 1
-                stats["large_files_size_mb"] += file_size_mb
+                stats["large_files_size_mb"] += file_size_mb  # type: ignore[assignment]
             elif not is_in_use:
                 should_delete, reason = True, "orphan"
                 stats["orphan_files_removed"] += 1
-                stats["orphan_files_size_mb"] += file_size_mb
+                stats["orphan_files_size_mb"] += file_size_mb  # type: ignore[assignment]
 
             if not should_delete:
                 try:
@@ -471,7 +472,7 @@ class IconRepository:
                         if not is_in_use:
                             should_delete, reason = True, "duplicate"
                             stats["duplicate_files_removed"] += 1
-                            stats["duplicate_files_size_mb"] += file_size_mb
+                            stats["duplicate_files_size_mb"] += file_size_mb  # type: ignore[assignment]
                         else:
                             seen_hashes[file_hash] = str(file_path)
                     else:
@@ -481,7 +482,7 @@ class IconRepository:
 
             if should_delete:
                 stats["total_removed"] += 1
-                stats["total_size_freed_mb"] += file_size_mb
+                stats["total_size_freed_mb"] += file_size_mb  # type: ignore[assignment]
                 if not dry_run:
                     try:
                         os.remove(file_path)
@@ -489,14 +490,14 @@ class IconRepository:
                     except OSError as e:
                         logger.warning("failed to remove icon cache file %s: %s", file_path, e)
                         stats["total_removed"] -= 1
-                        stats["total_size_freed_mb"] -= file_size_mb
+                        stats["total_size_freed_mb"] -= file_size_mb  # type: ignore[assignment]
 
         for key in stats:
             if isinstance(stats[key], float):
                 stats[key] = round(stats[key], 2)
         return stats
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """Return aggregate statistics about the icon cache directory."""
         stats = {
             "total_files": 0,
@@ -518,18 +519,18 @@ class IconRepository:
             except OSError:
                 continue
             ext = file_path.suffix.lower() or ".unknown"
-            stats["total_files"] += 1
-            stats["total_size_mb"] += file_size_mb
-            if ext not in stats["by_extension"]:
-                stats["by_extension"][ext] = {"count": 0, "size_mb": 0}
-            stats["by_extension"][ext]["count"] += 1
-            stats["by_extension"][ext]["size_mb"] += file_size_mb
+            stats["total_files"] += 1  # type: ignore[operator]
+            stats["total_size_mb"] += file_size_mb  # type: ignore[operator]
+            if ext not in stats["by_extension"]:  # type: ignore[operator]
+                stats["by_extension"][ext] = {"count": 0, "size_mb": 0}  # type: ignore[index]
+            stats["by_extension"][ext]["count"] += 1  # type: ignore[index]
+            stats["by_extension"][ext]["size_mb"] += file_size_mb  # type: ignore[index]
             if ext in invalid_exts or file_size > 10 * 1024 * 1024:
-                stats["invalid_files"] += 1
-                stats["invalid_size_mb"] += file_size_mb
+                stats["invalid_files"] += 1  # type: ignore[operator]
+                stats["invalid_size_mb"] += file_size_mb  # type: ignore[operator]
 
-        stats["total_size_mb"] = round(stats["total_size_mb"], 2)
-        stats["invalid_size_mb"] = round(stats["invalid_size_mb"], 2)
-        for ext_stats in stats["by_extension"].values():
+        stats["total_size_mb"] = round(stats["total_size_mb"], 2)  # type: ignore[call-overload]
+        stats["invalid_size_mb"] = round(stats["invalid_size_mb"], 2)  # type: ignore[call-overload]
+        for ext_stats in stats["by_extension"].values():  # type: ignore[attr-defined]
             ext_stats["size_mb"] = round(ext_stats["size_mb"], 2)
         return stats

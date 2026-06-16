@@ -72,7 +72,7 @@ class SlashHelpWindow(ThemedToolWindow):
             (tr("Windows 系统"), "windows"),
             (tr("帮助"), "help"),
         ]
-        lines = []
+        lines = []  # type: ignore[var-annotated]
         for title, category in groups:
             commands = [cmd for cmd in SLASH_COMMANDS if cmd.category == category]
             if not commands:

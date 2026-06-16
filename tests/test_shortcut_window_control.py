@@ -165,6 +165,7 @@ def test_foreground_capture_does_not_overwrite_external_target_with_own_popup(mo
         _previous_hwnd = None
         _previous_hwnd_process_id = None
         _foreground_window_lock = threading.RLock()
+        _popup_hwnds = set()
 
     monkeypatch.setattr(hotkey, "user32", user32)
     monkeypatch.setattr(window_control, "user32", user32)
@@ -173,9 +174,38 @@ def test_foreground_capture_does_not_overwrite_external_target_with_own_popup(mo
     assert FakeExecutor.save_foreground_window() is True
     assert (FakeExecutor._previous_hwnd, FakeExecutor._previous_hwnd_process_id) == (100, 42)
 
+    # 当前台是 LauncherPopup 自身时，应保留外部目标，不覆盖
+    FakeExecutor.register_popup_hwnd(200)
     user32.foreground_hwnd = 200
     assert FakeExecutor.save_foreground_window() is False
     assert (FakeExecutor._previous_hwnd, FakeExecutor._previous_hwnd_process_id) == (100, 42)
+
+
+def test_foreground_capture_saves_other_quicklauncher_windows(monkeypatch):
+    """当用户已经打开配置窗口后再唤起弹窗时，配置窗口应能被保存为恢复目标。
+
+    这避免了 bug：弹窗自动消失后，配置窗口无法恢复焦点（因为它和
+    LauncherPopup 同属 QuickLauncher 进程）。
+    """
+    user32 = FakeUser32()
+    # 配置窗口同样属于 QuickLauncher 进程
+    user32.process_ids[100] = os.getpid()
+
+    class FakeExecutor(hotkey.HotkeyExecutionMixin, window_control.WindowControlMixin):
+        _previous_hwnd = None
+        _previous_hwnd_process_id = None
+        _foreground_window_lock = threading.RLock()
+        _popup_hwnds = set()
+
+    monkeypatch.setattr(hotkey, "user32", user32)
+    monkeypatch.setattr(window_control, "user32", user32)
+
+    user32.foreground_hwnd = 100
+    assert FakeExecutor.save_foreground_window() is True
+    assert (FakeExecutor._previous_hwnd, FakeExecutor._previous_hwnd_process_id) == (
+        100,
+        os.getpid(),
+    )
 
 
 def test_toggle_rejects_desktop_shell_surfaces(monkeypatch):

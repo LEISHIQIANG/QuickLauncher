@@ -57,10 +57,10 @@ if os.name == "nt":
     shell32.IsUserAnAdmin.argtypes = []
     shell32.IsUserAnAdmin.restype = wintypes.BOOL
 else:
-    user32 = None
-    shell32 = None
-    advapi32 = None
-    kernel32 = None
+    user32 = None  # type: ignore[assignment]
+    shell32 = None  # type: ignore[assignment]
+    advapi32 = None  # type: ignore[assignment]
+    kernel32 = None  # type: ignore[assignment]
 
 
 class TOKEN_ELEVATION(ctypes.Structure):

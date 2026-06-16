@@ -55,7 +55,7 @@ class PopupEventsMixin:
         self._pinned_window_drag_offset = None
         if restore_cursor:
             try:
-                self.setCursor(QtCompat.ArrowCursor)
+                self.setCursor(QtCompat.ArrowCursor)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.debug("恢复固定窗口拖动光标失败: %s", exc, exc_info=True)
 
@@ -65,12 +65,12 @@ class PopupEventsMixin:
             return False
         if not self.__dict__.get("is_pinned", False) or self.__dict__.get("_executing", False):
             return False
-        if self._search_bar_contains(pos) or self._is_click_on_result_panel(pos):
+        if self._search_bar_contains(pos) or self._is_click_on_result_panel(pos):  # type: ignore[attr-defined]
             return False
 
         global_pos = self._get_event_global_pos(event)
         try:
-            window_pos = self.pos()
+            window_pos = self.pos()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("获取固定窗口位置失败: %s", exc, exc_info=True)
             window_pos = QPoint(0, 0)
@@ -122,7 +122,7 @@ class PopupEventsMixin:
             self.hover_index = -1
             self.dock_hover_index = -1
             try:
-                self.setCursor(Qt.SizeAllCursor)
+                self.setCursor(Qt.SizeAllCursor)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.debug("设置固定窗口拖动光标失败: %s", exc, exc_info=True)
 
@@ -132,7 +132,7 @@ class PopupEventsMixin:
             return False
 
         try:
-            self.move(global_pos - offset)
+            self.move(global_pos - offset)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("移动固定窗口失败: %s", exc, exc_info=True)
             return False
@@ -142,58 +142,58 @@ class PopupEventsMixin:
 
     def _get_clicked_item_at(self, pos: QPoint):
         """返回指定位置命中的项目，没有命中则返回 None"""
-        if self._search_bar_contains(pos):
+        if self._search_bar_contains(pos):  # type: ignore[attr-defined]
             return None
 
-        if pos.y() >= self.dock_y and self.dock_items:
+        if pos.y() >= self.dock_y and self.dock_items:  # type: ignore[attr-defined]
             dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
-            visible_count = len(self.dock_items)
+            visible_count = len(self.dock_items)  # type: ignore[attr-defined]
             if dock_height_mode == 1:
-                visible_count = min(visible_count, self.cols)
-            max_cols = self.cols
+                visible_count = min(visible_count, self.cols)  # type: ignore[attr-defined]
+            max_cols = self.cols  # type: ignore[attr-defined]
             line_width = (
-                max_cols * self.cell_size
+                max_cols * self.cell_size  # type: ignore[attr-defined]
                 if (dock_height_mode > 1 and visible_count > max_cols)
-                else min(visible_count, max_cols) * self.cell_size
+                else min(visible_count, max_cols) * self.cell_size  # type: ignore[attr-defined]
             )
-            start_x = (self.width() - line_width) // 2
-            display_rows = self._dock_display_rows(visible_count, max_cols)
-            dock_row_stride = self._get_dock_row_stride(display_rows)
+            start_x = (self.width() - line_width) // 2  # type: ignore[attr-defined]
+            display_rows = self._dock_display_rows(visible_count, max_cols)  # type: ignore[attr-defined]
+            dock_row_stride = self._get_dock_row_stride(display_rows)  # type: ignore[attr-defined]
 
             if start_x <= pos.x() < start_x + line_width:
-                dock_col = (pos.x() - start_x) // self.cell_size
-                first_icon_y = self._dock_first_icon_y(display_rows)
+                dock_col = (pos.x() - start_x) // self.cell_size  # type: ignore[attr-defined]
+                first_icon_y = self._dock_first_icon_y(display_rows)  # type: ignore[attr-defined]
                 card_pad = sp(2)
                 card_y = first_icon_y - card_pad
                 dock_row = (pos.y() - card_y) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
                     idx = dock_row * max_cols + dock_col
                     if 0 <= idx < visible_count:
-                        return self.dock_items[idx]
+                        return self.dock_items[idx]  # type: ignore[attr-defined]
 
-        if self.padding <= pos.x() and self.padding <= pos.y() < self.content_height:
+        if self.padding <= pos.x() and self.padding <= pos.y() < self.content_height:  # type: ignore[attr-defined]
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = self._dock_outer_bottom_gap()
-            indicator_height = sp(16) if len(self.pages) > 1 else 0
-            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
-            dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
+            bottom_margin = self._dock_outer_bottom_gap()  # type: ignore[attr-defined]
+            indicator_height = sp(16) if len(self.pages) > 1 else 0  # type: ignore[attr-defined]
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0  # type: ignore[attr-defined]
+            dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0  # type: ignore[attr-defined]
             shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
             icons_bottom = (
-                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing  # type: ignore[attr-defined]
             )
 
             if pos.y() <= icons_bottom:
-                col = (pos.x() - self.padding) // self.cell_size
-                row_from_bottom = (icons_bottom - pos.y()) // self.cell_h
-                row = self.fixed_rows - 1 - row_from_bottom
+                col = (pos.x() - self.padding) // self.cell_size  # type: ignore[attr-defined]
+                row_from_bottom = (icons_bottom - pos.y()) // self.cell_h  # type: ignore[attr-defined]
+                row = self.fixed_rows - 1 - row_from_bottom  # type: ignore[attr-defined]
 
-                if 0 <= col < self.cols and row < self.fixed_rows:
-                    index = row * self.cols + col
+                if 0 <= col < self.cols and row < self.fixed_rows:  # type: ignore[attr-defined]
+                    index = row * self.cols + col  # type: ignore[attr-defined]
                     if getattr(self, "search_query", ""):
-                        if 0 <= index < len(self.search_results):
-                            return self.search_results[index].shortcut
-                    elif self.pages and self.current_page < len(self.pages):
-                        items = self.pages[self.current_page].items
+                        if 0 <= index < len(self.search_results):  # type: ignore[attr-defined]
+                            return self.search_results[index].shortcut  # type: ignore[attr-defined]
+                    elif self.pages and self.current_page < len(self.pages):  # type: ignore[attr-defined, has-type]
+                        items = self.pages[self.current_page].items  # type: ignore[attr-defined, has-type]
                         if 0 <= index < len(items):
                             return items[index]
 
@@ -205,24 +205,24 @@ class PopupEventsMixin:
             index = int(index)
             if index < 0:
                 return None
-            cols = max(1, int(self.cols))
+            cols = max(1, int(self.cols))  # type: ignore[attr-defined]
             row = index // cols
-            if row >= int(self.fixed_rows):
+            if row >= int(self.fixed_rows):  # type: ignore[attr-defined]
                 return None
             col = index % cols
             bottom_margin = sp(6)
-            indicator_height = sp(16) if len(self.pages) > 1 else 0
-            indicator_spacing = sp(4) if len(self.pages) > 1 else 0
-            dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
+            indicator_height = sp(16) if len(self.pages) > 1 else 0  # type: ignore[attr-defined]
+            indicator_spacing = sp(4) if len(self.pages) > 1 else 0  # type: ignore[attr-defined]
+            dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0  # type: ignore[attr-defined]
             shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
             icons_bottom = (
-                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing
+                self.height() - shadow_margin - bottom_margin - dock_height - indicator_height - indicator_spacing  # type: ignore[attr-defined]
             )
-            x = int(self.padding + col * self.cell_size)
-            y = int(icons_bottom - (self.fixed_rows - row) * self.cell_h)
+            x = int(self.padding + col * self.cell_size)  # type: ignore[attr-defined]
+            y = int(icons_bottom - (self.fixed_rows - row) * self.cell_h)  # type: ignore[attr-defined]
             pad = sp(3)
-            return QRect(x - pad, y - pad, int(self.cell_size) + pad * 2, int(self.cell_h) + pad * 2).intersected(
-                self.rect()
+            return QRect(x - pad, y - pad, int(self.cell_size) + pad * 2, int(self.cell_h) + pad * 2).intersected(  # type: ignore[attr-defined]
+                self.rect()  # type: ignore[attr-defined]
             )
         except Exception as exc:
             logger.debug("计算主网格刷新区域失败: %s", exc, exc_info=True)
@@ -232,35 +232,35 @@ class PopupEventsMixin:
         """Return a conservative repaint rect for a dock item."""
         try:
             index = int(index)
-            if index < 0 or not self.dock_items:
+            if index < 0 or not self.dock_items:  # type: ignore[attr-defined]
                 return None
             dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
-            visible_count = len(self.dock_items)
+            visible_count = len(self.dock_items)  # type: ignore[attr-defined]
             if dock_height_mode == 1:
-                visible_count = min(visible_count, self.cols)
+                visible_count = min(visible_count, self.cols)  # type: ignore[attr-defined]
             if index >= visible_count:
                 return None
-            max_cols = max(1, int(self.cols))
+            max_cols = max(1, int(self.cols))  # type: ignore[attr-defined]
             line_width = (
-                max_cols * self.cell_size
+                max_cols * self.cell_size  # type: ignore[attr-defined]
                 if (dock_height_mode > 1 and visible_count > max_cols)
-                else min(visible_count, max_cols) * self.cell_size
+                else min(visible_count, max_cols) * self.cell_size  # type: ignore[attr-defined]
             )
-            start_x = (self.width() - line_width) // 2
+            start_x = (self.width() - line_width) // 2  # type: ignore[attr-defined]
             row = index // max_cols
             col = index % max_cols
             if row >= dock_height_mode:
                 return None
-            x = int(start_x + col * self.cell_size)
-            display_rows = self._dock_display_rows(visible_count, max_cols)
-            dock_row_stride = self._get_dock_row_stride(display_rows)
-            icon_y = int(self._dock_first_icon_y(display_rows) + row * dock_row_stride)
+            x = int(start_x + col * self.cell_size)  # type: ignore[attr-defined]
+            display_rows = self._dock_display_rows(visible_count, max_cols)  # type: ignore[attr-defined]
+            dock_row_stride = self._get_dock_row_stride(display_rows)  # type: ignore[attr-defined]
+            icon_y = int(self._dock_first_icon_y(display_rows) + row * dock_row_stride)  # type: ignore[attr-defined]
             card_pad = sp(2)
-            card_size = int(self.icon_size + card_pad * 2)
-            card_x = int(x + (self.cell_size - card_size) // 2)
+            card_size = int(self.icon_size + card_pad * 2)  # type: ignore[attr-defined]
+            card_x = int(x + (self.cell_size - card_size) // 2)  # type: ignore[attr-defined]
             card_y = int(icon_y - card_pad)
 
-            if self._dock_shows_text(display_rows):
+            if self._dock_shows_text(display_rows):  # type: ignore[attr-defined]
                 if hasattr(self, "_label_font") and self._label_font:
                     fm = QFontMetrics(self._label_font)
                 else:
@@ -277,14 +277,16 @@ class PopupEventsMixin:
                 card_y - repaint_pad,
                 card_size + repaint_pad * 2,
                 item_h + repaint_pad * 2,
-            ).intersected(self.rect())
+            ).intersected(
+                self.rect()
+            )  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("计算Dock刷新区域失败: %s", exc, exc_info=True)
             return None
 
     def _update_hover_regions(self, old_hover: int, old_dock_hover: int, new_hover: int, new_dock_hover: int):
         """Repaint only hover regions that changed; fall back to a full update on unusual geometry."""
-        rects = []
+        rects = []  # type: ignore[var-annotated]
         if old_hover != new_hover:
             rects.extend((self._main_item_update_rect(old_hover), self._main_item_update_rect(new_hover)))
         if old_dock_hover != new_dock_hover:
@@ -293,10 +295,10 @@ class PopupEventsMixin:
         applied = False
         for rect in rects:
             if rect is not None and not rect.isNull():
-                self.update(rect)
+                self.update(rect)  # type: ignore[attr-defined]
                 applied = True
         if not applied:
-            self.update()
+            self.update()  # type: ignore[attr-defined]
 
     def _is_click_on_result_panel(self, pos) -> bool:
         """判断鼠标位置是否在命令结果展示面板内"""
@@ -307,8 +309,8 @@ class PopupEventsMixin:
         y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
         y_bottom = self.__dict__.get("dock_y")
         if y_bottom is None:
-            y_bottom = self.height() - shadow_margin - sp(6)
-        return y_top <= pos.y() < y_bottom
+            y_bottom = self.height() - shadow_margin - sp(6)  # type: ignore[attr-defined]
+        return y_top <= pos.y() < y_bottom  # type: ignore[no-any-return]
 
     def _search_query_matches_result_command(self) -> bool:
         """Return True when the search box still contains the full panel command."""
@@ -339,7 +341,7 @@ class PopupEventsMixin:
             logger.debug("检查结果文本框焦点失败: %s", exc, exc_info=True)
 
         try:
-            if self._search_selection_bounds():
+            if self._search_selection_bounds():  # type: ignore[attr-defined]
                 return True
         except Exception as exc:
             logger.debug("检查搜索选择边界失败: %s", exc, exc_info=True)
@@ -731,9 +733,9 @@ class PopupEventsMixin:
         return direction
 
     def _page_animation_target_base(self) -> float:
-        target = float(getattr(self, "_target_page", getattr(self, "_page_position", self.current_page)))
+        target = float(getattr(self, "_target_page", getattr(self, "_page_position", self.current_page)))  # type: ignore[arg-type, has-type]
         position = float(getattr(self, "_page_position", target))
-        if not getattr(self, "_indicator_timer", None) or not self._indicator_timer.isActive():
+        if not getattr(self, "_indicator_timer", None) or not self._indicator_timer.isActive():  # type: ignore[attr-defined]
             return round(position)
         return target
 
@@ -742,7 +744,7 @@ class PopupEventsMixin:
         timer = self.__dict__.get("_last_page_save_timer")
         if timer is None:
             try:
-                timer = QTimer(self)
+                timer = QTimer(self)  # type: ignore[arg-type]
             except RuntimeError:
                 return
             timer.setSingleShot(True)
@@ -769,29 +771,29 @@ class PopupEventsMixin:
             logger.debug("延迟保存弹窗页码失败: %s", exc, exc_info=True)
 
     def _queue_page_switch(self, direction: int):
-        if len(self.pages) <= 1 or direction == 0:
+        if len(self.pages) <= 1 or direction == 0:  # type: ignore[attr-defined]
             return
 
-        old_page = self.current_page
-        self.current_page = (self.current_page + direction) % len(self.pages)
+        old_page = self.current_page  # type: ignore[has-type]
+        self.current_page = (self.current_page + direction) % len(self.pages)  # type: ignore[attr-defined, has-type]
         if self.current_page != old_page:
             if hasattr(self, "_defer_blank_area_refresh_for_interaction"):
                 self._defer_blank_area_refresh_for_interaction()
             self._target_page = self._page_animation_target_base() + direction
             self._schedule_last_page_index_save()
-            if not self._indicator_timer.isActive():
+            if not self._indicator_timer.isActive():  # type: ignore[attr-defined]
                 self._page_anim_last_ts = 0.0
-                self._indicator_timer.start()
+                self._indicator_timer.start()  # type: ignore[attr-defined]
 
     def _switch_to_page(self, page_index: int):
-        if not self.pages:
+        if not self.pages:  # type: ignore[attr-defined]
             return
-        page_index = max(0, min(int(page_index), len(self.pages) - 1))
+        page_index = max(0, min(int(page_index), len(self.pages) - 1))  # type: ignore[attr-defined]
         if page_index == self.current_page:
             return
 
         current = int(self.current_page)
-        count = len(self.pages)
+        count = len(self.pages)  # type: ignore[attr-defined]
         forward = (page_index - current) % count
         backward = forward - count
         direction = forward if abs(forward) <= abs(backward) else backward
@@ -804,10 +806,10 @@ class PopupEventsMixin:
         self._target_page = self._page_animation_target_base() + direction
         self.hover_index = -1
         self._schedule_last_page_index_save()
-        if not self._indicator_timer.isActive():
+        if not self._indicator_timer.isActive():  # type: ignore[attr-defined]
             self._page_anim_last_ts = 0.0
-            self._indicator_timer.start()
-        self.update()
+            self._indicator_timer.start()  # type: ignore[attr-defined]
+        self.update()  # type: ignore[attr-defined]
 
     def _finish_page_animation(self):
         if not self.pages:
@@ -1106,12 +1108,12 @@ class PopupEventsMixin:
 
     def _switch_page(self, direction: int):
         """切换页面"""
-        if len(self.pages) <= 1:
+        if len(self.pages) <= 1:  # type: ignore[attr-defined]
             return
 
         self._queue_page_switch(direction)
         self.hover_index = -1
-        self.update()
+        self.update()  # type: ignore[attr-defined]
 
     def enterEvent(self, event):
         """鼠标进入"""

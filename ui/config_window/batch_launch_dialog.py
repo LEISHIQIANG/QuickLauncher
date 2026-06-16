@@ -127,7 +127,7 @@ def _load_shortcut_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
                 fallback_to_default=False,
             )
         if pixmap and not pixmap.isNull():
-            return pixmap
+            return pixmap  # type: ignore[no-any-return]
     except Exception:
         logger.debug(
             "批量启动图标加载失败: id=%s name=%r icon_path=%r target_path=%r",
@@ -230,7 +230,7 @@ class BatchLaunchCard(QFrame):
         if pixmap and not pixmap.isNull():
             self.icon_label.setPixmap(
                 pixmap.scaled(
-                    sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation  # type: ignore[attr-defined]
                 )
             )
 
@@ -290,7 +290,7 @@ class CompactIconWidget(QFrame):
 
     def __init__(self, shortcut: ShortcutItem, theme: str = "dark", parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Widget)
+        self.setWindowFlags(Qt.Widget)  # type: ignore[attr-defined]
         self.shortcut = shortcut
         self.theme = theme
         self._checked = False
@@ -379,7 +379,7 @@ class CompactIconWidget(QFrame):
 
     def set_icon(self, pixmap: QPixmap):
         if pixmap and not pixmap.isNull():
-            self.icon_label.setPixmap(pixmap.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.icon_label.setPixmap(pixmap.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
 
     def set_checked(self, checked: bool):
         self._checked = bool(checked)
@@ -407,9 +407,9 @@ class IconSelectorWidget(QFrame):
     def __init__(self, theme: str = "dark", parent=None):
         super().__init__(parent)
         self.theme = theme
-        self.icon_widgets = {}
-        self._ordered_shortcut_ids = []
-        self._search_text_by_id = {}
+        self.icon_widgets = {}  # type: ignore[var-annotated]
+        self._ordered_shortcut_ids = []  # type: ignore[var-annotated]
+        self._search_text_by_id = {}  # type: ignore[var-annotated]
         self._current_filter_text = ""
         self._search_timer = None
         self._setup_ui()
@@ -542,23 +542,23 @@ class BatchLaunchDialog(BaseDialog):
             copy.deepcopy(shortcut) if shortcut is not None else ShortcutItem(type=ShortcutType.BATCH_LAUNCH)
         )
         self._editing_existing = shortcut is not None
-        self.launch_cards = []
-        self._launch_card_by_id = {}
-        self._shortcut_by_id = {}
-        self._icon_pixmap_cache = {}
-        self._shortcut_load_queue = []
+        self.launch_cards = []  # type: ignore[var-annotated]
+        self._launch_card_by_id = {}  # type: ignore[var-annotated]
+        self._shortcut_by_id = {}  # type: ignore[var-annotated]
+        self._icon_pixmap_cache = {}  # type: ignore[var-annotated]
+        self._shortcut_load_queue = []  # type: ignore[var-annotated]
         self._shortcut_load_started = False
         self._icon_worker = None
         self._icon_thread = None
         self._icon_load_generation = 0
         self._dragging_card_id = None
-        self._card_animations = []
+        self._card_animations = []  # type: ignore[var-annotated]
         self._custom_icon_path = getattr(self.shortcut, "icon_path", "") or ""
         self._initial_batch_steps = list(getattr(self.shortcut, "batch_launch_steps", None) or [])
         self._selection_restored = False
         self._dialog_finished = False
         self.saved_shortcut = None
-        self.selected_order = []
+        self.selected_order = []  # type: ignore[var-annotated]
         super().__init__(parent)
         self._apply_theme_colors()  # 先应用主题颜色
         self.setWindowTitle(tr("批量启动"))
@@ -980,7 +980,7 @@ class BatchLaunchDialog(BaseDialog):
         self._remove_launch_card(shortcut_id)
 
     def _on_card_drag_started(self, shortcut_id: str):
-        self._dragging_card_id = shortcut_id
+        self._dragging_card_id = shortcut_id  # type: ignore[assignment]
         card = self._launch_card_by_id.get(shortcut_id)
         if card:
             card.raise_()

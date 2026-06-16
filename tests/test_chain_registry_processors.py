@@ -631,6 +631,23 @@ class TestDataProcessors:
 
 
 # ---------------------------------------------------------------------------
+# processors_files  --  copy source boundaries
+# ---------------------------------------------------------------------------
+
+
+class TestFileProcessorSafety:
+    def test_file_copy_rejects_protected_source(self, tmp_path):
+        source = Path(__file__).resolve()
+        destination = tmp_path / "copied.py"
+
+        result = execute_chain_processor("file_copy", {"src": str(source), "dst": str(destination)})
+
+        assert result.success is False
+        assert "protected path" in result.message
+        assert not destination.exists()
+
+
+# ---------------------------------------------------------------------------
 # processors_network  --  http_download path boundaries
 # ---------------------------------------------------------------------------
 

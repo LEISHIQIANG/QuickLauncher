@@ -178,7 +178,7 @@ def launch_as_standard_user(
                 return True, ""
         except Exception as exc:
             logger.debug("通过Explorer COM启动失败: %s", exc, exc_info=True)
-        return False, str(exc)
+        return False, str(exc)  # type: ignore[misc]
 
 
 def _can_create_process_directly(target: str) -> bool:

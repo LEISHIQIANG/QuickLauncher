@@ -187,12 +187,12 @@ def prepare_runtime_shortcut(shortcut: ShortcutItem, snapshot: CommandInvocation
     for attr in RUNTIME_ATTRS:
         if hasattr(runtime, attr):
             delattr(runtime, attr)
-    runtime._runtime_param_values = dict(snapshot.args)
-    runtime._runtime_input_values = dict(snapshot.input_values)
-    runtime._runtime_selected_files = list(snapshot.selected_files)
-    runtime._chain_values = dict(snapshot.chain_values)
+    runtime._runtime_param_values = dict(snapshot.args)  # type: ignore[attr-defined]
+    runtime._runtime_input_values = dict(snapshot.input_values)  # type: ignore[attr-defined]
+    runtime._runtime_selected_files = list(snapshot.selected_files)  # type: ignore[attr-defined]
+    runtime._chain_values = dict(snapshot.chain_values)  # type: ignore[attr-defined]
     if bool(snapshot.context_meta.get("destructive_confirmed", False)):
-        runtime._destructive_command_confirmed = True
+        runtime._destructive_command_confirmed = True  # type: ignore[attr-defined]
     return runtime
 
 
@@ -339,7 +339,7 @@ def _safe_context_meta(context_meta: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, str | int | float | bool) or value is None:
             safe[key] = value
         elif key in ("selected_files", "clipboard_files"):
-            safe[key] = [str(item) for item in list(value or [])]
+            safe[key] = [str(item) for item in list(value or [])]  # type: ignore[assignment]
         else:
             safe[key] = str(value)
     return safe

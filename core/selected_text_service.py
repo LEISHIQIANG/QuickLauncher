@@ -378,7 +378,7 @@ class SelectedTextService:
             app = QApplication.instance()
             if app is None:
                 return 0
-            for widget in app.topLevelWidgets():
+            for widget in app.topLevelWidgets():  # type: ignore[attr-defined]
                 if hasattr(widget, "winId"):
                     wid = widget.winId()
                     if wid:
@@ -419,7 +419,7 @@ class SelectedTextService:
                     # Get integrity level
                     labels = win32security.GetTokenInformation(token, ntsecuritycon.TokenIntegrityLevel)
                     sid = win32security.ConvertSidToStringSid(labels)
-                    return sid == _HIGH_INTEGRITY_SID
+                    return sid == _HIGH_INTEGRITY_SID  # type: ignore[no-any-return]
                 finally:
                     kernel32.CloseHandle(handle)
             except Exception:

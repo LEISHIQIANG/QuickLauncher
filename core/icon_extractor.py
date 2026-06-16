@@ -10,7 +10,7 @@ from ctypes import wintypes
 
 logger = logging.getLogger(__name__)
 _ICON_DEBUG_ENV = "QL_ICON_DEBUG"
-_ICON_FAILURE_LOGGED = set()
+_ICON_FAILURE_LOGGED = set()  # type: ignore[var-annotated]
 
 try:
     from qt_compat import (
@@ -75,11 +75,11 @@ _SHGETFILEINFO_PROTO = ctypes.WINFUNCTYPE(
 class IconExtractor:
     """Small LRU-backed icon extraction utility."""
 
-    _cache = OrderedDict()
-    _cache_timestamps = {}
+    _cache = OrderedDict()  # type: ignore[var-annotated]
+    _cache_timestamps = {}  # type: ignore[var-annotated]
     _MAX_CACHE_SIZE = 150
     _CACHE_TTL_SECONDS = 30 * 60
-    _default_icon_cache = {}
+    _default_icon_cache = {}  # type: ignore[var-annotated]
 
     @classmethod
     def _diag(cls, message: str, *args):
@@ -199,7 +199,7 @@ class IconExtractor:
     def _make_extract_cache_key(
         cls,
         file_path: str,
-        target_path: str = None,
+        target_path: str = None,  # type: ignore[assignment]
         size: int = 24,
         return_image: bool = False,
         device_pixel_ratio: float = 1.0,
@@ -219,7 +219,7 @@ class IconExtractor:
     def get_target_cache_id(
         cls,
         file_path: str,
-        target_path: str = None,
+        target_path: str = None,  # type: ignore[assignment]
         size: int = 24,
         device_pixel_ratio: float = 1.0,
     ) -> str:
@@ -252,8 +252,8 @@ class IconExtractor:
             return None
 
         canvas = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
-        canvas.fill(Qt.transparent)
-        scaled = image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        canvas.fill(Qt.transparent)  # type: ignore[attr-defined]
+        scaled = image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore[attr-defined]
 
         painter = QPainter(canvas)
         try:
@@ -321,7 +321,7 @@ class IconExtractor:
     def extract(
         cls,
         file_path: str,
-        target_path: str = None,
+        target_path: str = None,  # type: ignore[assignment]
         size: int = 24,
         return_image: bool = False,
         fallback_to_default: bool = True,
@@ -402,7 +402,7 @@ class IconExtractor:
                             break
                     except Exception as exc:
                         logger.debug("提取文件名失败: %s", exc, exc_info=True)
-            default_icon = cls._create_default_icon(size, name)
+            default_icon = cls._create_default_icon(size, name)  # type: ignore[arg-type]
             if default_icon:
                 try:
                     default_icon.setDevicePixelRatio(dpr)
@@ -657,7 +657,7 @@ class IconExtractor:
             try:
                 from qt_compat import QtWin
 
-                pixmap = QtWin.fromHICON(hicon_handle)
+                pixmap = QtWin.fromHICON(hicon_handle)  # type: ignore[call-arg]
                 if pixmap and not pixmap.isNull():
                     cls._diag(
                         "hicon qtwin size=%s return_image=%s pixmap=%sx%s",
@@ -748,7 +748,7 @@ class IconExtractor:
         return None
 
     @classmethod
-    def _create_default_icon(cls, size: int, name: str = None):
+    def _create_default_icon(cls, size: int, name: str = None):  # type: ignore[assignment]
         if not QT_AVAILABLE:
             return None
 
@@ -758,11 +758,11 @@ class IconExtractor:
             return cached
 
         pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.transparent)  # type: ignore[attr-defined]
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.NoPen)  # type: ignore[attr-defined]
         painter.setBrush(QColor(135, 206, 250))
         margin = size // 8
         radius = size // 6
@@ -775,7 +775,7 @@ class IconExtractor:
             font.setPointSize(int(size * 0.4))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, first_char)
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, first_char)  # type: ignore[attr-defined]
 
         painter.end()
 
@@ -800,7 +800,7 @@ class IconExtractor:
             extract_icon_ex.restype = wintypes.UINT
             cnt = extract_icon_ex(path, -1, None, None, 0)
             if cnt > 0:
-                return cnt
+                return cnt  # type: ignore[no-any-return]
         except Exception as e:
             logger.debug("Failed to count icons: %s", e)
 

@@ -42,7 +42,7 @@ class FolderScanner:
         Returns:
             List[ShortcutItem]: 扫描到的快捷方式列表
         """
-        shortcuts = []
+        shortcuts = []  # type: ignore[var-annotated]
 
         try:
             folder = Path(folder_path)

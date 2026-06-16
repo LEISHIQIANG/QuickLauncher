@@ -60,7 +60,7 @@ class CommandLauncherMixin:
             candidates.extend([os.environ.get("SHELL"), shutil.which("sh")])
         for candidate in candidates:
             if candidate and os.path.isfile(candidate):
-                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))  # type: ignore[no-any-return]
         return None
 
     @staticmethod
@@ -110,8 +110,8 @@ class CommandLauncherMixin:
         if not ShortcutExecutor._is_packaged_runtime() and sys.executable:
             resolved = ShortcutExecutor._resolve_long_path(sys.executable)
             if os.path.isfile(resolved):
-                return resolved
-        return ShortcutExecutor._find_system_python_launcher()
+                return resolved  # type: ignore[no-any-return]
+        return ShortcutExecutor._find_system_python_launcher()  # type: ignore[no-any-return]
 
     @staticmethod
     def _is_packaged_runtime() -> bool:
@@ -168,7 +168,7 @@ class CommandLauncherMixin:
                 continue
             if ShortcutExecutor._is_packaged_runtime() and not ShortcutExecutor._probe_python_launcher(long_path):
                 continue
-            return long_path
+            return long_path  # type: ignore[no-any-return]
         return None
 
     @staticmethod
@@ -195,7 +195,7 @@ class CommandLauncherMixin:
             )
         for candidate in candidates:
             if candidate and os.path.isfile(candidate):
-                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))  # type: ignore[no-any-return]
         return None
 
     @staticmethod
@@ -273,7 +273,7 @@ class CommandLauncherMixin:
                 candidates.append(os.path.join(local_appdata, "Programs", "Git", "bin", "bash.exe"))
         for candidate in candidates:
             if candidate and os.path.isfile(candidate):
-                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))
+                return ShortcutExecutor._resolve_long_path(os.path.abspath(candidate))  # type: ignore[no-any-return]
         return None
 
     @staticmethod

@@ -259,14 +259,14 @@ def get_favicon_cache_stats(data=None) -> dict:
 
         is_used = _normalize_path(entry.path) in used_paths
         size_mb = file_size / (1024 * 1024)
-        stats["total_files"] += 1
-        stats["total_size_mb"] += size_mb
+        stats["total_files"] += 1  # type: ignore[operator]
+        stats["total_size_mb"] += size_mb  # type: ignore[operator]
         if is_used:
-            stats["used_files"] += 1
-            stats["used_size_mb"] += size_mb
+            stats["used_files"] += 1  # type: ignore[operator]
+            stats["used_size_mb"] += size_mb  # type: ignore[operator]
         else:
-            stats["unused_files"] += 1
-            stats["unused_size_mb"] += size_mb
+            stats["unused_files"] += 1  # type: ignore[operator]
+            stats["unused_size_mb"] += size_mb  # type: ignore[operator]
 
     _round_cache_stats(stats)
     return stats
@@ -305,13 +305,13 @@ def clean_unused_favicon_cache(data, dry_run: bool = False) -> dict:
             try:
                 os.remove(entry.path)
             except Exception:
-                stats["failed"] += 1
+                stats["failed"] += 1  # type: ignore[operator]
                 continue
 
-        stats["files_removed"] += 1
-        stats["size_freed_mb"] += size_mb
-        stats["total_removed"] += 1
-        stats["total_size_freed_mb"] += size_mb
+        stats["files_removed"] += 1  # type: ignore[operator]
+        stats["size_freed_mb"] += size_mb  # type: ignore[operator]
+        stats["total_removed"] += 1  # type: ignore[operator]
+        stats["total_size_freed_mb"] += size_mb  # type: ignore[operator]
 
     _round_cache_stats(stats)
     return stats
@@ -747,7 +747,7 @@ def _raster_to_png(data: bytes, target: str, source: str = "") -> bool:
             if image.width * image.height > _MAX_IMAGE_PIXELS:
                 logger.warning("图标获取：图片像素过大 source=%s size=%s", source, image.size)
                 return False
-            image = image.convert("RGBA")
+            image = image.convert("RGBA")  # type: ignore[assignment]
             if min(image.size) <= 2 or not _has_visible_pixels(image):
                 logger.warning(
                     "图标获取：图片不可用或全透明 source=%s size=%s target=%s",
@@ -761,7 +761,7 @@ def _raster_to_png(data: bytes, target: str, source: str = "") -> bool:
                 max(1, int(round(image.width * scale))),
                 max(1, int(round(image.height * scale))),
             )
-            image = image.resize(scaled_size, Image.LANCZOS)
+            image = image.resize(scaled_size, Image.LANCZOS)  # type: ignore[assignment, attr-defined]
             canvas = Image.new("RGBA", (_CACHE_SIZE, _CACHE_SIZE), (0, 0, 0, 0))
             x = (_CACHE_SIZE - image.width) // 2
             y = (_CACHE_SIZE - image.height) // 2
@@ -817,11 +817,11 @@ def _qt_raster_to_png(data: bytes, target: str, source: str = "") -> bool:
         scaled = image.scaled(
             max(1, int(round(image.width() * scale))),
             max(1, int(round(image.height() * scale))),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation,
+            Qt.KeepAspectRatio,  # type: ignore[attr-defined]
+            Qt.SmoothTransformation,  # type: ignore[attr-defined]
         )
         canvas = QImage(_CACHE_SIZE, _CACHE_SIZE, QImage.Format_ARGB32)
-        canvas.fill(Qt.transparent)
+        canvas.fill(Qt.transparent)  # type: ignore[attr-defined]
         painter = QPainter(canvas)
         painter.drawImage((_CACHE_SIZE - scaled.width()) // 2, (_CACHE_SIZE - scaled.height()) // 2, scaled)
         painter.end()
@@ -882,7 +882,7 @@ def _render_svg_to_png(svg: str, target: str) -> bool:
             return False
 
         image = QImage(_CACHE_SIZE, _CACHE_SIZE, QImage.Format_ARGB32)
-        image.fill(Qt.transparent)
+        image.fill(Qt.transparent)  # type: ignore[attr-defined]
         painter = QPainter(image)
         renderer.render(painter, QRectF(0, 0, _CACHE_SIZE, _CACHE_SIZE))
         painter.end()
@@ -939,7 +939,7 @@ def _parse_viewbox(svg: str) -> tuple[float, float, float, float] | None:
     if not match:
         return None
     try:
-        return tuple(float(part) for part in match.groups())
+        return tuple(float(part) for part in match.groups())  # type: ignore[return-value]
     except Exception:
         return None
 

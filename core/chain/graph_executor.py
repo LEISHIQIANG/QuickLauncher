@@ -257,7 +257,7 @@ class LegacyAdapter:
                 step["source"] = str(node.params.get("source") or "")
 
             # Build param_bindings from connections
-            param_bindings = {}
+            param_bindings = {}  # type: ignore[var-annotated]
             for conn in graph.get_connections_to_node(node_id):
                 source_index = node_index_map.get(conn.source_node_id)
                 if source_index is not None:
@@ -576,12 +576,12 @@ class GraphExecutor:
             result = str(a) != str(b)
         elif operator == "大于":
             try:
-                result = float(a) > float(b)
+                result = float(a) > float(b)  # type: ignore[arg-type]
             except (ValueError, TypeError):
                 result = str(a) > str(b)
         elif operator == "小于":
             try:
-                result = float(a) < float(b)
+                result = float(a) < float(b)  # type: ignore[arg-type]
             except (ValueError, TypeError):
                 result = str(a) < str(b)
         elif operator == "包含":

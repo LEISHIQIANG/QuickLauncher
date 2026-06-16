@@ -248,7 +248,7 @@ def _get_admin_status_info() -> dict:
             info["error"] = str(exc)
             return info
     try:
-        info["is_admin"] = os.getuid() == 0
+        info["is_admin"] = os.getuid() == 0  # type: ignore[attr-defined]
         info["method"] = "geteuid"
     except (AttributeError, OSError, TypeError, ValueError) as exc:
         info["error"] = str(exc)
@@ -368,7 +368,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
 
     items.extend(_collect_environment_diagnostics())
 
-    config_status = getattr(data_manager, "get_config_status", lambda: {})()
+    config_status = getattr(data_manager, "get_config_status", lambda: {})()  # type: ignore[var-annotated]
     status = config_status.get("status", "unknown")
     issues = config_status.get("issues", [])
     items.append(
@@ -439,7 +439,7 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
     try:
         from .hotkey_conflict_checker import check_conflict, normalize_hotkey
 
-        hotkey_map = {}
+        hotkey_map = {}  # type: ignore[var-annotated]
         conflicts = []
 
         for folder in getattr(data_manager.data, "folders", []) or []:
@@ -704,8 +704,8 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
                 )
             )
         else:
-            check_status = str(update_state.get("last_check_status") or "")
-            check_error = str(update_state.get("last_check_error") or "")
+            check_status = str(update_state.get("last_check_status") or "")  # type: ignore[attr-defined]
+            check_error = str(update_state.get("last_check_error") or "")  # type: ignore[attr-defined]
             summary = f"当前版本: {APP_VERSION}，无更新会话记录"
             if check_status:
                 summary += f"，最近检查: {check_status}"
@@ -734,7 +734,7 @@ def export_diagnostics_zip(data_manager, export_path: str, tray_app=None, export
         log_dir = Path(getattr(data_manager, "app_dir", ""))
         config_dir = Path(getattr(data_manager, "config_dir", ""))
         logging_disabled = _is_logging_disabled(data_manager)
-        payload = {
+        payload = {  # type: ignore[var-annotated]
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "platform": platform.platform(),
             "cwd": os.getcwd(),
@@ -743,7 +743,7 @@ def export_diagnostics_zip(data_manager, export_path: str, tray_app=None, export
             "logging_disabled": logging_disabled,
             "export_level": export_level,
         }
-        payload = _sanitize_dict(payload)
+        payload = _sanitize_dict(payload)  # type: ignore[assignment]
         with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zf:
             included_files: list[str] = []
             _write_json(zf, included_files, "diagnostics.json", payload)
@@ -856,7 +856,7 @@ def _read_json_file(path: Path) -> object | None:
     try:
         if not path.exists() or not path.is_file():
             return None
-        return json.loads(_read_tail_text(path))
+        return json.loads(_read_tail_text(path))  # type: ignore[no-any-return]
     except (json.JSONDecodeError, OSError, TypeError, ValueError):
         return None
 

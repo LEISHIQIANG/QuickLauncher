@@ -454,42 +454,42 @@ class HotkeyRecorderWidget(QWidget):
         qt = Qt
 
         special = {
-            qt.Key_Escape: "esc",
-            qt.Key_Tab: "tab",
-            qt.Key_Backtab: "tab",
-            qt.Key_Backspace: "backspace",
-            qt.Key_Return: "enter",
-            qt.Key_Enter: "enter",
-            qt.Key_Insert: "insert",
-            qt.Key_Delete: "delete",
-            qt.Key_Pause: "pause",
-            qt.Key_Print: "printscreen",
-            qt.Key_Home: "home",
-            qt.Key_End: "end",
-            qt.Key_Left: "left",
-            qt.Key_Up: "up",
-            qt.Key_Right: "right",
-            qt.Key_Down: "down",
-            qt.Key_PageUp: "pageup",
-            qt.Key_PageDown: "pagedown",
-            qt.Key_Space: "space",
-            qt.Key_Control: "ctrl",
-            qt.Key_Shift: "shift",
-            qt.Key_Alt: "alt",
-            qt.Key_Meta: "win",
+            qt.Key_Escape: "esc",  # type: ignore[attr-defined]
+            qt.Key_Tab: "tab",  # type: ignore[attr-defined]
+            qt.Key_Backtab: "tab",  # type: ignore[attr-defined]
+            qt.Key_Backspace: "backspace",  # type: ignore[attr-defined]
+            qt.Key_Return: "enter",  # type: ignore[attr-defined]
+            qt.Key_Enter: "enter",  # type: ignore[attr-defined]
+            qt.Key_Insert: "insert",  # type: ignore[attr-defined]
+            qt.Key_Delete: "delete",  # type: ignore[attr-defined]
+            qt.Key_Pause: "pause",  # type: ignore[attr-defined]
+            qt.Key_Print: "printscreen",  # type: ignore[attr-defined]
+            qt.Key_Home: "home",  # type: ignore[attr-defined]
+            qt.Key_End: "end",  # type: ignore[attr-defined]
+            qt.Key_Left: "left",  # type: ignore[attr-defined]
+            qt.Key_Up: "up",  # type: ignore[attr-defined]
+            qt.Key_Right: "right",  # type: ignore[attr-defined]
+            qt.Key_Down: "down",  # type: ignore[attr-defined]
+            qt.Key_PageUp: "pageup",  # type: ignore[attr-defined]
+            qt.Key_PageDown: "pagedown",  # type: ignore[attr-defined]
+            qt.Key_Space: "space",  # type: ignore[attr-defined]
+            qt.Key_Control: "ctrl",  # type: ignore[attr-defined]
+            qt.Key_Shift: "shift",  # type: ignore[attr-defined]
+            qt.Key_Alt: "alt",  # type: ignore[attr-defined]
+            qt.Key_Meta: "win",  # type: ignore[attr-defined]
         }
         if key in special:
             return special[key]
-        if qt.Key_F1 <= key <= qt.Key_F35:
-            return f"f{key - qt.Key_F1 + 1}"
-        if qt.Key_A <= key <= qt.Key_Z:
-            return chr(ord("a") + key - qt.Key_A)
-        if qt.Key_0 <= key <= qt.Key_9:
-            return chr(ord("0") + key - qt.Key_0)
+        if qt.Key_F1 <= key <= qt.Key_F35:  # type: ignore[attr-defined]
+            return f"f{key - qt.Key_F1 + 1}"  # type: ignore[attr-defined]
+        if qt.Key_A <= key <= qt.Key_Z:  # type: ignore[attr-defined]
+            return chr(ord("a") + key - qt.Key_A)  # type: ignore[attr-defined]
+        if qt.Key_0 <= key <= qt.Key_9:  # type: ignore[attr-defined]
+            return chr(ord("0") + key - qt.Key_0)  # type: ignore[attr-defined]
         if text and text.strip():
             value = text.lower()
             if len(value) == 1 and ord(value) >= 32:
-                return value
+                return value  # type: ignore[no-any-return]
         native_vk = event.nativeVirtualKey() if hasattr(event, "nativeVirtualKey") else 0
         if 0x60 <= native_vk <= 0x69:
             return f"num{native_vk - 0x60}"
@@ -499,7 +499,7 @@ class HotkeyRecorderWidget(QWidget):
 class HotkeyDialog(BaseDialog):
     """Hotkey edit dialog."""
 
-    def __init__(self, parent=None, shortcut: ShortcutItem = None):
+    def __init__(self, parent=None, shortcut: ShortcutItem = None):  # type: ignore[assignment]
         super().__init__(parent)
         self.shortcut = shortcut or ShortcutItem(type=ShortcutType.HOTKEY)
         self._custom_icon_path = self.shortcut.icon_path or ""

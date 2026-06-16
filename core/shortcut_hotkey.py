@@ -62,7 +62,7 @@ class HotkeyExecutionMixin:
     @staticmethod
     def _sendinput_key_event(vk: int, is_up: bool) -> bool:
         flags = KEYEVENTF_KEYUP if is_up else 0
-        if ShortcutExecutor._is_extended_vk(vk):
+        if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
             flags |= KEYEVENTF_EXTENDEDKEY
 
         scan = 0
@@ -89,12 +89,12 @@ class HotkeyExecutionMixin:
         KEYEVENTF_KEYUP = 0x0002
         KEYEVENTF_EXTENDEDKEY = 0x0001
         try:
-            ShortcutExecutor._sendinput_key_event(vk, True)
+            ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
         except Exception as e:
             logger.debug("_sendinput_key_event 释放 VK=0x%02X 失败: %s", vk, e)
         try:
             flags = KEYEVENTF_KEYUP
-            if ShortcutExecutor._is_extended_vk(vk):
+            if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                 flags |= KEYEVENTF_EXTENDEDKEY
             user32.keybd_event(vk, 0, flags, 0)
         except Exception as e:
@@ -106,33 +106,73 @@ class HotkeyExecutionMixin:
         for vk in vks:
             try:
                 if (user32.GetAsyncKeyState(vk) & 0x8000) != 0:
-                    ShortcutExecutor._release_vk_strong(vk)
+                    ShortcutExecutor._release_vk_strong(vk)  # type: ignore[attr-defined]
             except Exception:
                 continue
 
     @classmethod
     def save_foreground_window(cls):
-        """保存当前前台窗口句柄"""
+        """保存当前前台窗口句柄
+
+        只排除已注册的 LauncherPopup HWND（弹窗自身），
+        其他 QuickLauncher 窗口（例如用户已打开的配置窗口）依然可以
+        作为恢复目标保存下来，这样弹窗隐藏后焦点能正确回到配置窗口。
+        """
         try:
             hwnd = int(user32.GetForegroundWindow() or 0)
-            process_id = cls._window_process_id(hwnd) if hwnd and user32.IsWindow(hwnd) else 0
+            process_id = cls._window_process_id(hwnd) if hwnd and user32.IsWindow(hwnd) else 0  # type: ignore[attr-defined]
             if not hwnd or not process_id:
                 logger.debug("未保存无效的前台窗口: hwnd=%s pid=%s", hwnd, process_id)
                 return False
 
-            current_process_id = int(ctypes.windll.kernel32.GetCurrentProcessId())
-            if process_id == current_process_id:
-                logger.debug("前台窗口属于 QuickLauncher，保留已有外部目标: hwnd=%s", hwnd)
-                return False
-
-            with cls._foreground_window_lock:
-                cls._previous_hwnd = hwnd
-                cls._previous_hwnd_process_id = process_id
+            with cls._foreground_window_lock:  # type: ignore[attr-defined]
+                popup_hwnds = getattr(cls, "_popup_hwnds", None)
+                if popup_hwnds and hwnd in popup_hwnds:
+                    logger.debug("前台窗口属于 LauncherPopup，保留已有外部目标: hwnd=%s", hwnd)
+                    return False
+                cls._previous_hwnd = hwnd  # type: ignore[attr-defined]
+                cls._previous_hwnd_process_id = process_id  # type: ignore[attr-defined]
             logger.debug("保存前台窗口: hwnd=%s pid=%s", hwnd, process_id)
             return True
         except Exception as e:
             logger.debug("Failed to save foreground window: %s", e, exc_info=True)
             return False
+
+    @classmethod
+    def register_popup_hwnd(cls, hwnd: int) -> None:
+        """将一个 LauncherPopup 的 HWND 注册为"弹窗自身"。
+
+        save_foreground_window 在前台窗口是已注册的弹窗 HWND 时会保留
+        之前的恢复目标，避免把弹窗自身当作恢复焦点使用。
+        其他 QuickLauncher 窗口（例如配置窗口）不在此注册表内，
+        仍然可以正确保存为恢复目标。
+        """
+        try:
+            handle = int(hwnd or 0)
+        except (TypeError, ValueError):
+            return
+        if not handle:
+            return
+        with cls._foreground_window_lock:  # type: ignore[attr-defined]
+            popup_hwnds = getattr(cls, "_popup_hwnds", None)
+            if popup_hwnds is None:
+                cls._popup_hwnds = {handle}  # type: ignore[attr-defined]
+            else:
+                popup_hwnds.add(handle)
+
+    @classmethod
+    def unregister_popup_hwnd(cls, hwnd: int) -> None:
+        """取消注册一个 LauncherPopup 的 HWND。"""
+        try:
+            handle = int(hwnd or 0)
+        except (TypeError, ValueError):
+            return
+        if not handle:
+            return
+        with cls._foreground_window_lock:  # type: ignore[attr-defined]
+            popup_hwnds = getattr(cls, "_popup_hwnds", None)
+            if popup_hwnds is not None:
+                popup_hwnds.discard(handle)
 
     @classmethod
     def restore_foreground_window(cls):
@@ -143,14 +183,14 @@ class HotkeyExecutionMixin:
         - 如果目标窗口无效或恢复失败，尝试激活桌面作为后备
         - 这可以修复 Win10 上弹窗隐藏后左键选择失效的问题
         """
-        with cls._foreground_window_lock:
-            hwnd = cls._previous_hwnd
-            expected_process_id = int(cls._previous_hwnd_process_id or 0)
+        with cls._foreground_window_lock:  # type: ignore[attr-defined]
+            hwnd = cls._previous_hwnd  # type: ignore[attr-defined]
+            expected_process_id = int(cls._previous_hwnd_process_id or 0)  # type: ignore[attr-defined]
 
         # 检查窗口句柄是否有效
         if hwnd:
             try:
-                actual_process_id = cls._window_process_id(hwnd) if user32.IsWindow(hwnd) else 0
+                actual_process_id = cls._window_process_id(hwnd) if user32.IsWindow(hwnd) else 0  # type: ignore[attr-defined]
                 if not actual_process_id or (expected_process_id and actual_process_id != expected_process_id):
                     logger.debug(
                         "之前的窗口已无效或句柄已复用: hwnd=%s expected_pid=%s actual_pid=%s",
@@ -159,9 +199,9 @@ class HotkeyExecutionMixin:
                         actual_process_id,
                     )
                     hwnd = None
-                    with cls._foreground_window_lock:
-                        cls._previous_hwnd = None
-                        cls._previous_hwnd_process_id = None
+                    with cls._foreground_window_lock:  # type: ignore[attr-defined]
+                        cls._previous_hwnd = None  # type: ignore[attr-defined]
+                        cls._previous_hwnd_process_id = None  # type: ignore[attr-defined]
             except Exception:
                 hwnd = None
 
@@ -205,7 +245,7 @@ class HotkeyExecutionMixin:
 
     @classmethod
     def restore_foreground_window_fast(cls, timeout_ms: int = 180, poll_ms: int = 8) -> bool:
-        target = cls._previous_hwnd
+        target = cls._previous_hwnd  # type: ignore[attr-defined]
         if not target:
             return False
 
@@ -251,14 +291,14 @@ class HotkeyExecutionMixin:
         import random
 
         keys = key if isinstance(key, list | tuple) else [key]
-        main_vks = [ShortcutExecutor._vk_from_key(item) for item in keys]
+        main_vks = [ShortcutExecutor._vk_from_key(item) for item in keys]  # type: ignore[attr-defined]
         main_vks = [vk for vk in main_vks if vk]
         if not main_vks:
             return False
 
         mod_vks: list[int] = []
         for m in modifiers or []:
-            vk = ShortcutExecutor._vk_from_key(m)
+            vk = ShortcutExecutor._vk_from_key(m)  # type: ignore[attr-defined]
             if vk:
                 if vk == 0x10:
                     vk = 0xA0
@@ -275,21 +315,21 @@ class HotkeyExecutionMixin:
                     logger.debug("[SendInput] 保留用户已按住的修饰键: %s", vk)
                     continue
                 logger.debug("[SendInput] 按下修饰键: %s", vk)
-                if not ShortcutExecutor._sendinput_key_event(vk, False):
+                if not ShortcutExecutor._sendinput_key_event(vk, False):  # type: ignore[attr-defined]
                     return False
                 pressed_by_us.append(vk)
                 time.sleep(random.uniform(0.015, 0.025))
 
             for vk_main in main_vks:
                 logger.debug("[SendInput] 按下主键: %s", vk_main)
-                if not ShortcutExecutor._sendinput_key_event(vk_main, False):
+                if not ShortcutExecutor._sendinput_key_event(vk_main, False):  # type: ignore[attr-defined]
                     return False
                 pressed_by_us.append(vk_main)
                 time.sleep(random.uniform(0.015, 0.025))
             time.sleep(random.uniform(0.040, 0.060))
 
             for vk_main in reversed(main_vks):
-                if not ShortcutExecutor._sendinput_key_event(vk_main, True):
+                if not ShortcutExecutor._sendinput_key_event(vk_main, True):  # type: ignore[attr-defined]
                     return False
                 pressed_by_us.remove(vk_main)
                 time.sleep(random.uniform(0.015, 0.025))
@@ -298,7 +338,7 @@ class HotkeyExecutionMixin:
                 if vk not in pressed_by_us:
                     continue
                 logger.debug("[SendInput] 释放修饰键: %s", vk)
-                if not ShortcutExecutor._sendinput_key_event(vk, True):
+                if not ShortcutExecutor._sendinput_key_event(vk, True):  # type: ignore[attr-defined]
                     return False
                 pressed_by_us.remove(vk)
                 time.sleep(0.010)
@@ -308,7 +348,7 @@ class HotkeyExecutionMixin:
             return False
         finally:
             for vk in reversed(pressed_by_us):
-                ShortcutExecutor._sendinput_key_event(vk, True)
+                ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
 
     @staticmethod
     def _force_release_modifiers():
@@ -322,20 +362,20 @@ class HotkeyExecutionMixin:
         except Exception as e:
             logger.error(f"强制释放修饰键失败: {e}")
         try:
-            ShortcutExecutor._release_modifiers_strong()
+            ShortcutExecutor._release_modifiers_strong()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("强制释放修饰键调用失败: %s", exc, exc_info=True)
 
     @staticmethod
     def _force_release_key(key: str):
-        vk = ShortcutExecutor._vk_from_key(key)
+        vk = ShortcutExecutor._vk_from_key(key)  # type: ignore[attr-defined]
         if not vk:
             return
         KEYEVENTF_KEYUP = 0x0002
         KEYEVENTF_EXTENDEDKEY = 0x0001
         try:
             flags = KEYEVENTF_KEYUP
-            if ShortcutExecutor._is_extended_vk(vk):
+            if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                 flags |= KEYEVENTF_EXTENDEDKEY
             user32.keybd_event(vk, 0, flags, 0)
         except Exception as e:
@@ -390,7 +430,7 @@ class HotkeyExecutionMixin:
                 for _ in range(3):
                     try:
                         flags = KEYEVENTF_KEYUP
-                        if ShortcutExecutor._is_extended_vk(vk):
+                        if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                             flags |= KEYEVENTF_EXTENDEDKEY
                         user32.keybd_event(vk, 0, flags, 0)
                         time.sleep(0.002)
@@ -409,7 +449,7 @@ class HotkeyExecutionMixin:
                 # 尝试方法2: _release_vk_strong
                 if not released:
                     try:
-                        ShortcutExecutor._release_vk_strong(vk)
+                        ShortcutExecutor._release_vk_strong(vk)  # type: ignore[attr-defined]
                         time.sleep(0.005)
                     except Exception as exc:
                         logger.debug("强力释放修饰键失败: %s", exc, exc_info=True)
@@ -425,7 +465,7 @@ class HotkeyExecutionMixin:
                 # 尝试方法3: SendInput（使用模块级结构）
                 if not released:
                     try:
-                        ShortcutExecutor._sendinput_key_event(vk, True)
+                        ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
                         time.sleep(0.002)
                     except Exception as exc:
                         logger.debug("SendInput释放修饰键失败: %s", exc, exc_info=True)
@@ -472,7 +512,7 @@ class HotkeyExecutionMixin:
         for vk in all_modifier_vks:
             try:
                 flags = KEYEVENTF_KEYUP
-                if ShortcutExecutor._is_extended_vk(vk):
+                if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                     flags |= KEYEVENTF_EXTENDEDKEY
                 user32.keybd_event(vk, 0, flags, 0)
             except Exception as exc:
@@ -483,7 +523,7 @@ class HotkeyExecutionMixin:
         # 第二轮：使用 SendInput 再次释放
         for vk in all_modifier_vks:
             try:
-                ShortcutExecutor._sendinput_key_event(vk, True)
+                ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.debug("预执行清理SendInput释放失败: %s", exc, exc_info=True)
 
@@ -505,7 +545,7 @@ class HotkeyExecutionMixin:
             logger.warning(f"执行前检测到残留按键(尝试{attempt + 1}): {[hex(vk) for vk in still_stuck]}")
             for vk in still_stuck:
                 try:
-                    ShortcutExecutor._release_vk_strong(vk)
+                    ShortcutExecutor._release_vk_strong(vk)  # type: ignore[attr-defined]
                     time.sleep(0.003)
                 except Exception as exc:
                     logger.debug("预执行强力释放残留按键失败: %s", exc, exc_info=True)
@@ -519,7 +559,7 @@ class HotkeyExecutionMixin:
         """安全执行快捷键"""
         acquired = False
         try:
-            acquired = ShortcutExecutor._hotkey_lock.acquire(timeout=ShortcutExecutor._hotkey_lock_timeout)
+            acquired = ShortcutExecutor._hotkey_lock.acquire(timeout=ShortcutExecutor._hotkey_lock_timeout)  # type: ignore[attr-defined]
             if not acquired:
                 logger.warning("快捷键执行跳过: 上一个执行尚未完成")
                 return False
@@ -529,10 +569,10 @@ class HotkeyExecutionMixin:
             # 先恢复前台窗口，再发送快捷键
             if trigger_mode == "after_close":
                 logger.info("[Hotkey] 触发模式: after_close，恢复前台窗口")
-                target_hwnd = ShortcutExecutor._previous_hwnd
+                target_hwnd = ShortcutExecutor._previous_hwnd  # type: ignore[attr-defined]
 
                 # 恢复窗口
-                ShortcutExecutor.restore_foreground_window_fast(timeout_ms=100)
+                ShortcutExecutor.restore_foreground_window_fast(timeout_ms=100)  # type: ignore[attr-defined]
 
                 # 验证窗口是否切换成功（最多等待 300ms）
                 for i in range(6):
@@ -559,7 +599,7 @@ class HotkeyExecutionMixin:
                 keys = [shortcut.hotkey_key]
 
             logger.info("[Hotkey] 发送快捷键: modifiers=%s, key_count=%d", modifiers, len(keys))
-            result = ShortcutExecutor._execute_hotkey_sendinput(modifiers, keys)
+            result = ShortcutExecutor._execute_hotkey_sendinput(modifiers, keys)  # type: ignore[attr-defined]
 
             # 不自动释放修饰键，避免干扰正常按键
             # 如果用户遇到Alt卡住，可以手动按一下Alt键解决
@@ -571,17 +611,17 @@ class HotkeyExecutionMixin:
             return False
         finally:
             if acquired:
-                ShortcutExecutor._hotkey_lock.release()
+                ShortcutExecutor._hotkey_lock.release()  # type: ignore[attr-defined]
 
     @staticmethod
     def _get_pynput_key(key_str: str):
         """将字符串转换为 pynput 键"""
         key_lower = key_str.lower().strip()
 
-        ShortcutExecutor._ensure_pynput_keys()
+        ShortcutExecutor._ensure_pynput_keys()  # type: ignore[attr-defined]
         # 检查特殊键
-        if key_lower in ShortcutExecutor.PYNPUT_SPECIAL_KEYS:
-            return ShortcutExecutor.PYNPUT_SPECIAL_KEYS[key_lower]
+        if key_lower in ShortcutExecutor.PYNPUT_SPECIAL_KEYS:  # type: ignore[attr-defined]
+            return ShortcutExecutor.PYNPUT_SPECIAL_KEYS[key_lower]  # type: ignore[attr-defined]
 
         # 单个字符
         if len(key_str) == 1:

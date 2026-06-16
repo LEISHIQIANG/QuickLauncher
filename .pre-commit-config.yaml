@@ -17,3 +17,13 @@ repos:
         types: [python]
         stages: [pre-commit]
         exclude: '^(tests/|plugins/screenshot_ocr/)'
+      - id: i18n-coverage
+        name: "i18n en_US translation coverage (advisory)"
+        entry: python scripts/check_i18n_coverage.py --report-only
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+        # NOTE: release gate enforces --max-untranslated-pct 40; this hook
+        # only reports. Lower the gate manually in scripts/release_gate.py
+        # as the untranslated rate drops.

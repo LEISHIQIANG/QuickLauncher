@@ -10,7 +10,7 @@
 
 QuickLauncher is a Windows 10 / 11 desktop quick launcher and lightweight automation tool. It launches apps, folders, URLs, hotkeys, commands, action chains, and batch launch groups, and it can be extended with local plugins.
 
-The current source version is defined in [core/version.py](core/version.py): `1.6.3.1` stable. Installer and portable builds ship their own runtime, so end users do not need Python installed. Python is required only for source runs and builds.
+The current source version is defined in [core/version.py](core/version.py): `1.6.3.2` stable. Installer and portable builds ship their own runtime, so end users do not need Python installed. Python is required only for source runs and builds.
 
 ## Core Capabilities
 

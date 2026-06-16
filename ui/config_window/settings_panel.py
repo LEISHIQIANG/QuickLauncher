@@ -408,7 +408,7 @@ class NavigationWidget(QListWidget):
     def pill_rect(self) -> QRectF:
         return self._pill_rect
 
-    @pill_rect.setter
+    @pill_rect.setter  # type: ignore[no-redef]
     def pill_rect(self, rect: QRectF):
         self._pill_rect = rect
         self.viewport().update()
@@ -417,7 +417,7 @@ class NavigationWidget(QListWidget):
     def pill_opacity(self) -> float:
         return self._pill_opacity
 
-    @pill_opacity.setter
+    @pill_opacity.setter  # type: ignore[no-redef]
     def pill_opacity(self, opacity: float):
         self._pill_opacity = opacity
         self.viewport().update()
@@ -1299,9 +1299,9 @@ class SettingsPanel(
             ("系统设置", 0, "system"),
             ("弹窗外观", 1, "appearance"),
             ("弹窗交互", 2, "interaction"),
-            ("配置管理", 3, "settings_data"),
-            ("插件管理", 4, "plugin"),
             ("命令管理", 5, "command"),
+            ("插件管理", 4, "plugin"),
+            ("配置管理", 3, "settings_data"),
             ("支持一下", 7, "support"),
             ("关于软件", 6, "about"),
         ]
@@ -1333,7 +1333,7 @@ class SettingsPanel(
         if page is None or not hasattr(page, "verticalScrollBar"):
             return 0
         try:
-            return page.verticalScrollBar().value()
+            return page.verticalScrollBar().value()  # type: ignore[no-any-return]
         except Exception:
             return 0
 

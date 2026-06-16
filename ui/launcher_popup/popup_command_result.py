@@ -371,7 +371,7 @@ class PopupCommandResultMixin:
         except Exception as exc:
             logger.debug("停止隐藏定时器失败: %s", exc, exc_info=True)
         try:
-            self.update()
+            self.update()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("更新窗口失败: %s", exc, exc_info=True)
         return True

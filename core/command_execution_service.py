@@ -373,7 +373,7 @@ class CommandExecutionService:
             from core.shortcut_chain_exec import execute_shortcut_chain
 
             result = execute_shortcut_chain(
-                runtime_shortcut,
+                runtime_shortcut,  # type: ignore[arg-type]
                 request.context_meta.get("data_manager"),
                 cancel_event=handle.cancel_event,
             )

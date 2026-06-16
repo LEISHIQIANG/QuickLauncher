@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 try:
     from core.icon_extractor import should_invert_icon as _should_invert_icon
 except ImportError:
-    _should_invert_icon = None
+    _should_invert_icon = None  # type: ignore[assignment]
 
 
 def sync_all_folders_for_data_manager(data_manager) -> tuple[int, int]:
@@ -91,7 +91,7 @@ class IconFlashOverlay(QWidget):
 
     def _next_flash_generation(self) -> int:
         self._flash_generation = int(getattr(self, "_flash_generation", 0) or 0) + 1
-        return self._flash_generation
+        return self._flash_generation  # type: ignore[no-any-return]
 
     def _is_flash_current(self, generation: int) -> bool:
         return generation == int(getattr(self, "_flash_generation", -1) or -1)

@@ -41,6 +41,7 @@ class InputMacroBackend:
         include_injected: bool = False,
         include_own_playback: bool = False,
         coalesce_mouse_moves: bool = False,
+        event_filter: Callable[[dict], bool] | None = None,
         on_event: Callable[[dict], None] | None = None,
     ) -> bool:
         filters = 0
@@ -62,6 +63,8 @@ class InputMacroBackend:
 
         def _record(event: dict) -> None:
             snapshot = dict(event)
+            if event_filter is not None and not event_filter(snapshot):
+                return
             with self._events_lock:
                 if len(self._events) == self._events.maxlen:
                     self._dropped_events += 1
@@ -85,6 +88,26 @@ class InputMacroBackend:
         self._recording = False
         self._event_callback = None
         return self.recorded_events()
+
+    def inject_events(self, events: list[dict]) -> None:
+        """Replace the in-memory event buffer with the provided list.
+
+        Used by editors that need ``recorded_events()`` to reflect the events
+        loaded from disk (e.g. opening a macro for editing without starting a
+        new recording). The buffer is reset before the new entries are appended
+        so that callers can rely on ``len(recorded_events()) == len(events)``
+        for valid inputs. Excess entries that exceed ``max_events`` are
+        silently dropped, matching the behaviour of the native capture path
+        (``collections.deque(maxlen=...)`` discards from the oldest end).
+        """
+        normalized: list[dict] = [dict(event) for event in events if isinstance(event, dict)]
+        with self._events_lock:
+            self._events.clear()
+            self._dropped_events = 0
+            for event in normalized:
+                if len(self._events) == self._events.maxlen:
+                    self._dropped_events += 1
+                self._events.append(event)
 
     def recorded_events(self) -> list[dict]:
         with self._events_lock:
@@ -114,8 +137,16 @@ class InputMacroBackend:
         speed: float = 1.0,
         no_timing: bool = False,
     ) -> bool:
-        sequence = events if events is not None else self.build_sequence(speed=speed)
-        return self._dll.play_macro(sequence, no_timing=no_timing)
+        if speed <= 0:
+            raise ValueError("speed must be greater than zero")
+        if events is None:
+            sequence = self.build_sequence(speed=speed)
+        else:
+            sequence = [dict(event) for event in events]
+            if speed != 1.0:
+                for event in sequence:
+                    event["delay_us"] = max(0, min(0xFFFFFFFF, round(int(event.get("delay_us", 0)) / speed)))
+        return self._dll.play_macro(sequence, no_timing=no_timing)  # type: ignore[arg-type]
 
     def cancel(self) -> None:
         self._dll.cancel_macro_playback()

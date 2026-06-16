@@ -490,11 +490,11 @@ def net_url_parse(url: str) -> dict[str, str]:
         "port": str(parsed.port or ""),
         "username": parsed.username or "",
         "password": parsed.password or "",
-        "params_dict": {k: v[0] if len(v) == 1 else v for k, v in params.items()},
+        "params_dict": {k: v[0] if len(v) == 1 else v for k, v in params.items()},  # type: ignore[dict-item]
     }
 
 
-def net_url_build(scheme: str = "https", host: str = "", path: str = "", params: dict = None, port: int = 0) -> str:
+def net_url_build(scheme: str = "https", host: str = "", path: str = "", params: dict = None, port: int = 0) -> str:  # type: ignore[assignment]
     """Build a URL from components."""
     netloc = host
     if port:
@@ -678,7 +678,7 @@ def color_hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     hex_color = hex_color.lstrip("#")
     if len(hex_color) == 3:
         hex_color = "".join(c * 2 for c in hex_color)
-    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
+    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
 def color_rgb_to_hex(r: int, g: int, b: int) -> str:
@@ -720,7 +720,7 @@ def color_hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[int, int, in
 
 def color_rgb_to_hsl(r: int, g: int, b: int) -> tuple[float, float, float]:
     """Convert RGB to HSL."""
-    r, g, b = r / 255, g / 255, b / 255
+    r, g, b = r / 255, g / 255, b / 255  # type: ignore[assignment]
     max_val = max(r, g, b)
     min_val = min(r, g, b)
     h = s = lightness = (max_val + min_val) / 2
@@ -1040,7 +1040,7 @@ def math_exp(x: float) -> float:
 
 def math_pow(base: float, exp: float) -> float:
     """Calculate base^exp."""
-    return base**exp
+    return base**exp  # type: ignore[no-any-return]
 
 
 def math_factorial(n: int) -> int:

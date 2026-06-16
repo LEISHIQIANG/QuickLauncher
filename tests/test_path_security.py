@@ -1,9 +1,16 @@
 import os
 import subprocess
+import tempfile
 
 import pytest
 
-from core.path_security import UnsafePathError, is_link_or_reparse_point, resolve_under, safe_rmtree_child
+from core.path_security import (
+    UnsafePathError,
+    assert_safe_user_path,
+    is_link_or_reparse_point,
+    resolve_under,
+    safe_rmtree_child,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -56,6 +63,17 @@ def test_safe_rmtree_child_refuses_link_even_when_target_is_inside_root(tmp_path
 
     assert link.exists()
     assert real.exists()
+
+
+def test_assert_safe_user_path_refuses_temp_root():
+    with pytest.raises(UnsafePathError):
+        assert_safe_user_path(tempfile.gettempdir(), operation="delete")
+
+
+def test_assert_safe_user_path_allows_temp_child():
+    child = os.path.join(tempfile.gettempdir(), "quicklauncher-safe-child", "item.txt")
+
+    assert assert_safe_user_path(child, operation="write file") == resolve_under(tempfile.gettempdir(), child)
 
 
 # ── Additional coverage tests ──────────────────────────────────────────────

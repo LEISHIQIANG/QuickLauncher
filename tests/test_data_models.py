@@ -35,7 +35,7 @@ def test_shortcut_type_values():
 
 
 def test_shortcut_type_has_all_members():
-    assert len(ShortcutType) == 7
+    assert len(ShortcutType) == 8
 
 
 def test_shortcut_type_from_string():
@@ -82,6 +82,10 @@ def test_shortcut_item_defaults():
     assert item.chain_steps == []
     assert item.chain_result_window == "medium"
     assert item.raw_mode is False
+    assert item.macro_events == []
+    assert item.macro_speed == 1.0
+    assert item.macro_include_mouse_move is False
+    assert item.macro_hide_while_recording is False
     assert item.trigger_mode == "immediate"
     assert item.icon_path == ""
     assert item.icon_data == ""
@@ -163,6 +167,26 @@ def test_shortcut_item_round_trip():
     assert restored.command_encoding == "utf-8"
     assert restored.alias == "N"
     assert restored.run_as_admin is True
+
+
+def test_shortcut_item_macro_options_round_trip():
+    item = ShortcutItem(
+        name="宏",
+        type=ShortcutType.MACRO,
+        macro_events=[{"type": 6, "delay_us": 200_000, "vk_code": 65}],
+        macro_speed=2.0,
+        macro_hide_while_recording=True,
+    )
+
+    data = item.to_dict()
+    restored = ShortcutItem.from_dict(data)
+
+    assert data["macro_speed"] == 2.0
+    assert data["macro_hide_while_recording"] is True
+    assert restored.type == ShortcutType.MACRO
+    assert restored.macro_events == [{"type": 6, "delay_us": 200_000, "vk_code": 65}]
+    assert restored.macro_speed == 2.0
+    assert restored.macro_hide_while_recording is True
 
 
 def test_shortcut_item_from_dict_missing_keys():

@@ -58,7 +58,7 @@ class UrlExecutionMixin:
             logger.warning("URL is empty")
             return False, "URL为空"
 
-        url, error = ShortcutExecutor._prepare_url(
+        url, error = ShortcutExecutor._prepare_url(  # type: ignore[attr-defined]
             raw_url,
             getattr(shortcut, "_runtime_input_values", None),
             selected_files=getattr(shortcut, "_runtime_selected_files", None),
@@ -71,7 +71,7 @@ class UrlExecutionMixin:
 
         try:
             if browser_path:
-                return ShortcutExecutor._open_url_with_browser(
+                return ShortcutExecutor._open_url_with_browser(  # type: ignore[attr-defined, no-any-return]
                     browser_path,
                     browser_args,
                     url,
@@ -80,7 +80,7 @@ class UrlExecutionMixin:
                     run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
                 )
 
-            launched, launch_error = ShortcutExecutor._launch_with_privilege(
+            launched, launch_error = ShortcutExecutor._launch_with_privilege(  # type: ignore[attr-defined]
                 url,
                 run_as_admin=bool(getattr(shortcut, "run_as_admin", False)),
             )
@@ -302,7 +302,7 @@ class UrlExecutionMixin:
             base = spec[:-2].strip() if spec.endswith(":q") else spec
             base_key = base.lower()
             if allow_url_placeholder and base_key == "url":
-                return match.group(0)
+                return match.group(0)  # type: ignore[no-any-return]
             if base_key == "clipboard":
                 value = _sanitize_external_input(clipboard_service.read_text_win32())
             elif base_key == "date":
@@ -363,7 +363,7 @@ class UrlExecutionMixin:
                     allow_url_placeholder=True,
                     selected_files=selected_files,
                 )
-            args = ShortcutExecutor._safe_split_args(browser_args) if browser_args else []
+            args = ShortcutExecutor._safe_split_args(browser_args) if browser_args else []  # type: ignore[attr-defined]
             if args:
                 had_placeholder = any("{{url}}" in arg for arg in args)
                 args = [arg.replace("{{url}}", url) for arg in args]
@@ -391,10 +391,10 @@ class UrlExecutionMixin:
             if run_as_admin or bool(getattr(ShortcutExecutor, "_is_launch_context_elevated", lambda: False)()):
                 return False, "Browser launch failed across privilege boundary."
 
-            ShortcutExecutor._popen_silent(
+            ShortcutExecutor._popen_silent(  # type: ignore[attr-defined]
                 [browser_path] + args,
                 cwd=directory,
-                env=ShortcutExecutor._sanitized_child_env(),
+                env=ShortcutExecutor._sanitized_child_env(),  # type: ignore[attr-defined]
                 shell=False,
             )
             return True, ""

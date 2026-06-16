@@ -22,15 +22,15 @@ class UpdateMixin:
             self._update_downloader = UpdateDownloader()
             self._update_installer = UpdateInstaller()
 
-            self._update_checker.add_listener(lambda event, data=None: self._update_event_signal.emit(event, data))
-            self._update_downloader.add_listener(lambda event, data=None: self._download_event_signal.emit(event, data))
-            self._update_installer.add_listener(lambda event, data=None: self._install_event_signal.emit(event, data))
+            self._update_checker.add_listener(lambda event, data=None: self._update_event_signal.emit(event, data))  # type: ignore[attr-defined, misc]
+            self._update_downloader.add_listener(lambda event, data=None: self._download_event_signal.emit(event, data))  # type: ignore[attr-defined]
+            self._update_installer.add_listener(lambda event, data=None: self._install_event_signal.emit(event, data))  # type: ignore[attr-defined]
 
             if start_auto_check:
                 self._update_checker.start_auto_check()
             try:
                 update_root = os.path.join(
-                    str(self.data_manager.app_dir),
+                    str(self.data_manager.app_dir),  # type: ignore[attr-defined]
                     "downloads",
                     self._update_checker._config.download_dir_name,
                 )
@@ -130,6 +130,11 @@ class UpdateMixin:
             ),
             version=getattr(update_info, "version", ""),
             verify_ssl=getattr(self._update_checker._config, "verify_ssl", True) if self._update_checker else True,
+            allow_insecure_http=(
+                bool(getattr(self._update_checker._config, "allow_insecure_update_urls", False))
+                if self._update_checker
+                else False
+            ),
         )
 
     def _on_download_event(self, event: str, data=None):
@@ -160,7 +165,7 @@ class UpdateMixin:
             trusted_dir = ""
             try:
                 trusted_dir = os.path.join(
-                    str(self.data_manager.app_dir),
+                    str(self.data_manager.app_dir),  # type: ignore[attr-defined]
                     "downloads",
                     self._update_checker._config.download_dir_name,
                 )

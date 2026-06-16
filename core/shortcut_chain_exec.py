@@ -51,7 +51,7 @@ def execute_shortcut_chain(
             except Exception:
                 status = record.status
         return unavailable_result(status)
-    return api.execute_chain(
+    return api.execute_chain(  # type: ignore[no-any-return]
         chain,
         {"data_manager": data_manager, "max_steps": max_steps},
         cancel_event=cancel_event,
@@ -448,7 +448,7 @@ def _runtime_input_files(target: ShortcutItem) -> list[str]:
         text = str(raw or "").strip()
         if not text:
             return []
-        candidates: list[Any]
+        candidates: list[Any]  # type: ignore[no-redef]
         try:
             decoded = json.loads(text)
         except Exception:
@@ -503,7 +503,7 @@ def _execute_processor_step(
             cancel_event=cancel_event,
         )
 
-    return bool(result.success), _capture_summary(result), result.error or "", result, args, input_values
+    return bool(result.success), _capture_summary(result), result.error or "", result, args, input_values  # type: ignore[arg-type, union-attr]
 
 
 def _execute_processor_with_timeout(

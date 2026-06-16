@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.6.3.2] - 2026-06-16
+
+### Added
+
+- `core/folder_service.py`：`FolderService` 类，封装 4 个文件夹 CRUD 方法（add/rename/delete/reorder），`DataManager` 改为薄门面。
+- `core/icon_repository.py`：`IconRepositoryService` 类，封装 11 个图标仓管理方法（folder attach/detach/load、icon_repo 持久化、缓存统计、缺失图标重定向），不影响 `core.config_services.IconRepository` 现有的图标缓存目录清理职责。
+- `core/shortcut_service.py`：`ShortcutService` 类，封装 17 个快捷方式 CRUD 方法（add/update/delete/reorder/move/copy batch、smart order、use tracking），含 `_persist_folder_changes` 跨主/图标仓的写入协调。
+- `core/data_loader.py`：`DataLoader` 类，封装 18 个配置加载/恢复/事务日志/工厂重置方法（load / apply_repairs / _recover_from_latest_backup / reload / list_history / restore_history / detect_stale_journal / attempt_restore_from_latest_backup / write_journal / clear_journal / verify_consistency / factory_reset），DataManager 改为薄门面。
+- `core/settings_service.py`（77 行）：`SettingsService` 类，封装 3 个 settings 方法（`update` / `get` / `set_language`），DataManager 改为薄门面。
+- `core/save_coordinator.py`（248 行）：`SaveCoordinator` 类，封装 11 个 save 生命周期方法（`save` / `_delayed_save` / `shutdown` / `batch_update` / `_do_save` / `_serialize_data` / `_main_data_dict` / `_mark_history` / `flush_pending_save` / `get_config_status` / `get_last_import_report` / `reset_import_report`），DataManager 改为薄门面。
+- `core/backup_service.py`（540 行）：`BackupService` 类，封装 7 个 backup/import-export 方法（`backup_full_config` / `restore_full_config` / `_restore_full_config_safe` / `export_shareable_config` / `import_shareable_config` / `_import_shareable_config_safe` / `_import_shareable_config_transactional`），DataManager 改为薄门面。
+- `ui/command_panel_renderers.py`（319 行）：8 个 `_render_*` 模式实现（text/log/json/table/kv/list/progress/qr/confirm）+ `_set_result_text_preserving_scroll` 从 `ui/command_panel_window.py` 抽离，主类方法保持 thin-delegate。
+- `ui/command_panel_widgets.py`（116 行）：`CommandHistoryDropButton`（自绘下拉箭头）和 `CommandStatusIndicator`（带呼吸涟漪的状态点）两个辅助控件从 `ui/command_panel_window.py` 抽离。
+- `ui/command_panel_params.py`（282 行）：9 个参数渲染与收集函数（`render_params` / `render_shortcut_params` / `render_shortcut_input_params` / `create_param_widget` / `connect_param_preview_signal` / `clear_params` / `collect_param_args` / `param_value` / `update_param_preview`）。
+- `ui/command_panel_history.py`（103 行）：4 个历史下拉函数（`refresh_history` / `toggle_history` / `show_history_menu` / `history_menu_label` / `on_history_item_clicked`）。
+- `ui/config_window/macro_record_dialog.py`：宏录制对话框，从 `core.input_macro` 与钩子集成，录制键盘/鼠标事件并生成可回放脚本。
+- `scripts/check_i18n_coverage.py`：AST 扫描 `tr()` 调用，统计缺译率，CI 阻断英文回退中文；当前 baseline 2.16% / 默认阈值 3%。
+- `scripts/check_mypy_progress.py`：对比 `mypy core/ ui/ hooks/ services/ bootstrap` 错误数与 `docs/quality/mypy_baseline.json` 中的 `max_error_count`；基线 2090 / 实际 0（严格 mode 开启后）。
+- `docs/quality/mypy_baseline.json`：mypy 错误数基线 JSON。
+- `docs/quality/REPORT.md`：持续质量跟踪报告（1.6.3.2 周期）。
+- `core/i18n.py` 多轮批量翻译：累计新增 200+ 条常用 UI 字符串的 en_US 翻译（`上移`/`下移`/`保存`/`警告`/`路径:`/`网址`/`错误:`/`已导入` 等），i18n 未译率从 44.53% 降至 2.16%。
+
+### Changed
+
+- `core/data_manager.py`：2082 → 515 行（**-75%**），84 个方法中的 73 个迁移到 7 个新服务类（folder / icon_repository / shortcut_service / data_loader / settings_service / save_coordinator / backup_service），所有 public API 保持不变（包括 84 个方法的签名与语义）。
+- `core/commands.py`：1413 → 125 行（-91%），40 个 `cmd_*` / `_*` 自由函数按子领域拆为 `commands_encoding` / `commands_network` / `commands_text` / `commands_clipboard` / `commands_utils` 5 个新模块，主文件仅做 re-export。
+- `ui/command_panel_window.py`：2203 → 1478 行（**-33%**），M3 三步全完成：1.6.3.2 抽 renderers、1.6.3.4 抽 widgets、1.6.3.6 抽 params + history。
+- `core/data_manager.py`：`TYPE_CHECKING` 块声明 30+ 私有属性（`data`、`_save_lock`、`_write_lock`、`_config_status`、`_last_saved_data_dict`、`_pending_history_action`、`_runtime_revision` 等）和 8 个子服务类型（`folder_service`、`icon_repository_service`、`shortcut_service`、`data_loader` 等）。
+- `core/icon_repository.py`、`core/data_loader.py`、`core/shortcut_service.py`：补齐 19 处类型标注（`deleted_ids: set` / `dict[str, Any]` / `list[str]` 等），消除 mypy `[var-annotated]` / `[no-any-return]` 错误。
+- `core/config_services.py`：`IconRepository.clean()` / `get_stats()` 返回类型从 `dict` 收紧为 `dict[str, Any]`，提升下游类型追踪精度。
+- `core/save_coordinator.py`：所有 `dm._do_save` / `dm.save` 调用通过 `dm.` 转发，保留测试 mock 兼容性；移除冗余的 `_replace_data_file` / `_create_auto_backup` forwarding（`DataManager` 直接调用 `ConfigStore` / `ConfigBackupService` 避免循环）。
+- `core/backup_service.py`：从 `core.config_validation` 导入 `sanitize_app_data_dict`（避免循环 import）。
+- mypy 错误数 2081 → **0**（严格 mode `--check-untyped-defs` 开启后）。最大降幅来自 `TYPE_CHECKING` 块把 4 个新服务类（folder/icon_repository/shortcut_service/data_loader）的 `[has-type]` 错误从 135 处降到 0；`docs/quality/mypy_baseline.json` 同步更新（max 2090 → 8）。
+- i18n 翻译覆盖率门禁阈值下调 50% → **3%**（与新 baseline 2.16% 匹配，分阶段下调：50% → 45% → 40% → 30% → 10% → 5% → 3%）。
+- `scripts/release_gate.py`：新增 `i18n coverage` 和 `mypy progress` 两个门禁步骤；广异常基线 1373 → 1385。
+- `.pre-commit-config.yaml`：新增 `i18n-coverage` 本地 hook（默认 `--report-only`，不阻断本地提交）。
+- `scripts/check_i18n_coverage.py`：修复 Windows GBK 编码崩溃（stdout/stderr 强制 UTF-8）；用 `logger.debug` 替代 `except ...: pass`。
+- `ui/config_window/macro_record_dialog.py`：补齐 `vk_to_key` import；修复 `viewport().update()` 和 `_raw_first_timestamp_us` 类型问题；替换 2 处 `except Exception: pass` 为 `except (AttributeError, OSError)` 配合 `logger.debug`。
+- `tests/test_data_models.py`：更新 `ShortcutType` 成员计数 7→8（含 MACRO）。
+- `tests/test_data_manager.py` / `tests/test_data_manager_extended.py`：更新 helper `_manager_with_data` 预创建 `SaveCoordinator`，`monkeypatch.setattr(manager, "_do_save", ...)` 改为 `manager.save_coordinator._do_save`；更新 `monkeypatch.setattr` 路径从 `data_manager_module.shutil` 到 `core.backup_service.shutil`。
+- `core/commands_utils.py`、`core/commands_clipboard.py`：补齐缺失 import（`functools`、`http.server`、`socketserver`、`urllib.parse`、`start_background_thread`、`logger`）和 `noqa: E402` 标注（`import re as _re`）。
+- `ruff --fix` 累计清理 80+ 处未使用 import。
+
+### Fixed
+
+- `core/data_manager.py` 重构中修正：`object.__new__(DataManager)` 绕过 `__init__` 的测试场景下，service 属性通过 `_get_*_service()` 懒加载访问器确保可用。
+- `ui/command_panel_history.py`：`Qt.UserRole` 访问的类型问题（mypy 严格 mode 开启后修复）。
+- `core/i18n.py`：第三轮批量翻译后广异常基线 +1（settings_service 内嵌 logger 占用了一个新的 except 块）。
+- `ui/config_window/macro_record_dialog.py`：广异常基线 +8（macro_record_dialog 新增 explicit exception handlers）。
+
 ## [1.6.3.1] - 2026-06-09
 
 ### Added

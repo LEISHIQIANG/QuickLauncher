@@ -62,6 +62,15 @@ def test_input_macro_backend_records_builds_and_plays():
     assert dll.stop_kwargs["owner"] is backend
 
 
+def test_input_macro_backend_scales_existing_playback_events():
+    dll = FakeDLL()
+    backend = InputMacroBackend(dll)
+
+    assert backend.play(events=[{"type": 6, "delay_us": 200_000}], speed=2.0)
+
+    assert dll.played == ([{"type": 6, "delay_us": 100_000}], False)
+
+
 def test_input_macro_backend_cancel_wait_and_status():
     dll = FakeDLL()
     backend = InputMacroBackend(dll)

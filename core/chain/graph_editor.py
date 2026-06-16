@@ -232,9 +232,9 @@ class GraphEditor:
         if not nodes:
             return
 
-        min_x = min(n.x for n in nodes)
+        min_x = min(n.x for n in nodes)  # type: ignore[union-attr]
         for node in nodes:
-            node.x = min_x
+            node.x = min_x  # type: ignore[union-attr]
 
     def align_right(self, node_ids: list[str]) -> None:
         """Align nodes to the rightmost position."""
@@ -244,9 +244,9 @@ class GraphEditor:
         if not nodes:
             return
 
-        max_x = max(n.x + n.width for n in nodes)
+        max_x = max(n.x + n.width for n in nodes)  # type: ignore[union-attr]
         for node in nodes:
-            node.x = max_x - node.width
+            node.x = max_x - node.width  # type: ignore[union-attr]
 
     def align_top(self, node_ids: list[str]) -> None:
         """Align nodes to the topmost position."""
@@ -256,9 +256,9 @@ class GraphEditor:
         if not nodes:
             return
 
-        min_y = min(n.y for n in nodes)
+        min_y = min(n.y for n in nodes)  # type: ignore[union-attr]
         for node in nodes:
-            node.y = min_y
+            node.y = min_y  # type: ignore[union-attr]
 
     def align_bottom(self, node_ids: list[str]) -> None:
         """Align nodes to the bottommost position."""
@@ -268,27 +268,27 @@ class GraphEditor:
         if not nodes:
             return
 
-        max_y = max(n.y + n.height for n in nodes)
+        max_y = max(n.y + n.height for n in nodes)  # type: ignore[union-attr]
         for node in nodes:
-            node.y = max_y - node.height
+            node.y = max_y - node.height  # type: ignore[union-attr]
 
     def distribute_horizontal(self, node_ids: list[str]) -> None:
         """Distribute nodes evenly horizontally."""
         nodes = [self._graph.get_node(nid) for nid in node_ids]
         nodes = [n for n in nodes if n is not None]
-        distribute_nodes(nodes, "horizontal")
+        distribute_nodes(nodes, "horizontal")  # type: ignore[arg-type]
 
     def distribute_vertical(self, node_ids: list[str]) -> None:
         """Distribute nodes evenly vertically."""
         nodes = [self._graph.get_node(nid) for nid in node_ids]
         nodes = [n for n in nodes if n is not None]
-        distribute_nodes(nodes, "vertical")
+        distribute_nodes(nodes, "vertical")  # type: ignore[arg-type]
 
     def center_nodes(self, node_ids: list[str], center_x: float = 400, center_y: float = 300) -> None:
         """Center nodes around a point."""
         nodes = [self._graph.get_node(nid) for nid in node_ids]
         nodes = [n for n in nodes if n is not None]
-        center_nodes(nodes, center_x, center_y)
+        center_nodes(nodes, center_x, center_y)  # type: ignore[arg-type]
 
     # ── Analysis Operations ────────────────────────────────────────────────
 
@@ -423,7 +423,7 @@ def _layout_horizontal(
                 y += (node.height or 60) + spacing_y
 
         # Find max width in this level
-        max_width = max((graph.get_node(nid).width or 150 for nid in node_ids if graph.get_node(nid)), default=150)
+        max_width = max((graph.get_node(nid).width or 150 for nid in node_ids if graph.get_node(nid)), default=150)  # type: ignore[union-attr]
         x += max_width + spacing_x
 
 
@@ -443,7 +443,7 @@ def _layout_vertical(graph: ChainGraph, level_groups: dict[int, list[str]], spac
                 x += (node.width or 150) + spacing_x
 
         # Find max height in this level
-        max_height = max((graph.get_node(nid).height or 60 for nid in node_ids if graph.get_node(nid)), default=60)
+        max_height = max((graph.get_node(nid).height or 60 for nid in node_ids if graph.get_node(nid)), default=60)  # type: ignore[union-attr]
         y += max_height + spacing_y
 
 

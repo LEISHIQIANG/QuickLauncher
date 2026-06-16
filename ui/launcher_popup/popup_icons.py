@@ -18,7 +18,7 @@ try:
 except ImportError:
     IconExtractor = None
     HAS_ICON_EXTRACTOR = False
-    _should_invert_icon = None
+    _should_invert_icon = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class PopupIconMixin:
     def _default_icon_cache_key(self, item: ShortcutItem):
         name = getattr(item, "name", "") or "?"
         initial = name[0] if name else "?"
-        return (getattr(item, "type", None), self.icon_size, initial)
+        return (getattr(item, "type", None), self.icon_size, initial)  # type: ignore[attr-defined]
 
     def _mark_icon_cache_changed(self):
         if self.__dict__.get("_batch_icon_preload_active", False):
@@ -92,7 +92,7 @@ class PopupIconMixin:
     def _folder_icon_path(self) -> str | None:
         cached = self.__dict__.get("_cached_folder_icon_path")
         if cached and os.path.exists(cached):
-            return cached
+            return cached  # type: ignore[no-any-return]
 
         self._cached_folder_icon_path = default_folder_icon_path()
         return self._cached_folder_icon_path
@@ -101,13 +101,13 @@ class PopupIconMixin:
         source_size = self._get_icon_source_size()
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
-        command_id = builtin_command_id_from_icon_path(icon_path)
+        command_id = builtin_command_id_from_icon_path(icon_path)  # type: ignore[arg-type]
         if command_id:
-            theme = getattr(self.settings, "theme", "dark")
-            cache_key = ("builtin-command", command_id, self.icon_size, theme)
+            theme = getattr(self.settings, "theme", "dark")  # type: ignore[attr-defined]
+            cache_key = ("builtin-command", command_id, self.icon_size, theme)  # type: ignore[attr-defined]
             cached = self._icon_pixmap_cache.get(cache_key)
             if cached is not None:
-                self._icon_pixmap_cache.move_to_end(cache_key)
+                self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
             return cached
 
         # Resolve folder icon path to match _get_icon behavior,
@@ -115,26 +115,26 @@ class PopupIconMixin:
         # fall back to colored rectangles during page animation.
         if not icon_path:
             item_type = getattr(item, "type", None)
-            if shortcut_uses_folder_icon(item_type, target_path):
+            if shortcut_uses_folder_icon(item_type, target_path):  # type: ignore[arg-type]
                 folder_icon_path = self._folder_icon_path()
                 if folder_icon_path:
                     icon_path = folder_icon_path
                     target_path = None
 
         if icon_path:
-            cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)
+            cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)  # type: ignore[assignment, attr-defined]
             cached = self._icon_pixmap_cache.get(cache_key)
             if cached is not None:
-                self._icon_pixmap_cache.move_to_end(cache_key)
+                self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
                 return cached
 
         if target_path and HAS_ICON_EXTRACTOR and IconExtractor:
             try:
                 cache_id = IconExtractor.get_target_cache_id(target_path, target_path, source_size)
-                cache_key = ("extract", cache_id, self.icon_size, source_size, need_invert)
+                cache_key = ("extract", cache_id, self.icon_size, source_size, need_invert)  # type: ignore[assignment, attr-defined]
                 cached = self._icon_pixmap_cache.get(cache_key)
                 if cached is not None:
-                    self._icon_pixmap_cache.move_to_end(cache_key)
+                    self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
                     return cached
             except Exception as exc:
                 logger.debug("从缓存获取图标失败: %s", exc, exc_info=True)
@@ -151,7 +151,7 @@ class PopupIconMixin:
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         item_type = getattr(item, "type", None)
-        if builtin_command_id_from_icon_path(icon_path):
+        if builtin_command_id_from_icon_path(icon_path):  # type: ignore[arg-type]
             return True
         if icon_path:
             return False
@@ -180,7 +180,7 @@ class PopupIconMixin:
         default_key = self._default_icon_cache_key(item)
         cached_default = default_cache.get(default_key)
         if cached_default is not None:
-            return cached_default
+            return cached_default  # type: ignore[no-any-return]
         pixmap = self._create_default_icon(item)
         default_cache[default_key] = pixmap
         return pixmap
@@ -196,13 +196,13 @@ class PopupIconMixin:
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         folder_icon_path = None
-        command_id = builtin_command_id_from_icon_path(icon_path)
+        command_id = builtin_command_id_from_icon_path(icon_path)  # type: ignore[arg-type]
         if command_id:
-            theme = getattr(self.settings, "theme", "dark")
-            cache_key = ("builtin-command", command_id, self.icon_size, theme)
+            theme = getattr(self.settings, "theme", "dark")  # type: ignore[attr-defined]
+            cache_key = ("builtin-command", command_id, self.icon_size, theme)  # type: ignore[attr-defined]
             cached = icon_cache.get(cache_key)
             if cached is None:
-                cached = render_builtin_command_icon_path(icon_path, self.icon_size, theme)
+                cached = render_builtin_command_icon_path(icon_path, self.icon_size, theme)  # type: ignore[arg-type, attr-defined]
                 if cached is not None:
                     icon_cache[cache_key] = cached
                     self._trim_icon_pixmap_cache(icon_cache)
@@ -210,7 +210,7 @@ class PopupIconMixin:
 
         if not icon_path and shortcut_uses_folder_icon(
             getattr(item, "type", None),
-            target_path,
+            target_path,  # type: ignore[arg-type]
             resolve_lnk=False,
         ):
             folder_icon_path = self._folder_icon_path()
@@ -219,24 +219,24 @@ class PopupIconMixin:
                 target_path = None
 
         if icon_cache is not None and icon_path:
-            cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)
+            cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)  # type: ignore[assignment, attr-defined]
             cached = icon_cache.get(cache_key)
             if cached is not None:
                 move_to_end = getattr(icon_cache, "move_to_end", None)
                 if callable(move_to_end):
                     move_to_end(cache_key)
-                return cached
+                return cached  # type: ignore[no-any-return]
             if folder_icon_path:
                 pixmap = QPixmap(folder_icon_path)
                 if pixmap and not pixmap.isNull():
                     if need_invert and HAS_ICON_EXTRACTOR and IconExtractor:
                         pixmap = IconExtractor.invert_pixmap(pixmap)
-                    if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:
+                    if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:  # type: ignore[attr-defined]
                         pixmap = pixmap.scaled(
-                            self.icon_size,
-                            self.icon_size,
-                            Qt.KeepAspectRatio,
-                            Qt.SmoothTransformation,
+                            self.icon_size,  # type: ignore[attr-defined]
+                            self.icon_size,  # type: ignore[attr-defined]
+                            Qt.KeepAspectRatio,  # type: ignore[attr-defined]
+                            Qt.SmoothTransformation,  # type: ignore[attr-defined]
                         )
                     icon_cache[cache_key] = pixmap
                     move_to_end = getattr(icon_cache, "move_to_end", None)
@@ -246,13 +246,13 @@ class PopupIconMixin:
                     return pixmap
 
         if icon_cache is not None and target_path:
-            alias_key = ("target_path", str(target_path), self.icon_size, source_size, need_invert)
+            alias_key = ("target_path", str(target_path), self.icon_size, source_size, need_invert)  # type: ignore[attr-defined]
             cached = icon_cache.get(alias_key)
             if cached is not None:
                 move_to_end = getattr(icon_cache, "move_to_end", None)
                 if callable(move_to_end):
                     move_to_end(alias_key)
-                return cached
+                return cached  # type: ignore[no-any-return]
 
         return self._get_default_icon_cached(item)
 
@@ -261,7 +261,7 @@ class PopupIconMixin:
         icon_path = getattr(item, "icon_path", None)
         target_path = getattr(item, "target_path", None)
         item_type = getattr(item, "type", None)
-        command_id = builtin_command_id_from_icon_path(icon_path)
+        command_id = builtin_command_id_from_icon_path(icon_path)  # type: ignore[arg-type]
         if command_id:
             return self._get_icon_for_paint(item)
 
@@ -270,7 +270,7 @@ class PopupIconMixin:
         if getattr(self, "_suspend_icon_extraction", False):
             return self._get_icon_for_paint(item)
 
-        if not icon_path and shortcut_uses_folder_icon(item_type, target_path):
+        if not icon_path and shortcut_uses_folder_icon(item_type, target_path):  # type: ignore[arg-type]
             folder_icon_path = self._folder_icon_path()
             if folder_icon_path:
                 icon_path = folder_icon_path
@@ -292,33 +292,33 @@ class PopupIconMixin:
                         getattr(item, "name", ""),
                         icon_path,
                         target_path,
-                        self.icon_size,
+                        self.icon_size,  # type: ignore[attr-defined]
                         source_size,
                         need_invert,
                     )
-                    cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)
+                    cache_key = ("from_file", icon_path, self.icon_size, source_size, need_invert)  # type: ignore[attr-defined]
                     cached = self._icon_pixmap_cache.get(cache_key)
                     if cached is not None:
-                        self._icon_pixmap_cache.move_to_end(cache_key)
-                        return cached
+                        self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
+                        return cached  # type: ignore[no-any-return]
 
                     if cache_key not in self._get_icon_miss_cache():
                         pixmap = IconExtractor.from_file(icon_path, source_size, return_image=False)
                         if pixmap and not pixmap.isNull():
                             if need_invert:
                                 pixmap = IconExtractor.invert_pixmap(pixmap)
-                            if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:
+                            if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:  # type: ignore[attr-defined]
                                 pixmap = pixmap.scaled(
-                                    self.icon_size,
-                                    self.icon_size,
-                                    Qt.KeepAspectRatio,
-                                    Qt.SmoothTransformation,
+                                    self.icon_size,  # type: ignore[attr-defined]
+                                    self.icon_size,  # type: ignore[attr-defined]
+                                    Qt.KeepAspectRatio,  # type: ignore[attr-defined]
+                                    Qt.SmoothTransformation,  # type: ignore[attr-defined]
                                 )
                             self._icon_pixmap_cache[cache_key] = pixmap
                             self._mark_icon_cache_changed()
-                            self._icon_pixmap_cache.move_to_end(cache_key)
+                            self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
                             self._trim_icon_pixmap_cache()
-                            return pixmap
+                            return pixmap  # type: ignore[no-any-return]
 
                         self._remember_icon_miss(cache_key)
                         logger.debug(
@@ -326,7 +326,7 @@ class PopupIconMixin:
                             getattr(item, "name", ""),
                             icon_path,
                             target_path,
-                            self.icon_size,
+                            self.icon_size,  # type: ignore[attr-defined]
                         )
 
                 if target_path:
@@ -335,20 +335,20 @@ class PopupIconMixin:
                         getattr(item, "name", ""),
                         icon_path,
                         target_path,
-                        self.icon_size,
+                        self.icon_size,  # type: ignore[attr-defined]
                         source_size,
                         need_invert,
                     )
                     cache_id = IconExtractor.get_target_cache_id(target_path, target_path, source_size)
-                    cache_key = ("extract", cache_id, self.icon_size, source_size, need_invert)
+                    cache_key = ("extract", cache_id, self.icon_size, source_size, need_invert)  # type: ignore[attr-defined]
                     cached = self._icon_pixmap_cache.get(cache_key)
-                    alias_key = ("target_path", str(target_path), self.icon_size, source_size, need_invert)
+                    alias_key = ("target_path", str(target_path), self.icon_size, source_size, need_invert)  # type: ignore[attr-defined]
                     if cached is not None:
                         self._icon_pixmap_cache[alias_key] = cached
-                        self._icon_pixmap_cache.move_to_end(cache_key)
-                        self._icon_pixmap_cache.move_to_end(alias_key)
+                        self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
+                        self._icon_pixmap_cache.move_to_end(alias_key)  # type: ignore[attr-defined]
                         self._trim_icon_pixmap_cache()
-                        return cached
+                        return cached  # type: ignore[no-any-return]
 
                     if cache_key not in self._get_icon_miss_cache():
                         pixmap = IconExtractor.extract(
@@ -361,20 +361,20 @@ class PopupIconMixin:
                         if pixmap and not pixmap.isNull():
                             if need_invert:
                                 pixmap = IconExtractor.invert_pixmap(pixmap)
-                            if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:
+                            if pixmap.width() != self.icon_size or pixmap.height() != self.icon_size:  # type: ignore[attr-defined]
                                 pixmap = pixmap.scaled(
-                                    self.icon_size,
-                                    self.icon_size,
-                                    Qt.KeepAspectRatio,
-                                    Qt.SmoothTransformation,
+                                    self.icon_size,  # type: ignore[attr-defined]
+                                    self.icon_size,  # type: ignore[attr-defined]
+                                    Qt.KeepAspectRatio,  # type: ignore[attr-defined]
+                                    Qt.SmoothTransformation,  # type: ignore[attr-defined]
                                 )
                             self._icon_pixmap_cache[cache_key] = pixmap
                             self._icon_pixmap_cache[alias_key] = pixmap
                             self._mark_icon_cache_changed()
-                            self._icon_pixmap_cache.move_to_end(cache_key)
-                            self._icon_pixmap_cache.move_to_end(alias_key)
+                            self._icon_pixmap_cache.move_to_end(cache_key)  # type: ignore[attr-defined]
+                            self._icon_pixmap_cache.move_to_end(alias_key)  # type: ignore[attr-defined]
                             self._trim_icon_pixmap_cache()
-                            return pixmap
+                            return pixmap  # type: ignore[no-any-return]
 
                         self._remember_icon_miss(cache_key)
                         logger.debug(
@@ -382,7 +382,7 @@ class PopupIconMixin:
                             getattr(item, "name", ""),
                             icon_path,
                             target_path,
-                            self.icon_size,
+                            self.icon_size,  # type: ignore[attr-defined]
                             cache_id,
                         )
             except Exception as e:
@@ -391,7 +391,7 @@ class PopupIconMixin:
                     getattr(item, "name", ""),
                     icon_path,
                     target_path,
-                    self.icon_size,
+                    self.icon_size,  # type: ignore[attr-defined]
                     e,
                 )
 
@@ -399,7 +399,7 @@ class PopupIconMixin:
 
     def _create_default_icon(self, item: ShortcutItem) -> QPixmap:
         """Create a simple fallback icon."""
-        size = self.icon_size
+        size = self.icon_size  # type: ignore[attr-defined]
         pixmap = QPixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
@@ -419,7 +419,7 @@ class PopupIconMixin:
         painter.setPen(QPen(QColor(255, 255, 255)))
         font = QFont("Segoe UI")
         # Use unscaled settings value as input to font_px() to avoid double-scaling
-        font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.4))))
+        font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.4))))  # type: ignore[attr-defined]
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)

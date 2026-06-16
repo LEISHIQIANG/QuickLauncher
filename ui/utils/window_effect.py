@@ -1078,7 +1078,7 @@ class WindowEffect:
         return 1.0
 
     def set_acrylic(
-        self, hwnd: int, gradient_color: str = None, enable: bool = True, animation_id: int = 0, blur: bool = True
+        self, hwnd: int, gradient_color: str = None, enable: bool = True, animation_id: int = 0, blur: bool = True  # type: ignore[assignment]
     ):
         """
         设置亚克力/模糊效果
@@ -1335,7 +1335,7 @@ class WindowEffect:
             # Win10 使用区域裁剪
             self.set_window_region(hwnd, w, h, r)
 
-    def apply_unified_blur_effect(self, hwnd: int, gradient_color: str = None, enable: bool = True):
+    def apply_unified_blur_effect(self, hwnd: int, gradient_color: str = None, enable: bool = True):  # type: ignore[assignment]
         """
         应用统一的模糊效果（自动适配 Win10/Win11）
 

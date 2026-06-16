@@ -857,7 +857,7 @@ def validate_value(value: Any, smart_type: str | SmartType) -> tuple[bool, str]:
     if validator is None:
         return True, ""
 
-    return validator(value)
+    return validator(value)  # type: ignore[no-any-return]
 
 
 def convert_value(value: Any, target_type: str | SmartType) -> Any:

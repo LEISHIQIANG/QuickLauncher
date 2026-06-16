@@ -191,20 +191,20 @@ class PopupMixin:
 
         # 简单的防抖动 (Debounce)
         current_time = time.monotonic()
-        if hasattr(self, "_last_click_time") and (current_time - self._last_click_time < 0.05):
+        if hasattr(self, "_last_click_time") and (current_time - self._last_click_time < 0.05):  # type: ignore[has-type]
             logger.debug("点击过快，已忽略")
             return
         self._last_click_time = current_time
 
         # 通过信号传递到主线程
-        self.show_popup_signal.emit(x, y)
+        self.show_popup_signal.emit(x, y)  # type: ignore[attr-defined]
 
     def _on_show_popup(self, x: int, y: int):
         """显示弹出窗口（在主线程中执行）"""
-        if self._wake_from_sleep("middle_click"):
+        if self._wake_from_sleep("middle_click"):  # type: ignore[attr-defined]
             return
         current_time = time.monotonic()
-        if hasattr(self, "_last_show_popup_time") and (current_time - self._last_show_popup_time < 0.3):
+        if hasattr(self, "_last_show_popup_time") and (current_time - self._last_show_popup_time < 0.3):  # type: ignore[has-type]
             return
         self._last_show_popup_time = current_time
         selection_trigger_pos = (int(x), int(y))
@@ -227,28 +227,28 @@ class PopupMixin:
 
         self._has_shown_popup = True
         try:
-            if self._deferred_startup_timer and self._deferred_startup_timer.isActive():
-                self._deferred_startup_timer.stop()
+            if self._deferred_startup_timer and self._deferred_startup_timer.isActive():  # type: ignore[attr-defined]
+                self._deferred_startup_timer.stop()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("停止延迟启动定时器失败: %s", exc, exc_info=True)
 
-        if not self._icon_preload_started:
+        if not self._icon_preload_started:  # type: ignore[attr-defined]
             from qt_compat import QTimer
 
-            QTimer.singleShot(0, self._preload_icons)
+            QTimer.singleShot(0, self._preload_icons)  # type: ignore[attr-defined]
 
         try:
             self._prune_extra_popup_windows()
-            if self.popup_window:
-                if self.popup_window.isVisible():
+            if self.popup_window:  # type: ignore[has-type]
+                if self.popup_window.isVisible():  # type: ignore[has-type]
                     from qt_compat import QApplication, QPoint
 
                     current_screen = QApplication.screenAt(QPoint(x, y))
-                    window_screen = QApplication.screenAt(self.popup_window.pos())
+                    window_screen = QApplication.screenAt(self.popup_window.pos())  # type: ignore[has-type]
 
                     if current_screen == window_screen:
-                        if self._should_multi_open_pinned_popup(self.popup_window):
-                            self._keep_as_extra_popup(self.popup_window)
+                        if self._should_multi_open_pinned_popup(self.popup_window):  # type: ignore[has-type]
+                            self._keep_as_extra_popup(self.popup_window)  # type: ignore[has-type]
                             self.popup_window = None
                         else:
                             self.popup_window.hide()
@@ -277,7 +277,7 @@ class PopupMixin:
                 from ui.launcher_popup import LauncherPopup
 
                 self.popup_window = LauncherPopup(
-                    self.data_manager,
+                    self.data_manager,  # type: ignore[attr-defined]
                     x,
                     y,
                     self,
@@ -299,7 +299,7 @@ class PopupMixin:
         try:
             if not popup or not popup.isVisible() or not bool(getattr(popup, "is_pinned", False)):
                 return False
-            settings = self.data_manager.get_settings()
+            settings = self.data_manager.get_settings()  # type: ignore[attr-defined]
             return bool(getattr(settings, "popup_multi_open_when_pinned", False))
         except Exception:
             logger.debug("_should_multi_open_pinned_popup failed", exc_info=True)

@@ -6,9 +6,9 @@ from .trigger_config import normalize_trigger_config, trigger_config_to_hotkey
 
 def check_trigger_conflict(
     button: str = "",
-    modifiers: list[str] = None,
+    modifiers: list[str] = None,  # type: ignore[assignment]
     mode: str = "mouse",
-    keys: list[str] = None,
+    keys: list[str] = None,  # type: ignore[assignment]
     shortcuts: list | None = None,
 ) -> tuple[bool, str]:
     """

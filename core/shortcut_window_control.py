@@ -9,7 +9,7 @@ user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 shell32 = ctypes.windll.shell32
 try:
-    ULONG_PTR = wintypes.ULONG_PTR
+    ULONG_PTR = wintypes.ULONG_PTR  # type: ignore[attr-defined]
 except AttributeError:
     ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
@@ -121,7 +121,7 @@ class WindowControlMixin:
                 logger.debug("目标是桌面窗口，跳过")
                 return None
 
-            return hwnd
+            return hwnd  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"获取鼠标位置窗口失败: {e}")
@@ -176,7 +176,7 @@ class WindowControlMixin:
             return None
 
         if expected_process_id:
-            captured_process_id = ShortcutExecutor._window_process_id(hwnd)
+            captured_process_id = ShortcutExecutor._window_process_id(hwnd)  # type: ignore[attr-defined]
             if captured_process_id != expected_process_id:
                 logger.warning(
                     "置顶目标句柄已复用: hwnd=%s expected_pid=%s actual_pid=%s",
@@ -199,12 +199,12 @@ class WindowControlMixin:
             logger.debug("置顶目标是桌面或 Shell 窗口，已忽略: hwnd=%s", hwnd)
             return None
 
-        class_name = ShortcutExecutor._get_window_class_name(hwnd)
+        class_name = ShortcutExecutor._get_window_class_name(hwnd)  # type: ignore[attr-defined]
         if class_name.lower() in SHELL_SURFACE_CLASSES:
             logger.debug("置顶目标是桌面 Shell 表面，已忽略: hwnd=%s class=%s", hwnd, class_name)
             return None
 
-        process_id = ShortcutExecutor._window_process_id(hwnd)
+        process_id = ShortcutExecutor._window_process_id(hwnd)  # type: ignore[attr-defined]
         if not process_id:
             logger.debug("无法确认置顶目标进程，已忽略: hwnd=%s", hwnd)
             return None
@@ -221,37 +221,37 @@ class WindowControlMixin:
         lock = getattr(ShortcutExecutor, "_foreground_window_lock", None)
         if lock is not None:
             with lock:
-                saved_hwnd = ShortcutExecutor._previous_hwnd
+                saved_hwnd = ShortcutExecutor._previous_hwnd  # type: ignore[attr-defined]
                 saved_process_id = int(getattr(ShortcutExecutor, "_previous_hwnd_process_id", 0) or 0)
-                ShortcutExecutor._previous_hwnd = None
-                ShortcutExecutor._previous_hwnd_process_id = None
+                ShortcutExecutor._previous_hwnd = None  # type: ignore[attr-defined]
+                ShortcutExecutor._previous_hwnd_process_id = None  # type: ignore[attr-defined]
         else:
-            saved_hwnd = ShortcutExecutor._previous_hwnd
+            saved_hwnd = ShortcutExecutor._previous_hwnd  # type: ignore[attr-defined]
             saved_process_id = int(getattr(ShortcutExecutor, "_previous_hwnd_process_id", 0) or 0)
-            ShortcutExecutor._previous_hwnd = None
+            ShortcutExecutor._previous_hwnd = None  # type: ignore[attr-defined]
             if hasattr(ShortcutExecutor, "_previous_hwnd_process_id"):
-                ShortcutExecutor._previous_hwnd_process_id = None
+                ShortcutExecutor._previous_hwnd_process_id = None  # type: ignore[attr-defined]
 
-        target = ShortcutExecutor._normalize_topmost_target(saved_hwnd, saved_process_id)
+        target = ShortcutExecutor._normalize_topmost_target(saved_hwnd, saved_process_id)  # type: ignore[attr-defined]
         if target is not None:
             logger.debug("使用保存的前台窗口作为置顶目标: hwnd=%s", target[0])
-            return target
+            return target  # type: ignore[no-any-return]
 
-        cursor_hwnd = ShortcutExecutor._get_window_at_cursor()
-        target = ShortcutExecutor._normalize_topmost_target(cursor_hwnd)
+        cursor_hwnd = ShortcutExecutor._get_window_at_cursor()  # type: ignore[attr-defined]
+        target = ShortcutExecutor._normalize_topmost_target(cursor_hwnd)  # type: ignore[attr-defined]
         if target is not None:
             logger.debug("使用鼠标位置窗口作为置顶目标: hwnd=%s", target[0])
-        return target
+        return target  # type: ignore[no-any-return]
 
     @staticmethod
     def _resolve_topmost_target(target=_TOPMOST_TARGET_UNSET) -> tuple[int, int] | None:
         if target is _TOPMOST_TARGET_UNSET:
-            return ShortcutExecutor._take_topmost_target()
+            return ShortcutExecutor._take_topmost_target()  # type: ignore[attr-defined, no-any-return]
         if not target:
             return None
         try:
             hwnd, process_id = target
-            return ShortcutExecutor._normalize_topmost_target(int(hwnd), int(process_id))
+            return ShortcutExecutor._normalize_topmost_target(int(hwnd), int(process_id))  # type: ignore[attr-defined, no-any-return]
         except (TypeError, ValueError):
             logger.warning("无效的置顶目标快照: %r", target)
             return None
@@ -260,7 +260,7 @@ class WindowControlMixin:
     def _is_same_window(hwnd: int, process_id: int) -> bool:
         if not user32.IsWindow(hwnd):
             return False
-        return bool(process_id) and ShortcutExecutor._window_process_id(hwnd) == process_id
+        return bool(process_id) and ShortcutExecutor._window_process_id(hwnd) == process_id  # type: ignore[attr-defined]
 
     @staticmethod
     def _apply_topmost_state(hwnd: int, process_id: int, topmost: bool) -> bool:
@@ -269,24 +269,24 @@ class WindowControlMixin:
         flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
 
         for attempt in range(3):
-            if not ShortcutExecutor._is_same_window(hwnd, process_id):
+            if not ShortcutExecutor._is_same_window(hwnd, process_id):  # type: ignore[attr-defined]
                 logger.warning("置顶目标已失效或句柄已复用: hwnd=%s", hwnd)
                 return False
 
-            if ShortcutExecutor._is_topmost(hwnd) is topmost:
+            if ShortcutExecutor._is_topmost(hwnd) is topmost:  # type: ignore[attr-defined]
                 return True
 
             result = user32.SetWindowPos(wintypes.HWND(hwnd), insert_after, 0, 0, 0, 0, flags)
-            if result and ShortcutExecutor._is_topmost(hwnd) is topmost:
+            if result and ShortcutExecutor._is_topmost(hwnd) is topmost:  # type: ignore[attr-defined]
                 time.sleep(0.02)
-                if ShortcutExecutor._is_same_window(hwnd, process_id) and ShortcutExecutor._is_topmost(hwnd) is topmost:
+                if ShortcutExecutor._is_same_window(hwnd, process_id) and ShortcutExecutor._is_topmost(hwnd) is topmost:  # type: ignore[attr-defined]
                     return True
 
             if attempt < 2:
                 time.sleep(0.015)
 
         error = ctypes.GetLastError()
-        actual = ShortcutExecutor._is_topmost(hwnd) if user32.IsWindow(hwnd) else None
+        actual = ShortcutExecutor._is_topmost(hwnd) if user32.IsWindow(hwnd) else None  # type: ignore[attr-defined]
         logger.error(
             "窗口置顶状态切换失败: hwnd=%s target=%s actual=%s error=%s",
             hwnd,
@@ -300,13 +300,13 @@ class WindowControlMixin:
     def _set_topmost(topmost: bool, target=_TOPMOST_TARGET_UNSET) -> bool:
         """Set a verified topmost state for a captured external window."""
         try:
-            resolved_target = ShortcutExecutor._resolve_topmost_target(target)
+            resolved_target = ShortcutExecutor._resolve_topmost_target(target)  # type: ignore[attr-defined]
             if resolved_target is None:
                 logger.warning("未找到可切换置顶状态的外部窗口")
                 return False
 
             hwnd, process_id = resolved_target
-            if not ShortcutExecutor._apply_topmost_state(hwnd, process_id, topmost):
+            if not ShortcutExecutor._apply_topmost_state(hwnd, process_id, topmost):  # type: ignore[attr-defined]
                 return False
 
             logger.info(
@@ -314,7 +314,7 @@ class WindowControlMixin:
                 "已置顶" if topmost else "已取消置顶",
                 hwnd,
                 process_id,
-                ShortcutExecutor._get_window_title(hwnd),
+                ShortcutExecutor._get_window_title(hwnd),  # type: ignore[attr-defined]
             )
             return True
         except Exception:
@@ -325,14 +325,14 @@ class WindowControlMixin:
     def _toggle_topmost(target=_TOPMOST_TARGET_UNSET) -> bool:
         """Toggle the captured external root window's verified topmost state."""
         try:
-            resolved_target = ShortcutExecutor._resolve_topmost_target(target)
+            resolved_target = ShortcutExecutor._resolve_topmost_target(target)  # type: ignore[attr-defined]
             if resolved_target is None:
                 logger.warning("未找到可切换置顶状态的外部窗口")
                 return False
 
             hwnd, process_id = resolved_target
-            desired_topmost = not ShortcutExecutor._is_topmost(hwnd)
-            return ShortcutExecutor._set_topmost(desired_topmost, resolved_target)
+            desired_topmost = not ShortcutExecutor._is_topmost(hwnd)  # type: ignore[attr-defined]
+            return ShortcutExecutor._set_topmost(desired_topmost, resolved_target)  # type: ignore[attr-defined, no-any-return]
         except Exception:
             logger.exception("切换窗口置顶状态失败")
             return False

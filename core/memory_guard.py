@@ -21,14 +21,14 @@ class MemoryGuard:
         except Exception as e:
             logger.debug("failed to create psutil process handle: %s", e)
             self.process = None
-        self._cleanup_callbacks = []
+        self._cleanup_callbacks = []  # type: ignore[var-annotated]
 
     def get_memory_mb(self) -> float:
         """Return current process USS memory in MB."""
         if not self.process:
             return 0.0
         try:
-            return self.process.memory_full_info().uss / 1024 / 1024
+            return self.process.memory_full_info().uss / 1024 / 1024  # type: ignore[no-any-return]
         except Exception as e:
             logger.debug("failed to read memory info: %s", e)
             return 0.0

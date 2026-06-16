@@ -59,6 +59,7 @@ class BaseDialog(QDialog):
         self.theme = ""
         self._shadow_applied = False
         self._dialog_finished = False
+        self._initial_show_completed = False
         self._drag_pos = None
         self._dialog_animation_generation = 0
 
@@ -94,7 +95,7 @@ class BaseDialog(QDialog):
 
     def _next_dialog_animation_generation(self) -> int:
         self._dialog_animation_generation = int(getattr(self, "_dialog_animation_generation", 0) or 0) + 1
-        return self._dialog_animation_generation
+        return self._dialog_animation_generation  # type: ignore[no-any-return]
 
     def _is_dialog_animation_current(self, generation: int) -> bool:
         return generation == int(getattr(self, "_dialog_animation_generation", -1) or -1)
@@ -152,6 +153,10 @@ class BaseDialog(QDialog):
 
     def showEvent(self, event):
         """显示时应用效果"""
+        if self._initial_show_completed:
+            super().showEvent(event)
+            return
+        self._initial_show_completed = True
         _trace_to_crash_log(f"showEvent.0: {type(self).__name__}")
         self._dialog_finished = False
         _trace_to_crash_log(f"showEvent.1 adjustSize: {type(self).__name__}")
@@ -266,8 +271,8 @@ class BaseDialog(QDialog):
 
         start_pos = getattr(self, "_anim_start_pos", self.pos())
         target_pos = self._anim_target_pos
-        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)
-        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)
+        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)  # type: ignore[union-attr]
+        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)  # type: ignore[union-attr]
         self.move(current_x, current_y)
 
     def mousePressEvent(self, event):
@@ -275,6 +280,8 @@ class BaseDialog(QDialog):
         if event.button() == QtCompat.LeftButton:
             pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
             if pos.y() <= sp(50):
+                self._next_dialog_animation_generation()
+                self._stop_dialog_animation_timer()
                 self._drag_pos = (
                     event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
                 )

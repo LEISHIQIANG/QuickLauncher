@@ -70,7 +70,7 @@ def execute_extra_text_processor(processor_id: str, values: dict[str, Any]) -> C
     if processor_id == "try_catch":
         return ok(text_values.get("input", "") or text_values.get("default", ""))
     if processor_id == "assert_type":
-        val = values.get("value")
+        val = values.get("value")  # type: ignore[assignment]
         t = text_values.get("type", "text").lower()
         result = False
         if t in ("str", "string", "text"):

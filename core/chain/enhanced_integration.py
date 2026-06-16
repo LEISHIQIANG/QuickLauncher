@@ -441,6 +441,6 @@ def execute_enhanced_processor(processor_id: str, args: dict[str, Any]) -> Comma
         handler = _get_handler(processor_id)
         if handler is None:
             return _error(f"未知的增强处理器: {processor_id}")
-        return handler(args)
+        return handler(args)  # type: ignore[no-any-return]
     except Exception as e:
         return _error(f"处理器执行失败: {e}")

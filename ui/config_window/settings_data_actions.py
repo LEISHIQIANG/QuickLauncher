@@ -441,7 +441,7 @@ class SettingsDataActionsMixin:
             # 退出当前进程
             from qt_compat import QApplication
 
-            QApplication.instance().quit()
+            QApplication.instance().quit()  # type: ignore[union-attr]
 
         except Exception as e:
             ThemedMessageBox.warning(self, tr("警告"), tr("自动重启失败，请手动重启应用。\n错误: {error}", error=e))

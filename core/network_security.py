@@ -115,7 +115,7 @@ def validate_public_http_url(url: str) -> str:
             resolved_ip = ipaddress.ip_address(address)
         except ValueError as exc:
             raise UnsafeUrlError(f"invalid resolved address: {address}") from exc
-        _validate_public_ip(resolved_ip, address)
+        _validate_public_ip(resolved_ip, address)  # type: ignore[arg-type]
     return url
 
 
@@ -137,7 +137,7 @@ def safe_urlopen(
     method = getattr(request_or_url, "method", None) if isinstance(request_or_url, urllib.request.Request) else None
     handlers = [_NoRedirectHandler()]
     if context is not None:
-        handlers.append(urllib.request.HTTPSHandler(context=context))
+        handlers.append(urllib.request.HTTPSHandler(context=context))  # type: ignore[arg-type]
     opener = urllib.request.build_opener(*handlers)
 
     for _ in range(max_redirects + 1):
@@ -172,5 +172,5 @@ def read_limited_response(response, limit_bytes: int) -> bytes:
 
 
 def _validate_public_ip(ip: ipaddress._BaseAddress, label: str) -> None:
-    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:  # type: ignore[attr-defined]
         raise UnsafeUrlError(f"blocked private address: {label}")

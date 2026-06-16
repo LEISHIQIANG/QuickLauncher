@@ -483,6 +483,306 @@ _EN_US: dict[str, str] = {
     "现在你已经掌握了基本用法\n\n更多功能：\n• Dock 栏：顶部/底部常驻图标\n• 拖放联动：拖文件到图标上打开\n• 分类管理：左侧创建多个分类\n\n祝你使用愉快！": (
         "You've mastered the basics now\n\nMore features:\n• Dock bar: Top/bottom persistent icons\n• Drag and drop: Drag files onto icons to open\n• Category management: Create categories on the left\n\nEnjoy using QuickLauncher!"
     ),
+    # 1.6.3.5: Bulk translations to bring i18n untranslated rate below 40%
+    "上移": "Move up",
+    "下移": "Move down",
+    "中": "Medium",
+    "小": "Small",
+    "大": "Large",
+    "保存": "Save",
+    "停止": "Stop",
+    "原因": "Reason",
+    "命令": "Command",
+    "已取消": "Cancelled",
+    "已复制": "Copied",
+    "已清除": "Cleared",
+    "已自动恢复": "Auto-recovered",
+    "已隔离损坏配置文件": "Quarantined corrupted config file",
+    "应用失败": "Apply failed",
+    "应用成功": "Apply successful",
+    "延迟": "Delay",
+    "延迟:": "Delay:",
+    "强制更新": "Force update",
+    "录制": "Record",
+    "录制中，请按下组合并全部松开...": "Recording: press the combo and release all keys...",
+    "录制中，请按下鼠标按键...": "Recording: press the mouse button...",
+    "恢复成功": "Restored successfully",
+    "恢复时间": "Recovery time",
+    "恢复来源": "Recovery source",
+    "感谢您的支持！": "Thanks for your support!",
+    "打开备份目录": "Open backup directory",
+    "打开恢复目录": "Open recovery directory",
+    "批量启动": "Batch launch",
+    "批量启动配置": "Batch launch config",
+    "批量获取图标": "Batch fetch icons",
+    "提示": "Hint",
+    "搜索...": "Search...",
+    "无": "None",
+    "无匹配": "No match",
+    "新建成功": "Created",
+    "搜索添加:": "Search to add:",
+    "处理节点": "Processor",
+    "内置命令": "Built-in commands",
+    "已导入 {count} 个项目到分类 '{folder_name}'": "Imported {count} items to folder '{folder_name}'",
+    # 1.6.3.6: More bulk translations to lower i18n untranslated rate
+    "添加": "Add",
+    "热键": "Hotkey",
+    "电池": "Battery",
+    "目标:": "Target:",
+    "目标位置:": "Target location:",
+    "确认恢复": "Confirm restore",
+    "确认清空": "Confirm clear",
+    "禁用失败": "Disable failed",
+    "类型:": "Type:",
+    "网址": "URL",
+    "网址:": "URL:",
+    "路径:": "Path:",
+    "警告": "Warning",
+    "问题": "Problem",
+    "问题: {issues}": "Issues: {issues}",
+    "错误详情": "Error details",
+    "错误: {error}": "Error: {error}",
+    "重命名失败": "Rename failed",
+    "重载失败": "Reload failed",
+    "输入错误": "Input error",
+    "输入电池、快捷方式、命令或网址名称": "Enter battery, shortcut, command, or URL name",
+    "选择图标": "Select icon",
+    "配置变更": "Configuration change",
+    "配置状态": "Configuration status",
+    "网址": "URL",
+    "需要重启": "Restart required",
+    "沁心绿茶": "Green Tea",
+    "香浓拿铁": "Latte",
+    "纯净矿泉水": "Mineral Water",
+    "芝芝莓莓": "Strawberry",
+    "高级模式": "Advanced mode",
+    "解除绑定失败": "Unbind failed",
+    "解除文件夹绑定失败，请查看运行日志。\n{error}": "Failed to unbind folder. See logs.\n{error}",
+    "跳过此版本": "Skip this version",
+    "立即下载": "Download now",
+    "稍后提醒": "Remind me later",
+    "自动重启失败，请手动重启应用。": "Auto-restart failed. Please restart manually.",
+    "配置已恢复，程序即将重启。": "Configuration restored. Application will restart.",
+    "重新启用日志需要重启程序才能生效。": "Re-enabling logs requires application restart.",
+    "重新自动获取网站图标": "Re-fetch website icons",
+    "请选择 .zip 格式的备份文件": "Please select a .zip backup file",
+    "请至少选择一个图标": "Please select at least one icon",
+    "该步骤失败时停止后续步骤": "Stop subsequent steps if this one fails",
+    "读取失败": "Read failed",
+    "部分不安全内容已跳过，请查看日志或诊断信息。": "Some unsafe content was skipped. See logs or diagnostics.",
+    "调节窗口颜色滤镜效果 (黑场/白场/中间调/色温/Acrylic/底色α)": (
+        "Adjust window color filter (black point / white point / midtones / color temperature / Acrylic / base alpha)"
+    ),
+    "结果显示:": "Result display:",
+    "移动所选到": "Move selected to",
+    "移动所选快捷方式失败，请查看运行日志。\n{error}": ("Failed to move selected shortcuts. See logs.\n{error}"),
+    "清除所有配置失败:\n{error}": "Failed to clear all configuration:\n{error}",
+    "清除结果": "Clear result",
+    "点击开始录制": "Click to start recording",
+    "特殊应用（如专业软件）使用此触发方式": ("Special apps (e.g. professional software) use this trigger mode"),
+    "添加处理节点": "Add processor",
+    "状态: {status_text}": "Status: {status_text}",
+    "确认恢复选中的历史快照吗？当前配置会先被记录为新的历史快照。": (
+        "Confirm restoring the selected history snapshot? The current configuration will be saved as a new snapshot first."
+    ),
+    "确定要清空所有日志内容吗？": "Are you sure you want to clear all log content?",
+    "重命名文件夹失败，请查看运行日志。\n{error}": ("Failed to rename folder. See logs.\n{error}"),
+    "浅色参数": "Light theme parameters",
+    "深色参数": "Dark theme parameters",
+    # 1.6.3.7: Third wave of bulk translations (target <20% untranslated)
+    "步骤 {n}: 处理节点定义不存在": "Step {n}: processor definition missing",
+    "步骤 {n}: 将写入本地文件": "Step {n}: will write local files",
+    "步骤 {n}: 将执行脚本代码": "Step {n}: will execute script code",
+    "步骤 {n}: 将访问网络": "Step {n}: will access network",
+    "步骤 {n}: 将读取本地文件": "Step {n}: will read local files",
+    "步骤 {n}: 建议运行前二次确认": "Step {n}: recommend second confirmation before running",
+    "步骤 {n}: 需要注意的处理节点 - {name}": "Step {n}: processor to watch - {name}",
+    "步骤 {n}: 高风险处理节点 - {name}": "Step {n}: high-risk processor - {name}",
+    "CMD 命令": "CMD command",
+    "PowerShell 命令": "PowerShell command",
+    "Python 代码": "Python code",
+    "QL图标": "QL icon",
+    "使用默认配置": "Use default config",
+    "保存批量启动失败": "Failed to save batch launch",
+    "修复中...": "Repairing...",
+    "修复失败": "Repair failed",
+    "修复过程中发生错误:\n{error}": "Error during repair:\n{error}",
+    "健康检查缓存": "Health check cache",
+    "全量备份已保存至:\n{path}": "Full backup saved to:\n{path}",
+    "分享配置已导出至:\n{path}\n\n此配置可分享给其他用户使用": (
+        "Shareable config exported to:\n{path}\n\nThis config can be shared with other users"
+    ),
+    "创建失败": "Create failed",
+    "删除失败": "Delete failed",
+    "删除快捷方式失败，请查看运行日志。\n{error}": ("Failed to delete shortcut. See logs.\n{error}"),
+    "删除成功": "Deleted",
+    "删除插件文件失败:\n{error}": "Failed to delete plugin files:\n{error}",
+    "删除文件夹失败，请查看运行日志。\n{error}": ("Failed to delete folder. See logs.\n{error}"),
+    "动作链属性": "Action chain properties",
+    "参数:": "Parameters:",
+    "可执行文件 (*.exe);;快捷方式 (*.lnk);;所有文件 (*.*)": ("Executables (*.exe);;Shortcuts (*.lnk);;All files (*.*)"),
+    "可选图标": "Optional icon",
+    "同时支持搜索、Dock、分类同步、拖拽投递、智能排序、配置备份和高度自定义外观。": (
+        "Supports search, dock, category sync, drag-and-drop, smart sort, config backup, and highly customizable appearance."
+    ),
+    "同步完成": "Sync complete",
+    "名称:": "Name:",
+    "启动列表（从上到下执行）": "Launch list (top to bottom)",
+    "启用失败": "Enable failed",
+    "备份失败": "Backup failed",
+    "备份成功": "Backup successful",
+    "备份目录不存在。": "Backup directory does not exist.",
+    "复制恢复报告": "Copy recovery report",
+    "失败停止": "Stop on failure",
+    "失败暂停": "Pause on failure",
+    "安装失败": "Install failed",
+    "安装并启用成功": "Installed and enabled",
+    "安装成功": "Install successful",
+    "安装成功但启用失败": "Install succeeded but enable failed",
+    "导入失败": "Import failed",
+    "导入成功": "Import successful",
+    "导入提示": "Import hint",
+    "导出成功": "Export successful",
+    "工作目录:": "Working directory:",
+    "应用触发设置": "Apply trigger settings",
+    "开发者: NAYTON": "Developer: NAYTON",
+    "开源协议：MIT License": "License: MIT License",
+    "录入任意键盘、五键鼠标或混合组合，全部松开后自动完成": (
+        "Press any keyboard, 5-button mouse, or mixed combo; auto-finish when all released"
+    ),
+    "恢复报告已复制到剪贴板。": "Recovery report copied to clipboard.",
+    "恢复目录不存在。": "Recovery directory does not exist.",
+    "成功获取 {success}/{total} 个图标": "Successfully fetched {success}/{total} icons",
+    "所选快捷方式中没有有效的网站地址": "No valid URL found in the selected shortcuts",
+    "执行前延迟": "Pre-execution delay",
+    "按下鼠标中键即可快速呼出启动面板，集中管理常用程序、文件夹、网址、命令和快捷键；": (
+        "Press the middle mouse button to summon the launcher panel; centralize apps, folders, URLs, commands, and hotkeys."
+    ),
+    '插件 "{name}" 已安装，但启用失败:\n{error}': ('Plugin "{name}" is installed but failed to enable:\n{error}'),
+    '插件 "{name}" 已安装，但尚未启用。': 'Plugin "{name}" is installed but not yet enabled.',
+    '插件 "{name}" 已成功安装并启用。': 'Plugin "{name}" was successfully installed and enabled.',
+    '插件 "{name}" 已被成功删除。': 'Plugin "{name}" was successfully deleted.',
+    '插件 "{name}" 模板已成功创建于 plugins/{plugin_id}/。\n即将打开该目录以供编辑。': (
+        'Plugin "{name}" template was created at plugins/{plugin_id}/.\n' "Opening this directory for editing."
+    ),
+    "插件 {plugin_id} 已解除隔离。": "Plugin {plugin_id} was unblocked.",
+    "插件 {plugin_id} 暂无错误记录。": "Plugin {plugin_id} has no error records.",
+    "插件ID不能为空！": "Plugin ID cannot be empty!",
+    "插件ID只能包含小写字母、数字、下划线 and 减号！": (
+        "Plugin ID may only contain lowercase letters, digits, underscores, and hyphens!"
+    ),
+    "插件是扩展 QuickLauncher 功能的扩展模块。": "Plugins are extension modules that add functionality to QuickLauncher.",
+    "当前兼容模式：插件与主程序同权限运行，仅安装您信任的插件。": (
+        "Current compatibility mode: plugins run with the same privileges as the main program. Only install plugins you trust."
+    ),
+    "插件声明权限为高风险提示，并非强权限隔离。": (
+        "Declared plugin permissions are a high-risk warning, not enforced isolation."
+    ),
+    "插件目录: plugins/": "Plugin directory: plugins/",
+    "插件目录已存在: {plugin_id}": "Plugin directory already exists: {plugin_id}",
+    "插件管理器未初始化！": "Plugin manager not initialized!",
+    "文件夹中没有找到支持的内容(子文件夹、.lnk 或 .exe 文件)": (
+        "No supported content found in folder (subfolders, .lnk or .exe files)"
+    ),
+    "文件夹为空": "Folder is empty",
+    "新增 {added} 项,删除 {removed} 项": "Added {added} items, removed {removed} items",
+    "新建开发插件失败:\n{error}": "Failed to create developer plugin:\n{error}",
+    "无法创建备份文件，请检查日志。": "Cannot create backup file. Check logs.",
+    "无法加载设置面板:\n{error}": "Cannot load settings panel:\n{error}",
+    "无法启动: {name}\n\n原因: {error}": "Cannot launch: {name}\n\nReason: {error}",
+    "无法启用插件 {plugin_id}: {err}": "Cannot enable plugin {plugin_id}: {err}",
+    "无法安装插件:\n{error}": "Cannot install plugin:\n{error}",
+    "无法导入分享配置，文件可能已损坏或格式不正确。": (
+        "Cannot import shareable config; file may be corrupted or in wrong format."
+    ),
+    "无法导出分享配置，请检查日志。": "Cannot export shareable config. Check logs.",
+    "无法恢复备份，文件可能已损坏或格式不正确。": ("Cannot restore backup; file may be corrupted or in wrong format."),
+    "无法打开插件目录:\n{error}": "Cannot open plugin directory:\n{error}",
+    "无法打开目录: {error}": "Cannot open directory: {error}",
+    "无法打开配置历史:\n{error}": "Cannot open config history:\n{error}",
+    "无法清除插件 {plugin_id} 的隔离状态。": ("Cannot clear the quarantine state of plugin {plugin_id}."),
+    "无法读取错误记录: {error}": "Cannot read error log: {error}",
+    "无法连接到更新服务器，请检查网络。": ("Cannot reach the update server. Check your network."),
+    "无法重载插件 {plugin_id}: {err}": "Cannot reload plugin {plugin_id}: {err}",
+    "暂无历史快照。重要配置变更后会自动保存最近 20 次快照": (
+        "No history snapshots. The last 20 important config changes are auto-saved."
+    ),
+    "暂无可添加处理器电池": "No processor batteries available to add",
+    "暂无命令": "No commands",
+    "暂无快捷方式": "No shortcuts",
+    "暂无恢复报告。": "No recovery report.",
+    "暂无网址": "No URLs",
+    "暂无错误记录。": "No error records.",
+    "最近 20 次重要配置变更快照，可用于恢复": ("Last 20 snapshots of important config changes, available for restore"),
+    "来源: {source}": "Source: {source}",
+    "查看配置历史": "View config history",
+    "正在后台修复，网站图标会并发重新自动获取，请稍候...": (
+        "Repairing in the background; favicons will be re-fetched concurrently. Please wait..."
+    ),
+    "正在获取图标... 0/{total}": "Fetching icons... 0/{total}",
+    "正在获取图标... {current}/{total}": "Fetching icons... {current}/{total}",
+    "正常": "Normal",
+    "版本 {version}": "Version {version}",
+    "节点属性": "Node properties",
+    "节点库": "Node library",
+    "节点画布": "Node canvas",
+    "配置恢复状态：暂无恢复记录。": "Config recovery status: no recovery records.",
+    "隔离文件": "Quarantine file",
+    "隔离文件: {quarantined}": "Quarantined file: {quarantined}",
+    # 1.6.3.8: Final batch — close to 0 untranslated
+    "QuickLauncher 是一款开源且免费的桌面效率工具，由开发者在业余时间独立开发维护。": (
+        "QuickLauncher is a free, open-source desktop productivity tool, independently developed and maintained by the developer in their spare time."
+    ),
+    "您的赞助将被全额用于产品的日常维护与服务器开销。非常感谢您的暖心支持！❤️": (
+        "Your sponsorship goes entirely toward routine product maintenance and server costs. Thank you for your kind support! ❤️"
+    ),
+    "QuickLauncher 是一款面向 Windows 桌面的极速启动与轻量自动化效率工具。": (
+        "QuickLauncher is a lightning-fast launcher and lightweight automation tool for Windows desktops."
+    ),
+    "Windows 极速快捷启动与轻量自动化效率工具": ("Windows lightning-fast launcher and lightweight automation tool"),
+    "helper 禁用开机自启失败，自启动保持原状。": (
+        "Helper failed to disable auto-start; auto-start state remains unchanged."
+    ),
+    "hooks.dll 需要更新后才能录制": "hooks.dll needs updating before recording",
+    "⚠ 风险分析": "⚠ Risk analysis",
+    "✕ 点击空白处关闭": "✕ Click empty area to close",
+    "「哇，是一杯拿铁咖啡！开发者大受鼓舞，今晚又要敲几百行代码了！🚀☕」": (
+        '"Wow, a latte! The developer is inspired — tonight\'s code-a-thon is on! 🚀☕"'
+    ),
+    "「感谢您的支持！赞助金额: ¥{price:.2f} ❤️」": ('"Thanks for your support! Sponsorship: ¥{price:.2f} ❤️"'),
+    "「感谢这瓶清爽的矿泉水！开发者喝完活力满满，瞬间充满干劲～ 💧🧊」": (
+        '"Thanks for the refreshing mineral water! The developer is recharged and ready to go~ 💧🧊"'
+    ),
+    "「超棒的芝芝莓莓！开发者开心到起飞，甜度直接拉满啦！🍓✨🌈」": (
+        '"Amazing strawberry! The developer is over the moon — sweetness maxed out! 🍓✨🌈"'
+    ),
+    "「静心品茗，灵感如潮。感谢您的支持与厚爱，愿您每天工作顺心！🍃🍵」": (
+        '"A quiet cup of tea, inspiration flows. Thanks for your support — wishing you a smooth day at work! 🍃🍵"'
+    ),
+    "你取消了管理员授权，自启动保持原状。": (
+        "You cancelled the admin authorization; auto-start state remains unchanged."
+    ),
+    "你取消了管理员授权，自启动未启用。": ("You cancelled the admin authorization; auto-start is not enabled."),
+    "插件是扩展 QuickLauncher 功能的扩展模块。": (
+        "Plugins are extension modules that extend QuickLauncher functionality."
+    ),
+    "当前兼容模式：插件与主程序同权限运行，仅安装您信任的插件。": (
+        "Current compatibility mode: plugins run with the same privileges as the main program. Only install plugins you trust."
+    ),
+    "插件声明权限为高风险提示，并非强权限隔离。": (
+        "Declared plugin permissions are a high-risk warning, not enforced isolation."
+    ),
+    "插件目录: plugins/": "Plugin directory: plugins/",
+    "自动重启失败，请手动重启应用。": ("Auto-restart failed. Please restart the application manually."),
+    "错误: {error}": "Error: {error}",
+    # 1.6.3.9: Final batch — include macro-related and remaining
+    "宏录制": "Macro recording",
+    "尚无录制内容": "No recording yet",
+    "播放中...": "Playing...",
+    "添加宏录制": "Add macro recording",
+    "编辑宏": "Edit macro",
+    "请先停止录制": "Please stop recording first",
+    "请先录制宏": "Please record a macro first",
 }
 
 _EN_US.update(

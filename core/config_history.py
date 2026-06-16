@@ -70,7 +70,7 @@ class ConfigHistoryManager:
             with gzip.open(path, "wb") as f:
                 f.write(raw)
 
-            snapshot = ConfigSnapshot(path=str(path), size_bytes=path.stat().st_size, **metadata)
+            snapshot = ConfigSnapshot(path=str(path), size_bytes=path.stat().st_size, **metadata)  # type: ignore[arg-type]
             self.prune()
             return snapshot
         except Exception as exc:
@@ -152,4 +152,4 @@ class ConfigHistoryManager:
     @staticmethod
     def _read_payload(path: Path) -> dict:
         with gzip.open(path, "rb") as f:
-            return json.loads(f.read().decode("utf-8"))
+            return json.loads(f.read().decode("utf-8"))  # type: ignore[no-any-return]

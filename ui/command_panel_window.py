@@ -3,56 +3,88 @@
 from __future__ import annotations
 
 import logging
-import math
-import os
-import re
 
 from core.action_executor import ActionExecutionContext, execute_command_action
 from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
-from core.command_io import discover_input_variables, resolve_param_default
-from core.command_param_validation import validate_param_value
 from core.command_registry import CommandParam, CommandResult
-from core.command_result_actions import enrich_result_actions
 from core.data_models import ShortcutItem
 from core.i18n import tr
 from qt_compat import (
     QApplication,
-    QCheckBox,
-    QColor,
-    QComboBox,
     QEvent,
     QFont,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
-    QListWidgetItem,
-    QPainter,
-    QPen,
-    QPixmap,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QRectF,
     QSize,
     QSizePolicy,
     Qt,
     QTableWidget,
-    QTableWidgetItem,
-    QtCompat,
     QTextOption,
     QTimer,
     QWidget,
     pyqtSignal,
 )
+from ui.command_panel_history import (
+    history_menu_label as _history_menu_label,
+)
+from ui.command_panel_history import (
+    on_history_item_clicked as _on_history_item_clicked,
+)
+from ui.command_panel_history import (
+    refresh_history as _refresh_history,
+)
+from ui.command_panel_history import (
+    show_history_menu as _show_history_menu,
+)
+from ui.command_panel_params import (
+    clear_params as _clear_params,
+)
+from ui.command_panel_params import (
+    collect_param_args as _collect_param_args,
+)
+from ui.command_panel_params import (
+    connect_param_preview_signal as _connect_param_preview_signal,
+)
+from ui.command_panel_params import (
+    create_param_widget as _create_param_widget,
+)
+from ui.command_panel_params import (
+    render_params as _render_params,
+)
+from ui.command_panel_params import (
+    render_shortcut_input_params as _render_shortcut_input_params,
+)
+from ui.command_panel_params import (
+    render_shortcut_params as _render_shortcut_params,
+)
+from ui.command_panel_params import (
+    update_param_preview as _update_param_preview,
+)
+from ui.command_panel_renderers import (
+    render_actions,
+    render_confirm,
+    render_json,
+    render_kv,
+    render_list,
+    render_progress,
+    render_qr,
+    render_result,
+    render_table,
+    render_text_like,
+)
+from ui.command_panel_widgets import CommandHistoryDropButton, CommandStatusIndicator
 from ui.styles.style import Colors, PopupMenu
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.themed_tool_window import ThemedToolWindow
-from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name, get_save_file_name
-from ui.utils.ui_scale import font_px, scale_qss, sp, spf
+from ui.utils.safe_file_dialog import get_save_file_name
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 logger = logging.getLogger(__name__)
 
@@ -74,112 +106,6 @@ DISPLAY_TYPE_SIZE_DEFAULTS = {
     "qr": "small",
     "confirm": "small",
 }
-
-
-class CommandHistoryDropButton(QPushButton):
-    """Small self-painted down chevron used inside the command input."""
-
-    def __init__(self, parent=None):
-        super().__init__("", parent)
-        self.setText("")
-        self.setFlat(True)
-        self.setAutoDefault(False)
-        self.setDefault(False)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        try:
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-            if not self.isEnabled():
-                color = QColor(128, 128, 128, 85)
-            else:
-                color = QColor(128, 128, 128, 165)
-            pen = QPen(color, 1.6)
-            pen.setCapStyle(Qt.RoundCap)
-            pen.setJoinStyle(Qt.RoundJoin)
-            painter.setPen(pen)
-            cx = self.width() / 2 - spf(2)
-            cy = self.height() / 2 + spf(1)
-            half_w = spf(4.5)
-            half_h = spf(3.0)
-            painter.drawLine(int(cx - half_w), int(cy - half_h), int(cx), int(cy + half_h))
-            painter.drawLine(int(cx), int(cy + half_h), int(cx + half_w), int(cy - half_h))
-        finally:
-            painter.end()
-
-
-class CommandStatusIndicator(QWidget):
-    """Small status dot with a breathing ripple while a command is running."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._kind = "neutral"
-        self._theme = "light"
-        self._phase = 0.0
-        self._timer = QTimer(self)
-        self._timer.setInterval(45)
-        self._timer.timeout.connect(self._advance_ripple)
-        self.setFixedSize(sp(18), sp(18))
-
-    def set_status(self, kind: str, theme: str):
-        self._kind = str(kind or "neutral")
-        self._theme = str(theme or "light")
-        self._phase = 0.0
-        if self._kind == "running":
-            if not self._timer.isActive():
-                self._timer.start()
-        else:
-            self._timer.stop()
-        self.update()
-
-    def is_ripple_active(self) -> bool:
-        return self._timer.isActive()
-
-    def _advance_ripple(self):
-        self._phase = (self._phase + 0.18) % (math.pi * 2)
-        self.update()
-
-    def paintEvent(self, event):
-        del event
-        colors = {
-            "running": QColor(10, 132, 255),
-            "success": QColor(48, 209, 88),
-            "failure": QColor(255, 69, 58),
-            "warning": QColor(255, 159, 10),
-            "neutral": QColor(142, 142, 147),
-        }
-        color = QColor(colors.get(self._kind, colors["neutral"]))
-        if self._theme == "light":
-            color = color.darker(112)
-
-        painter = QPainter(self)
-        try:
-            painter.setRenderHint(QPainter.Antialiasing)
-            center_x = self.width() / 2
-            center_y = self.height() / 2
-            if self._kind == "running":
-                wave = (math.sin(self._phase) + 1.0) / 2.0
-                radius = spf(4.3) + wave * spf(3.0)
-                ring = QColor(color)
-                ring.setAlpha(int(105 - wave * 62))
-                painter.setBrush(Qt.NoBrush)
-                painter.setPen(QPen(ring, spf(1.2)))
-                painter.drawEllipse(QRectF(center_x - radius, center_y - radius, radius * 2, radius * 2))
-
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(color)
-            core_radius = spf(2.8 if self._kind == "running" else 3.5)
-            painter.drawEllipse(
-                QRectF(
-                    center_x - core_radius,
-                    center_y - core_radius,
-                    core_radius * 2,
-                    core_radius * 2,
-                )
-            )
-        finally:
-            painter.end()
 
 
 class CommandPanelWindow(ThemedToolWindow):
@@ -808,8 +734,8 @@ class CommandPanelWindow(ThemedToolWindow):
             self.command_input.setReadOnly(False)
         self.command_input.setEnabled(True)
         self.setFocusProxy(self.command_input)
-        self.command_input.setFocusPolicy(Qt.StrongFocus)
-        self.command_input.setFocus(Qt.OtherFocusReason)
+        self.command_input.setFocusPolicy(Qt.StrongFocus)  # type: ignore[attr-defined]
+        self.command_input.setFocus(Qt.OtherFocusReason)  # type: ignore[attr-defined]
         if move_to_end:
             self.command_input.setCursorPosition(len(self.command_input.text()))
         self.command_input.update()
@@ -879,7 +805,7 @@ class CommandPanelWindow(ThemedToolWindow):
             return False
         try:
             top_left = group.mapTo(self, group.rect().topLeft())
-            return group.rect().translated(top_left).contains(pos)
+            return group.rect().translated(top_left).contains(pos)  # type: ignore[no-any-return]
         except Exception:
             return False
 
@@ -1200,231 +1126,33 @@ class CommandPanelWindow(ThemedToolWindow):
         self._refresh_history()
 
     def _render_params(self, command_def):
-        self._clear_params()
-        params = list(getattr(command_def, "params", []) or [])
-        if not params:
-            self.param_container.setVisible(False)
-            self.param_error_label.setVisible(False)
-            return
-        for param in params:
-            default_value = resolve_param_default(
-                param,
-                context_meta=self._current_context_meta,
-                last_args=self._last_args_for_params,
-            )
-            widget = self._create_param_widget(param, default_value)
-            self._connect_param_preview_signal(widget)
-            label_text = getattr(param, "label", "") or param.name
-            label = f"{label_text}{' *' if getattr(param, 'required', False) else ''}"
-            self.param_layout.addRow(label, widget)
-            self._param_widgets[param.name] = (param, widget)
-        self.param_container.setVisible(True)
-        self.param_error_label.setVisible(False)
+        _render_params(self, command_def)
 
     def _render_shortcut_params(self, shortcut):
-        from core.data_models import ShortcutItem
-
-        params = []
-        for raw in ShortcutItem._normalize_command_params(getattr(shortcut, "command_params", [])):
-            params.append(CommandParam(**raw))
-        holder = type("ShortcutCommandDef", (), {"params": params})()
-        self._render_params(holder)
-        self._render_shortcut_input_params(shortcut)
+        _render_shortcut_params(self, shortcut)
 
     def _clear_params(self):
-        self._param_widgets = {}
-        self._input_param_names = {}
-        self._current_input_values = {}
-        while self.param_layout.count():
-            item = self.param_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        _clear_params(self)
 
     def _render_shortcut_input_params(self, shortcut):
-        context_values = dict((self._current_context_meta or {}).get("input_values") or {})
-        context_value = str((self._current_context_meta or {}).get("input") or "")
-        for key, prompt in discover_input_variables(getattr(shortcut, "command", "") or ""):
-            if key in context_values or (key == "input" and context_value):
-                self._current_input_values[key] = str(context_values.get(key) or context_value)
-                continue
-            name = f"__input__{key}"
-            label = prompt or "input"
-            param = CommandParam(name=name, type="textarea", required=True, label=label, multiline=True, remember=False)
-            widget = self._create_param_widget(param, "")
-            self._connect_param_preview_signal(widget)
-            self.param_layout.addRow(f"{label} *", widget)
-            self._param_widgets[name] = (param, widget)
-            self._input_param_names[name] = key
-        self.param_container.setVisible(bool(self._param_widgets))
-        self._update_param_preview()
+        _render_shortcut_input_params(self, shortcut)
 
     def _create_param_widget(self, param: CommandParam, default_value: str | None = None):
-        param_type = (param.type or "text").lower()
-        value = str(default_value if default_value is not None else param.default or "")
-        if param_type == "choice":
-            combo = QComboBox()
-            combo.addItems([str(choice) for choice in (param.choices or [])])
-            if value:
-                idx = combo.findText(value)
-                if idx >= 0:
-                    combo.setCurrentIndex(idx)
-            if getattr(param, "help", ""):
-                combo.setToolTip(str(param.help))
-            return combo
-        if param_type == "bool":
-            checkbox = QCheckBox("")
-            checkbox.setChecked(value.lower() in ("1", "true", "yes", "on", "是"))
-            if getattr(param, "help", ""):
-                checkbox.setToolTip(str(param.help))
-            return checkbox
-        if param_type == "textarea" or getattr(param, "multiline", False):
-            edit = QPlainTextEdit(value)
-            edit.setMinimumHeight(sp(72))
-            if getattr(param, "placeholder", ""):
-                edit.setPlaceholderText(str(param.placeholder))
-            if getattr(param, "help", ""):
-                edit.setToolTip(str(param.help))
-            return edit
-        if param_type in ("file", "folder"):
-            row = QWidget()
-            layout = QHBoxLayout(row)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(sp(6))
-            edit = QLineEdit(value)
-            edit.setCursor(Qt.IBeamCursor)
-            edit.setProperty("param_editor", True)
-            self._style_param_input(edit)
-            if getattr(param, "placeholder", ""):
-                edit.setPlaceholderText(str(param.placeholder))
-            if getattr(param, "help", ""):
-                row.setToolTip(str(param.help))
-            button = QPushButton("选择")
-            self._neutralize_button_default(button)
-
-            def _choose():
-                if param_type == "folder":
-                    path = get_existing_directory(self, "选择文件夹", edit.text())
-                else:
-                    path, _ = get_open_file_name(self, "选择文件", edit.text())
-                if path:
-                    edit.setText(path)
-
-            button.clicked.connect(_choose)
-            layout.addWidget(edit, 1)
-            layout.addWidget(button)
-            return row
-        edit = QLineEdit(value)
-        edit.setCursor(Qt.IBeamCursor)
-        self._style_param_input(edit)
-        if getattr(param, "placeholder", ""):
-            edit.setPlaceholderText(str(param.placeholder))
-        if getattr(param, "help", ""):
-            edit.setToolTip(str(param.help))
-        if getattr(param, "sensitive", False) or param_type == "password":
-            edit.setEchoMode(QLineEdit.Password)
-        return edit
+        return _create_param_widget(self, param, default_value)
 
     def _collect_param_args(self, command_def) -> dict[str, str] | None:
-        args = {}
-        errors = []
-        input_values = dict((self._current_context_meta or {}).get("input_values") or {})
-        for name, (param, widget) in self._param_widgets.items():
-            value = self._param_value(widget)
-            error = validate_param_value(param, value)
-            if error:
-                errors.append(error)
-            input_key = self._input_param_names.get(name)
-            if input_key:
-                input_values[input_key] = value
-                continue
-            args[name] = value
-        if (
-            errors
-            and self._current_shortcut is None
-            and self._current_args_text.strip()
-            and not any(str(value).strip() for value in args.values())
-        ):
-            self.param_error_label.setVisible(False)
-            self._current_input_values = input_values
-            return {}
-        if errors:
-            message = "\n".join(errors)
-            self.param_error_label.setText(message)
-            self.param_error_label.setVisible(True)
-            if self._current_result is None:
-                self._show_widget("text")
-                self.text.setPlainText(message)
-            self._update_subtitle("参数不完整")
-            return None
-        self.param_error_label.setVisible(False)
-        self._current_input_values = input_values
-        self._update_param_preview(args)
-        return args
+        return _collect_param_args(self, command_def)
 
     def _connect_param_preview_signal(self, widget):
-        try:
-            if isinstance(widget, QComboBox):
-                widget.currentTextChanged.connect(lambda _=None: self._update_param_preview())
-            elif isinstance(widget, QCheckBox):
-                widget.stateChanged.connect(lambda _=None: self._update_param_preview())
-            elif isinstance(widget, QLineEdit):
-                widget.textChanged.connect(lambda _=None: self._update_param_preview())
-            elif isinstance(widget, QPlainTextEdit):
-                widget.textChanged.connect(self._update_param_preview)
-            else:
-                edit = widget.findChild(QLineEdit) if hasattr(widget, "findChild") else None
-                if edit is not None:
-                    edit.textChanged.connect(lambda _=None: self._update_param_preview())
-        except Exception as exc:
-            logger.debug("连接参数预览信号失败: %s", exc, exc_info=True)
+        _connect_param_preview_signal(self, widget)
 
     def _update_param_preview(self, args: dict[str, str] | None = None):
-        if not getattr(self, "_param_widgets", None):
-            self.param_preview_label.setVisible(False)
-            self.param_preview_label.setText("")
-            return
-        values = dict(args or {})
-        input_values = {}
-        for name, (_param, widget) in self._param_widgets.items():
-            value = self._param_value(widget)
-            input_key = self._input_param_names.get(name)
-            if input_key:
-                input_values[input_key] = value
-                continue
-            values[name] = value
-        masked = {
-            name: ("******" if bool(getattr(param, "sensitive", False)) and values.get(name) else values.get(name, ""))
-            for name, (param, _widget) in self._param_widgets.items()
-            if name in values
-        }
-        if self._current_shortcut is not None:
-            command = str(getattr(self._current_shortcut, "command", "") or "")
-
-            def repl(match):
-                key = match.group(1).strip()
-                return str(masked.get(key, values.get(key, match.group(0))))
-
-            preview = re.sub(r"\{\{param:([^}:]+)(?::q)?\}\}", repl, command)
-            if input_values:
-                preview += "    " + " ".join(f"input={value}" for value in input_values.values())
-        else:
-            preview_args = " ".join(f"{key}={value}" for key, value in masked.items() if str(value))
-            preview = f"/{self._current_command_id} {preview_args}".strip()
-        self.param_preview_label.setText(f"预览: {preview}" if preview else "")
-        self.param_preview_label.setVisible(bool(preview))
+        _update_param_preview(self, args)
 
     def _param_value(self, widget) -> str:
-        if isinstance(widget, QComboBox):
-            return widget.currentText()
-        if isinstance(widget, QCheckBox):
-            return "true" if widget.isChecked() else "false"
-        if isinstance(widget, QLineEdit):
-            return widget.text()
-        if isinstance(widget, QPlainTextEdit):
-            return widget.toPlainText()
-        edit = widget.findChild(QLineEdit) if hasattr(widget, "findChild") else None
-        return edit.text() if edit is not None else ""
+        from ui.command_panel_params import param_value
+
+        return param_value(widget)
 
     def _on_command_input_changed(self, text: str):
         if self._suppress_command_suggestions:
@@ -1546,89 +1274,30 @@ class CommandPanelWindow(ThemedToolWindow):
         self._focus_command_input()
 
     def _refresh_history(self):
-        if self.result_store is None:
-            return
-        items = self.result_store.list()
-        self.history_list.clear()
-        for item in items:
-            title = item.command_title or item.command_id or "命令结果"
-            state = "成功" if item.result.success else "失败"
-            duration = getattr(item, "duration", 0.0) or 0.0
-            row = QListWidgetItem(f"{state}  {title}  {duration:.2f}s")
-            row.setData(Qt.UserRole, item.id)
-            self.history_list.addItem(row)
-        visible = bool(items)
-        self.history_label.setVisible(False)
-        if hasattr(self, "history_toggle_btn"):
-            self.history_toggle_btn.setText("")
-            self.history_toggle_btn.setEnabled(visible)
-            self.history_toggle_btn.setVisible(True)
-        self.history_list.setVisible(False)
+        _refresh_history(self)
 
     def _toggle_history(self):
-        self._show_history_menu()
+        _show_history_menu(self)
 
     def _show_history_menu(self):
-        self._hide_command_suggestions()
-        if self.result_store is None:
-            return
-        items = self.result_store.list()
-        if not items:
-            return
-        menu = PopupMenu(theme=self._theme, radius=8, parent=None)
-        self._compact_history_menu(menu)
-        width = self._history_menu_width()
-        menu.setMinimumWidth(width)
-        menu.setMaximumWidth(width)
-        menu.setFixedWidth(width)
-        for item in items:
-            label = self._history_menu_label(item)
-            menu.add_action(label, lambda result_id=item.id: self.show_result(str(result_id)), enabled=True)
-        self._history_menu = menu
-        anchor = getattr(self, "command_input_group", self.command_input)
-        menu.popup(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+        _show_history_menu(self)
 
     def _compact_history_menu(self, menu):
-        if self._theme == "dark":
-            text = "rgba(255,255,255,0.85)"
-            hover = "rgba(255,255,255,0.10)"
-            pressed = "rgba(255,255,255,0.16)"
-            disabled = "rgba(255,255,255,110)"
-        else:
-            text = "rgba(28,28,30,0.85)"
-            hover = "rgba(0,0,0,0.06)"
-            pressed = "rgba(0,0,0,0.10)"
-            disabled = "rgba(60,60,67,120)"
-        compact_style = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:4px 10px;margin:0px;"
-            f"border-radius:6px;color:{text};font-size:11px;text-align:left;"
-            "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
-            f"QPushButton:hover{{background:{hover};color:{text};}}"
-            f"QPushButton:pressed{{background:{pressed};}}"
-            f"QPushButton:disabled{{color:{disabled};}}"
-        )
-        try:
-            menu._layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
-            menu._layout.setSpacing(sp(2))
-            menu._btn_style_dark = compact_style
-            menu._btn_style_light = compact_style
-        except Exception as exc:
-            logger.debug("设置历史菜单布局失败: %s", exc, exc_info=True)
+        from ui.command_panel_history import _compact_history_menu
+
+        _compact_history_menu(self, menu)
 
     def _history_menu_width(self) -> int:
-        anchor = getattr(self, "command_input_group", self.command_input)
-        return max(sp(220), int(anchor.width()))
+        from ui.command_panel_history import _history_menu_width
+
+        return _history_menu_width(self)
 
     @staticmethod
     def _history_menu_label(item) -> str:
-        text = item.raw_input or item.command_title or item.command_id or "命令"
-        text = " ".join(str(text).split())
-        return text if len(text) <= 56 else f"{text[:53]}..."
+        return _history_menu_label(item)
 
     def _on_history_item_clicked(self, item):
-        result_id = item.data(Qt.UserRole)
-        if result_id:
-            self.show_result(str(result_id))
+        _on_history_item_clicked(self, item)
 
     def cancel_current(self):
         handle = self._current_handle
@@ -1671,30 +1340,34 @@ class CommandPanelWindow(ThemedToolWindow):
         return rest.strip() if first == command_id or first.endswith(command_id) else ""
 
     def _render_result(self, result: CommandResult):
-        result = enrich_result_actions(result)
-        self._current_result = result
-        message = result.message or result.error or ("完成" if result.success else "执行失败")
-        display_type = (result.display_type or "text").lower()
-        if display_type in ("text", "log"):
-            self._render_text_like(result, message, display_type)
-        elif display_type == "json":
-            self._render_json(result, message)
-        elif display_type == "table":
-            self._render_table(result, message)
-        elif display_type == "kv":
-            self._render_kv(result, message)
-        elif display_type == "list":
-            self._render_list(result, message)
-        elif display_type == "progress":
-            self._render_progress(result, message)
-        elif display_type == "qr":
-            self._render_qr(result, message)
-        elif display_type == "confirm":
-            self._render_confirm(result, message)
-        else:
-            self._render_text_like(result, message, "text")
-        self._render_actions(result)
-        self._apply_size_for_result(result, self._current_definition)
+        render_result(self, result)
+
+    def _render_text_like(self, result: CommandResult, message: str, display_type: str):
+        render_text_like(self, result, message, display_type)
+
+    def _render_table(self, result: CommandResult, message: str):
+        render_table(self, result, message)
+
+    def _render_json(self, result: CommandResult, message: str):
+        render_json(self, result, message)
+
+    def _render_kv(self, result: CommandResult, message: str):
+        render_kv(self, result, message)
+
+    def _render_list(self, result: CommandResult, message: str):
+        render_list(self, result, message)
+
+    def _render_progress(self, result: CommandResult, message: str):
+        render_progress(self, result, message)
+
+    def _render_qr(self, result: CommandResult, message: str):
+        render_qr(self, result, message)
+
+    def _render_confirm(self, result: CommandResult, message: str):
+        render_confirm(self, result, message)
+
+    def _render_actions(self, result: CommandResult):
+        render_actions(self, result)
 
     def _show_widget(self, name: str):
         widgets = {
@@ -1714,220 +1387,6 @@ class CommandPanelWindow(ThemedToolWindow):
             self.progress_detail.setVisible(True)
         else:
             widgets.get(name, self.text).setVisible(True)
-
-    def _render_text_like(self, result: CommandResult, message: str, display_type: str):
-        self._show_widget("text")
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        font_family = "Consolas" if display_type == "log" or payload.get("monospace") else "Microsoft YaHei UI"
-        font = QFont(font_family, font_px(9))
-        if not font.exactMatch() and font_family == "Consolas":
-            font = QFont("Courier New", font_px(9))
-        self.text.setFont(font)
-        self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-        self.text.setWordWrapMode(QTextOption.WrapAnywhere)
-        self.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._set_result_text_preserving_scroll(message, live_update=bool(payload.get("running")))
-        self._rendered_text = message
-
-    def _set_result_text_preserving_scroll(self, message: str, *, live_update: bool = False):
-        scrollbar = self.text.verticalScrollBar()
-        old_value = scrollbar.value()
-        old_max = scrollbar.maximum()
-        was_at_bottom = old_value >= max(0, old_max - 2)
-        preserve_position = (live_update or self._running) and old_max > 0 and not was_at_bottom
-
-        self.text.setPlainText(message)
-
-        if preserve_position:
-            scrollbar.setValue(min(old_value, scrollbar.maximum()))
-        elif live_update or self._running:
-            scrollbar.setValue(scrollbar.maximum())
-
-    def _render_table(self, result: CommandResult, message: str):
-        self._show_widget("table")
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        rows = payload.get("rows") or []
-        columns = payload.get("columns") or []
-        if rows and not isinstance(rows[0], list | tuple | dict):
-            rows = [[row] for row in rows]
-        if rows and isinstance(rows[0], dict):
-            if not columns:
-                columns = list(rows[0].keys())
-            matrix = [[row.get(col, "") for col in columns] for row in rows]
-        else:
-            matrix = [list(row) if isinstance(row, list | tuple) else [row] for row in rows]
-            if not columns:
-                col_count = max([len(row) for row in matrix] or [1])
-                columns = [f"列 {idx + 1}" for idx in range(col_count)]
-        self.table.clear()
-        self.table.setColumnCount(len(columns) or 1)
-        self.table.setRowCount(len(matrix))
-        self.table.setHorizontalHeaderLabels([str(col) for col in (columns or ["结果"])])
-        for row_idx, row in enumerate(matrix):
-            for col_idx, value in enumerate(row[: self.table.columnCount()]):
-                self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.verticalHeader().setVisible(False)
-        export_rows = ["\t".join(str(col) for col in (columns or ["结果"]))]
-        export_rows.extend("\t".join(str(value) for value in row) for row in matrix)
-        self._rendered_text = "\n".join(export_rows)
-        if not matrix and message:
-            self._render_text_like(result, message, "text")
-
-    def _render_json(self, result: CommandResult, message: str):
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        formatted = str(payload.get("formatted") or "")
-        if not formatted and "data" in payload:
-            try:
-                import json
-
-                formatted = json.dumps(payload.get("data"), ensure_ascii=False, indent=2, sort_keys=True)
-            except Exception:
-                formatted = str(payload.get("data"))
-        self._render_text_like(result, formatted or message, "log")
-
-    def _render_kv(self, result: CommandResult, message: str):
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        items = payload.get("items")
-        if items is None:
-            items = [[key, value] for key, value in payload.items() if key != "window_size"]
-        result.payload = {**payload, "columns": ["名称", "值"], "rows": items}
-        self._render_table(result, message)
-
-    def _render_list(self, result: CommandResult, message: str):
-        self._show_widget("list")
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        items = payload.get("items") or []
-        self.list_widget.clear()
-        fm = self.list_widget.fontMetrics()
-        line_height = fm.height()
-        vertical_padding = sp(17)  # 8px padding top + 8px padding bottom + 1px border
-        for item in items:
-            if isinstance(item, dict):
-                title = str(item.get("title") or item.get("name") or "")
-                status = str(item.get("status") or "")
-                detail = str(item.get("detail") or item.get("output_summary") or item.get("error") or "")
-                duration = item.get("duration", "")
-                duration_text = f" ({duration:.2f}s)" if isinstance(duration, int | float) else ""
-                text = f"[{status.upper() or 'INFO'}] {title}{duration_text}"
-                if detail:
-                    text += f"\n{detail}"
-            else:
-                text = str(item)
-            qlwi = QListWidgetItem(text)
-            line_count = text.count("\n") + 1
-            qlwi.setSizeHint(QSize(0, line_count * line_height + vertical_padding))
-            self.list_widget.addItem(qlwi)
-        self._rendered_text = "\n".join(self.list_widget.item(i).text() for i in range(self.list_widget.count()))
-        if not items:
-            self.text.setPlainText(message)
-            self._show_widget("text")
-            self._rendered_text = message
-
-    def _render_progress(self, result: CommandResult, message: str):
-        self._show_widget("progress")
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        title = str(payload.get("title") or message or "执行中")
-        detail = str(payload.get("detail") or "")
-        progress = result.progress
-        current = payload.get("current")
-        total = payload.get("total")
-        if total:
-            try:
-                progress = float(current or 0) / float(total)
-            except Exception as exc:
-                logger.debug("计算进度值失败: %s", exc, exc_info=True)
-        progress = max(0.0, min(1.0, float(progress or 0.0)))
-        self.progress_title.setText(title)
-        self.progress_detail.setText(detail)
-        self.progress_bar.setValue(int(progress * 1000))
-        self._rendered_text = "\n".join(part for part in [title, detail, f"{progress * 100:.0f}%"] if part)
-
-    def _render_qr(self, result: CommandResult, message: str):
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        image_path = payload.get("image_path")
-        if image_path and os.path.exists(str(image_path)):
-            self._show_widget("qr")
-            pixmap = QPixmap(str(image_path))
-            if not pixmap.isNull():
-                self.qr_label.setPixmap(
-                    pixmap.scaled(QSize(sp(220), sp(220)), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                )
-                self.qr_label.setText("")
-                self._rendered_text = message
-                return
-        self._render_text_like(result, message, "text")
-
-    def _render_confirm(self, result: CommandResult, message: str):
-        payload = result.payload if isinstance(result.payload, dict) else {}
-        detail = str(payload.get("detail") or payload.get("description") or "")
-        body = "\n\n".join(part for part in [message, detail] if part)
-
-        # Show confirmation dialog instead of just text
-        shortcut = self._current_shortcut or payload.get("shortcut")
-        if payload.get("requires_confirmation") and shortcut is not None:
-            try:
-                from ui.styles.themed_messagebox import ThemedMessageBox
-
-                reply = ThemedMessageBox.question(
-                    self,
-                    "确认危险命令",
-                    body,
-                    ThemedMessageBox.Yes | ThemedMessageBox.No,
-                )
-                if reply == ThemedMessageBox.Yes:
-                    if self._current_shortcut is not None:
-                        self._current_context_meta["destructive_confirmed"] = True
-                        self._execute_current_shortcut_request()
-                        return
-                    # Re-execute from stored result with confirmation scoped to
-                    # this invocation instead of mutating the shortcut object.
-                    self._rerun_with_shortcut(shortcut, context_meta={"destructive_confirmed": True})
-                    return
-                else:
-                    self._rendered_text = "已取消执行。"
-                    self.text.setPlainText("已取消执行。")
-                    self._update_subtitle("已取消")
-                    return
-            except Exception:
-                logger.debug("confirmation dialog failed, falling back to text", exc_info=True)
-
-        self._render_text_like(result, body or "Confirm action", "text")
-
-    def _render_actions(self, result: CommandResult):
-        self._all_actions = list(result.actions or [])
-        for btn in self.action_buttons:
-            btn.hide()
-            try:
-                btn.clicked.disconnect()
-            except Exception as exc:
-                logger.debug("断开按钮信号: %s", exc, exc_info=True)
-        primary_actions = sorted(
-            self._all_actions,
-            key=lambda a: (not bool(getattr(a, "primary", False)), bool(getattr(a, "danger", False))),
-        )
-        extra_count = len(primary_actions) - len(self.action_buttons)
-        display_count = len(primary_actions) if extra_count == 1 else len(self.action_buttons)
-        for btn, action in zip(self.action_buttons, primary_actions[:display_count]):
-            btn.setText(action.label or self._action_default_label(action.type))
-            btn.setEnabled(bool(getattr(action, "enabled", True)))
-            btn.setProperty(
-                "command_action_role",
-                (
-                    "danger"
-                    if getattr(action, "danger", False)
-                    else "primary" if getattr(action, "primary", False) else ""
-                ),
-            )
-            self.style_buttons(btn)
-            self._style_action_button(btn, action)
-            self._neutralize_button_default(btn)
-            btn.clicked.connect(lambda _checked=False, a=action: self._execute_action(a))
-            btn.show()
-        self.more_btn.setVisible(extra_count > 1)
-        self.copy_btn.setEnabled(bool(self._rendered_text))
-        self.save_btn.setEnabled(bool(self._rendered_text))
-        self._relayout_footer_buttons()
 
     def _style_action_button(self, button, action):
         role = button.property("command_action_role")
@@ -2137,7 +1596,7 @@ class CommandPanelWindow(ThemedToolWindow):
             for folder in list(getattr(data, "folders", []) or []):
                 for item in list(getattr(folder, "items", []) or []):
                     if getattr(item, "id", "") == shortcut_id:
-                        return item
+                        return item  # type: ignore[no-any-return]
         except Exception as exc:
             logger.debug("查询快捷方式: %s", exc, exc_info=True)
         return None
@@ -2162,13 +1621,13 @@ class CommandPanelWindow(ThemedToolWindow):
 
     def _apply_size_preset(self, size_key: str):
         if size_key != "auto":
-            width, height = COMMAND_PANEL_SIZE_PRESETS.get(size_key, COMMAND_PANEL_SIZE_PRESETS["medium"])
+            width, height = COMMAND_PANEL_SIZE_PRESETS.get(size_key, COMMAND_PANEL_SIZE_PRESETS["medium"])  # type: ignore[misc]
             self.setMinimumSize(QSize(0, 0))
             self.setMaximumSize(QSize(16777215, 16777215))
             self.setFixedSize(sp(width), sp(height))
             return
 
-        small_w, small_h = COMMAND_PANEL_SIZE_PRESETS["small"]
+        small_w, small_h = COMMAND_PANEL_SIZE_PRESETS["small"]  # type: ignore[misc]
         max_w, max_h = self._screen_max_size()
         text = self.text.toPlainText() if hasattr(self, "text") else ""
         line_count = max(1, len(text.splitlines()))

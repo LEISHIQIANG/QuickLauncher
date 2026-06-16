@@ -216,9 +216,9 @@ def test_cmd_color():
     assert res.success is False
 
 
-@patch("core.commands._fetch_public_ip")
-@patch("core.commands._get_local_ipv4_addresses")
-@patch("core.commands._get_primary_local_ip")
+@patch("core.commands_network._fetch_public_ip")
+@patch("core.commands_network._get_local_ipv4_addresses")
+@patch("core.commands_network._get_primary_local_ip")
 def test_cmd_ip(mock_primary, mock_local, mock_public):
     mock_primary.return_value = "192.168.1.23"
     mock_local.return_value = [("192.168.1.23", "Wi-Fi"), ("10.8.0.2", "VPN")]
@@ -233,9 +233,9 @@ def test_cmd_ip(mock_primary, mock_local, mock_public):
     assert res.payload["public_ip"] == "203.0.113.8"
 
 
-@patch("core.commands._fetch_public_ip")
-@patch("core.commands._get_local_ipv4_addresses")
-@patch("core.commands._get_primary_local_ip")
+@patch("core.commands_network._fetch_public_ip")
+@patch("core.commands_network._get_local_ipv4_addresses")
+@patch("core.commands_network._get_primary_local_ip")
 def test_cmd_ip_public_failure_still_shows_local(mock_primary, mock_local, mock_public):
     mock_primary.return_value = "192.168.1.23"
     mock_local.return_value = [("192.168.1.23", "Wi-Fi")]
@@ -459,7 +459,7 @@ def test_cmd_jwt():
     assert res.payload["payload"]["role"] == "admin"
 
 
-@patch("core.commands._run_cmd")
+@patch("core.commands_network._run_cmd")
 @patch("socket.create_connection")
 @patch("socket.getaddrinfo")
 def test_cmd_netdiag(mock_getaddrinfo, mock_create_connection, mock_run):
@@ -612,7 +612,7 @@ def test_cmd_plugin_commands():
 # ===========================================================================
 
 
-@patch("core.commands._run_cmd")
+@patch("core.commands_network._run_cmd")
 def test_cmd_wifi(mock_run):
     # Mocking profile show lists
     mock_run.return_value = (True, "All User Profile     : Home-WiFi\nAll User Profile     : Work-WiFi")
@@ -663,7 +663,7 @@ def test_cmd_env(mock_popen):
     mock_popen.assert_called_once()
 
 
-@patch("core.commands._run_cmd")
+@patch("core.commands_network._run_cmd")
 def test_cmd_dns(mock_run):
     mock_run.return_value = (True, "dns flushed")
     res = cmd_dns(CommandContext())
@@ -792,7 +792,7 @@ def test_cmd_wifi_quote_stripping_and_case_insensitive(monkeypatch):
         calls.append(args)
         return (True, "Security Key           : Present\nKey Content            : MyPass123")
 
-    monkeypatch.setattr("core.commands._run_cmd", mock_run)
+    monkeypatch.setattr("core.commands_network._run_cmd", mock_run)
 
     # 1. Strip quotes and check
     res = cmd_wifi(CommandContext(args_text='"My-Wifi-Profile"'))

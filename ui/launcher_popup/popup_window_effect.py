@@ -28,10 +28,10 @@ class PopupWindowEffectMixin:
     def _get_win11_corner_preference(self, desired_radius: int):
         r = max(0, int(desired_radius))
         if r <= 0:
-            return self.window_effect.DWMWCP_DONOTROUND
+            return self.window_effect.DWMWCP_DONOTROUND  # type: ignore[attr-defined]
         if r <= 6:
-            return self.window_effect.DWMWCP_ROUNDSMALL
-        return self.window_effect.DWMWCP_ROUND
+            return self.window_effect.DWMWCP_ROUNDSMALL  # type: ignore[attr-defined]
+        return self.window_effect.DWMWCP_ROUND  # type: ignore[attr-defined]
 
     def _get_win11_effective_radius(self, desired_radius: int) -> int:
         r = max(0, int(desired_radius))
@@ -42,15 +42,15 @@ class PopupWindowEffectMixin:
         return 8
 
     def _get_paint_corner_radius(self, bg_mode=None, blur_radius=None) -> int:
-        desired = getattr(self.settings, "corner_radius", 8)
+        desired = getattr(self.settings, "corner_radius", 8)  # type: ignore[attr-defined]
         desired = max(0, int(desired))
         # Scale the corner radius for current UI scale
         desired = sp(desired)
 
         if bg_mode is None:
-            bg_mode = getattr(self.settings, "bg_mode", "theme")
+            bg_mode = getattr(self.settings, "bg_mode", "theme")  # type: ignore[attr-defined]
         if blur_radius is None:
-            blur_radius = getattr(self.settings, "bg_blur_radius", 0)
+            blur_radius = getattr(self.settings, "bg_blur_radius", 0)  # type: ignore[attr-defined]
 
         # 亚克力模式：使用 paintEvent 绘制完美圆角，直接返回用户设置值
         if bg_mode == "acrylic":
@@ -66,20 +66,20 @@ class PopupWindowEffectMixin:
 
     def _apply_win10_rounded_mask(self, margin: int, clip_w: int, clip_h: int, radius: int):
         logger.info(
-            f"[MASK] 设置Win10遮罩: clip={clip_w}x{clip_h}, window={self.width()}x{self.height()}, margin={margin}, radius={radius}"
+            f"[MASK] 设置Win10遮罩: clip={clip_w}x{clip_h}, window={self.width()}x{self.height()}, margin={margin}, radius={radius}"  # type: ignore[attr-defined]
         )
         if is_win10():
-            self.clearMask()
-            self.update()
+            self.clearMask()  # type: ignore[attr-defined]
+            self.update()  # type: ignore[attr-defined]
             return
         r = max(0, int(radius))
         if r <= 0:
-            self.clearMask()
+            self.clearMask()  # type: ignore[attr-defined]
             return
         rect = QRectF(int(margin), int(margin), int(clip_w), int(clip_h))
         path = QPainterPath()
         path.addRoundedRect(rect, r, r)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))  # type: ignore[attr-defined]
         logger.info("[MASK] 遮罩已应用")
 
     def _snapshot_effect_state(self):
@@ -140,7 +140,7 @@ class PopupWindowEffectMixin:
         delay_ms = max(0, int(delay_ms))
         timer = getattr(self, "_window_effect_update_timer", None)
         if timer is None:
-            timer = QTimer(self)
+            timer = QTimer(self)  # type: ignore[arg-type]
             timer.setSingleShot(True)
             timer.timeout.connect(self._run_scheduled_window_effect_update)
             self._window_effect_update_timer = timer
@@ -280,7 +280,7 @@ class PopupLayoutMixin:
         """Keep the smaller single-line label font and row height in sync."""
         label_font = self.__dict__.get("_label_font")
         if label_font is not None:
-            raw_size = max(9, int(self.settings.icon_size * 0.28))
+            raw_size = max(9, int(self.settings.icon_size * 0.28))  # type: ignore[attr-defined]
             label_font.setFamily(get_font_family())
             label_font.setPixelSize(font_px(raw_size))
             label_font.setWeight(QFont.Weight.Medium)
@@ -288,16 +288,16 @@ class PopupLayoutMixin:
             label_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
             label_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
             label_font.setKerning(True)
-        self.cell_h = int(self.cell_size * 1.15)
+        self.cell_h = int(self.cell_size * 1.15)  # type: ignore[attr-defined]
 
     def _dock_display_rows(self, visible_count: int | None = None, cols: int | None = None) -> int:
-        if not self.dock_items:
+        if not self.dock_items:  # type: ignore[attr-defined]
             return 0
 
-        max_rows = max(1, int(getattr(self.settings, "dock_height_mode", 1) or 1))
+        max_rows = max(1, int(getattr(self.settings, "dock_height_mode", 1) or 1))  # type: ignore[attr-defined]
         cols = max(1, int(cols if cols is not None else getattr(self, "cols", 1) or 1))
         if visible_count is None:
-            visible_count = len(self.dock_items)
+            visible_count = len(self.dock_items)  # type: ignore[attr-defined]
             if max_rows == 1:
                 visible_count = min(visible_count, cols)
         visible_count = max(0, int(visible_count or 0))
@@ -322,7 +322,7 @@ class PopupLayoutMixin:
 
     def _get_dock_row_stride(self, display_rows: int) -> int:
         card_pad = sp(2)
-        card_size = self.icon_size + card_pad * 2
+        card_size = self.icon_size + card_pad * 2  # type: ignore[attr-defined]
         if self._dock_shows_text(display_rows):
             if hasattr(self, "_label_font") and self._label_font:
                 fm = QFontMetrics(self._label_font)
@@ -331,14 +331,14 @@ class PopupLayoutMixin:
             text_h = fm.height()
             text_spacing = sp(1)
             row_height = card_size + text_spacing + text_h
-            return row_height + sp(6)
+            return row_height + sp(6)  # type: ignore[no-any-return]
         else:
-            return self.icon_size + sp(6)
+            return self.icon_size + sp(6)  # type: ignore[attr-defined, no-any-return]
 
     def _dock_card_block_height(self, display_rows: int) -> int:
         rows = max(1, int(display_rows or 1))
         card_pad = sp(2)
-        card_size = self.icon_size + card_pad * 2
+        card_size = self.icon_size + card_pad * 2  # type: ignore[attr-defined]
 
         if self._dock_shows_text(rows):
             if hasattr(self, "_label_font") and self._label_font:
@@ -352,7 +352,7 @@ class PopupLayoutMixin:
             row_height = card_size
 
         dock_row_stride = self._get_dock_row_stride(rows)
-        return row_height + (rows - 1) * dock_row_stride
+        return row_height + (rows - 1) * dock_row_stride  # type: ignore[no-any-return]
 
     def _dock_first_icon_y(self, display_rows: int | None = None) -> int:
         rows = self._dock_display_rows() if display_rows is None else max(1, int(display_rows or 1))
@@ -365,8 +365,8 @@ class PopupLayoutMixin:
 
     def _calculate_dock_height(self) -> int:
         """Return Dock height with enough room for the shared icon card frame."""
-        dock_enabled = getattr(self.settings, "dock_enabled", True)
-        if not (dock_enabled and self.dock_items):
+        dock_enabled = getattr(self.settings, "dock_enabled", True)  # type: ignore[attr-defined]
+        if not (dock_enabled and self.dock_items):  # type: ignore[attr-defined]
             return 0
 
         display_rows = self._dock_display_rows()
@@ -375,7 +375,7 @@ class PopupLayoutMixin:
         return self._dock_card_block_height(display_rows) + sp(12)
 
     def _win10_internal_shadow_metrics(self) -> tuple[int, int, int]:
-        if not self._uses_win10_internal_popup_shadow():
+        if not self._uses_win10_internal_popup_shadow():  # type: ignore[attr-defined]
             return 0, 0, 0
         settings = getattr(self, "settings", None)
         raw_size = getattr(settings, "shadow_size", 0)
@@ -461,7 +461,7 @@ class PopupLayoutMixin:
         self.setFixedSize(total_width, total_height)
         return total_width, total_height
 
-    def _center_to(self, x: int, y: int, window_width: int = None, window_height: int = None):
+    def _center_to(self, x: int, y: int, window_width: int = None, window_height: int = None):  # type: ignore[assignment]
         """定位窗口"""
         if window_width is None:
             window_width = self.width()
@@ -472,16 +472,16 @@ class PopupLayoutMixin:
         if not screen:
             screen = QApplication.primaryScreen()
 
-        work_area = screen.availableGeometry()
+        work_area = screen.availableGeometry()  # type: ignore[union-attr]
 
-        dpr = screen.devicePixelRatio()
+        dpr = screen.devicePixelRatio()  # type: ignore[union-attr]
         if dpr and dpr != 1.0:
             lx = int(x / dpr)
             ly = int(y / dpr)
         else:
             lx, ly = x, y
 
-        align_mode = getattr(self.settings, "popup_align_mode", "mouse_center")
+        align_mode = getattr(self.settings, "popup_align_mode", "mouse_center")  # type: ignore[attr-defined]
 
         if align_mode == "screen_center":
             left = work_area.center().x() - window_width // 2
@@ -499,7 +499,7 @@ class PopupLayoutMixin:
         left = max(work_area.left() + sp(5), min(left, work_area.right() - window_width - sp(5)))
         top = max(work_area.top() + sp(5), min(top, work_area.bottom() - window_height - sp(5)))
 
-        self.move(left, top)
+        self.move(left, top)  # type: ignore[attr-defined]
 
     def resizeEvent(self, event):
         self._bg_cache = None

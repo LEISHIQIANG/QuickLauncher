@@ -613,7 +613,7 @@ class ConfigWindow(QMainWindow):
         self.tray_app = tray_app
         self._drag_drop_compat_applied = False
         self._shortcut_edit_active = False
-        self._shortcut_action_last_trigger_at = {}
+        self._shortcut_action_last_trigger_at = {}  # type: ignore[var-annotated]
         self._shortcut_action_debounce_ms = 250
         self._shortcut_dialog_release_delay_ms = 250
         self._settings_panel_preload_scheduled = False
@@ -632,7 +632,7 @@ class ConfigWindow(QMainWindow):
         self._active_command_dialog = None
         self._active_chain_dialog = None
         # 对话框历史强引用，防止因 Python 垃圾回收机制过早销毁窗口包装对象导致的 C++ 崩溃
-        self._dialog_history = []
+        self._dialog_history = []  # type: ignore[var-annotated]
 
         # 无边框 + 透明背景
         apply_custom_window_chrome(self, kind="window", translucent=True)
@@ -783,6 +783,7 @@ class ConfigWindow(QMainWindow):
         self.icon_grid.add_url_requested.connect(self._on_add_url)
         self.icon_grid.add_command_requested.connect(self._on_add_command)
         self.icon_grid.add_chain_requested.connect(self._on_add_chain)
+        self.icon_grid.add_macro_requested.connect(self._on_add_macro)
         launcher_layout.addWidget(self.icon_grid, 1)
 
         self.stack.addWidget(launcher_widget)
@@ -994,7 +995,7 @@ class ConfigWindow(QMainWindow):
             except (AttributeError, RuntimeError, TypeError) as exc:
                 logger.debug("捕获设置页面状态失败: %s", exc, exc_info=True)
         try:
-            state["folder_id"] = getattr(self.icon_grid, "current_folder_id", None)
+            state["folder_id"] = getattr(self.icon_grid, "current_folder_id", None)  # type: ignore[assignment]
         except (AttributeError, RuntimeError, TypeError) as exc:
             logger.debug("捕获当前文件夹状态失败: %s", exc, exc_info=True)
         return state
@@ -1317,6 +1318,10 @@ class ConfigWindow(QMainWindow):
             from .chain_dialog import ChainDialog
 
             dialog = ChainDialog(self, shortcut)
+        elif shortcut.type == ShortcutType.MACRO:
+            from .macro_record_dialog import MacroRecordDialog
+
+            dialog = MacroRecordDialog(self, shortcut)
         else:
             from .shortcut_dialog import ShortcutDialog
 
@@ -1557,6 +1562,40 @@ class ConfigWindow(QMainWindow):
             self._clear_active_dialog_if_current("_active_chain_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
+    def _on_add_macro(self):
+        """添加宏录制（仅在图标栏空白处右键菜单中触发）"""
+        if self._activate_existing_dialog("_active_macro_dialog"):
+            return
+
+        if not self._begin_shortcut_dialog_action("macro"):
+            return
+        folder_id = self.icon_grid.current_folder_id
+        if not folder_id:
+            self._end_shortcut_dialog_action()
+            return
+
+        try:
+            from .macro_record_dialog import MacroRecordDialog
+
+            dialog = MacroRecordDialog(self)
+            self._active_macro_dialog = dialog
+            dialog.finished.connect(
+                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_macro_dialog", dialog)
+            )
+
+            def _apply_add(shortcut):
+                self.data_manager.add_shortcut(folder_id, shortcut)
+                self.icon_grid.load_folder(folder_id)
+                self.settings_changed.emit()
+
+            self._run_shortcut_dialog(dialog, _apply_add, "_active_macro_dialog")
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).error(f"Create macro dialog failed: {e}", exc_info=True)
+            self._clear_active_dialog_if_current("_active_macro_dialog", locals().get("dialog"))
+            self._end_shortcut_dialog_action()
+
     def _on_settings_panel_changed(self):
         """设置面板变更"""
         theme = self.data_manager.get_settings().theme
@@ -1666,8 +1705,8 @@ class ConfigWindow(QMainWindow):
 
         start_pos = getattr(self, "_anim_start_pos", self.pos())
         target_pos = self._anim_target_pos
-        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)
-        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)
+        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)  # type: ignore[union-attr]
+        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)  # type: ignore[union-attr]
         self.move(current_x, current_y)
         if progress >= 1.0:
             self._centered_show_animation = False

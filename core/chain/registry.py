@@ -489,110 +489,110 @@ PROCESSOR_DEFINITIONS: dict[str, ChainProcessorDefinition] = {
     "python_cell": ChainProcessorDefinition(
         "python_cell", "脚本电池", ["input"], ["output"], DEFAULT_PYTHON_CELL_SOURCE
     ),
-    "panel_node": ChainProcessorDefinition("panel_node", "看板", ["input", "text"], TEXT_OUTPUTS),
-    "text_input": ChainProcessorDefinition("text_input", "文本输入", ["text"], TEXT_OUTPUTS),
-    "assert_not_empty": ChainProcessorDefinition("assert_not_empty", "检查非空", ["text", "message"], TEXT_OUTPUTS),
-    "coalesce_value": ChainProcessorDefinition("coalesce_value", "空值兜底", ["value", "fallback"], TEXT_OUTPUTS),
-    "type_convert": ChainProcessorDefinition("type_convert", "类型转换", ["value", "type"], TEXT_OUTPUTS),
+    "panel_node": ChainProcessorDefinition("panel_node", "看板", ["input", "text"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "text_input": ChainProcessorDefinition("text_input", "文本输入", ["text"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "assert_not_empty": ChainProcessorDefinition("assert_not_empty", "检查非空", ["text", "message"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "coalesce_value": ChainProcessorDefinition("coalesce_value", "空值兜底", ["value", "fallback"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "type_convert": ChainProcessorDefinition("type_convert", "类型转换", ["value", "type"], TEXT_OUTPUTS),  # type: ignore[arg-type]
     "conditional_branch": ChainProcessorDefinition(
-        "conditional_branch", "条件分支", ["value", "compare", "target"], TEXT_OUTPUTS
+        "conditional_branch", "条件分支", ["value", "compare", "target"], TEXT_OUTPUTS  # type: ignore[arg-type]
     ),
-    "logger_node": ChainProcessorDefinition("logger_node", "日志输出", ["text", "level"], TEXT_OUTPUTS),
-    "sleep_node": ChainProcessorDefinition("sleep_node", "等待", ["input", "ms"], TEXT_OUTPUTS + ["ms"]),
-    "bool_value": ChainProcessorDefinition("bool_value", "布尔值", ["value"], BOOL_OUTPUTS),
-    "bool_not": ChainProcessorDefinition("bool_not", "逻辑非", ["value"], BOOL_OUTPUTS),
-    "bool_and": ChainProcessorDefinition("bool_and", "逻辑与", ["a", "b"], BOOL_OUTPUTS),
-    "bool_or": ChainProcessorDefinition("bool_or", "逻辑或", ["a", "b"], BOOL_OUTPUTS),
-    "bool_xor": ChainProcessorDefinition("bool_xor", "逻辑异或", ["a", "b"], BOOL_OUTPUTS),
-    "compare_value": ChainProcessorDefinition("compare_value", "比较判断", ["a", "operator", "b"], BOOL_OUTPUTS),
+    "logger_node": ChainProcessorDefinition("logger_node", "日志输出", ["text", "level"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "sleep_node": ChainProcessorDefinition("sleep_node", "等待", ["input", "ms"], TEXT_OUTPUTS + ["ms"]),  # type: ignore[arg-type]
+    "bool_value": ChainProcessorDefinition("bool_value", "布尔值", ["value"], BOOL_OUTPUTS),  # type: ignore[arg-type]
+    "bool_not": ChainProcessorDefinition("bool_not", "逻辑非", ["value"], BOOL_OUTPUTS),  # type: ignore[arg-type]
+    "bool_and": ChainProcessorDefinition("bool_and", "逻辑与", ["a", "b"], BOOL_OUTPUTS),  # type: ignore[arg-type]
+    "bool_or": ChainProcessorDefinition("bool_or", "逻辑或", ["a", "b"], BOOL_OUTPUTS),  # type: ignore[arg-type]
+    "bool_xor": ChainProcessorDefinition("bool_xor", "逻辑异或", ["a", "b"], BOOL_OUTPUTS),  # type: ignore[arg-type]
+    "compare_value": ChainProcessorDefinition("compare_value", "比较判断", ["a", "operator", "b"], BOOL_OUTPUTS),  # type: ignore[arg-type]
     "if_else": ChainProcessorDefinition(
-        "if_else", "条件选择", ["condition", "true_value", "false_value"], TEXT_OUTPUTS
+        "if_else", "条件选择", ["condition", "true_value", "false_value"], TEXT_OUTPUTS  # type: ignore[arg-type]
     ),
-    "loop_repeat": ChainProcessorDefinition("loop_repeat", "循环重复", ["input", "count", "delimiter"], TEXT_OUTPUTS),
+    "loop_repeat": ChainProcessorDefinition("loop_repeat", "循环重复", ["input", "count", "delimiter"], TEXT_OUTPUTS),  # type: ignore[arg-type]
     "loop_counter": ChainProcessorDefinition(
-        "loop_counter", "计数循环", ["start", "end", "step", "delimiter"], LIST_OUTPUTS
+        "loop_counter", "计数循环", ["start", "end", "step", "delimiter"], LIST_OUTPUTS  # type: ignore[arg-type]
     ),
     # ── 文本处理 ──
     "text_template": ChainProcessorDefinition(
-        "text_template", "文本模板", ["template", "input", "a", "b", "c"], TEXT_OUTPUTS
+        "text_template", "文本模板", ["template", "input", "a", "b", "c"], TEXT_OUTPUTS  # type: ignore[arg-type]
     ),
-    "text_replace": ChainProcessorDefinition("text_replace", "文本替换", ["text", "find", "replace"], TEXT_OUTPUTS),
-    "text_slice": ChainProcessorDefinition("text_slice", "文本裁剪", ["text", "start", "end"], TEXT_OUTPUTS),
-    "regex_extract": ChainProcessorDefinition("regex_extract", "正则提取", ["text", "pattern", "group"], TEXT_OUTPUTS),
-    "text_case": ChainProcessorDefinition("text_case", "大小写转换", ["text", "mode"], TEXT_OUTPUTS),
+    "text_replace": ChainProcessorDefinition("text_replace", "文本替换", ["text", "find", "replace"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "text_slice": ChainProcessorDefinition("text_slice", "文本裁剪", ["text", "start", "end"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "regex_extract": ChainProcessorDefinition("regex_extract", "正则提取", ["text", "pattern", "group"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "text_case": ChainProcessorDefinition("text_case", "大小写转换", ["text", "mode"], TEXT_OUTPUTS),  # type: ignore[arg-type]
     "text_join": ChainProcessorDefinition(
-        "text_join", "文本合并", ["delimiter", "a", "b", "c", "d", "e"], TEXT_OUTPUTS
+        "text_join", "文本合并", ["delimiter", "a", "b", "c", "d", "e"], TEXT_OUTPUTS  # type: ignore[arg-type]
     ),
-    "text_len": ChainProcessorDefinition("text_len", "文本长度", ["text"], NUMBER_OUTPUTS),
-    "text_split": ChainProcessorDefinition("text_split", "文本拆分", ["text", "delimiter"], LIST_OUTPUTS),
-    "text_lines": ChainProcessorDefinition("text_lines", "文本分行", ["text"], LIST_OUTPUTS),
+    "text_len": ChainProcessorDefinition("text_len", "文本长度", ["text"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "text_split": ChainProcessorDefinition("text_split", "文本拆分", ["text", "delimiter"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "text_lines": ChainProcessorDefinition("text_lines", "文本分行", ["text"], LIST_OUTPUTS),  # type: ignore[arg-type]
     # ── 图像处理 ──
-    "img_resize": ChainProcessorDefinition("img_resize", "图片缩放", ["filepath", "width", "height"], FILE_OUTPUTS),
-    "img_convert": ChainProcessorDefinition("img_convert", "图片转换", ["filepath", "format"], FILE_OUTPUTS),
+    "img_resize": ChainProcessorDefinition("img_resize", "图片缩放", ["filepath", "width", "height"], FILE_OUTPUTS),  # type: ignore[arg-type]
+    "img_convert": ChainProcessorDefinition("img_convert", "图片转换", ["filepath", "format"], FILE_OUTPUTS),  # type: ignore[arg-type]
     "img_watermark": ChainProcessorDefinition(
-        "img_watermark", "添加水印", ["filepath", "text", "position"], FILE_OUTPUTS
+        "img_watermark", "添加水印", ["filepath", "text", "position"], FILE_OUTPUTS  # type: ignore[arg-type]
     ),
     "img_crop": ChainProcessorDefinition(
-        "img_crop", "图片裁剪", ["filepath", "x", "y", "width", "height"], FILE_OUTPUTS
+        "img_crop", "图片裁剪", ["filepath", "x", "y", "width", "height"], FILE_OUTPUTS  # type: ignore[arg-type]
     ),
-    "img_rotate": ChainProcessorDefinition("img_rotate", "图片旋转", ["filepath", "angle"], FILE_OUTPUTS),
+    "img_rotate": ChainProcessorDefinition("img_rotate", "图片旋转", ["filepath", "angle"], FILE_OUTPUTS),  # type: ignore[arg-type]
     # ── 网络处理 ──
-    "json_get": ChainProcessorDefinition("json_get", "取结构化字段", ["json", "path"], ANY_OUTPUTS),
-    "json_set": ChainProcessorDefinition("json_set", "设置结构化字段", ["json", "path", "value"], JSON_OUTPUTS),
-    "http_get": ChainProcessorDefinition("http_get", "网页请求", ["url", "headers"], HTTP_OUTPUTS),
-    "http_post": ChainProcessorDefinition("http_post", "提交请求", ["url", "data", "headers"], HTTP_OUTPUTS),
-    "url_encode": ChainProcessorDefinition("url_encode", "网址编解码", ["text", "mode"], TEXT_OUTPUTS),
-    "json_parse": ChainProcessorDefinition("json_parse", "结构化文本校验格式化", ["json_str"], JSON_OUTPUTS),
-    "json_template": ChainProcessorDefinition("json_template", "结构化模板", ["json", "template"], TEXT_OUTPUTS),
-    "http_download": ChainProcessorDefinition("http_download", "文件下载", ["url", "save_dir"], FILE_OUTPUTS),
+    "json_get": ChainProcessorDefinition("json_get", "取结构化字段", ["json", "path"], ANY_OUTPUTS),  # type: ignore[arg-type]
+    "json_set": ChainProcessorDefinition("json_set", "设置结构化字段", ["json", "path", "value"], JSON_OUTPUTS),  # type: ignore[arg-type]
+    "http_get": ChainProcessorDefinition("http_get", "网页请求", ["url", "headers"], HTTP_OUTPUTS),  # type: ignore[arg-type]
+    "http_post": ChainProcessorDefinition("http_post", "提交请求", ["url", "data", "headers"], HTTP_OUTPUTS),  # type: ignore[arg-type]
+    "url_encode": ChainProcessorDefinition("url_encode", "网址编解码", ["text", "mode"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "json_parse": ChainProcessorDefinition("json_parse", "结构化文本校验格式化", ["json_str"], JSON_OUTPUTS),  # type: ignore[arg-type]
+    "json_template": ChainProcessorDefinition("json_template", "结构化模板", ["json", "template"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "http_download": ChainProcessorDefinition("http_download", "文件下载", ["url", "save_dir"], FILE_OUTPUTS),  # type: ignore[arg-type]
     # ── 数学与数据结构 ──
-    "num_input": ChainProcessorDefinition("num_input", "数字输入", ["number"], NUMBER_OUTPUTS),
-    "math_add": ChainProcessorDefinition("math_add", "加法", ["a", "b"], NUMBER_OUTPUTS),
-    "math_sub": ChainProcessorDefinition("math_sub", "减法", ["a", "b"], NUMBER_OUTPUTS),
-    "math_mul": ChainProcessorDefinition("math_mul", "乘法", ["a", "b"], NUMBER_OUTPUTS),
-    "math_div": ChainProcessorDefinition("math_div", "除法", ["a", "b"], NUMBER_OUTPUTS),
-    "math_pow": ChainProcessorDefinition("math_pow", "幂运算", ["base", "exp"], NUMBER_OUTPUTS),
-    "math_mod": ChainProcessorDefinition("math_mod", "取模", ["a", "b"], NUMBER_OUTPUTS),
-    "series_arith": ChainProcessorDefinition("series_arith", "等差数列", ["start", "step", "count"], LIST_OUTPUTS),
-    "series_geom": ChainProcessorDefinition("series_geom", "等比数列", ["start", "ratio", "count"], LIST_OUTPUTS),
-    "list_create": ChainProcessorDefinition("list_create", "列表创建", ["a", "b", "c", "d", "e"], LIST_OUTPUTS),
-    "list_item": ChainProcessorDefinition("list_item", "获取元素", ["list", "index"], TEXT_OUTPUTS),
-    "list_len": ChainProcessorDefinition("list_len", "列表长度", ["list"], NUMBER_OUTPUTS),
-    "list_rev": ChainProcessorDefinition("list_rev", "反转列表", ["list"], LIST_OUTPUTS),
-    "list_unique": ChainProcessorDefinition("list_unique", "列表去重", ["list"], LIST_OUTPUTS),
-    "list_sort": ChainProcessorDefinition("list_sort", "列表排序", ["list", "mode"], LIST_OUTPUTS),
-    "list_filter": ChainProcessorDefinition("list_filter", "列表筛选", ["list", "contains", "exclude"], LIST_OUTPUTS),
-    "list_contains": ChainProcessorDefinition("list_contains", "列表包含", ["list", "value"], BOOL_OUTPUTS),
+    "num_input": ChainProcessorDefinition("num_input", "数字输入", ["number"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "math_add": ChainProcessorDefinition("math_add", "加法", ["a", "b"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "math_sub": ChainProcessorDefinition("math_sub", "减法", ["a", "b"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "math_mul": ChainProcessorDefinition("math_mul", "乘法", ["a", "b"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "math_div": ChainProcessorDefinition("math_div", "除法", ["a", "b"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "math_pow": ChainProcessorDefinition("math_pow", "幂运算", ["base", "exp"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "math_mod": ChainProcessorDefinition("math_mod", "取模", ["a", "b"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "series_arith": ChainProcessorDefinition("series_arith", "等差数列", ["start", "step", "count"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "series_geom": ChainProcessorDefinition("series_geom", "等比数列", ["start", "ratio", "count"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_create": ChainProcessorDefinition("list_create", "列表创建", ["a", "b", "c", "d", "e"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_item": ChainProcessorDefinition("list_item", "获取元素", ["list", "index"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "list_len": ChainProcessorDefinition("list_len", "列表长度", ["list"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
+    "list_rev": ChainProcessorDefinition("list_rev", "反转列表", ["list"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_unique": ChainProcessorDefinition("list_unique", "列表去重", ["list"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_sort": ChainProcessorDefinition("list_sort", "列表排序", ["list", "mode"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_filter": ChainProcessorDefinition("list_filter", "列表筛选", ["list", "contains", "exclude"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_contains": ChainProcessorDefinition("list_contains", "列表包含", ["list", "value"], BOOL_OUTPUTS),  # type: ignore[arg-type]
     "list_template": ChainProcessorDefinition(
-        "list_template", "列表套模板", ["list", "template", "delimiter"], LIST_OUTPUTS
+        "list_template", "列表套模板", ["list", "template", "delimiter"], LIST_OUTPUTS  # type: ignore[arg-type]
     ),
-    "list_concat": ChainProcessorDefinition("list_concat", "列表合并", ["a", "b", "c", "delimiter"], LIST_OUTPUTS),
-    "list_slice": ChainProcessorDefinition("list_slice", "列表切片", ["list", "start", "end"], LIST_OUTPUTS),
-    "list_zip": ChainProcessorDefinition("list_zip", "列表配对", ["a", "b", "template", "delimiter"], LIST_OUTPUTS),
-    "list_flatten": ChainProcessorDefinition("list_flatten", "列表展开", ["list", "mode"], LIST_OUTPUTS),
-    "list_join": ChainProcessorDefinition("list_join", "列表转文本", ["list", "delimiter"], TEXT_OUTPUTS),
+    "list_concat": ChainProcessorDefinition("list_concat", "列表合并", ["a", "b", "c", "delimiter"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_slice": ChainProcessorDefinition("list_slice", "列表切片", ["list", "start", "end"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_zip": ChainProcessorDefinition("list_zip", "列表配对", ["a", "b", "template", "delimiter"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_flatten": ChainProcessorDefinition("list_flatten", "列表展开", ["list", "mode"], LIST_OUTPUTS),  # type: ignore[arg-type]
+    "list_join": ChainProcessorDefinition("list_join", "列表转文本", ["list", "delimiter"], TEXT_OUTPUTS),  # type: ignore[arg-type]
     "base_convert": ChainProcessorDefinition(
-        "base_convert", "通用进制转换", ["number", "from_base", "to_base"], TEXT_OUTPUTS
+        "base_convert", "通用进制转换", ["number", "from_base", "to_base"], TEXT_OUTPUTS  # type: ignore[arg-type]
     ),
-    "dec_to_hex": ChainProcessorDefinition("dec_to_hex", "十进制转十六进制", ["number"], TEXT_OUTPUTS),
-    "hex_to_dec": ChainProcessorDefinition("hex_to_dec", "十六进制转十进制", ["number"], NUMBER_OUTPUTS),
+    "dec_to_hex": ChainProcessorDefinition("dec_to_hex", "十进制转十六进制", ["number"], TEXT_OUTPUTS),  # type: ignore[arg-type]
+    "hex_to_dec": ChainProcessorDefinition("hex_to_dec", "十六进制转十进制", ["number"], NUMBER_OUTPUTS),  # type: ignore[arg-type]
     # ── Windows 文件与路径 ──
-    "file_path_input": ChainProcessorDefinition("file_path_input", "文件路径", ["path"], FILE_OUTPUTS),
-    "folder_path_input": ChainProcessorDefinition("folder_path_input", "文件夹路径", ["path"], FOLDER_OUTPUTS),
-    "path_join": ChainProcessorDefinition("path_join", "路径拼接", ["a", "b", "c"], FILE_OUTPUTS),
+    "file_path_input": ChainProcessorDefinition("file_path_input", "文件路径", ["path"], FILE_OUTPUTS),  # type: ignore[arg-type]
+    "folder_path_input": ChainProcessorDefinition("folder_path_input", "文件夹路径", ["path"], FOLDER_OUTPUTS),  # type: ignore[arg-type]
+    "path_join": ChainProcessorDefinition("path_join", "路径拼接", ["a", "b", "c"], FILE_OUTPUTS),  # type: ignore[arg-type]
     "path_split": ChainProcessorDefinition(
         "path_split",
         "拆分路径",
         ["path"],
         ["output", "folder", "filename", "stem", "extension", "exists"],
     ),
-    "path_exists": ChainProcessorDefinition("path_exists", "路径存在", ["path"], BOOL_OUTPUTS + ["path"]),
-    "folder_create": ChainProcessorDefinition("folder_create", "创建文件夹", ["path"], FOLDER_OUTPUTS),
+    "path_exists": ChainProcessorDefinition("path_exists", "路径存在", ["path"], BOOL_OUTPUTS + ["path"]),  # type: ignore[arg-type]
+    "folder_create": ChainProcessorDefinition("folder_create", "创建文件夹", ["path"], FOLDER_OUTPUTS),  # type: ignore[arg-type]
     "file_read_text": ChainProcessorDefinition(
-        "file_read_text", "读取文本文件", ["path", "encoding"], TEXT_OUTPUTS + ["path", "folder", "filename"]
+        "file_read_text", "读取文本文件", ["path", "encoding"], TEXT_OUTPUTS + ["path", "folder", "filename"]  # type: ignore[arg-type]
     ),
     "file_write_text": ChainProcessorDefinition(
-        "file_write_text", "写入文本文件", ["path", "text", "encoding", "mode"], FILE_OUTPUTS + ["length"]
+        "file_write_text", "写入文本文件", ["path", "text", "encoding", "mode"], FILE_OUTPUTS + ["length"]  # type: ignore[arg-type]
     ),
 }
 
@@ -710,8 +710,8 @@ def _normalize_external_processor_definition(
     normalized = ChainProcessorDefinition(
         processor_id,
         raw_title,
-        inputs,
-        outputs,
+        inputs,  # type: ignore[arg-type]
+        outputs,  # type: ignore[arg-type]
         source,
         category=category or "插件电池",
         description=description,
@@ -1283,7 +1283,7 @@ def _execute_external_with_timeout(
             display_type="text",
             error=str(exc),
         )
-    return _normalize_external_processor_result(result_holder.get("result"))
+    return _normalize_external_processor_result(result_holder.get("result"))  # type: ignore[arg-type]
 
 
 def _normalize_external_processor_result(result: CommandResult | dict[str, Any] | str) -> CommandResult:
@@ -1566,13 +1566,13 @@ def _compare_values(values: dict[str, str]) -> bool:
         left_cmp = left
         right_cmp = right
     if operator in {">", "大于"}:
-        return left_cmp > right_cmp
+        return left_cmp > right_cmp  # type: ignore[operator]
     if operator in {"<", "小于"}:
-        return left_cmp < right_cmp
+        return left_cmp < right_cmp  # type: ignore[operator]
     if operator in {">=", "大于等于"}:
-        return left_cmp >= right_cmp
+        return left_cmp >= right_cmp  # type: ignore[operator]
     if operator in {"<=", "小于等于"}:
-        return left_cmp <= right_cmp
+        return left_cmp <= right_cmp  # type: ignore[operator]
     raise ValueError(f"未知比较方式: {operator}")
 
 
@@ -1596,7 +1596,7 @@ def _loop_counter(values: dict[str, str]) -> str:
     if step == 0:
         raise ValueError("计数循环步长不能为 0")
     delimiter = values.get("delimiter", "\n")
-    values_out = []
+    values_out = []  # type: ignore[var-annotated]
     current = start
     limit = 10000
     while len(values_out) < limit and ((step > 0 and current <= end) or (step < 0 and current >= end)):
@@ -1710,8 +1710,8 @@ def _img_resize(values: dict[str, str]) -> str:
 
     img = Image.open(filepath)
     resampling = getattr(Image, "Resampling", None)
-    filter_type = resampling.LANCZOS if resampling else Image.BICUBIC
-    img = img.resize((w, h), filter_type)
+    filter_type = resampling.LANCZOS if resampling else Image.BICUBIC  # type: ignore[attr-defined]
+    img = img.resize((w, h), filter_type)  # type: ignore[assignment]
     img.save(filepath)
     return filepath
 
@@ -1765,7 +1765,7 @@ def _img_crop(values: dict[str, str]) -> str:
     from PIL import Image
 
     img = Image.open(filepath)
-    img = img.crop((x, y, x + w, y + h))
+    img = img.crop((x, y, x + w, y + h))  # type: ignore[assignment]
     img.save(filepath)
     return filepath
 
@@ -1776,7 +1776,7 @@ def _img_rotate(values: dict[str, str]) -> str:
     from PIL import Image
 
     img = Image.open(filepath)
-    img = img.rotate(angle, expand=True)
+    img = img.rotate(angle, expand=True)  # type: ignore[assignment]
     img.save(filepath)
     return filepath
 

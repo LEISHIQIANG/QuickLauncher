@@ -21,12 +21,12 @@ MouseHook = _MouseHookUnavailable
 KeyboardHook = _KeyboardHookUnavailable
 
 try:
-    from .mouse_hook_dll import MouseHook
+    from .mouse_hook_dll import MouseHook  # type: ignore[assignment]
 except (ImportError, OSError, RuntimeError) as e:
     logging.warning(f"MouseHook 导入失败: {e}")
 
 try:
-    from .keyboard_hook_dll import KeyboardHook
+    from .keyboard_hook_dll import KeyboardHook  # type: ignore[assignment]
 except (ImportError, OSError, RuntimeError) as e:
     logging.warning(f"KeyboardHook 导入失败: {e}")
 
@@ -34,6 +34,6 @@ try:
     from .input_macro import InputMacroBackend
 except (ImportError, OSError, RuntimeError) as e:
     logging.warning(f"InputMacroBackend 导入失败: {e}")
-    InputMacroBackend = None
+    InputMacroBackend = None  # type: ignore[assignment, misc]
 
 __all__ = ["MouseHook", "KeyboardHook", "InputMacroBackend"]

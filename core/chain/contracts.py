@@ -127,12 +127,12 @@ def input_port_specs_for_node(node: dict, shortcuts: dict[str, Any]) -> list[Cha
 
     # Shortcut node
     shortcut = shortcuts.get(str(node.get("shortcut_id") or ""))
-    ports: list[ChainPortSpec] = [
+    ports: list[ChainPortSpec] = [  # type: ignore[no-redef]
         ChainPortSpec("input", "input", "text", True, "输入值", "传给快捷方式的主输入值，通常是字符串。", "primary")
     ]
 
     if shortcut is None:
-        return ports
+        return ports  # type: ignore[no-any-return]
 
     # Add type-specific ports
     from core.data_models import ShortcutType
@@ -208,7 +208,7 @@ def input_port_specs_for_node(node: dict, shortcuts: dict[str, Any]) -> list[Cha
             ChainPortSpec(port, "input", "text", False, port, "从 {{param:name}} 变量生成的字符串输入。", "parameter")
         )
 
-    return ports
+    return ports  # type: ignore[no-any-return]
 
 
 def output_port_specs_for_node(node: dict, shortcuts: dict[str, Any] | None = None) -> list[ChainPortSpec]:

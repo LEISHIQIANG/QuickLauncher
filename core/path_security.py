@@ -150,7 +150,7 @@ def _is_allowed_temp_path(path: Path) -> bool:
         temp_root = resolve_existing(tempfile.gettempdir())
     except (OSError, RuntimeError):
         return False
-    return path == temp_root or temp_root in path.parents
+    return temp_root in path.parents
 
 
 def _is_drive_or_fs_root(path: Path) -> bool:

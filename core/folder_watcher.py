@@ -21,7 +21,7 @@ except ImportError:
     logging.warning("watchdog库未安装,文件夹自动同步功能不可用")
 
     # 创建虚拟基类以避免 NameError
-    class FileSystemEventHandler:
+    class FileSystemEventHandler:  # type: ignore[no-redef]
         """虚拟基类 - watchdog 不可用时使用"""
 
         pass
@@ -77,8 +77,8 @@ class FolderWatcherManager:
     """文件夹监听管理器(单例)"""
 
     def __init__(self):
-        self.observer: Observer | None = None
-        self.watches: dict[str, any] = {}  # folder_id -> watch_handle
+        self.observer: Observer | None = None  # type: ignore[valid-type]
+        self.watches: dict[str, any] = {}  # type: ignore[valid-type]  # folder_id -> watch_handle
 
         if WATCHDOG_AVAILABLE:
             self.observer = Observer()
@@ -115,7 +115,7 @@ class FolderWatcherManager:
 
         # 启动监听(不递归,用户需求)
         try:
-            watch = self.observer.schedule(
+            watch = self.observer.schedule(  # type: ignore[attr-defined]
                 handler,
                 str(watch_path),
                 recursive=False,  # 不递归(用户需求)
@@ -130,7 +130,7 @@ class FolderWatcherManager:
         if folder_id in self.watches:
             try:
                 if self.observer:
-                    self.observer.unschedule(self.watches[folder_id])
+                    self.observer.unschedule(self.watches[folder_id])  # type: ignore[attr-defined]
                 del self.watches[folder_id]
                 logger.info(f"停止监听文件夹: {folder_id}")
             except Exception as e:
@@ -142,15 +142,15 @@ class FolderWatcherManager:
         self.observer = None
         if observer:
             try:
-                observer.stop()
-                observer.join(timeout=5.0)
-                if observer.is_alive():
+                observer.stop()  # type: ignore[attr-defined]
+                observer.join(timeout=5.0)  # type: ignore[attr-defined]
+                if observer.is_alive():  # type: ignore[attr-defined]
                     try:
-                        observer.unschedule_all()
+                        observer.unschedule_all()  # type: ignore[attr-defined]
                     except Exception:
                         logger.debug("强制清理文件夹监听计划失败", exc_info=True)
-                    observer.join(timeout=2.0)
-                    if observer.is_alive():
+                    observer.join(timeout=2.0)  # type: ignore[attr-defined]
+                    if observer.is_alive():  # type: ignore[attr-defined]
                         logger.warning("文件夹监听器停止超时")
             except Exception:
                 logger.warning("停止文件夹监听器失败", exc_info=True)

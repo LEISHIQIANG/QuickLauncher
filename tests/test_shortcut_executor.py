@@ -143,6 +143,67 @@ def test_execute_batch_launch_type(monkeypatch):
     assert error == ""
 
 
+def test_execute_macro_uses_saved_speed(monkeypatch):
+    import core.background_tasks as background_tasks
+    import hooks.input_macro as input_macro
+
+    calls = []
+
+    class FakeBackend:
+        def play(self, events=None, **kwargs):
+            calls.append((list(events or []), kwargs))
+            return True
+
+    monkeypatch.setattr(input_macro, "InputMacroBackend", FakeBackend)
+    monkeypatch.setattr(background_tasks, "start_background_thread", lambda **kwargs: kwargs["target"]())
+
+    shortcut = ShortcutItem(
+        type=ShortcutType.MACRO,
+        macro_events=[{"type": 6, "delay_us": 200_000, "vk_code": 65}],
+        macro_speed=2.0,
+    )
+
+    success, error = ShortcutExecutor._execute_macro(shortcut)
+
+    assert success is True
+    assert error == ""
+    assert calls == [([{"type": 6, "delay_us": 200_000, "vk_code": 65}], {"speed": 2.0})]
+
+
+def test_execute_macro_after_close_waits_for_restored_window(monkeypatch):
+    import core.background_tasks as background_tasks
+    import hooks.input_macro as input_macro
+
+    calls = []
+
+    class FakeBackend:
+        def play(self, events=None, **kwargs):
+            calls.append(("play", list(events or []), kwargs))
+            return True
+
+    monkeypatch.setattr(input_macro, "InputMacroBackend", FakeBackend)
+    monkeypatch.setattr(background_tasks, "start_background_thread", lambda **kwargs: kwargs["target"]())
+    monkeypatch.setattr(
+        ShortcutExecutor, "restore_foreground_window_fast", lambda **_kwargs: calls.append(("restore",)) or True
+    )
+    monkeypatch.setattr(se.time, "sleep", lambda seconds: calls.append(("sleep", seconds)))
+    monkeypatch.setattr(se.user32, "GetForegroundWindow", lambda: 456)
+
+    ShortcutExecutor._previous_hwnd = 456
+    shortcut = ShortcutItem(
+        type=ShortcutType.MACRO,
+        trigger_mode="after_close",
+        macro_events=[{"type": 6, "delay_us": 200_000, "vk_code": 65}],
+    )
+
+    success, error = ShortcutExecutor._execute_macro(shortcut)
+
+    assert success is True
+    assert error == ""
+    assert calls[:3] == [("sleep", 0.150), ("restore",), ("sleep", 0.250)]
+    assert calls[-1] == ("play", [{"type": 6, "delay_us": 200_000, "vk_code": 65}], {"speed": 1.0})
+
+
 def test_execute_with_files_empty():
     shortcut = MagicMock(spec=ShortcutItem)
     result = ShortcutExecutor.execute_with_files(shortcut, [])

@@ -79,7 +79,7 @@ def run_url_icon_fetch(url: str, request_id: int = 0) -> dict:
 class UrlDialog(BaseDialog):
     """URL编辑对话框"""
 
-    def __init__(self, parent=None, shortcut: ShortcutItem = None):
+    def __init__(self, parent=None, shortcut: ShortcutItem = None):  # type: ignore[assignment]
         super().__init__(parent)
         self.shortcut = shortcut or ShortcutItem(type=ShortcutType.URL)
         self._custom_icon_path = self.shortcut.icon_path or ""

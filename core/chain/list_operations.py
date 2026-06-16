@@ -108,7 +108,7 @@ def _element_wise_op(list1: List, list2: List, op: Callable) -> List:
     result = []
     for item1, item2 in zip(aligned1, aligned2):
         try:
-            value = op(item1.value, item2.value)
+            value = op(item1.value, item2.value)  # type: ignore[attr-defined]
             result.append(Item.from_any(value))
         except Exception:
             result.append(Item.from_any(None))
@@ -302,7 +302,7 @@ def average_list(lst: List) -> float | None:
     values = [item.value for item in lst.items if item.value is not None]
     if not values:
         return None
-    return sum(values) / len(values)
+    return sum(values) / len(values)  # type: ignore[no-any-return]
 
 
 def median_list(lst: List) -> float | None:
@@ -312,8 +312,8 @@ def median_list(lst: List) -> float | None:
         return None
     n = len(values)
     if n % 2 == 0:
-        return (values[n // 2 - 1] + values[n // 2]) / 2
-    return values[n // 2]
+        return (values[n // 2 - 1] + values[n // 2]) / 2  # type: ignore[no-any-return]
+    return values[n // 2]  # type: ignore[no-any-return]
 
 
 def std_list(lst: List) -> float | None:
@@ -344,7 +344,7 @@ def reverse_list(lst: List) -> List:
     return lst.reverse()
 
 
-def sort_list(lst: List, key: Callable = None, reverse: bool = False) -> List:
+def sort_list(lst: List, key: Callable = None, reverse: bool = False) -> List:  # type: ignore[assignment]
     """Sort list: [3,1,2] -> [1,2,3]"""
     if key is None:
 
@@ -412,7 +412,7 @@ def zip_lists(list1: List, list2: List) -> List:
     aligned1, aligned2 = align_data(list1, list2, strategy=AlignmentStrategy.SHORTEST)
     result = []
     for item1, item2 in zip(aligned1, aligned2):
-        result.append(Item.from_any((item1.value, item2.value)))
+        result.append(Item.from_any((item1.value, item2.value)))  # type: ignore[attr-defined]
     return List(items=result)
 
 
@@ -458,7 +458,7 @@ def intersection_lists(list1: List, list2: List) -> List:
 # ── List Slicing ───────────────────────────────────────────────────────────
 
 
-def slice_list(lst: List, start: int = None, end: int = None, step: int = None) -> List:
+def slice_list(lst: List, start: int = None, end: int = None, step: int = None) -> List:  # type: ignore[assignment]
     """Slice list: [1,2,3,4,5][1:3] -> [2,3]"""
     return lst.slice(start, end, step)
 

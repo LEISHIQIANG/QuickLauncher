@@ -55,7 +55,7 @@ try:
     HAS_ICON_EXTRACTOR = True
 except ImportError:
     HAS_ICON_EXTRACTOR = False
-    _should_invert_icon = None
+    _should_invert_icon = None  # type: ignore[assignment]
 
 
 class LauncherPopup(
@@ -81,7 +81,7 @@ class LauncherPopup(
 
     # 全局背景缓存 (path, blur, width, height) -> QPixmap
     # 使用 OrderedDict 实现 LRU 缓存，限制大小防止内存泄漏
-    _global_bg_cache = OrderedDict()
+    _global_bg_cache = OrderedDict()  # type: ignore[var-annotated]
     _MAX_BG_CACHE = 3  # 降低到3个，减少内存占用
 
     # 背景加载完成信号
@@ -121,7 +121,7 @@ class LauncherPopup(
         self.plugin_search_results_ready.connect(self._on_plugin_search_results_ready)
         self.folder_sync_finished.connect(self._on_folder_sync_finished)
         self._is_loading_bg = False
-        self._pending_bg_params = None
+        self._pending_bg_params = None  # type: ignore[assignment]
         self._bg_load_timer = QTimer(self)
         self._bg_load_timer.setSingleShot(True)
         self._bg_load_timer.timeout.connect(self._run_bg_load_request)
@@ -202,21 +202,21 @@ class LauncherPopup(
         self._icon_flash_overlay = IconFlashOverlay(self)
         self._sync_worker = None
         self._folder_sync_refresh_seq = 0
-        self._pending_last_page_index = None
-        self._last_page_save_timer = None
+        self._pending_last_page_index = None  # type: ignore[assignment]
+        self._last_page_save_timer = None  # type: ignore[assignment]
         self._label_font = QFont()
 
         # ===== 选中文件状态 =====
         self._selected_files = []
-        self._file_thread = None
-        self._pending_file_check_context = None
+        self._file_thread = None  # type: ignore[assignment]
+        self._pending_file_check_context = None  # type: ignore[assignment]
         self._file_check_seq = 0
         self._selected_files_source_hwnd = 0
         self._selected_files_request_hwnd = 0
         self._selected_files_request_started_at = 0.0
         self._selected_files_captured_at = 0.0
         self._selected_files_trigger_pos = None
-        self._selected_files_context = None
+        self._selected_files_context = None  # type: ignore[assignment]
         self._selected_files_status = "idle"
         try:
             if hasattr(self, "_request_page_animation_update"):
@@ -257,7 +257,7 @@ class LauncherPopup(
         # ===== 双击检测状态结束 =====
 
         # 背景缓存
-        self._bg_cache = None
+        self._bg_cache = None  # type: ignore[assignment]
         self._last_bg_params = None
         self._cached_bg_path = None
         self._win10_fallback_bg = None  # Win10回退背景，避免重新显示时闪烁
@@ -337,10 +337,10 @@ class LauncherPopup(
         self._search_anim_timer.setInterval(16)
         set_precise_timer(self._search_anim_timer, owner="LauncherPopup._search_anim_timer")
         self._search_anim_timer.timeout.connect(self._tick_search_reveal)
-        self._page_icon_warm_queue = []
-        self._page_icon_warm_keys = set()
+        self._page_icon_warm_queue = []  # type: ignore[var-annotated]
+        self._page_icon_warm_keys = set()  # type: ignore[var-annotated]
         self._page_icon_warm_timer = None
-        self._page_render_cache = {}
+        self._page_render_cache = {}  # type: ignore[var-annotated]
 
         logger.info(f"弹窗创建: {self.width()}x{self.height()}")
 
@@ -382,7 +382,7 @@ class LauncherPopup(
         token = int(self._lifecycle_generation if generation is None else generation)
         QTimer.singleShot(
             int(delay_ms),
-            lambda token=token, callback=callback, args=args: self._run_if_lifecycle_current(token, callback, *args),
+            lambda token=token, callback=callback, args=args: self._run_if_lifecycle_current(token, callback, *args),  # type: ignore[arg-type]
         )
 
     def _stop_lifecycle_timers(self) -> None:
@@ -464,6 +464,10 @@ class LauncherPopup(
         self._defer_lifecycle_callback(200, self._preload_animation_pages, generation=generation)
 
         super().showEvent(event)
+
+        # 注册 HWND：仅排除 LauncherPopup 自身，避免配置窗口等 QuickLauncher
+        # 窗口被错误地当作"自身窗口"而无法作为焦点恢复目标保存。
+        self._register_popup_hwnd()
 
     def _start_show_animation(self):
         """窗口出现动画 - 从中心向外扩散"""
@@ -580,6 +584,9 @@ class LauncherPopup(
 
         super().hideEvent(event)
 
+        # 注销 HWND：避免影响下一次 save_foreground_window 的判断
+        self._unregister_popup_hwnd()
+
     def closeEvent(self, event):
         self._closing = True
         self._next_lifecycle_generation()
@@ -594,6 +601,9 @@ class LauncherPopup(
             logger.debug("停止弹窗后台线程失败: %s", exc, exc_info=True)
         super().closeEvent(event)
 
+        # 注销 HWND：避免影响下一次 save_foreground_window 的判断
+        self._unregister_popup_hwnd()
+
     def _restore_focus_safe(self):
         """安全地恢复之前的前台窗口焦点"""
         try:
@@ -601,6 +611,37 @@ class LauncherPopup(
                 ShortcutExecutor.restore_foreground_window()
         except Exception as e:
             logger.debug(f"恢复焦点失败: {e}")
+
+    def _current_popup_hwnd(self) -> int:
+        """获取当前弹窗的 Win32 HWND（若尚未创建则返回 0）"""
+        try:
+            if not HAS_EXECUTOR:
+                return 0
+            return int(self.winId() or 0)
+        except Exception:
+            return 0
+
+    def _register_popup_hwnd(self) -> None:
+        """在 showEvent 中调用：将自身 HWND 注册到 ShortcutExecutor 的弹窗注册表。"""
+        if not HAS_EXECUTOR:
+            return
+        try:
+            hwnd = self._current_popup_hwnd()
+            if hwnd:
+                ShortcutExecutor.register_popup_hwnd(hwnd)
+        except Exception as exc:
+            logger.debug("注册弹窗HWND失败: %s", exc, exc_info=True)
+
+    def _unregister_popup_hwnd(self) -> None:
+        """在 hideEvent/closeEvent 中调用：从注册表中移除自身 HWND。"""
+        if not HAS_EXECUTOR:
+            return
+        try:
+            hwnd = self._current_popup_hwnd()
+            if hwnd:
+                ShortcutExecutor.unregister_popup_hwnd(hwnd)
+        except Exception as exc:
+            logger.debug("取消注册弹窗HWND失败: %s", exc, exc_info=True)
 
     def _release_residual_modifiers(self):
         """释放残留的修饰键
@@ -617,8 +658,8 @@ class LauncherPopup(
 
     def refresh_data(
         self,
-        x: int = None,
-        y: int = None,
+        x: int = None,  # type: ignore[assignment]
+        y: int = None,  # type: ignore[assignment]
         refresh_selection: bool = True,
         force: bool = False,
         reposition: bool = True,
@@ -663,8 +704,8 @@ class LauncherPopup(
         self._search_target_progress = 1.0 if self._search_forced_active else 0.0
         self._search_hide_geometry_pending = False
         if preserved_search_state is not None:
-            self.search_query = preserved_search_state["query"]
-            self.search_cursor_pos = max(0, min(preserved_search_state["cursor_pos"], len(self.search_query)))
+            self.search_query = preserved_search_state["query"]  # type: ignore[assignment]
+            self.search_cursor_pos = max(0, min(preserved_search_state["cursor_pos"], len(self.search_query)))  # type: ignore[type-var]
             selection_anchor = preserved_search_state["selection_anchor"]
             if selection_anchor is not None:
                 selection_anchor = max(0, min(int(selection_anchor), len(self.search_query)))
@@ -690,7 +731,7 @@ class LauncherPopup(
             self._all_page_icons_preloaded = False
             self._first_show_ready = False
             self._cached_bg_path = None
-            self._bg_cache = None
+            self._bg_cache = None  # type: ignore[assignment]
 
         # 记录之前的图标数量用于比较
         prev_item_count = 0

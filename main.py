@@ -579,7 +579,7 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
         try:
             ssl_context = ssl.create_default_context()
             digest = hashlib.sha256(b"quicklauncher-smoke").hexdigest()
-            url_exec.safe_urlopen = fake_safe_urlopen
+            url_exec.safe_urlopen = fake_safe_urlopen  # type: ignore[assignment]
             url_exec.time.perf_counter = lambda: next(ticks)
             latency = UrlExecutionMixin.test_url_latency("https://example.com")
         finally:

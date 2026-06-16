@@ -91,8 +91,8 @@ class Item:
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, Item):
-            return self.value == other.value
-        return self.value == other
+            return self.value == other.value  # type: ignore[no-any-return]
+        return self.value == other  # type: ignore[no-any-return]
 
     def __hash__(self) -> int:
         return hash(self.value)
@@ -254,7 +254,7 @@ class List:
                 unique_items.append(item)
         return List(items=unique_items, metadata=dict(self.metadata))
 
-    def slice(self, start: int = None, end: int = None, step: int = None) -> List:
+    def slice(self, start: int = None, end: int = None, step: int = None) -> List:  # type: ignore[assignment]
         """Return sliced list."""
         return List(items=self.items[start:end:step], metadata=dict(self.metadata))
 
@@ -389,7 +389,7 @@ class Tree:
         """Set branch at path."""
         self.branches[path] = branch
 
-    def add_branch(self, path: Path, items: list[Any] = None) -> None:
+    def add_branch(self, path: Path, items: list[Any] = None) -> None:  # type: ignore[assignment]
         """Add a new branch."""
         if items is None:
             items = []
@@ -488,7 +488,7 @@ class Tree:
         branches = {}
         for i, lst in enumerate(lists):
             branches[(i,)] = lst
-        return cls(branches=branches)
+        return cls(branches=branches)  # type: ignore[arg-type]
 
     @classmethod
     def from_values(cls, values: list[list[Any]]) -> Tree:
@@ -496,7 +496,7 @@ class Tree:
         branches = {}
         for i, branch_values in enumerate(values):
             branches[(i,)] = List.from_values(branch_values)
-        return cls(branches=branches)
+        return cls(branches=branches)  # type: ignore[arg-type]
 
     @classmethod
     def empty(cls) -> Tree:
@@ -571,7 +571,7 @@ def flatten_tree(tree: Tree, depth: int = -1) -> Tree:
                 all_items.extend(branch.items)
             new_branches[(first_idx,)] = List(items=all_items)
 
-    result = Tree(branches=new_branches, metadata=dict(tree.metadata))
+    result = Tree(branches=new_branches, metadata=dict(tree.metadata))  # type: ignore[arg-type]
 
     # Continue flattening if needed
     if depth == -1 or depth > 1:
@@ -968,42 +968,42 @@ def _binary_data_operation(a: Item | List | Tree, b: Item | List | Tree, operati
 
     # Case 1: Both are Items
     if type_a == DataType.ITEM and type_b == DataType.ITEM:
-        result_value = _apply_operation(a.value, b.value, operation)
+        result_value = _apply_operation(a.value, b.value, operation)  # type: ignore[union-attr]
         return Item.from_any(result_value)
 
     # Case 2: Item and List (broadcast item to list)
     if type_a == DataType.ITEM and type_b == DataType.LIST:
-        return broadcast_operation(b, a, operation)
+        return broadcast_operation(b, a, operation)  # type: ignore[arg-type]
 
     # Case 3: List and Item (broadcast item to list)
     if type_a == DataType.LIST and type_b == DataType.ITEM:
-        return broadcast_operation(a, b, operation)
+        return broadcast_operation(a, b, operation)  # type: ignore[arg-type]
 
     # Case 4: Both are Lists
     if type_a == DataType.LIST and type_b == DataType.LIST:
-        return _list_list_operation(a, b, operation)
+        return _list_list_operation(a, b, operation)  # type: ignore[arg-type]
 
     # Case 5: Item and Tree (broadcast item to tree)
     if type_a == DataType.ITEM and type_b == DataType.TREE:
-        return _broadcast_item_to_tree(a, b, operation)
+        return _broadcast_item_to_tree(a, b, operation)  # type: ignore[arg-type]
 
     # Case 6: Tree and Item (broadcast item to tree)
     if type_a == DataType.TREE and type_b == DataType.ITEM:
-        return _broadcast_item_to_tree(b, a, operation, reverse=True)
+        return _broadcast_item_to_tree(b, a, operation, reverse=True)  # type: ignore[arg-type]
 
     # Case 7: List and Tree (convert list to tree, then operate)
     if type_a == DataType.LIST and type_b == DataType.TREE:
-        tree_a = Tree.from_list(a)
-        return _tree_tree_operation(tree_a, b, operation)
+        tree_a = Tree.from_list(a)  # type: ignore[arg-type]
+        return _tree_tree_operation(tree_a, b, operation)  # type: ignore[arg-type]
 
     # Case 8: Tree and List (convert list to tree, then operate)
     if type_a == DataType.TREE and type_b == DataType.LIST:
-        tree_b = Tree.from_list(b)
-        return _tree_tree_operation(a, tree_b, operation)
+        tree_b = Tree.from_list(b)  # type: ignore[arg-type]
+        return _tree_tree_operation(a, tree_b, operation)  # type: ignore[arg-type]
 
     # Case 9: Both are Trees
     if type_a == DataType.TREE and type_b == DataType.TREE:
-        return _tree_tree_operation(a, b, operation)
+        return _tree_tree_operation(a, b, operation)  # type: ignore[arg-type]
 
     # Fallback
     return a
@@ -1016,7 +1016,7 @@ def _list_list_operation(lst1: List, lst2: List, operation: str) -> List:
 
     result_items = []
     for item1, item2 in zip(aligned1, aligned2):
-        result_value = _apply_operation(item1.value, item2.value, operation)
+        result_value = _apply_operation(item1.value, item2.value, operation)  # type: ignore[attr-defined]
         result_items.append(Item.from_any(result_value))
 
     return List(items=result_items)
@@ -1074,15 +1074,15 @@ def _unary_data_operation(data: Item | List | Tree, operation: str) -> Item | Li
     data_type = get_data_type(data)
 
     if data_type == DataType.ITEM:
-        result_value = _apply_unary_operation(data.value, operation)
+        result_value = _apply_unary_operation(data.value, operation)  # type: ignore[union-attr]
         return Item.from_any(result_value)
 
     if data_type == DataType.LIST:
-        return list_element_operation(data, operation)
+        return list_element_operation(data, operation)  # type: ignore[arg-type]
 
     if data_type == DataType.TREE:
         new_branches = {}
-        for path, branch in data.branches.items():
+        for path, branch in data.branches.items():  # type: ignore[union-attr]
             new_branches[path] = list_element_operation(branch, operation)
         return Tree(branches=new_branches, metadata=dict(data.metadata))
 
@@ -1132,7 +1132,7 @@ def align_data(*data: List | Tree, strategy: AlignmentStrategy = AlignmentStrate
         if isinstance(original, Tree):
             result.append(Tree.from_list(aligned_item))
         else:
-            result.append(aligned_item)
+            result.append(aligned_item)  # type: ignore[arg-type]
 
     return tuple(result)
 

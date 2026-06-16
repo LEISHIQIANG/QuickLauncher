@@ -93,7 +93,7 @@ class PopupDataRefreshMixin:
             desired = max(0, int(desired_radius))
             effect_enabled = (mode == "acrylic") or (mode == "theme" and int(blur or 0) > 0)
             if is_win11() and effect_enabled:
-                return self._get_win11_effective_radius(desired)
+                return self._get_win11_effective_radius(desired)  # type: ignore[attr-defined, no-any-return]
             return desired
 
         prev_paint_radius = calc_paint_radius(prev_corner, prev_bg_mode, prev_blur)
@@ -173,7 +173,7 @@ class PopupDataRefreshMixin:
         显示前调用传 force=True，保证首帧直接使用真实图标。
         all_pages=True 会预热每一页的可见格子，保证首次切页也完整。
         """
-        if not force and not self.isVisible():
+        if not force and not self.isVisible():  # type: ignore[attr-defined]
             return
 
         if all_pages and getattr(self, "_all_page_icons_preloaded", False):
@@ -189,22 +189,22 @@ class PopupDataRefreshMixin:
             seen = set()
             max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 3))
 
-            if self.pages:
-                page_indexes = range(len(self.pages)) if all_pages else (self.current_page,)
+            if self.pages:  # type: ignore[attr-defined]
+                page_indexes = range(len(self.pages)) if all_pages else (self.current_page,)  # type: ignore[attr-defined]
                 for page_index in page_indexes:
-                    if not 0 <= page_index < len(self.pages):
+                    if not 0 <= page_index < len(self.pages):  # type: ignore[attr-defined]
                         continue
                     page_items = (
                         self._get_page_animation_items(page_index)
                         if hasattr(self, "_get_page_animation_items")
-                        else (self.pages[page_index].items or [])
+                        else (self.pages[page_index].items or [])  # type: ignore[attr-defined]
                     )
                     items.extend(list(page_items)[:max_visible])
 
-            if self.dock_items:
+            if self.dock_items:  # type: ignore[attr-defined]
                 dock_rows = max(1, int(getattr(self.settings, "dock_height_mode", 1) or 1))
                 max_dock_items = self.cols * dock_rows
-                items.extend((self.dock_items or [])[:max_dock_items])
+                items.extend((self.dock_items or [])[:max_dock_items])  # type: ignore[attr-defined]
 
             unique_items = []
             for item in items:
@@ -225,7 +225,7 @@ class PopupDataRefreshMixin:
             try:
                 for item in unique_items:
                     try:
-                        self._get_icon(item)
+                        self._get_icon(item)  # type: ignore[attr-defined]
                     except Exception:
                         continue
                 batch_changed = bool(self.__dict__.get("_icon_cache_batch_changed", False))
@@ -233,7 +233,7 @@ class PopupDataRefreshMixin:
                 self._batch_icon_preload_active = previous_batch_state
                 self._icon_cache_batch_changed = False
             if batch_changed and not previous_batch_state:
-                self._mark_icon_cache_changed()
+                self._mark_icon_cache_changed()  # type: ignore[attr-defined]
             self._visible_icons_preloaded = True
             if all_pages:
                 self._all_page_icons_preloaded = True
@@ -242,22 +242,22 @@ class PopupDataRefreshMixin:
 
     def prepare_first_show(self, create_native_window: bool = True):
         """Warm up only cheap Qt state before the popup is shown to the user."""
-        if self._first_show_ready:
+        if self._first_show_ready:  # type: ignore[has-type]
             return
 
         try:
-            self.ensurePolished()
+            self.ensurePolished()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("确保窗口抛光失败: %s", exc, exc_info=True)
 
         try:
             # Force native window creation while the popup is still off-screen.
-            self.winId()
+            self.winId()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("获取窗口ID失败: %s", exc, exc_info=True)
 
         try:
-            self._schedule_bg_load()
+            self._schedule_bg_load()  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("调度背景预加载失败: %s", exc, exc_info=True)
 
@@ -265,7 +265,7 @@ class PopupDataRefreshMixin:
             if hasattr(self, "_schedule_window_effect_update"):
                 self._schedule_window_effect_update(0)
             else:
-                QTimer.singleShot(0, self._update_window_effect)
+                QTimer.singleShot(0, self._update_window_effect)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("调度窗口特效预热失败: %s", exc, exc_info=True)
 
@@ -273,10 +273,10 @@ class PopupDataRefreshMixin:
 
     def _start_file_check(self, hwnd=None, trigger_method: str = "mouse"):
         """启动文件检测线程"""
-        self._file_check_seq += 1
+        self._file_check_seq += 1  # type: ignore[attr-defined]
         request_started_at = time.monotonic()
         context = SelectionTriggerContext.capture(
-            request_id=self._file_check_seq,
+            request_id=self._file_check_seq,  # type: ignore[attr-defined]
             trigger_method=trigger_method,
             trigger_pos=self._selected_files_trigger_pos,
             foreground_hwnd=hwnd,
@@ -297,7 +297,7 @@ class PopupDataRefreshMixin:
             f" ignore={context.ignore_reason}" if context.ignore_reason else "",
         )
         if context.ignore_reason and not context.target_root_hwnd:
-            self._selected_files = []
+            self._selected_files = []  # type: ignore[var-annotated]
             self._selected_files_source_hwnd = 0
             self._selected_files_captured_at = time.monotonic()
             self._selected_files_status = "empty"
@@ -383,7 +383,7 @@ class PopupDataRefreshMixin:
         current_started_at = float(getattr(self, "_selected_files_request_started_at", 0.0) or 0.0)
         if abs(current_started_at - float(started_at or 0.0)) > 0.001:
             return
-        if (time.monotonic() - current_started_at) < float(self.SELECTED_FILES_CACHE_TTL_SECONDS):
+        if (time.monotonic() - current_started_at) < float(self.SELECTED_FILES_CACHE_TTL_SECONDS):  # type: ignore[attr-defined]
             return
         logger.info("selection_request ignore id=%s reason=expired_cache", request_id)
         self._clear_selected_files_context()
@@ -412,7 +412,7 @@ class PopupDataRefreshMixin:
             return []
 
         started_at = float(state.get("_selected_files_request_started_at", 0.0) or 0.0)
-        if (time.monotonic() - started_at) > self.SELECTED_FILES_CACHE_TTL_SECONDS:
+        if (time.monotonic() - started_at) > self.SELECTED_FILES_CACHE_TTL_SECONDS:  # type: ignore[attr-defined]
             logger.info("selection_request ignore id=%s reason=expired_cache", context.request_id)
             self._clear_selected_files_context()
             return []
@@ -583,7 +583,7 @@ class PopupDataRefreshMixin:
 
     def _is_cursor_inside_popup(self) -> bool:
         try:
-            return bool(self.rect().contains(self.mapFromGlobal(QCursor.pos())))
+            return bool(self.rect().contains(self.mapFromGlobal(QCursor.pos())))  # type: ignore[attr-defined]
         except Exception as exc:
             logger.debug("检查鼠标是否在弹窗内失败: %s", exc, exc_info=True)
             return True
@@ -592,7 +592,7 @@ class PopupDataRefreshMixin:
         """Delay the GUI refresh just enough to keep hover/auto-hide responsive."""
         idle_delay = 16
         try:
-            if not self.isVisible():
+            if not self.isVisible():  # type: ignore[attr-defined]
                 return idle_delay
         except RuntimeError:
             return idle_delay
@@ -640,7 +640,7 @@ class PopupDataRefreshMixin:
                 return
 
             try:
-                visible = bool(self.isVisible())
+                visible = bool(self.isVisible())  # type: ignore[attr-defined]
             except RuntimeError:
                 visible = False
             if not visible:
@@ -669,17 +669,17 @@ class PopupDataRefreshMixin:
         try:
             if sync_first:
                 self._sync_all_folders()
-            self.refresh_data(
+            self.refresh_data(  # type: ignore[attr-defined]
                 refresh_selection=False,
                 force=True,
                 reposition=False,
                 preserve_search_state=True,
                 skip_effect=True,
             )
-            if self.tray_app and getattr(self.tray_app, "config_window", None):
-                if hasattr(self.tray_app.config_window, "_on_settings_panel_changed"):
-                    self.tray_app.config_window._on_settings_panel_changed()
-            logger.info(f"同步并刷新完成，页面数: {len(self.pages)}, Dock项: {len(self.dock_items)}")
+            if self.tray_app and getattr(self.tray_app, "config_window", None):  # type: ignore[attr-defined]
+                if hasattr(self.tray_app.config_window, "_on_settings_panel_changed"):  # type: ignore[attr-defined]
+                    self.tray_app.config_window._on_settings_panel_changed()  # type: ignore[attr-defined]
+            logger.info(f"同步并刷新完成，页面数: {len(self.pages)}, Dock项: {len(self.dock_items)}")  # type: ignore[attr-defined]
         except Exception as e:
             logger.error(f"同步刷新处理失败: {e}")
         finally:

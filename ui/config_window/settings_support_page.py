@@ -47,7 +47,7 @@ _DRINK_CARD_HEIGHT = 114
 class FloatingEmoji(QLabel):
     """漂浮的互动表情文字标签，作为独立的透明无边框窗口运行，可以自由飘出配置窗口范围，创造极富视觉张力的无边界感。"""
 
-    _active_instances = []  # 用类级强引用管理器管理实例生命周期，防止 PyQt5 中无 Parent 的 Top-Level 窗口被自动 GC 销毁
+    _active_instances = []  # type: ignore[var-annotated]  # 用类级强引用管理器管理实例生命周期，防止 PyQt5 中无 Parent 的 Top-Level 窗口被自动 GC 销毁
 
     def __init__(self, text, start_global_pos, parent=None, is_auto=False):
         # 传入 None 作为父级，使其成为不受主窗口边界限制的顶级窗口
@@ -158,7 +158,7 @@ class WobblyCoffeeCup(QLabel):
     def offset(self):
         return self._offset
 
-    @offset.setter
+    @offset.setter  # type: ignore[no-redef]
     def offset(self, val):
         self._offset = val
         self.update()
@@ -167,7 +167,7 @@ class WobblyCoffeeCup(QLabel):
     def angle(self):
         return self._angle
 
-    @angle.setter
+    @angle.setter  # type: ignore[no-redef]
     def angle(self, val):
         self._angle = val
         self.update()
@@ -176,7 +176,7 @@ class WobblyCoffeeCup(QLabel):
     def halo_opacity(self):
         return self._halo_opacity
 
-    @halo_opacity.setter
+    @halo_opacity.setter  # type: ignore[no-redef]
     def halo_opacity(self, val):
         self._halo_opacity = val
         self.update()
@@ -387,7 +387,7 @@ class DrinkCard(QFrame):
     def hover_progress(self):
         return self._hover_progress
 
-    @hover_progress.setter
+    @hover_progress.setter  # type: ignore[no-redef]
     def hover_progress(self, val):
         self._hover_progress = val
         self.update()
@@ -396,7 +396,7 @@ class DrinkCard(QFrame):
     def scale(self):
         return self._scale
 
-    @scale.setter
+    @scale.setter  # type: ignore[no-redef]
     def scale(self, val):
         self._scale = val
         self.update()
@@ -405,7 +405,7 @@ class DrinkCard(QFrame):
     def sweep_progress(self):
         return self._sweep_progress
 
-    @sweep_progress.setter
+    @sweep_progress.setter  # type: ignore[no-redef]
     def sweep_progress(self, val):
         self._sweep_progress = val
         self.update()

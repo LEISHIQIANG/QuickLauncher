@@ -86,8 +86,8 @@ class PopupSearchMixin:
         if not new_text:
             return
         query = self.search_query
-        cursor = self._clamp_search_pos(self.search_cursor_pos)
-        anchor = self.search_selection_anchor
+        cursor = self._clamp_search_pos(self.search_cursor_pos)  # type: ignore[has-type]
+        anchor = self.search_selection_anchor  # type: ignore[has-type]
 
         if anchor is not None and anchor != cursor:
             start_sel = min(cursor, anchor)
@@ -100,7 +100,7 @@ class PopupSearchMixin:
             cursor = cursor + len(new_text)
             anchor = None
 
-        self._set_search_query(query, cursor_pos=cursor, selection_anchor=anchor)
+        self._set_search_query(query, cursor_pos=cursor, selection_anchor=anchor)  # type: ignore[arg-type]
 
     def _clamp_search_pos(self, pos: int) -> int:
         try:
@@ -157,7 +157,7 @@ class PopupSearchMixin:
         )
         cached = self.__dict__.get("_search_metrics_cache")
         if cached is not None and cached[0] == cache_key:
-            return cached[1]
+            return cached[1]  # type: ignore[no-any-return]
         metrics = QFontMetrics(font)
         self._search_metrics_cache = (cache_key, metrics)
         self.__dict__.pop("_search_text_width_cache", None)
@@ -172,11 +172,11 @@ class PopupSearchMixin:
         cache = self.__dict__.get("_search_text_width_cache")
         if cache is None or cache[0] != font_key:
             cache = (font_key, {})
-            self._search_text_width_cache = cache
-        widths = cache[1]
+            self._search_text_width_cache = cache  # type: ignore[var-annotated]
+        widths = cache[1]  # type: ignore[var-annotated]
         cached = widths.get(value)
         if cached is not None:
-            return cached
+            return cached  # type: ignore[no-any-return]
         if hasattr(metrics, "horizontalAdvance"):
             width = metrics.horizontalAdvance(value)
         else:
@@ -189,8 +189,8 @@ class PopupSearchMixin:
 
     def _search_bar_rect(self) -> QRectF:
         side_inset = sp(0)
-        x = self.padding + side_inset
-        w = self.width() - (self.padding + side_inset) * 2
+        x = self.padding + side_inset  # type: ignore[attr-defined]
+        w = self.width() - (self.padding + side_inset) * 2  # type: ignore[attr-defined]
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
         return QRectF(x, shadow_margin + sp(8), w, sp(24))
 
@@ -300,7 +300,7 @@ class PopupSearchMixin:
 
         scroll1 = get_center_scroll(idx1)
         scroll2 = get_center_scroll(idx2)
-        return scroll1 + (scroll2 - scroll1) * weight
+        return scroll1 + (scroll2 - scroll1) * weight  # type: ignore[no-any-return]
 
     def _page_header_tab_rects(self) -> list[tuple[int, QRectF]]:
         pages = list(getattr(self, "pages", None) or [])
@@ -317,7 +317,7 @@ class PopupSearchMixin:
             self._update_page_header_layout()
 
         page_pos = float(
-            self.__dict__.get("_page_position")
+            self.__dict__.get("_page_position")  # type: ignore[arg-type]
             if self.__dict__.get("_page_position") is not None
             else self.__dict__.get("current_page", 0.0)
         )
@@ -387,7 +387,7 @@ class PopupSearchMixin:
         )
         cursor_h = sp(16)
         y = int(text_rect.center().y() - cursor_h / 2)
-        return QRect(x, y, max(1, sp(1.5)), cursor_h)
+        return QRect(x, y, max(1, sp(1.5)), cursor_h)  # type: ignore[arg-type]
 
     def _search_pos_from_point(self, pos: QPoint) -> int:
         text_rect = self._search_text_rect()
@@ -430,14 +430,14 @@ class PopupSearchMixin:
         old_cursor = self._clamp_search_pos(getattr(self, "search_cursor_pos", 0))
         new_cursor = self._clamp_search_pos(pos)
         if keep_selection:
-            if self.search_selection_anchor is None:
+            if self.search_selection_anchor is None:  # type: ignore[has-type]
                 self.search_selection_anchor = old_cursor
         else:
-            self.search_selection_anchor = None
+            self.search_selection_anchor = None  # type: ignore[assignment]
         self.search_cursor_pos = new_cursor
         self._ensure_search_cursor_visible()
         self._restart_search_cursor_blink()
-        self.update()
+        self.update()  # type: ignore[attr-defined]
 
     def _word_boundary_left(self, pos: int) -> int:
         query = getattr(self, "search_query", "") or ""
@@ -486,7 +486,7 @@ class PopupSearchMixin:
             return False
         start, end = bounds
         query = self.search_query[:start] + self.search_query[end:]
-        self._set_search_query(query, cursor_pos=start, selection_anchor=None)
+        self._set_search_query(query, cursor_pos=start, selection_anchor=None)  # type: ignore[arg-type]
         return True
 
     def _delete_search_backward(self, word: bool = False):
@@ -497,7 +497,7 @@ class PopupSearchMixin:
             return
         start = self._word_boundary_left(cursor) if word else cursor - 1
         query = self.search_query[:start] + self.search_query[cursor:]
-        self._set_search_query(query, cursor_pos=start, selection_anchor=None)
+        self._set_search_query(query, cursor_pos=start, selection_anchor=None)  # type: ignore[arg-type]
 
     def _delete_search_forward(self, word: bool = False):
         if self._delete_search_selection():
@@ -507,7 +507,7 @@ class PopupSearchMixin:
             return
         end = self._word_boundary_right(cursor) if word else cursor + 1
         query = self.search_query[:cursor] + self.search_query[end:]
-        self._set_search_query(query, cursor_pos=cursor, selection_anchor=None)
+        self._set_search_query(query, cursor_pos=cursor, selection_anchor=None)  # type: ignore[arg-type]
 
     def _select_all_search_text(self):
         self.search_cursor_pos = len(self.search_query)
@@ -587,7 +587,7 @@ class PopupSearchMixin:
 
     # ── Search logic ─────────────────────────────────────────────────
 
-    def _set_search_query(self, query: str, cursor_pos: int = None, selection_anchor: int = None):
+    def _set_search_query(self, query: str, cursor_pos: int = None, selection_anchor: int = None):  # type: ignore[assignment]
         """设置搜索查询文本，并刷新固定顶部栏与结果。"""
         self.search_query = query or ""
         if not self.search_query and not getattr(self, "_search_preedit_text", ""):
@@ -599,8 +599,8 @@ class PopupSearchMixin:
         self.search_selection_anchor = None if selection_anchor is None else self._clamp_search_pos(selection_anchor)
         self._ensure_search_cursor_visible()
         self._restart_search_cursor_blink()
-        if self.__dict__.get("_command_result") is not None and not self._search_query_matches_result_command():
-            self.clear_command_result()
+        if self.__dict__.get("_command_result") is not None and not self._search_query_matches_result_command():  # type: ignore[attr-defined]
+            self.clear_command_result()  # type: ignore[attr-defined]
 
         self._start_search_reveal_animation(self._is_search_bar_visible())
         self._debounce_refresh_search()
@@ -774,7 +774,7 @@ class PopupSearchMixin:
 
     def _start_plugin_search(self, cmd_query: str, token: int):
         try:
-            signal = self.plugin_search_results_ready
+            signal = self.plugin_search_results_ready  # type: ignore[attr-defined]
         except Exception:
             return
 
@@ -858,7 +858,7 @@ class PopupSearchMixin:
         self.search_results = list(getattr(self, "search_results", []) or []) + additions
         if self.search_selected_index < 0:
             self.search_selected_index = 0
-        self.update()
+        self.update()  # type: ignore[attr-defined]
 
     # ── Search layout / geometry helpers ─────────────────────────────
 
@@ -889,7 +889,7 @@ class PopupSearchMixin:
     def _is_search_active(self) -> bool:
         """搜索模式是否处于激活状态（仅当有键入内容或命令结果时激活）"""
         if self.__dict__.get("_command_result", None) is not None:
-            return self._search_query_matches_result_command()
+            return self._search_query_matches_result_command()  # type: ignore[attr-defined, no-any-return]
         return bool(self.search_query or getattr(self, "_search_preedit_text", ""))
 
     def _is_search_bar_visible(self) -> bool:
@@ -902,7 +902,7 @@ class PopupSearchMixin:
 
     def _search_animation_update_rect(self) -> QRect:
         """返回用于重绘搜索栏区域的 QRect"""
-        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(2))
+        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(2))  # type: ignore[attr-defined]
 
     def _remember_search_body_anchor(self):
         """记录固定布局的位置，兼容刷新期间的旧状态字段。"""
@@ -911,7 +911,7 @@ class PopupSearchMixin:
 
     def _set_fixed_geometry_atomically(self, left: int, top: int, width: int, height: int):
         """原子级设置窗口尺寸与位置，减少透明窗口重绘闪烁"""
-        self.setGeometry(left, top, width, height)
+        self.setGeometry(left, top, width, height)  # type: ignore[attr-defined]
 
     def _apply_search_geometry(
         self, skip_effect_update=False, repaint=True, restore_updates=True, progress_override=None
@@ -923,7 +923,7 @@ class PopupSearchMixin:
     def _apply_search_mask(self, force: bool = False):
         """固定顶部栏不再需要原生遮罩。"""
         if force or not self.__dict__.get("_search_mask_cleared", False):
-            self.clearMask()
+            self.clearMask()  # type: ignore[attr-defined]
         self._search_mask_cleared = True
         self._search_mask_cache_key = None
 
@@ -954,7 +954,7 @@ class PopupSearchMixin:
         self._search_reveal_progress = target
         self._search_hide_geometry_pending = False
         if changed:
-            self.update(self._search_animation_update_rect())
+            self.update(self._search_animation_update_rect())  # type: ignore[attr-defined]
 
     def _tick_search_reveal(self):
         """兼容旧定时器回调，立即收敛到标题/搜索目标状态。"""

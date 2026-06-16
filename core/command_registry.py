@@ -538,7 +538,7 @@ class CommandRegistry:
     def list(self) -> list[CommandDefinition]:
         return list(self._commands.values())
 
-    def list_by_category(self) -> dict[str, list[CommandDefinition]]:
+    def list_by_category(self) -> dict[str, list[CommandDefinition]]:  # type: ignore[valid-type]
         result: dict[str, list[CommandDefinition]] = {}
         for cat, ids in self._category_index.items():
             result[cat] = [self._commands[cid] for cid in ids if cid in self._commands]
@@ -579,7 +579,7 @@ class CommandRegistry:
         self._owner_index.pop(owner_id, None)
         return removed
 
-    def list_by_owner(self, owner_id: str) -> list[CommandDefinition]:
+    def list_by_owner(self, owner_id: str) -> list[CommandDefinition]:  # type: ignore[valid-type]
         """List all commands registered by a given owner."""
         return [self._commands[cid] for cid in self._owner_index.get(owner_id, []) if cid in self._commands]
 

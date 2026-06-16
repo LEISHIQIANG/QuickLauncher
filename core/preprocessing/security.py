@@ -22,7 +22,7 @@ class SecurityIssue:
 
 def detect_command_injection(command: str, command_type: str) -> list[SecurityIssue]:
     """Detect command injection attempts."""
-    issues = []
+    issues = []  # type: ignore[var-annotated]
 
     if command_type not in ("cmd", "python", "powershell", "bash"):
         return issues
@@ -113,7 +113,7 @@ def validate_safe_path(path: str, base_dir: str | None = None) -> SecurityIssue 
 
 def validate_variable_quoting(command: str, command_type: str) -> list[SecurityIssue]:
     """Validate external variables are properly quoted."""
-    issues = []
+    issues = []  # type: ignore[var-annotated]
 
     if command_type not in ("cmd", "powershell", "bash"):
         return issues
@@ -202,7 +202,7 @@ _DANGEROUS_PATTERNS = [
 
 def detect_dangerous_patterns(command: str, command_type: str) -> list[SecurityIssue]:
     """Detect dangerous command patterns."""
-    issues = []
+    issues = []  # type: ignore[var-annotated]
 
     if command_type == "builtin":
         return issues

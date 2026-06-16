@@ -191,12 +191,12 @@ def scale_qss(css: str) -> str:
 
     def _replace_px(m: re.Match) -> str:
         if _in_protected(m.start()):
-            return m.group(0)
+            return m.group(0)  # type: ignore[no-any-return]
         val = int(m.group(1))
         if val == 0:
-            return m.group(0)
+            return m.group(0)  # type: ignore[no-any-return]
         if _is_unscaled_stroke_value(css, m.start()):
-            return m.group(0)
+            return m.group(0)  # type: ignore[no-any-return]
         scaled = sp(val)
         return f"{scaled}px"
 

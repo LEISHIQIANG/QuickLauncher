@@ -67,11 +67,17 @@ static unsigned long long g_rawConsumedLowLevelCount[5] = {0, 0, 0, 0, 0};
 static unsigned int g_pendingRawDownCount[5] = {0, 0, 0, 0, 0};
 static std::atomic<unsigned long long> g_lastRawFallbackTick[5];
 static std::atomic<unsigned long long> g_lowLevelPhysicalKeyboardCount(0);
+static std::atomic<unsigned long long> g_lowLevelInputCaptureKeyboardCount(0);
 static unsigned long long g_rawConsumedLowLevelKeyboardCount = 0;
+static unsigned long long g_rawConsumedInputCaptureKeyboardCount = 0;
 static bool g_rawKeyboardPressed[256] = {false};
+static bool g_inputCaptureKeyboardPressed[256] = {false};
 struct PendingRawKeyboardEvent {
     int vk;
+    unsigned int scanCode;
+    unsigned int flags;
     bool down;
+    bool wasPressed;
     bool shouldTrigger;
 };
 static std::deque<PendingRawKeyboardEvent> g_pendingRawKeyboardEvents;
@@ -565,6 +571,59 @@ static void QueueCapturedInput(HookInputEvent eventData) {
     }
     g_inputCapturedCount.fetch_add(1);
     if (g_inputCaptureEvent) SetEvent(g_inputCaptureEvent);
+}
+
+static bool InputCaptureKeyboardPollingEnabled() {
+    unsigned int filter = g_inputCaptureFilter.load();
+    return g_inputCaptureActive.load() &&
+        (filter & HOOK_CAPTURE_KEYBOARD) != 0 &&
+        (filter & HOOK_CAPTURE_INCLUDE_INJECTED) != 0;
+}
+
+static bool ShouldPollInputCaptureVirtualKey(int vk) {
+    switch (vk) {
+        case VK_LBUTTON:
+        case VK_RBUTTON:
+        case VK_CANCEL:
+        case VK_MBUTTON:
+        case VK_XBUTTON1:
+        case VK_XBUTTON2:
+        case VK_SHIFT:
+        case VK_CONTROL:
+        case VK_MENU:
+            return false;
+        default:
+            return vk > 0 && vk < 256;
+    }
+}
+
+static void ResetInputCaptureKeyboardPollState() {
+    for (int vk = 0; vk < 256; ++vk) {
+        g_inputCaptureKeyboardPressed[vk] =
+            ShouldPollInputCaptureVirtualKey(vk) &&
+            ((GetAsyncKeyState(vk) & 0x8000) != 0);
+    }
+}
+
+static void NoteInputCaptureKeyboardState(int vk, bool down) {
+    if (vk > 0 && vk < 256) {
+        g_inputCaptureKeyboardPressed[vk] = down;
+    }
+}
+
+static void PollInputCaptureKeyboardState() {
+    if (!InputCaptureKeyboardPollingEnabled()) return;
+    for (int vk = 1; vk < 256; ++vk) {
+        if (!ShouldPollInputCaptureVirtualKey(vk)) continue;
+        bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
+        if (down == g_inputCaptureKeyboardPressed[vk]) continue;
+
+        HookInputEvent eventData = {};
+        eventData.type = down ? HOOK_INPUT_KEY_DOWN : HOOK_INPUT_KEY_UP;
+        eventData.vkCode = static_cast<unsigned int>(vk);
+        QueueCapturedInput(eventData);
+        g_inputCaptureKeyboardPressed[vk] = down;
+    }
 }
 
 static bool IsAltPressedNow() {
@@ -2363,12 +2422,35 @@ static void ReconcileRawKeyboardEvents() {
            g_rawConsumedLowLevelKeyboardCount < lowLevelCount) {
         g_pendingRawKeyboardEvents.pop_front();
         ++g_rawConsumedLowLevelKeyboardCount;
+        if (g_rawConsumedInputCaptureKeyboardCount < g_lowLevelInputCaptureKeyboardCount.load()) {
+            ++g_rawConsumedInputCaptureKeyboardCount;
+        }
+    }
+
+    unsigned long long captureCount = g_lowLevelInputCaptureKeyboardCount.load();
+    while (!g_pendingRawKeyboardEvents.empty() &&
+           g_rawConsumedInputCaptureKeyboardCount < captureCount) {
+        g_pendingRawKeyboardEvents.pop_front();
+        ++g_rawConsumedInputCaptureKeyboardCount;
     }
 
     while (!g_pendingRawKeyboardEvents.empty()) {
         PendingRawKeyboardEvent event = g_pendingRawKeyboardEvents.front();
         g_pendingRawKeyboardEvents.pop_front();
         g_lowLevelKeyboardHealthy = false;
+        if (g_inputCaptureActive.load() &&
+            (g_inputCaptureFilter.load() & HOOK_CAPTURE_KEYBOARD) != 0) {
+            HookInputEvent eventData = {};
+            eventData.type = event.down ? HOOK_INPUT_KEY_DOWN : HOOK_INPUT_KEY_UP;
+            eventData.flags = event.flags;
+            eventData.vkCode = static_cast<unsigned int>(event.vk);
+            eventData.scanCode = event.scanCode;
+            if (event.down && event.wasPressed) {
+                eventData.flags |= HOOK_INPUT_FLAG_REPEAT;
+            }
+            QueueCapturedInput(eventData);
+            NoteInputCaptureKeyboardState(event.vk, event.down);
+        }
         if (!event.down || !event.shouldTrigger || g_mousePaused.load()) continue;
 
         if (!g_mouseCallback.load()) continue;
@@ -2398,10 +2480,23 @@ static void HandleRawMouseInput(HRAWINPUT inputHandle) {
         int vk = static_cast<int>(input.data.keyboard.VKey);
         if (vk <= 0 || vk >= 256 || vk == 255) return;
         bool down = (input.data.keyboard.Flags & RI_KEY_BREAK) == 0;
+        bool wasPressed = g_rawKeyboardPressed[vk];
+        unsigned int eventFlags = 0;
+        if (input.data.keyboard.Flags & (RI_KEY_E0 | RI_KEY_E1)) {
+            eventFlags |= HOOK_INPUT_FLAG_EXTENDED;
+        }
         g_rawKeyboardEventCount.fetch_add(1);
         g_rawKeyboardPressed[vk] = down;
         bool shouldTrigger = down && ShouldTriggerRawKeyboard(vk);
-        g_pendingRawKeyboardEvents.push_back(PendingRawKeyboardEvent{vk, down, shouldTrigger});
+        g_pendingRawKeyboardEvents.push_back(
+            PendingRawKeyboardEvent{
+                vk,
+                static_cast<unsigned int>(input.data.keyboard.MakeCode),
+                eventFlags,
+                down,
+                wasPressed,
+                shouldTrigger,
+            });
 
         unsigned long long lowLevelCount = g_lowLevelPhysicalKeyboardCount.load();
         if (g_rawConsumedLowLevelKeyboardCount < lowLevelCount) {
@@ -2434,6 +2529,7 @@ static LRESULT CALLBACK RawInputWindowProc(HWND hwnd, UINT message, WPARAM wPara
         return 0;
     }
     if (message == WM_TIMER && wParam == ASYNC_KEYBOARD_TRIGGER_TIMER) {
+        PollInputCaptureKeyboardState();
         PollAsyncKeyboardTrigger();
         return 0;
     }
@@ -2796,7 +2892,11 @@ static void CaptureKeyboardHookEvent(
         eventData.flags |= HOOK_INPUT_FLAG_SYSTEM_KEY;
     }
     if (isDown && wasPressed) eventData.flags |= HOOK_INPUT_FLAG_REPEAT;
-    QueueCapturedInput(eventData);
+    if (CaptureFilterAllows(eventData)) {
+        QueueCapturedInput(eventData);
+        g_lowLevelInputCaptureKeyboardCount.fetch_add(1);
+    }
+    NoteInputCaptureKeyboardState(static_cast<int>(keyboard->vkCode), isDown);
 }
 
 LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -3587,6 +3687,21 @@ static DWORD MouseButtonUpFlag(int button) {
     }
 }
 
+static void ApplyAbsoluteMousePosition(const HookMacroEvent& eventData, MOUSEINPUT* mouseInput) {
+    if (!mouseInput || (eventData.flags & HOOK_INPUT_FLAG_ABSOLUTE) == 0) return;
+    int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    int width = std::max(1, GetSystemMetrics(SM_CXVIRTUALSCREEN));
+    int height = std::max(1, GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    long long dx = static_cast<long long>(eventData.x - left) * 65535LL /
+        std::max(1, width - 1);
+    long long dy = static_cast<long long>(eventData.y - top) * 65535LL /
+        std::max(1, height - 1);
+    mouseInput->dx = static_cast<LONG>(std::clamp(dx, 0LL, 65535LL));
+    mouseInput->dy = static_cast<LONG>(std::clamp(dy, 0LL, 65535LL));
+    mouseInput->dwFlags |= MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+}
+
 static bool BuildMacroInput(const HookMacroEvent& eventData, INPUT* input) {
     if (!input) return false;
     *input = {};
@@ -3623,6 +3738,7 @@ static bool BuildMacroInput(const HookMacroEvent& eventData, INPUT* input) {
             input->type = INPUT_MOUSE;
             input->mi.dwFlags = flag;
             input->mi.dwExtraInfo = static_cast<ULONG_PTR>(QL_MACRO_EXTRA_INFO);
+            ApplyAbsoluteMousePosition(eventData, &input->mi);
             if (eventData.data == 8 || eventData.data == 16) {
                 input->mi.mouseData = eventData.data == 8 ? XBUTTON1 : XBUTTON2;
             }
@@ -3864,6 +3980,11 @@ HOOKS_API bool StartInputCapture(InputEventCallback callback, unsigned int filte
     g_inputCapturedCount = 0;
     g_inputCaptureDroppedCount = 0;
     g_inputCaptureFilter = filterFlags;
+    g_lowLevelInputCaptureKeyboardCount = 0;
+    g_rawConsumedInputCaptureKeyboardCount = 0;
+    if (needsKeyboard) {
+        ResetInputCaptureKeyboardPollState();
+    }
     g_inputEventCallback = callback;
     g_inputCaptureActive = true;
     g_lastHookError = ERROR_SUCCESS;
@@ -3890,6 +4011,9 @@ HOOKS_API void StopInputCapture() {
         }
     }
     StopInputCaptureThread();
+    std::fill(g_inputCaptureKeyboardPressed, g_inputCaptureKeyboardPressed + 256, false);
+    g_lowLevelInputCaptureKeyboardCount = 0;
+    g_rawConsumedInputCaptureKeyboardCount = 0;
     ReleaseCaptureMode(CAPTURE_MODE_INPUT);
 }
 

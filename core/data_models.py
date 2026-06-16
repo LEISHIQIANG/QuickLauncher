@@ -42,6 +42,7 @@ class ShortcutType(Enum):
     COMMAND = "command"
     CHAIN = "chain"
     BATCH_LAUNCH = "batch_launch"
+    MACRO = "macro"
 
 
 ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
@@ -103,6 +104,12 @@ class ShortcutItem:
     chain_data: dict = field(default_factory=dict)
     batch_launch_steps: list[dict] = field(default_factory=list)
     raw_mode: bool = False  # 原始模式，跳过变量预处理
+
+    # 宏录制类型
+    macro_events: list[dict] = field(default_factory=list)
+    macro_speed: float = 1.0
+    macro_include_mouse_move: bool = False
+    macro_hide_while_recording: bool = False
 
     # 触发模式
     trigger_mode: str = "immediate"  # immediate (立即触发), after_close (窗口关闭后触发)
@@ -175,6 +182,10 @@ class ShortcutItem:
             "chain_data": dict(self.chain_data or {}),
             "batch_launch_steps": list(self.batch_launch_steps or []),
             "raw_mode": self.raw_mode,
+            "macro_events": [dict(event) for event in (self.macro_events or []) if isinstance(event, dict)],
+            "macro_speed": float(self.macro_speed) if self.macro_speed else 1.0,
+            "macro_include_mouse_move": bool(self.macro_include_mouse_move),
+            "macro_hide_while_recording": bool(self.macro_hide_while_recording),
         }
 
     @classmethod
@@ -269,6 +280,19 @@ class ShortcutItem:
         item.chain_data = chain_data
         item.batch_launch_steps = cls._normalize_chain_steps(data.get("batch_launch_steps", []))
         item.raw_mode = bool(data.get("raw_mode", False))
+        raw_events = data.get("macro_events", [])
+        if isinstance(raw_events, list):
+            item.macro_events = [dict(event) for event in raw_events if isinstance(event, dict)]
+        else:
+            item.macro_events = []
+        try:
+            item.macro_speed = float(data.get("macro_speed", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            item.macro_speed = 1.0
+        if item.macro_speed <= 0:
+            item.macro_speed = 1.0
+        item.macro_include_mouse_move = bool(data.get("macro_include_mouse_move", False))
+        item.macro_hide_while_recording = bool(data.get("macro_hide_while_recording", False))
         return item
 
     @staticmethod

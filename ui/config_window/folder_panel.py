@@ -145,7 +145,7 @@ class FolderInputDialog(BaseDialog):
             self.accept()
 
     def get_text(self) -> str:
-        return self.input_edit.text().strip()
+        return self.input_edit.text().strip()  # type: ignore[no-any-return]
 
 
 class FolderImportDialog(BaseDialog):
@@ -226,7 +226,7 @@ class FolderItemWidget(QWidget):
     def scale_factor(self) -> float:
         return self._scale_factor
 
-    @scale_factor.setter
+    @scale_factor.setter  # type: ignore[no-redef]
     def scale_factor(self, value: float):
         self._scale_factor = value
         self.update()
@@ -308,7 +308,7 @@ class FolderListWidget(QListWidget):
     def pill_rect(self) -> QRectF:
         return self._pill_rect
 
-    @pill_rect.setter
+    @pill_rect.setter  # type: ignore[no-redef]
     def pill_rect(self, rect: QRectF):
         self._pill_rect = rect
         self.viewport().update()
@@ -317,7 +317,7 @@ class FolderListWidget(QListWidget):
     def pill_opacity(self) -> float:
         return self._pill_opacity
 
-    @pill_opacity.setter
+    @pill_opacity.setter  # type: ignore[no-redef]
     def pill_opacity(self, opacity: float):
         self._pill_opacity = opacity
         self.viewport().update()

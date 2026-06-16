@@ -348,6 +348,47 @@ class TestUpdateDownloader:
 
         assert any(event == "failed" and "哈希校验失败" in str(data) for event, data in events)
 
+    @patch("services.update.downloader.safe_urlopen")
+    def test_download_rejects_insecure_non_localhost_by_default(self, mock_urlopen, tmp_path):
+        downloader = UpdateDownloader()
+        events = []
+        downloader.add_listener(lambda event, data: events.append((event, data)))
+
+        downloader._do_download(
+            "http://update.quicklauncher.app/test.exe",
+            str(tmp_path),
+            None,
+            allowed_hosts=("update.quicklauncher.app",),
+        )
+
+        mock_urlopen.assert_not_called()
+        assert any(event == "failed" and "HTTPS" in str(data) for event, data in events)
+
+    @patch("services.update.downloader.safe_urlopen")
+    def test_download_allows_insecure_http_when_explicitly_configured(self, mock_urlopen, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Length": "4"}
+        mock_resp.read.side_effect = [b"data", b""]
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+        downloader = UpdateDownloader()
+        events = []
+        downloader.add_listener(lambda event, data: events.append((event, data)))
+
+        downloader._do_download(
+            "http://update.quicklauncher.app/test.exe",
+            str(tmp_path),
+            None,
+            max_bytes=10,
+            allowed_hosts=("update.quicklauncher.app",),
+            allow_insecure_http=True,
+        )
+
+        finished = [(event, data) for event, data in events if event == "finished"]
+        assert len(finished) == 1
+        assert os.path.isfile(finished[0][1])
+        with open(finished[0][1], "rb") as handle:
+            assert handle.read() == b"data"
+
     @patch("services.update.downloader._is_allowed_host", side_effect=[True, False])
     @patch("services.update.downloader.safe_urlopen")
     def test_download_rejects_redirect_to_untrusted_host(self, mock_urlopen, _mock_allowed):

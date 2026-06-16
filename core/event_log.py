@@ -43,7 +43,7 @@ def log_event(event: str, summary: str, details: dict | None = None) -> None:
                 if len(s) > 200:
                     s = s[:200] + "..."
                 safe_details[k] = s
-            entry["details"] = safe_details
+            entry["details"] = safe_details  # type: ignore[assignment]
 
         with _lock:
             path = _event_dir / _EVENTS_FILE

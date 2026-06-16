@@ -755,30 +755,30 @@ fso.DeleteFile WScript.ScriptFullName
         """根据滑块值返回描述性文本"""
         if key == "acrylic":
             if value <= 5:
-                return descs[0]
+                return descs[0]  # type: ignore[no-any-return]
             if value <= 50:
-                return descs[1]
+                return descs[1]  # type: ignore[no-any-return]
             if value <= 120:
-                return descs[2]
+                return descs[2]  # type: ignore[no-any-return]
             if value <= 200:
-                return descs[3]
-            return descs[4]
+                return descs[3]  # type: ignore[no-any-return]
+            return descs[4]  # type: ignore[no-any-return]
         if key == "bg_alpha_filter":
             if value <= 10:
-                return descs[0]
+                return descs[0]  # type: ignore[no-any-return]
             if value <= 60:
-                return descs[1]
+                return descs[1]  # type: ignore[no-any-return]
             if value <= 140:
-                return descs[2]
+                return descs[2]  # type: ignore[no-any-return]
             if value <= 210:
-                return descs[3]
-            return descs[4]
+                return descs[3]  # type: ignore[no-any-return]
+            return descs[4]  # type: ignore[no-any-return]
         # black_point, white_point, mid_gamma, temperature
         if value == 50:
-            return descs[0]
+            return descs[0]  # type: ignore[no-any-return]
         if value > 50:
-            return descs[1]
-        return descs[2]
+            return descs[1]  # type: ignore[no-any-return]
+        return descs[2]  # type: ignore[no-any-return]
 
     def _on_advanced_mode_changed(self, state):
         """高级模式复选框切换"""
@@ -943,7 +943,7 @@ fso.DeleteFile WScript.ScriptFullName
                 logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
     def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
-        group = QParallelAnimationGroup(self)
+        group = QParallelAnimationGroup(self)  # type: ignore[arg-type]
         for widget in self._language_fade_targets():
             effect = widget.graphicsEffect()
             if not isinstance(effect, QGraphicsOpacityEffect):
@@ -964,8 +964,8 @@ fso.DeleteFile WScript.ScriptFullName
         self._language_anim_generation = generation
         stop_animation(getattr(self, "_language_fade_out", None), owner="SettingsPanel.language.fade_out")
         stop_animation(getattr(self, "_language_fade_in", None), owner="SettingsPanel.language.fade_in")
-        current_index = self.content_stack.currentIndex()
-        scroll_value = self._current_page_scroll_value(current_index)
+        current_index = self.content_stack.currentIndex()  # type: ignore[attr-defined]
+        scroll_value = self._current_page_scroll_value(current_index)  # type: ignore[attr-defined]
         self._language_animating = True
 
         start_opacity = self._current_language_fade_opacity()
@@ -1009,4 +1009,4 @@ fso.DeleteFile WScript.ScriptFullName
     def _restore_language_scroll_if_current(self, generation: int, page_index: int, scroll_value: int):
         if generation != int(getattr(self, "_language_anim_generation", 0) or 0):
             return
-        self._restore_page_scroll_value(page_index, scroll_value)
+        self._restore_page_scroll_value(page_index, scroll_value)  # type: ignore[attr-defined]

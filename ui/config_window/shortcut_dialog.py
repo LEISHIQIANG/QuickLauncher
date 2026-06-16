@@ -103,7 +103,7 @@ class _IconLoadThread(QThread):
 class ShortcutDialog(BaseDialog):
     """快捷方式编辑对话框"""
 
-    def __init__(self, parent=None, shortcut: ShortcutItem = None):
+    def __init__(self, parent=None, shortcut: ShortcutItem = None):  # type: ignore[assignment]
         super().__init__(parent)
         self.shortcut = shortcut or ShortcutItem(type=ShortcutType.FILE)
         self._custom_icon_path = self.shortcut.icon_path or ""

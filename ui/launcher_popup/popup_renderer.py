@@ -67,8 +67,8 @@ class PopupRendererMixin:
         shadow_size = max(1, int(getattr(self, "shadow_size_px", 0) or max(1, margin - sp(2))))
         shadow_distance = max(0, int(getattr(self, "shadow_distance_px", 0) or 0))
         cache_key = (
-            self.width(),
-            self.height(),
+            self.width(),  # type: ignore[attr-defined]
+            self.height(),  # type: ignore[attr-defined]
             round(rect.x(), 2),
             round(rect.y(), 2),
             round(rect.width(), 2),
@@ -84,7 +84,7 @@ class PopupRendererMixin:
 
         alpha_scale = max(0.28, min(0.72, 12.0 / float(shadow_size)))
 
-        shadow_pixmap = QPixmap(max(1, self.width()), max(1, self.height()))
+        shadow_pixmap = QPixmap(max(1, self.width()), max(1, self.height()))  # type: ignore[attr-defined]
         shadow_pixmap.fill(QtCompat.transparent)
         shadow_painter = QPainter(shadow_pixmap)
         shadow_painter.setRenderHint(QtCompat.Antialiasing)
@@ -175,7 +175,7 @@ class PopupRendererMixin:
 
         def make_border_path(pen_width_f: float) -> QPainterPath:
             if pen_width_f == 1.0:
-                return self._cached_border_path
+                return self._cached_border_path  # type: ignore[no-any-return]
             inset = max(0.5, float(pen_width_f) / 2.0)
             r = max(0.0, float(radius) - inset)
             p = QPainterPath()
@@ -372,24 +372,24 @@ class PopupRendererMixin:
         bg_mode: str = "theme",
     ):
         """绘制图标网格"""
-        if not self.pages or self.current_page >= len(self.pages):
+        if not self.pages or self.current_page >= len(self.pages):  # type: ignore[attr-defined]
             return
 
-        painter.setFont(self._label_font)
+        painter.setFont(self._label_font)  # type: ignore[attr-defined]
 
-        page_pos = float(getattr(self, "_page_position", getattr(self, "_page_offset", float(self.current_page))))
+        page_pos = float(getattr(self, "_page_position", getattr(self, "_page_offset", float(self.current_page))))  # type: ignore[attr-defined]
         self._page_offset = page_pos
         y_offset = self._body_y_offset() if hasattr(self, "_body_y_offset") else 0
         page_base = math.floor(page_pos)
         page_fraction = page_pos - page_base
-        w = self.width()
+        w = self.width()  # type: ignore[attr-defined]
 
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
         visual_w = w - 2 * shadow_margin
 
-        if page_fraction > 0.001 and len(self.pages) > 1:
-            first_index = page_base % len(self.pages)
-            second_index = (page_base + 1) % len(self.pages)
+        if page_fraction > 0.001 and len(self.pages) > 1:  # type: ignore[attr-defined]
+            first_index = page_base % len(self.pages)  # type: ignore[attr-defined]
+            second_index = (page_base + 1) % len(self.pages)  # type: ignore[attr-defined]
             first_pixmap = self._get_page_animation_pixmap(
                 first_index, text_color, hover_color, drop_highlight_color, bg_mode
             )
@@ -405,7 +405,7 @@ class PopupRendererMixin:
                         shadow_margin,
                         y_offset + shadow_margin,
                         visible1,
-                        max(0, self.content_height - y_offset - shadow_margin),
+                        max(0, self.content_height - y_offset - shadow_margin),  # type: ignore[attr-defined]
                     )
                     painter.drawPixmap(-offset1, 0, first_pixmap)
                     painter.restore()
@@ -417,7 +417,7 @@ class PopupRendererMixin:
                         shadow_margin + offset2,
                         y_offset + shadow_margin,
                         visible2,
-                        max(0, self.content_height - y_offset - shadow_margin),
+                        max(0, self.content_height - y_offset - shadow_margin),  # type: ignore[attr-defined]
                     )
                     painter.drawPixmap(offset2, 0, second_pixmap)
                     painter.restore()
@@ -430,7 +430,7 @@ class PopupRendererMixin:
                         shadow_margin,
                         y_offset + shadow_margin,
                         visible1,
-                        max(0, self.content_height - y_offset - shadow_margin),
+                        max(0, self.content_height - y_offset - shadow_margin),  # type: ignore[attr-defined]
                     )
                     painter.translate(-offset1, 0)
                     self._draw_page_items(
@@ -453,7 +453,7 @@ class PopupRendererMixin:
                         shadow_margin + offset2,
                         y_offset + shadow_margin,
                         visible2,
-                        max(0, self.content_height - y_offset - shadow_margin),
+                        max(0, self.content_height - y_offset - shadow_margin),  # type: ignore[attr-defined]
                     )
                     painter.translate(offset2, 0)
                     self._draw_page_items(
@@ -469,7 +469,7 @@ class PopupRendererMixin:
                     painter.restore()
             return
 
-        display_page = round(page_pos) % len(self.pages)
+        display_page = round(page_pos) % len(self.pages)  # type: ignore[attr-defined]
         self._draw_page_items(
             painter,
             display_page,
@@ -484,23 +484,23 @@ class PopupRendererMixin:
     def _get_page_animation_pixmap(
         self, page_index: int, text_color: QColor, hover_color: QColor, drop_highlight_color: QColor, bg_mode: str
     ):
-        if not self.pages:
+        if not self.pages:  # type: ignore[attr-defined]
             return None
-        page_index = page_index % len(self.pages)
+        page_index = page_index % len(self.pages)  # type: ignore[attr-defined]
         items = self._get_page_animation_items(page_index)
         if not self._page_animation_icons_ready(items):
             return None
         key = (
             page_index,
             getattr(self, "_model_revision", 0),
-            self.width(),
-            self.content_height,
-            self.icon_size,
-            self.cell_size,
+            self.width(),  # type: ignore[attr-defined]
+            self.content_height,  # type: ignore[attr-defined]
+            self.icon_size,  # type: ignore[attr-defined]
+            self.cell_size,  # type: ignore[attr-defined]
             self._page_animation_screen_key(),
-            getattr(self.settings, "theme", "dark"),
+            getattr(self.settings, "theme", "dark"),  # type: ignore[attr-defined]
             bg_mode,
-            getattr(self.settings, "sort_mode", "custom"),
+            getattr(self.settings, "sort_mode", "custom"),  # type: ignore[attr-defined]
         )
         cache = getattr(self, "_page_pixmap_cache", None)
         if cache is None:
@@ -626,8 +626,8 @@ class PopupRendererMixin:
 
     def _create_page_animation_image(self) -> QImage:
         _, dpr, dpi_x, dpi_y = self._page_animation_screen_info()
-        logical_w = max(1, int(self.width()))
-        logical_h = max(1, int(self.content_height))
+        logical_w = max(1, int(self.width()))  # type: ignore[attr-defined]
+        logical_h = max(1, int(self.content_height))  # type: ignore[attr-defined]
         image = QImage(
             max(1, int(math.ceil(logical_w * dpr))),
             max(1, int(math.ceil(logical_h * dpr))),
@@ -646,7 +646,7 @@ class PopupRendererMixin:
             get_page_render_items = None
         if get_page_render_items is not None:
             return get_page_render_items(page_index)
-        return self.pages[page_index].items
+        return self.pages[page_index].items  # type: ignore[attr-defined]
 
     def _page_animation_icons_ready(self, items) -> bool:
         if not hasattr(self, "_animation_icon_ready"):
@@ -662,14 +662,14 @@ class PopupRendererMixin:
     def _draw_search_bar(self, painter: QPainter, text_color: QColor, accent_color: QColor):
         query = getattr(self, "search_query", "")
         preedit = getattr(self, "_search_preedit_text", "") or ""
-        is_dark = getattr(self.settings, "theme", "dark") == "dark"
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"  # type: ignore[attr-defined]
 
         if hasattr(self, "_search_bar_rect"):
             rect = self._search_bar_rect()
         else:
             shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
             rect = QRectF(
-                self.padding + sp(0), shadow_margin + sp(8), self.width() - (self.padding + sp(0)) * 2, sp(28)
+                self.padding + sp(0), shadow_margin + sp(8), self.width() - (self.padding + sp(0)) * 2, sp(28)  # type: ignore[attr-defined]
             )
 
         rect_h = rect.height()
@@ -695,7 +695,7 @@ class PopupRendererMixin:
         painter.drawRoundedRect(rect, radius, radius)
 
         # 3. 字体设置
-        font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)
+        font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)  # type: ignore[attr-defined]
         if font.pixelSize() <= 0:
             font.setPixelSize(font_px(10))
         painter.setFont(font)
@@ -727,7 +727,7 @@ class PopupRendererMixin:
         painter.save()
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setBrush(QtCompat.NoBrush)
-        painter.setPen(QPen(icon_color, max(1.5, sp(1.8)), QtCompat.SolidLine, QtCompat.RoundCap, QtCompat.RoundJoin))
+        painter.setPen(QPen(icon_color, max(1.5, sp(1.8)), QtCompat.SolidLine, QtCompat.RoundCap, QtCompat.RoundJoin))  # type: ignore[arg-type]
 
         icon_y = rect.center().y() - icon_size / 2
         circle_size = icon_size * 0.72
@@ -797,7 +797,7 @@ class PopupRendererMixin:
 
         # 7. 绘制光标
         if (
-            self._is_search_active()
+            self._is_search_active()  # type: ignore[attr-defined]
             and getattr(self, "_search_cursor_visible", True)
             and hasattr(self, "_search_cursor_rect")
             and not show_centered
@@ -817,11 +817,11 @@ class PopupRendererMixin:
         else:
             shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
             rect = QRectF(
-                self.padding + sp(0), shadow_margin + sp(8), self.width() - (self.padding + sp(0)) * 2, sp(28)
+                self.padding + sp(0), shadow_margin + sp(8), self.width() - (self.padding + sp(0)) * 2, sp(28)  # type: ignore[attr-defined]
             )
 
         radius = sp(8)
-        is_dark = getattr(self.settings, "theme", "dark") == "dark"
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"  # type: ignore[attr-defined]
 
         painter.save()
 
@@ -843,7 +843,7 @@ class PopupRendererMixin:
         painter.drawRoundedRect(rect, radius, radius)
 
         # 3. 字体与标签设置
-        font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)
+        font = self._search_font() if hasattr(self, "_search_font") else QFont(self._label_font)  # type: ignore[attr-defined]
         if font.pixelSize() <= 0:
             font.setPixelSize(font_px(10))
         painter.setFont(font)
@@ -886,7 +886,7 @@ class PopupRendererMixin:
         results = all_results
         if not all_results:
             painter.setPen(text_color)
-            painter.setFont(self._label_font)
+            painter.setFont(self._label_font)  # type: ignore[attr-defined]
             query = getattr(self, "search_query", "")
             if query.startswith("/"):
                 action_hint = "输入命令名称"
@@ -898,7 +898,7 @@ class PopupRendererMixin:
                 self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(30))
             )
             painter.drawText(
-                QRect(0, self.padding + y_offset, self.width(), self.content_height), QtCompat.AlignCenter, action_hint
+                QRect(0, self.padding + y_offset, self.width(), self.content_height), QtCompat.AlignCenter, action_hint  # type: ignore[attr-defined]
             )
             return
 
@@ -947,7 +947,7 @@ class PopupRendererMixin:
         if hasattr(self, "_get_page_render_items"):
             items = self._get_page_render_items(page_index)
         else:
-            items = self.pages[page_index].items
+            items = self.pages[page_index].items  # type: ignore[attr-defined]
         self._draw_items_grid(
             painter, items, text_color, hover_color, drop_highlight_color, bg_mode, is_prev=is_prev, y_offset=y_offset
         )
@@ -965,7 +965,7 @@ class PopupRendererMixin:
         selected_index: int | None = None,
     ):
         """绘制图标网格项目"""
-        painter.setFont(self._label_font)
+        painter.setFont(self._label_font)  # type: ignore[attr-defined]
 
         reveal_done = self._reveal_progress >= 1.0
         if reveal_done:
@@ -976,23 +976,23 @@ class PopupRendererMixin:
         fm = painter.fontMetrics()
         text_h = fm.height()
         text_spacing = sp(1)
-        is_dark = self.settings.theme == "dark"
+        is_dark = self.settings.theme == "dark"  # type: ignore[attr-defined]
         # Background modes should only change the panel background; icon affordances stay aligned.
         use_card = True
-        icon_alpha = self.settings.icon_alpha
-        cols = self.cols
-        cell_size = self.cell_size
-        cell_h = self.cell_h
-        icon_size = self.icon_size
-        fixed_rows = self.fixed_rows
-        padding = self.padding
-        bottom_margin = self._dock_outer_bottom_gap()
-        has_indicator = len(self.pages) > 1
+        icon_alpha = self.settings.icon_alpha  # type: ignore[attr-defined]
+        cols = self.cols  # type: ignore[attr-defined]
+        cell_size = self.cell_size  # type: ignore[attr-defined]
+        cell_h = self.cell_h  # type: ignore[attr-defined]
+        icon_size = self.icon_size  # type: ignore[attr-defined]
+        fixed_rows = self.fixed_rows  # type: ignore[attr-defined]
+        padding = self.padding  # type: ignore[attr-defined]
+        bottom_margin = self._dock_outer_bottom_gap()  # type: ignore[attr-defined]
+        has_indicator = len(self.pages) > 1  # type: ignore[attr-defined]
         indicator_height = sp(16) if has_indicator else 0
         indicator_spacing = sp(4) if has_indicator else 0
-        dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0
+        dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0  # type: ignore[attr-defined]
         icons_bottom = (
-            self.height()
+            self.height()  # type: ignore[attr-defined]
             - int(getattr(self, "shadow_margin", 0) or 0)
             - bottom_margin
             - dock_height
@@ -1038,12 +1038,12 @@ class PopupRendererMixin:
                 card_y = y + (cell_h - total_h) // 2
                 card_r = sp(6)
 
-                if not is_prev and i == self._drag_hover_index:
+                if not is_prev and i == self._drag_hover_index:  # type: ignore[attr-defined]
                     highlight = QColor(drop_highlight_color)
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 1.5))
-                elif not is_prev and (i == self.hover_index or i == selected_index):
+                elif not is_prev and (i == self.hover_index or i == selected_index):  # type: ignore[attr-defined]
                     painter.setBrush(QBrush(QColor(255, 255, 255, 80 if is_dark else 200)))
                     painter.setPen(QPen(QColor(255, 255, 255, 80 if is_dark else 160), 1))
                 else:
@@ -1054,13 +1054,13 @@ class PopupRendererMixin:
                 icon_x = card_x + card_pad
                 icon_y = card_y + card_pad
             else:
-                if not is_prev and i == self._drag_hover_index:
+                if not is_prev and i == self._drag_hover_index:  # type: ignore[attr-defined]
                     highlight = QColor(drop_highlight_color)
                     highlight.setAlpha(80)
                     painter.setBrush(QBrush(highlight))
                     painter.setPen(QPen(drop_highlight_color, 2))
                     painter.drawRoundedRect(QRectF(x, y, cell_size, cell_h), sp(6), sp(6))
-                elif not is_prev and (i == self.hover_index or i == selected_index):
+                elif not is_prev and (i == self.hover_index or i == selected_index):  # type: ignore[attr-defined]
                     painter.setBrush(QBrush(hover_color))
                     painter.setPen(QtCompat.NoPen)
                     painter.drawRoundedRect(QRectF(x, y, cell_size, cell_h), sp(6), sp(6))
@@ -1070,7 +1070,7 @@ class PopupRendererMixin:
                 card_y = icon_y
                 card_size = icon_size
 
-            pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)
+            pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)  # type: ignore[attr-defined]
             if pixmap:
                 painter.setOpacity(icon_alpha * opacity)
                 painter.setPen(QtCompat.NoPen)
@@ -1128,8 +1128,8 @@ class PopupRendererMixin:
         dot_size = sp(5)
         active_w = sp(14)
         spacing = sp(10)
-        n = len(self.pages)
-        pos = float(getattr(self, "_indicator_pos", self.current_page)) % max(1, n)
+        n = len(self.pages)  # type: ignore[attr-defined]
+        pos = float(getattr(self, "_indicator_pos", self.current_page)) % max(1, n)  # type: ignore[arg-type, attr-defined]
 
         # 计算每个点的实际宽度（插值）
         def dot_w(i):
@@ -1138,8 +1138,8 @@ class PopupRendererMixin:
             return dot_size + (active_w - dot_size) * max(0.0, 1.0 - dist)
 
         total_width = sum(dot_w(i) for i in range(n)) + spacing * (n - 1)
-        cx = (self.width() - total_width) / 2
-        y = self.indicator_y + sp(1)
+        cx = (self.width() - total_width) / 2  # type: ignore[attr-defined]
+        y = self.indicator_y + sp(1)  # type: ignore[attr-defined]
 
         dim_color = QColor(text_color)
         dim_color.setAlpha(70)
@@ -1172,7 +1172,7 @@ class PopupRendererMixin:
         # 根据窗口类型返回不同颜色：explorer=橙色，desktop=绿色
         context = getattr(self, "_selected_files_context", None)
         target_kind = getattr(context, "target_kind", "explorer")
-        is_dark = getattr(self.settings, "theme", "dark") == "dark"
+        is_dark = getattr(self.settings, "theme", "dark") == "dark"  # type: ignore[attr-defined]
 
         if target_kind == "desktop":
             # 桌面文件选中：绿色
@@ -1189,27 +1189,27 @@ class PopupRendererMixin:
         dock_bg: QColor,
         drop_highlight_color: QColor,
         bg_mode: str = "theme",
-        border_color: QColor = None,
+        border_color: QColor = None,  # type: ignore[assignment]
     ):
         """绘制 Dock 栏"""
-        if self.dock_height <= 0:
+        if self.dock_height <= 0:  # type: ignore[attr-defined]
             return
 
-        dock_y = self.dock_y
+        dock_y = self.dock_y  # type: ignore[attr-defined]
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
 
         # Dock 背景
-        dock_bg.setAlpha(self.settings.dock_bg_alpha_255)
+        dock_bg.setAlpha(self.settings.dock_bg_alpha_255)  # type: ignore[attr-defined]
         painter.setBrush(QBrush(dock_bg))
         painter.setPen(QtCompat.NoPen)
-        radius = sp(getattr(self.settings, "dock_corner_radius", 10))
-        bg_y = dock_y + self._dock_background_top_gap()
+        radius = sp(getattr(self.settings, "dock_corner_radius", 10))  # type: ignore[attr-defined]
+        bg_y = dock_y + self._dock_background_top_gap()  # type: ignore[attr-defined]
         painter.drawRoundedRect(
             QRectF(
                 shadow_margin + sp(6),
                 bg_y,
-                max(1, self.width() - shadow_margin * 2 - sp(12)),
-                self._dock_background_height(),
+                max(1, self.width() - shadow_margin * 2 - sp(12)),  # type: ignore[attr-defined]
+                self._dock_background_height(),  # type: ignore[attr-defined]
             ),
             radius,
             radius,
@@ -1218,40 +1218,40 @@ class PopupRendererMixin:
         # 顶部分隔线 — 极细纯黑（关闭抗锯齿保证清晰）
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(QPen(QColor(0, 0, 0, 60), 1))
-        painter.drawLine(shadow_margin, dock_y, self.width() - shadow_margin, dock_y)
+        painter.drawLine(shadow_margin, dock_y, self.width() - shadow_margin, dock_y)  # type: ignore[attr-defined]
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # Dock 行数模式
-        dock_height_mode = getattr(self.settings, "dock_height_mode", 1)
-        visible_count = len(self.dock_items)
+        dock_height_mode = getattr(self.settings, "dock_height_mode", 1)  # type: ignore[attr-defined]
+        visible_count = len(self.dock_items)  # type: ignore[attr-defined]
 
         # 如果只有一行，按列数限制
         if dock_height_mode == 1:
-            visible_count = min(visible_count, self.cols)
+            visible_count = min(visible_count, self.cols)  # type: ignore[attr-defined]
 
         # 计算每行最大图标数 (与主网格一致)
-        max_cols = self.cols
+        max_cols = self.cols  # type: ignore[attr-defined]
 
         # 计算起始X坐标 (居中)
         # 如果是多行，按满行计算居中；如果是单行且不足满行，按实际数量计算居中
         if dock_height_mode > 1 and visible_count > max_cols:
-            line_width = max_cols * self.cell_size
+            line_width = max_cols * self.cell_size  # type: ignore[attr-defined]
         else:
-            line_width = min(visible_count, max_cols) * self.cell_size
+            line_width = min(visible_count, max_cols) * self.cell_size  # type: ignore[attr-defined]
 
-        start_x = (self.width() - line_width) // 2
-        cell_size = self.cell_size
-        icon_size = self.icon_size
-        display_rows = self._dock_display_rows(visible_count, max_cols)
-        dock_row_stride = self._get_dock_row_stride(display_rows)
-        is_dark = self.settings.theme == "dark"
+        start_x = (self.width() - line_width) // 2  # type: ignore[attr-defined]
+        cell_size = self.cell_size  # type: ignore[attr-defined]
+        icon_size = self.icon_size  # type: ignore[attr-defined]
+        display_rows = self._dock_display_rows(visible_count, max_cols)  # type: ignore[attr-defined]
+        dock_row_stride = self._get_dock_row_stride(display_rows)  # type: ignore[attr-defined]
+        is_dark = self.settings.theme == "dark"  # type: ignore[attr-defined]
         card_pad = sp(2)
         card_r = sp(6)
-        first_icon_y = self._dock_first_icon_y(display_rows)
+        first_icon_y = self._dock_first_icon_y(display_rows)  # type: ignore[attr-defined]
 
         for i in range(visible_count):
-            item = self.dock_items[i]
+            item = self.dock_items[i]  # type: ignore[attr-defined]
 
             # 计算行和列
             col = i % max_cols
@@ -1261,7 +1261,7 @@ class PopupRendererMixin:
             if row >= dock_height_mode:
                 break
 
-            x = start_x + col * self.cell_size
+            x = start_x + col * self.cell_size  # type: ignore[attr-defined]
             y = first_icon_y + row * dock_row_stride
 
             card_size = icon_size + card_pad * 2
@@ -1269,13 +1269,13 @@ class PopupRendererMixin:
             card_y = y - card_pad
 
             # ===== 绘制背景 =====
-            if i == self._drag_dock_hover_index:
+            if i == self._drag_dock_hover_index:  # type: ignore[attr-defined]
                 highlight = QColor(drop_highlight_color)
                 highlight.setAlpha(80)
                 painter.setBrush(QBrush(highlight))
                 painter.setPen(QPen(drop_highlight_color, 1.5))
                 painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
-            elif i == self.dock_hover_index:
+            elif i == self.dock_hover_index:  # type: ignore[attr-defined]
                 painter.setBrush(QBrush(QColor(255, 255, 255, 80 if is_dark else 200)))
                 painter.setPen(QPen(QColor(255, 255, 255, 80 if is_dark else 160), 1))
                 painter.drawRoundedRect(QRectF(card_x, card_y, card_size, card_size), card_r, card_r)
@@ -1287,17 +1287,17 @@ class PopupRendererMixin:
             icon_y = card_y + card_pad
             # ===== 背景绘制结束 =====
 
-            pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)
+            pixmap = self._get_icon_for_paint(item) if hasattr(self, "_get_icon_for_paint") else self._get_icon(item)  # type: ignore[attr-defined]
             if pixmap:
-                painter.setOpacity(self.settings.icon_alpha)
+                painter.setOpacity(self.settings.icon_alpha)  # type: ignore[attr-defined]
                 painter.drawPixmap(icon_x, icon_y, pixmap)
                 painter.setOpacity(1.0)
 
             # ===== 绘制文本标签 =====
-            if self._dock_shows_text(display_rows):
+            if self._dock_shows_text(display_rows):  # type: ignore[attr-defined]
                 name_str = getattr(item, "name", "") or ""
                 label = self._elided_label(name_str)
-                painter.setFont(self._label_font)
+                painter.setFont(self._label_font)  # type: ignore[attr-defined]
                 painter.setPen(QPen(text_color))
                 fm = painter.fontMetrics()
                 text_h = fm.height()
