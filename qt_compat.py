@@ -127,6 +127,9 @@ from PyQt5.QtWidgets import (
     QCheckBox as _QCheckBox,
 )
 from PyQt5.QtWidgets import (
+    QDoubleSpinBox as _QDoubleSpinBox,
+)
+from PyQt5.QtWidgets import (
     QGroupBox as _QGroupBox,
 )
 from PyQt5.QtWidgets import (
@@ -345,6 +348,11 @@ class QSlider(_QSlider):
 
 
 class QSpinBox(_QSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
+
+class QDoubleSpinBox(_QDoubleSpinBox):
     def wheelEvent(self, event):
         event.ignore()
 
@@ -571,6 +579,7 @@ __all__ = [
     "QPlainTextEdit",
     "QProgressDialog",
     "QSpinBox",
+    "QDoubleSpinBox",
     "QSlider",
     "QCheckBox",
     "QRadioButton",

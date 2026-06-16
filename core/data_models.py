@@ -108,7 +108,6 @@ class ShortcutItem:
     # 宏录制类型
     macro_events: list[dict] = field(default_factory=list)
     macro_speed: float = 1.0
-    macro_include_mouse_move: bool = False
     macro_hide_while_recording: bool = False
 
     # 触发模式
@@ -184,7 +183,6 @@ class ShortcutItem:
             "raw_mode": self.raw_mode,
             "macro_events": [dict(event) for event in (self.macro_events or []) if isinstance(event, dict)],
             "macro_speed": float(self.macro_speed) if self.macro_speed else 1.0,
-            "macro_include_mouse_move": bool(self.macro_include_mouse_move),
             "macro_hide_while_recording": bool(self.macro_hide_while_recording),
         }
 
@@ -291,7 +289,6 @@ class ShortcutItem:
             item.macro_speed = 1.0
         if item.macro_speed <= 0:
             item.macro_speed = 1.0
-        item.macro_include_mouse_move = bool(data.get("macro_include_mouse_move", False))
         item.macro_hide_while_recording = bool(data.get("macro_hide_while_recording", False))
         return item
 

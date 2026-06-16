@@ -122,7 +122,6 @@ _MOUSE_BUTTON_NAMES = {
 _MOUSE_BUTTON_VALUES = {v: k for k, v in _MOUSE_BUTTON_NAMES.items()}
 
 _RECORD_INDICATOR_TEXT = "⏺ 录制中…  事件: {count}    丢弃: {dropped}    耗时: {seconds:.1f}s"
-_IDLE_HINT_TEXT = ""
 _IDLE_STATUS_TEXT = "尚未录制"
 
 
@@ -503,14 +502,18 @@ class MacroRecorderWidget(QWidget):
         if self._recording:
             self.stop()
         normalized = [dict(event) for event in (events or []) if isinstance(event, dict)]
-        new_backend = InputMacroBackend()
+        new_backend = InputMacroBackend(max_events=self._backend.max_events)
         new_backend.inject_events(normalized)
         self._backend = new_backend
         with self._lock:
             self._raw_events = list(normalized)
             self._count = len(self._raw_events)
             self._dropped = 0
-        self.status_label.setText(f"已加载 {self._count} 个事件")
+        dropped = self._backend.dropped_events
+        if dropped > 0:
+            self.status_label.setText(f"已加载 {self._count} 个事件，已截断 {dropped} 条")
+        else:
+            self.status_label.setText(f"已加载 {self._count} 个事件")
         self.state_changed.emit()
 
     def _on_event(self, event: dict):
@@ -636,7 +639,6 @@ class MacroRecordDialog(BaseDialog):
         self._test_thread = None
         # 录制中：累计时间（ms），用于在文本框中显示 [时间] 列
         self._cumulative_delay_us = 0
-        self._parse_error = ""
         self._hidden_record_windows: list[tuple[QWidget, object, bool, bool]] = []
 
         self.setWindowTitle(tr("编辑宏") if shortcut else tr("添加宏录制"))
@@ -705,18 +707,14 @@ class MacroRecordDialog(BaseDialog):
         self.hide_while_recording_cb = QCheckBox("录制时隐藏窗口")
         self.hide_while_recording_cb.setToolTip("勾选后开始录制会最小化本项目所有窗口，按 F8 结束后恢复显示。")
         record_options_row.addWidget(self.hide_while_recording_cb)
-        self.double_speed_cb = QCheckBox("两倍速执行")
-        self.double_speed_cb.setToolTip("勾选后测试播放和每次触发都会按录制间隔的两倍速度执行。")
-        record_options_row.addWidget(self.double_speed_cb)
         self.record_hotkey_hint = QLabel("F8 开始 / 结束")
         self.record_hotkey_hint.setStyleSheet(scale_qss("color: rgba(128,128,128,0.74); font-size: 10px;"))
         record_options_row.addWidget(self.record_hotkey_hint)
+        self.double_speed_cb = QCheckBox("两倍速执行")
+        self.double_speed_cb.setToolTip("勾选后测试播放和每次触发都会按录制间隔的两倍速度执行。")
+        record_options_row.addWidget(self.double_speed_cb)
         record_options_row.addStretch(1)
         record_layout.addLayout(record_options_row)
-        if _IDLE_HINT_TEXT:
-            hint_label = QLabel(_IDLE_HINT_TEXT)
-            hint_label.setWordWrap(True)
-            record_layout.addWidget(hint_label)
         layout.addWidget(record_group)
 
         # ===== 事件列表（实时显示 + 可编辑） =====
@@ -738,6 +736,11 @@ class MacroRecordDialog(BaseDialog):
         self.parse_status_label.setStyleSheet(scale_qss("color: rgba(128,128,128,0.8); font-size: 11px;"))
         tools_row.addWidget(self.parse_status_label, 1)
         events_layout.addLayout(tools_row)
+        # 错误提示 label：仅在解析失败时显示，复位与样式独立于 test_result_label
+        self.parse_error_label = QLabel("")
+        self.parse_error_label.setWordWrap(True)
+        self.parse_error_label.setVisible(False)
+        events_layout.addWidget(self.parse_error_label)
         layout.addWidget(events_group, 1)
 
         # ===== 触发模式（复用 HotkeyDialog 模式） =====
@@ -793,6 +796,8 @@ class MacroRecordDialog(BaseDialog):
         icon_btn_layout.addStretch()
         self.invert_light_cb = QCheckBox("浅色反转")
         self.invert_dark_cb = QCheckBox("深色反转")
+        self.invert_light_cb.stateChanged.connect(self._update_icon_preview)
+        self.invert_dark_cb.stateChanged.connect(self._update_icon_preview)
         icon_btn_layout.addWidget(self.invert_light_cb)
         icon_btn_layout.addWidget(self.invert_dark_cb)
         icon_right_layout.addLayout(icon_btn_layout)
@@ -930,6 +935,7 @@ class MacroRecordDialog(BaseDialog):
         self.invert_dark_cb.setChecked(self.shortcut.icon_invert_dark)
         existing_events = list(self.shortcut.macro_events or [])
         if existing_events:
+            self.recorder.set_events(existing_events)
             self._populate_event_list(existing_events)
             self.event_list.finish_recording()
             # 立即校验并刷新状态行，避免解析状态在编辑前就过时
@@ -959,9 +965,10 @@ class MacroRecordDialog(BaseDialog):
         first_ts = getattr(self, "_raw_first_timestamp_us", None)
         if first_ts is not None:
             ts_now = int(event.get("timestamp_us", 0))
-            delay_us = max(0, ts_now - first_ts)
+            # 距首事件的累计 delta（不是相邻事件 delay）
+            delta_us = max(0, ts_now - first_ts)
             self._raw_first_timestamp_us = ts_now
-            self._cumulative_delay_us += delay_us
+            self._cumulative_delay_us += delta_us
         else:
             self._raw_first_timestamp_us = int(event.get("timestamp_us", 0))
             self._cumulative_delay_us += INITIAL_EVENT_DELAY_US
@@ -975,10 +982,10 @@ class MacroRecordDialog(BaseDialog):
         try:
             events = self._parse_event_text(self.event_list.get_text())
         except ValueError as exc:
-            self._parse_error = str(exc)
-            self.parse_status_label.setText(f"⚠ {exc}")
+            self._set_parse_error(str(exc))
             self.event_list.setFocus()
             return
+        self._clear_parse_error()
         self._cumulative_delay_us = sum(int(event.get("delay_us", 0)) for event in events)
         if hasattr(self, "_raw_first_timestamp_us"):
             del self._raw_first_timestamp_us
@@ -999,11 +1006,12 @@ class MacroRecordDialog(BaseDialog):
                 self._cumulative_delay_us = 0
             if hasattr(self, "_raw_first_timestamp_us"):
                 del self._raw_first_timestamp_us
-            self._parse_error = ""
+            self._clear_parse_error()
             self.parse_status_label.setText("录制中…")
             self._cancel_btn.setEnabled(False)
             self._ok_btn.setEnabled(False)
             self._test_btn.setEnabled(False)
+            self.reparse_btn.setEnabled(False)
             if self.hide_while_recording_cb.isChecked():
                 QTimer.singleShot(0, self._hide_windows_for_recording)
         else:
@@ -1012,6 +1020,7 @@ class MacroRecordDialog(BaseDialog):
             self._cancel_btn.setEnabled(True)
             self._ok_btn.setEnabled(True)
             self._test_btn.setEnabled(True)
+            self.reparse_btn.setEnabled(True)
             self.event_list.finish_recording()
             self._validate_edited_text()
 
@@ -1055,15 +1064,28 @@ class MacroRecordDialog(BaseDialog):
         try:
             events = self._parse_event_text(self.event_list.get_text())
         except ValueError as exc:
-            self._parse_error = str(exc)
-            self.parse_status_label.setText(f"⚠ {exc}")
+            self._set_parse_error(str(exc))
             return
-        self._parse_error = ""
+        self._clear_parse_error()
         if not events:
             self.parse_status_label.setText("事件列表为空")
         else:
             total_ms = sum(int(ev.get("delay_us", 0)) for ev in events) / 1000.0
             self.parse_status_label.setText(f"✓ {len(events)} 条事件，总间隔 {total_ms:.0f} ms")
+
+    def _set_parse_error(self, message: str):
+        if not hasattr(self, "parse_error_label"):
+            return
+        self.parse_error_label.setText(f"⚠ {message}")
+        self.parse_error_label.setStyleSheet(scale_qss("color: rgba(255, 96, 96, 0.92); font-size: 11px;"))
+        self.parse_error_label.setVisible(True)
+
+    def _clear_parse_error(self):
+        if not hasattr(self, "parse_error_label"):
+            return
+        self.parse_error_label.clear()
+        self.parse_error_label.setStyleSheet("")
+        self.parse_error_label.setVisible(False)
 
     def _update_icon_preview(self):
         pixmap = None
@@ -1188,12 +1210,12 @@ class MacroRecordDialog(BaseDialog):
         try:
             events = self._parse_event_text(self.event_list.get_text())
         except ValueError as exc:
-            self.test_result_label.setText(f"解析失败: {exc}")
+            self._set_parse_error(f"解析失败: {exc}")
             self.event_list.setFocus()
             return
+        self._clear_parse_error()
         if not events:
-            self.test_result_label.setText(tr("请先录制宏"))
-            self.test_result_label.setStyleSheet(scale_qss("color: rgba(255, 96, 96, 0.9); font-size: 11px;"))
+            self._set_parse_error(tr("请先录制宏"))
             return
         self.accept()
 
@@ -1205,6 +1227,13 @@ class MacroRecordDialog(BaseDialog):
     def done(self, result):
         if hasattr(self, "recorder") and self.recorder.is_recording():
             self.recorder.stop()
+        if getattr(self, "_test_thread", None) is not None and self._test_thread.is_alive():
+            try:
+                InputMacroBackend().cancel()
+            except Exception as exc:
+                logger.debug("取消测试播放失败: %s", exc, exc_info=True)
+            self._test_thread.join(timeout=1.0)
+        self._test_thread = None
         super().done(result)
 
     # ===== 文本解析器 =====

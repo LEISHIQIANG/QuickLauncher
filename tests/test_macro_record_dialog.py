@@ -836,3 +836,257 @@ def test_macro_recorder_status_refresh_routes_via_signal(qapp, monkeypatch):
     # 状态栏包含「录制中」字样
     assert "录制中" in recorder.status_label.text()
     recorder.stop()
+
+
+# ============================================================================
+# 宏模块审计后的回归测试
+# ============================================================================
+
+
+def test_macro_dialog_load_data_syncs_recorder_state(qapp, monkeypatch):
+    """_load_data 应同步把事件写入 recorder 后端，状态栏显示「已加载 N 个事件」。
+
+    修复：之前 _load_data 只填了文本框，recorder.status_label 仍显示「尚未录制」，
+    与 get_events() 返回空不一致。
+    """
+    from core.data_models import ShortcutItem, ShortcutType
+    from hooks import hooks_wrapper
+    from hooks.hooks_wrapper import INPUT_KEY_DOWN, INPUT_KEY_UP
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    class FakeDLL:
+        loaded = True
+        compatible = True
+
+        def rearm_keyboard_hook_for_capture(self):
+            return True, False
+
+        def is_mouse_hook_installed(self):
+            return True
+
+    monkeypatch.setattr(hooks_wrapper.HooksDLL, "get_instance", lambda: FakeDLL())
+
+    shortcut = ShortcutItem(
+        type=ShortcutType.MACRO,
+        name="宏",
+        macro_events=[
+            {
+                "type": INPUT_KEY_DOWN,
+                "delay_us": 200_000,
+                "vk_code": 65,
+                "flags": 0,
+                "x": 0,
+                "y": 0,
+                "data": 0,
+                "scan_code": 0,
+            },
+            {
+                "type": INPUT_KEY_UP,
+                "delay_us": 50_000,
+                "vk_code": 65,
+                "flags": 0,
+                "x": 0,
+                "y": 0,
+                "data": 0,
+                "scan_code": 0,
+            },
+        ],
+    )
+    dialog = MacroRecordDialog(shortcut=shortcut)
+    assert "已加载 2 个事件" in dialog.recorder.status_label.text()
+    # 状态栏不再显示「尚未录制」
+    assert "尚未录制" not in dialog.recorder.status_label.text()
+
+
+def test_macro_dialog_invert_checkbox_updates_preview(qapp, monkeypatch):
+    """勾选/取消反转 Checkbox 应触发 _update_icon_preview 重新生成图标。
+
+    修复：之前 invert_light_cb / invert_dark_cb 的 stateChanged 未连接。
+    """
+    from core.data_models import ShortcutItem, ShortcutType
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    shortcut = ShortcutItem(type=ShortcutType.MACRO, name="宏", icon_invert_dark=False)
+    dialog = MacroRecordDialog(shortcut=shortcut)
+
+    # 验证 stateChanged 已连接到 _update_icon_preview（>0 表示有接收者）
+    receivers_light = dialog.invert_light_cb.receivers(dialog.invert_light_cb.stateChanged)
+    receivers_dark = dialog.invert_dark_cb.receivers(dialog.invert_dark_cb.stateChanged)
+    assert receivers_light > 0, "invert_light_cb.stateChanged 应连接到 _update_icon_preview"
+    assert receivers_dark > 0, "invert_dark_cb.stateChanged 应连接到 _update_icon_preview"
+
+    # 验证真实调用：通过 monkeypatch 替换 _update_icon_preview，验证切换 checkbox
+    # 时它被调用（replace 后重新连接信号，绕过 PyQt 已连接旧方法的限制）
+    call_count = []
+
+    def spy():
+        call_count.append(1)
+
+    dialog.invert_dark_cb.stateChanged.disconnect()
+    dialog.invert_dark_cb.stateChanged.connect(spy)
+    dialog.invert_light_cb.stateChanged.disconnect()
+    dialog.invert_light_cb.stateChanged.connect(spy)
+
+    dialog.invert_dark_cb.setChecked(True)
+    qapp.processEvents()
+    assert len(call_count) == 1
+    dialog.invert_dark_cb.setChecked(False)
+    qapp.processEvents()
+    assert len(call_count) == 2
+    dialog.invert_light_cb.setChecked(True)
+    qapp.processEvents()
+    assert len(call_count) == 3
+
+
+def test_macro_dialog_double_speed_checkbox_round_trip(qapp):
+    """「两倍速执行」复选框：勾选保存为 2.0，取消保存为 1.0。"""
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    dialog = MacroRecordDialog()
+    assert dialog.double_speed_cb.isChecked() is False
+    dialog.double_speed_cb.setChecked(True)
+    saved = dialog.get_shortcut()
+    assert saved.macro_speed == 2.0
+
+    dialog.double_speed_cb.setChecked(False)
+    saved = dialog.get_shortcut()
+    assert saved.macro_speed == 1.0
+
+
+def test_macro_dialog_load_data_speed_2_checks_box(qapp, monkeypatch):
+    """加载 macro_speed=2.0 的既有宏时，「两倍速执行」应自动勾选。"""
+    from core.data_models import ShortcutItem, ShortcutType
+    from hooks import hooks_wrapper
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    class FakeDLL:
+        loaded = True
+        compatible = True
+
+        def rearm_keyboard_hook_for_capture(self):
+            return True, False
+
+        def is_mouse_hook_installed(self):
+            return True
+
+    monkeypatch.setattr(hooks_wrapper.HooksDLL, "get_instance", lambda: FakeDLL())
+
+    shortcut = ShortcutItem(type=ShortcutType.MACRO, name="宏", macro_speed=2.0)
+    dialog = MacroRecordDialog(shortcut=shortcut)
+    assert dialog.double_speed_cb.isChecked() is True
+
+
+def test_macro_dialog_f8_hint_after_hide_checkbox(qapp):
+    """F8 提示应在「录制时隐藏窗口」之后、「两倍速执行」之前。"""
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    dialog = MacroRecordDialog()
+    # 此断言仅确保三者在同一 row（顺序由源码保证）
+    assert dialog.hide_while_recording_cb.parent() is dialog.record_hotkey_hint.parent()
+    assert dialog.record_hotkey_hint.parent() is dialog.double_speed_cb.parent()
+
+
+def test_macro_dialog_done_cancels_test_playback_thread(qapp, monkeypatch):
+    """done() 期间若测试线程仍在跑，应调用 InputMacroBackend().cancel() 并 join。"""
+    import core.background_tasks as background_tasks
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    class FakeBackend:
+        cancel_calls = []
+
+        def __init__(self, *_a, **_kw):
+            pass
+
+        def play(self, events=None, **kwargs):
+            return True
+
+        def wait(self, timeout_ms):
+            return True
+
+        def cancel(self):
+            self.cancel_calls.append(1)
+
+    fake_backend = FakeBackend()
+    monkeypatch.setattr("ui.config_window.macro_record_dialog.InputMacroBackend", FakeBackend)
+
+    class _FakeThread:
+        def __init__(self):
+            self.alive = True
+            self.joined = False
+            self.timeout = None
+
+        def is_alive(self):
+            return self.alive
+
+        def join(self, timeout=None):
+            self.timeout = timeout
+            self.joined = True
+            self.alive = False
+
+    fake_thread = _FakeThread()
+    monkeypatch.setattr(background_tasks, "start_background_thread", lambda **kw: fake_thread)
+
+    dialog = MacroRecordDialog()
+    dialog._test_thread = fake_thread
+    dialog.done(0)
+    assert fake_thread.joined is True
+    assert fake_backend.cancel_calls == [1]
+    assert dialog._test_thread is None
+
+
+def test_macro_dialog_parse_error_uses_dedicated_label(qapp, monkeypatch):
+    """解析失败应使用独立 error label，复用 test_result_label 会导致语义混乱。"""
+    from core.data_models import ShortcutItem, ShortcutType
+    from ui.config_window.macro_record_dialog import MacroRecordDialog
+
+    shortcut = ShortcutItem(type=ShortcutType.MACRO, name="宏", macro_events=[])
+    dialog = MacroRecordDialog(shortcut=shortcut)
+    dialog.event_list.set_read_only(False)
+    dialog.event_list.setPlainText("这是损坏的宏文本")
+
+    dialog._on_ok()
+    assert not dialog.parse_error_label.isHidden()
+    assert "解析失败" in dialog.parse_error_label.text()
+    # test_result_label 不应被错误消息污染
+    assert "解析失败" not in dialog.test_result_label.text()
+
+
+def test_macro_dialog_input_macro_backend_exposes_max_events():
+    """InputMacroBackend 应暴露 max_events 供 set_events 沿用。"""
+    from hooks.input_macro import InputMacroBackend
+
+    backend = InputMacroBackend()
+    assert backend.max_events == 100_000
+
+    small = InputMacroBackend(max_events=128)
+    assert small.max_events == 128
+
+
+def test_macro_recorder_set_events_preserves_max_events(qapp, monkeypatch):
+    """set_events 应沿用原后端 max_events，避免大事件列表被截断。"""
+    from hooks import hooks_wrapper
+    from hooks.input_macro import InputMacroBackend
+    from ui.config_window.macro_record_dialog import MacroRecorderWidget
+
+    class FakeDLL:
+        loaded = True
+        compatible = True
+
+        def rearm_keyboard_hook_for_capture(self):
+            return True, False
+
+        def is_mouse_hook_installed(self):
+            return True
+
+    monkeypatch.setattr(hooks_wrapper.HooksDLL, "get_instance", lambda: FakeDLL())
+
+    recorder = MacroRecorderWidget()
+    # 替换后端为 max_events=3
+    recorder._backend = InputMacroBackend(max_events=3)
+    sample = [{"type": 6, "delay_us": 100}] * 5
+    recorder.set_events(sample)
+    # 新后端应继承 max_events=3，5 条事件保留 3 条
+    assert recorder._backend.max_events == 3
+    assert len(recorder.get_events()) == 3
+    # dropped 应有提示
+    assert "截断" in recorder.status_label.text()

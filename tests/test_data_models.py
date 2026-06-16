@@ -84,7 +84,6 @@ def test_shortcut_item_defaults():
     assert item.raw_mode is False
     assert item.macro_events == []
     assert item.macro_speed == 1.0
-    assert item.macro_include_mouse_move is False
     assert item.macro_hide_while_recording is False
     assert item.trigger_mode == "immediate"
     assert item.icon_path == ""

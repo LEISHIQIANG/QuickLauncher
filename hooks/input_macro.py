@@ -25,11 +25,16 @@ class InputMacroBackend:
         if max_events <= 0:
             raise ValueError("max_events must be greater than zero")
         self._dll = dll or HooksDLL.get_instance()
-        self._events: deque[dict] = deque(maxlen=int(max_events))
+        self._max_events = int(max_events)
+        self._events: deque[dict] = deque(maxlen=self._max_events)
         self._events_lock = threading.Lock()
         self._recording = False
         self._event_callback: Callable[[dict], None] | None = None
         self._dropped_events = 0
+
+    @property
+    def max_events(self) -> int:
+        return self._max_events
 
     def start_recording(
         self,
