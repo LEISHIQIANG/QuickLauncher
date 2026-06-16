@@ -1,97 +1,89 @@
-# 系统图标编写说明
+# 系统图标维护说明
 
-本文档说明如何维护随 QuickLauncher 安装提供的系统图标条目。用户自己的图标仓库保存在 `config/icon_repo.json`。
+`assets/system_icons/` 存放随 QuickLauncher 安装提供的系统图标条目。用户自己的图标仓库保存在运行时 `config/icon_repo.json`，不要写回这里。
+
+当前 `config.json` 包含 17 个系统图标条目：6 个 URL 条目、11 个命令条目。
 
 ## 目录结构
 
-```
+```text
 assets/system_icons/
-├── README.md          # 本说明文档
-├── config.json        # 图标配置文件
-└── icons/             # 图标文件存放目录
-    ├── 图标1.ico
-    ├── 图标2.png
+├── README.md
+├── config.json
+└── icons/
+    ├── B站.png
+    ├── Github.ico
+    ├── 设置.ico
     └── ...
 ```
 
-## 配置文件格式
-
-### config.json 结构
+## 配置结构
 
 ```json
 {
   "version": "1.0",
   "items": [
     {
-      "id": "唯一标识符",
-      "name": "显示名称",
-      "type": "类型",
-      "order": 排序序号,
-      "icon_path": "icons/图标文件名.ico",
-      "icon_invert_with_theme": true,
-      "icon_invert_current": false,
-      "icon_invert_theme_when_set": "dark",
-      ...其他字段
+      "id": "ac84d097-a21f-4927-96a6-0c2bb6431635",
+      "name": "B站",
+      "type": "url",
+      "order": 1,
+      "url": "https://www.bilibili.com/",
+      "icon_path": "icons/B站.png"
     }
   ]
 }
 ```
 
-## 字段说明
+顶层字段：
 
-### 必填字段
+| 字段 | 说明 |
+|---|---|
+| `version` | 系统图标配置版本 |
+| `items` | 快捷方式条目数组 |
 
-| 字段名 | 类型 | 说明 | 示例 |
-|--------|------|------|------|
-| `id` | string | 唯一标识符，建议使用 UUID | `"09ea1312-0cf2-4cfa-ac0b-ac6ac7bd8b3d"` |
-| `name` | string | 显示名称，最多6个字符 | `"设置"` |
-| `type` | string | 快捷方式类型 | `"file"`, `"folder"`, `"url"`, `"hotkey"`, `"command"` |
-| `order` | number | 排序序号，数字越小越靠前 | `1` |
-| `icon_path` | string | 图标文件相对路径 | `"icons/设置.ico"` |
+## 条目字段
 
-### 图标相关字段
+### 通用字段
 
-| 字段名 | 类型 | 说明 | 默认值 |
-|--------|------|------|--------|
-| `icon_invert_with_theme` | boolean | 是否随主题反色 | `false` |
-| `icon_invert_current` | boolean | 当前是否反色 | `false` |
-| `icon_invert_theme_when_set` | string | 设置反色时的主题 | `"dark"` |
-| `icon_data` | string | Base64 编码的图标数据（可选） | `""` |
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `id` | 是 | 唯一 ID，建议 UUID |
+| `name` | 是 | 弹窗显示名称，建议短文本 |
+| `type` | 是 | 快捷方式类型，当前可用值见下文 |
+| `order` | 是 | 排序序号，数字越小越靠前 |
+| `enabled` | 否 | 是否启用，未写入时按启用处理 |
+| `tags` | 否 | 搜索标签 |
+| `alias` | 否 | 搜索别名 |
+| `icon_path` | 是 | 相对 `assets/system_icons/` 的图标路径 |
+| `icon_data` | 否 | Base64 图标数据，系统图标一般不用 |
 
-### 类型特定字段
+### 当前快捷方式类型
 
-#### 文件/文件夹类型 (file/folder)
+系统图标配置可以使用 QuickLauncher 的 7 类快捷方式，但当前内置配置只使用 `url` 和 `command`。
 
-```json
-{
-  "type": "file",
-  "target_path": "C:\\Windows\\System32\\notepad.exe",
-  "target_args": "",
-  "working_dir": ""
-}
-```
+| 类型 | 说明 |
+|---|---|
+| `file` | 文件或应用 |
+| `folder` | 文件夹 |
+| `url` | 网址 |
+| `hotkey` | 快捷键 |
+| `command` | 命令或内置命令 |
+| `chain` | 动作链 |
+| `batch_launch` | 批量启动 |
 
-#### URL 类型 (url)
+### URL 条目
 
 ```json
 {
   "type": "url",
-  "url": "https://www.example.com"
+  "url": "https://github.com/",
+  "preferred_browser_path": "",
+  "preferred_browser_args": ""
 }
 ```
 
-#### 热键类型 (hotkey)
-
-```json
-{
-  "type": "hotkey",
-  "hotkey": "Alt + Shift + W",
-  "hotkey_modifiers": ["alt", "shift"],
-  "hotkey_key": "W"
-}
-```
-
-#### 命令类型 (command)
+### 命令条目
 
 ```json
 {
@@ -102,288 +94,123 @@ assets/system_icons/
 }
 ```
 
-## 图标文件规范
+`command_type` 可为：
 
-### 支持的格式
+- `cmd`
+- `powershell`
+- `python`
+- `bash`
+- `builtin`
 
-- **推荐格式**: `.ico` (Windows 图标格式)
-- **支持格式**: `.png`, `.jpg`, `.jpeg`, `.bmp`, `.svg`
+系统图标里常用的内置命令：
 
-### 尺寸要求
+| 命令 | 说明 |
+|---|---|
+| `show_config_window` | 打开配置窗口 |
+| `topmost` / `toggle_topmost` | 切换置顶 |
 
-- **推荐尺寸**: 256x256 像素
-- **最小尺寸**: 64x64 像素
-- **最大尺寸**: 512x512 像素
+其他内置命令请以 [core/builtin_command_catalog.py](../../core/builtin_command_catalog.py) 为准。
 
-### 文件命名规范
-
-1. 使用有意义的中文或英文名称
-2. 避免使用特殊字符：`\ / : * ? " < > |`
-3. 文件名长度不超过 50 个字符
-4. 示例：`设置.ico`, `OCR.ico`, `此电脑.ico`
-
-### 图标设计建议
-
-1. **简洁明了**: 图标应该清晰表达功能，避免过于复杂
-2. **统一风格**: 保持与现有图标风格一致
-3. **高对比度**: 确保在深色和浅色主题下都清晰可见
-4. **透明背景**: 使用透明背景以适应不同主题
-
-## 添加新图标步骤
-
-### 步骤 1: 准备图标文件
-
-1. 创建或获取符合规范的图标文件
-2. 将图标文件放入 `icons/` 目录
-3. 确保文件名清晰易懂
-
-### 步骤 2: 生成唯一 ID
-
-使用在线 UUID 生成器或命令行工具生成唯一标识符：
-
-**Windows PowerShell:**
-```powershell
-[guid]::NewGuid().ToString()
-```
-
-**Python:**
-```python
-import uuid
-print(uuid.uuid4())
-```
-
-### 步骤 3: 编辑 config.json
-
-在 `items` 数组中添加新的配置项：
+### 热键条目
 
 ```json
 {
-  "id": "生成的UUID",
-  "name": "图标名称",
-  "type": "file",
-  "order": 100,
-  "target_path": "目标路径",
-  "target_args": "",
-  "working_dir": "",
-  "hotkey": "",
-  "hotkey_modifiers": [],
-  "hotkey_key": "",
-  "url": "",
-  "command": "",
-  "command_type": "cmd",
-  "trigger_mode": "immediate",
-  "icon_data": "",
-  "icon_invert_with_theme": false,
-  "icon_invert_current": false,
-  "icon_invert_theme_when_set": "dark",
-  "icon_path": "icons/你的图标.ico"
-}
-```
-
-### 步骤 4: 验证配置
-
-1. 确保 JSON 格式正确（可使用在线 JSON 验证工具）
-2. 检查图标文件路径是否正确
-3. 确认所有必填字段都已填写
-
-### 步骤 5: 重启应用
-
-重启 QuickLauncher 以加载新的系统图标配置。
-
-## 完整示例
-
-### 示例 1: 添加记事本快捷方式
-
-```json
-{
-  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "name": "记事本",
-  "type": "file",
-  "order": 10,
-  "target_path": "C:\\Windows\\System32\\notepad.exe",
-  "target_args": "",
-  "working_dir": "",
-  "hotkey": "",
-  "hotkey_modifiers": [],
-  "hotkey_key": "",
-  "url": "",
-  "command": "",
-  "command_type": "cmd",
-  "trigger_mode": "immediate",
-  "icon_data": "",
-  "icon_invert_with_theme": false,
-  "icon_invert_current": false,
-  "icon_invert_theme_when_set": "dark",
-  "icon_path": "icons/记事本.ico"
-}
-```
-
-### 示例 2: 添加网站链接
-
-```json
-{
-  "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-  "name": "百度",
-  "type": "url",
-  "order": 20,
-  "target_path": "",
-  "target_args": "",
-  "working_dir": "",
-  "hotkey": "",
-  "hotkey_modifiers": [],
-  "hotkey_key": "",
-  "url": "https://www.baidu.com",
-  "command": "",
-  "command_type": "cmd",
-  "trigger_mode": "immediate",
-  "icon_data": "",
-  "icon_invert_with_theme": false,
-  "icon_invert_current": false,
-  "icon_invert_theme_when_set": "dark",
-  "icon_path": "icons/百度.png"
-}
-```
-
-### 示例 3: 添加全局热键
-
-```json
-{
-  "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "name": "截图",
   "type": "hotkey",
-  "order": 30,
-  "target_path": "",
-  "target_args": "",
-  "working_dir": "",
   "hotkey": "Ctrl + Alt + A",
   "hotkey_modifiers": ["ctrl", "alt"],
   "hotkey_key": "A",
-  "url": "",
-  "command": "",
-  "command_type": "cmd",
-  "trigger_mode": "immediate",
-  "icon_data": "",
-  "icon_invert_with_theme": true,
-  "icon_invert_current": false,
-  "icon_invert_theme_when_set": "dark",
-  "icon_path": "icons/截图.ico"
+  "hotkey_keys": ["A"]
 }
 ```
 
-## 注意事项
+### 文件 / 文件夹条目
 
-### ⚠️ 重要提示
-
-1. **备份配置**: 修改前请备份 `config.json` 文件
-2. **JSON 格式**: 确保 JSON 格式正确，注意逗号和引号
-3. **路径分隔符**: Windows 路径使用双反斜杠 `\\` 或单斜杠 `/`
-4. **字符编码**: 文件必须使用 UTF-8 编码
-5. **唯一 ID**: 每个图标的 ID 必须唯一，不能重复
-
-### 常见错误
-
-#### 1. JSON 格式错误
-
-**错误示例:**
 ```json
 {
-  "name": "测试",  // 多余的逗号
+  "type": "file",
+  "target_path": "C:\\Windows\\System32\\notepad.exe",
+  "target_args": "",
+  "working_dir": "",
+  "run_as_admin": false
 }
 ```
 
-**正确示例:**
-```json
-{
-  "name": "测试"
-}
+## 图标反色字段
+
+当前数据模型支持新旧字段。新字段优先：
+
+| 字段 | 说明 |
+|---|---|
+| `icon_invert_light` | 浅色主题下是否反色 |
+| `icon_invert_dark` | 深色主题下是否反色 |
+
+旧字段仍会兼容迁移：
+
+| 字段 | 说明 |
+|---|---|
+| `icon_invert_with_theme` | 旧版随主题反色开关 |
+| `icon_invert_current` | 旧版当前主题反色状态 |
+| `icon_invert_theme_when_set` | 旧版设置反色时的主题 |
+
+新增条目建议直接使用 `icon_invert_light` / `icon_invert_dark`。
+
+## 图标文件规范
+
+- 推荐 `.ico`，也支持 `.png`、`.jpg`、`.jpeg`、`.bmp`、`.svg`。
+- 推荐尺寸 256x256，最小 64x64，最大 512x512。
+- 文件名避免 `\ / : * ? " < > |`。
+- 单个图标建议小于 500 KB。
+- 尽量使用透明背景，确保深色和浅色主题都可读。
+
+## 添加条目流程
+
+1. 把图标文件放入 `assets/system_icons/icons/`。
+2. 生成 UUID：
+
+   ```powershell
+   [guid]::NewGuid().ToString()
+   ```
+
+3. 编辑 `config.json` 的 `items` 数组。
+4. 确认 JSON 使用 UTF-8，无注释、无尾逗号。
+5. 重启 QuickLauncher 或重新加载配置。
+
+## 当前内置条目
+
+| 名称 | 类型 | 目标 |
+|---|---|---|
+| B站 | URL | `https://www.bilibili.com/` |
+| Github | URL | `https://github.com/` |
+| 抖音 | URL | `https://www.douyin.com/` |
+| TikTok | URL | `https://www.tiktok.com/` |
+| X | URL | `https://x.com/` |
+| YouTube | URL | `https://www.youtube.com/` |
+| 设置 | builtin command | `show_config_window` |
+| 控制面板 | cmd | `control` |
+| 注册表 | cmd | `regedit` |
+| 置顶 | builtin command | `topmost` |
+| 磁盘 | cmd | `diskmgmt.msc` |
+| 公网IP | cmd | `curl -s ifconfig.me \| clip` |
+| DNS | cmd | `ipconfig /flushdns` |
+| 策略组 | cmd | `gpedit.msc` |
+| 任务计划 | cmd | `taskschd.msc` |
+| 清理 | cmd | `cleanmgr` |
+| 网络 | cmd | `ncpa.cpl` |
+
+## 验证建议
+
+```powershell
+py -3.12 -m json.tool assets\system_icons\config.json > $null
+py -3.12 main.py --safe-mode --smoke-test
 ```
 
-#### 2. 路径错误
+若修改了字段兼容或图标加载逻辑，还应运行相关 UI / 图标测试。
 
-**错误示例:**
-```json
-"icon_path": "icons\设置.ico"  // 单反斜杠会被转义
-```
+## 常见问题
 
-**正确示例:**
-```json
-"icon_path": "icons/设置.ico"
-// 或
-"icon_path": "icons\\设置.ico"
-```
-
-#### 3. 缺少必填字段
-
-确保所有必填字段都存在，即使值为空字符串或空数组。
-
-### 性能优化建议
-
-1. **图标数量**: 建议不超过 100 个系统图标条目
-2. **文件大小**: 单个图标文件不超过 500KB
-3. **图标格式**: 优先使用 `.ico` 格式以获得最佳性能
-4. **排序序号**: 合理设置 `order` 值，避免频繁调整
-
-## 高级功能
-
-### 图标反色
-
-当 `icon_invert_with_theme` 设置为 `true` 时，图标会随主题自动反色：
-
-- **深色主题**: 图标保持原色或反色（取决于 `icon_invert_current`）
-- **浅色主题**: 图标自动反色以适应背景
-
-### 内置命令
-
-`command_type` 为 `builtin` 时，可使用以下内置命令：
-
-- `show_config_window`: 打开配置窗口
-- `toggle_topmost`: 切换置顶状态
-- `open_control_panel`: 打开控制面板
-- `open_this_pc`: 打开此电脑
-- `open_recycle_bin`: 打开回收站
-
-### 触发模式
-
-`trigger_mode` 可选值：
-
-- `immediate`: 立即执行（默认）
-- `after_close`: 关闭弹窗后执行
-
-## 故障排查
-
-### 图标不显示
-
-1. 检查图标文件是否存在于 `icons/` 目录
-2. 确认 `icon_path` 路径正确
-3. 验证图标文件格式是否支持
-4. 检查文件权限是否正确
-
-### 配置不生效
-
-1. 验证 JSON 格式是否正确
-2. 检查是否有重复的 ID
-3. 确认文件编码为 UTF-8
-4. 重启应用程序
-
-### 图标显示异常
-
-1. 检查图标尺寸是否符合要求
-2. 确认图标文件未损坏
-3. 尝试使用 `.ico` 格式
-4. 检查 `icon_invert_with_theme` 设置
-
-## 技术支持
-
-如有问题或建议，请通过以下方式联系：
-
-- 提交 Issue 到项目仓库
-- 查看项目文档和 FAQ
-- 参考现有图标配置示例
-
-## 版本历史
-
-- **v1.0** (2024-03-24): 初始版本，支持基本图标配置
-
----
-
-**最后更新**: 2024-03-24
+| 问题 | 检查点 |
+|---|---|
+| 图标不显示 | `icon_path` 是否存在、格式是否支持、路径是否使用 `/` 或转义 `\\` |
+| 条目不生效 | JSON 是否有效、`items` 是否为数组、`id` 是否重复 |
+| 颜色反了 | 检查 `icon_invert_light` / `icon_invert_dark` 或旧反色字段 |
+| 命令打不开 | 确认 `command_type` 与 `command` 匹配，内置命令以注册表为准 |

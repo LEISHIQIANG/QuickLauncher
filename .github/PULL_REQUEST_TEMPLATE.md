@@ -19,10 +19,10 @@
 
 ## 检查清单
 - [ ] 代码遵循项目规范
-- [ ] 已运行 `python -m pytest -q` 或 CI 高风险专项测试
-- [ ] 已运行 `python -m ruff check .`
-- [ ] 已运行 `python scripts/audit_broad_exceptions.py --exclude-dir plugins --exclude-dir tools --max-total 1366 --max-unlogged 300`
-- [ ] 已运行 `python -m mypy --follow-imports=skip services/update`
+- [ ] 已运行 `py -3.12 scripts/release_gate.py --skip-smoke`，或说明为什么只运行了更小范围
+- [ ] 已运行 `py -3.12 -m ruff check --no-cache core ui hooks services tests`
+- [ ] 已运行 `py -3.12 scripts/audit_broad_exceptions.py --exclude-dir plugins --exclude-dir tools --max-total 1373 --max-unlogged 300`
+- [ ] 已运行 `py -3.12 -m mypy --follow-imports=skip services/update`
 - [ ] 已更新文档
 - [ ] 已更新 CHANGELOG.md
 

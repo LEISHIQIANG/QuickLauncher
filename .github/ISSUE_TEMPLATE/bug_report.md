@@ -22,7 +22,7 @@ assignees: ''
 
 ## 环境信息
 - OS: [例如 Windows 11]
-- QuickLauncher 版本: [例如 v1.6.1.0]
+- QuickLauncher 版本: [例如 v1.6.3.1]
 - Python 版本 (如果从源码运行): [例如 3.12]
 
 ## 截图

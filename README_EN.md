@@ -1,93 +1,128 @@
 # QuickLauncher
 
+[![CI](https://github.com/LEISHIQIANG/QuickLauncher/actions/workflows/ci.yml/badge.svg)](https://github.com/LEISHIQIANG/QuickLauncher/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20|%2011-lightgrey.svg)](https://www.microsoft.com/windows)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-lightgrey.svg)](https://www.microsoft.com/windows)
 
-[简体中文](README.md) | [English](README_EN.md) | [完整文档](README_FULL.md) | [Full Docs](README_FULL_EN.md)
+[简体中文](README.md) | [English](README_EN.md) | [完整文档](README_FULL.md) | [Full Docs](README_FULL_EN.md) | [Plugin Dev](plugins/PLUGIN_DEV.md)
 
-**Press your mouse middle button. Launch anything, anywhere.**
+**Press the middle mouse button, or any keyboard / mouse trigger you configure, to open your launcher anywhere.**
 
-QuickLauncher is a Windows desktop quick launcher — press the mouse middle button anywhere on screen to summon a panel for searching and launching apps, folders, URLs, and commands. Lightweight, fast, and ready to use out of the box.
+QuickLauncher is a Windows 10 / 11 desktop quick launcher and lightweight automation tool. It launches apps, folders, URLs, hotkeys, commands, action chains, and batch launch groups, and it can be extended with local plugins.
 
----
+The current source version is defined in [core/version.py](core/version.py): `1.6.3.1` stable. Installer and portable builds ship their own runtime, so end users do not need Python installed. Python is required only for source runs and builds.
 
-## Why QuickLauncher?
+## Core Capabilities
 
-**One click, instant access.** No path memorization, no menu digging. Press the middle button, type to search — with Chinese Pinyin support. Type `kb` to find anything related to "键盘" (keyboard).
-
-**Powerful command system, infinite extensibility.** Supports CMD, PowerShell, Python, and Git Bash runtimes, paired with parameterized templates and dynamic variables (clipboard, date, IP, etc.) to accomplish virtually any operation. Command output is captured and displayed in real-time within the panel — timeout controllable, cancellable anytime.
-
-**More than just opening files.** 6 shortcut types cover every scenario: launch apps, open folders, visit URLs, send hotkey combos, run scripts, chain multi-step action flows for automation. Action chains support up to 50 steps with inter-step data passing — build your own efficiency pipeline.
-
-**Multi-layered security, use with confidence.** Commands are automatically risk-assessed before execution — not blocked, but you're informed. Config file corrupted? Auto-restored from backup — no manual repair needed. ZIP imports, icon downloads, and all external operations are security-validated against injection, path traversal, and more.
-
-**Highly customizable, premium feel.** Switch between dark/light themes, frosted glass acrylic effects, custom image backgrounds. Icon size, grid spacing, columns — all adjustable to make the panel truly yours.
-
-**Plugin ecosystem, unlimited expansion.** Supports custom plugins with `.qlzip` one-click packaging and hot-loading. Plugins can register slash commands and custom search sources with tiered permission management. 8 built-in plugins cover process management, disk cleanup, network diagnostics, and more.
-
-**Chinese / English bilingual, switch at runtime without restart.**
+| Capability | Current implementation |
+|---|---|
+| Global trigger | Middle mouse by default; configurable keyboard, mouse, or hybrid triggers; special apps can use a separate trigger such as Ctrl+middle |
+| Shortcuts | 7 types: file/app, folder, URL, hotkey, command, action chain, batch launch |
+| Search | Fuzzy matching, Chinese Pinyin full/initial search, aliases, tags, web search prefixes, plugin search sources |
+| Command system | CMD, PowerShell, Python, Git Bash, built-in commands; parameter forms, variable templates, environment variables, live output, result actions |
+| Built-in commands | 33 built-in commands for JSON/JWT/Base64/Hash/TLS/CIDR/Git/process/port/Wi-Fi/Hosts/plugin management and more |
+| Action chains | Visual canvas with 189 built-in processors for text, math, lists, JSON, HTTP, files, system info, images, validation, and more |
+| Batch launch | Dedicated `batch_launch` shortcut type for ordered multi-target launch without recursive references |
+| Plugins | `.qlzip` packages, hot loading, enable/disable, failure quarantine, permission declarations, built-in command registration, search sources, chain processors, persistent workers |
+| UI | Dark/light/follow-system themes, Acrylic/image/solid backgrounds, Windows 10 shadows, global UI scaling, Dock, pinned and draggable popups |
+| Safety | Atomic saves, config history, automatic backups, import sanitization, path traversal defense, safe URL fetching, update signatures, SHA-256 verification |
 
 ## Installation
 
-**Download installer (recommended):** Head to [Releases](https://github.com/LEISHIQIANG/QuickLauncher/releases) and grab the latest version.
+Recommended release package:
 
-**Run from source:**
+1. Open [Releases](https://github.com/LEISHIQIANG/QuickLauncher/releases).
+2. Download `QuickLauncher_Setup_<version>.exe` or `QuickLauncher_Portable_<version>.zip`.
+3. The installer uses Inno Setup. The portable package runs directly from `QuickLauncher.exe`.
 
-```bash
+Run from source:
+
+```powershell
 git clone https://github.com/LEISHIQIANG/QuickLauncher.git
 cd QuickLauncher
 py -3.12 -m pip install -r requirements.txt
 py -3.12 main.py
 ```
 
-> Requires Python 3.12, Windows 10 / 11.
+Source runs require Windows 10 / 11 and 64-bit CPython 3.12.
 
-## 30-Second Getting Started
+## 30-Second Start
 
-1. The app lives in your **system tray** after launch
-2. **Mouse middle button** to summon the launcher panel
-3. Start typing to search — supports Pinyin, fuzzy matching, alias search
-4. Type `/` to browse all available commands
-5. **Double-tap Alt** to pause / resume middle button triggering
+1. Launch the app; it stays in the system tray.
+2. Press the middle mouse button and type to search.
+3. Type `/` to browse built-in commands, or type a command alias directly.
+4. Add files, folders, URLs, hotkeys, commands, action chains, or batch launch items in Settings.
+5. Double-tap Alt to pause / resume triggers. CAD and 3D apps can use a separate special trigger profile.
 
-## Feature Overview
+## Built-In Command Examples
 
-| Capability | Description |
-|------|------|
-| Global Trigger | Mouse middle button, auto-compatible with CAD/3D software |
-| Smart Search | Fuzzy matching + Pinyin (full/initials) + aliases/tags + engine prefixes |
-| Command System | CMD / PowerShell / Python / Git Bash, parameterized templates, real-time output capture |
-| Action Chains | Multi-step sequential execution with inter-step data passing |
-| Command Variables | `{{clipboard}}`, `{{date}}`, `{{lan_ip}}`, `{{wan_ip}}`, `{{input}}` and more |
-| Security Preprocessing | 5-layer pipeline: syntax → semantic → security scan → business rules → audit log |
-| Appearance | Dark/light themes, acrylic background, custom images, free layout configuration |
-| Plugin System | Permission management, hot-loading, `.qlzip` packaging, custom commands & search sources |
-| Data Safety | Atomic saves, auto-backup, 20 config snapshots, corrupted-config auto-recovery |
-| Auto-Update | GitHub Releases source, Ed25519 release signatures, SHA-256 verification, silent install |
+| Input | Purpose |
+|---|---|
+| `/json` | Format, minify, or validate JSON |
+| `/jwt` | Decode JWT header and payload |
+| `/hash` | Hash a selected file with MD5/SHA1/SHA256/SHA512 |
+| `/tls` | Inspect TLS protocol, issuer, and expiry for a domain |
+| `/cidr` | Calculate IPv4 / IPv6 network ranges |
+| `/port` | Query port usage, with optional `kill` action |
+| `/wifi` | Inspect saved Wi-Fi profiles |
+| `/hosts` | Edit the hosts file through the elevated path |
+| `/git` | Run status, branch, log, diff, fetch, pull, checkout |
+| `/plugin-list` | List loaded plugins |
 
-## Use With Confidence
+See [README_FULL_EN.md](README_FULL_EN.md) for the full command and parameter reference.
 
-| What You Care About | The Reality |
-|----------|----------|
-| Needs admin rights? | Elevated on demand only — no persistent admin required |
-| Writes files to C drive? | All data lives in the app directory — no system drive pollution |
-| Writes to registry? | No. Auto-start uses Task Scheduler — easy to disable |
-| Phones home? | No network activity except auto-update checks |
-| Auto-update trust chain | Release signatures are required by default; missing public keys make update validation fail closed |
-| Resource hog at idle? | CPU 0-2%, RAM < 100MB when idle |
-| Clean uninstall? | Just delete the app folder — no registry or system file residue |
+## Official Plugin Packages
 
-## Contributing
+The `.plugins/` directory contains official `.qlzip` packages. They are unpacked into the runtime `plugins/` directory only after installation. Release builds do not bundle source plugin folders directly; they ship an empty plugin installation directory.
 
-Issues and PRs welcome!
+| Package | Capability |
+|---|---|
+| `api_tester.qlzip` | HTTP API testing |
+| `disk_cleaner.qlzip` | Disk usage analysis and safe cleanup |
+| `event_inspector.qlzip` | Windows Event Log inspection and aggregation |
+| `file_tools.qlzip` | Selected-file path copy and file hashing |
+| `network_tools.qlzip` | Ping and DNS lookup |
+| `process_tools.qlzip` | Process ranking and lookup |
+| `qr_code_scanner.qlzip` | Screenshot QR-code recognition |
+| `screenshot_ocr.qlzip` | Screenshot OCR |
+| `startup_tools.qlzip` | Startup audit and PATH health check |
+| `text_tools.qlzip` | Text reverse/count/case conversion |
 
-```bash
-# Run tests
-py -3.12 -m pytest tests/ -v
+Plugin development is documented in [plugins/PLUGIN_DEV.md](plugins/PLUGIN_DEV.md).
 
-# Lint
-py -3.12 -m ruff check core/ ui/ hooks/ services/
+## Development And Verification
+
+```powershell
+# Install dependencies
+py -3.12 -m pip install -r requirements.txt -r requirements-dev.txt
+
+# Local release gate: ruff, pytest + coverage, broad-exception audit, compileall, metadata, package smoke
+py -3.12 scripts/release_gate.py --skip-smoke
+
+# CI-equivalent light gate
+py -3.12 scripts/release_gate.py --skip-tests --skip-smoke
+py -3.12 -m mypy --follow-imports=skip services/update
+
+# Safe-mode smoke
+py -3.12 main.py --safe-mode --smoke-test
 ```
+
+Build installer and portable artifacts:
+
+```powershell
+scripts\build_win11_setup.bat
+```
+
+The build chain uses CPython 3.12, Nuitka, PyQt5, an MSVC/MinGW64-capable toolchain, and Inno Setup 6.
+
+## Documentation
+
+- [Complete Chinese documentation](README_FULL.md)
+- [Full English documentation](README_FULL_EN.md)
+- [Plugin development guide](plugins/PLUGIN_DEV.md)
+- [Hook DLL notes](hooks_dll/README.md)
+- [System icon notes](assets/system_icons/README.md)
+- [GitHub maintenance guide](.github/GITHUB_GUIDE.md)
 
 ## License
 
@@ -95,4 +130,4 @@ py -3.12 -m ruff check core/ ui/ hooks/ services/
 
 ---
 
-> **QuickLauncher** — Efficiency at your fingertips.
+> QuickLauncher - Efficiency at your fingertips.

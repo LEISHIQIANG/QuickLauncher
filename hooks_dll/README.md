@@ -1,93 +1,83 @@
-# 钩子模块 C++ DLL
+# QuickLauncher Hook DLL
 
-## 概述
+`hooks.dll` 是 QuickLauncher 的原生输入层，负责全局鼠标、键盘、触发、录制和宏回放。Python 层通过 [hooks/hooks_wrapper.py](../hooks/hooks_wrapper.py) 使用 `ctypes` 加载 DLL，并把结果桥接回 Qt 主线程。
 
-全局键盘、鼠标输入只由 `hooks.dll` 实现。鼠标侧同时使用 `WH_MOUSE_LL` 和后台 Raw Input：低级钩子负责拦截，Raw Input 负责在低级钩子漏报或被 Windows 静默移除时兜底。Python 层通过 `ctypes` 加载 DLL，负责生命周期、诊断和与 Qt 主线程的信号桥接。
+当前 Python wrapper 期望 DLL 能力版本不低于 `15`。
 
-## 文件结构
+## 目录结构
 
-```
+```text
 hooks_dll/
-├── hooks.h           # DLL头文件
-├── hooks.cpp         # DLL实现
-└── build.bat         # 编译脚本
+├── hooks.h       # 导出接口、结构体和能力位
+├── hooks.cpp     # C++17 实现
+└── build.bat     # MSVC + Windows SDK 构建脚本
 
 hooks/
-├── hooks_wrapper.py      # DLL的Python封装
-├── mouse_hook_dll.py     # 鼠标钩子兼容层
-└── keyboard_hook_dll.py  # 键盘钩子兼容层
+├── hooks.dll             # 构建输出，运行时加载
+├── hooks_wrapper.py      # ctypes 封装、完整性校验、生命周期管理
+├── mouse_hook_dll.py     # 鼠标 Hook 兼容层
+└── keyboard_hook_dll.py  # 键盘 Hook 兼容层
 ```
 
-## 编译步骤
+## 构建
 
-1. 安装Visual Studio 2022或MinGW-w64
-2. 安装CMake (3.10+)
-3. 运行编译脚本：
-   ```
-   cd hooks_dll
-   build.bat
-   ```
-4. 编译完成后，`hooks.dll` 会写入 `hooks/hooks.dll`，供主程序运行时加载。
+`build.bat` 使用 Visual Studio / Build Tools 的 MSVC 和 Windows SDK，不依赖 CMake。
 
-## 使用方法
-
-### 方式1：直接使用DLL封装
-
-```python
-from hooks.hooks_wrapper import HooksDLL
-
-dll = HooksDLL()
-
-def on_middle_click(x, y):
-    print(f"中键点击: {x}, {y}")
-
-dll.install_mouse_hook(on_middle_click)
+```powershell
+cd hooks_dll
+build.bat
 ```
 
-### 方式2：使用兼容层（推荐）
+脚本会：
 
-```python
-from hooks.mouse_hook_dll import MouseHook
-from hooks.keyboard_hook_dll import KeyboardHook
+1. 通过 `vswhere` 或常见安装路径查找 MSVC x64 `cl.exe`。
+2. 查找 Windows 10 SDK。
+3. 使用 `/LD /O2 /EHsc /std:c++17 /utf-8` 编译 `hooks.cpp`。
+4. 输出 `..\hooks\hooks.dll`。
+5. 清理临时 `.obj/.exp/.lib` 文件。
 
-# 与原有代码接口完全兼容
-mouse_hook = MouseHook()
-mouse_hook.install(lambda x, y: print(f"点击: {x}, {y}"))
+构建失败时先确认已安装：
 
-keyboard_hook = KeyboardHook()
-keyboard_hook.install(lambda: print("Alt双击"))
-```
+- Visual Studio 2022/2026 或 Build Tools。
+- MSVC C++ x64 工具链。
+- Windows 10 SDK。
 
-## 功能特性
+## 运行职责
 
-- 鼠标中键拦截
-- Raw Input 后台兜底与物理点击去重
-- Alt+左键双击检测
-- Alt双击检测
-- 自定义热键支持
-- 暂停/恢复功能
-- 修饰键状态查询（Alt/Ctrl）
-- 钩子安装状态查询：`IsMouseHookInstalled()`、`IsKeyboardHookInstalled()`
-- Raw Input 状态查询：`IsRawInputFallbackActive()`
-- 最近错误查询：`GetLastHookError()`
-- 能力位查询：`GetHooksCapabilities()`
-- 统一键鼠事件录制：移动、五键鼠标、垂直/水平滚轮、键盘按下/抬起、扫描码与微秒时间戳
-- 异步组合宏回放：键盘、鼠标和 Unicode 事件可按同一时间线混排
-- 宏回放取消、等待、进度查询，以及取消/异常后的按键和鼠标键自动释放
-- 回放事件使用专用 `dwExtraInfo` 标记，默认不触发启动器且不会被宏录制再次采集
-- 钩子诊断文件默认不写盘；仅在排障时设置 `QUICKLAUNCHER_HOOK_DEBUG=1`
-  才启用 `hooks/hook_debug.log` 和 `hooks/capture_debug.log`，避免正常触发与录制路径产生磁盘 I/O
+| 能力 | 说明 |
+|---|---|
+| 鼠标低级 Hook | 捕获五键鼠标事件，默认中键触发弹窗 |
+| 键盘低级 Hook | 捕获 Alt 双击、键盘触发和快捷键录入 |
+| Raw Input 兜底 | 当低级 Hook 漏报或被系统移除时兜底，并对物理事件去重 |
+| RegisterHotKey | 单主键键盘触发的优先独立通道 |
+| 特殊应用分支 | 普通触发和特殊应用触发可独立配置 |
+| 录制会话 | 快捷键录制、受保护键鼠组合录制、宏输入录制共享会话所有权 |
+| 宏回放 | 支持键盘、鼠标、滚轮、Unicode、移动轨迹和时间线回放 |
+| 诊断 | 提供安装状态、能力位、最近错误、运行统计和健康标记 |
 
-## 宏基础接口
+## 触发模型
 
-Python 业务层优先使用 `InputMacroBackend`：
+QuickLauncher 的触发配置由 Python 层归一化后写入 DLL：
+
+- 普通触发：`SetTriggerConfigEx(normalMode, normalButton, normalKeys, normalModifiers, ...)`
+- 特殊触发：同一接口的 special 参数组
+- 模式：`mouse`、`keyboard`、`hybrid`
+- 鼠标键：left/right/middle/x1/x2
+- 修饰键：Ctrl/Alt/Shift/Win
+
+键盘触发按前台窗口判断特殊应用；鼠标和混合触发按指针所在窗口判断特殊应用。单主键键盘组合优先注册为 Windows 全局热键；上下文不同或组合无法注册时，低级 Hook、Raw Input 和异步键状态轮询会兜底。
+
+录制期间 `RuntimeTriggerSuppressedByCapture()` 会暂停弹窗触发，避免“能录入、能应用，但录入时立即触发”的问题。
+
+## 宏与录制接口
+
+Python 业务层优先使用：
 
 ```python
 from hooks import InputMacroBackend
 
 macro = InputMacroBackend()
 macro.start_recording()
-# 用户执行键盘和鼠标操作
 events = macro.stop_recording()
 
 sequence = macro.build_sequence(speed=1.25)
@@ -99,34 +89,33 @@ macro.wait(5000)
 
 - `StartInputCapture` / `StopInputCapture` / `IsInputCaptureActive`
 - `PlayMacroEvents` / `CancelMacroPlayback` / `WaitForMacroPlayback`
-- `GetMacroStatus` / `ReleaseMacroPressedInputs`
+- `IsMacroPlaybackActive` / `GetMacroStatus`
+- `ReleaseMacroPressedInputs`
 
-录制默认只采集物理输入。只有显式设置 `HOOK_CAPTURE_INCLUDE_INJECTED`
-或 `HOOK_CAPTURE_INCLUDE_OWN_PLAYBACK` 时才会收到注入事件，从根源上避免宏自录、
-递归触发和无限回放。
+录制默认只采集物理输入。只有显式设置 include-injected / include-own-playback 选项时才会收到注入事件，从源头避免宏自录和递归触发。
 
-## 稳定性约束
+## 生命周期约束
 
-- 鼠标与键盘低级钩子回调必须快速返回；DLL 内部只记录触发状态，再由独立回调线程调用 Python 回调。
-- Raw Input 与低级钩子使用每个鼠标按键的物理事件计数配对，正常情况下不会重复回调；未配对事件会走兜底并将低级钩子标记为待恢复。
-- 单主键的纯键盘弹窗触发优先使用 `RegisterHotKey`，低级钩子与 Raw Input 负责原有拦截路径，异步键状态轮询负责在两者静默时兜底；三条通道通过时间戳和按下锁存去重。
-- `RegisterHotKey` 只能用于没有特殊应用，或普通/特殊应用使用完全相同键盘组合的配置；上下文不同时改用钩子与轮询，避免未激活场景的热键仍被 Windows 全局吞掉。
-- 键盘触发按前台窗口判断特殊应用，鼠标与混合触发按指针所在窗口判断，避免鼠标停留位置改变纯键盘组合的配置分支。
-- 多主键纯键盘组合仍可由低级钩子直接拦截，并由异步键状态轮询保证触发；系统保留组合无法注册时，系统级拦截能力取决于低级键盘钩子是否可用。
-- 弹窗/热键回调线程使用 256 项有界 FIFO；宏录制使用独立的 8192 项队列，互不阻塞。
-- 鼠标移动默认保留完整轨迹；需要低采样录制时可显式开启连续移动合并。
-- Python 回调异常不能穿透到低级钩子过程；DLL 回调线程会捕获异常边界并继续运行。
-- 回放采用专用线程和可取消等待，不在低级钩子线程内休眠或调用 Python。
-- 宏结束、取消或发送失败时默认释放本次宏仍按住的键，避免出现卡键。
-- 安装钩子时等待钩子线程初始化；超时会写入最近错误，供诊断中心显示。
-- 重复调用 `Install*Hook()` 会原地更新回调，不会等待仍在运行的钩子线程退出；完整重装仍应通过 `Uninstall*Hook()` 后再 `Install*Hook()`。
-- 快捷键录制、受保护键鼠组合录制和宏输入录制共用一个原子会话所有权，同一时刻只允许一种录制；新的请求不会静默替换正在运行的录制。
-- 任一录制会话活动期间，低级钩子、Raw Input、`RegisterHotKey` 和异步轮询都暂停弹窗触发；录制超时后首个输入会正常透传，不会被过期状态吞掉。
-- Python 释放 DLL 前必须确认 `AreHooksQuiescent()` 为真；超时时保留 DLL 与回调引用至进程结束。
+- 低级 Hook 回调必须快速返回；Python 回调在线程队列中异步执行。
+- 弹窗/热键回调队列有 256 项上限，宏录制队列有 8192 项上限。
+- `Install*Hook()` 可原地更新回调，完整重装应先 `Uninstall*Hook()`。
+- `Uninstall*Hook()` 会停止相关录制、取消回放并清理注册热键。
+- Python 释放 DLL 前必须确认 `AreHooksQuiescent()` 为真。
+- 如果卸载超时，Python wrapper 会保留 DLL 和回调引用到进程退出，优先避免 native crash。
+- Hook 调试日志默认不写盘；只有设置 `QUICKLAUNCHER_HOOK_DEBUG=1` 才写 `hooks/hook_debug.log` 和 `hooks/capture_debug.log`。
 
-## 性能优势
+## 诊断接口
 
-- 原生C++实现，响应速度更快
-- 更低的CPU占用
-- 更稳定的钩子机制
-- 减少Python GIL影响
+常用导出包括：
+
+- `GetHooksVersion`
+- `GetHooksCapabilities`
+- `IsMouseHookInstalled`
+- `IsKeyboardHookInstalled`
+- `IsRawInputFallbackActive`
+- `GetLastHookError`
+- `GetHooksRuntimeStats`
+- `ResetHooksRuntimeStats`
+- `AreHooksQuiescent`
+
+诊断中心和测试会通过这些接口确认 DLL 兼容性、安装状态、Raw Input 兜底状态和最近错误。
