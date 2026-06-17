@@ -345,99 +345,12 @@ class PopupMixin:
         self._trim_extra_popup_windows()
 
     def _normalize_popup_pos(self, x: int, y: int):
-        converted = self._try_convert_win_physical_to_qt(int(x), int(y))
-        if converted is not None:
-            return converted
-        if self._is_point_in_any_qt_screen(int(x), int(y)):
-            return (int(x), int(y))
-        return (int(x), int(y))
+        """把鼠标回调中的物理像素归一化为"项目坐标"。
 
-    def _is_point_in_any_qt_screen(self, x: int, y: int) -> bool:
-        try:
-            from qt_compat import QApplication, QPoint
+        委托给 :func:`ui.utils.coordinate_utils.normalize_caret_position`，
+        避免在多处出现相同的转换逻辑（曾经散落在 ``_try_convert_win_physical_to_qt``、
+        ``_center_to`` 和 ``SetWindowPos`` 三处，互不一致）。
+        """
+        from ui.utils.coordinate_utils import normalize_caret_position
 
-            pt = QPoint(int(x), int(y))
-            for s in QApplication.screens() or []:
-                if s.geometry().contains(pt):
-                    return True
-        except Exception:
-            logger.debug("_is_point_in_any_qt_screen failed", exc_info=True)
-            return True
-        return False
-
-    def _try_convert_win_physical_to_qt(self, x: int, y: int):
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            user32 = ctypes.windll.user32
-
-            class POINT(ctypes.Structure):
-                _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
-
-            class RECT(ctypes.Structure):
-                _fields_ = [
-                    ("left", wintypes.LONG),
-                    ("top", wintypes.LONG),
-                    ("right", wintypes.LONG),
-                    ("bottom", wintypes.LONG),
-                ]
-
-            class MONITORINFOEXW(ctypes.Structure):
-                _fields_ = [
-                    ("cbSize", wintypes.DWORD),
-                    ("rcMonitor", RECT),
-                    ("rcWork", RECT),
-                    ("dwFlags", wintypes.DWORD),
-                    ("szDevice", wintypes.WCHAR * 32),
-                ]
-
-            MONITOR_DEFAULTTONEAREST = 2
-
-            monitor_from_point = user32.MonitorFromPoint
-            monitor_from_point.argtypes = [POINT, wintypes.DWORD]
-            monitor_from_point.restype = wintypes.HMONITOR
-
-            get_monitor_info = user32.GetMonitorInfoW
-            get_monitor_info.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFOEXW)]
-            get_monitor_info.restype = wintypes.BOOL
-
-            hmon = monitor_from_point(POINT(int(x), int(y)), MONITOR_DEFAULTTONEAREST)
-            if not hmon:
-                return None
-
-            info = MONITORINFOEXW()
-            info.cbSize = ctypes.sizeof(MONITORINFOEXW)
-            if not get_monitor_info(hmon, ctypes.byref(info)):
-                return None
-
-            device = (info.szDevice or "").strip()
-            from qt_compat import QApplication, QCursor
-
-            screen = None
-            for s in QApplication.screens() or []:
-                try:
-                    if s.name() == device:
-                        screen = s
-                        break
-                except Exception:
-                    continue
-
-            if not screen:
-                screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
-            if not screen:
-                return None
-
-            try:
-                dpr = float(screen.devicePixelRatio())
-            except Exception:
-                dpr = 1.0
-            if dpr <= 0:
-                dpr = 1.0
-
-            geo = screen.geometry()
-            left = geo.left() + int(round((int(x) - int(info.rcMonitor.left)) / dpr))
-            top = geo.top() + int(round((int(y) - int(info.rcMonitor.top)) / dpr))
-            return (left, top)
-        except Exception:
-            return None
+        return normalize_caret_position(int(x), int(y))

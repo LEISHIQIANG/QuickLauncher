@@ -285,7 +285,17 @@ class LauncherPopup(
         # 设置窗口
         self._setup_window()
         calculated_width, calculated_height = self._calculate_fixed_size()
-        self._center_to(x, y, calculated_width, calculated_height)
+        # 优先用 _center_to 的返回值（精确计算位置），不要回退到 (x, y) 鼠标点
+        positioned = self._center_to(x, y, calculated_width, calculated_height)
+        if positioned is not None:
+            # 同步 HWND 位置：避免 Qt 内部布局逻辑把窗口拉回鼠标点
+            try:
+                import ctypes
+
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetWindowPos(hwnd, 0, positioned[0], positioned[1], 0, 0, 0x0001 | 0x0010)
+            except Exception as exc:
+                logger.debug("__init__ 阶段同步 HWND 位置失败: %s", exc)
 
         self.setMouseTracking(True)
         self.settings_updated.connect(self._on_settings_updated)
@@ -624,19 +634,42 @@ class LauncherPopup(
                 x = int(center.x())
                 y = int(center.y())
 
-            # === 修复多屏 DPI 切换核心逻辑 ===
-            # 1. 强制将底层 HWND 物理移动到鼠标附近，触发 Windows 发送 WM_DPICHANGED
-            # 注意：Qt 的 move() 在窗口隐藏时可能是逻辑上的，不会立即触发现生 DPI 变更
+            # === 修复多屏 DPI 切换核心逻辑 + 跨屏显示 bug ===
+            # 关键修复：先计算目标位置，再用计算结果做 SetWindowPos。
+            #
+            # 旧逻辑的 bug：
+            #   1. SetWindowPos(hwnd, 0, mouse_x, mouse_y, ...)  ← 把 HWND 的
+            #      左上角定位到鼠标位置（不是中心！）
+            #   2. _center_to 之后再 move 到居中位置
+            #   在 SetWindowPos 和 _center_to 之间，HWND 的实际位置是
+            #   "鼠标点在左上角"——当鼠标在多屏边界时，HWND 就会跨屏显示。
+            #
+            # 新逻辑：先把 _center_to 跑一遍拿到正确的 (left, top)，
+            # 再用这个 (left, top) 做 SetWindowPos，确保 HWND 从一开始就
+            # 在正确的位置。WM_DPICHANGED 仍会被触发（HWND 移动到了
+            # 目标屏幕所在的 monitor），DPI 上下文正确更新。
+            self.dock_height = self._calculate_dock_height()
+            calculated_width, calculated_height = self._calculate_fixed_size()
+            positioned = self._center_to(x, y, calculated_width, calculated_height)
+            if positioned is None:
+                positioned = (int(x), int(y))
+
             try:
                 import ctypes
 
                 hwnd = int(self.winId())
+                target_left, target_top = positioned
                 # SWP_NOSIZE=1, SWP_NOACTIVATE=16, SWP_FRAMECHANGED=32
-                ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, 0, 0, 0x0001 | 0x0010 | 0x0020)
+                ctypes.windll.user32.SetWindowPos(hwnd, 0, target_left, target_top, 0, 0, 0x0001 | 0x0010 | 0x0020)
             except Exception:
-                self.move(x, y)
+                self.move(*positioned)
 
-            # 2. 让 Qt 在下一轮事件循环完成 DPI/窗口状态同步，避免打开路径阻塞 UI。
+            # 兜底：SetWindowPos + WM_DPICHANGED 可能让 Qt 内部重新布局
+            # 调整窗口位置；再次 _center_to 确保最终位置正确。
+            # 这是幂等操作——如果位置已经正确，self.move() 是 no-op。
+            self._center_to(x, y, calculated_width, calculated_height)
+
+            # 让 Qt 在下一轮事件循环完成 DPI/窗口状态同步，避免打开路径阻塞 UI。
             try:
                 if hasattr(self, "_schedule_window_effect_update"):
                     self._schedule_window_effect_update(0)
@@ -644,11 +677,9 @@ class LauncherPopup(
                     QTimer.singleShot(0, self._update_window_effect)
             except Exception as exc:
                 logger.debug("调度窗口特效刷新失败: %s", exc, exc_info=True)
-
-        self.dock_height = self._calculate_dock_height()
-
-        # 重新计算窗口大小 (现在处于正确的 DPI 上下文中)
-        calculated_width, calculated_height = self._calculate_fixed_size()
+        else:
+            self.dock_height = self._calculate_dock_height()
+            calculated_width, calculated_height = self._calculate_fixed_size()
 
         # 调度窗口特效刷新，避免打开/刷新链路同步重建 DWM/region。
         if not skip_effect:
@@ -659,10 +690,6 @@ class LauncherPopup(
                     QTimer.singleShot(0, self._update_window_effect)
             except Exception as exc:
                 logger.debug("调度窗口特效刷新失败: %s", exc, exc_info=True)
-
-        # 最后精确居中显示
-        if reposition:
-            self._center_to(x, y, calculated_width, calculated_height)
 
         self.updateGeometry()
         self.update()

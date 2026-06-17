@@ -7,7 +7,6 @@ from qt_compat import (
     QFont,
     QFontMetrics,
     QPainterPath,
-    QPoint,
     QRectF,
     QRegion,
     Qt,
@@ -462,24 +461,56 @@ class PopupLayoutMixin:
         return total_width, total_height
 
     def _center_to(self, x: int, y: int, window_width: int = None, window_height: int = None):  # type: ignore[assignment]
-        """定位窗口"""
+        """定位窗口并返回计算出的 ``(left, top)``。
+
+        ``x, y`` 是"项目坐标"——在本项目 ``QT_AUTO_SCREEN_SCALE_FACTOR=0`` +
+        ``PerMonitorV2`` 配置下，``QScreen.geometry()`` 返回物理像素，
+        ``devicePixelRatio()`` 恒为 1.0；所以这里直接使用 ``x, y`` 即可，
+        不再做任何二次缩放（历史上曾经有 ``if dpr != 1.0: x/dpr`` 的死代码分支，
+        已删除以避免误导）。
+
+        **多屏边界处理**（修复跨屏显示 bug）：
+        使用 :func:`ui.utils.coordinate_utils.pick_best_screen_for_popup` 选
+        锚定屏幕——当鼠标在多屏交界处时，``QApplication.screenAt`` 可能因边界
+        歧义返回"错"的屏幕；该函数会按"screenAt → geometry contains → 重叠
+        面积最大"三级降级重选，确保弹窗能完整落在某一块屏幕的 ``availableGeometry``
+        内。
+
+        **最小边距**：边界裁剪使用 ``sp(2)``（仅 2px）作为最小安全距离，
+        不再使用过大的 ``sp(20)``——DWM 阴影溢出由 Windows 自身控制，
+        用户期望弹窗紧贴屏幕边缘而非保持大间距。
+
+        Returns:
+            ``(left, top)`` 计算出的窗口左上角坐标；调用方在 ``SetWindowPos``
+            时应使用此返回值，**不要**使用原始 ``(x, y)`` 鼠标位置——
+            否则 HWND 会先被定位到鼠标点（top-left 在鼠标处），
+            再被 ``_center_to`` 纠正，造成多屏边界处短暂的"弹窗跨屏"闪烁。
+        """
         if window_width is None:
             window_width = self.width()
         if window_height is None:
             window_height = self.height()
 
-        screen = QApplication.screenAt(QPoint(x, y))
+        from ui.utils.coordinate_utils import pick_best_screen_for_popup
+
+        # 最小边界安全距离：sp(2) ≈ 2px（@ 100% scale）
+        # 用户偏好弹窗紧贴屏幕边缘，不再使用 sp(20) 那种大间距
+        edge_inset = sp(2)
+        screen = pick_best_screen_for_popup(
+            int(x),
+            int(y),
+            int(window_width),
+            int(window_height),
+            margin=edge_inset,
+        )
         if not screen:
             screen = QApplication.primaryScreen()
+        if not screen:
+            return None  # 没有可用屏幕时直接放弃（防御性兜底）
 
         work_area = screen.availableGeometry()  # type: ignore[unused-ignore, union-attr]
 
-        dpr = screen.devicePixelRatio()  # type: ignore[unused-ignore, union-attr]
-        if dpr and dpr != 1.0:
-            lx = int(x / dpr)
-            ly = int(y / dpr)
-        else:
-            lx, ly = x, y
+        lx, ly = x, y
 
         align_mode = getattr(self.settings, "popup_align_mode", "mouse_center")  # type: ignore[attr-defined]
 
@@ -487,6 +518,7 @@ class PopupLayoutMixin:
             left = work_area.center().x() - window_width // 2
             top = work_area.center().y() - window_height // 2
         elif align_mode == "bottom_right":
+            # bottom_right 模式保留 sp(10) 的边距（用户明确设置的 corner inset）
             left = work_area.right() - window_width - sp(10)
             top = work_area.bottom() - window_height - sp(10)
         elif align_mode == "mouse_top_left":
@@ -496,10 +528,24 @@ class PopupLayoutMixin:
             left = lx - window_width // 2
             top = ly - window_height // 2
 
-        left = max(work_area.left() + sp(5), min(left, work_area.right() - window_width - sp(5)))
-        top = max(work_area.top() + sp(5), min(top, work_area.bottom() - window_height - sp(5)))
+        # 严格约束到单块屏幕：edge_inset 仅为防御性最小值（避免负坐标或溢出）
+        left = max(
+            work_area.left() + edge_inset,
+            min(left, work_area.right() - window_width - edge_inset),
+        )
+        top = max(
+            work_area.top() + edge_inset,
+            min(top, work_area.bottom() - window_height - edge_inset),
+        )
+
+        # 兜底：popup 完全放不进 work_area 时，强制推到左上角
+        if window_width > work_area.width() - 2 * edge_inset:
+            left = work_area.left() + edge_inset
+        if window_height > work_area.height() - 2 * edge_inset:
+            top = work_area.top() + edge_inset
 
         self.move(left, top)  # type: ignore[attr-defined]
+        return (int(left), int(top))
 
     def resizeEvent(self, event):
         self._bg_cache = None
