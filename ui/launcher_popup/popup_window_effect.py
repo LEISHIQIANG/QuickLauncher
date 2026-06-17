@@ -423,7 +423,7 @@ class PopupLayoutMixin:
     def _calculate_fixed_size(self, y_offset_override=None):
         """基于"常用"页面计算固定窗口大小"""
         # 使用配置的每列行数
-        self.fixed_rows = getattr(self.settings, "popup_max_rows", 3)
+        self.fixed_rows = getattr(self.settings, "popup_max_rows", 8)
         self.shadow_size_px, self.shadow_distance_px, self.shadow_margin = self._win10_internal_shadow_metrics()
         base_padding = int(self.__dict__.get("_base_padding", sp(8)) or sp(8))
         self.padding = base_padding + int(self.shadow_margin)

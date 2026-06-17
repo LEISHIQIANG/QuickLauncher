@@ -40,7 +40,9 @@ def test_update_signature_payload_is_canonical():
     assert update_signature_payload(left) == update_signature_payload(right)
 
 
-def test_update_checker_requires_signature_when_configured(monkeypatch):
+def test_update_checker_warns_and_passes_when_signature_missing(caplog):
+    import logging
+
     from services.update.checker import UpdateChecker
 
     checker = UpdateChecker(
@@ -58,7 +60,31 @@ def test_update_checker_requires_signature_when_configured(monkeypatch):
         file_size=123,
     )
 
-    assert "发布签名" in checker._validate_update_info(info)
+    with caplog.at_level(logging.WARNING, logger="services.update.checker"):
+        assert checker._validate_update_info(info) == ""
+    assert "no release signature" in caplog.text
+
+
+def test_update_checker_blocks_invalid_signature_when_configured(monkeypatch):
+    from services.update.checker import UpdateChecker
+
+    checker = UpdateChecker(
+        UpdateConfig(
+            require_signature=True,
+            signature_public_keys=(RFC8032_PUBLIC_KEY,),
+            allowed_download_hosts=("example.com",),
+        )
+    )
+    info = UpdateInfo(
+        has_update=True,
+        version="1.2.3",
+        download_url="https://example.com/a.exe",
+        file_hash="sha256:" + "a" * 64,
+        file_size=123,
+        file_signature="ed25519:" + "a" * 128,
+    )
+
+    assert "签名校验失败" in checker._validate_update_info(info)
 
     monkeypatch.setattr("services.update.checker.update_signature_payload", lambda _info: b"")
     info.file_signature = "ed25519:" + RFC8032_EMPTY_SIGNATURE

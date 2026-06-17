@@ -1035,7 +1035,7 @@ class PopupSearchMixin:
 
         seen_items = set()
         if not bool(self.__dict__.get("_all_page_icons_preloaded", False)):
-            max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 3))
+            max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 8))
             for page_idx in priority_order:
                 for item_entry in list(self._get_page_animation_items(page_idx))[:max_visible]:
                     if isinstance(item_entry, dict):

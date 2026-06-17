@@ -101,7 +101,7 @@ class SettingsAppearancePageMixin:
         grid.addWidget(self.dock_height_spin, 1, 3)
 
         grid.addWidget(self._create_label("每列行数"), 1, 4)
-        self.popup_max_rows_spin = self._create_spinbox(1, 10, "行")
+        self.popup_max_rows_spin = self._create_spinbox(1, 8, "行")
         self.popup_max_rows_spin.valueChanged.connect(self._on_size_changed)
         grid.addWidget(self.popup_max_rows_spin, 1, 5)
 
@@ -218,7 +218,7 @@ class SettingsAppearancePageMixin:
         else:
             self.dock_height_spin.setValue(settings.dock_height_mode)
 
-        self.popup_max_rows_spin.setValue(getattr(settings, "popup_max_rows", 3))
+        self.popup_max_rows_spin.setValue(getattr(settings, "popup_max_rows", 8))
 
         self.bg_alpha_slider.setValue(settings.bg_alpha)
         self.bg_alpha_label.setText(f"{settings.bg_alpha}%")

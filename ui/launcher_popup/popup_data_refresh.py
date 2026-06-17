@@ -187,7 +187,7 @@ class PopupDataRefreshMixin:
         try:
             items = []
             seen = set()
-            max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 3))
+            max_visible = self.cols * getattr(self, "fixed_rows", getattr(self.settings, "popup_max_rows", 8))
 
             if self.pages:  # type: ignore[attr-defined]
                 page_indexes = range(len(self.pages)) if all_pages else (self.current_page,)  # type: ignore[attr-defined]

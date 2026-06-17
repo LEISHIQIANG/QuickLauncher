@@ -24,7 +24,7 @@ _INT_RANGES = {
     "corner_radius": (0, 64),
     "last_page_index": (0, 1000),
     "dock_height_mode": (1, 3),
-    "popup_max_rows": (1, 10),
+    "popup_max_rows": (1, 8),
     "hover_leave_delay": (0, 5000),
     "double_click_interval": (100, 2000),
     "bg_blur_radius": (0, 80),

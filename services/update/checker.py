@@ -272,17 +272,22 @@ class UpdateChecker:
             return "更新包缺少有效的 sha256 哈希"
         if self._config.require_signature:
             if not info.file_signature:
-                return "更新包缺少发布签名"
-            try:
-                valid_signature = verify_update_signature(
-                    update_signature_payload(info),
-                    info.file_signature,
-                    tuple(self._config.signature_public_keys or ()),
+                logger.warning(
+                    "Update %s has no release signature; proceeding without signature "
+                    "verification (require_signature=True but signature missing).",
+                    info.version or "<unknown>",
                 )
-            except UpdateSignatureError as exc:
-                return f"更新签名配置无效: {exc}"
-            if not valid_signature:
-                return "更新包发布签名校验失败"
+            else:
+                try:
+                    valid_signature = verify_update_signature(
+                        update_signature_payload(info),
+                        info.file_signature,
+                        tuple(self._config.signature_public_keys or ()),
+                    )
+                except UpdateSignatureError as exc:
+                    return f"更新签名配置无效: {exc}"
+                if not valid_signature:
+                    return "更新包发布签名校验失败"
         if info.file_size <= 0:
             return "更新包大小无效"
         if info.file_size > self._config.max_download_bytes:

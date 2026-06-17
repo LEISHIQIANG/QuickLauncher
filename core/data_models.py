@@ -722,7 +722,7 @@ class AppSettings:
     # Dock设置
     dock_enabled: bool = True
     dock_height_mode: int = 1  # 1=单行, 2=双行, 3=三行
-    popup_max_rows: int = 3  # 中键弹窗每列最大行数
+    popup_max_rows: int = 8  # 中键弹窗每列最大行数
 
     # 命令与插件设置
     enabled_plugins: list[str] = field(default_factory=list)
