@@ -80,7 +80,7 @@ class ThemedToolWindow(QDialog):
         self.close_btn_top = QPushButton("✕")
         self.close_btn_top.setFixedSize(sp(46), sp(32))
         self.close_btn_top.setCursor(QtCompat.PointingHandCursor)
-        self.close_btn_top.clicked.connect(self.close)  # type: ignore[arg-type]
+        self.close_btn_top.clicked.connect(self.close)  # type: ignore[unused-ignore, arg-type]
         title_bar.addWidget(self.close_btn_top)
         self.root_layout.addLayout(title_bar)
 

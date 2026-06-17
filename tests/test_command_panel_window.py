@@ -216,6 +216,23 @@ def test_command_panel_only_exposes_titlebar_close_and_blocks_dialog_keys(qapp):
     assert event.accepted
 
 
+def test_command_panel_close_event_shuts_down_execution_service(qapp, monkeypatch):
+    """P0-03: closing the command panel must shut down its execution service."""
+
+    win = _window(qapp)
+    shutdown_calls = []
+    monkeypatch.setattr(
+        win.execution_service,
+        "shutdown",
+        lambda timeout=0.0, **kwargs: shutdown_calls.append(timeout),
+    )
+
+    win.close()
+
+    assert shutdown_calls, "closeEvent must call execution_service.shutdown"
+    assert win._closing_panel is True
+
+
 def test_command_input_focus_and_caret_are_prepared(qapp):
     win = _window(qapp)
     win.command_input.setText("/cmd value")

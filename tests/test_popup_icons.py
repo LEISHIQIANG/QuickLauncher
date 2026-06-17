@@ -113,15 +113,15 @@ def test_popup_default_icon_cache_tracks_shortcut_name_initial():
     assert harness.created_for == ["Alpha", "Beta"]
 
 
-def test_popup_default_icon_cache_reuses_same_initial():
+def test_popup_default_icon_cache_differentiates_names_with_same_initial():
     harness = _IconHarness()
     shortcut = ShortcutItem(id="one", name="Alpha", type=ShortcutType.COMMAND)
 
     harness._get_icon(shortcut)
     shortcut.name = "Atom"
 
-    assert harness._get_icon(shortcut) == "default:Alpha"
-    assert harness.created_for == ["Alpha"]
+    assert harness._get_icon(shortcut) == "default:Atom"
+    assert harness.created_for == ["Alpha", "Atom"]
 
 
 def test_popup_icon_for_paint_uses_cache_only(monkeypatch):

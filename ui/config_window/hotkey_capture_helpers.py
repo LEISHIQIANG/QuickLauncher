@@ -176,7 +176,7 @@ class KeyboardStatePoller:
         self._started = False
 
     def is_active(self) -> bool:
-        return self._timer.isActive()
+        return bool(self._timer.isActive())
 
     @staticmethod
     def _pressed_vks() -> set[int]:

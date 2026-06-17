@@ -378,7 +378,7 @@ class SelectedTextService:
             app = QApplication.instance()
             if app is None:
                 return 0
-            for widget in app.topLevelWidgets():  # type: ignore[attr-defined]
+            for widget in app.topLevelWidgets():  # type: ignore[unused-ignore, attr-defined]
                 if hasattr(widget, "winId"):
                     wid = widget.winId()
                     if wid:

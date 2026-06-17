@@ -39,6 +39,6 @@ def set_precise_timer(timer, *, owner: str = "") -> None:
     try:
         from qt_compat import Qt
 
-        timer.setTimerType(Qt.PreciseTimer)  # type: ignore[attr-defined]
+        timer.setTimerType(Qt.PreciseTimer)  # type: ignore[unused-ignore, attr-defined]
     except (AttributeError, RuntimeError, TypeError) as exc:
         logger.debug("设置精确定时器失败 [%s]: %s", owner, exc, exc_info=True)

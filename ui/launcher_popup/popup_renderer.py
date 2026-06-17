@@ -175,7 +175,7 @@ class PopupRendererMixin:
 
         def make_border_path(pen_width_f: float) -> QPainterPath:
             if pen_width_f == 1.0:
-                return self._cached_border_path  # type: ignore[no-any-return]
+                return self._cached_border_path  # type: ignore[unused-ignore, no-any-return]
             inset = max(0.5, float(pen_width_f) / 2.0)
             r = max(0.0, float(radius) - inset)
             p = QPainterPath()
@@ -703,8 +703,8 @@ class PopupRendererMixin:
 
         def text_width(value: str) -> int:
             if hasattr(metrics, "horizontalAdvance"):
-                return metrics.horizontalAdvance(value)
-            return metrics.width(value)
+                return int(metrics.horizontalAdvance(value))
+            return int(metrics.width(value))
 
         # 4. 判断是否居中显示占位符
         show_centered = not bool(query) and not bool(preedit) and not getattr(self, "_search_forced_active", False)
@@ -1189,7 +1189,7 @@ class PopupRendererMixin:
         dock_bg: QColor,
         drop_highlight_color: QColor,
         bg_mode: str = "theme",
-        border_color: QColor = None,  # type: ignore[assignment]
+        border_color: QColor = None,  # type: ignore[unused-ignore, assignment]
     ):
         """绘制 Dock 栏"""
         if self.dock_height <= 0:  # type: ignore[attr-defined]

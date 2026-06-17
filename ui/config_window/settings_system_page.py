@@ -943,7 +943,7 @@ fso.DeleteFile WScript.ScriptFullName
                 logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
     def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
-        group = QParallelAnimationGroup(self)  # type: ignore[arg-type]
+        group = QParallelAnimationGroup(self)  # type: ignore[unused-ignore, arg-type]
         for widget in self._language_fade_targets():
             effect = widget.graphicsEffect()
             if not isinstance(effect, QGraphicsOpacityEffect):

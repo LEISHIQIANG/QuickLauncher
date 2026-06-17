@@ -11,20 +11,19 @@ import time
 from core.i18n import tr
 from qt_compat import (
     QApplication,
-    QIcon,
     QObject,
     QSystemTrayIcon,
     QtCompat,
     QThread,
     QTimer,
-    get_standard_icon,
     pyqtSignal,
 )
 from runtime_paths import app_executable, app_root, is_packaged_runtime
-from ui.styles.style import PopupMenu
+from ui.styles.style import PopupMenu  # noqa: F401 - re-exported for legacy monkey-patches
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.tray_mixins import HooksMixin, PopupMixin, SleepMixin, StartupMixin, UpdateMixin, WindowsMixin
-from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.tray_mixins.menu_mixin import TrayAppMenuMixin
+from ui.tray_mixins.shutdown_mixin import TrayAppShutdownMixin
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,17 @@ class IconCacheCleanThread(QThread):
             self.finished_signal.emit({}, str(exc))
 
 
-class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, WindowsMixin, QObject):  # type: ignore[misc]
+class TrayApp(
+    TrayAppMenuMixin,
+    TrayAppShutdownMixin,
+    UpdateMixin,
+    HooksMixin,
+    SleepMixin,
+    PopupMixin,
+    StartupMixin,
+    WindowsMixin,
+    QObject,
+):
     """托盘应用"""
 
     # 信号定义
@@ -519,7 +528,7 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
             interval = max(100, int(interval_ms or 300))
         except Exception:
             interval = 300
-        app.setDoubleClickInterval(interval)  # type: ignore[attr-defined]
+        app.setDoubleClickInterval(interval)  # type: ignore[unused-ignore, attr-defined]
 
     def _apply_hardware_acceleration(self, enable: bool):
         """应用硬件加速设置"""
@@ -539,206 +548,6 @@ class TrayApp(UpdateMixin, HooksMixin, SleepMixin, PopupMixin, StartupMixin, Win
                 logger.info("硬件加速已禁用: 进程优先级设为 NORMAL")
         except Exception as e:
             logger.warning(f"设置进程优先级失败: {e}")
-
-    def _show_toast(self, text: str, theme: str = "dark"):
-        """显示 Toast 通知"""
-        try:
-            if self._toast is None:
-                from ui.toast_notification import ToastNotification
-
-                self._toast = ToastNotification()
-            self._toast.show_toast(text, theme=theme, duration_ms=1500)
-        except Exception as e:
-            logger.error(f"显示Toast失败: {e}")
-
-    def _load_icon(self) -> QIcon:
-        """加载图标"""
-        root_dir = str(app_root())
-        exe_dir = str(app_executable().parent)
-        possible_paths = [
-            os.path.join(root_dir, "assets", "app.ico"),
-            os.path.join(root_dir, "app.ico"),
-            os.path.join(exe_dir, "assets", "app.ico"),
-            os.path.join(exe_dir, "app.ico"),
-            "assets/app.ico",
-            "resources/app.ico",
-        ]
-
-        for path in possible_paths:
-            try:
-                abs_path = os.path.abspath(path)
-                if os.path.exists(abs_path):
-                    logger.debug(f"找到图标: {abs_path}")
-                    icon = QIcon(abs_path)
-                    if not icon.isNull():
-                        return icon
-            except Exception as e:
-                logger.warning(f"检查图标路径失败 {path}: {e}")
-
-        return get_standard_icon(QApplication.instance(), "SP_ComputerIcon")  # type: ignore[no-any-return]
-
-    def _create_menu(self):
-        """创建托盘菜单"""
-        # 托盘右键是高频入口，使用 Qt 自绘菜单，避免同步 DWM/Acrylic 导致卡顿或 native 崩溃。
-        theme = self.data_manager.get_settings().theme
-        self.tray_menu = PopupMenu(theme=theme, radius=12, native_effects=False)
-
-        # 添加菜单项
-        self.tray_menu.add_action("设置", self._show_config)
-        self.tray_menu.add_action("重新启动", self._restart)
-        self.tray_menu.add_action("运行日志", self._show_log)
-        self.tray_menu.add_action("诊断中心", self._show_diagnostics)
-        self.tray_menu.add_separator()
-        self.tray_menu.add_action("退出软件", self._quit)
-
-    def _stop_timer_if_active(self, attr_name):
-        try:
-            timer = getattr(self, attr_name, None)
-        except RuntimeError as exc:
-            logger.debug("读取定时器失败: %s", exc, exc_info=True)
-            return
-        if timer is None:
-            return
-        try:
-            if timer.isActive():
-                timer.stop()
-        except Exception:
-            try:
-                timer.stop()
-            except Exception as exc:
-                logger.debug("停止定时器失败: %s", exc, exc_info=True)
-
-    def _close_widget_if_present(self, attr_name):
-        widget = getattr(self, attr_name, None)
-        if widget is None:
-            return
-        try:
-            widget.close()
-        except Exception as exc:
-            logger.debug("关闭窗口组件: %s", exc, exc_info=True)
-        try:
-            setattr(self, attr_name, None)
-        except Exception as exc:
-            logger.debug("清除窗口引用失败: %s", exc, exc_info=True)
-
-    def _shutdown_runtime_components(self):
-        # 停止后台线程
-        try:
-            _thread = self._icon_cache_clean_thread
-        except Exception:
-            _thread = None
-        if _thread is not None:
-            stopped = stop_qthread_nonblocking(
-                _thread,
-                owner="TrayApp.icon_cache_clean",
-                wait_ms=0,
-                disconnect_thread_signals=("finished", "finished_signal"),
-            )
-            if stopped:
-                self._icon_cache_clean_thread = None
-
-        for timer_name in (
-            "_settings_sync_timer",
-            "_sleep_timer",
-            "_deferred_startup_timer",
-            "_plugin_startup_timer",
-            "_memory_check_timer",
-            "_process_check_timer",
-            "_hook_health_timer",
-        ):
-            self._stop_timer_if_active(timer_name)
-
-        try:
-            cancel_event = getattr(self, "_process_check_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.set()
-            future = getattr(self, "_process_check_future", None)
-            if future is not None and future.done():
-                self._process_check_cancel_event = None
-            self._process_check_future = None
-        except Exception as exc:
-            logger.debug("取消特殊应用监控任务失败: %s", exc, exc_info=True)
-
-        try:
-            from ui.tray_mixins.hooks_mixin import shutdown_process_check_executor
-
-            shutdown_process_check_executor()
-        except Exception as exc:
-            logger.debug("关闭特殊应用监控线程池失败: %s", exc, exc_info=True)
-
-        try:
-            if self._update_checker:
-                self._update_checker.stop()
-        except Exception as e:
-            logger.debug(f"stop update checker failed: {e}")
-
-        # 清理 Win32 全局快捷键
-        try:
-            self._win32_hotkey.unregister_all()
-            self._win32_hotkey.remove_filter()
-        except Exception as exc:
-            logger.debug("清理 Win32 全局快捷键失败: %s", exc, exc_info=True)
-
-        try:
-            from core.folder_watcher import shutdown_watcher_manager
-
-            shutdown_watcher_manager()
-        except Exception as e:
-            logger.debug(f"stop folder watcher failed: {e}")
-
-        try:
-            import core
-
-            if core.plugin_manager is not None:
-                core.plugin_manager.shutdown()
-        except Exception as exc:
-            logger.debug("关闭插件运行时失败: %s", exc, exc_info=True)
-
-        mouse_hook = self.mouse_hook
-        self.mouse_hook = None
-        if mouse_hook:
-            try:
-                mouse_hook.uninstall()
-            except Exception as exc:
-                logger.debug("卸载鼠标钩子: %s", exc, exc_info=True)
-
-        keyboard_hook = self.keyboard_hook
-        self.keyboard_hook = None
-        if keyboard_hook:
-            try:
-                keyboard_hook.uninstall()
-            except Exception as exc:
-                logger.debug("卸载键盘钩子: %s", exc, exc_info=True)
-
-        try:
-            self.tray_icon.hide()
-        except Exception as exc:
-            logger.debug("隐藏托盘图标: %s", exc, exc_info=True)
-
-        for attr_name in (
-            "config_window",
-            "popup_window",
-            "log_window",
-            "diagnostics_window",
-            "shortcut_health_window",
-            "config_history_window",
-            "slash_help_window",
-            "_toast",
-        ):
-            self._close_widget_if_present(attr_name)
-        self._close_extra_popup_windows()
-        try:
-            self.data_manager.shutdown()
-        except Exception as exc:
-            logger.error("退出时刷新配置失败: %s", exc, exc_info=True)
-
-    def _close_extra_popup_windows(self):
-        for popup in list(getattr(self, "_extra_popup_windows", []) or []):
-            try:
-                popup.close()
-            except Exception as exc:
-                logger.debug("关闭弹窗: %s", exc, exc_info=True)
-        self._extra_popup_windows = []
 
     def _restart(self):
         """重新启动应用"""
@@ -832,20 +641,6 @@ fso.DeleteFile WScript.ScriptFullName
             parent = self.config_window if self.config_window else None
             ThemedMessageBox.critical(parent, tr("重启失败"), tr("无法重新启动程序\n\n{error}", error=str(e)))
 
-    def _on_tray_activated(self, reason):
-        """托盘图标激活"""
-        logger.debug(f"托盘激活: {reason}")
-        if reason == QtCompat.Trigger or reason == QtCompat.DoubleClick:
-            self._show_config()
-        elif reason == QtCompat.Context:
-            # 右键显示自定义磨砂菜单
-            from qt_compat import QCursor, QPoint
-
-            pos = QCursor.pos()
-            # 稍微偏移一点，避免遮住托盘图标
-            offset_pos = QPoint(pos.x(), pos.y() - 5)
-            self.tray_menu.popup(offset_pos)
-
     def _register_config_toggle_hotkey(self):
         """注册全局快捷键 Ctrl+Shift+L 用于切换配置窗口"""
         try:
@@ -857,62 +652,6 @@ fso.DeleteFile WScript.ScriptFullName
                 logger.warning("全局快捷键 Ctrl+Shift+L 注册失败，可能已被其他程序占用")
         except Exception as exc:
             logger.error("注册全局快捷键失败: %s", exc, exc_info=True)
-
-    def _clean_icon_cache_now(self):
-        """立即执行图标缓存维护。"""
-        self._wake_from_sleep("clean_icon_cache")
-        try:
-            if self._icon_cache_clean_thread and self._icon_cache_clean_thread.isRunning():
-                self._show_toast(tr("图标缓存正在清理中"), self.data_manager.get_settings().theme)
-                return True
-
-            self._cleanup_icon_cache()
-
-            if self.popup_window:
-                try:
-                    self.popup_window._icon_pixmap_cache.clear()
-                    self.popup_window._icon_miss_cache.clear()
-                    self.popup_window._default_icon_cache.clear()
-                except Exception:
-                    logger.debug("清理弹窗图标缓存失败", exc_info=True)
-            for popup in list(getattr(self, "_extra_popup_windows", []) or []):
-                try:
-                    popup._icon_pixmap_cache.clear()
-                    popup._icon_miss_cache.clear()
-                    popup._default_icon_cache.clear()
-                except Exception:
-                    logger.debug("清理固定多开弹窗图标缓存失败", exc_info=True)
-
-            theme = self.data_manager.get_settings().theme
-            self._show_toast(tr("正在清理图标缓存..."), theme)
-            self._icon_cache_clean_thread = IconCacheCleanThread(self.data_manager)
-            self._icon_cache_clean_thread.finished_signal.connect(self._on_icon_cache_clean_finished)
-            self._icon_cache_clean_thread.finished.connect(
-                lambda thread=self._icon_cache_clean_thread: (
-                    setattr(self, "_icon_cache_clean_thread", None)
-                    if getattr(self, "_icon_cache_clean_thread", None) is thread
-                    else None
-                )
-            )
-            self._icon_cache_clean_thread.finished.connect(self._icon_cache_clean_thread.deleteLater)
-            self._icon_cache_clean_thread.start()
-            return True
-        except Exception as e:
-            logger.error("手动图标缓存清理失败: %s", e, exc_info=True)
-            return False
-
-    def _on_icon_cache_clean_finished(self, stats: dict, error: str):
-        theme = self.data_manager.get_settings().theme
-        if error:
-            logger.error("手动图标缓存清理失败: %s", error)
-            self._show_toast(tr("图标缓存清理失败，请查看日志"), theme)
-            return
-        removed = int(stats.get("total_removed", 0) or 0)
-        freed = float(stats.get("total_size_freed_mb", 0) or 0)
-        logger.info("手动图标缓存清理完成: removed=%s freed=%.2fMB", removed, freed)
-        self._show_toast(
-            tr("图标缓存已清理：{removed} 个文件，释放 {freed:.1f} MB", removed=removed, freed=freed), theme
-        )
 
     def _reload_hooks_now(self):
         """手动重装鼠标、键盘钩子。"""

@@ -814,7 +814,7 @@ class PluginAPI:
             from qt_compat import QApplication
 
             cb = QApplication.clipboard()
-            return cb.text() or ""  # type: ignore[union-attr]
+            return cb.text() or ""  # type: ignore[unused-ignore, union-attr]
         except Exception:
             logger.debug("read_clipboard failed", exc_info=True)
             return ""
@@ -824,7 +824,7 @@ class PluginAPI:
         try:
             from qt_compat import QApplication
 
-            QApplication.clipboard().setText(text)  # type: ignore[union-attr]
+            QApplication.clipboard().setText(text)  # type: ignore[unused-ignore, union-attr]
         except Exception as exc:
             logger.debug("写入剪贴板失败: %s", exc, exc_info=True)
 
@@ -1400,7 +1400,7 @@ def has_high_risk_permissions(permissions: list[str]) -> bool:
 def _is_builtin_plugin_package(package_path: str, plugin_id: str) -> bool:
     try:
         package = Path(package_path).resolve(strict=False)
-        plugins_dir = app_root() / ".plugins"
+        plugins_dir = Path(app_root()) / ".plugins"
         expected = plugins_dir / f"{plugin_id}{PLUGIN_PACKAGE_EXTENSION}"
         return package == expected.resolve(strict=False)
     except Exception:

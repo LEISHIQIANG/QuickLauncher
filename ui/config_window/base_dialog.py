@@ -95,7 +95,7 @@ class BaseDialog(QDialog):
 
     def _next_dialog_animation_generation(self) -> int:
         self._dialog_animation_generation = int(getattr(self, "_dialog_animation_generation", 0) or 0) + 1
-        return self._dialog_animation_generation  # type: ignore[no-any-return]
+        return int(self._dialog_animation_generation)
 
     def _is_dialog_animation_current(self, generation: int) -> bool:
         return generation == int(getattr(self, "_dialog_animation_generation", -1) or -1)
@@ -271,8 +271,8 @@ class BaseDialog(QDialog):
 
         start_pos = getattr(self, "_anim_start_pos", self.pos())
         target_pos = self._anim_target_pos
-        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)  # type: ignore[union-attr]
-        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)  # type: ignore[union-attr]
+        current_x = int(start_pos.x() + (target_pos.x() - start_pos.x()) * eased)  # type: ignore[unused-ignore, union-attr]
+        current_y = int(start_pos.y() + (target_pos.y() - start_pos.y()) * eased)  # type: ignore[unused-ignore, union-attr]
         self.move(current_x, current_y)
 
     def mousePressEvent(self, event):

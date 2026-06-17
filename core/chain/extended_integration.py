@@ -221,6 +221,11 @@ def _ok_json(value: Any) -> CommandResult:
     )
 
 
+def _env_set_result(key: str, value: str) -> CommandResult:
+    env_set(key, value)
+    return _ok(value)
+
+
 def _error(message: str) -> CommandResult:
     """Create an error result."""
     return CommandResult(
@@ -533,7 +538,7 @@ def _get_handler(processor_id: str):
         ),
         # Environment processors
         "env_get": lambda args: _ok(env_get(str(args.get("key", "")), str(args.get("default", "")))),
-        "env_set": lambda args: _ok(env_set(str(args.get("key", "")), str(args.get("value", "")))),  # type: ignore[arg-type, func-returns-value]
+        "env_set": lambda args: _env_set_result(str(args.get("key", "")), str(args.get("value", ""))),
         "env_list": lambda args: _ok_json(env_list()),
         "env_expand": lambda args: _ok(env_expand(str(args.get("text", "")))),
         # Math extended processors

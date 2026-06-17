@@ -29,12 +29,14 @@ __all__ = [
 
 # ── Port Constants ───────────────────────────────────────────────────────────
 
-TEXT_OUTPUTS = ["output", "length", "empty"]
-BOOL_OUTPUTS = ["output", "not"]
-LIST_OUTPUTS = ["output", "count", "first", "last", "items_json"]
-NUMBER_OUTPUTS = ["output"]
-FILE_OUTPUTS = ["output", "path", "folder", "filename", "exists"]
-JSON_OUTPUTS = ["output"]
+from .port_kind_sets import (  # noqa: E402,F401 - re-export for backwards compatibility
+    BOOL_OUTPUTS,
+    FILE_OUTPUTS,
+    JSON_OUTPUTS,
+    LIST_OUTPUTS,
+    NUMBER_OUTPUTS,
+    TEXT_OUTPUTS,
+)
 
 # ── Extended Processor Definitions ───────────────────────────────────────────
 

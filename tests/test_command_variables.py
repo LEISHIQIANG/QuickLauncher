@@ -153,7 +153,7 @@ def test_fetch_public_wan_ipv4_skips_ipv6(monkeypatch):
         def read(self, _size):
             return next(responses).encode("utf-8")
 
-    monkeypatch.setattr("core.command_variables.urllib.request.urlopen", lambda request, timeout=0: FakeResponse())
+    monkeypatch.setattr("core.command_variables.safe_urlopen", lambda request, timeout=0: FakeResponse())
 
     assert fetch_public_wan_ipv4() == "203.0.113.9"
 
@@ -169,7 +169,7 @@ def test_fetch_public_wan_ipv4_errors_when_only_ipv6(monkeypatch):
         def read(self, _size):
             return b"2001:db8::1"
 
-    monkeypatch.setattr("core.command_variables.urllib.request.urlopen", lambda request, timeout=0: FakeResponse())
+    monkeypatch.setattr("core.command_variables.safe_urlopen", lambda request, timeout=0: FakeResponse())
 
     with pytest.raises(CommandVariableError):
         fetch_public_wan_ipv4()

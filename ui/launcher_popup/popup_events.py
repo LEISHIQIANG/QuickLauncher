@@ -744,7 +744,7 @@ class PopupEventsMixin:
         timer = self.__dict__.get("_last_page_save_timer")
         if timer is None:
             try:
-                timer = QTimer(self)  # type: ignore[arg-type]
+                timer = QTimer(self)  # type: ignore[unused-ignore, arg-type]
             except RuntimeError:
                 return
             timer.setSingleShot(True)

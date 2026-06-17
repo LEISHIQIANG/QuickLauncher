@@ -145,6 +145,7 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
     tray.shortcut_health_window = None
     tray.config_history_window = None
     tray.slash_help_window = None
+    tray.command_panel_window = None
     tray._toast = None
 
     monkeypatch.setattr("core.folder_watcher.shutdown_watcher_manager", lambda: None)

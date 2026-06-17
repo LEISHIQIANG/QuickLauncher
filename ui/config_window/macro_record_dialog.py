@@ -1304,7 +1304,7 @@ class MacroRecordDialog(BaseDialog):
         events: list[dict] = []
         previous_timestamp_s = 0.0
         for item in parsed:
-            timestamp_s = item["timestamp_s"]
+            timestamp_s = float(item["timestamp_s"] or 0.0)
             if item["override_delay_s"] is not None:
                 delay_s = item["override_delay_s"]
             else:

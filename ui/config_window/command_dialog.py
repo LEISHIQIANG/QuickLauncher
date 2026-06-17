@@ -3,7 +3,6 @@
 """
 
 import logging
-import os
 
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
@@ -12,7 +11,6 @@ from qt_compat import (
     QCheckBox,
     QColor,
     QComboBox,
-    QFont,
     QFormLayout,
     QFrame,
     QGroupBox,
@@ -26,7 +24,6 @@ from qt_compat import (
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
-    QRectF,
     QSpinBox,
     QStackedWidget,
     QtCompat,
@@ -40,6 +37,8 @@ from ui.utils.safe_file_dialog import get_existing_directory
 from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
+from .command_dialog_icon import CommandDialogIconMixin
+from .command_dialog_test_runner import CommandDialogTestRunnerMixin
 from .command_param_dialog import CommandParamDialog
 from .command_profile_helpers import (
     format_command_env,
@@ -47,16 +46,20 @@ from .command_profile_helpers import (
     parse_command_env_text,
     parse_command_params_text,
 )
-from .icon_browse_helper import choose_custom_icon
 from .template_variable_highlighter import install_template_variable_highlighter
-from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
 
 
-class CommandDialog(BaseDialog):
-    """命令编辑对话框"""
+class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDialog):
+    """命令编辑对话框
+
+    Composes :class:`CommandDialogIconMixin` and
+    :class:`CommandDialogTestRunnerMixin` so the bulk of the
+    feature logic lives outside this file — see the
+    ``command_dialog_*.py`` modules.
+    """
 
     BUILTIN_COMMANDS = [
         ("置顶/取消置顶 (Toggle Topmost)", "toggle_topmost"),
@@ -1361,132 +1364,8 @@ class CommandDialog(BaseDialog):
                 values["input"] = value
         return values
 
-    def _test_command(self):
-        if self.type_combo.currentIndex() == 4:
-            return
-        if self._command_test_thread is not None and self._command_test_thread.isRunning():
-            return
-        shortcut = self._build_preview_shortcut()
-        self.test_output.setVisible(True)
-        self.adjustSize()
-        if not shortcut.command:
-            self.test_output.setPlainText("命令内容为空。")
-            return
-        inputs = self._collect_runtime_inputs(shortcut.command) if shortcut.command_variables_enabled else {}
-        if inputs is None:
-            self.test_output.setPlainText("测试运行已取消。")
-            return
-        if inputs:
-            from core.command_io import CommandInvocationSnapshot, prepare_runtime_shortcut
-
-            shortcut = prepare_runtime_shortcut(
-                shortcut,
-                CommandInvocationSnapshot(
-                    command_id=getattr(shortcut, "id", ""),
-                    command_title=getattr(shortcut, "name", ""),
-                    input_values=dict(inputs),
-                ),
-            )
-
-        self._cleanup_command_test_thread()
-        self._test_btn.setEnabled(False)
-        self.test_output.setPlainText("正在测试...")
-        timeout = float(self.capture_timeout_spin.value())
-
-        def run_command_test(cancel_event):
-            from core import ShortcutExecutor
-
-            if not ShortcutExecutor:
-                return {
-                    "success": False,
-                    "exit_code": None,
-                    "stdout": "",
-                    "stderr": "",
-                    "error": "执行器不可用，请检查运行环境依赖。",
-                    "duration": 0.0,
-                }
-            return ShortcutExecutor.test_command(shortcut, timeout=timeout, cancel_event=cancel_event)
-
-        self._command_test_thread = DialogTestTask(
-            name="command-dialog-test",
-            callback=run_command_test,
-            owner=self,
-        )
-        self._command_test_thread.result_ready.connect(self._show_test_result)
-        self._command_test_thread.start()
-
-    def _show_test_result(self, result: dict):
-        if self._dialog_finished or not hasattr(self, "test_output") or not hasattr(self, "_test_btn"):
-            return
-        lines = [
-            f"状态: {'成功' if result.get('success') else '失败'}",
-            f"退出码: {result.get('exit_code')}",
-            f"耗时: {result.get('duration', 0):.2f}s",
-        ]
-        if result.get("resolved_command"):
-            lines.extend(["", "最终命令:", str(result.get("resolved_command"))])
-        if result.get("error"):
-            lines.extend(["", "错误:", str(result.get("error"))])
-        if result.get("stdout"):
-            lines.extend(["", "stdout:", str(result.get("stdout"))])
-        if result.get("stderr"):
-            lines.extend(["", "stderr:", str(result.get("stderr"))])
-        self.test_output.setPlainText("\n".join(lines))
-        self._test_btn.setEnabled(self.type_combo.currentIndex() != 4)
-        task = self._command_test_thread
-        self._command_test_thread = None
-        if task is not None:
-            try:
-                task.deleteLater()
-            except Exception as exc:
-                logger.debug("删除命令测试任务失败: %s", exc, exc_info=True)
-
     def closeEvent(self, event):
         super().closeEvent(event)
-
-    def done(self, result):
-        self._cleanup_command_test_thread()
-        super().done(result)
-
-    def _cleanup_command_test_thread(self):
-        # 强制终止正在后台测试的挂起子进程（如果有），避免垃圾子进程泄露
-        if hasattr(self, "shortcut") and self.shortcut:
-            try:
-                process = getattr(self.shortcut, "_active_test_process", None)
-                if process and process.poll() is None:
-                    process.kill()
-                    try:
-                        process.wait(timeout=1.0)
-                        logger.info("测试后台挂起子进程已被成功强制终止清理")
-                    except Exception as exc:
-                        logger.debug("子进程终止超时: %s", exc, exc_info=True)
-            except Exception as e:
-                logger.debug(f"清理挂起子进程时发生异常: {e}")
-
-        thread = getattr(self, "_command_test_thread", None)
-        if thread is None:
-            return
-        try:
-            thread.result_ready.disconnect(self._show_test_result)
-        except Exception as exc:
-            logger.debug("断开信号失败: %s", exc, exc_info=True)
-        try:
-            thread.suppress_result_signal()
-            thread.cancel()
-        except Exception as exc:
-            logger.debug("取消测试线程失败: %s", exc, exc_info=True)
-        if not thread.isRunning():
-            try:
-                thread.deleteLater()
-            except Exception as exc:
-                logger.debug("删除线程失败: %s", exc, exc_info=True)
-        else:
-            try:
-                thread.delete_when_finished()
-            except Exception as exc:
-                logger.debug("注册命令测试任务异步删除失败: %s", exc, exc_info=True)
-            logger.debug("命令测试任务已请求取消，将在后台自然结束后回收")
-        self._command_test_thread = None
 
     def _load_data(self):
         """加载数据"""
@@ -1566,118 +1445,6 @@ class CommandDialog(BaseDialog):
             logger.debug("加载数据失败: %s", exc, exc_info=True)
         finally:
             self._loading_data = False
-
-    def _update_icon_preview(self):
-        """更新图标预览"""
-        # 避免递归调用或死循环，如果正在更新中则返回
-        if getattr(self, "_updating_icon", False):
-            return
-        self._updating_icon = True
-
-        try:
-            pixmap = None
-
-            if self._custom_icon_path:
-                try:
-                    should_load = False
-                    # 检查是否为资源路径 (包含逗号)
-                    if "," in self._custom_icon_path:
-                        should_load = True
-                    # 或者检查文件是否存在
-                    elif os.path.exists(self._custom_icon_path):
-                        should_load = True
-
-                    if should_load:
-                        from core.icon_extractor import IconExtractor
-
-                        pixmap = IconExtractor.from_file(self._custom_icon_path, 48)
-                except Exception as e:
-                    logger.debug(f"加载自定义图标失败: {e}")
-
-            if not pixmap or pixmap.isNull():
-                pixmap = self._create_command_icon(48)
-
-            # 应用反转（根据当前主题对应的反转标志）
-            _current_theme = getattr(self, "theme", "dark")
-            _need_invert = (
-                self.invert_light_cb.isChecked() if _current_theme == "light" else self.invert_dark_cb.isChecked()
-            )
-            if _need_invert and pixmap and not pixmap.isNull():
-                from core.icon_extractor import IconExtractor
-
-                pixmap = IconExtractor.invert_pixmap(pixmap)
-
-            # 缩放到预览尺寸
-            if pixmap and not pixmap.isNull():
-                pixmap = pixmap.scaled(sp(32), sp(32), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
-                self.icon_preview.setPixmap(pixmap)
-            else:
-                self.icon_preview.clear()
-        except Exception as exc:
-            logger.debug("更新图标预览失败: %s", exc, exc_info=True)
-        finally:
-            self._updating_icon = False
-
-    def _create_command_icon(self, size: int) -> QPixmap:
-        """创建命令图标"""
-        try:
-            pixmap = QPixmap(size, size)
-            pixmap.fill(QtCompat.transparent)
-
-            painter = QPainter(pixmap)
-            try:
-                painter.setRenderHint(QtCompat.Antialiasing)
-                painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-
-                painter.setBrush(QColor(50, 50, 50))
-                painter.setPen(QtCompat.NoPen)
-                margin = size // 8
-                painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-
-                painter.setPen(QColor(0, 255, 0))
-                font = QFont("Consolas", size // 3)
-                font.setBold(True)
-                painter.setFont(font)
-
-                # 根据类型显示不同图标文本
-                text = ">_"
-                if self.type_combo.currentIndex() == 1:  # PowerShell
-                    text = "PS"
-                    painter.setPen(QColor(90, 180, 255))
-                elif self.type_combo.currentIndex() == 2:  # Python
-                    text = "Py"
-                    painter.setPen(QColor(255, 215, 0))  # 金色
-                elif self.type_combo.currentIndex() == 3:  # Git Bash
-                    text = "Sh"
-                    painter.setPen(QColor(232, 79, 52))  # 橙红色
-                elif self.type_combo.currentIndex() == 4:  # Built-in
-                    text = "In"
-                    painter.setPen(QColor(100, 200, 255))  # 蓝色
-
-                painter.drawText(pixmap.rect(), QtCompat.AlignCenter, text)
-            finally:
-                painter.end()
-            return pixmap
-        except Exception as e:
-            logger.error("创建命令图标失败: %s", e, exc_info=True)
-            # 返回一个空的透明图片防止后续崩溃
-            empty = QPixmap(size, size)
-            empty.fill(QtCompat.transparent)
-            return empty
-
-    def _browse_icon(self):
-        """浏览图标文件"""
-        file_path = choose_custom_icon(self, "选择图标")
-        if file_path:
-            self._custom_icon_path = file_path
-            self.icon_path_edit.setText(file_path)
-            self._update_icon_preview()
-
-    def _clear_icon(self):
-        """清除自定义图标"""
-        self._custom_icon_path = ""
-        self.icon_path_edit.clear()
-        self._update_icon_preview()
 
     def _on_ok(self):
         """确定"""

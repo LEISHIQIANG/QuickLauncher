@@ -156,7 +156,7 @@ def create_param_widget(
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(sp(6))
         edit = QLineEdit(value)
-        edit.setCursor(Qt.IBeamCursor)  # type: ignore[attr-defined]
+        edit.setCursor(Qt.IBeamCursor)  # type: ignore[unused-ignore, attr-defined]
         edit.setProperty("param_editor", True)
         panel._style_param_input(edit)
         if getattr(param, "placeholder", ""):
@@ -179,7 +179,7 @@ def create_param_widget(
         layout.addWidget(button)
         return row
     edit = QLineEdit(value)
-    edit.setCursor(Qt.IBeamCursor)  # type: ignore[attr-defined]
+    edit.setCursor(Qt.IBeamCursor)  # type: ignore[unused-ignore, attr-defined]
     panel._style_param_input(edit)
     if getattr(param, "placeholder", ""):
         edit.setPlaceholderText(str(param.placeholder))

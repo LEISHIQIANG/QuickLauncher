@@ -207,7 +207,18 @@ def test_http_processor_outputs_include_status_and_headers(monkeypatch):
         def getcode(self):
             return self.status
 
-    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=10: FakeResponse())
+    # Patch ``safe_urlopen`` so the test does not need a real network
+    # round-trip.  The http_get processor reaches the network through
+    # :func:`core.network_security.safe_urlopen`, which is the
+    # supported monkey-patch point for HTTP processors.
+    from core import network_security as netsec
+    from core.chain import processors_network
+
+    def _fake_safe_open(request, timeout=10, max_redirects=5, context=None):
+        return FakeResponse()
+
+    monkeypatch.setattr(netsec, "safe_urlopen", _fake_safe_open)
+    monkeypatch.setattr(processors_network, "safe_urlopen", _fake_safe_open)
 
     result = execute_chain_processor("http_get", {"url": "example.com"})
 

@@ -67,7 +67,7 @@ class SaveCoordinator:
             if dm._save_timer is None:
                 scheduler = dm._get_save_scheduler()
                 scheduler.schedule(self._delayed_save)
-                dm._save_timer = scheduler.current_timer  # type: ignore[assignment]
+                dm._save_timer = scheduler.current_timer  # type: ignore[unused-ignore, assignment]
         return True
 
     def shutdown(self, timeout: float = 3.0) -> None:

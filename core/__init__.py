@@ -1,5 +1,7 @@
 """核心模块"""
 
+from collections.abc import Callable
+
 from .clipboard_classifiers import classify_clipboard as classify_clipboard
 from .clipboard_classifiers import classify_text as classify_text
 from .data_manager import DataManager as DataManager
@@ -48,7 +50,7 @@ def __getattr__(name: str):
 # ============================================================
 
 # 全局回调存储
-_callbacks = {}  # type: ignore[var-annotated]
+_callbacks: dict[str, Callable[..., object]] = {}
 
 
 def register_callback(name: str, callback):

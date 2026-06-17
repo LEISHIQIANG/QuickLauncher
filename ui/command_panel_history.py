@@ -32,7 +32,7 @@ def refresh_history(panel: CommandPanelWindow) -> None:
         state = "成功" if item.result.success else "失败"
         duration = getattr(item, "duration", 0.0) or 0.0
         row = QListWidgetItem(f"{state}  {title}  {duration:.2f}s")
-        row.setData(int(Qt.UserRole), item.id)  # type: ignore[attr-defined]
+        row.setData(int(Qt.UserRole), item.id)  # type: ignore[unused-ignore, attr-defined]
         panel.history_list.addItem(row)
     visible = bool(items)
     panel.history_label.setVisible(False)
@@ -112,7 +112,7 @@ def history_menu_label(item) -> str:
 
 
 def on_history_item_clicked(panel: CommandPanelWindow, item) -> None:
-    result_id = item.data(int(Qt.UserRole))  # type: ignore[attr-defined]
+    result_id = item.data(int(Qt.UserRole))  # type: ignore[unused-ignore, attr-defined]
     if result_id:
         panel.show_result(str(result_id))
 

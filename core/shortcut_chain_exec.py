@@ -51,11 +51,14 @@ def execute_shortcut_chain(
             except Exception:
                 status = record.status
         return unavailable_result(status)
-    return api.execute_chain(  # type: ignore[no-any-return]
+    result = api.execute_chain(
         chain,
         {"data_manager": data_manager, "max_steps": max_steps},
         cancel_event=cancel_event,
     )
+    if isinstance(result, CommandResult):
+        return result
+    return CommandResult(success=False, message="动作链模块返回了无效结果。", display_type="list", error="类型错误")
 
 
 def _execute_shortcut_chain_runtime(

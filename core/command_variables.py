@@ -186,7 +186,7 @@ def get_default_lan_ipv4() -> str:
             ip_text = info[4][0]
             parsed = ipaddress.ip_address(ip_text)
             if parsed.version == 4 and not parsed.is_loopback and not parsed.is_unspecified:
-                return ip_text  # type: ignore[return-value]
+                return str(ip_text)
     except Exception as exc:
         errors.append(str(exc))
 

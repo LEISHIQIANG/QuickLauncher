@@ -1382,6 +1382,46 @@ def test_preprocessing_strict_mode_blocks_shell_chaining(monkeypatch):
     assert "Command preprocessing failed" in result.error
 
 
+def test_preprocessing_pipeline_exception_fails_closed(monkeypatch):
+    """P0-04: If the preprocessing pipeline itself raises, execution must be blocked."""
+
+    import core.preprocessing.pipeline as pipeline_mod
+    from core.preprocessing.pipeline import PreprocessingPipeline
+
+    class BoomPipeline(PreprocessingPipeline):
+        def process(self, context):  # noqa: D401 - test stub
+            raise RuntimeError("pipeline boom")
+
+    def fake_factory(*_args, **_kwargs):
+        return BoomPipeline(rate_limiting=False)
+
+    monkeypatch.setattr(command_exec.ShortcutExecutor, "_cmd_launcher", staticmethod(lambda: "cmd.exe"))
+    monkeypatch.setattr(
+        command_exec.ShortcutExecutor,
+        "_command_param_values",
+        staticmethod(lambda shortcut: {}),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        command_exec.ShortcutExecutor,
+        "_command_panel_size",
+        staticmethod(lambda shortcut: "medium"),
+        raising=False,
+    )
+    monkeypatch.setattr(pipeline_mod, "create_pipeline_from_settings", fake_factory)
+    monkeypatch.setattr(PreprocessingPipeline, "process", BoomPipeline.process)
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo ok"
+
+    result = command_exec.CommandExecutionMixin.run_command_capture(item)
+
+    assert result.success is False
+    assert result.error is not None
+    assert "preprocessing" in result.error.lower() or "预处理" in result.error
+
+
 def test_run_command_capture_timeout_kills_process(monkeypatch):
     class FakeProcess:
         returncode = -9
@@ -2516,13 +2556,15 @@ def test_decode_bytes_forwards_command_type(monkeypatch):
     """_decode_bytes should pass command_type to decode_command_output."""
     seen = []
 
-    original_decode = command_exec.decode_command_output
+    from core.command_exec import capture as capture_mod
+
+    original_decode = capture_mod._decode_command_output
 
     def tracking_decode(data, preferred="auto", command_type=""):
         seen.append(command_type)
         return original_decode(data, preferred, command_type=command_type)
 
-    monkeypatch.setattr("core.shortcut_command_exec.decode_command_output", tracking_decode)
+    monkeypatch.setattr(capture_mod, "_decode_command_output", tracking_decode)
 
     monkeypatch.setattr(command_exec.ShortcutExecutor, "_sanitized_child_env", staticmethod(lambda: {}))
 

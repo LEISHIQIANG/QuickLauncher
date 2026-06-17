@@ -19,7 +19,6 @@ from runtime_paths import is_packaged_runtime
 from .background_tasks import start_background_thread
 from .command_exec import (
     SUPPORTED_COMMAND_TYPES,
-    build_bash_fallback_result,
     chain_values,
     command_panel_size,
     command_param_defs,
@@ -29,19 +28,17 @@ from .command_exec import (
     truncate_command_output,
 )
 from .command_exec.launcher_mixin import CommandLauncherMixin
+from .command_exec.output import build_bash_fallback_result
 from .command_exec.standalone import _write_atomic
 from .command_param_validation import validate_param_values
 from .command_registry import (
-    CommandAction,
     CommandContext,
     CommandParam,
     CommandResult,
     set_pending_command_result,
     take_pending_command_result,
 )
-from .command_risk import assess_command_risk
 from .command_variables import (
-    CommandVariableError,
     find_unquoted_external_command_variables,
     is_value_only_variable_command,
     read_clipboard_text,
@@ -135,8 +132,19 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 )
             )
         except Exception as e:
-            logger.debug("Command preprocessing failed open: %s", e, exc_info=True)
-            return None
+            logger.exception("Command preprocessing failed closed: %s", e)
+            from core.preprocessing.errors import PreprocessingResult, ValidationError
+
+            result = PreprocessingResult()
+            result.add_error(
+                ValidationError(
+                    field="pipeline",
+                    error_code="preprocessing_unavailable",
+                    message=f"命令预处理失败，已阻止执行: {e}",
+                    suggestion="请检查预处理配置或查看运行日志后重试。",
+                )
+            )
+            return result
 
     @staticmethod
     def _preprocessing_result_to_command_result(preprocess_result, panel_size: str = "medium") -> CommandResult:
@@ -173,32 +181,15 @@ class CommandExecutionMixin(CommandLauncherMixin):
         start: float | None = None,
         command: str | None = None,
     ) -> CommandResult:
-        payload = {"window_size": panel_size}
-        if start is not None:
-            payload["duration"] = time.monotonic() - start  # type: ignore[assignment]
-        if command is not None:
-            payload["command"] = command
-        return CommandResult(
-            success=False,
-            message=message,
-            display_type="log",
-            error=error,
-            payload=payload,
-        )
+        from core.command_exec.capture import build_capture_error_result
+
+        return build_capture_error_result(message, error, panel_size, start=start, command=command)
 
     @staticmethod
     def _capture_builtin_result(success: bool, panel_size: str, start: float) -> CommandResult:
-        return CommandResult(
-            success=success,
-            message="内置命令已执行。" if success else "内置命令执行失败",
-            display_type="log",
-            error="" if success else "执行失败",
-            payload={
-                "window_size": panel_size,
-                "exit_code": 0 if success else 1,
-                "duration": time.monotonic() - start,
-            },
-        )
+        from core.command_exec.capture import build_capture_builtin_result
+
+        return build_capture_builtin_result(success, panel_size, start)
 
     @staticmethod
     def _decode_capture_output(
@@ -207,31 +198,10 @@ class CommandExecutionMixin(CommandLauncherMixin):
         shortcut: ShortcutItem,
         command_type: str,
         max_chars: int,
-    ) -> tuple[str, str, bool, str, bool]:
-        """Decode and truncate captured stdout/stderr bytes.
+    ) -> tuple[str, str, bool, bool, str, str, bool]:
+        from core.command_exec.capture import decode_capture_output
 
-        Returns a 7-element tuple:
-        (stdout, stderr, stdout_truncated, stderr_truncated,
-         stdout_encoding, stderr_encoding, decode_fallback_used)
-        """
-        encoding = getattr(shortcut, "command_encoding", "auto")
-        stdout, stdout_encoding, stdout_fallback = ShortcutExecutor._decode_bytes(  # type: ignore[attr-defined]
-            stdout_bytes or b"", encoding, command_type
-        )
-        stderr, stderr_encoding, stderr_fallback = ShortcutExecutor._decode_bytes(  # type: ignore[attr-defined]
-            stderr_bytes or b"", encoding, command_type
-        )
-        stdout, stdout_truncated = ShortcutExecutor._truncate_output(stdout or "", max_chars)  # type: ignore[attr-defined]
-        stderr, stderr_truncated = ShortcutExecutor._truncate_output(stderr or "", max_chars)  # type: ignore[attr-defined]
-        return (  # type: ignore[return-value]
-            stdout,
-            stderr,
-            stdout_truncated,
-            stderr_truncated,
-            stdout_encoding,
-            stderr_encoding,
-            stdout_fallback or stderr_fallback,
-        )
+        return decode_capture_output(stdout_bytes, stderr_bytes, shortcut, command_type, max_chars)
 
     @staticmethod
     def _build_capture_payload(
@@ -251,23 +221,24 @@ class CommandExecutionMixin(CommandLauncherMixin):
         cancelled: bool = False,
         wrap: bool = False,
     ) -> dict:
-        """Build the common payload dict for capture results."""
-        return {
-            "window_size": panel_size,
-            "wrap": wrap,
-            "exit_code": returncode,
-            "duration": time.monotonic() - start,
-            "stdout": stdout,
-            "stderr": stderr,
-            "stdout_truncated": stdout_truncated,
-            "stderr_truncated": stderr_truncated,
-            "stdout_encoding": stdout_encoding,
-            "stderr_encoding": stderr_encoding,
-            "decode_fallback_used": decode_fallback_used,
-            "command": command,
-            "cancelled": cancelled,
-            "timed_out": timed_out,
-        }
+        from core.command_exec.capture import build_capture_payload
+
+        return build_capture_payload(
+            panel_size=panel_size,
+            returncode=returncode,
+            start=start,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            stdout_encoding=stdout_encoding,
+            stderr_encoding=stderr_encoding,
+            decode_fallback_used=decode_fallback_used,
+            command=command,
+            timed_out=timed_out,
+            cancelled=cancelled,
+            wrap=wrap,
+        )
 
     @staticmethod
     def _build_capture_cancel_result(
@@ -284,28 +255,20 @@ class CommandExecutionMixin(CommandLauncherMixin):
         decode_fallback_used: bool,
         command: str,
     ) -> CommandResult:
-        """Build a CommandResult for a cancelled capture."""
-        message = "\n".join(part for part in ["命令执行已取消。", stdout, stderr] if part)
-        return CommandResult(
-            success=False,
-            message=message,
-            display_type="log",
-            payload=ShortcutExecutor._build_capture_payload(  # type: ignore[attr-defined]
-                panel_size=panel_size,
-                returncode=returncode,
-                start=start,
-                stdout=stdout,
-                stderr=stderr,
-                stdout_truncated=stdout_truncated,
-                stderr_truncated=stderr_truncated,
-                stdout_encoding=stdout_encoding,
-                stderr_encoding=stderr_encoding,
-                decode_fallback_used=decode_fallback_used,
-                command=command,
-                cancelled=True,
-                timed_out=False,
-            ),
-            error="已取消",
+        from core.command_exec.capture import build_capture_cancel_result
+
+        return build_capture_cancel_result(
+            panel_size=panel_size,
+            returncode=returncode,
+            start=start,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            stdout_encoding=stdout_encoding,
+            stderr_encoding=stderr_encoding,
+            decode_fallback_used=decode_fallback_used,
+            command=command,
         )
 
     @staticmethod
@@ -325,43 +288,22 @@ class CommandExecutionMixin(CommandLauncherMixin):
         timed_out: bool,
         timeout_value: float,
     ) -> CommandResult:
-        """Build a CommandResult for a completed (success/failure/timeout) capture."""
-        success = (returncode == 0) and not timed_out
-        parts = []
-        if stdout:
-            parts.append(stdout)
-        if stderr and not success:
-            parts.append(stderr)
-        if not parts:
-            parts.append("(无输出)")
-        message = "\n".join(parts)
-        if timed_out:
-            message = f"命令执行超时 ({timeout_value:g}s)，已终止。\n\n{message}"
-        error = ""
-        if timed_out:
-            error = "执行超时"
-        elif returncode != 0:
-            error = stderr.strip().splitlines()[0] if stderr.strip() else f"退出码 {returncode}"
-        return CommandResult(
-            success=success,
-            message=message,
-            display_type="log",
-            payload=ShortcutExecutor._build_capture_payload(  # type: ignore[attr-defined]
-                panel_size=panel_size,
-                returncode=returncode,
-                start=start,
-                stdout=stdout,
-                stderr=stderr,
-                stdout_truncated=stdout_truncated,
-                stderr_truncated=stderr_truncated,
-                stdout_encoding=stdout_encoding,
-                stderr_encoding=stderr_encoding,
-                decode_fallback_used=decode_fallback_used,
-                command=command,
-                timed_out=timed_out,
-            ),
-            actions=[CommandAction(type="copy", label="复制输出", value=message)],
-            error=error,
+        from core.command_exec.capture import build_capture_success_result
+
+        return build_capture_success_result(
+            panel_size=panel_size,
+            returncode=returncode,
+            start=start,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            stdout_encoding=stdout_encoding,
+            stderr_encoding=stderr_encoding,
+            decode_fallback_used=decode_fallback_used,
+            command=command,
+            timed_out=timed_out,
+            timeout_value=timeout_value,
         )
 
     @staticmethod
@@ -380,28 +322,21 @@ class CommandExecutionMixin(CommandLauncherMixin):
         command: str,
         timed_out: bool,
     ) -> CommandResult:
-        """Build a CommandResult when bash direct capture is denied."""
-        message = ShortcutExecutor._bash_direct_capture_denied_message(stderr.strip())  # type: ignore[attr-defined]
-        return CommandResult(
-            success=False,
-            message=message,
-            display_type="log",
-            payload=ShortcutExecutor._build_capture_payload(  # type: ignore[attr-defined]
-                panel_size=panel_size,
-                returncode=returncode,
-                start=start,
-                stdout=stdout,
-                stderr=stderr,
-                stdout_truncated=stdout_truncated,
-                stderr_truncated=stderr_truncated,
-                stdout_encoding=stdout_encoding,
-                stderr_encoding=stderr_encoding,
-                decode_fallback_used=decode_fallback_used,
-                command=command,
-                timed_out=timed_out,
-            ),
-            actions=[CommandAction(type="copy", label="复制输出", value=message)],
-            error=stderr.strip().splitlines()[0] if stderr.strip() else "Git Bash 直接捕获启动失败",
+        from core.command_exec.capture import build_bash_fallback_result
+
+        return build_bash_fallback_result(
+            panel_size=panel_size,
+            returncode=returncode,
+            start=start,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            stdout_encoding=stdout_encoding,
+            stderr_encoding=stderr_encoding,
+            decode_fallback_used=decode_fallback_used,
+            command=command,
+            timed_out=timed_out,
         )
 
     @staticmethod
@@ -413,41 +348,15 @@ class CommandExecutionMixin(CommandLauncherMixin):
         panel_size: str | None = None,
         display_type: str = "text",
     ) -> tuple[str, CommandResult | None]:
-        payload = {"window_size": panel_size} if panel_size else {}
+        from core.command_exec.preflight import prepare_command_for_execution
 
-        def _invalid(message: str, error: str | None = None) -> tuple[str, CommandResult]:
-            return command, CommandResult(
-                success=False,
-                message=message,
-                display_type=display_type,
-                error=error if error is not None else message,
-                payload=dict(payload),
-            )
-
-        raw_mode = bool(getattr(shortcut, "raw_mode", False))
-        expand_variables = ShortcutExecutor._should_expand_command_variables(shortcut)  # type: ignore[attr-defined]
-        if command_type in ("cmd", "powershell", "bash") and not raw_mode and is_value_only_variable_command(command):
-            if expand_variables:
-                return _invalid(
-                    f"命令只包含值占位符，不能直接执行。请改为可执行命令，例如: echo {command}",
-                    "命令无效",
-                )
-            return _invalid(
-                f"命令只包含变量占位符，但未启用解析变量。请启用解析变量，或改为可执行命令，例如: echo {command}",
-                "命令无效",
-            )
-        if command_type in ("cmd", "powershell", "bash") and expand_variables:
-            unsafe_variables = find_unquoted_external_command_variables(command)
-            if unsafe_variables:
-                examples = ", ".join("{{" + name + ":q}}" for name in unsafe_variables[:3])
-                message = f"外部输入变量用于 CMD/PowerShell/Bash 命令时必须使用 :q 引用，例如: {examples}"
-                return _invalid(message)
-        try:
-            if expand_variables:
-                command = ShortcutExecutor._resolve_command_variables(shortcut, command)  # type: ignore[attr-defined]
-        except CommandVariableError as e:
-            return _invalid(str(e), "变量解析失败")
-        return command, None
+        return prepare_command_for_execution(
+            shortcut,
+            command,
+            command_type,
+            panel_size=panel_size,
+            display_type=display_type,
+        )
 
     @staticmethod
     def _command_param_defs(shortcut: ShortcutItem) -> list[dict]:
@@ -475,33 +384,21 @@ class CommandExecutionMixin(CommandLauncherMixin):
         command: str | None = None,
         command_type: str | None = None,
     ) -> list[dict]:
-        """Return only the severe destructive risks that must be confirmed before execution."""
-        effective_type = ShortcutExecutor._normalize_command_type(  # type: ignore[attr-defined]
-            command_type if command_type is not None else getattr(shortcut, "command_type", "cmd")
-        )
-        return [
-            risk.to_dict()
-            for risk in assess_command_risk(shortcut, command=command, command_type=effective_type)
-            if risk.requires_confirmation
-        ]
+        from core.command_exec.preflight import requires_confirmation
+
+        return requires_confirmation(shortcut, command=command, command_type=command_type)
 
     @staticmethod
     def mark_command_confirmed(shortcut: ShortcutItem, confirmed: bool = True) -> None:
-        """Mark one shortcut object as confirmed for its next destructive command execution."""
-        try:
-            setattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, bool(confirmed))
-        except Exception as exc:
-            logger.debug("设置确认属性失败: %s", exc, exc_info=True)
+        from core.command_exec.preflight import mark_confirmed
+
+        mark_confirmed(shortcut, confirmed)
 
     @staticmethod
     def _consume_command_confirmation(shortcut: ShortcutItem) -> bool:
-        try:
-            if bool(getattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False)):
-                setattr(shortcut, CommandExecutionMixin._DESTRUCTIVE_CONFIRMATION_ATTR, False)
-                return True
-        except Exception as exc:
-            logger.debug("消费确认属性失败: %s", exc, exc_info=True)
-        return False
+        from core.command_exec.preflight import consume_confirmation
+
+        return consume_confirmation(shortcut)
 
     @staticmethod
     def _destructive_confirmation_result(
@@ -511,27 +408,13 @@ class CommandExecutionMixin(CommandLauncherMixin):
         *,
         panel_size: str | None = None,
     ) -> CommandResult | None:
-        risks = ShortcutExecutor.command_requires_confirmation(shortcut, command=command, command_type=command_type)  # type: ignore[attr-defined]
-        if not risks:
-            return None
-        if ShortcutExecutor._consume_command_confirmation(shortcut):  # type: ignore[attr-defined]
-            return None
-        risk_lines = [f"- {risk.get('message') or risk.get('code')}" for risk in risks]
-        detail = "\n".join(risk_lines)
-        return CommandResult(
-            success=False,
-            message="该命令包含不可逆或强破坏性操作，请确认后执行。",
-            display_type="confirm",
-            error="需要确认",
-            payload={
-                "window_size": panel_size or ShortcutExecutor._command_panel_size(shortcut),  # type: ignore[attr-defined]
-                "requires_confirmation": True,
-                "risks": risks,
-                "detail": detail,
-                "command_type": command_type,
-                "command": command,
-                "shortcut": shortcut,
-            },
+        from core.command_exec.preflight import destructive_confirmation_result
+
+        return destructive_confirmation_result(
+            shortcut,
+            command,
+            command_type,
+            panel_size=panel_size,
         )
 
     @staticmethod
@@ -733,55 +616,15 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
     @staticmethod
     def _cleanup_file_later(process, *paths: str):
-        def cleanup():
-            try:
-                if process is not None:
-                    process.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
-                try:
-                    process.wait(timeout=2.0)
-                except Exception as exc:
-                    logger.debug("等待进程终止失败: %s", exc, exc_info=True)
-            except Exception as exc:
-                logger.debug("清理进程失败: %s", exc, exc_info=True)
-            for path in paths:
-                try:
-                    if path and os.path.exists(path):
-                        os.remove(path)
-                except Exception as e:
-                    logger.debug("临时文件清理失败 %s: %s", path, e)
+        from core.command_exec.cleanup import cleanup_file_later
 
-        start_background_thread(
-            name="CommandTempCleanup",
-            target=cleanup,
-            owner="shortcut-command-exec",
-        )
+        cleanup_file_later(process, paths)
 
     @staticmethod
     def _terminate_process_tree(process) -> None:
-        """Terminate a process and, on Windows, best-effort terminate children."""
-        if process is None:
-            return
-        pid = getattr(process, "pid", None)
-        try:
-            process.kill()
-        except Exception as exc:
-            logger.debug("终止进程失败: %s", exc, exc_info=True)
-        if os.name != "nt" or not pid:
-            return
-        try:
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(pid)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                timeout=3,
-                check=False,
-            )
-        except Exception as e:
-            logger.debug("Failed to terminate command process tree pid=%s: %s", pid, e)
+        from core.command_exec.cleanup import terminate_process_tree
+
+        terminate_process_tree(process)
 
     @staticmethod
     def _run_silent_output(argv: list[str]) -> str:

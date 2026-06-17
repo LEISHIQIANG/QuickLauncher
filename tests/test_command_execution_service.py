@@ -252,3 +252,27 @@ def test_registry_command_receives_full_invocation_context():
         "clipboard_html": "<b>x</b>",
         "selected_text_method": "uia",
     }
+
+
+def test_multiple_services_share_global_executor():
+    """P0-02: Multiple service instances must share the same process-wide executor."""
+
+    pool_a = CommandExecutionService._get_shared_pool()
+    pool_b = CommandExecutionService._get_shared_pool()
+    assert pool_a is pool_b
+
+    service_one = CommandExecutionService(CommandResultStore())
+    service_two = CommandExecutionService(CommandResultStore())
+    assert service_one._pool is service_two._pool
+
+
+def test_shutdown_shared_executor_releases_global_pool():
+    """P0-03: shutdown_shared_executor must release the global pool so it can be recreated."""
+
+    pool_before = CommandExecutionService._get_shared_pool()
+    CommandExecutionService.shutdown_shared_executor(timeout=0.1)
+    pool_after = CommandExecutionService._get_shared_pool()
+    try:
+        assert pool_after is not pool_before
+    finally:
+        CommandExecutionService.shutdown_shared_executor(timeout=0.1)

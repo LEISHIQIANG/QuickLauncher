@@ -1080,7 +1080,7 @@ class TestPluginAPI:
             def getcode(self):
                 return 200
 
-        monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: FakeResponse())
+        monkeypatch.setattr("core.plugin_manager.safe_urlopen", lambda request, timeout: FakeResponse())
         api = PluginAPI("test", ".", ["network.request"], CommandRegistry())
 
         response = api.http_request("https://example.com/api", headers={"X-Test": "1"})

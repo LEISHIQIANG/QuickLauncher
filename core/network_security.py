@@ -91,9 +91,6 @@ def validate_public_http_url(url: str) -> str:
         _validate_public_ip(literal_ip, host)
         return url
 
-    if is_urlopen_patched():
-        return url
-
     # Skip DNS-level IP validation when proxy trust mode is enabled.
     # Proxy tools (Surge, Clash, etc.) in Fake IP mode return 198.18.0.0/15
     # addresses from DNS queries, which Python's ipaddress module classifies
@@ -115,7 +112,7 @@ def validate_public_http_url(url: str) -> str:
             resolved_ip = ipaddress.ip_address(address)
         except ValueError as exc:
             raise UnsafeUrlError(f"invalid resolved address: {address}") from exc
-        _validate_public_ip(resolved_ip, address)  # type: ignore[arg-type]
+        _validate_public_ip(resolved_ip, address)
     return url
 
 
@@ -143,10 +140,6 @@ def safe_urlopen(
     for _ in range(max_redirects + 1):
         request = urllib.request.Request(current_url, data=data, headers=headers, method=method)
         try:
-            if is_urlopen_patched():
-                if context is not None:
-                    return urllib.request.urlopen(request, timeout=timeout, context=context)
-                return urllib.request.urlopen(request, timeout=timeout)
             return opener.open(request, timeout=timeout)
         except urllib.error.HTTPError as exc:
             if exc.code not in (301, 302, 303, 307, 308):
@@ -171,6 +164,6 @@ def read_limited_response(response, limit_bytes: int) -> bytes:
     return data or b""
 
 
-def _validate_public_ip(ip: ipaddress._BaseAddress, label: str) -> None:
-    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:  # type: ignore[attr-defined]
+def _validate_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, label: str) -> None:
+    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
         raise UnsafeUrlError(f"blocked private address: {label}")

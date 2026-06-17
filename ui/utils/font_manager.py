@@ -66,7 +66,7 @@ def apply_app_font(pixel_size: int = 13, weight: int = 400) -> None:
 
     app = QApplication.instance()
     if app is not None:
-        app.setFont(get_qfont(pixel_size, weight))  # type: ignore[attr-defined]
+        app.setFont(get_qfont(pixel_size, weight))  # type: ignore[unused-ignore, attr-defined]
 
 
 def tune_font_rendering(widget, pixel_size: int | None = None, weight: int | None = None, recursive: bool = False):

@@ -91,7 +91,7 @@ class IconFlashOverlay(QWidget):
 
     def _next_flash_generation(self) -> int:
         self._flash_generation = int(getattr(self, "_flash_generation", 0) or 0) + 1
-        return self._flash_generation  # type: ignore[no-any-return]
+        return int(self._flash_generation)
 
     def _is_flash_current(self, generation: int) -> bool:
         return generation == int(getattr(self, "_flash_generation", -1) or -1)

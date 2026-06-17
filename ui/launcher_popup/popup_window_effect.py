@@ -140,7 +140,7 @@ class PopupWindowEffectMixin:
         delay_ms = max(0, int(delay_ms))
         timer = getattr(self, "_window_effect_update_timer", None)
         if timer is None:
-            timer = QTimer(self)  # type: ignore[arg-type]
+            timer = QTimer(self)  # type: ignore[unused-ignore, arg-type]
             timer.setSingleShot(True)
             timer.timeout.connect(self._run_scheduled_window_effect_update)
             self._window_effect_update_timer = timer
@@ -472,9 +472,9 @@ class PopupLayoutMixin:
         if not screen:
             screen = QApplication.primaryScreen()
 
-        work_area = screen.availableGeometry()  # type: ignore[union-attr]
+        work_area = screen.availableGeometry()  # type: ignore[unused-ignore, union-attr]
 
-        dpr = screen.devicePixelRatio()  # type: ignore[union-attr]
+        dpr = screen.devicePixelRatio()  # type: ignore[unused-ignore, union-attr]
         if dpr and dpr != 1.0:
             lx = int(x / dpr)
             ly = int(y / dpr)

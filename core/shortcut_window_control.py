@@ -172,7 +172,7 @@ class WindowControlMixin:
         expected_process_id: int = 0,
     ) -> tuple[int, int] | None:
         """Resolve a stable external root-owner window for topmost changes."""
-        if not hwnd or not user32.IsWindow(hwnd):
+        if hwnd is None or hwnd == 0 or not user32.IsWindow(hwnd):
             return None
 
         if expected_process_id:
@@ -205,7 +205,7 @@ class WindowControlMixin:
             return None
 
         process_id = ShortcutExecutor._window_process_id(hwnd)  # type: ignore[attr-defined]
-        if not process_id:
+        if process_id is None or process_id == 0:
             logger.debug("无法确认置顶目标进程，已忽略: hwnd=%s", hwnd)
             return None
 
@@ -213,7 +213,7 @@ class WindowControlMixin:
         if process_id == current_process_id:
             logger.debug("置顶目标属于 QuickLauncher，已忽略: hwnd=%s", hwnd)
             return None
-        return int(hwnd), process_id
+        return int(hwnd), int(process_id)  # type: ignore[arg-type]
 
     @staticmethod
     def _take_topmost_target() -> tuple[int, int] | None:

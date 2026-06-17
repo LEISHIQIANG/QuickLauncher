@@ -30,7 +30,7 @@ class ConfigMigrator:
     @staticmethod
     def get_new_config_dir() -> Path:
         """获取新的配置目录（安装路径/config）"""
-        return app_root() / "config"
+        return Path(app_root()) / "config"
 
     @staticmethod
     def needs_migration() -> bool:

@@ -230,9 +230,11 @@ def main():
 
         from bootstrap.ipc import create_ipc_server
 
-        _server, _ipc_pending = create_ipc_server(
-            app, server_name, lambda: _tray_app._show_config if _tray_app else None
-        )
+        def _ipc_show_config_callback():
+            tray = _tray_app
+            return getattr(tray, "_show_config", None) if tray is not None else None
+
+        _server, _ipc_pending = create_ipc_server(app, server_name, _ipc_show_config_callback)
 
         process_startup_events(app, logger)
 

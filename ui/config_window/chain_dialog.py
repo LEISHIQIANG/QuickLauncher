@@ -7,7 +7,6 @@ import logging
 import os
 
 from core import ShortcutItem, ShortcutType
-from core.chain_processors import processor_definition
 from core.i18n import tr
 from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
 from qt_compat import (
@@ -16,7 +15,6 @@ from qt_compat import (
     QEvent,
     QFont,
     QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -29,288 +27,48 @@ from qt_compat import (
     QPushButton,
     QRectF,
     QScrollArea,
-    QSpinBox,
     Qt,
     QTabWidget,
     QtCompat,
-    QTimer,
     QVBoxLayout,
     QWidget,
-    pyqtSignal,
 )
 from ui.styles.style import Colors, Glassmorphism, PopupMenu
-from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .chain_canvas import ChainCanvasWidget, NodePropertyPanel, canvas_from_steps, processor_library_items
+from .chain_dialog_bindings import ChainDialogBindingsMixin
+from .chain_dialog_close_animation import ChainDialogCloseAnimationMixin
+from .chain_dialog_module_bar import GrasshopperGroupWidget, make_module_button
+from .chain_dialog_risk import ChainDialogRiskMixin
+from .chain_dialog_step_card import StepCardWidget
+from .chain_dialog_test_runner import ChainDialogTestRunnerMixin
 from .icon_browse_helper import choose_custom_icon
-from .test_task_runner import DialogTestTask
 from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
 
 logger = logging.getLogger(__name__)
-
-# 类型标签颜色映射
-_TYPE_COLORS = {
-    ShortcutType.FILE: ("#64B5F6", "FILE"),
-    ShortcutType.FOLDER: ("#64B5F6", "DIR"),
-    ShortcutType.URL: ("#4DB6AC", "URL"),
-    ShortcutType.HOTKEY: ("#7986CB", "KEY"),
-    ShortcutType.COMMAND: ("#81C784", "CMD"),
-}
 
 # 状态颜色
 _STATUS_COLORS = {"ok": "#4CAF50", "failed": "#F44336", "skipped": "#9E9E9E"}
 
 
-class StepCardWidget(QFrame):
-    """步骤卡片 — 内联参数控制：延迟、失败策略、启用状态。"""
+class ChainDialog(
+    ChainDialogBindingsMixin,
+    ChainDialogRiskMixin,
+    ChainDialogTestRunnerMixin,
+    ChainDialogCloseAnimationMixin,
+    BaseDialog,
+):
+    """动作链编辑对话框 — 左右两栏布局。
 
-    clicked = pyqtSignal(int)
-    step_changed = pyqtSignal(int)  # 参数变更通知
-
-    def __init__(
-        self,
-        index: int,
-        step: dict,
-        shortcut_name: str,
-        shortcut_type: ShortcutType,
-        icon: QPixmap | None = None,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.step_index = index
-        self._selected = False
-        self._checkbox_style = ""
-        self._type_color = _TYPE_COLORS.get(shortcut_type, ("#999", "??"))[0]
-        self._setup_ui(step, shortcut_name, shortcut_type, icon)
-
-    def _setup_ui(self, step: dict, shortcut_name: str, shortcut_type: ShortcutType, icon: QPixmap | None):
-        self.setMinimumHeight(sp(40))
-        self.setCursor(QtCompat.PointingHandCursor)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(sp(6), sp(3), sp(6), sp(3))
-        layout.setSpacing(sp(4))
-
-        # 序号
-        num_label = QLabel(f"{self.step_index + 1}")
-        num_label.setFixedWidth(sp(18))
-        num_label.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
-        num_label.setStyleSheet(
-            scale_qss(
-                "color: rgba(128,128,128,180); font-size: 11px; font-weight: 400; "
-                "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;"
-            )
-        )
-        layout.addWidget(num_label)
-
-        # 快捷方式图标
-        icon_label = QLabel()
-        icon_label.setFixedSize(sp(24), sp(24))
-        icon_label.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
-        if icon and not icon.isNull():
-            icon_label.setPixmap(icon.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
-        icon_label.setStyleSheet("background: transparent;")
-        layout.addWidget(icon_label)
-
-        # 名称
-        display_name = shortcut_name or step.get("shortcut_id", "???")
-        name_label = QLabel(display_name)
-        name_label.setStyleSheet(
-            scale_qss("font-size: 13px; font-weight: 400; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;")
-        )
-        layout.addWidget(name_label, 1)
-
-        # ── 内联参数控件 ──
-
-        # 延迟 (QSpinBox，纯输入框，无加减按钮)
-        delay_spin = QSpinBox()
-        delay_spin.setButtonSymbols(QSpinBox.NoButtons)
-        delay_spin.setRange(0, 60000)
-        delay_spin.setValue(max(0, int(step.get("delay_ms", 0) or 0)))
-        delay_spin.setSuffix("ms")
-        delay_spin.setFixedWidth(sp(70))
-        delay_spin.setToolTip(tr("执行前延迟"))
-        delay_spin.setStyleSheet(
-            scale_qss(
-                "QSpinBox { font-size: 11px; font-weight: 400; "
-                "font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; "
-                "padding: 1px 3px; border-radius: 5px; }"
-                "QSpinBox::up-button, QSpinBox::down-button { width: 14px; }"
-            )
-        )
-        delay_spin.valueChanged.connect(self._on_delay_changed)
-        layout.addWidget(delay_spin)
-        self._delay_spin = delay_spin
-
-        # 失败停止 (QCheckBox)
-        stop_cb = QCheckBox(tr("失败停止"))
-        stop_cb.setChecked(bool(step.get("stop_on_error", True)))
-        stop_cb.setToolTip(tr("该步骤失败时停止后续步骤"))
-        stop_cb.stateChanged.connect(self._on_stop_changed)
-        layout.addWidget(stop_cb)
-        self._stop_cb = stop_cb
-
-        # 启用 (QCheckBox)
-        enabled_cb = QCheckBox(tr("启用"))
-        enabled_cb.setChecked(bool(step.get("enabled", True)))
-        enabled_cb.stateChanged.connect(self._on_enabled_changed)
-        layout.addWidget(enabled_cb)
-        self._enabled_cb = enabled_cb
-
-        self._update_style(selected=False)
-
-    # 控件变更 → 同步到 _steps 并通知对话框
-    def _on_delay_changed(self, value):
-        self.step_changed.emit(self.step_index)
-
-    def _on_stop_changed(self, _):
-        self.step_changed.emit(self.step_index)
-
-    def _on_enabled_changed(self, state):
-        # 禁用时名称变灰
-        self.step_changed.emit(self.step_index)
-
-    def set_selected(self, selected: bool):
-        self._selected = selected
-        self._update_style(selected)
-
-    def set_checkbox_style(self, style: str):
-        self._checkbox_style = style
-        self._stop_cb.setStyleSheet(style)
-        self._enabled_cb.setStyleSheet(style)
-        self._update_style(self._selected)
-
-    def _update_style(self, selected: bool):
-        c = self._type_color
-        # 从父级对话框获取 QToolTip 规则，避免子级 setStyleSheet 阻断继承
-        parent = self.parent()
-        while parent and not isinstance(parent, ChainDialog):
-            parent = parent.parent()
-        tip_rule = getattr(parent, "_tip_stylesheet", "") if parent else ""
-        child_rules = self._checkbox_style + tip_rule
-        if selected:
-            self.setStyleSheet(
-                scale_qss(
-                    f"StepCardWidget {{"
-                    f" background-color: rgba(0, 122, 255, 0.15);"
-                    f" border-left: 3px solid {c};"
-                    f" border-top: 1px solid rgba(0, 122, 255, 0.4);"
-                    f" border-right: 1px solid rgba(0, 122, 255, 0.4);"
-                    f" border-bottom: 1px solid rgba(0, 122, 255, 0.4);"
-                    f" border-radius: 8px;"
-                    f"}}"
-                )
-                + child_rules
-            )
-        else:
-            self.setStyleSheet(
-                scale_qss(
-                    f"StepCardWidget {{"
-                    f" background-color: rgba(128, 128, 128, 0.08);"
-                    f" border-left: 3px solid {c};"
-                    f" border-top: 1px solid rgba(128, 128, 128, 0.12);"
-                    f" border-right: 1px solid rgba(128, 128, 128, 0.12);"
-                    f" border-bottom: 1px solid rgba(128, 128, 128, 0.12);"
-                    f" border-radius: 8px;"
-                    f"}}"
-                    f"StepCardWidget:hover {{"
-                    f" background-color: rgba(128, 128, 128, 0.15);"
-                    f"}}"
-                )
-                + child_rules
-            )
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.step_index)
-        super().mousePressEvent(event)
-
-    def contextMenuEvent(self, event):
-        # 右键菜单由 ChainDialog 统一处理
-        parent = self.parent()
-        while parent and not isinstance(parent, ChainDialog):
-            parent = parent.parent()
-        if parent:
-            parent._show_step_context_menu(self.step_index, event.globalPos())
-
-
-class GrasshopperGroupWidget(QWidget):
-    """Grasshopper 风格的二级属性/电池组团控件，支持 2 行紧凑排布和底部微型标签。"""
-
-    def __init__(self, title: str, theme: str = "dark", parent=None):
-        super().__init__(parent)
-        self.setObjectName("GrasshopperGroup")
-
-        # 布局：垂直紧凑
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(sp(6), sp(4), sp(6), sp(2))
-        layout.setSpacing(sp(2))
-
-        # 2行格栅布局放置电池按钮
-        self.grid_layout = QGridLayout()
-        self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setSpacing(sp(4))
-        layout.addLayout(self.grid_layout)
-
-        # 底部小文字标题标签
-        self.label = QLabel(title)
-        self.label.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
-
-        # 配色与分割线样式
-        if theme == "dark":
-            border_color = "rgba(255, 255, 255, 15)"
-            bg_color = "rgba(255, 255, 255, 4)"
-            label_color = "rgba(255, 255, 255, 120)"
-            line_color = "rgba(255, 255, 255, 20)"
-        else:
-            border_color = "rgba(0, 0, 0, 15)"
-            bg_color = "rgba(0, 0, 0, 3)"
-            label_color = "rgba(0, 0, 0, 130)"
-            line_color = "rgba(0, 0, 0, 15)"
-
-        self.label.setStyleSheet(
-            scale_qss(
-                f"""
-            QLabel {{
-                color: {label_color};
-                font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
-                font-size: 9px;
-                font-weight: bold;
-                background: transparent;
-                padding-top: 2px;
-                border-top: 1px solid {line_color};
-            }}
-        """
-            )
-        )
-        layout.addWidget(self.label)
-
-        self.setStyleSheet(
-            scale_qss(
-                f"""
-            QWidget#GrasshopperGroup {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 4px;
-            }}
-        """
-            )
-        )
-        self.setFixedHeight(sp(102))
-
-        self._button_count = 0
-
-    def add_button(self, button: QPushButton):
-        # 采用上下三排的形式摆放 (row=0, row=1, row=2)
-        row = self._button_count % 3
-        col = self._button_count // 3
-        self.grid_layout.addWidget(button, row, col)
-        self._button_count += 1
-
-
-class ChainDialog(BaseDialog):
-    """动作链编辑对话框 — 左右两栏布局。"""
+    The dialog composes four behaviour mixins
+    (:class:`ChainDialogBindingsMixin`, :class:`ChainDialogRiskMixin`,
+    :class:`ChainDialogTestRunnerMixin`,
+    :class:`ChainDialogCloseAnimationMixin`) so the bulk of the
+    feature logic lives outside this file — see the
+    ``chain_dialog_*.py`` modules.
+    """
 
     def __init__(self, parent=None, shortcut: ShortcutItem | None = None):
         super().__init__(parent)
@@ -336,7 +94,7 @@ class ChainDialog(BaseDialog):
         self._refresh_risk_analysis()
 
     def eventFilter(self, watched, event) -> bool:
-        if event.type() == QEvent.Wheel:  # type: ignore[attr-defined]
+        if event.type() == QEvent.Wheel:  # type: ignore[unused-ignore, attr-defined]
             # 获取当前活动的 Tab 页面
             active_page = self.module_tabs.currentWidget()
             if active_page:
@@ -358,75 +116,6 @@ class ChainDialog(BaseDialog):
                         event.accept()
                         return True
         return super().eventFilter(watched, event)
-
-    def closeEvent(self, event):
-        """Clean up background threads and timers on close."""
-        self._close_anim_generation = int(getattr(self, "_close_anim_generation", 0) or 0) + 1
-        self._cleanup_chain_test_thread()
-        # Stop close-animation timer
-        close_anim_timer = getattr(self, "_close_anim_timer", None)
-        if close_anim_timer is not None:
-            try:
-                close_anim_timer.stop()
-            except Exception:
-                logger.debug("停止 close_anim_timer 失败", exc_info=True)
-        super().closeEvent(event)
-
-    def done(self, result):
-        self._cleanup_chain_test_thread()
-        if getattr(self, "_closing_with_animation", False):
-            return
-        if not self.isVisible() or getattr(self, "_dialog_finished", False):
-            super().done(result)
-            return
-
-        self._closing_with_animation = True
-        self._pending_done_result = result
-        self._close_anim_generation = int(getattr(self, "_close_anim_generation", 0) or 0) + 1
-        generation = self._close_anim_generation
-
-        anim_timer = getattr(self, "_anim_timer", None)
-        if anim_timer is not None:
-            try:
-                anim_timer.stop()
-            except Exception as exc:
-                logger.debug("停止动画定时器失败: %s", exc, exc_info=True)
-
-        self._close_anim_origin_pos = self.pos()
-        self._close_anim_step = 0
-        self._close_anim_duration_ms = 170
-        self._close_anim_interval_ms = 16
-        self._close_anim_total_steps = max(1, self._close_anim_duration_ms // self._close_anim_interval_ms)
-
-        self._close_anim_timer = QTimer(self)
-        self._close_anim_timer.setInterval(self._close_anim_interval_ms)
-        set_precise_timer(self._close_anim_timer, owner="ChainDialog._close_anim_timer")
-        self._close_anim_timer.timeout.connect(lambda generation=generation: self._on_close_animation_tick(generation))
-        self._close_anim_timer.start()
-
-    def _on_close_animation_tick(self, generation: int | None = None):
-        if generation is not None and generation != int(getattr(self, "_close_anim_generation", -1) or -1):
-            return
-        self._close_anim_step += 1
-        progress = self._close_anim_step / self._close_anim_total_steps
-        if progress >= 1.0:
-            progress = 1.0
-
-        eased = progress * progress
-        self.setWindowOpacity(max(0.0, 1.0 - progress * 1.25))
-        origin = self._close_anim_origin_pos
-        self.move(origin.x(), origin.y() + int(eased * sp(16)))
-
-        if progress >= 1.0:
-            if generation is not None and generation != int(getattr(self, "_close_anim_generation", -1) or -1):
-                return
-            timer = getattr(self, "_close_anim_timer", None)
-            if timer is not None:
-                timer.stop()
-            self._closing_with_animation = False
-            super().done(self._pending_done_result)
-
-    # ── UI 构建 ──────────────────────────────────────────────
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -629,8 +318,8 @@ class ChainDialog(BaseDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[unused-ignore, attr-defined]
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[unused-ignore, attr-defined]
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
@@ -712,8 +401,8 @@ class ChainDialog(BaseDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[unused-ignore, attr-defined]
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[unused-ignore, attr-defined]
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
@@ -751,8 +440,8 @@ class ChainDialog(BaseDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[unused-ignore, attr-defined]
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # type: ignore[unused-ignore, attr-defined]
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
@@ -799,10 +488,7 @@ class ChainDialog(BaseDialog):
         return page
 
     def _make_module_button(self, title: str, callback) -> QPushButton:
-        btn = QPushButton(title)
-        # 草蜢式的精美小电池按纽 (固定为宽 76px，高 24px)
-        btn.setFixedSize(sp(76), sp(24))
-        btn.clicked.connect(callback)
+        btn = make_module_button(title, callback)
         self._module_buttons.append(btn)
         return btn
 
@@ -911,7 +597,7 @@ class ChainDialog(BaseDialog):
         self.processor_list = QListWidget()
         for processor_id, title in processor_library_items():
             item = QListWidgetItem(title)
-            item.setData(Qt.UserRole, processor_id)  # type: ignore[attr-defined]
+            item.setData(Qt.UserRole, processor_id)  # type: ignore[unused-ignore, attr-defined]
             self.processor_list.addItem(item)
         self.processor_list.itemDoubleClicked.connect(self._add_processor_from_item)
         library_layout.addWidget(QLabel(tr("处理节点")))
@@ -1338,19 +1024,19 @@ class ChainDialog(BaseDialog):
                 if "," in icon_path or os.path.exists(icon_path):
                     pm = IconExtractor.from_file(icon_path, source_size, return_image=False)
                     if pm and not pm.isNull():
-                        return pm  # type: ignore[no-any-return]
+                        return pm  # type: ignore[unused-ignore, no-any-return]
             # 文件夹类型默认图标
             if not icon_path and shortcut_uses_folder_icon(shortcut.type, target_path):
                 folder_ico = default_folder_icon_path()
                 if folder_ico:
                     pm = IconExtractor.from_file(folder_ico, source_size, return_image=False)
                     if pm and not pm.isNull():
-                        return pm  # type: ignore[no-any-return]
+                        return pm  # type: ignore[unused-ignore, no-any-return]
             if target_path:
                 if os.path.exists(target_path):
                     pm = IconExtractor.extract(target_path, target_path, source_size, return_image=False)
                     if pm and not pm.isNull():
-                        return pm  # type: ignore[no-any-return]
+                        return pm  # type: ignore[unused-ignore, no-any-return]
         except Exception as exc:
             logger.debug("获取快捷方式图标失败: %s", exc, exc_info=True)
         return None
@@ -1650,234 +1336,6 @@ class ChainDialog(BaseDialog):
     def _delete_step_at(self, index: int):
         self._selected_index = index
         self._remove_step()
-
-    def _load_selected_binding_fields(self):
-        if not all(hasattr(self, name) for name in ("input_binding_edit", "param_bindings_edit", "step_args_edit")):
-            return
-        self._binding_loading = True
-        try:
-            if not (0 <= self._selected_index < len(self._steps)):
-                self.input_binding_edit.setText("")
-                self.param_bindings_edit.setPlainText("")
-                self.step_args_edit.setPlainText("")
-                self.input_binding_edit.setEnabled(False)
-                self.param_bindings_edit.setEnabled(False)
-                self.step_args_edit.setEnabled(False)
-                return
-            step = self._steps[self._selected_index]
-            self.input_binding_edit.setEnabled(True)
-            self.param_bindings_edit.setEnabled(True)
-            self.step_args_edit.setEnabled(True)
-            self.input_binding_edit.setText(str(step.get("input_binding") or ""))
-            self.param_bindings_edit.setPlainText(self._format_mapping(step.get("param_bindings") or {}))
-            self.step_args_edit.setPlainText(self._format_mapping(step.get("args") or {}))
-        finally:
-            self._binding_loading = False
-
-    def _sync_selected_binding_fields(self):
-        if self._binding_loading or not (0 <= self._selected_index < len(self._steps)):
-            return
-        step = self._steps[self._selected_index]
-        step["input_binding"] = self.input_binding_edit.text().strip()
-        step["param_bindings"] = self._parse_mapping(self.param_bindings_edit.toPlainText())
-        step["args"] = self._parse_mapping(self.step_args_edit.toPlainText())
-        self._refresh_risk_analysis()
-
-    @staticmethod
-    def _parse_mapping(text: str) -> dict[str, str]:
-        values = {}
-        for line in str(text or "").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-            if key and value:
-                values[key] = value
-        return values
-
-    @staticmethod
-    def _format_mapping(values: dict) -> str:
-        if not isinstance(values, dict):
-            return ""
-        return "\n".join(f"{key}={value}" for key, value in values.items() if str(key).strip() and str(value).strip())
-
-    # ── 风险分析 ─────────────────────────────────────────────
-
-    def _refresh_risk_analysis(self):
-        risks = self._analyze_risks()
-        if risks:
-            lines = [tr("⚠ 风险分析"), ""]
-            lines.extend(risks)
-            lines.append("")
-            lines.append(tr("共 {n} 个步骤", n=len(self._steps)))
-        elif self._steps:
-            lines = [tr("✓ 未发现明显风险"), "", tr("共 {n} 个步骤", n=len(self._steps))]
-        else:
-            lines = [tr("暂无步骤。"), "", tr("点击「添加」将已有快捷方式加入动作链。")]
-        self.result_view.setPlainText("\n".join(lines))
-
-    def _analyze_risks(self) -> list[str]:
-        smap = self._shortcut_map()
-        risks = []
-        for i, step in enumerate(self._steps):
-            if str(step.get("node_type") or "shortcut") == "processor":
-                risks.extend(self._processor_risks(i + 1, str(step.get("processor_id") or "")))
-                continue
-            sid = step.get("shortcut_id", "")
-            target = smap.get(sid)
-            num = i + 1
-            if target is None:
-                risks.append(tr("  步骤 {n}: 引用的快捷方式不存在", n=num))
-                continue
-            if getattr(target, "run_as_admin", False):
-                risks.append(tr("  步骤 {n}: 将以管理员权限运行", n=num))
-            if target.type == ShortcutType.HOTKEY:
-                risks.append(tr("  步骤 {n}: 快捷键操作，可能产生冲突", n=num))
-            if target.type == ShortcutType.COMMAND:
-                risks.append(tr("  步骤 {n}: 将执行命令", n=num))
-        return risks
-
-    def _processor_risks(self, step_num: int, processor_id: str) -> list[str]:
-        legacy_processor_ids = {
-            "file_write": "file_write_text",
-        }
-        processor_id = legacy_processor_ids.get(str(processor_id or ""), str(processor_id or ""))
-        definition = processor_definition(processor_id)
-        if definition is None:
-            return [tr("  步骤 {n}: 处理节点定义不存在", n=step_num)]
-        safety = definition.safety
-        risks = []
-        if safety.level == "dangerous":
-            risks.append(tr("  步骤 {n}: 高风险处理节点 - {name}", n=step_num, name=definition.title))
-        elif safety.level == "caution":
-            risks.append(tr("  步骤 {n}: 需要注意的处理节点 - {name}", n=step_num, name=definition.title))
-        if safety.executes_code:
-            risks.append(tr("  步骤 {n}: 将执行脚本代码", n=step_num))
-        if safety.network:
-            risks.append(tr("  步骤 {n}: 将访问网络", n=step_num))
-        if safety.reads_files:
-            risks.append(tr("  步骤 {n}: 将读取本地文件", n=step_num))
-        if safety.writes_files:
-            risks.append(tr("  步骤 {n}: 将写入本地文件", n=step_num))
-        if safety.requires_confirmation:
-            risks.append(tr("  步骤 {n}: 建议运行前二次确认", n=step_num))
-        return risks
-
-    # ── 测试运行 ─────────────────────────────────────────────
-
-    def _run_test(self):
-        self._cleanup_chain_test_thread()
-        chain = self.get_shortcut()
-        parent = self.parent()
-        data_manager = getattr(parent, "data_manager", None)
-        if data_manager is None:
-            self.result_view.setPlainText(tr("错误: 无法获取数据管理器"))
-            return
-        self.test_btn.setEnabled(False)
-        self.result_view.setPlainText(tr("正在执行..."))
-        if hasattr(self, "canvas_widget"):
-            self.canvas_widget.set_run_status([])
-        self._test_thread = DialogTestTask(
-            name="chain-dialog-test",
-            callback=lambda cancel_event: self._execute_chain_test(chain, data_manager, cancel_event),
-            owner=self,
-        )
-        self._test_thread.result_ready.connect(self._on_test_result)
-        self._test_thread.start()
-
-    def _execute_chain_test(self, chain: ShortcutItem, data_manager, cancel_event):
-        try:
-            from core.shortcut_chain_exec import execute_shortcut_chain
-
-            return execute_shortcut_chain(chain, data_manager, cancel_event=cancel_event)
-        except Exception as e:
-            logger.exception("动作链测试运行失败")
-            from core.command_registry import CommandResult
-
-            return CommandResult(success=False, message=str(e), error=str(e))
-
-    def _on_test_result(self, result):
-        self.test_btn.setEnabled(True)
-        self._last_test_result = result
-        lines = []
-        success = getattr(result, "success", False)
-        lines.append(("✓ " if success else "✗ ") + (getattr(result, "message", "") or ""))
-        lines.append("")
-        payload = getattr(result, "payload", None) or {}
-        items = payload.get("items", [])
-        if hasattr(self, "canvas_widget"):
-            self.canvas_widget.set_run_status(items, payload.get("node_snapshots", {}))
-        for item in items:
-            status = item.get("status", "")
-            icon = {"ok": "✓", "failed": "✗", "skipped": "○"}.get(status, "?")
-            title = item.get("title", "")
-            detail = item.get("detail", "")
-            dur = item.get("duration", 0.0)
-            line = f"  {icon} {title}"
-            if dur > 0:
-                line += f"  ({dur:.2f}s)"
-            lines.append(line)
-            if detail and status == "failed":
-                for dl in str(detail).splitlines():
-                    lines.append(f"      {dl}")
-        duration = payload.get("duration", 0.0)
-        if duration > 0:
-            lines.append("")
-            lines.append(tr("总耗时: {t:.2f}s", t=duration))
-        error = getattr(result, "error", "")
-        if error:
-            lines.append(tr("错误: {e}", e=error))
-        self.result_view.setPlainText("\n".join(lines))
-        task = self._test_thread
-        self._test_thread = None
-        if task is not None:
-            try:
-                task.deleteLater()
-            except Exception as exc:
-                logger.debug("删除动作链测试任务失败: %s", exc, exc_info=True)
-
-    def _clear_run_results(self):
-        self._last_test_result = None
-        if hasattr(self, "canvas_widget"):
-            self.canvas_widget.set_run_status([])
-        self._refresh_properties()
-        self._refresh_risk_analysis()
-
-    # ── 测试线程生命周期管理 ─────────────────────────────────────
-
-    def _cleanup_chain_test_thread(self):
-        """Comprehensive cleanup of the chain test thread, matching CommandDialog's pattern."""
-        thread = getattr(self, "_test_thread", None)
-        if thread is None:
-            return
-        try:
-            thread.result_ready.disconnect(self._on_test_result)
-        except Exception as exc:
-            logger.debug("断开动作链测试信号失败: %s", exc, exc_info=True)
-        try:
-            thread.suppress_result_signal()
-        except Exception as exc:
-            logger.debug("抑制动作链测试结果信号失败: %s", exc, exc_info=True)
-        try:
-            thread.cancel()
-        except Exception as exc:
-            logger.debug("取消动作链测试线程失败: %s", exc, exc_info=True)
-        if not thread.isRunning():
-            try:
-                thread.deleteLater()
-            except Exception as exc:
-                logger.debug("删除动作链测试线程失败: %s", exc, exc_info=True)
-        else:
-            try:
-                thread.delete_when_finished()
-            except Exception as exc:
-                logger.debug("注册动作链测试任务异步删除失败: %s", exc, exc_info=True)
-            logger.debug("动作链测试任务已请求取消，将在后台自然结束后回收")
-        self._test_thread = None
-
-    # ── get_shortcut 契约 ────────────────────────────────────
 
     def get_shortcut(self) -> ShortcutItem:
         shortcut = copy.deepcopy(self.shortcut)

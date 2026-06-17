@@ -23,6 +23,50 @@ except ImportError:
 class PopupItemExecutionMixin:
     """Execute shortcut items: commands, URLs, files, with command panel v2 support."""
 
+    def _get_popup_execution_service(self):
+        """Return a process-wide shared :class:`CommandExecutionService`.
+
+        The popup reuses the shared executor pool that
+        :class:`CommandExecutionService` exposes via
+        ``_get_shared_pool``; constructing a fresh service per click would
+        still funnel work into the same pool, but it also created
+        throwaway tracking dicts and duplicated ``result_store`` wiring
+        on every execution.  Caching the service per popup keeps the
+        wiring in one place and matches the lifecycle used by
+        :class:`ui.command_panel_window.CommandPanelWindow`.
+        """
+        cached = getattr(self, "_popup_execution_service", None)
+        if cached is not None:
+            return cached
+        from core.command_execution_service import CommandExecutionService
+        from core.command_results import CommandResultStore
+
+        tray_app = getattr(self, "tray_app", None)
+        result_store = getattr(tray_app, "command_result_store", None) if tray_app is not None else None
+        if tray_app is not None and result_store is None:
+            result_store = CommandResultStore()
+            tray_app.command_result_store = result_store
+        cached = CommandExecutionService(result_store)
+        self._popup_execution_service = cached
+        return cached
+
+    def _shutdown_popup_execution_service(self, timeout: float = 0.2) -> None:
+        """Cooperatively shut down the cached popup execution service.
+
+        The actual thread pool is process-wide and is reaped by
+        :func:`CommandExecutionService.shutdown_shared_executor` during
+        application exit.  This call cancels the popup's tracked futures
+        so a closing popup does not leave dangling work pointing at
+        widgets that are about to be destroyed.
+        """
+        cached = getattr(self, "_popup_execution_service", None)
+        if cached is None:
+            return
+        try:
+            cached.shutdown(timeout=timeout)
+        except Exception as exc:  # noqa: BLE001 - best-effort shutdown
+            logger.debug("关闭弹窗执行服务失败: %s", exc, exc_info=True)
+
     def _execute_item(self, item: ShortcutItem, force_new: bool = False):
         """执行项目"""
         if self._executing:  # type: ignore[has-type]
@@ -181,7 +225,8 @@ class PopupItemExecutionMixin:
                                 item.command = command_to_execute
                                 execute_item = item
                         elif not isinstance(cmd_def.handler, _CallbackHandler):
-                            query_for_panel = f"/{cmd_def.id}"
+                            panel_cmd_def = cmd_def
+                            query_for_panel = f"/{panel_cmd_def.id}"
                             if args_text:
                                 query_for_panel = f"{query_for_panel} {args_text}"
                             auto_fill_command = not bool(self.__dict__.get("_search_execute_from_keyboard", False))
@@ -208,7 +253,7 @@ class PopupItemExecutionMixin:
                                 self._launched_app = True
                                 self.hide()  # type: ignore[attr-defined]
                                 tray_app.show_command_panel(
-                                    command_id=cmd_def.id,
+                                    command_id=panel_cmd_def.id,
                                     args_text=args_text,
                                     raw_input=query_for_panel,
                                     context_meta={
@@ -220,7 +265,7 @@ class PopupItemExecutionMixin:
                                 return
 
                             def _on_update(update: CommandResult) -> None:
-                                self.show_command_result(update, cmd_def.id)  # type: ignore[attr-defined]
+                                self.show_command_result(update, panel_cmd_def.id)  # type: ignore[attr-defined]
 
                             ctx = CommandContext(
                                 raw_input=query_for_panel,
@@ -230,8 +275,8 @@ class PopupItemExecutionMixin:
                                 context_meta={"input_values": dict(runtime_inputs)} if runtime_inputs else {},
                                 update_callback=_on_update,
                             )
-                            result = cmd_def.handler(ctx)
-                            self.show_command_result(result, cmd_def.id)  # type: ignore[attr-defined]
+                            result = panel_cmd_def.handler(ctx)
+                            self.show_command_result(result, panel_cmd_def.id)  # type: ignore[attr-defined]
                             return
             except Exception as e:
                 logger.exception("Panel command handoff failed: %s", e)
@@ -336,17 +381,9 @@ class PopupItemExecutionMixin:
                 if HAS_EXECUTOR and ShortcutExecutor:
                     if force_close_chain:
                         try:
-                            from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
-                            from core.command_results import CommandResultStore
+                            from core.command_execution_service import CommandExecutionRequest
 
-                            tray_app = getattr(self, "tray_app", None)
-                            result_store = (
-                                getattr(tray_app, "command_result_store", None) if tray_app is not None else None
-                            )
-                            if tray_app is not None and result_store is None:
-                                result_store = CommandResultStore()
-                                tray_app.command_result_store = result_store
-                            service = CommandExecutionService(result_store)
+                            service = self._get_popup_execution_service()
                             request = CommandExecutionRequest(
                                 command_id=item.id,
                                 raw_input=item.name or item.id,
@@ -384,17 +421,9 @@ class PopupItemExecutionMixin:
                             return
                     if force_close_capture_command:
                         try:
-                            from core.command_execution_service import CommandExecutionRequest, CommandExecutionService
-                            from core.command_results import CommandResultStore
+                            from core.command_execution_service import CommandExecutionRequest
 
-                            tray_app = getattr(self, "tray_app", None)
-                            result_store = (
-                                getattr(tray_app, "command_result_store", None) if tray_app is not None else None
-                            )
-                            if tray_app is not None and result_store is None:
-                                result_store = CommandResultStore()
-                                tray_app.command_result_store = result_store
-                            service = CommandExecutionService(result_store)
+                            service = self._get_popup_execution_service()
                             request = CommandExecutionRequest(
                                 command_id=item.id,
                                 raw_input=item.command or "",

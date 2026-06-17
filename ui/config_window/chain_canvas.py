@@ -170,7 +170,7 @@ class PortItem(QGraphicsEllipseItem):
         self.color = QColor("#4DB6AC") if direction == "input" else QColor("#64B5F6")
         self.setBrush(QBrush(self.color))
         self.setPen(QPen(QColor(255, 255, 255, 150), 1.2))
-        self.setCursor(Qt.PointingHandCursor)  # type: ignore[attr-defined]
+        self.setCursor(Qt.PointingHandCursor)  # type: ignore[unused-ignore, attr-defined]
         self.setAcceptHoverEvents(True)
 
     def hoverEnterEvent(self, event):
@@ -205,26 +205,26 @@ class PanelTextViewportItem(QGraphicsRectItem):
         self._content_height = 0.0
         self._document_height = 0.0
 
-        self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)  # type: ignore[attr-defined]
+        self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)  # type: ignore[unused-ignore, attr-defined]
         self.setAcceptHoverEvents(True)
-        self.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[attr-defined]
+        self.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[unused-ignore, attr-defined]
 
         self.text_item = QGraphicsTextItem(self)
         self.text_item.setFont(QFont("Microsoft YaHei UI", font_px(8)))
-        self.text_item.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[attr-defined]
+        self.text_item.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[unused-ignore, attr-defined]
 
-        option = self.text_item.document().defaultTextOption()  # type: ignore[union-attr]
+        option = self.text_item.document().defaultTextOption()  # type: ignore[unused-ignore, union-attr]
         option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
-        self.text_item.document().setDefaultTextOption(option)  # type: ignore[union-attr]
+        self.text_item.document().setDefaultTextOption(option)  # type: ignore[unused-ignore, union-attr]
 
         self.scrollbar_track = QGraphicsRectItem(self)
-        self.scrollbar_track.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[attr-defined]
-        self.scrollbar_track.setPen(QPen(Qt.NoPen))  # type: ignore[attr-defined]
+        self.scrollbar_track.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[unused-ignore, attr-defined]
+        self.scrollbar_track.setPen(QPen(Qt.NoPen))  # type: ignore[unused-ignore, attr-defined]
         self.scrollbar_track.setZValue(2)
 
         self.scrollbar_thumb = QGraphicsRectItem(self)
-        self.scrollbar_thumb.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[attr-defined]
-        self.scrollbar_thumb.setPen(QPen(Qt.NoPen))  # type: ignore[attr-defined]
+        self.scrollbar_thumb.setAcceptedMouseButtons(Qt.NoButton)  # type: ignore[unused-ignore, attr-defined]
+        self.scrollbar_thumb.setPen(QPen(Qt.NoPen))  # type: ignore[unused-ignore, attr-defined]
         self.scrollbar_thumb.setZValue(3)
 
         self.set_text(text)
@@ -345,9 +345,9 @@ class NodeItem(QGraphicsRectItem):
         self.connected_lines = []  # type: ignore[var-annotated]  # 缓存关联的连线，用于 O(1) 的高效拖拽重绘
 
         self.setPos(float(node.get("x", 0) or 0), float(node.get("y", 0) or 0))
-        self.setFlag(QGraphicsItem.ItemIsMovable, True)  # type: ignore[attr-defined]
-        self.setFlag(QGraphicsItem.ItemIsSelectable, True)  # type: ignore[attr-defined]
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)  # type: ignore[attr-defined]
+        self.setFlag(QGraphicsItem.ItemIsMovable, True)  # type: ignore[unused-ignore, attr-defined]
+        self.setFlag(QGraphicsItem.ItemIsSelectable, True)  # type: ignore[unused-ignore, attr-defined]
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)  # type: ignore[unused-ignore, attr-defined]
 
         self._build_labels()
         self.update_appearance()
@@ -453,7 +453,7 @@ class NodeItem(QGraphicsRectItem):
             return self.scenePos()
         return item.scenePos()
 
-    def paint(self, painter: QPainter, option, widget=None):  # type: ignore[override]
+    def paint(self, painter: QPainter, option, widget=None):  # type: ignore[unused-ignore, override]
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -489,8 +489,8 @@ class ConnectionItem(QGraphicsPathItem):
     def __init__(self, connection: dict, parent=None):
         super().__init__(parent)
         self.connection = connection
-        self.source_node_item = None
-        self.target_node_item = None
+        self.source_node_item: NodeItem | None = None
+        self.target_node_item: NodeItem | None = None
         self.setZValue(-1)
         self.setAcceptHoverEvents(True)
 
@@ -518,7 +518,7 @@ class ConnectionItem(QGraphicsPathItem):
         padding = 6.0
         return rect.adjusted(-padding, -padding, padding, padding + 2.0)
 
-    def paint(self, painter: QPainter, option, widget=None):  # type: ignore[override]
+    def paint(self, painter: QPainter, option, widget=None):  # type: ignore[unused-ignore, override]
         path = self.path()
         if path.isEmpty():
             return
@@ -552,8 +552,8 @@ class ConnectionItem(QGraphicsPathItem):
         # Pass 1: Drop Shadow (Soft, floating 3D depth, without harsh outlines)
         shadow_path = path.translated(0, 1.2)
         shadow_pen = QPen(QColor(0, 0, 0, 40), 4.5)
-        shadow_pen.setCapStyle(Qt.RoundCap)  # type: ignore[attr-defined]
-        shadow_pen.setJoinStyle(Qt.RoundJoin)  # type: ignore[attr-defined]
+        shadow_pen.setCapStyle(Qt.RoundCap)  # type: ignore[unused-ignore, attr-defined]
+        shadow_pen.setJoinStyle(Qt.RoundJoin)  # type: ignore[unused-ignore, attr-defined]
         painter.setPen(shadow_pen)
         painter.drawPath(shadow_path)
 
@@ -564,8 +564,8 @@ class ConnectionItem(QGraphicsPathItem):
         grad.setColorAt(1.0, color_end)
 
         core_pen = QPen(QBrush(grad), 2.0)
-        core_pen.setCapStyle(Qt.RoundCap)  # type: ignore[attr-defined]
-        core_pen.setJoinStyle(Qt.RoundJoin)  # type: ignore[attr-defined]
+        core_pen.setCapStyle(Qt.RoundCap)  # type: ignore[unused-ignore, attr-defined]
+        core_pen.setJoinStyle(Qt.RoundJoin)  # type: ignore[unused-ignore, attr-defined]
         painter.setPen(core_pen)
         painter.drawPath(path)
 
@@ -822,6 +822,20 @@ class ChainCanvasWidget(QWidget):
         self._redo_stack: list[dict] = []
         self._history_limit = 80
 
+        # P1-06 Stage 2: instantiate the business-state view-model.
+        # The widget keeps its own :pyattr:`canvas` / undo stacks for
+        # now; the view-model is the *external* API for future
+        # presenters that need to inspect the chain without going
+        # through the QGraphicsScene.
+        from ui.view_models.chain_canvas_view_model import ChainCanvasViewModel
+
+        self.view_model = ChainCanvasViewModel(self)
+        self.view_model.set_shortcuts(dict(shortcuts or {}))
+        # Forward the view-model's signals to the legacy signals so
+        # downstream listeners continue to work.
+        self.view_model.canvas_changed.connect(self.canvas_changed)
+        self.view_model.selection_changed.connect(self.selection_changed)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.scene = ChainCanvasScene(self)
@@ -844,7 +858,11 @@ class ChainCanvasWidget(QWidget):
 
     def set_run_status(self, run_items: list[dict], node_snapshots: dict[str, dict] | None = None):
         node_snapshots = dict(node_snapshots or {})
-        nodes = sorted(self.canvas.get("nodes", []), key=lambda n: int(n.get("order", 0) or 0))  # type: ignore[call-overload]
+        raw_nodes = self.canvas.get("nodes", [])
+        if not isinstance(raw_nodes, list):
+            raw_nodes = []
+        nodes = [node for node in raw_nodes if isinstance(node, dict)]
+        nodes.sort(key=lambda node: int(node.get("order", 0) or 0))
         for index, node in enumerate(nodes):
             node_id = str(node.get("id") or "")
             snapshot = node_snapshots.get(node_id)
@@ -1026,58 +1044,58 @@ class ChainCanvasWidget(QWidget):
         key = event.key()
 
         # 0. Ctrl + Z / Ctrl + Y / Ctrl + C / Ctrl + V: 撤销重做、复制粘贴
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_Z:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_Z:  # type: ignore[unused-ignore, attr-defined]
             self.undo()
             return True
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_Y:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_Y:  # type: ignore[unused-ignore, attr-defined]
             self.redo()
             return True
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_C:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_C:  # type: ignore[unused-ignore, attr-defined]
             self.copy_selected_nodes()
             return True
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_V:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_V:  # type: ignore[unused-ignore, attr-defined]
             self.paste_copied_nodes()
             return True
 
         # 1. Ctrl + Shift + I: 反选
-        if (modifiers & Qt.ControlModifier) and (modifiers & Qt.ShiftModifier) and key == Qt.Key_I:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and (modifiers & Qt.ShiftModifier) and key == Qt.Key_I:  # type: ignore[unused-ignore, attr-defined]
             for item in self.scene.items():
                 if item.__class__.__name__ == "NodeItem":
                     item.setSelected(not item.isSelected())
             return True
 
         # 2. Ctrl + A: 全选
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_A:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_A:  # type: ignore[unused-ignore, attr-defined]
             for item in self.scene.items():
                 if item.__class__.__name__ == "NodeItem":
                     item.setSelected(True)
             return True
 
         # 3. Ctrl + D: 取消全选
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_D:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_D:  # type: ignore[unused-ignore, attr-defined]
             self.scene.clearSelection()
             return True
 
         # 4. Delete / Backspace: 删除选中的电池组
-        if key in (Qt.Key_Delete, Qt.Key_Backspace):  # type: ignore[attr-defined]
+        if key in (Qt.Key_Delete, Qt.Key_Backspace):  # type: ignore[unused-ignore, attr-defined]
             self.delete_selected_nodes()
             return True
 
         # 5. 方向键: 批量像素微调移动选中的电池
-        if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):  # type: ignore[attr-defined]
+        if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):  # type: ignore[unused-ignore, attr-defined]
             selected_items = [item for item in self.scene.selectedItems() if item.__class__.__name__ == "NodeItem"]
             if selected_items:
                 # 默认移动 10px，按住 Shift 或 Alt 时执行 1px 的超清像素微调
                 self._push_history()
-                step = 1.0 if (modifiers & (Qt.ShiftModifier | Qt.AltModifier)) else 10.0  # type: ignore[attr-defined]
+                step = 1.0 if (modifiers & (Qt.ShiftModifier | Qt.AltModifier)) else 10.0  # type: ignore[unused-ignore, attr-defined]
                 dx, dy = 0.0, 0.0
-                if key == Qt.Key_Left:  # type: ignore[attr-defined]
+                if key == Qt.Key_Left:  # type: ignore[unused-ignore, attr-defined]
                     dx = -step
-                elif key == Qt.Key_Right:  # type: ignore[attr-defined]
+                elif key == Qt.Key_Right:  # type: ignore[unused-ignore, attr-defined]
                     dx = step
-                elif key == Qt.Key_Up:  # type: ignore[attr-defined]
+                elif key == Qt.Key_Up:  # type: ignore[unused-ignore, attr-defined]
                     dy = -step
-                elif key == Qt.Key_Down:  # type: ignore[attr-defined]
+                elif key == Qt.Key_Down:  # type: ignore[unused-ignore, attr-defined]
                     dy = step
 
                 # 批量平移
@@ -1090,7 +1108,7 @@ class ChainCanvasWidget(QWidget):
                 return True
 
         # 6. Ctrl + L: 左对齐选中的所有电池
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_L:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_L:  # type: ignore[unused-ignore, attr-defined]
             selected_items = [item for item in self.scene.selectedItems() if item.__class__.__name__ == "NodeItem"]
             if len(selected_items) > 1:
                 self._push_history()
@@ -1102,7 +1120,7 @@ class ChainCanvasWidget(QWidget):
                 return True
 
         # 7. Ctrl + T: 上对齐选中的所有电池
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_T:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_T:  # type: ignore[unused-ignore, attr-defined]
             selected_items = [item for item in self.scene.selectedItems() if item.__class__.__name__ == "NodeItem"]
             if len(selected_items) > 1:
                 self._push_history()
@@ -1114,7 +1132,7 @@ class ChainCanvasWidget(QWidget):
                 return True
 
         # 8. Ctrl + R: 自动整理布局
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_R:  # type: ignore[attr-defined]
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_R:  # type: ignore[unused-ignore, attr-defined]
             self.auto_arrange_nodes()
             return True
 
@@ -1146,7 +1164,7 @@ class ChainCanvasWidget(QWidget):
         self.canvas_changed.emit()
 
     def copy_selected_nodes(self) -> bool:
-        selected_ids = [item.node_id for item in self.scene.selectedItems() if item.__class__.__name__ == "NodeItem"]  # type: ignore[attr-defined]
+        selected_ids = [item.node_id for item in self.scene.selectedItems() if item.__class__.__name__ == "NodeItem"]  # type: ignore[unused-ignore, attr-defined]
         if not selected_ids and self._selected_node_id:
             selected_ids = [self._selected_node_id]
         selected_set = set(selected_ids)
@@ -1173,7 +1191,7 @@ class ChainCanvasWidget(QWidget):
         id_map: dict[str, str] = {}
         existing_orders = [int(node.get("order", 0) or 0) for node in self.canvas.get("nodes", [])]  # type: ignore[attr-defined]
         next_order = (max(existing_orders) if existing_orders else 0) + 1
-        new_nodes = []
+        new_nodes: list[dict] = []
         for offset, raw in enumerate(nodes):
             node = copy.deepcopy(raw)
             old_id = str(node.get("id") or "")
@@ -1187,7 +1205,7 @@ class ChainCanvasWidget(QWidget):
             node.pop("last_output", None)
             node.pop("last_run_snapshot", None)
             new_nodes.append(node)
-        new_connections = []
+        new_connections: list[dict] = []
         for raw in list(self._clipboard.get("connections") or []):
             source = id_map.get(str(raw.get("source_node") or ""))
             target = id_map.get(str(raw.get("target_node") or ""))
@@ -1211,7 +1229,11 @@ class ChainCanvasWidget(QWidget):
         return True
 
     def auto_arrange_nodes(self) -> bool:
-        nodes = sorted(self.canvas.get("nodes", []), key=lambda n: int(n.get("order", 0) or 0))  # type: ignore[call-overload]
+        raw_nodes = self.canvas.get("nodes", [])
+        if not isinstance(raw_nodes, list):
+            raw_nodes = []
+        nodes = [node for node in raw_nodes if isinstance(node, dict)]
+        nodes.sort(key=lambda node: int(node.get("order", 0) or 0))
         if not nodes:
             return False
         self._push_history()
@@ -1286,7 +1308,7 @@ class ChainCanvasWidget(QWidget):
         node_x = float((order - 1) * spf(220.0))
         node_y = spf(80.0)
         try:
-            view_rect = self.view.viewport().rect()  # type: ignore[union-attr]
+            view_rect = self.view.viewport().rect()  # type: ignore[unused-ignore, union-attr]
             if view_rect.width() > 0 and view_rect.height() > 0:
                 scene_center = self.view.mapToScene(view_rect.center())
                 node_x = float(scene_center.x() - sp(178) / 2.0)
@@ -1556,7 +1578,7 @@ class ChainCanvasWidget(QWidget):
 
             line_color = QColor(255, 138, 101, 150) if theme == "dark" else QColor(255, 112, 67, 130)
             pen = QPen(line_color, 1.2)
-            pen.setStyle(Qt.DashLine)  # type: ignore[attr-defined]
+            pen.setStyle(Qt.DashLine)  # type: ignore[unused-ignore, attr-defined]
             pen.setDashPattern([5, 4])
             leader_lines.setPen(pen)
 
@@ -1681,7 +1703,7 @@ class PythonCellSourceDialog(BaseDialog):
         # 注册全局应用事件过滤器以捕获模态独占下的点击外部事件
         from qt_compat import QApplication
 
-        QApplication.instance().installEventFilter(self)  # type: ignore[union-attr]
+        QApplication.instance().installEventFilter(self)  # type: ignore[unused-ignore, union-attr]
 
     def done(self, result):
         # 关闭时注销过滤器以防内存泄漏
@@ -1703,7 +1725,7 @@ class PythonCellSourceDialog(BaseDialog):
 
         from qt_compat import QEvent
 
-        if event.type() == QEvent.MouseButtonPress:  # type: ignore[attr-defined]
+        if event.type() == QEvent.MouseButtonPress:  # type: ignore[unused-ignore, attr-defined]
             # 向上遍历父链判定是否是对话框内的交互（如右键菜单、代码补全下拉等）
             p = obj
             is_child = False
@@ -2063,7 +2085,7 @@ class NodePropertyPanel(QWidget):
 
                     clear = QPushButton("断开")
                     clear.setFixedSize(sp(48), sp(22))
-                    clear.setCursor(Qt.PointingHandCursor)  # type: ignore[attr-defined]
+                    clear.setCursor(Qt.PointingHandCursor)  # type: ignore[unused-ignore, attr-defined]
                     clear.clicked.connect(
                         lambda _=False, p=port: self.disconnect_requested.emit(str(node.get("id") or ""), p)
                     )
@@ -2176,7 +2198,7 @@ class NodePropertyPanel(QWidget):
         edit.textChanged.connect(self._emit_args)
         browse = QPushButton("...")
         browse.setFixedSize(sp(34), sp(26))
-        browse.setCursor(Qt.PointingHandCursor)  # type: ignore[attr-defined]
+        browse.setCursor(Qt.PointingHandCursor)  # type: ignore[unused-ignore, attr-defined]
         browse.clicked.connect(lambda _=False, p=port, k=kind, e=edit: self._browse_path(p, k, e))
         row_layout.addWidget(edit, 1)
         row_layout.addWidget(browse)

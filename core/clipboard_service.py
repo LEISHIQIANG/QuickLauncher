@@ -622,7 +622,7 @@ class QtClipboardImpl:
             from qt_compat import QApplication
 
             cb = QApplication.clipboard()
-            return cb.text() or ""  # type: ignore[union-attr]
+            return cb.text() or ""  # type: ignore[unused-ignore, union-attr]
         except (ImportError, RuntimeError, AttributeError) as exc:
             logger.debug("读取Qt剪贴板文本失败: %s", exc, exc_info=True)
             return ""
@@ -632,7 +632,7 @@ class QtClipboardImpl:
         try:
             from qt_compat import QApplication
 
-            QApplication.clipboard().setText(text)  # type: ignore[union-attr]
+            QApplication.clipboard().setText(text)  # type: ignore[unused-ignore, union-attr]
             return True
         except (ImportError, RuntimeError, AttributeError) as exc:
             logger.debug("写入Qt剪贴板文本失败: %s", exc, exc_info=True)
@@ -686,7 +686,7 @@ class QtClipboardBridge:
                                 return
                             text = Win32ClipboardImpl.read_text()
                             if text is not None:
-                                QApplication.clipboard().setText(text)  # type: ignore[union-attr]
+                                QApplication.clipboard().setText(text)  # type: ignore[unused-ignore, union-attr]
                         except Exception as exc:
                             logger.debug("Qt剪贴板同步失败: %s", exc, exc_info=True)
 

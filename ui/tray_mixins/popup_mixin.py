@@ -5,6 +5,7 @@
 import ctypes
 import logging
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,9 @@ def _is_own_native_dialog_foreground() -> bool:
 class PopupMixin:
     """弹窗管理、坐标转换、多开相关方法。"""
 
+    popup_window: Any
+    _extra_popup_windows: list[Any]
+
     def _on_middle_click_from_hook(self, x: int, y: int):
         """从钩子线程接收中键点击（在钩子线程中调用）"""
         # 使用Windows API直接获取鼠标位置，避免DPI转换问题
@@ -239,16 +243,16 @@ class PopupMixin:
 
         try:
             self._prune_extra_popup_windows()
-            if self.popup_window:  # type: ignore[has-type]
-                if self.popup_window.isVisible():  # type: ignore[has-type]
+            if self.popup_window:
+                if self.popup_window.isVisible():
                     from qt_compat import QApplication, QPoint
 
                     current_screen = QApplication.screenAt(QPoint(x, y))
-                    window_screen = QApplication.screenAt(self.popup_window.pos())  # type: ignore[has-type]
+                    window_screen = QApplication.screenAt(self.popup_window.pos())
 
                     if current_screen == window_screen:
-                        if self._should_multi_open_pinned_popup(self.popup_window):  # type: ignore[has-type]
-                            self._keep_as_extra_popup(self.popup_window)  # type: ignore[has-type]
+                        if self._should_multi_open_pinned_popup(self.popup_window):
+                            self._keep_as_extra_popup(self.popup_window)
                             self.popup_window = None
                         else:
                             self.popup_window.hide()

@@ -747,7 +747,7 @@ def _raster_to_png(data: bytes, target: str, source: str = "") -> bool:
             if image.width * image.height > _MAX_IMAGE_PIXELS:
                 logger.warning("图标获取：图片像素过大 source=%s size=%s", source, image.size)
                 return False
-            image = image.convert("RGBA")  # type: ignore[assignment]
+            image = image.convert("RGBA")  # type: ignore[unused-ignore, assignment]
             if min(image.size) <= 2 or not _has_visible_pixels(image):
                 logger.warning(
                     "图标获取：图片不可用或全透明 source=%s size=%s target=%s",
@@ -761,7 +761,7 @@ def _raster_to_png(data: bytes, target: str, source: str = "") -> bool:
                 max(1, int(round(image.width * scale))),
                 max(1, int(round(image.height * scale))),
             )
-            image = image.resize(scaled_size, Image.LANCZOS)  # type: ignore[assignment, attr-defined]
+            image = image.resize(scaled_size, Image.LANCZOS)  # type: ignore[unused-ignore, assignment, attr-defined]
             canvas = Image.new("RGBA", (_CACHE_SIZE, _CACHE_SIZE), (0, 0, 0, 0))
             x = (_CACHE_SIZE - image.width) // 2
             y = (_CACHE_SIZE - image.height) // 2
@@ -817,11 +817,11 @@ def _qt_raster_to_png(data: bytes, target: str, source: str = "") -> bool:
         scaled = image.scaled(
             max(1, int(round(image.width() * scale))),
             max(1, int(round(image.height() * scale))),
-            Qt.KeepAspectRatio,  # type: ignore[attr-defined]
-            Qt.SmoothTransformation,  # type: ignore[attr-defined]
+            Qt.KeepAspectRatio,  # type: ignore[unused-ignore, attr-defined]
+            Qt.SmoothTransformation,  # type: ignore[unused-ignore, attr-defined]
         )
         canvas = QImage(_CACHE_SIZE, _CACHE_SIZE, QImage.Format_ARGB32)
-        canvas.fill(Qt.transparent)  # type: ignore[attr-defined]
+        canvas.fill(Qt.transparent)  # type: ignore[unused-ignore, attr-defined]
         painter = QPainter(canvas)
         painter.drawImage((_CACHE_SIZE - scaled.width()) // 2, (_CACHE_SIZE - scaled.height()) // 2, scaled)
         painter.end()
@@ -882,7 +882,7 @@ def _render_svg_to_png(svg: str, target: str) -> bool:
             return False
 
         image = QImage(_CACHE_SIZE, _CACHE_SIZE, QImage.Format_ARGB32)
-        image.fill(Qt.transparent)  # type: ignore[attr-defined]
+        image.fill(Qt.transparent)  # type: ignore[unused-ignore, attr-defined]
         painter = QPainter(image)
         renderer.render(painter, QRectF(0, 0, _CACHE_SIZE, _CACHE_SIZE))
         painter.end()

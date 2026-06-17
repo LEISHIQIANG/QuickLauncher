@@ -17,7 +17,7 @@ class UpdateConfig:
     auto_install: bool = False
     verify_ssl: bool = True
     require_file_hash: bool = True
-    require_signature: bool = True
+    require_signature: bool = False
     signature_public_keys: tuple[str, ...] = ()
     allow_insecure_update_urls: bool = False
     allowed_download_hosts: tuple[str, ...] = ("github.com", "githubusercontent.com")

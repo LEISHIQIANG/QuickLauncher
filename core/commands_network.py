@@ -204,7 +204,7 @@ def cmd_netdiag(context: CommandContext) -> CommandResult:
         for info in infos:
             ip = info[4][0]
             if ip not in resolved_ips:
-                resolved_ips.append(ip)  # type: ignore[arg-type]
+                resolved_ips.append(str(ip))
         lines.append("DNS: " + (", ".join(resolved_ips[:6]) if resolved_ips else "无结果"))
     except Exception as e:
         lines.append(f"DNS: 解析失败（{e}）")
@@ -391,8 +391,15 @@ def cmd_tls(context: CommandContext) -> CommandResult:
     except Exception as exc:
         logger.debug("解析TLS证书到期时间失败: %s", exc, exc_info=True)
 
-    san_entries = [value for key, value in cert.get("subjectAltName", []) if key.lower() == "dns"]  # type: ignore[str-unpack, union-attr]
-    san_display = ", ".join(san_entries)  # type: ignore[arg-type]
+    san_entries: list[str] = []
+    subject_alt_names: object = cert.get("subjectAltName", []) if isinstance(cert, dict) else []
+    if isinstance(subject_alt_names, list | tuple):
+        for entry in subject_alt_names:
+            if isinstance(entry, tuple | list) and len(entry) >= 2:
+                key, value = entry[0], entry[1]
+                if str(key).lower() == "dns":
+                    san_entries.append(str(value))
+    san_display = ", ".join(san_entries)
 
     lines = [
         f"目标: {display_host or host}:{port}",

@@ -533,7 +533,9 @@ def test_chain_dialog_run_status_updates(qapp):
     # 模拟启动测试，清除状态
     import unittest.mock as mock
 
-    with mock.patch("ui.config_window.chain_dialog.DialogTestTask") as mock_task_class:
+    # ``DialogTestTask`` is now consumed by the test-runner mixin in
+    # ``chain_dialog_test_runner``; patch it where it is used.
+    with mock.patch("ui.config_window.chain_dialog_test_runner.DialogTestTask") as mock_task_class:
         mock_thread = mock.Mock()
         mock_task_class.return_value = mock_thread
         dialog._run_test()

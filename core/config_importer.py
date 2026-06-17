@@ -85,7 +85,7 @@ class ConfigImporter:
                     if hasattr(QIODevice, "OpenModeFlag"):
                         mode = QIODevice.OpenModeFlag.WriteOnly
                     else:
-                        mode = QIODevice.WriteOnly  # type: ignore[attr-defined]
+                        mode = QIODevice.WriteOnly  # type: ignore[unused-ignore, attr-defined]
                     buf.open(mode)
                     ok = image.save(buf, fmt)
                     buf.close()

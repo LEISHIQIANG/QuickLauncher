@@ -97,12 +97,12 @@ def execute_extra_data_processor(processor_id: str, values: dict[str, Any]) -> C
         d = try_json_parse(values.get("json", "{}"))
         return ok_list([value_to_text(v) for v in d.values()] if isinstance(d, dict) else [])
     if processor_id == "dict_merge":
-        a = try_json_parse(values.get("a", "{}"))
-        b = try_json_parse(values.get("b", "{}"))
-        result = dict(a) if isinstance(a, dict) else {}  # type: ignore[assignment]
-        if isinstance(b, dict):
-            result.update(b)  # type: ignore[attr-defined]
-        return ok(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        raw_a = try_json_parse(values.get("a", "{}"))
+        raw_b = try_json_parse(values.get("b", "{}"))
+        merged: dict[str, Any] = dict(raw_a) if isinstance(raw_a, dict) else {}
+        if isinstance(raw_b, dict):
+            merged.update(raw_b)
+        return ok(json.dumps(merged, ensure_ascii=False, separators=(",", ":")))
     if processor_id == "dict_get":
         d = try_json_parse(values.get("json", "{}"))
         k = text_values.get("key", "")

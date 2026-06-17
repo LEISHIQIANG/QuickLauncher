@@ -34,7 +34,8 @@ class TestUpdateConfig:
         assert "api.github.com/repos/LEISHIQIANG/QuickLauncher/releases/latest" in cfg.check_url
         assert cfg.check_interval_hours == 24
         assert cfg.verify_ssl is True
-        assert cfg.require_signature is True
+        assert cfg.require_signature is False
+        assert cfg.signature_public_keys == ()
 
     def test_custom(self):
         cfg = UpdateConfig(update_source="api", check_url="http://localhost", check_interval_hours=6)

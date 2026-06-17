@@ -95,7 +95,7 @@ def _set_clipboard(context: ActionExecutionContext, text: str) -> None:
         return
     from qt_compat import QApplication
 
-    QApplication.clipboard().setText(text)  # type: ignore[union-attr]
+    QApplication.clipboard().setText(text)  # type: ignore[unused-ignore, union-attr]
 
 
 def _save_text(

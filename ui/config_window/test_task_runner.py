@@ -27,7 +27,7 @@ class DialogTestTask(QObject):
         owner: object,
         parent: object | None = None,
     ) -> None:
-        super().__init__(parent)  # type: ignore[arg-type]
+        super().__init__(parent)  # type: ignore[unused-ignore, arg-type]
         self._name = name
         self._callback = callback
         self._owner = f"{owner.__class__.__module__}.{owner.__class__.__qualname__}:{id(owner)}"

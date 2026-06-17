@@ -98,47 +98,90 @@ class CommandExecutionService:
     shutdown.
     """
 
-    def __init__(self, result_store: CommandResultStore | None = None):
+    _shared_pool_lock = threading.Lock()
+    _shared_pool: concurrent.futures.ThreadPoolExecutor | None = None
+
+    @classmethod
+    def _get_shared_pool(cls) -> concurrent.futures.ThreadPoolExecutor:
+        with cls._shared_pool_lock:
+            if cls._shared_pool is None or bool(getattr(cls._shared_pool, "_shutdown", False)):
+                cls._shared_pool = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=_MAX_EXECUTION_WORKERS,
+                    thread_name_prefix="CmdExecPool",
+                )
+            return cls._shared_pool
+
+    @classmethod
+    def shutdown_shared_executor(cls, timeout: float = 5.0) -> None:
+        """Shut down the process-wide command execution pool."""
+        with cls._shared_pool_lock:
+            pool = cls._shared_pool
+            cls._shared_pool = None
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def __init__(
+        self,
+        result_store: CommandResultStore | None = None,
+        executor: concurrent.futures.ThreadPoolExecutor | None = None,
+    ):
         self.result_store = result_store
-        self._pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=_MAX_EXECUTION_WORKERS,
-            thread_name_prefix="CmdExecPool",
-        )
+        self._pool = executor or type(self)._get_shared_pool()
+        self._owns_pool = executor is not None
         self._active_futures: dict[str, concurrent.futures.Future] = {}
+        self._active_handles: dict[str, CommandExecutionHandle] = {}
         self._futures_lock = threading.Lock()
 
     # ── internal helpers ──────────────────────────────────────────
 
     def _submit_worker(
-        self, worker: Callable[[], None], name_prefix: str, request_id: str
+        self,
+        worker: Callable[[], None],
+        name_prefix: str,
+        request_id: str,
+        handle: CommandExecutionHandle | None = None,
     ) -> concurrent.futures.Future:
         """Submit *worker* to the shared pool and track the future."""
         future = self._pool.submit(worker)
         with self._futures_lock:
             self._active_futures[request_id] = future
+            if handle is not None:
+                self._active_handles[request_id] = handle
 
         def _cleanup(fut: concurrent.futures.Future, rid: str = request_id) -> None:
             with self._futures_lock:
                 self._active_futures.pop(rid, None)
+                self._active_handles.pop(rid, None)
 
         future.add_done_callback(_cleanup)
         return future
 
-    def shutdown(self, timeout: float = 5.0) -> None:
+    def shutdown(self, timeout: float = 5.0, *, shutdown_executor: bool = False) -> None:
         """Gracefully shut down the execution pool.
 
-        Waits up to *timeout* seconds for active tasks to finish, then logs
-        any remaining unfinished futures.
+        Waits up to *timeout* seconds for this service's active tasks, cancels
+        their callbacks cooperatively, and optionally closes the underlying
+        executor when this service owns it.
         """
         with self._futures_lock:
+            handles = list(self._active_handles.values())
             futures = list(self._active_futures.values())
+        for handle in handles:
+            handle.cancel()
         if futures:
             concurrent.futures.wait(futures, timeout=max(0.0, float(timeout or 0.0)))
         with self._futures_lock:
             pending = [rid for rid, fut in self._active_futures.items() if not fut.done()]
         if pending:
             logger.warning("CommandExecutionService shutdown: %d tasks still pending: %s", len(pending), pending)
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        for future in futures:
+            if not future.done():
+                future.cancel()
+        if shutdown_executor or self._owns_pool:
+            if self._owns_pool:
+                self._pool.shutdown(wait=False, cancel_futures=True)
+            else:
+                type(self).shutdown_shared_executor(timeout=timeout)
 
     @property
     def active_count(self) -> int:
@@ -209,7 +252,7 @@ class CommandExecutionService:
                     except Exception:
                         logger.debug("on_finished fallback callback failed", exc_info=True)
 
-        future = self._submit_worker(_worker, "CmdExec", handle.request_id)
+        future = self._submit_worker(_worker, "CmdExec", handle.request_id, handle)
         handle._bind_future(future)
         return handle
 
@@ -231,7 +274,7 @@ class CommandExecutionService:
                 except Exception:
                     logger.debug("run_shortcut_capture on_finished callback failed", exc_info=True)
 
-        future = self._submit_worker(_worker, "ShortcutCapture", handle.request_id)
+        future = self._submit_worker(_worker, "ShortcutCapture", handle.request_id, handle)
         handle._bind_future(future)
         return handle
 
@@ -253,7 +296,7 @@ class CommandExecutionService:
                 except Exception:
                     logger.debug("run_shortcut_chain on_finished callback failed", exc_info=True)
 
-        future = self._submit_worker(_worker, "ShortcutChain", handle.request_id)
+        future = self._submit_worker(_worker, "ShortcutChain", handle.request_id, handle)
         handle._bind_future(future)
         return handle
 
@@ -276,7 +319,7 @@ class CommandExecutionService:
                 except Exception:
                     logger.debug("run_shortcut_command on_finished callback failed", exc_info=True)
 
-        future = self._submit_worker(_worker, "ShortcutCommand", handle.request_id)
+        future = self._submit_worker(_worker, "ShortcutCommand", handle.request_id, handle)
         handle._bind_future(future)
         return handle
 

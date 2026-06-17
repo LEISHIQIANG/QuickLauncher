@@ -46,7 +46,7 @@ def get_project_cache_stats(data_manager=None) -> dict:
 def _get_install_dir(data_manager) -> Path:
     if data_manager is not None and getattr(data_manager, "install_dir", None):
         return Path(data_manager.install_dir).resolve(strict=False)
-    return app_root()
+    return Path(app_root())
 
 
 def _collect_protected_paths(data) -> set[str]:

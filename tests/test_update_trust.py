@@ -17,8 +17,11 @@ def test_verify_update_signature_ed25519_rfc8032_vector():
     assert verify_update_signature(b"tampered", RFC8032_EMPTY_SIGNATURE, (RFC8032_PUBLIC_KEY,)) is False
 
 
-def test_update_config_requires_signature_by_default():
-    assert UpdateConfig().require_signature is True
+def test_update_config_does_not_require_signature_without_builtin_public_keys_by_default():
+    cfg = UpdateConfig()
+
+    assert cfg.require_signature is False
+    assert cfg.signature_public_keys == ()
 
 
 def test_verify_update_signature_requires_public_keys():

@@ -58,6 +58,7 @@ from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.smooth_scroll import SmoothScrollArea
 from ui.utils.ui_scale import font_px, scale_qss, sp
+from ui.view_models.icon_grid_view_model import IconGridViewModel
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
@@ -696,7 +697,7 @@ class IconWidget(QFrame):
 
     def _placeholder_icon_cache_key(self):
         item_type = getattr(self.shortcut, "type", None)
-        first_char = self.shortcut.name[0] if getattr(self.shortcut, "name", "") else "?"
+        name = getattr(self.shortcut, "name", "") or ""
         if item_type in {
             ShortcutType.HOTKEY,
             ShortcutType.URL,
@@ -705,33 +706,16 @@ class IconWidget(QFrame):
             ShortcutType.CHAIN,
             ShortcutType.MACRO,
         }:
-            first_char = ""
-        return (item_type, int(self.icon_size), first_char)
+            name = ""
+        dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
+        return (item_type, int(self.icon_size), name, self.theme, float(dpr))
 
     def _create_default_icon(self) -> QPixmap:
-        size = self.icon_size
-        pixmap = QPixmap(size, size)
-        pixmap.fill(QtCompat.transparent)
+        from ui.utils.default_icon_renderer import render_default_icon
 
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-        painter.setBrush(QColor(135, 206, 250))
-        painter.setPen(QtCompat.NoPen)
-        margin = size // 8
-        radius = size // 6
-        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
-
-        first_char = self.shortcut.name[0] if self.shortcut.name else "?"
-        painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI")
-        font.setPixelSize(max(1, int(size * 0.4)))
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
-        painter.end()
-
-        return pixmap
+        name = getattr(self.shortcut, "name", "") or ""
+        dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
+        return render_default_icon(name, self.icon_size, self.theme, dpr=dpr)
 
     def _create_hotkey_icon(self) -> QPixmap:
         size = self.icon_size
@@ -1071,7 +1055,7 @@ class IconGrid(QWidget):
 
     shortcut_edit_requested = pyqtSignal(ShortcutItem)
     shortcut_delete_requested = pyqtSignal(ShortcutItem)
-    shortcut_added = pyqtSignal()  # 新增：拖放添加图标后发送
+    shortcut_added = pyqtSignal()  # 拖拽到桌面创建快捷方式
     add_file_requested = pyqtSignal()
     add_hotkey_requested = pyqtSignal()
     add_url_requested = pyqtSignal()
@@ -1097,8 +1081,23 @@ class IconGrid(QWidget):
         self._favicon_fetch_thread = None
         self._favicon_fetch_worker = None
 
+        # P1-06 Stage 3: instantiate the business-state view-model.
+        # The widget keeps its own ``icon_widgets`` / selected id set
+        # for the QWidget layer; the view-model is the external API
+        # for future presenters that need to read or mutate icon
+        # state without going through the widget.
+
+        self.view_model = IconGridViewModel(self)
+        # Forward the view-model signals so existing listeners keep
+        # working.
+        self.view_model.selection_changed.connect(self._on_view_model_selection_changed)
+
         self._setup_ui()
         self.setAcceptDrops(True)
+
+    def _on_view_model_selection_changed(self, _selected: object) -> None:
+        """Forward the view-model selection to the widget's id set."""
+        self.selected_shortcut_ids = set(self.view_model.get_selection())
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)

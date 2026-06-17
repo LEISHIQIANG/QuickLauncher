@@ -61,15 +61,17 @@ logger = logging.getLogger(__name__)
 
 ChainProcessorHandler = Callable[[dict[str, Any]], CommandResult | dict[str, Any] | str]
 
-TEXT_OUTPUTS = ["output", "length", "empty"]
-BOOL_OUTPUTS = ["output", "not"]
-LIST_OUTPUTS = ["output", "count", "first", "last", "items_json"]
-NUMBER_OUTPUTS = ["output"]
-FILE_OUTPUTS = ["output", "path", "folder", "filename", "exists"]
-FOLDER_OUTPUTS = ["output", "path", "exists"]
-JSON_OUTPUTS = ["output"]
-ANY_OUTPUTS = [ChainPortDefinition("output", label="输出", kind="any", description="任意类型输出。", role="primary")]
-HTTP_OUTPUTS = ["output", "status_code", "headers", "length", "empty"]
+from .port_kind_sets import (  # noqa: E402,F401 - re-export for backwards compatibility
+    ANY_OUTPUTS,
+    BOOL_OUTPUTS,
+    FILE_OUTPUTS,
+    FOLDER_OUTPUTS,
+    HTTP_OUTPUTS,
+    JSON_OUTPUTS,
+    LIST_OUTPUTS,
+    NUMBER_OUTPUTS,
+    TEXT_OUTPUTS,
+)
 
 DEFAULT_PYTHON_CELL_SOURCE = """TITLE = "脚本电池"
 INPUTS = ["input"]
@@ -1710,8 +1712,8 @@ def _img_resize(values: dict[str, str]) -> str:
 
     img = Image.open(filepath)
     resampling = getattr(Image, "Resampling", None)
-    filter_type = resampling.LANCZOS if resampling else Image.BICUBIC  # type: ignore[attr-defined]
-    img = img.resize((w, h), filter_type)  # type: ignore[assignment]
+    filter_type = resampling.LANCZOS if resampling else Image.BICUBIC  # type: ignore[unused-ignore, attr-defined]
+    img = img.resize((w, h), filter_type)  # type: ignore[unused-ignore, assignment]
     img.save(filepath)
     return filepath
 
@@ -1765,7 +1767,7 @@ def _img_crop(values: dict[str, str]) -> str:
     from PIL import Image
 
     img = Image.open(filepath)
-    img = img.crop((x, y, x + w, y + h))  # type: ignore[assignment]
+    img = img.crop((x, y, x + w, y + h))  # type: ignore[unused-ignore, assignment]
     img.save(filepath)
     return filepath
 
@@ -1776,7 +1778,7 @@ def _img_rotate(values: dict[str, str]) -> str:
     from PIL import Image
 
     img = Image.open(filepath)
-    img = img.rotate(angle, expand=True)  # type: ignore[assignment]
+    img = img.rotate(angle, expand=True)  # type: ignore[unused-ignore, assignment]
     img.save(filepath)
     return filepath
 

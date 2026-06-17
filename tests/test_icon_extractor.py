@@ -182,3 +182,38 @@ def test_custom_image_icon_is_loaded_as_icon_asset(tmp_path, qapp):
     assert not pixmap.isNull()
     assert (pixmap.width(), pixmap.height()) == (26, 26)
     assert list(IconExtractor._cache.keys()) == [f"from_file:{icon_path}|26|0"]
+
+
+def test_smart_default_icon_abbreviations_and_palette(qapp):
+    from core.icon_extractor import IconExtractor, _derive_default_icon_text, _pick_default_accent
+
+    # Smart abbreviation test cases
+    assert _derive_default_icon_text("Visual Studio Code") == "VS"
+    assert _derive_default_icon_text("quick-launcher") == "QL"
+    assert _derive_default_icon_text("QuickLauncher") == "QL"
+    assert _derive_default_icon_text("VSCode") == "VS"
+    assert _derive_default_icon_text("python") == "PY"
+    assert _derive_default_icon_text("Git") == "GI"
+    assert _derive_default_icon_text("微信") == "微"
+    assert _derive_default_icon_text("Excel 2016") == "E2"
+    assert _derive_default_icon_text("A") == "A"
+    assert _derive_default_icon_text("test_run") == "TR"
+
+    # Palette test cases (must use desaturated colors)
+    accent = _pick_default_accent("Visual Studio Code")
+    assert isinstance(accent, tuple)
+    assert len(accent) == 3
+
+    # Default icon rendering
+    pixmap = IconExtractor._create_default_icon(32, "VSCode")
+    assert pixmap is not None
+    assert not pixmap.isNull()
+    assert (pixmap.width(), pixmap.height()) == (32, 32)
+
+    # Default icon rendering with High-DPI (DPR = 2.0)
+    pixmap_hidpi = IconExtractor._create_default_icon(32, "VSCode", dpr=2.0)
+    assert pixmap_hidpi is not None
+    assert not pixmap_hidpi.isNull()
+    assert pixmap_hidpi.width() == 64
+    assert pixmap_hidpi.height() == 64
+    assert pixmap_hidpi.devicePixelRatio() == 2.0

@@ -710,6 +710,10 @@ class CommandPanelWindow(ThemedToolWindow):
         self._closing_panel = True
         self._hide_command_suggestions()
         self._disconnect_app_focus_changed()
+        try:
+            self.execution_service.shutdown(timeout=0.2)
+        except Exception as exc:
+            logger.debug("关闭命令面板执行服务失败: %s", exc, exc_info=True)
         return super().closeEvent(event)
 
     def _close_panel(self):
@@ -734,8 +738,8 @@ class CommandPanelWindow(ThemedToolWindow):
             self.command_input.setReadOnly(False)
         self.command_input.setEnabled(True)
         self.setFocusProxy(self.command_input)
-        self.command_input.setFocusPolicy(Qt.StrongFocus)  # type: ignore[attr-defined]
-        self.command_input.setFocus(Qt.OtherFocusReason)  # type: ignore[attr-defined]
+        self.command_input.setFocusPolicy(Qt.StrongFocus)  # type: ignore[unused-ignore, attr-defined]
+        self.command_input.setFocus(Qt.OtherFocusReason)  # type: ignore[unused-ignore, attr-defined]
         if move_to_end:
             self.command_input.setCursorPosition(len(self.command_input.text()))
         self.command_input.update()

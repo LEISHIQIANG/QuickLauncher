@@ -100,7 +100,7 @@ class PopupSearchMixin:
             cursor = cursor + len(new_text)
             anchor = None
 
-        self._set_search_query(query, cursor_pos=cursor, selection_anchor=anchor)  # type: ignore[arg-type]
+        self._set_search_query(query, cursor_pos=cursor, selection_anchor=anchor)
 
     def _clamp_search_pos(self, pos: int) -> int:
         try:
@@ -157,7 +157,7 @@ class PopupSearchMixin:
         )
         cached = self.__dict__.get("_search_metrics_cache")
         if cached is not None and cached[0] == cache_key:
-            return cached[1]  # type: ignore[no-any-return]
+            return cached[1]  # type: ignore[unused-ignore, no-any-return]
         metrics = QFontMetrics(font)
         self._search_metrics_cache = (cache_key, metrics)
         self.__dict__.pop("_search_text_width_cache", None)

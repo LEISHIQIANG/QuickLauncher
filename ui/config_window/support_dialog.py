@@ -31,7 +31,7 @@ def _rounded_pixmap(source: QPixmap, radius: int = 20) -> QPixmap:
     radius = sp(radius)
     size = source.size()
     result = QPixmap(size)
-    result.fill(Qt.transparent)  # type: ignore[attr-defined]
+    result.fill(Qt.transparent)  # type: ignore[unused-ignore, attr-defined]
 
     path = QPainterPath()
     path.addRoundedRect(QRectF(0, 0, size.width(), size.height()), radius, radius)
@@ -108,7 +108,7 @@ class SupportDialog(QDialog):
 
     def _next_anim_generation(self) -> int:
         self._anim_generation = int(getattr(self, "_anim_generation", 0) or 0) + 1
-        return self._anim_generation  # type: ignore[no-any-return]
+        return int(self._anim_generation)
 
     def _is_anim_generation_current(self, generation: int) -> bool:
         return generation == int(getattr(self, "_anim_generation", -1) or -1)

@@ -434,6 +434,7 @@ class QtCompat:
     ScrollBarAlwaysOff = Qt.ScrollBarAlwaysOff  # type: ignore[attr-defined]
     ScrollBarAlwaysOn = Qt.ScrollBarAlwaysOn  # type: ignore[attr-defined]
     ScrollBarAsNeeded = Qt.ScrollBarAsNeeded  # type: ignore[attr-defined]
+    RichText = Qt.RichText  # type: ignore[attr-defined]
 
     Trigger = QSystemTrayIcon.Trigger  # type: ignore[attr-defined]
     DoubleClick = QSystemTrayIcon.DoubleClick  # type: ignore[attr-defined]

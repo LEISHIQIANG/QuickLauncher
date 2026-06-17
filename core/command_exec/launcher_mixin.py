@@ -115,7 +115,7 @@ class CommandLauncherMixin:
 
     @staticmethod
     def _is_packaged_runtime() -> bool:
-        return is_packaged_runtime()
+        return bool(is_packaged_runtime())
 
     @staticmethod
     def _app_install_dir() -> str:

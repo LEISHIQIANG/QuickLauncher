@@ -33,8 +33,11 @@ from ui.launcher_popup.popup_icons import PopupIconMixin
 from ui.launcher_popup.popup_item_execution import PopupItemExecutionMixin
 from ui.launcher_popup.popup_renderer import PopupRendererMixin
 from ui.launcher_popup.popup_search import PopupSearchMixin
+from ui.launcher_popup.popup_window_animation import PopupWindowAnimationMixin
 from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowEffectMixin
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
+from ui.launcher_popup.popup_window_hwnd import PopupWindowHwndMixin
+from ui.launcher_popup.popup_window_lifecycle import PopupWindowLifecycleMixin
 from ui.utils.interruptible_animation import is_animation_running, set_precise_timer, stop_named_animations
 from ui.utils.ui_scale import sp, spf
 from ui.utils.window_effect import WindowEffect
@@ -59,6 +62,9 @@ except ImportError:
 
 
 class LauncherPopup(
+    PopupWindowLifecycleMixin,
+    PopupWindowAnimationMixin,
+    PopupWindowHwndMixin,
     PopupEventsMixin,
     PopupDataRefreshMixin,
     PopupCommandResultMixin,
@@ -203,7 +209,7 @@ class LauncherPopup(
         self._sync_worker = None
         self._folder_sync_refresh_seq = 0
         self._pending_last_page_index = None  # type: ignore[assignment]
-        self._last_page_save_timer = None  # type: ignore[assignment]
+        self._last_page_save_timer = None  # type: ignore[unused-ignore, assignment]
         self._label_font = QFont()
 
         # ===== 选中文件状态 =====
@@ -257,7 +263,7 @@ class LauncherPopup(
         # ===== 双击检测状态结束 =====
 
         # 背景缓存
-        self._bg_cache = None  # type: ignore[assignment]
+        self._bg_cache = None  # type: ignore[unused-ignore, assignment]
         self._last_bg_params = None
         self._cached_bg_path = None
         self._win10_fallback_bg = None  # Win10回退背景，避免重新显示时闪烁
@@ -355,79 +361,6 @@ class LauncherPopup(
 
     revealProgress = pyqtProperty(float, getRevealProgress, setRevealProgress)
 
-    def _next_lifecycle_generation(self) -> int:
-        self._lifecycle_generation = int(getattr(self, "_lifecycle_generation", 0) or 0) + 1
-        return self._lifecycle_generation
-
-    def _next_visibility_animation_generation(self) -> int:
-        self._visibility_animation_generation = int(getattr(self, "_visibility_animation_generation", 0) or 0) + 1
-        return self._visibility_animation_generation
-
-    def _is_visibility_animation_current(self, generation: int) -> bool:
-        return generation == int(getattr(self, "_visibility_animation_generation", -1) or -1)
-
-    def _run_if_lifecycle_current(self, generation: int, callback, *args) -> bool:
-        if generation != int(getattr(self, "_lifecycle_generation", -1) or -1):
-            return False
-        if bool(getattr(self, "_closing", False)):
-            return False
-        try:
-            callback(*args)
-            return True
-        except Exception as exc:
-            logger.debug("discarded popup lifecycle callback failed: %s", exc)
-            return False
-
-    def _defer_lifecycle_callback(self, delay_ms: int, callback, *args, generation: int | None = None) -> None:
-        token = int(self._lifecycle_generation if generation is None else generation)
-        QTimer.singleShot(
-            int(delay_ms),
-            lambda token=token, callback=callback, args=args: self._run_if_lifecycle_current(token, callback, *args),  # type: ignore[arg-type]
-        )
-
-    def _stop_lifecycle_timers(self) -> None:
-        for timer_name in (
-            "_auto_close_timer",
-            "_indicator_timer",
-            "_search_cursor_timer",
-            "_search_anim_timer",
-            "_preload_batch_timer",
-            "_bg_load_timer",
-        ):
-            timer = self.__dict__.get(timer_name)
-            if timer is None:
-                continue
-            try:
-                timer.stop()
-            except Exception as exc:
-                logger.debug("停止定时器失败: %s", exc, exc_info=True)
-
-    def _start_auto_close_timer_if_visible(self) -> None:
-        if self.isVisible() and not self._auto_close_timer.isActive():
-            self._auto_close_timer.start()
-
-    def prepare_show_animation_state(self):
-        """Set a deterministic hidden animation state before the native window is shown."""
-        self._is_hiding = False
-
-        stop_named_animations(self, "anim_group", "hide_anim_group")
-
-        self._reveal_progress = 0.0
-        self.setWindowOpacity(0.0)
-        self.update()
-
-    def show(self):
-        """Show with a stable fade-in start state."""
-        if not self.isVisible():
-            self.prepare_show_animation_state()
-        elif getattr(self, "_is_hiding", False):
-            self._is_hiding = False
-            stop_named_animations(self, "hide_anim_group")
-            self._start_show_animation()
-            self.raise_()
-            return
-        super().show()
-
     def showEvent(self, event):
         self._closing = False
         generation = self._next_lifecycle_generation()
@@ -468,88 +401,6 @@ class LauncherPopup(
         # 注册 HWND：仅排除 LauncherPopup 自身，避免配置窗口等 QuickLauncher
         # 窗口被错误地当作"自身窗口"而无法作为焦点恢复目标保存。
         self._register_popup_hwnd()
-
-    def _start_show_animation(self):
-        """窗口出现动画 - 从中心向外扩散"""
-        stop_named_animations(self, "anim_group", "hide_anim_group")
-        generation = self._next_visibility_animation_generation()
-        start_opacity = max(0.0, min(1.0, float(self.windowOpacity())))
-        start_reveal = max(0.0, min(1.0, float(getattr(self, "_reveal_progress", 0.0))))
-
-        # 透明度动画
-        self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
-        self.opacity_anim.setDuration(100)
-        self.opacity_anim.setStartValue(start_opacity)
-        self.opacity_anim.setEndValue(1.0)
-        self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
-
-        # 扩散进度动画
-        self.reveal_anim = QtCompat.QPropertyAnimation(self, b"revealProgress")
-        self.reveal_anim.setDuration(100)
-        self.reveal_anim.setStartValue(start_reveal)
-        self.reveal_anim.setEndValue(1.0)
-        self.reveal_anim.setEasingCurve(QtCompat.OutCubic)
-
-        self.anim_group = QtCompat.QParallelAnimationGroup()
-        self.anim_group.addAnimation(self.opacity_anim)
-        self.anim_group.addAnimation(self.reveal_anim)
-        self.anim_group.finished.connect(lambda generation=generation: self._finish_show_animation(generation))
-        self.anim_group.start()
-
-    def _finish_show_animation(self, generation: int | None = None):
-        if generation is not None and not self._is_visibility_animation_current(generation):
-            return
-        if getattr(self, "_is_hiding", False):
-            return
-        self._reveal_progress = 1.0
-        self.setWindowOpacity(1.0)
-        self.update()
-
-    def hide(self):
-        """隐藏窗口（带动画）"""
-        if hasattr(self, "_is_hiding") and self._is_hiding:
-            return
-        self._is_hiding = True
-
-        # 停止可能正在运行的显示动画
-        if is_animation_running(getattr(self, "anim_group", None)):
-            self.anim_group.stop()
-
-        self._start_hide_animation()
-
-    def _start_hide_animation(self):
-        """窗口消失动画 - 从外向中心收缩"""
-        stop_named_animations(self, "hide_anim_group")
-        generation = self._next_visibility_animation_generation()
-        # 透明度动画
-        self.hide_opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
-        self.hide_opacity_anim.setDuration(100)
-        self.hide_opacity_anim.setStartValue(self.windowOpacity())
-        self.hide_opacity_anim.setEndValue(0.0)
-        self.hide_opacity_anim.setEasingCurve(QtCompat.OutCubic)
-
-        # 收缩进度动画
-        self.hide_reveal_anim = QtCompat.QPropertyAnimation(self, b"revealProgress")
-        self.hide_reveal_anim.setDuration(100)
-        self.hide_reveal_anim.setStartValue(self._reveal_progress)
-        self.hide_reveal_anim.setEndValue(0.0)
-        self.hide_reveal_anim.setEasingCurve(QtCompat.OutCubic)
-
-        self.hide_anim_group = QtCompat.QParallelAnimationGroup()
-        self.hide_anim_group.addAnimation(self.hide_opacity_anim)
-        self.hide_anim_group.addAnimation(self.hide_reveal_anim)
-        self.hide_anim_group.finished.connect(lambda generation=generation: self._on_hide_finished(generation))
-        self.hide_anim_group.start()
-
-    def _on_hide_finished(self, generation: int | None = None):
-        """动画结束后真正隐藏窗口"""
-        if generation is not None and not self._is_visibility_animation_current(generation):
-            return
-        if not getattr(self, "_is_hiding", False):
-            return
-        self._is_hiding = False
-        self._reveal_progress = 0.0
-        super().hide()
 
     def hideEvent(self, event):
         generation = self._next_lifecycle_generation()
@@ -599,62 +450,16 @@ class LauncherPopup(
             self.stop_background_threads()
         except Exception as exc:
             logger.debug("停止弹窗后台线程失败: %s", exc, exc_info=True)
+        try:
+            shutdown_service = getattr(self, "_shutdown_popup_execution_service", None)
+            if callable(shutdown_service):
+                shutdown_service()
+        except Exception as exc:
+            logger.debug("关闭弹窗执行服务失败: %s", exc, exc_info=True)
         super().closeEvent(event)
 
         # 注销 HWND：避免影响下一次 save_foreground_window 的判断
         self._unregister_popup_hwnd()
-
-    def _restore_focus_safe(self):
-        """安全地恢复之前的前台窗口焦点"""
-        try:
-            if HAS_EXECUTOR:
-                ShortcutExecutor.restore_foreground_window()
-        except Exception as e:
-            logger.debug(f"恢复焦点失败: {e}")
-
-    def _current_popup_hwnd(self) -> int:
-        """获取当前弹窗的 Win32 HWND（若尚未创建则返回 0）"""
-        try:
-            if not HAS_EXECUTOR:
-                return 0
-            return int(self.winId() or 0)
-        except Exception:
-            return 0
-
-    def _register_popup_hwnd(self) -> None:
-        """在 showEvent 中调用：将自身 HWND 注册到 ShortcutExecutor 的弹窗注册表。"""
-        if not HAS_EXECUTOR:
-            return
-        try:
-            hwnd = self._current_popup_hwnd()
-            if hwnd:
-                ShortcutExecutor.register_popup_hwnd(hwnd)
-        except Exception as exc:
-            logger.debug("注册弹窗HWND失败: %s", exc, exc_info=True)
-
-    def _unregister_popup_hwnd(self) -> None:
-        """在 hideEvent/closeEvent 中调用：从注册表中移除自身 HWND。"""
-        if not HAS_EXECUTOR:
-            return
-        try:
-            hwnd = self._current_popup_hwnd()
-            if hwnd:
-                ShortcutExecutor.unregister_popup_hwnd(hwnd)
-        except Exception as exc:
-            logger.debug("取消注册弹窗HWND失败: %s", exc, exc_info=True)
-
-    def _release_residual_modifiers(self):
-        """释放残留的修饰键
-
-        v2.6.6.0 新增：
-        弹窗显示时调用，释放可能由全局热键遗留的修饰键状态
-        """
-        try:
-            if HAS_EXECUTOR:
-                ShortcutExecutor._pre_execution_cleanup()
-                logger.debug("弹窗显示：已清理残留修饰键")
-        except Exception as e:
-            logger.debug(f"释放残留修饰键失败: {e}")
 
     def refresh_data(
         self,
@@ -731,7 +536,7 @@ class LauncherPopup(
             self._all_page_icons_preloaded = False
             self._first_show_ready = False
             self._cached_bg_path = None
-            self._bg_cache = None  # type: ignore[assignment]
+            self._bg_cache = None  # type: ignore[unused-ignore, assignment]
 
         # 记录之前的图标数量用于比较
         prev_item_count = 0

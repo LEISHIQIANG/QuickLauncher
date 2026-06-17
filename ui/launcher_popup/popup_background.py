@@ -188,17 +188,17 @@ class PopupBackgroundMixin:
         """获取缓存的背景图片"""
         # 优先使用 bg_mode 判断
         if getattr(self.settings, "bg_mode", "theme") != "image":  # type: ignore[attr-defined]
-            return None  # type: ignore[return-value]
+            return None  # type: ignore[unused-ignore, return-value]
 
         # 兼容旧字段 custom_bg_path
         path = self.settings.custom_bg_path  # type: ignore[attr-defined]
         if not path:
-            return None  # type: ignore[return-value]
+            return None  # type: ignore[unused-ignore, return-value]
         try:
             if not os.path.exists(path):
-                return None  # type: ignore[return-value]
+                return None  # type: ignore[unused-ignore, return-value]
         except Exception:
-            return None  # type: ignore[return-value]
+            return None  # type: ignore[unused-ignore, return-value]
 
         blur_radius = self.settings.bg_blur_radius  # type: ignore[attr-defined]
 
@@ -268,11 +268,11 @@ class PopupBackgroundMixin:
             from ui.utils.window_effect import is_win10
 
             if is_win10() and hasattr(self, "_win10_fallback_bg") and self._win10_fallback_bg:
-                return self._win10_fallback_bg  # type: ignore[no-any-return]
+                return self._win10_fallback_bg  # type: ignore[unused-ignore, no-any-return]
         except Exception as exc:
             logger.debug("获取 Win10 背景回退缓存失败: %s", exc, exc_info=True)
 
-        return None  # type: ignore[return-value]
+        return None  # type: ignore[unused-ignore, return-value]
 
     def _schedule_bg_load(self):
         try:

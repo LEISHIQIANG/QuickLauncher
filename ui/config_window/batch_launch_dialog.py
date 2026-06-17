@@ -127,7 +127,7 @@ def _load_shortcut_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
                 fallback_to_default=False,
             )
         if pixmap and not pixmap.isNull():
-            return pixmap  # type: ignore[no-any-return]
+            return pixmap  # type: ignore[unused-ignore, no-any-return]
     except Exception:
         logger.debug(
             "批量启动图标加载失败: id=%s name=%r icon_path=%r target_path=%r",
@@ -230,7 +230,7 @@ class BatchLaunchCard(QFrame):
         if pixmap and not pixmap.isNull():
             self.icon_label.setPixmap(
                 pixmap.scaled(
-                    sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation  # type: ignore[attr-defined]
+                    sp(self.ICON_PIXMAP_SIZE), sp(self.ICON_PIXMAP_SIZE), Qt.KeepAspectRatio, Qt.SmoothTransformation  # type: ignore[unused-ignore, attr-defined]
                 )
             )
 
@@ -290,7 +290,7 @@ class CompactIconWidget(QFrame):
 
     def __init__(self, shortcut: ShortcutItem, theme: str = "dark", parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Widget)  # type: ignore[attr-defined]
+        self.setWindowFlags(Qt.Widget)  # type: ignore[unused-ignore, attr-defined]
         self.shortcut = shortcut
         self.theme = theme
         self._checked = False
@@ -379,7 +379,7 @@ class CompactIconWidget(QFrame):
 
     def set_icon(self, pixmap: QPixmap):
         if pixmap and not pixmap.isNull():
-            self.icon_label.setPixmap(pixmap.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
+            self.icon_label.setPixmap(pixmap.scaled(sp(24), sp(24), Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[unused-ignore, attr-defined]
 
     def set_checked(self, checked: bool):
         self._checked = bool(checked)

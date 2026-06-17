@@ -109,7 +109,7 @@ def render_text_like(
     panel.text.setFont(font)
     panel.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
     panel.text.setWordWrapMode(QTextOption.WrapAnywhere)
-    panel.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
+    panel.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[unused-ignore, attr-defined]
     _set_result_text_preserving_scroll(panel, message, live_update=bool(payload.get("running")))
     panel._rendered_text = message
 
@@ -249,7 +249,7 @@ def render_qr(
         pixmap = QPixmap(str(image_path))
         if not pixmap.isNull():
             panel.qr_label.setPixmap(
-                pixmap.scaled(QSize(sp(220), sp(220)), Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore[attr-defined]
+                pixmap.scaled(QSize(sp(220), sp(220)), Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore[unused-ignore, attr-defined]
             )
             panel.qr_label.setText("")
             panel._rendered_text = message

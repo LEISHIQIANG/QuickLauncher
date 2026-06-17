@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.6.3.3] - 2026-06-17
+
+### Added
+
+- 新增命令执行分层模块（capture / cleanup / preflight）和对应测试，降低快捷命令执行主路径复杂度。
+- 新增配置窗口、启动弹窗、托盘、样式构建器、平台后端和 view model 的拆分模块，继续推进大文件模块化。
+- 新增 hooks DLL 检查脚本与测试，补齐原生钩子运行时校验覆盖。
+
+### Changed
+
+- 优化图标提取、命令执行、链式处理器注册、弹窗执行和更新 UI 的实现细节与测试覆盖。
+- 主窗口、链式对话框、命令对话框、文件夹面板和托盘入口改为更薄的委派结构，保持现有用户行为不变。
+
+### Fixed
+
+- 修复多处网络 URL 安全校验、插件管理、弹窗图标、多开弹窗、快捷命令执行和更新信任校验相关边界测试。
+- 修复部分 UI 拆分后的状态同步、关闭动画、风险提示和模块栏绑定路径。
+
 ## [1.6.3.2] - 2026-06-16
 
 ### Added

@@ -6,9 +6,8 @@ import os
 from core import ShortcutItem, ShortcutType
 from core.command_icon_catalog import builtin_command_id_from_icon_path
 from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
-from qt_compat import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QRectF, Qt, QtCompat
+from qt_compat import QPixmap, Qt
 from ui.command_icon_renderer import render_builtin_command_icon_path
-from ui.utils.ui_scale import font_px
 
 try:
     from core import IconExtractor
@@ -51,8 +50,9 @@ class PopupIconMixin:
 
     def _default_icon_cache_key(self, item: ShortcutItem):
         name = getattr(item, "name", "") or "?"
-        initial = name[0] if name else "?"
-        return (getattr(item, "type", None), self.icon_size, initial)  # type: ignore[attr-defined]
+        theme = getattr(self.settings, "theme", "dark")  # type: ignore[attr-defined]
+        dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
+        return (getattr(item, "type", None), self.icon_size, name, theme, float(dpr))  # type: ignore[attr-defined]
 
     def _mark_icon_cache_changed(self):
         if self.__dict__.get("_batch_icon_preload_active", False):
@@ -399,30 +399,10 @@ class PopupIconMixin:
 
     def _create_default_icon(self, item: ShortcutItem) -> QPixmap:
         """Create a simple fallback icon."""
+        from ui.utils.default_icon_renderer import render_default_icon
+
+        name = getattr(item, "name", "") or ""
+        theme = getattr(self.settings, "theme", "dark")  # type: ignore[attr-defined]
         size = self.icon_size  # type: ignore[attr-defined]
-        pixmap = QPixmap(size, size)
-        pixmap.fill(QtCompat.transparent)
-
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-
-        color = QColor(135, 206, 250)
-        painter.setBrush(QBrush(color))
-        painter.setPen(QtCompat.NoPen)
-
-        margin = size // 8
-        radius = size // 6
-        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
-
-        first_char = item.name[0] if item.name else "?"
-        painter.setPen(QPen(QColor(255, 255, 255)))
-        font = QFont("Segoe UI")
-        # Use unscaled settings value as input to font_px() to avoid double-scaling
-        font.setPixelSize(font_px(max(10, int(self.settings.icon_size * 0.4))))  # type: ignore[attr-defined]
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
-
-        painter.end()
-        return pixmap
+        dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
+        return render_default_icon(name, size, theme, dpr=dpr)
