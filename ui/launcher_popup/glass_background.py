@@ -24,8 +24,7 @@ from ctypes import wintypes
 from PIL import Image as PILImage
 from PIL import ImageFilter
 
-from qt_compat import QColor, QImage, QPainter, QRect, QTimer
-from qt_compat import Qt as _QtCompat
+from qt_compat import QColor, QImage, QPainter, QRect, QtCompat, QTimer
 from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
@@ -278,15 +277,15 @@ class _DisplayAffinity:
                 class BITMAPINFO(ctypes.Structure):
                     _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", ctypes.c_uint32 * 3)]
 
-                info = BITMAPINFO()
-                info.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-                info.bmiHeader.biWidth = width
-                info.bmiHeader.biHeight = -height
-                info.bmiHeader.biPlanes = 1
-                info.bmiHeader.biBitCount = 32
-                info.bmiHeader.biCompression = 0  # BI_RGB
+                bmi = BITMAPINFO()
+                bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+                bmi.bmiHeader.biWidth = width
+                bmi.bmiHeader.biHeight = -height
+                bmi.bmiHeader.biPlanes = 1
+                bmi.bmiHeader.biBitCount = 32
+                bmi.bmiHeader.biCompression = 0  # BI_RGB
                 bits = ctypes.c_void_p()
-                bitmap = self._gdi32.CreateDIBSection(screen, ctypes.byref(info), 0, ctypes.byref(bits), None, 0)
+                bitmap = self._gdi32.CreateDIBSection(screen, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
                 if not bitmap or not bits.value:
                     if bitmap:
                         self._gdi32.DeleteObject(bitmap)
@@ -672,7 +671,7 @@ def _build_rounded_mask(width: int, height: int, corner_radius: float) -> PILIma
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
         painter.setCompositionMode(QPainter.CompositionMode_Source)
-        painter.setPen(_QtCompat.NoPen)
+        painter.setPen(QtCompat.NoPen)
         painter.setBrush(QColor(255, 255, 255))
         # ``drawRoundedRect``'s bounding box is the full rect; the radius is
         # the corner radius.  Match the popup's ``path.addRoundedRect`` (which
@@ -684,8 +683,10 @@ def _build_rounded_mask(width: int, height: int, corner_radius: float) -> PILIma
 
     stride = qimage.bytesPerLine()
     ptr = qimage.bits()
+    if ptr is None:
+        return None
     ptr.setsize(stride * height)
-    return PILImage.frombuffer("L", (width, height), bytes(ptr), "raw", "L", stride, 1)
+    return PILImage.frombuffer("L", (width, height), bytes(ptr), "raw", "L", stride, 1)  # type: ignore[call-overload]
 
 
 def _apply_rounded_mask(rgba_bytes: bytes, width: int, height: int, corner_radius: float) -> bytes:

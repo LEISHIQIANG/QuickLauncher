@@ -7,6 +7,7 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from typing import ClassVar
 
 from core import AppData, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
@@ -545,7 +546,7 @@ class IconWidget(QFrame):
     double_clicked = pyqtSignal()
     context_menu_requested = pyqtSignal(QPoint)
     drag_started = pyqtSignal(str)
-    _placeholder_icon_cache = OrderedDict()
+    _placeholder_icon_cache: ClassVar[OrderedDict] = OrderedDict()
     _MAX_PLACEHOLDER_ICON_CACHE = 80
 
     LIGHT_NORMAL_BG = "rgba(255, 255, 255, 100)"
@@ -1069,9 +1070,9 @@ class IconGrid(QWidget):
     def __init__(self, data_manager: DataManager):
         super().__init__()
         self.data_manager = data_manager
-        self.current_folder_id = None
-        self.icon_widgets = []
-        self.selected_shortcut_ids = set()
+        self.current_folder_id: str | None = None
+        self.icon_widgets: list = []
+        self.selected_shortcut_ids: set = set()
         self._last_selected_index = -1
         self._batch_undo_snapshot = None
         self._icon_size = 24
@@ -1079,7 +1080,7 @@ class IconGrid(QWidget):
         self._icon_load_generation = 0
         self._favicon_fetch_generation = 0
         self._favicon_fetch_success_count = 0
-        self._favicon_fetch_shortcuts = {}
+        self._favicon_fetch_shortcuts: dict = {}
         self._favicon_fetch_status_dialog = None
         self._favicon_fetch_thread = None
         self._favicon_fetch_worker = None
@@ -1437,8 +1438,10 @@ class IconGrid(QWidget):
         rows = (len(self.icon_widgets) + 5) // 6
         self.container.setMinimumHeight(pad_top + rows * cell + pad_x)
 
-    def load_folder(self, folder_id: str):
+    def load_folder(self, folder_id: str | None):
         """加载文件夹内容"""
+        if folder_id is None:
+            return
         self.current_folder_id = folder_id
         self.selected_shortcut_ids.clear()
         self._last_selected_index = -1
@@ -1480,7 +1483,7 @@ class IconGrid(QWidget):
             theme = self.data_manager.get_settings().theme
         except Exception as exc:
             logger.debug("获取主题设置: %s", exc, exc_info=True)
-        icon_tasks = []
+        icon_tasks: list[tuple[str, str, str | None, int, ShortcutType]] = []
         for _i, shortcut in enumerate(items):
             widget = IconWidget(shortcut, icon_size=icon_size, cell_size=cell_size, theme=theme)
             widget.setParent(self.container)
@@ -1787,7 +1790,7 @@ class IconGrid(QWidget):
                     break
 
             pixmap = None
-            icon_path = item.icon_path
+            icon_path: str | None = item.icon_path
             target_path = item.target_path
             if not icon_path and shortcut_uses_folder_icon(item.type, target_path):
                 icon_path = default_folder_icon_path()
@@ -1869,7 +1872,7 @@ class IconGrid(QWidget):
             logger.error("撤销批量操作失败: %s", e, exc_info=True)
 
     def _confirm_batch(self, title: str, count: int) -> bool:
-        return (
+        return bool(
             ThemedMessageBox.question(
                 self,
                 tr(title),
@@ -2074,10 +2077,10 @@ class IconGrid(QWidget):
         """Return the shortcut ids that should move with this drag."""
         if source_id in self.selected_shortcut_ids:
             selected = set(self.selected_shortcut_ids)
-            ids = []
+            ids: list[str] = []
             for widget in self.icon_widgets:
                 sid = self._widget_shortcut_id(widget)
-                if sid in selected:
+                if sid is not None and sid in selected:
                     ids.append(sid)
             return ids or [source_id]
         return [source_id]
@@ -2225,7 +2228,7 @@ class IconGrid(QWidget):
         except Exception:
             return False
 
-        return moved_px < max(10, int(self._get_cell_size() * 0.25))
+        return bool(moved_px < max(10, int(self._get_cell_size() * 0.25)))
 
     def _record_realtime_swap(self, target_id: str, pointer_pos: QPoint | None):
         self._last_realtime_swap_target_id = target_id
