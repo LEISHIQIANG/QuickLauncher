@@ -75,6 +75,10 @@ class TrayAppShutdownMixin:
         self._extra_popup_windows = []
 
     def _shutdown_runtime_components(self):
+        if bool(self.__dict__.get("_runtime_shutdown_started", False)):
+            return
+        self._runtime_shutdown_started = True
+
         # 停止后台线程
         try:
             _thread = self._icon_cache_clean_thread
@@ -111,13 +115,6 @@ class TrayAppShutdownMixin:
             self._process_check_future = None
         except Exception as exc:
             logger.debug("取消进程应用检查失败: %s", exc, exc_info=True)
-
-        try:
-            from ui.tray_mixins.hooks_mixin import shutdown_process_check_executor
-
-            shutdown_process_check_executor()
-        except Exception as exc:
-            logger.debug("关闭进程应用检查线程池失败: %s", exc, exc_info=True)
 
         try:
             if self._update_checker:
@@ -176,6 +173,7 @@ class TrayAppShutdownMixin:
             "shortcut_health_window",
             "config_history_window",
             "slash_help_window",
+            "command_panel_window",
             "_toast",
         ):
             self._close_widget_if_present(attr_name)
@@ -184,6 +182,15 @@ class TrayAppShutdownMixin:
             self.data_manager.shutdown()
         except Exception as exc:
             logger.error("退出时刷新配置失败: %s", exc, exc_info=True)
+
+        try:
+            from core.executor_manager import shutdown_all_executors
+
+            pending = shutdown_all_executors(timeout=5.0)
+            if pending:
+                logger.warning("退出时仍有线程池任务未完成: %s", pending)
+        except Exception as exc:
+            logger.error("关闭应用线程池失败: %s", exc, exc_info=True)
 
     def _clean_icon_cache_now(self):
         """立即执行图标缓存维护。"""

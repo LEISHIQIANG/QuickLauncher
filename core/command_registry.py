@@ -8,7 +8,7 @@ import threading
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from .command_metadata import CommandMetadata
 from .command_metadata import builtin_command_metadata as _builtin_command_metadata
@@ -23,12 +23,6 @@ SEARCH_SOURCE_RESULT_KEYS = {"id", "title", "name", "command", "folder", "icon_p
 SEARCH_SOURCE_TIMEOUT_SECONDS = 1.0
 SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS = 1.5
 
-# Shared thread pool for plugin search — avoids creating a new executor per search
-# and per source.  Sized to accommodate concurrent searches from multiple sources
-# while keeping a predictable ceiling on resource usage.
-_SEARCH_POOL_MAX_WORKERS = 6
-_search_pool: concurrent.futures.ThreadPoolExecutor | None = None
-_search_pool_lock = threading.Lock()
 _active_search_futures: dict[str, dict[concurrent.futures.Future, SearchCancelToken]] = {}
 _active_search_futures_lock = threading.Lock()
 
@@ -54,30 +48,21 @@ class SearchCancelToken:
         self._cancelled = True
 
 
-def _get_search_pool() -> concurrent.futures.ThreadPoolExecutor:
+def _get_search_pool():
     """Return (and lazily create) the shared search thread pool."""
-    global _search_pool
-    if _search_pool is None:
-        with _search_pool_lock:
-            if _search_pool is None:
-                _search_pool = concurrent.futures.ThreadPoolExecutor(
-                    max_workers=_SEARCH_POOL_MAX_WORKERS,
-                    thread_name_prefix="PluginSearch",
-                )
-    return _search_pool
+    from .executor_manager import PLUGIN_SEARCH_EXECUTOR, get_executor
+
+    return get_executor(PLUGIN_SEARCH_EXECUTOR)
 
 
 def shutdown_search_pool(timeout: float = 3.0) -> None:
     """Shut down the shared search pool.  Safe to call multiple times."""
-    global _search_pool
-    with _search_pool_lock:
-        pool = _search_pool
-        _search_pool = None
-    if pool is not None:
-        futures = _snapshot_active_search_futures()
-        if futures:
-            concurrent.futures.wait(futures, timeout=max(0.0, float(timeout or 0.0)))
-        pool.shutdown(wait=False, cancel_futures=True)
+    from .executor_manager import PLUGIN_SEARCH_EXECUTOR, shutdown_executor
+
+    futures = _snapshot_active_search_futures()
+    if futures:
+        concurrent.futures.wait(futures, timeout=max(0.0, float(timeout or 0.0)))
+    shutdown_executor(PLUGIN_SEARCH_EXECUTOR, timeout=timeout)
 
 
 def cancel_search_tasks_for_plugin(plugin_id: str) -> int:
@@ -316,7 +301,7 @@ def execute_search_source(source_id: str, query: str, *, cancel_token: SearchCan
         if callable(callback):
             callback(plugin_id, "search", source_id, TimeoutError("search source timed out"), "")
         return []
-    return future.result()
+    return cast(list[dict[Any, Any]], future.result())
 
 
 def execute_search_sources(

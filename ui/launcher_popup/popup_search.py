@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class PopupSearchMixin:
+    search_cursor_pos: int
+    search_selection_anchor: int | None
     """Search text editing, IME input, search logic, reveal animation, and page preloading."""
 
     # ── IME support ──────────────────────────────────────────────────
@@ -86,8 +88,8 @@ class PopupSearchMixin:
         if not new_text:
             return
         query = self.search_query
-        cursor = self._clamp_search_pos(self.search_cursor_pos)  # type: ignore[has-type]
-        anchor = self.search_selection_anchor  # type: ignore[has-type]
+        cursor = self._clamp_search_pos(self.search_cursor_pos)
+        anchor = self.search_selection_anchor
 
         if anchor is not None and anchor != cursor:
             start_sel = min(cursor, anchor)
@@ -430,10 +432,10 @@ class PopupSearchMixin:
         old_cursor = self._clamp_search_pos(getattr(self, "search_cursor_pos", 0))
         new_cursor = self._clamp_search_pos(pos)
         if keep_selection:
-            if self.search_selection_anchor is None:  # type: ignore[has-type]
+            if self.search_selection_anchor is None:
                 self.search_selection_anchor = old_cursor
         else:
-            self.search_selection_anchor = None  # type: ignore[assignment]
+            self.search_selection_anchor = None
         self.search_cursor_pos = new_cursor
         self._ensure_search_cursor_visible()
         self._restart_search_cursor_blink()
@@ -486,7 +488,7 @@ class PopupSearchMixin:
             return False
         start, end = bounds
         query = self.search_query[:start] + self.search_query[end:]
-        self._set_search_query(query, cursor_pos=start, selection_anchor=None)  # type: ignore[arg-type]
+        self._set_search_query(query, cursor_pos=start, selection_anchor=None)
         return True
 
     def _delete_search_backward(self, word: bool = False):
@@ -497,7 +499,7 @@ class PopupSearchMixin:
             return
         start = self._word_boundary_left(cursor) if word else cursor - 1
         query = self.search_query[:start] + self.search_query[cursor:]
-        self._set_search_query(query, cursor_pos=start, selection_anchor=None)  # type: ignore[arg-type]
+        self._set_search_query(query, cursor_pos=start, selection_anchor=None)
 
     def _delete_search_forward(self, word: bool = False):
         if self._delete_search_selection():
@@ -507,7 +509,7 @@ class PopupSearchMixin:
             return
         end = self._word_boundary_right(cursor) if word else cursor + 1
         query = self.search_query[:cursor] + self.search_query[end:]
-        self._set_search_query(query, cursor_pos=cursor, selection_anchor=None)  # type: ignore[arg-type]
+        self._set_search_query(query, cursor_pos=cursor, selection_anchor=None)
 
     def _select_all_search_text(self):
         self.search_cursor_pos = len(self.search_query)
@@ -587,7 +589,12 @@ class PopupSearchMixin:
 
     # ── Search logic ─────────────────────────────────────────────────
 
-    def _set_search_query(self, query: str, cursor_pos: int = None, selection_anchor: int = None):  # type: ignore[assignment]
+    def _set_search_query(
+        self,
+        query: str,
+        cursor_pos: int | None = None,
+        selection_anchor: int | None = None,
+    ):
         """设置搜索查询文本，并刷新固定顶部栏与结果。"""
         self.search_query = query or ""
         if not self.search_query and not getattr(self, "_search_preedit_text", ""):
@@ -782,6 +789,9 @@ class PopupSearchMixin:
         old_token = getattr(self, "_plugin_search_cancel_token", None)
         if old_token is not None:
             old_token.cancel()
+        old_future = getattr(self, "_plugin_search_future", None)
+        if old_future is not None:
+            old_future.cancel()
 
         from core.command_registry import SearchCancelToken
 
@@ -816,10 +826,12 @@ class PopupSearchMixin:
             except RuntimeError:
                 logger.debug("发送插件搜索信号失败", exc_info=True)
 
-        # Use the shared search pool instead of a dedicated daemon thread.
-        from core.command_registry import _get_search_pool
+        # Coordinators wait for handler futures, so they must not occupy the
+        # handler pool itself (otherwise enough simultaneous popups starve all
+        # search-source work until the total timeout expires).
+        from core.executor_manager import PLUGIN_SEARCH_COORDINATOR_EXECUTOR, get_executor
 
-        _get_search_pool().submit(worker)
+        self._plugin_search_future = get_executor(PLUGIN_SEARCH_COORDINATOR_EXECUTOR).submit(worker)
 
     def _on_plugin_search_results_ready(self, token: int, cmd_query: str, payload):
         if token != int(self.__dict__.get("_plugin_search_seq", 0) or 0):

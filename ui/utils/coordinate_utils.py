@@ -4,13 +4,14 @@
 本项目的 DPI 模型（见 ``qt_compat.setup_high_dpi``）：
 
 - 进程注册为 ``DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2``
-- ``QT_AUTO_SCREEN_SCALE_FACTOR=0``（关闭 Qt 自动缩放）
-- ``QT_ENABLE_HIGHDPI_SCALING=1``，但因上一条被关闭，Qt 不再分两层坐标系
-- ``QScreen.devicePixelRatio()`` 始终返回 1.0
-- ``QScreen.geometry()`` / ``availableGeometry()`` 返回物理像素
+- Windows 钩子和 ``GetCursorPos`` 返回物理像素
+- Qt High-DPI Scaling 返回设备无关逻辑坐标，并通过
+  ``QScreen.devicePixelRatio()`` 暴露每屏缩放比例
+- ``QScreen.geometry()`` / ``availableGeometry()`` 因此不能直接和 Win32
+  物理坐标比较
 - 窗口内部布局使用全局 ``sp()`` 缩放（与显示器 DPI 解耦）
 
-因此"Windows 物理坐标"与"Qt 坐标"在数值上完全相同。该模块的核心职责：
+因此该模块负责在 Win32 物理坐标和 Qt 逻辑坐标之间建立每显示器映射。
 
 1. 提供一个**单一权威入口**，把鼠标回调中的物理像素归一化为"项目坐标"
    （本项目里就是物理像素本身）。
@@ -104,7 +105,7 @@ def _query_monitor_at(phys_x: int, phys_y: int) -> tuple | None:
 
     Returns:
         (hmon, rcMonitor.left, rcMonitor.top, rcMonitor.right, device_name,
-         physical_dpi_x, physical_dpi_y)  或 None（API 不可用时）
+        physical_dpi_x, physical_dpi_y) 或 None
     """
     try:
         user32 = ctypes.windll.user32
@@ -176,7 +177,7 @@ def get_monitor_device_name(phys_x: int, phys_y: int) -> str:
     meta = _query_monitor_at(int(phys_x), int(phys_y))
     if not meta:
         return ""
-    return meta[4]
+    return str(meta[4])
 
 
 # ---------------------------------------------------------------------------
@@ -225,8 +226,8 @@ def find_qscreen_by_device(device_name: str, screens: list | None = None) -> Any
     return None
 
 
-def find_qscreen_containing_point(phys_x: int, phys_y: int, screens: list | None = None) -> Any | None:
-    """在 ``QApplication.screens()`` 中找到 ``geometry()`` 包含指定物理点的屏幕。
+def find_qscreen_containing_point(qt_x: int, qt_y: int, screens: list | None = None) -> Any | None:
+    """在 ``QApplication.screens()`` 中找到 ``geometry()`` 包含指定 Qt 逻辑点的屏幕。
 
     若 ``QApplication`` 未创建或全部 API 失败，返回 None。
 
@@ -250,7 +251,7 @@ def find_qscreen_containing_point(phys_x: int, phys_y: int, screens: list | None
     except ImportError:
         return None
 
-    pt = QPoint(int(phys_x), int(phys_y))
+    pt = QPoint(int(qt_x), int(qt_y))
 
     def _contains(s):
         try:
@@ -293,23 +294,26 @@ def normalize_caret_position(
     phys_y: int,
     screens: list | None = None,
 ) -> tuple[int, int]:
-    """把鼠标回调中的物理像素坐标归一化为"项目坐标"。
-
-    在本项目当前 DPI 配置下，"项目坐标" = "物理像素"。
-    该函数保留对 ``QScreen.geometry()`` 的归属检查：若目标点不在任何
-    已知 Qt 屏幕几何内，记录 WARN 后仍返回原始坐标（保证不崩溃）。
-
-    关键修正（相对旧 ``_try_convert_win_physical_to_qt``）：
-
-    1. **不再使用 ``screen.devicePixelRatio()``**——该值在 PerMonitorV2 +
-       ``QT_AUTO_SCREEN_SCALE_FACTOR=0`` 下恒为 1.0，用它除法会误导。
-    2. **显示器名匹配归一化**——不再依赖 ``s.name() == device`` 的严格等值。
-    3. **fallback 路径可观测**——任何降级都打日志（含原因），便于诊断。
-    """
+    """把 Win32 物理像素映射到目标 ``QScreen`` 的 Qt 逻辑坐标。"""
     px = int(phys_x)
     py = int(phys_y)
 
-    target_screen = find_qscreen_containing_point(px, py, screens=screens)
+    if screens is None:
+        try:
+            from qt_compat import QApplication
+
+            screens = QApplication.screens() or []
+        except (ImportError, AttributeError, RuntimeError):
+            screens = []
+    if not screens:
+        return (px, py)
+
+    monitor_meta = _query_monitor_at(px, py)
+    target_screen = None
+    if monitor_meta:
+        target_screen = find_qscreen_by_device(str(monitor_meta[4]), screens=screens)
+    if target_screen is None:
+        target_screen = find_qscreen_containing_point(px, py, screens=screens)
     if target_screen is None:
         logger.warning(
             "NORMALIZE_COORD_FALLBACK reason=no_qt_screen pos=(%s,%s) -> 返回原始物理坐标",
@@ -326,21 +330,39 @@ def normalize_caret_position(
         )
         return (px, py)
 
-    if not geo.contains(px, py):
+    if monitor_meta is None and not geo.contains(px, py):
         logger.warning(
-            "NORMALIZE_COORD_FALLBACK reason=point_outside_geometry "
-            "screen=%s geo=(%s,%s,%s,%s) pos=(%s,%s) -> 返回原始物理坐标",
+            "NORMALIZE_COORD_FALLBACK reason=point_outside_geometry screen=%s pos=(%s,%s)",
             _screen_display_name(target_screen) or "<unnamed>",
-            geo.x(),
-            geo.y(),
-            geo.width(),
-            geo.height(),
             px,
             py,
         )
         return (px, py)
 
-    # 本项目 QT_AUTO_SCREEN_SCALE_FACTOR=0 下，物理 == 项目坐标；直接返回。
+    try:
+        dpr = max(1.0, float(target_screen.devicePixelRatio() or 1.0))
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        dpr = 1.0
+    if dpr <= 1.001:
+        return (px, py)
+
+    if monitor_meta:
+        physical_left = int(monitor_meta[1])
+        physical_top = int(monitor_meta[2])
+        physical_right = int(monitor_meta[3])
+        physical_bottom = physical_top + round(geo.height() * dpr)
+        physical_width = max(1, physical_right - physical_left)
+        physical_height = max(1, physical_bottom - physical_top)
+        qt_x = geo.x() + round((px - physical_left) * geo.width() / physical_width)
+        qt_y = geo.y() + round((py - physical_top) * geo.height() / physical_height)
+        return (int(qt_x), int(qt_y))
+
+    logger.warning(
+        "NORMALIZE_COORD_FALLBACK reason=no_win_monitor_metadata screen=%s pos=(%s,%s)",
+        _screen_display_name(target_screen) or "<unnamed>",
+        px,
+        py,
+    )
     return (px, py)
 
 
@@ -352,7 +374,7 @@ def normalize_caret_position(
 def _rect_can_contain(rect: Any, width: int, height: int, margin: int) -> bool:
     """``rect`` 的可用宽高是否能容纳指定尺寸（含 margin）。"""
     try:
-        return rect.width() - 2 * margin >= width and rect.height() - 2 * margin >= height
+        return bool(rect.width() - 2 * margin >= width and rect.height() - 2 * margin >= height)
     except (AttributeError, TypeError):
         return False
 
@@ -361,7 +383,7 @@ def _rect_overlap_area(l1, t1, r1, b1, l2, t2, r2, b2) -> int:
     """两个 [l,t,r,b) 半开半闭区间的重叠面积。"""
     ow = max(0, min(r1, r2) - max(l1, l2))
     oh = max(0, min(b1, b2) - max(t1, t2))
-    return ow * oh
+    return int(ow * oh)
 
 
 def pick_best_screen_for_popup(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 import importlib.util
 import json
 import locale
@@ -45,6 +46,7 @@ from .network_security import ResponseTooLargeError, safe_urlopen, sanitize_head
 from .path_security import UnsafePathError, resolve_under, safe_rmtree_child
 from .plugin.constants import (
     HIGH_RISK_PERMISSIONS,
+    OFFICIAL_PLUGIN_PACKAGE_SHA256,
     PERMISSIONS_KNOWN,
     PLUGIN_API_HTTP_METHODS,
     PLUGIN_API_HTTP_TIMEOUT_SECONDS,
@@ -1402,7 +1404,16 @@ def _is_builtin_plugin_package(package_path: str, plugin_id: str) -> bool:
         package = Path(package_path).resolve(strict=False)
         plugins_dir = Path(app_root()) / ".plugins"
         expected = plugins_dir / f"{plugin_id}{PLUGIN_PACKAGE_EXTENSION}"
-        return package == expected.resolve(strict=False)
+        if package != expected.resolve(strict=False):
+            return False
+        expected_hash = OFFICIAL_PLUGIN_PACKAGE_SHA256.get(plugin_id)
+        if not expected_hash or not package.is_file():
+            return False
+        digest = hashlib.sha256()
+        with package.open("rb") as package_file:
+            for chunk in iter(lambda: package_file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest() == expected_hash
     except Exception:
         logger.debug("判断官方插件包来源失败: %s", package_path, exc_info=True)
         return False
@@ -1810,6 +1821,13 @@ class PluginManager:
         if info.status != "enabled":
             return True
 
+        try:
+            from .command_registry import cancel_search_tasks_for_plugin
+
+            cancel_search_tasks_for_plugin(plugin_id)
+        except Exception as exc:
+            logger.debug("取消插件搜索任务失败 %s: %s", plugin_id, exc, exc_info=True)
+
         # Clean up modules and invoke optional unregister/dispose lifecycle hooks
         loader = self._loaded_modules.pop(plugin_id, None)
         api = self._active_apis.pop(plugin_id, None)
@@ -1828,6 +1846,7 @@ class PluginManager:
                         logger.warning("执行插件 %s 的清理钩子 %s 失败: %s", plugin_id, hook_name, e)
         if api is not None:
             api.close()
+        _drain_plugin_executors(self._plugin_active_executors, plugin_id)
 
         # Remove registered commands via owner index for consistency
         owner_id = f"plugin:{plugin_id}"
@@ -1951,6 +1970,7 @@ class PluginManager:
         package_path: str,
         *,
         on_overwrite: Callable[[str], bool] | None = None,
+        before_overwrite: Callable[[str], None] | None = None,
     ) -> str | None:
         """Install a plugin from a .qlzip archive.
 
@@ -1964,34 +1984,47 @@ class PluginManager:
             raise ValueError(f"插件安装包必须使用 {PLUGIN_PACKAGE_EXTENSION} 扩展名")
 
         try:
+
+            def _finalize_trust(installed_id: str, target_dir: Path) -> None:
+                self._apply_install_source_trust(
+                    installed_id,
+                    target_dir,
+                    builtin=_is_builtin_plugin_package(package_path, installed_id),
+                )
+
             plugin_id = install_zip_archive(
                 package_path,
                 self._plugins_dir,
                 manifest_from_dict=PluginManifest.from_dict,
                 validate_manifest=validate_manifest,  # type: ignore[arg-type]
                 on_overwrite=on_overwrite,
+                before_overwrite=before_overwrite,
+                post_install=_finalize_trust,
             )
-            if plugin_id:
-                self._apply_install_source_trust(plugin_id, package_path)
             return plugin_id
         except zipfile.BadZipFile as e:
             raise ValueError(f"无效的 {PLUGIN_PACKAGE_EXTENSION} 插件包:\n{e}") from e
 
-    def _apply_install_source_trust(self, plugin_id: str, package_path: str) -> None:
-        manifest_path = Path(self._plugins_dir) / plugin_id / "plugin.json"
+    def _apply_install_source_trust(self, plugin_id: str, target_dir: Path, *, builtin: bool) -> None:
+        manifest_path = target_dir / "plugin.json"
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("插件信任元数据格式无效")
+        if builtin:
+            data["trust_level"] = "builtin"
+            data["install_source"] = "builtin"
+        else:
+            data["trust_level"] = "community-unverified"
+            data["install_source"] = "third_party"
+        temp_path = manifest_path.with_suffix(".json.tmp")
         try:
-            data = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                return
-            if _is_builtin_plugin_package(package_path, plugin_id):
-                data["trust_level"] = "builtin"
-                data["install_source"] = "builtin"
-            else:
-                data["trust_level"] = "community-unverified"
-                data["install_source"] = "third_party"
-            manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception as exc:
-            logger.warning("写入插件安装来源信任元数据失败 %s: %s", plugin_id, exc, exc_info=True)
+            temp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(temp_path, manifest_path)
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("清理插件信任元数据临时文件失败: %s", temp_path, exc_info=True)
 
     def _validate_install_source_trust(self, info: PluginInfo) -> None:
         """Validate trust_level consistency with install_source at load time.
@@ -2004,11 +2037,11 @@ class PluginManager:
         if m.trust_level != "builtin":
             return
         source = m.install_source
-        if source and source != "builtin":
+        if source != "builtin":
             logger.warning(
                 "插件 %s 声明 trust_level=builtin 但 install_source=%s，降级为 community-unverified",
                 m.id,
-                source,
+                source or "<missing>",
             )
             info.manifest.trust_level = "community-unverified"
 
@@ -2017,9 +2050,14 @@ class PluginManager:
         zip_path: str,
         *,
         on_overwrite: Callable[[str], bool] | None = None,
+        before_overwrite: Callable[[str], None] | None = None,
     ) -> str | None:
         """Compatibility wrapper for plugin package installation."""
-        return self.install_from_package(zip_path, on_overwrite=on_overwrite)
+        return self.install_from_package(
+            zip_path,
+            on_overwrite=on_overwrite,
+            before_overwrite=before_overwrite,
+        )
 
     # ---- queries ----
 

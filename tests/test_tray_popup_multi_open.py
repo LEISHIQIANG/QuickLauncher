@@ -149,7 +149,13 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
     tray._toast = None
 
     monkeypatch.setattr("core.folder_watcher.shutdown_watcher_manager", lambda: None)
+    executor_shutdown = []
+    monkeypatch.setattr(
+        "core.executor_manager.shutdown_all_executors",
+        lambda timeout=5.0: executor_shutdown.append(timeout) or {},
+    )
 
+    tray._shutdown_runtime_components()
     tray._shutdown_runtime_components()
 
     assert tray._settings_sync_timer.stopped is True
@@ -160,6 +166,7 @@ def test_shutdown_runtime_components_stops_timers_hooks_and_windows(monkeypatch)
     assert tray.config_window is None
     assert tray.diagnostics_window is None
     assert data_shutdown == [True]
+    assert executor_shutdown == [5.0]
 
 
 def test_start_defers_runtime_components_until_called(monkeypatch):

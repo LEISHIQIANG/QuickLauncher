@@ -5,32 +5,21 @@
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
+from core.executor_manager import PROCESS_CHECK_EXECUTOR, ManagedExecutor, get_executor, shutdown_executor
 from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
 
 _HOOK_INSTALL_RETRY_DELAYS_MS = (500, 2000, 5000)
-_PROCESS_CHECK_EXECUTOR = None
-_PROCESS_CHECK_EXECUTOR_LOCK = threading.Lock()
 
 
-def _get_process_check_executor() -> ThreadPoolExecutor:
-    global _PROCESS_CHECK_EXECUTOR
-    with _PROCESS_CHECK_EXECUTOR_LOCK:
-        if _PROCESS_CHECK_EXECUTOR is None:
-            _PROCESS_CHECK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="QLProcessCheck")
-        return _PROCESS_CHECK_EXECUTOR
+def _get_process_check_executor() -> ManagedExecutor:
+    return get_executor(PROCESS_CHECK_EXECUTOR)
 
 
 def shutdown_process_check_executor() -> None:
-    global _PROCESS_CHECK_EXECUTOR
-    with _PROCESS_CHECK_EXECUTOR_LOCK:
-        executor = _PROCESS_CHECK_EXECUTOR
-        _PROCESS_CHECK_EXECUTOR = None
-    if executor is not None:
-        executor.shutdown(wait=False, cancel_futures=True)
+    shutdown_executor(PROCESS_CHECK_EXECUTOR, timeout=3.0)
 
 
 def _collect_special_process_pids(target_apps: set[str], cancel_event: threading.Event | None = None) -> set[int]:

@@ -252,11 +252,20 @@ def create_pipeline_from_settings(settings) -> PreprocessingPipeline:
     Returns:
         Configured PreprocessingPipeline instance
     """
+    if settings is None:
+        raise ValueError("preprocessing settings are unavailable")
+
+    def _bool_setting(name: str, default: bool) -> bool:
+        value = getattr(settings, name, default)
+        if type(value) is not bool:
+            raise ValueError(f"invalid preprocessing setting {name}: expected bool")
+        return value
+
     return PreprocessingPipeline(
-        enabled=getattr(settings, "preprocessing_enabled", True),
-        strict_mode=getattr(settings, "preprocessing_strict_mode", False),
-        rate_limiting=getattr(settings, "preprocessing_rate_limiting_enabled", True),
-        audit_enabled=getattr(settings, "preprocessing_audit_enabled", True),
-        block_dangerous_patterns=getattr(settings, "security_block_dangerous_patterns", True),
-        require_variable_quoting=getattr(settings, "security_require_variable_quoting", True),
+        enabled=_bool_setting("preprocessing_enabled", True),
+        strict_mode=_bool_setting("preprocessing_strict_mode", False),
+        rate_limiting=_bool_setting("preprocessing_rate_limiting_enabled", True),
+        audit_enabled=_bool_setting("preprocessing_audit_enabled", True),
+        block_dangerous_patterns=_bool_setting("security_block_dangerous_patterns", True),
+        require_variable_quoting=_bool_setting("security_require_variable_quoting", True),
     )

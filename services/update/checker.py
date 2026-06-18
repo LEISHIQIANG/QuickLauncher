@@ -13,12 +13,10 @@ from urllib.parse import urlparse
 from core.background_tasks import start_background_thread
 from services.api.base_client import ApiClient, ApiError
 from services.update.config import UpdateConfig, UpdateInfo
-from services.update.trust import UpdateSignatureError, update_signature_payload, verify_update_signature
 
 logger = logging.getLogger(__name__)
 _SHA256_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 _SHA256_ANYWHERE_RE = re.compile(r"sha256:[0-9a-fA-F]{64}", re.IGNORECASE)
-_ED25519_SIGNATURE_RE = re.compile(r"ed25519:[A-Za-z0-9+/=_-]{43,128}|ed25519:[0-9a-fA-F]{128}", re.IGNORECASE)
 
 
 class UpdateCheckError(Exception):
@@ -168,7 +166,6 @@ class UpdateChecker:
                     changelog_en=changelog.get("en", ""),
                     download_url=resp["download_url"],
                     file_hash=resp.get("file_hash", ""),
-                    file_signature=resp.get("file_signature", "") or resp.get("signature", ""),
                     file_size=int(resp.get("file_size", 0) or 0),
                     mandatory=bool(resp.get("mandatory", False)),
                     mandatory_min_version=resp.get("mandatory_min_version", ""),
@@ -211,7 +208,6 @@ class UpdateChecker:
             raise ValueError("GitHub Release 未找到 Windows 安装包 asset")
 
         file_hash = self._extract_release_hash(resp, asset)
-        file_signature = self._extract_release_signature(resp, asset)
         info = UpdateInfo(
             has_update=True,
             version=version,
@@ -219,7 +215,6 @@ class UpdateChecker:
             changelog_zh=resp.get("body") or "",
             download_url=asset.get("browser_download_url", ""),
             file_hash=file_hash,
-            file_signature=file_signature,
             file_size=int(asset.get("size", 0) or 0),
             mandatory=False,
         )
@@ -245,13 +240,6 @@ class UpdateChecker:
             return body_match.group(0)
         return ""
 
-    def _extract_release_signature(self, release: dict, asset: dict) -> str:
-        for value in (asset.get("signature"), asset.get("ed25519"), release.get("body")):
-            match = _ED25519_SIGNATURE_RE.search(str(value or ""))
-            if match:
-                return match.group(0)
-        return ""
-
     def _validate_update_info(self, info: UpdateInfo) -> str:
         if not info.version:
             return "更新信息缺少版本号"
@@ -270,24 +258,6 @@ class UpdateChecker:
             return f"更新包下载域名不受信任: {host}"
         if self._config.require_file_hash and not _SHA256_RE.fullmatch(info.file_hash or ""):
             return "更新包缺少有效的 sha256 哈希"
-        if self._config.require_signature:
-            if not info.file_signature:
-                logger.warning(
-                    "Update %s has no release signature; proceeding without signature "
-                    "verification (require_signature=True but signature missing).",
-                    info.version or "<unknown>",
-                )
-            else:
-                try:
-                    valid_signature = verify_update_signature(
-                        update_signature_payload(info),
-                        info.file_signature,
-                        tuple(self._config.signature_public_keys or ()),
-                    )
-                except UpdateSignatureError as exc:
-                    return f"更新签名配置无效: {exc}"
-                if not valid_signature:
-                    return "更新包发布签名校验失败"
         if info.file_size <= 0:
             return "更新包大小无效"
         if info.file_size > self._config.max_download_bytes:

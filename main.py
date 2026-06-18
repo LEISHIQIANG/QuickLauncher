@@ -5,6 +5,7 @@ QuickLauncher - 快捷启动器
 
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 
@@ -124,6 +125,7 @@ safe_execute(
 
 _tray_app = None
 _server = None
+_instance_mutex = None
 _pending_show_config = False
 
 
@@ -154,7 +156,7 @@ def _native_error_box(title: str, text: str):
 
 
 def main():
-    global _tray_app, _server, _pending_show_config
+    global _tray_app, _server, _pending_show_config, _instance_mutex
 
     logger.info(f"QuickLauncher 启动 - {datetime.now()}")
     if os.environ.get("QL_SAFE_MODE"):
@@ -222,19 +224,28 @@ def main():
 
         server_name = "QuickLauncherInstance_v3"
 
-        from bootstrap.ipc import try_connect_existing
+        from bootstrap.ipc import acquire_instance_mutex, create_ipc_server, try_connect_existing
 
-        if try_connect_existing(server_name):
-            logger.info("已有实例运行，唤起设置窗口后退出")
+        _instance_mutex = acquire_instance_mutex(server_name)
+        if _instance_mutex is None:
+            for _attempt in range(10):
+                if try_connect_existing(server_name):
+                    logger.info("已有实例运行，唤起设置窗口后退出")
+                    return 0
+                time.sleep(0.05)
+            logger.warning("已有实例持有单实例锁，但 IPC 唤起失败")
             return 0
-
-        from bootstrap.ipc import create_ipc_server
 
         def _ipc_show_config_callback():
             tray = _tray_app
             return getattr(tray, "_show_config", None) if tray is not None else None
 
-        _server, _ipc_pending = create_ipc_server(app, server_name, _ipc_show_config_callback)
+        _server, _ipc_pending = create_ipc_server(
+            app,
+            server_name,
+            _ipc_show_config_callback,
+            remove_stale=True,
+        )
 
         process_startup_events(app, logger)
 

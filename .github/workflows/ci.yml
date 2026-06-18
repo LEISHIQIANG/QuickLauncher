@@ -41,6 +41,3 @@ jobs:
           tests/test_processor_loader.py
           tests/test_path_security.py
           tests/test_update_trust.py
-
-      - name: Focused mypy subset
-        run: python -m mypy --follow-imports=skip services/update

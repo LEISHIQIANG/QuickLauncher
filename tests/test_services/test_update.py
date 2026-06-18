@@ -34,8 +34,6 @@ class TestUpdateConfig:
         assert "api.github.com/repos/LEISHIQIANG/QuickLauncher/releases/latest" in cfg.check_url
         assert cfg.check_interval_hours == 24
         assert cfg.verify_ssl is True
-        assert cfg.require_signature is False
-        assert cfg.signature_public_keys == ()
 
     def test_custom(self):
         cfg = UpdateConfig(update_source="api", check_url="http://localhost", check_interval_hours=6)
@@ -56,7 +54,6 @@ class TestUpdateChecker:
                 update_source="api",
                 check_url="http://localhost",
                 allowed_download_hosts=("update.quicklauncher.app",),
-                require_signature=False,
             )
         )
         result = checker.check_now()
@@ -81,7 +78,6 @@ class TestUpdateChecker:
                 update_source="api",
                 check_url="http://localhost",
                 allowed_download_hosts=("update.quicklauncher.app",),
-                require_signature=False,
             )
         )
         checker.add_listener(lambda event, data: events.append((event, data)))
@@ -107,7 +103,7 @@ class TestUpdateChecker:
                 }
             ],
         }
-        cfg = UpdateConfig(allowed_download_hosts=("github.com",), require_signature=False)
+        cfg = UpdateConfig(allowed_download_hosts=("github.com",))
         checker = UpdateChecker(cfg)
 
         result = checker.check_now()
@@ -130,7 +126,7 @@ class TestUpdateChecker:
                 }
             ],
         }
-        checker = UpdateChecker(UpdateConfig(allowed_download_hosts=("github.com",), require_signature=False))
+        checker = UpdateChecker(UpdateConfig(allowed_download_hosts=("github.com",)))
 
         result = checker.check_now()
 

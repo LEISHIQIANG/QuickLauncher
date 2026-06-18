@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from core.chain.graph_editor import (
@@ -399,6 +402,32 @@ class TestGraphRuntime:
 
         assert result.status == "completed"
         assert result.node_results["node1"].status == NodeStatus.SUCCESS
+
+    def test_parallel_runtime_timeout_returns_with_daemon_workers(self):
+        from core.chain.parallel_runtime import ParallelGraphRuntime
+
+        graph = ChainGraph()
+        graph.add_node(ChainNode(id="slow1", processor_id="slow"))
+        graph.add_node(ChainNode(id="slow2", processor_id="slow"))
+        release = threading.Event()
+        worker_daemon_flags = []
+
+        def slow_handler(_node, _inputs, _context):
+            worker_daemon_flags.append(threading.current_thread().daemon)
+            release.wait(1.0)
+            return {"output": "late"}
+
+        runtime = ParallelGraphRuntime(max_workers=2)
+        runtime.register_processor("slow", slow_handler)
+        started = time.monotonic()
+        result = runtime.execute(graph, timeout=0.05, parallel=True)
+        elapsed = time.monotonic() - started
+        release.set()
+
+        assert result.status == "failed"
+        assert result.error == "Execution timed out"
+        assert elapsed < 0.5
+        assert worker_daemon_flags and all(worker_daemon_flags)
 
 
 class TestLegacyAdapter:

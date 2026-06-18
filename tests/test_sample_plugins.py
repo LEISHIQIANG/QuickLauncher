@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
 import shutil
@@ -9,10 +10,19 @@ import zipfile
 from pathlib import Path
 
 from core.command_registry import CommandContext, CommandRegistry
+from core.plugin.constants import OFFICIAL_PLUGIN_PACKAGE_SHA256
 from core.plugin_manager import PluginManager
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_PACKAGE_DIR = ROOT / ".plugins"
+
+
+def test_official_plugin_packages_match_embedded_trust_anchors():
+    actual_packages = {
+        path.stem: hashlib.sha256(path.read_bytes()).hexdigest() for path in PLUGIN_PACKAGE_DIR.glob("*.qlzip")
+    }
+
+    assert actual_packages == OFFICIAL_PLUGIN_PACKAGE_SHA256
 
 
 def _python_312_command() -> list[str]:

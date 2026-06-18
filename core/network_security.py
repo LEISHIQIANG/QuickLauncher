@@ -107,7 +107,7 @@ def validate_public_http_url(url: str) -> str:
         raise UnsafeUrlError(f"host resolution failed: {host}") from exc
 
     for _family, _, _, _, sockaddr in addresses:
-        address = sockaddr[0]
+        address = str(sockaddr[0])
         try:
             resolved_ip = ipaddress.ip_address(address)
         except ValueError as exc:
@@ -132,16 +132,23 @@ def safe_urlopen(
     )
     data = getattr(request_or_url, "data", None) if isinstance(request_or_url, urllib.request.Request) else None
     method = getattr(request_or_url, "method", None) if isinstance(request_or_url, urllib.request.Request) else None
-    handlers = [_NoRedirectHandler()]
+    handlers: list[Any] = [_NoRedirectHandler()]
+    if not _is_trust_proxy_mode():
+        # Keep the verified peer equal to the requested destination.  Proxy
+        # environments require the explicit QL_TRUST_PROXY opt-in below.
+        handlers.append(urllib.request.ProxyHandler({}))
     if context is not None:
-        handlers.append(urllib.request.HTTPSHandler(context=context))  # type: ignore[arg-type]
+        handlers.append(urllib.request.HTTPSHandler(context=context))
     opener = urllib.request.build_opener(*handlers)
 
     for _ in range(max_redirects + 1):
         request = urllib.request.Request(current_url, data=data, headers=headers, method=method)
         try:
-            return opener.open(request, timeout=timeout)
+            response = opener.open(request, timeout=timeout)
+            _validate_response_peer(response)
+            return response
         except urllib.error.HTTPError as exc:
+            _validate_response_peer(exc)
             if exc.code not in (301, 302, 303, 307, 308):
                 raise
             location = exc.headers.get("Location")
@@ -152,6 +159,63 @@ def safe_urlopen(
                 data = None
                 method = "GET"
     raise UnsafeUrlError("too many redirects")
+
+
+def _validate_response_peer(response: Any) -> None:
+    """Validate the address actually used by urllib after DNS resolution.
+
+    URL validation happens before the socket is opened.  Inspecting the peer
+    closes the DNS-rebinding window between that validation and connect().
+    Trusted-proxy mode is an explicit opt-in because the visible peer is the
+    proxy rather than the destination host.
+    """
+    if _is_trust_proxy_mode():
+        return
+    peer = _response_peer_address(response)
+    if not peer:
+        _close_response_quietly(response)
+        raise UnsafeUrlError("unable to verify connected peer address")
+    try:
+        peer_ip = ipaddress.ip_address(peer)
+        _validate_public_ip(peer_ip, peer)
+    except (UnsafeUrlError, ValueError):
+        _close_response_quietly(response)
+        raise UnsafeUrlError(f"blocked connected peer address: {peer}") from None
+
+
+def _response_peer_address(response: Any) -> str:
+    queue = [response]
+    seen: set[int] = set()
+    for _ in range(16):
+        if not queue:
+            break
+        current = queue.pop(0)
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        getpeername = getattr(current, "getpeername", None)
+        if callable(getpeername):
+            try:
+                peer = getpeername()
+                if isinstance(peer, tuple) and peer:
+                    return str(peer[0]).split("%", 1)[0]
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                logger.debug("读取响应 peer 地址失败: %s", exc)
+        for attr in ("fp", "raw", "_sock", "sock", "_connection", "connection"):
+            try:
+                child = getattr(current, attr, None)
+            except (AttributeError, OSError, RuntimeError):
+                child = None
+            if child is not None:
+                queue.append(child)
+    return ""
+
+
+def _close_response_quietly(response: Any) -> None:
+    try:
+        response.close()
+    except (AttributeError, OSError, RuntimeError) as exc:
+        logger.debug("关闭不安全网络响应失败: %s", exc)
 
 
 def read_limited_response(response, limit_bytes: int) -> bytes:

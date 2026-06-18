@@ -22,7 +22,7 @@
 - [ ] 已运行 `py -3.12 scripts/release_gate.py --skip-smoke`，或说明为什么只运行了更小范围
 - [ ] 已运行 `py -3.12 -m ruff check --no-cache core ui hooks services tests`
 - [ ] 已运行 `py -3.12 scripts/audit_broad_exceptions.py --exclude-dir plugins --exclude-dir tools --max-total 1373 --max-unlogged 300`
-- [ ] 已运行 `py -3.12 -m mypy --follow-imports=skip services/update`
+- [ ] 已运行 `py -3.12 scripts/check_mypy_progress.py`（0 错误）
 - [ ] 已更新文档
 - [ ] 已更新 CHANGELOG.md
 

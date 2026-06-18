@@ -261,12 +261,15 @@ class TestBatchUpdate:
 
     def test_batch_exception_resets_dirty(self):
         dm = _manager_with_data()
+        original = dm.data.to_dict()
         with pytest.raises(RuntimeError):
             with dm.batch_update():
                 dm._batch_dirty = True
+                dm.data.folders.append(Folder(id="partial", name="Partial"))
                 raise RuntimeError("boom")
         assert not dm._batch_dirty
         assert not dm._save_pending
+        assert dm.data.to_dict() == original
 
     def test_nested_batch_exception_does_not_flush_outer_batch(self):
         dm = _manager_with_data()
@@ -283,6 +286,21 @@ class TestBatchUpdate:
         assert dm._batch_depth == 0
         dm._do_save.assert_not_called()
         dm.save.assert_not_called()
+
+    def test_caught_nested_batch_exception_still_rolls_back_outer_transaction(self):
+        dm = _manager_with_data()
+        original = dm.data.to_dict()
+
+        with dm.batch_update():
+            dm.data.folders.append(Folder(id="outer", name="Outer"))
+            try:
+                with dm.batch_update():
+                    dm.data.folders.append(Folder(id="inner", name="Inner"))
+                    raise RuntimeError("boom")
+            except RuntimeError:
+                dm.data.folders.append(Folder(id="after", name="After"))
+
+        assert dm.data.to_dict() == original
 
     def test_batch_no_save_without_dirty(self):
         dm = _manager_with_data()
@@ -710,6 +728,22 @@ class TestFlushPendingSave:
         dm._save_timer = None
         dm.flush_pending_save()
         dm._do_save.assert_not_called()
+
+    def test_delayed_save_failure_remains_pending_and_is_retried_on_shutdown(self):
+        dm = _manager_with_data()
+        coordinator = dm._get_save_coordinator()
+        coordinator._do_save = MagicMock(return_value=False)
+        dm._save_pending = True
+        dm._save_timer = None
+
+        coordinator._delayed_save()
+
+        assert dm._save_pending is True
+        assert dm._save_timer is not None
+        coordinator._cancel_scheduled_save_locked()
+        dm._save_pending = True
+        coordinator.shutdown()
+        assert coordinator._do_save.call_count == 2
 
 
 # ======================================================================

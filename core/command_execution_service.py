@@ -24,11 +24,9 @@ from core.command_param_validation import validate_param_values
 from core.command_registry import CommandContext, CommandDefinition, CommandResult
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem
+from core.executor_manager import COMMAND_EXECUTOR, ManagedExecutor, get_executor, shutdown_executor
 
 logger = logging.getLogger(__name__)
-
-# Maximum concurrent command executions across the application.
-_MAX_EXECUTION_WORKERS = 8
 
 
 @dataclass
@@ -98,32 +96,19 @@ class CommandExecutionService:
     shutdown.
     """
 
-    _shared_pool_lock = threading.Lock()
-    _shared_pool: concurrent.futures.ThreadPoolExecutor | None = None
-
     @classmethod
-    def _get_shared_pool(cls) -> concurrent.futures.ThreadPoolExecutor:
-        with cls._shared_pool_lock:
-            if cls._shared_pool is None or bool(getattr(cls._shared_pool, "_shutdown", False)):
-                cls._shared_pool = concurrent.futures.ThreadPoolExecutor(
-                    max_workers=_MAX_EXECUTION_WORKERS,
-                    thread_name_prefix="CmdExecPool",
-                )
-            return cls._shared_pool
+    def _get_shared_pool(cls) -> ManagedExecutor:
+        return get_executor(COMMAND_EXECUTOR)
 
     @classmethod
     def shutdown_shared_executor(cls, timeout: float = 5.0) -> None:
         """Shut down the process-wide command execution pool."""
-        with cls._shared_pool_lock:
-            pool = cls._shared_pool
-            cls._shared_pool = None
-        if pool is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
+        shutdown_executor(COMMAND_EXECUTOR, timeout=timeout)
 
     def __init__(
         self,
         result_store: CommandResultStore | None = None,
-        executor: concurrent.futures.ThreadPoolExecutor | None = None,
+        executor: concurrent.futures.Executor | None = None,
     ):
         self.result_store = result_store
         self._pool = executor or type(self)._get_shared_pool()

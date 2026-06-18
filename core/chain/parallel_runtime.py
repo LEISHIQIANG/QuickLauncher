@@ -10,10 +10,11 @@ This module extends the base graph runtime with:
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 import uuid
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, wait
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,6 +40,62 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+class _DaemonExecutor:
+    """Small future executor whose abandoned workers cannot block app exit."""
+
+    def __init__(self, max_workers: int):
+        self._queue: queue.Queue[tuple[Future, Any, tuple, dict] | None] = queue.Queue()
+        self._lock = threading.Lock()
+        self._closed = False
+        self._threads = [
+            threading.Thread(target=self._worker, name=f"ChainGraph-{index}", daemon=True)
+            for index in range(max(1, max_workers))
+        ]
+        for thread in self._threads:
+            thread.start()
+
+    def submit(self, fn, /, *args, **kwargs) -> Future:
+        future: Future = Future()
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("graph executor is shut down")
+            self._queue.put((future, fn, args, kwargs))
+        return future
+
+    def shutdown(self, *, cancel_futures: bool = False) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        if cancel_futures:
+            while True:
+                try:
+                    item = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if item is not None:
+                    item[0].cancel()
+                self._queue.task_done()
+        for _thread in self._threads:
+            self._queue.put(None)
+
+    def _worker(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is None:
+                self._queue.task_done()
+                return
+            future, fn, args, kwargs = item
+            try:
+                if future.set_running_or_notify_cancel():
+                    try:
+                        future.set_result(fn(*args, **kwargs))
+                    except BaseException as exc:
+                        future.set_exception(exc)
+            finally:
+                self._queue.task_done()
 
 
 @dataclass
@@ -89,7 +146,7 @@ class ParallelGraphRuntime(GraphRuntime):
     def __init__(self, max_workers: int = 4):
         super().__init__()
         self._max_workers = max_workers
-        self._executor: ThreadPoolExecutor | None = None
+        self._executor: _DaemonExecutor | None = None
 
     def execute(
         self,
@@ -195,9 +252,9 @@ class ParallelGraphRuntime(GraphRuntime):
         """Execute graph with parallel execution of independent nodes."""
         result.status = "running"
 
-        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
-            self._executor = executor
-
+        executor = _DaemonExecutor(self._max_workers)
+        self._executor = executor
+        try:
             for _group_idx, group in enumerate(plan.groups):
                 # Check cancellation
                 context.check_cancelled()
@@ -229,7 +286,13 @@ class ParallelGraphRuntime(GraphRuntime):
             # Update result status
             if result.status == "running":
                 result.status = "completed"
-
+        finally:
+            if result.status in ("failed", "cancelled"):
+                self._signal_group_cancel(context)
+            # The context-manager form waits indefinitely for handlers that
+            # ignore cancellation, defeating the graph timeout.  Running
+            # tasks receive the shared cancel event; queued tasks are dropped.
+            executor.shutdown(cancel_futures=True)
             self._executor = None
 
     def _execute_sequential(
@@ -331,7 +394,7 @@ class ParallelGraphRuntime(GraphRuntime):
         context: GraphExecutionContext,
         result: ExecutionResult,
         use_cache: bool,
-        executor: ThreadPoolExecutor,
+        executor: _DaemonExecutor,
     ) -> None:
         """Execute a group of independent nodes in parallel."""
         futures: dict[str, Future] = {}
@@ -476,6 +539,9 @@ class ParallelGraphRuntime(GraphRuntime):
             else:
                 # Execute handler
                 outputs = handler(node, input_values, context)
+                # A handler may finish after the graph timeout.  Do not allow
+                # a stale completion to mutate graph/cache state.
+                context.check_cancelled()
 
             # Process outputs
             if isinstance(outputs, dict):

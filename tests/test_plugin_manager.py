@@ -90,6 +90,16 @@ def test_manifest_missing_or_unknown_trust_defaults_to_unverified():
     assert unknown.trust_level == "community-unverified"
 
 
+def test_builtin_claim_without_install_source_is_demoted_on_load():
+    with tempfile.TemporaryDirectory() as tmp:
+        _create_plugin_dir(tmp, "claim_builtin", trust_level="builtin", main_py=_SAMPLE_MAIN_PY)
+        pm = PluginManager(CommandRegistry(), plugins_dir=tmp)
+        pm.scan_plugins()
+
+        assert pm.load_plugin("claim_builtin") is True
+        assert pm.get_plugin("claim_builtin").manifest.trust_level == "community-unverified"
+
+
 def test_high_risk_permissions():
     assert has_high_risk_permissions(["process.run"]) is True
     assert has_high_risk_permissions(["clipboard.read"]) is False

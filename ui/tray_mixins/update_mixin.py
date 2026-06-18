@@ -176,13 +176,6 @@ class UpdateMixin:
                 expected_hash=getattr(update_info, "file_hash", "") if update_info else "",
                 trusted_dir=trusted_dir,
                 data_manager=getattr(self, "data_manager", None),
-                expected_signature=getattr(update_info, "file_signature", "") if update_info else "",
-                signature_payload=_update_signature_payload(update_info) if update_info else b"",
-                signature_public_keys=(
-                    tuple(getattr(self._update_checker._config, "signature_public_keys", ()) or ())
-                    if self._update_checker
-                    else ()
-                ),
             )
 
     def _on_install_event(self, event: str, data=None):
@@ -197,13 +190,3 @@ class UpdateMixin:
                 self._update_checker.skip_version(version)
         except Exception as exc:
             logger.debug("跳过版本失败: %s", exc, exc_info=True)
-
-
-def _update_signature_payload(update_info):
-    try:
-        from services.update.trust import update_signature_payload
-
-        return update_signature_payload(update_info)
-    except Exception:
-        logger.debug("构造更新签名载荷失败", exc_info=True)
-        return b""

@@ -187,6 +187,7 @@ def _patch_qapp(monkeypatch, screens):
             return screens[0] if screens else None
 
     monkeypatch.setattr(qt_compat, "QApplication", _FakeApp)
+    monkeypatch.setattr(coordinate_utils, "_query_monitor_at", lambda _x, _y: None)
 
 
 def test_normalize_caret_position_returns_raw_when_inside_geometry(monkeypatch):
@@ -247,8 +248,7 @@ def test_normalize_caret_position_works_without_qapp(monkeypatch):
     assert result == (123, 456)
 
 
-def test_normalize_caret_position_does_not_apply_dpr_division(monkeypatch):
-    """回归基线：``dpr=1.5`` 的 fake screen 也不应触发任何除法。"""
+def test_normalize_caret_position_maps_physical_pixels_to_qt_coordinates(monkeypatch):
     from qt_compat import QRect
 
     class _DprScreen(_FakeScreen):
@@ -261,10 +261,32 @@ def test_normalize_caret_position_does_not_apply_dpr_division(monkeypatch):
 
     primary = _DprScreen("\\\\.\\DISPLAY1", QRect(0, 0, 1920, 1080), dpr=1.5)
     _patch_qapp(monkeypatch, [primary])
+    monkeypatch.setattr(
+        coordinate_utils,
+        "_query_monitor_at",
+        lambda _x, _y: (0xAB, 0, 0, 2880, "DISPLAY1", 144, 144),
+    )
 
-    # 即使 fake screen 报告 dpr=1.5，输入与输出应一致（无 dpr 除法）
-    assert normalize_caret_position(1000, 500) == (1000, 500)
+    assert normalize_caret_position(1000, 500) == (667, 333)
     assert normalize_caret_position(0, 0) == (0, 0)
+
+
+def test_normalize_caret_position_preserves_mixed_dpi_monitor_origin(monkeypatch):
+    from qt_compat import QRect
+
+    class _DprScreen(_FakeScreen):
+        def devicePixelRatio(self):
+            return 1.5
+
+    secondary = _DprScreen("\\\\.\\DISPLAY2", QRect(1920, 0, 1707, 960))
+    _patch_qapp(monkeypatch, [secondary])
+    monkeypatch.setattr(
+        coordinate_utils,
+        "_query_monitor_at",
+        lambda _x, _y: (0xBC, 1920, 0, 4480, "DISPLAY2", 144, 144),
+    )
+
+    assert normalize_caret_position(3200, 720) == (2774, 480)
 
 
 # ---------------------------------------------------------------------------

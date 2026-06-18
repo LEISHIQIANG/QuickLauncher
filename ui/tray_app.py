@@ -149,15 +149,24 @@ class TrayApp(
                 manifest = getattr(info, "manifest", None)
                 name = getattr(manifest, "name", str(info))
                 permissions = list(getattr(manifest, "permissions", []) or [])
+                trust_level = str(getattr(manifest, "trust_level", "community-unverified") or "")
+                install_source = str(getattr(manifest, "install_source", "") or "")
                 from core.plugin_manager import HIGH_RISK_PERMISSIONS
 
                 high_risk = [p for p in permissions if p in HIGH_RISK_PERMISSIONS]
                 risk_line = f"\n高风险权限: {', '.join(high_risk)}\n" if high_risk else "\n"
+                source_label = "官方插件包" if install_source == "builtin" else "第三方或未知来源"
+                trust_label = {
+                    "builtin": "官方可信",
+                    "local-trusted": "本地开发",
+                    "community-unverified": "社区未验证",
+                }.get(trust_level, "社区未验证")
                 parent = getattr(self, "config_window", None) or QApplication.activeWindow()
                 reply = ThemedMessageBox.question(
                     parent,
                     "启用插件",
                     f"插件「{name}」将与 QuickLauncher 主程序同权限运行。"
+                    f"\n来源: {source_label}\n信任等级: {trust_label}"
                     f"{risk_line}\n仅启用您信任的插件。确定要启用吗？",
                     ThemedMessageBox.Yes | ThemedMessageBox.No,
                 )
@@ -224,7 +233,14 @@ class TrayApp(
         self.keyboard_hook = None
 
         self._quitting = False
+        self._runtime_shutdown_started = False
         self._atexit_shutdown_registered = False
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                app.aboutToQuit.connect(self._shutdown_runtime_components)
+        except Exception as exc:
+            logger.debug("注册 Qt 退出清理失败: %s", exc, exc_info=True)
         try:
             atexit.register(self._shutdown_runtime_components)
             self._atexit_shutdown_registered = True

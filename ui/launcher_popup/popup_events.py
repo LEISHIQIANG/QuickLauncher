@@ -2,6 +2,7 @@
 
 import logging
 import time
+from typing import Any, cast
 
 from qt_compat import (
     QApplication,
@@ -272,14 +273,13 @@ class PopupEventsMixin:
                 item_h = card_size
 
             repaint_pad = sp(4)
+            host = cast(Any, self)
             return QRect(
                 card_x - repaint_pad,
                 card_y - repaint_pad,
                 card_size + repaint_pad * 2,
                 item_h + repaint_pad * 2,
-            ).intersected(
-                self.rect()
-            )  # type: ignore[attr-defined]
+            ).intersected(host.rect())
         except Exception as exc:
             logger.debug("计算Dock刷新区域失败: %s", exc, exc_info=True)
             return None

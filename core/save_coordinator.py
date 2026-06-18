@@ -20,6 +20,7 @@ called directly by tests.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _HISTORY_DEFAULT = "\u914d\u7f6e\u53d8\u66f4"
+_MAX_DELAYED_SAVE_RETRIES = 3
 
 
 class SaveCoordinator:
@@ -44,6 +46,9 @@ class SaveCoordinator:
 
     def __init__(self, dm: DataManager) -> None:
         self._dm = dm
+        self._delayed_retry_count = 0
+        self._batch_snapshot: dict[str, Any] | None = None
+        self._batch_failed = False
 
     # ── public save lifecycle ──────────────────────────────────────
 
@@ -52,6 +57,7 @@ class SaveCoordinator:
         dm = self._dm
         with dm._save_lock:
             dm._runtime_revision += 1
+            self._delayed_retry_count = 0
             if dm._batch_depth > 0:
                 dm._save_pending = True
                 dm._batch_dirty = True
@@ -103,9 +109,27 @@ class SaveCoordinator:
 
     @contextmanager
     def batch_update(self, immediate: bool = False):
-        """Batch multiple writes into a single save at context exit."""
+        """Apply multiple in-memory changes atomically and save once.
+
+        Any exception in a nested batch aborts the whole outer transaction.
+        """
         dm = self._dm
         with dm._save_lock:
+            if dm._batch_depth == 0:
+                self._batch_snapshot = {
+                    "data": copy.deepcopy(dm.data),
+                    "runtime_revision": dm._runtime_revision,
+                    "save_pending": dm._save_pending,
+                    "batch_dirty": dm._batch_dirty,
+                    "batch_force_immediate": dm._batch_force_immediate,
+                    "pending_history_action": dm._pending_history_action,
+                    "pending_history_summary": dm._pending_history_summary,
+                    "suppress_next_history": dm._suppress_next_history,
+                }
+                self._batch_failed = False
+                # Prevent a pre-existing debounce timer from serializing a
+                # half-applied transaction.  Its pending state is retained.
+                self._cancel_scheduled_save_locked()
             dm._batch_depth += 1
             if immediate:
                 dm._batch_force_immediate = True
@@ -113,12 +137,8 @@ class SaveCoordinator:
         try:
             yield dm
         except Exception:
-            # Don't save partial changes on exception — reset all dirty flags
             with dm._save_lock:
-                dm._batch_dirty = False
-                dm._batch_force_immediate = False
-                dm._save_pending = False
-                self._cancel_scheduled_save_locked()
+                self._batch_failed = True
             raise
         finally:
             should_flush = False
@@ -129,14 +149,32 @@ class SaveCoordinator:
                 assert dm._batch_depth >= 0, "batch_update depth underflow"
 
                 if dm._batch_depth == 0:
-                    if dm._save_pending or dm._batch_dirty:
+                    if self._batch_failed and self._batch_snapshot is not None:
+                        snapshot = self._batch_snapshot
+                        self._cancel_scheduled_save_locked()
+                        dm.data = snapshot["data"]
+                        dm._runtime_revision = snapshot["runtime_revision"]
+                        dm._save_pending = snapshot["save_pending"]
+                        dm._batch_dirty = snapshot["batch_dirty"]
+                        dm._batch_force_immediate = snapshot["batch_force_immediate"]
+                        dm._pending_history_action = snapshot["pending_history_action"]
+                        dm._pending_history_summary = snapshot["pending_history_summary"]
+                        dm._suppress_next_history = snapshot["suppress_next_history"]
+                        if dm._save_pending:
+                            scheduler = dm._get_save_scheduler()
+                            scheduler.schedule(self._delayed_save)
+                            dm._save_timer = scheduler.current_timer  # type: ignore[unused-ignore, assignment]
+                    elif dm._save_pending or dm._batch_dirty:
                         should_flush = True
                         flush_immediately = dm._batch_force_immediate
                         self._cancel_scheduled_save_locked()
                         dm._save_pending = False
 
-                    dm._batch_dirty = False
-                    dm._batch_force_immediate = False
+                    if not self._batch_failed:
+                        dm._batch_dirty = False
+                        dm._batch_force_immediate = False
+                    self._batch_snapshot = None
+                    self._batch_failed = False
 
             if should_flush:
                 if flush_immediately:
@@ -198,7 +236,23 @@ class SaveCoordinator:
                 should_save = True
 
         if should_save:
-            self._do_save()
+            if self._do_save():
+                self._delayed_retry_count = 0
+            else:
+                self._schedule_failed_save_retry()
+
+    def _schedule_failed_save_retry(self) -> None:
+        dm = self._dm
+        with dm._save_lock:
+            dm._save_pending = True
+            if self._delayed_retry_count >= _MAX_DELAYED_SAVE_RETRIES:
+                logger.error("delayed save retry limit reached; pending data will be retried during shutdown")
+                return
+            self._delayed_retry_count += 1
+            if dm._save_timer is None:
+                scheduler = dm._get_save_scheduler()
+                scheduler.schedule(self._delayed_save)
+                dm._save_timer = scheduler.current_timer  # type: ignore[unused-ignore, assignment]
 
     def _cancel_scheduled_save_locked(self) -> None:
         dm = self._dm
@@ -224,6 +278,11 @@ class SaveCoordinator:
                 history_summary = dm._pending_history_summary
             except (json.JSONDecodeError, TypeError, ValueError) as e:
                 logger.error("serialize data failed: %s", e)
+                dm._config_status = {
+                    "status": "error",
+                    "source": str(dm.data_file),
+                    "issues": [f"serialize data failed: {e}"],
+                }
                 return False
 
         write_success = False
@@ -240,6 +299,12 @@ class SaveCoordinator:
 
             except OSError as e:
                 logger.error("save data failed: %s", e)
+                with dm._save_lock:
+                    dm._config_status = {
+                        "status": "error",
+                        "source": str(dm.data_file),
+                        "issues": [f"save data failed: {e}"],
+                    }
                 if os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)

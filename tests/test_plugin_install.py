@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -13,7 +14,11 @@ import pytest
 
 from core.command_registry import CommandRegistry
 from core.path_security import UnsafePathError
-from core.plugin.constants import PLUGIN_PACKAGE_MAX_FILES, PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES
+from core.plugin.constants import (
+    OFFICIAL_PLUGIN_PACKAGE_SHA256,
+    PLUGIN_PACKAGE_MAX_FILES,
+    PLUGIN_PACKAGE_MAX_UNCOMPRESSED_BYTES,
+)
 from core.plugin_manager import PluginManager
 
 pytestmark = [pytest.mark.integration, pytest.mark.ui]
@@ -576,6 +581,70 @@ def test_install_third_party_package_forces_unverified_trust():
         manifest = json.loads((Path(plugins_dir) / "test_p" / "plugin.json").read_text(encoding="utf-8"))
         assert manifest["trust_level"] == "community-unverified"
         assert manifest["install_source"] == "third_party"
+
+
+def test_install_official_repository_package_keeps_builtin_trust(monkeypatch, tmp_path):
+    package_dir = tmp_path / ".plugins"
+    plugins_dir = tmp_path / "plugins"
+    package_dir.mkdir()
+    plugins_dir.mkdir()
+    package_path = package_dir / "test_p.qlzip"
+    _make_plugin_zip(str(package_path), manifest_overrides={"trust_level": "community-unverified"})
+    monkeypatch.setattr("core.plugin_manager.app_root", lambda: tmp_path)
+    package_hash = hashlib.sha256(package_path.read_bytes()).hexdigest()
+    monkeypatch.setitem(OFFICIAL_PLUGIN_PACKAGE_SHA256, "test_p", package_hash)
+
+    pm = PluginManager(CommandRegistry(), plugins_dir=str(plugins_dir))
+    assert pm.install_from_package(str(package_path)) == "test_p"
+
+    manifest = json.loads((plugins_dir / "test_p" / "plugin.json").read_text(encoding="utf-8"))
+    assert manifest["trust_level"] == "builtin"
+    assert manifest["install_source"] == "builtin"
+
+
+def test_tampered_repository_package_is_forced_to_unverified(monkeypatch, tmp_path):
+    package_dir = tmp_path / ".plugins"
+    plugins_dir = tmp_path / "plugins"
+    package_dir.mkdir()
+    plugins_dir.mkdir()
+    package_path = package_dir / "test_p.qlzip"
+    _make_plugin_zip(
+        str(package_path),
+        manifest_overrides={"trust_level": "builtin", "install_source": "builtin"},
+    )
+    monkeypatch.setattr("core.plugin_manager.app_root", lambda: tmp_path)
+    monkeypatch.setitem(OFFICIAL_PLUGIN_PACKAGE_SHA256, "test_p", "0" * 64)
+
+    pm = PluginManager(CommandRegistry(), plugins_dir=str(plugins_dir))
+    assert pm.install_from_package(str(package_path)) == "test_p"
+
+    manifest = json.loads((plugins_dir / "test_p" / "plugin.json").read_text(encoding="utf-8"))
+    assert manifest["trust_level"] == "community-unverified"
+    assert manifest["install_source"] == "third_party"
+
+
+def test_overwrite_callback_runs_before_existing_files_are_replaced(tmp_path):
+    plugins_dir = tmp_path / "plugins"
+    target_dir = plugins_dir / "test_p"
+    target_dir.mkdir(parents=True)
+    marker = target_dir / "old.txt"
+    marker.write_text("old", encoding="utf-8")
+    package_path = tmp_path / "replacement.qlzip"
+    _make_plugin_zip(str(package_path))
+    callback_observations = []
+
+    pm = PluginManager(CommandRegistry(), plugins_dir=str(plugins_dir))
+    assert (
+        pm.install_from_package(
+            str(package_path),
+            on_overwrite=lambda _name: True,
+            before_overwrite=lambda plugin_id: callback_observations.append((plugin_id, marker.exists())),
+        )
+        == "test_p"
+    )
+
+    assert callback_observations == [("test_p", True)]
+    assert not marker.exists()
 
 
 # ---------------------------------------------------------------------------

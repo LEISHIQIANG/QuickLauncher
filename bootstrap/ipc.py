@@ -1,4 +1,5 @@
 import atexit
+import ctypes
 import json
 import logging
 import os
@@ -7,9 +8,18 @@ import secrets
 import tempfile
 
 logger = logging.getLogger(__name__)
+_ERROR_ALREADY_EXISTS = 183
+_instance_mutex_handles: set[tuple[object, int]] = set()
 
 
-def create_ipc_server(app, server_name: str, on_show_config, *, token_path: str | None = None):
+def create_ipc_server(
+    app,
+    server_name: str,
+    on_show_config,
+    *,
+    token_path: str | None = None,
+    remove_stale: bool = False,
+):
     """创建 IPC 本地服务器，返回 server 对象"""
     from qt_compat import QLocalServer, QTimer
 
@@ -30,8 +40,6 @@ def create_ipc_server(app, server_name: str, on_show_config, *, token_path: str 
                     conn.deleteLater()
                     continue
                 data = bytes(conn.readAll() or b"")
-                conn.disconnectFromServer()
-                conn.deleteLater()
                 cmd = _parse_ipc_command(data, session_token)
                 logger.debug(f"IPC: 收到命令 '{cmd}'")
                 if cmd == "show_config":
@@ -40,12 +48,19 @@ def create_ipc_server(app, server_name: str, on_show_config, *, token_path: str 
                         QTimer.singleShot(0, cb)
                     else:
                         _pending["show_config"] = True
+                ack = json.dumps({"ok": cmd == "show_config"}).encode("utf-8")
+                conn.write(ack)
+                conn.flush()
+                conn.waitForBytesWritten(200)
+                conn.disconnectFromServer()
+                conn.deleteLater()
                 handled += 1
             except (OSError, RuntimeError, ValueError):
                 logger.exception("IPC单连接处理失败，已处理连接数: %s", handled)
 
     server = QLocalServer()
-    server.removeServer(server_name)
+    if remove_stale:
+        server.removeServer(server_name)
     if not server.listen(server_name):
         logger.warning(f"无法创建本地服务器: {server.errorString()}")
     else:
@@ -77,15 +92,61 @@ def try_connect_existing(server_name: str, *, token_path: str | None = None) -> 
                 socket.close()
                 return False
             payload = json.dumps({"token": token, "command": "show_config"}, ensure_ascii=False).encode("utf-8")
-            socket.write(payload)
+            written = int(socket.write(payload))
+            if written != len(payload):
+                socket.close()
+                return False
             socket.flush()
-            socket.waitForBytesWritten(200)
+            if int(socket.bytesToWrite()) > 0 and not socket.waitForBytesWritten(200):
+                socket.close()
+                return False
+            if not socket.waitForReadyRead(500):
+                socket.close()
+                return False
+            ack = json.loads(bytes(socket.readAll() or b"").decode("utf-8"))
+            if not isinstance(ack, dict) or ack.get("ok") is not True:
+                socket.close()
+                return False
         except (OSError, RuntimeError, TypeError, ValueError):
             logger.debug("发送IPC消息失败", exc_info=True)
+            socket.close()
+            return False
         socket.close()
         return True
     socket.close()
     return False
+
+
+def acquire_instance_mutex(server_name: str):
+    """Atomically claim process ownership on Windows.
+
+    The kernel releases this mutex automatically after a crash, unlike a
+    QLocalServer endpoint file.  ``None`` means another process owns it.
+    """
+    if os.name != "nt":
+        return (None, id(server_name))
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(server_name or "quicklauncher"))
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    handle = kernel32.CreateMutexW(None, False, f"Local\\{safe_name}")
+    if not handle:
+        raise OSError(ctypes.get_last_error(), "CreateMutexW failed")
+    if ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+        return None
+    token = (kernel32, int(handle))
+    _instance_mutex_handles.add(token)
+    atexit.register(release_instance_mutex, token)
+    return token
+
+
+def release_instance_mutex(token) -> None:
+    if not token or token not in _instance_mutex_handles:
+        return
+    _instance_mutex_handles.discard(token)
+    kernel32, handle = token
+    if kernel32 is not None:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
 
 
 def _parse_ipc_command(data: bytes, expected_token: str) -> str:

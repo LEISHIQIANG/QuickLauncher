@@ -24,6 +24,19 @@ from core.network_security import (
 )
 
 
+class _FakeResponse:
+    def __init__(self, peer="8.8.8.8"):
+        self._sock = self
+        self.peer = peer
+        self.closed = False
+
+    def getpeername(self):
+        return (self.peer, 443)
+
+    def close(self):
+        self.closed = True
+
+
 def test_validate_public_http_url_rejects_localhost():
     with pytest.raises(UnsafeUrlError):
         validate_public_http_url("http://localhost/foo")
@@ -58,7 +71,7 @@ def test_safe_urlopen_validates_initial_url_even_when_urlopen_patched(monkeypatc
     class _FakeOpener:
         def open(self, request, timeout=0):
             assert request.full_url == "http://8.8.8.8/start"
-            return object()
+            return _FakeResponse()
 
     def _make_opener(*_handlers):
         return _FakeOpener()
@@ -120,3 +133,28 @@ def test_safe_urlopen_rejects_redirect_to_private_ip(monkeypatch):
 
     with pytest.raises(UnsafeUrlError):
         safe_urlopen("https://example.com/start", timeout=1)
+
+
+def test_safe_urlopen_rejects_dns_rebinding_to_private_connected_peer(monkeypatch):
+    response = _FakeResponse("127.0.0.1")
+
+    class _FakeOpener:
+        def open(self, request, timeout=0):
+            return response
+
+    monkeypatch.setattr(network_security.urllib.request, "build_opener", lambda *_handlers: _FakeOpener())
+
+    with pytest.raises(UnsafeUrlError, match="connected peer"):
+        safe_urlopen("http://8.8.8.8/start", timeout=1)
+    assert response.closed is True
+
+
+def test_safe_urlopen_fails_closed_when_connected_peer_is_unobservable(monkeypatch):
+    class _FakeOpener:
+        def open(self, request, timeout=0):
+            return object()
+
+    monkeypatch.setattr(network_security.urllib.request, "build_opener", lambda *_handlers: _FakeOpener())
+
+    with pytest.raises(UnsafeUrlError, match="unable to verify"):
+        safe_urlopen("http://8.8.8.8/start", timeout=1)

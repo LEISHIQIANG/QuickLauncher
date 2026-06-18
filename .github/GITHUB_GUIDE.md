@@ -59,10 +59,10 @@ CI 会在 push 和 pull request 上运行：
      tests/test_update_trust.py
    ```
 
-4. 执行 mypy 子集：
+4. 执行 mypy 零错误门禁：
 
    ```powershell
-   python -m mypy --follow-imports=skip services/update
+   python scripts/check_mypy_progress.py
    ```
 
 ## 本地推送前检查

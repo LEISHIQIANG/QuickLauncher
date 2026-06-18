@@ -4,7 +4,11 @@ import time
 from core.action_chain_host import DefaultActionChainHostAPI
 from core.command_registry import CommandResult
 from core.data_models import Folder, ShortcutItem, ShortcutType
-from core.shortcut_chain_exec import _execute_shortcut_chain_runtime, execute_shortcut_chain
+from core.shortcut_chain_exec import (
+    _execute_processor_with_timeout,
+    _execute_shortcut_chain_runtime,
+    execute_shortcut_chain,
+)
 
 
 class _Data:
@@ -90,6 +94,34 @@ def test_processor_timeout_cancels_cooperative_sleep_node():
     assert result.success is False
     assert "超时" in result.payload["items"][0]["detail"]
     assert elapsed < 1.0
+
+
+def test_non_cooperative_processor_timeouts_are_bounded(monkeypatch):
+    release = threading.Event()
+
+    def stuck_processor(*_args, **_kwargs):
+        release.wait(2.0)
+        return CommandResult(success=True, message="late")
+
+    monkeypatch.setattr("core.chain_processors.execute_chain_processor", stuck_processor)
+    step = {"processor_id": "stuck", "source": ""}
+    workers = []
+    results = []
+
+    for _ in range(8):
+        worker = threading.Thread(
+            target=lambda: results.append(_execute_processor_with_timeout(step, {}, None, 10)),
+            daemon=True,
+        )
+        worker.start()
+        workers.append(worker)
+    for worker in workers:
+        worker.join(timeout=0.5)
+
+    _result, error = _execute_processor_with_timeout(step, {}, None, 10)
+    assert "仍在退出" in error
+    assert len(results) == 8
+    release.set()
 
 
 def test_dangerous_processor_requires_confirmation(tmp_path):

@@ -95,7 +95,7 @@ class SettingsAppearancePageMixin:
         grid.addWidget(self.corner_spin, 1, 1)
 
         grid.addWidget(self._create_label("Dock高度"), 1, 2)
-        self.dock_height_spin = self._create_spinbox(0, 3, "行")
+        self.dock_height_spin = self._create_spinbox(0, 8, "行")
         self.dock_height_spin.setSpecialValueText(tr("隐藏"))
         self.dock_height_spin.valueChanged.connect(self._on_dock_size_changed)
         grid.addWidget(self.dock_height_spin, 1, 3)

@@ -1422,6 +1422,32 @@ def test_preprocessing_pipeline_exception_fails_closed(monkeypatch):
     assert "preprocessing" in result.error.lower() or "预处理" in result.error
 
 
+def test_preprocessing_settings_failure_blocks_direct_execution(monkeypatch):
+    """Configuration read failures must not fall back to permissive execution."""
+
+    from types import SimpleNamespace
+
+    import core
+
+    monkeypatch.setattr(
+        core,
+        "data_manager",
+        SimpleNamespace(get_settings=lambda: (_ for _ in ()).throw(RuntimeError("settings broken"))),
+    )
+    launched = []
+    monkeypatch.setattr(command_exec.subprocess, "Popen", lambda *a, **kw: launched.append((a, kw)))
+
+    item = ShortcutItem(type=ShortcutType.COMMAND)
+    item.command_type = "cmd"
+    item.command = "echo should-not-run"
+
+    success, error = command_exec.CommandExecutionMixin._execute_command(item)
+
+    assert success is False
+    assert "预处理" in error or "preprocessing" in error.lower()
+    assert launched == []
+
+
 def test_run_command_capture_timeout_kills_process(monkeypatch):
     class FakeProcess:
         returncode = -9

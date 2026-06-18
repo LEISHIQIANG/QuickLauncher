@@ -17,6 +17,7 @@ def test_release_gate_dry_run_skips_execution(capsys):
     assert "ruff: py-test -m ruff check --no-cache core ui hooks services tests" in output
     assert f"pytest: py-test -m pytest --basetemp {release_gate.PYTEST_BASETEMP}" in output
     assert "compileall: py-test -m compileall core ui hooks services bootstrap plugins" in output
+    assert "mypy zero errors: py-test scripts/check_mypy_progress.py" in output
     assert "py-test scripts/check_release_artifacts.py --source-only --allow-source-runtime-plugins" in output
     assert "py-test scripts/post_package_smoke.py" in output
 
@@ -115,7 +116,7 @@ def test_release_gate_step_order_matches_spec():
         "pytest",
         "broad exception audit",
         "i18n coverage",
-        "mypy progress",
+        "mypy zero errors",
         "compileall",
         "release metadata",
         "post-package smoke",
@@ -160,6 +161,8 @@ def test_release_gate_env_isolation_excludes_stale_vars(monkeypatch):
 
 def test_release_gate_env_isolation_preserves_essential_vars(monkeypatch):
     monkeypatch.setenv("SYSTEMROOT", r"C:\WINDOWS")
+    monkeypatch.setenv("SystemDrive", "C:")
+    monkeypatch.setenv("ProgramData", r"C:\ProgramData")
     monkeypatch.setenv("CI", "true")
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("RUNNER_OS", "Windows")
@@ -175,6 +178,9 @@ def test_release_gate_env_isolation_preserves_essential_vars(monkeypatch):
 
     for env in calls:
         assert env.get("SYSTEMROOT") == r"C:\WINDOWS"
+        normalized_env = {key.upper(): value for key, value in env.items()}
+        assert normalized_env.get("SYSTEMDRIVE") == "C:"
+        assert normalized_env.get("PROGRAMDATA") == r"C:\ProgramData"
         assert env.get("CI") == "true"
         assert env.get("GITHUB_ACTIONS") == "true"
         assert env.get("RUNNER_OS") == "Windows"

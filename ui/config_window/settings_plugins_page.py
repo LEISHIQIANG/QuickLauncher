@@ -811,6 +811,14 @@ class SettingsPluginsPageMixin:
 
         try:
             previous_enabled = {p.manifest.id for p in plugin_manager.list_plugins() if p.status == "enabled"}
+            disabled_for_overwrite = set()
+
+            def _disable_before_overwrite(plugin_id):
+                if plugin_id in previous_enabled:
+                    if not plugin_manager.disable_plugin(plugin_id, persist=False):
+                        raise ValueError(f"无法停止正在运行的插件: {plugin_id}")
+                    disabled_for_overwrite.add(plugin_id)
+
             plugin_id = plugin_manager.install_from_package(
                 file_path,
                 on_overwrite=lambda name: (
@@ -821,8 +829,12 @@ class SettingsPluginsPageMixin:
                     )
                     == ThemedMessageBox.Yes
                 ),
+                before_overwrite=_disable_before_overwrite,
             )
         except ValueError as e:
+            if "disabled_for_overwrite" in locals() and disabled_for_overwrite:
+                plugin_manager.scan_plugins()
+                plugin_manager.auto_enable(list(disabled_for_overwrite))
             ThemedMessageBox.critical(self, tr("安装失败"), tr("无法安装插件:\n{error}", error=e))
             return
 

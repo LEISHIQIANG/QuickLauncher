@@ -11,7 +11,6 @@ import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 from qt_compat import QObject, pyqtSignal
 from runtime_paths import is_packaged_runtime
@@ -46,6 +45,7 @@ from .command_variables import (
     should_expand_command_variables,
 )
 from .data_models import ShortcutItem
+from .executor_manager import STREAM_IO_EXECUTOR, ManagedExecutor, get_executor
 from .runtime_constants import (
     COMMAND_CAPTURE_POLL_SECONDS,
     COMMAND_CAPTURE_UPDATE_INTERVAL_SECONDS,
@@ -87,16 +87,10 @@ def init_main_thread_invoker():
 class CommandExecutionMixin(CommandLauncherMixin):
     _SUPPORTED_COMMAND_TYPES = SUPPORTED_COMMAND_TYPES
     _DESTRUCTIVE_CONFIRMATION_ATTR = "_destructive_command_confirmed"
-    _executor: ThreadPoolExecutor | None = None
-    _executor_lock = threading.Lock()
 
     @classmethod
-    def _get_executor(cls) -> ThreadPoolExecutor:
-        if cls._executor is None:
-            with cls._executor_lock:
-                if cls._executor is None:
-                    cls._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="CmdExec")
-        return cls._executor
+    def _get_executor(cls) -> ManagedExecutor:
+        return get_executor(STREAM_IO_EXECUTOR)
 
     @staticmethod
     def _command_preprocessing_result(shortcut: ShortcutItem, command: str, command_type: str):
@@ -108,17 +102,19 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 create_pipeline_from_settings,
             )
 
-            settings = None
             if data_manager is not None and hasattr(data_manager, "get_settings"):
-                try:
-                    settings = data_manager.get_settings()
-                except Exception:
-                    settings = None
-            pipeline = (
-                create_pipeline_from_settings(settings)
-                if settings is not None
-                else PreprocessingPipeline(rate_limiting=False)
-            )
+                settings = data_manager.get_settings()
+                if settings is None:
+                    raise RuntimeError("preprocessing settings are unavailable")
+                pipeline = create_pipeline_from_settings(settings)
+            else:
+                # Standalone helpers have no DataManager. Keep preprocessing on
+                # with conservative security defaults and no shared rate state.
+                pipeline = PreprocessingPipeline(
+                    rate_limiting=False,
+                    block_dangerous_patterns=True,
+                    require_variable_quoting=True,
+                )
             return pipeline.process(
                 PreprocessingContext(
                     shortcut_id=str(getattr(shortcut, "id", "") or ""),

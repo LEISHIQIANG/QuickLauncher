@@ -213,7 +213,9 @@ class WindowControlMixin:
         if process_id == current_process_id:
             logger.debug("置顶目标属于 QuickLauncher，已忽略: hwnd=%s", hwnd)
             return None
-        return int(hwnd), int(process_id)  # type: ignore[arg-type]
+        assert hwnd is not None
+        assert process_id is not None
+        return int(hwnd), int(process_id)
 
     @staticmethod
     def _take_topmost_target() -> tuple[int, int] | None:

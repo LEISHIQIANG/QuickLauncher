@@ -36,7 +36,7 @@ The current source version is defined in [core/version.py](core/version.py): `1.
 | Plugins | `.qlzip` installation, hot loading, enable/disable, failure quarantine, permissions, built-in commands, search sources, chain processors, persistent workers |
 | Hooks | Native `hooks.dll` for low-level mouse/keyboard hooks, Raw Input fallback, RegisterHotKey, macro recording/playback |
 | Data safety | Atomic saves, config backups, history snapshots, import sanitization, path traversal defense, controlled URL access |
-| Release safety | GitHub Releases, Ed25519 release signatures, SHA-256 verification, trusted installer path checks |
+| Release safety | GitHub Releases, SHA-256 verification, trusted installer path checks |
 
 ## 2. Install And Run
 
@@ -437,11 +437,11 @@ Update flow:
 1. Read latest release.
 2. Compare versions.
 3. Resolve installer URL, size, and SHA-256.
-4. Validate URL, hash, and release signature.
+4. Validate URL and hash.
 5. Download into a controlled directory.
 6. Launch installer.
 
-The trust chain includes Ed25519 release signatures and SHA-256 verification. Missing public keys or validation failures fail closed.
+The trust chain is based on SHA-256 verification. Missing hash or validation failures fail closed.
 
 ## 12. Build, Tests, And CI
 

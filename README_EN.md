@@ -25,7 +25,7 @@ The current source version is defined in [core/version.py](core/version.py): `1.
 | Batch launch | Dedicated `batch_launch` shortcut type for ordered multi-target launch without recursive references |
 | Plugins | `.qlzip` packages, hot loading, enable/disable, failure quarantine, permission declarations, built-in command registration, search sources, chain processors, persistent workers |
 | UI | Dark/light/follow-system themes, Acrylic/image/solid backgrounds, Windows 10 shadows, global UI scaling, Dock, pinned and draggable popups |
-| Safety | Atomic saves, config history, automatic backups, import sanitization, path traversal defense, safe URL fetching, update signatures, SHA-256 verification |
+| Safety | Atomic saves, config history, automatic backups, import sanitization, path traversal defense, safe URL fetching, SHA-256 verification |
 
 ## Installation
 

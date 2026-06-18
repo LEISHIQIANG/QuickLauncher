@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from typing import Any
 
@@ -27,6 +28,7 @@ from core.runtime_constants import (
 logger = logging.getLogger(__name__)
 
 MAX_CHAIN_STEPS = COMMAND_CHAIN_MAX_STEPS
+_PROCESSOR_TIMEOUT_SLOTS = threading.BoundedSemaphore(value=8)
 
 
 def execute_shortcut_chain(
@@ -515,15 +517,14 @@ def _execute_processor_with_timeout(
     cancel_event,
     timeout_ms: int,
 ) -> tuple[CommandResult | None, str]:
-    import threading
-
     from core.background_tasks import start_background_thread
-    from core.cancellation import CancellationToken
     from core.chain_processors import execute_chain_processor
 
+    if not _PROCESSOR_TIMEOUT_SLOTS.acquire(blocking=False):
+        logger.error("动作链 processor 超时隔离槽已耗尽，拒绝启动新任务")
+        return None, "后台处理器仍在退出，请稍后重试"
     done_event = threading.Event()
     processor_cancel_event = threading.Event()
-    cancel_token = CancellationToken()
     result_holder: dict[str, Any] = {}
 
     def _run_processor() -> None:
@@ -538,24 +539,27 @@ def _execute_processor_with_timeout(
             result_holder["error"] = exc
         finally:
             done_event.set()
+            _PROCESSOR_TIMEOUT_SLOTS.release()
 
-    start_background_thread(
-        name="chain-processor",
-        target=_run_processor,
-        owner="shortcut_chain_exec.processor_timeout",
-    )
+    try:
+        start_background_thread(
+            name="chain-processor",
+            target=_run_processor,
+            owner="shortcut_chain_exec.processor_timeout",
+        )
+    except Exception:
+        _PROCESSOR_TIMEOUT_SLOTS.release()
+        raise
     deadline = time.monotonic() + max(0, timeout_ms) / 1000.0
     while not done_event.is_set():
         if _is_cancelled(cancel_event):
             processor_cancel_event.set()
-            cancel_token.cancel("parent_cancelled")
             return None, "已取消"
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             processor_cancel_event.set()
-            cancel_token.cancel("timeout")
             logger.warning(
-                "动作链 processor 超时: processor=%s, timeout=%dms, cancel_token 已设置",
+                "动作链 processor 超时: processor=%s, timeout=%dms, cancel_event 已设置",
                 str(step.get("processor_id") or ""),
                 timeout_ms,
             )

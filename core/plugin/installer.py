@@ -30,6 +30,8 @@ def install_zip_archive(
     manifest_from_dict: Callable[[dict], object],
     validate_manifest: Callable[[object], str],
     on_overwrite: Callable[[str], bool] | None = None,
+    before_overwrite: Callable[[str], None] | None = None,
+    post_install: Callable[[str, Path], None] | None = None,
 ) -> str | None:
     plugins_root = Path(plugins_dir).resolve(strict=False)
     staging_base = resolve_under(plugins_root, plugins_root / ".staging")
@@ -38,6 +40,7 @@ def install_zip_archive(
     staging_dir = resolve_under(staging_base, staging_base / f"install-{uuid.uuid4().hex[:12]}")
     backup_dir: Path | None = None
     plugin_id: str | None = None
+    target_dir: Path | None = None
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
@@ -83,6 +86,8 @@ def install_zip_archive(
                     raise ValueError(f'插件 "{plugin_name}" 已存在，且未提供覆盖确认回调')
                 if not on_overwrite(plugin_name):
                     return None
+                if before_overwrite is not None:
+                    before_overwrite(str(plugin_id))
 
             os.makedirs(staging_dir, exist_ok=True)
             _extract_archive(zf, staging_dir, has_root=has_root, archive_root=archive_root)
@@ -103,6 +108,9 @@ def install_zip_archive(
             shutil.move(str(staging_dir), str(target_dir))
             staging_dir = None  # type: ignore[assignment]
 
+        if post_install is not None and plugin_id is not None and target_dir is not None:
+            post_install(plugin_id, target_dir)
+
         if backup_dir and backup_dir.exists():
             safe_rmtree_child(backup_dir.parent, backup_dir)
             backup_dir = None
@@ -122,6 +130,11 @@ def install_zip_archive(
                 safe_rmtree_child(backup_dir.parent, backup_dir)
             except Exception as rollback_err:
                 logger.error("回滚插件安装失败: %s", rollback_err)
+        elif target_dir is not None and target_dir.exists():
+            try:
+                safe_rmtree_child(plugins_root, target_dir)
+            except Exception as rollback_err:
+                logger.error("清理失败的插件安装目录失败: %s", rollback_err)
         raise exc_info[1].with_traceback(exc_info[2]) from exc_info[1]  # type: ignore[union-attr]
     finally:
         if staging_dir and staging_dir.exists():

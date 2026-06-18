@@ -17,8 +17,6 @@ class UpdateConfig:
     auto_install: bool = False
     verify_ssl: bool = True
     require_file_hash: bool = True
-    require_signature: bool = False
-    signature_public_keys: tuple[str, ...] = ()
     allow_insecure_update_urls: bool = False
     allowed_download_hosts: tuple[str, ...] = ("github.com", "githubusercontent.com")
     max_download_bytes: int = 200 * 1024 * 1024
@@ -34,7 +32,6 @@ class UpdateInfo:
     changelog_en: str = ""
     download_url: str = ""
     file_hash: str = ""
-    file_signature: str = ""
     file_size: int = 0
     mandatory: bool = False
     mandatory_min_version: str = ""

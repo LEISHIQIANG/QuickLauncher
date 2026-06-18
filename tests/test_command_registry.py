@@ -1126,3 +1126,23 @@ def test_execute_search_sources_does_not_nested_submit_to_same_pool(monkeypatch)
 
     flattened = {item["id"] for _source_id, _source_info, items in results for item in items}
     assert {"first", "second"}.issubset(flattened)
+
+
+def test_separate_search_coordinators_do_not_starve_handler_pool(monkeypatch):
+    handler_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    coordinator_pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+    monkeypatch.setattr(command_registry, "_get_search_pool", lambda: handler_pool)
+
+    def immediate(query):
+        return [{"id": query, "title": query, "command": "echo ok"}]
+
+    try:
+        assert register_search_source("test_saturation", {"plugin_id": "p", "handler": immediate})
+        futures = [coordinator_pool.submit(execute_search_sources, str(index), timeout=0.5) for index in range(6)]
+        results = [future.result(timeout=1.0) for future in futures]
+    finally:
+        remove_search_source("test_saturation", plugin_id="p")
+        coordinator_pool.shutdown(wait=False, cancel_futures=True)
+        handler_pool.shutdown(wait=False, cancel_futures=True)
+
+    assert all(result and result[0][2][0]["id"] == str(index) for index, result in enumerate(results))
