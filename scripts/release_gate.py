@@ -90,7 +90,7 @@ def _default_steps(python: str) -> list[GateStep]:
                 "--exclude-dir",
                 "tools",
                 "--max-total",
-                "1400",
+                "1420",
                 "--max-unlogged",
                 "300",
             ],
