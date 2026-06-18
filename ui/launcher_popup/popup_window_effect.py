@@ -260,7 +260,12 @@ class PopupWindowEffectMixin:
                 self.window_effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
                 self._win10_dwm_blur_active = False
                 self.window_effect.set_acrylic(hwnd, enable=False)
-                self.window_effect.set_round_corners(hwnd, enable=False)
+                if is_win11():
+                    self.window_effect.set_round_corners(
+                        hwnd, preference=self._get_win11_corner_preference(desired_radius)
+                    )
+                else:
+                    self.window_effect.set_round_corners(hwnd, enable=False)
                 self.window_effect.clear_window_region(hwnd)
                 if hasattr(self, "_apply_search_mask"):
                     self._apply_search_mask()
@@ -555,6 +560,10 @@ class PopupLayoutMixin:
             overlay.setGeometry(self.rect())
         if not getattr(self, "_geometry_adjusting", False):
             self._schedule_window_effect_update(0)
+        glass_renderer = getattr(self, "_glass_renderer", None)
+        if glass_renderer is not None and glass_renderer.active:
+            glass_renderer.configure()
+            glass_renderer.sync_geometry()
         super().resizeEvent(event)
 
     def moveEvent(self, event):
@@ -573,6 +582,9 @@ class PopupLayoutMixin:
                 self._schedule_window_effect_update(50)
             else:
                 self._schedule_window_effect_update(0)
+            glass_renderer = getattr(self, "_glass_renderer", None)
+            if glass_renderer is not None and glass_renderer.active:
+                glass_renderer.sync_geometry()
         except Exception as exc:
             logger.debug("处理窗口移动事件失败: %s", exc, exc_info=True)
         super().moveEvent(event)

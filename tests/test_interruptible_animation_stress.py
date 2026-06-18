@@ -117,11 +117,11 @@ def _popup_animation_shell():
 
 
 def test_popup_show_hide_show_triple_interrupt_ignores_stale_finish(monkeypatch):
-    import ui.launcher_popup.popup_window as popup_window_mod
+    import ui.launcher_popup.popup_window_animation as anim_mod
 
     _FakeAnimationGroup.instances = []
-    monkeypatch.setattr(popup_window_mod.QtCompat, "QPropertyAnimation", _FakeAnimation)
-    monkeypatch.setattr(popup_window_mod.QtCompat, "QParallelAnimationGroup", _FakeAnimationGroup)
+    monkeypatch.setattr(anim_mod.QtCompat, "QPropertyAnimation", _FakeAnimation)
+    monkeypatch.setattr(anim_mod.QtCompat, "QParallelAnimationGroup", _FakeAnimationGroup)
 
     popup = _popup_animation_shell()
 

@@ -273,6 +273,8 @@ class PopupMixin:
                 )
                 self.popup_window.preload_visible_icons(force=True, all_pages=True)
                 self.popup_window.prepare_first_show()
+                if not self.popup_window._prepare_selected_background():
+                    return
                 self.popup_window.show()
                 self.popup_window.activateWindow()
                 self.popup_window.raise_()
@@ -291,6 +293,8 @@ class PopupMixin:
                 self.popup_window.preload_background()
                 self.popup_window.preload_visible_icons(force=True, all_pages=True)
                 self.popup_window.prepare_first_show()
+                if not self.popup_window._prepare_selected_background():
+                    return
                 self.popup_window.show()
                 self.popup_window.activateWindow()
                 self.popup_window.raise_()

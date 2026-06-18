@@ -168,6 +168,16 @@ class PopupItemExecutionMixin:
         cmd_str = cmd_text.lower()
         if item.type == ShortcutType.COMMAND and item.command_type == "builtin" and cmd_str:
             force_close_builtin_direct = True
+            if self.__dict__.get("is_pinned", False):
+                try:
+                    from core.builtin_commands import canonical_builtin_command
+
+                    cmd_word = cmd_text.lstrip("/").split(None, 1)[0].lower() if cmd_text else ""
+                    canonical = canonical_builtin_command(cmd_word)
+                    if canonical not in {"toggle_topmost", "pin_on", "pin_off"}:
+                        force_close_builtin_direct = False
+                except Exception as exc:
+                    logger.debug("Check pinned builtin command failed: %s", exc, exc_info=True)
             if (
                 cmd_text.startswith("/")
                 and not (getattr(self, "search_query", "") or "").strip()
@@ -251,7 +261,8 @@ class PopupItemExecutionMixin:
                             tray_app = getattr(self, "tray_app", None)
                             if tray_app is not None and hasattr(tray_app, "show_command_panel"):
                                 self._launched_app = True
-                                self.hide()  # type: ignore[attr-defined]
+                                if not self.__dict__.get("is_pinned", False):
+                                    self.hide()  # type: ignore[attr-defined]
                                 tray_app.show_command_panel(
                                     command_id=panel_cmd_def.id,
                                     args_text=args_text,

@@ -4,13 +4,6 @@ import logging
 import os
 import time
 
-try:
-    import win32gui
-
-    HAS_WIN32_SHELL = True
-except ImportError:
-    HAS_WIN32_SHELL = False
-
 from core.window_detection import _is_desktop_window, _is_explorer_like_window
 from qt_compat import (
     QCursor,
@@ -19,8 +12,8 @@ from qt_compat import (
 from ui.launcher_popup.file_selection import FileSelectionThread, SelectionTriggerContext
 from ui.launcher_popup.popup_window_helpers import FolderSyncWorker, sync_all_folders_for_data_manager
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
-from ui.utils.ui_scale import sp, spf
-from ui.utils.window_effect import is_win11
+from ui.utils.ui_scale import sp
+from ui.utils.window_effect import is_glass_background_supported, is_win11
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +100,20 @@ class PopupDataRefreshMixin:
             getattr(self.settings, "shadow_size", 0) != prev_shadow_size
             or getattr(self.settings, "shadow_distance", 0) != prev_shadow_distance
         )
+
+        glass_renderer = getattr(self, "_glass_renderer", None)
+        if glass_renderer is not None:
+            if bg_mode != "glass":
+                glass_renderer.stop(destroy=True)
+            elif not is_glass_background_supported():
+                # 系统不支持 WDA_EXCLUDEFROMCAPTURE：不要碰渲染线程，让
+                # _prepare_selected_background 在弹窗显示时再做静默回退。
+                glass_renderer.stop(destroy=True)
+            elif self.isVisible():
+                try:
+                    glass_renderer.prepare()
+                except Exception as exc:
+                    self._handle_glass_background_failure(str(exc))
 
         self.dock_height = self._calculate_dock_height()
 

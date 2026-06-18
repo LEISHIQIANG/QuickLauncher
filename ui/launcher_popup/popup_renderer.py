@@ -219,7 +219,11 @@ class PopupRendererMixin:
 
         self._draw_win10_internal_shadow(painter, rect, radius)
         # 绘制背景
-        if bg_mode == "image" and self.settings.custom_bg_path and os.path.exists(self.settings.custom_bg_path):
+        if bg_mode == "glass":
+            glass_renderer = getattr(self, "_glass_renderer", None)
+            if glass_renderer is not None:
+                glass_renderer.draw(painter)
+        elif bg_mode == "image" and self.settings.custom_bg_path and os.path.exists(self.settings.custom_bg_path):
             # 图片模式
             bg_pixmap = self._get_cached_bg_pixmap()
             if bg_pixmap:
@@ -282,7 +286,7 @@ class PopupRendererMixin:
             painter.fillPath(path, QBrush(c))
 
         # 绘制边缘高光 / 边框（亚克力模式已在上方绘制完毕，这里只处理 theme 和 image 模式）
-        if bg_mode != "acrylic":
+        if bg_mode not in {"acrylic", "glass"}:
             edge_opacity = getattr(self.settings, "edge_highlight_opacity", 0.0)
 
             if edge_opacity > 0:

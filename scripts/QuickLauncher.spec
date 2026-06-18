@@ -23,6 +23,20 @@ hiddenimports = [
     'modules.action_chain.entry',
     'modules.action_chain.api',
     'modules.action_chain.host_contracts',
+    # core.commands 在 1.6.3.2 拆分为 10 个子模块，shim 经相对导入
+    # 触发，PyInstaller 静态分析在 optimize=2 下容易漏包，补充到这里
+    # 防止 "内置命令管理" 列表为空。
+    'core.commands',
+    'core.commands_clipboard',
+    'core.commands_encoding',
+    'core.commands_network',
+    'core.commands_text',
+    'core.commands_utils',
+    'core.commands_plugins',
+    'core.commands_system',
+    'core.commands_windows',
+    'core.commands_maintenance',
+    'core.commands_git',
 ]
 tmp_ret = collect_all('PyQt5')
 

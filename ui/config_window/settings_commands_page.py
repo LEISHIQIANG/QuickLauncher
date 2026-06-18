@@ -699,7 +699,16 @@ class SettingsCommandsPageMixin:
                 self.page_commands.apply_theme(self.current_theme)
 
         except Exception as e:
-            logger.warning("刷新命令设置失败: %s", e)
+            logger.warning("刷新命令设置失败: %s", e, exc_info=True)
+            try:
+                if hasattr(self, "builtin_layout"):
+                    clear_layout(self.builtin_layout)
+                    err_lbl = QLabel(tr("加载内置命令失败：{err}").format(err=e))
+                    err_lbl.setWordWrap(True)
+                    err_lbl.setStyleSheet("color: #f44336;")
+                    self.builtin_layout.addWidget(err_lbl)
+            except Exception:
+                logger.exception("显示命令设置错误提示失败")
         finally:
             # Resume painting — single
             # repaint for all accumulated changes

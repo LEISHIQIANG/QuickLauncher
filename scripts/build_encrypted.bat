@@ -110,7 +110,7 @@ echo.
 echo [3/5] Installing dependencies...
 !PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 !PYTHON_CMD! -m pip install nuitka ordered-set zstandard python-minifier -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
-!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 echo   Done
 
 REM ============================================
@@ -159,6 +159,12 @@ echo   [!] First build may take 5-15 minutes
 echo   [!] Please wait...
 echo.
 
+!PYTHON_CMD! scripts\check_glass_background.py
+if !ERRORLEVEL! NEQ 0 (
+    echo   [X] Pure-Python glass renderer validation failed.
+    exit /b 1
+)
+
 if exist "dist\QuickLauncher" rmdir /s /q "dist\QuickLauncher" 2>nul
 if exist "dist\main.dist" rmdir /s /q "dist\main.dist" 2>nul
 if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
@@ -201,6 +207,7 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-package=core ^
     --include-package=hooks ^
     --include-package=watchdog ^
+    --include-package=numpy ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^
     --include-module=win32gui ^
@@ -228,7 +235,7 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-module=ssl ^
     --include-module=_ssl ^
     --include-module=_hashlib ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,numpy,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,xml,html,csv,pypinyin ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,xml,html,csv,pypinyin ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --assume-yes-for-downloads ^
     --output-filename=QuickLauncher.exe ^
@@ -244,6 +251,54 @@ if not exist "dist\main.dist\QuickLauncher.exe" (
     echo.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1
+)
+
+REM Embed the project manifest when mt.exe is available. Nuitka generates its
+REM own Windows metadata, but this manifest explicitly requests PerMonitorV2
+REM DPI awareness, which keeps popup geometry and DWM composition stable on
+REM mixed-DPI Windows 11 desktops.
+set "MT_EXE="
+for /f "delims=" %%m in ('where mt.exe 2^>nul') do (
+    if not defined MT_EXE set "MT_EXE=%%m"
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles(x86)%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x64\mt.exe" set "MT_EXE=%%d\x64\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles(x86)%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x86\mt.exe" set "MT_EXE=%%d\x86\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x64\mt.exe" set "MT_EXE=%ProgramFiles(x86)%\Windows Kits\10\bin\x64\mt.exe"
+)
+if not defined MT_EXE (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x86\mt.exe" set "MT_EXE=%ProgramFiles(x86)%\Windows Kits\10\bin\x86\mt.exe"
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x64\mt.exe" set "MT_EXE=%%d\x64\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x86\mt.exe" set "MT_EXE=%%d\x86\mt.exe"
+    )
+)
+if defined MT_EXE (
+    if exist "QuickLauncher.manifest" (
+        echo   Embedding Windows manifest...
+        "!MT_EXE!" -manifest "QuickLauncher.manifest" -outputresource:"dist\main.dist\QuickLauncher.exe;#1" >nul 2>&1
+        if !ERRORLEVEL! EQU 0 (
+            echo   [OK] Manifest embedded
+        ) else (
+            echo   [Warning] Manifest embedding failed, continuing
+        )
+    )
+) else (
+    echo   [Info] mt.exe not found; skipping manifest embedding
 )
 
 ren "dist\main.dist" "QuickLauncher"

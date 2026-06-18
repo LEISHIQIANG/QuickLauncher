@@ -762,7 +762,7 @@ class AppSettings:
     popup_special_trigger_modifiers: list[str] = field(default_factory=lambda: ["ctrl"])  # 特殊修饰键
 
     # 弹窗背景与视觉
-    bg_mode: str = "theme"  # theme, image, color
+    bg_mode: str = "theme"  # theme, image, acrylic, glass
     bg_solid_color: str = "#2b2b2b"
     bg_blur_radius: int = 0  # 模糊半径 (Legacy / Current Effective)
 
@@ -778,6 +778,10 @@ class AppSettings:
     acrylic_bg_alpha: int = 90
     acrylic_blur_radius: int = 0
     acrylic_edge_opacity: float = 0.0
+
+    glass_bg_alpha: int = 30
+    glass_blur_radius: int = 20
+    glass_edge_opacity: float = 0.9
 
     # 边缘与阴影效果
     shadow_size: int = 0  # 模糊大小 (阴影/发光大小)
@@ -871,6 +875,9 @@ class AppSettings:
             "acrylic_bg_alpha": self.acrylic_bg_alpha,
             "acrylic_blur_radius": self.acrylic_blur_radius,
             "acrylic_edge_opacity": self.acrylic_edge_opacity,
+            "glass_bg_alpha": self.glass_bg_alpha,
+            "glass_blur_radius": self.glass_blur_radius,
+            "glass_edge_opacity": self.glass_edge_opacity,
             "shadow_size": self.shadow_size,
             "shadow_distance": self.shadow_distance,
             "edge_highlight_color": self.edge_highlight_color,

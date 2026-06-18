@@ -396,7 +396,8 @@ def test_release_artifact_checker_rejects_unused_avif_runtime(tmp_path):
 
 def test_release_artifact_checker_fails_missing_hooks(tmp_path):
     dist = tmp_path / "QuickLauncher"
-    (dist / "assets").mkdir(parents=True)
+    dist.mkdir()
+    (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
     (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)

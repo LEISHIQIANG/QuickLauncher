@@ -91,6 +91,33 @@ def is_win10():
     return get_windows_version() == "win10"
 
 
+def is_glass_background_supported() -> bool:
+    """检测当前系统是否支持"玻璃背景"所需的 WDA_EXCLUDEFROMCAPTURE。
+
+    SetWindowDisplayAffinity 的 WDA_EXCLUDEFROMCAPTURE 标志（0x11）虽然
+    在文档上从 Windows 10 2004（build 19041）开始支持，但实测在很多
+    Windows 10 22H2（build 19045）+ 各种显卡驱动 / 远程桌面 / VDI
+    组合下都会返回 FALSE，DLL 端会立刻 GLASS_ERROR_DISPLAY_AFFINITY
+    并拒绝启动渲染线程，触发托盘错误气泡。
+
+    因此这里只放开 Windows 11（build >= 22000）。Win10 用户即使 build
+    满足也不会看到"玻璃背景"选项，避免每次启动都收到错误气泡。
+
+    Returns:
+        bool: True 表示当前系统可以启用玻璃背景；False 时调用方应隐藏
+        设置面板里的"玻璃背景"选项，并在加载历史配置时把 bg_mode="glass"
+        静默回退到 "theme"。
+    """
+    try:
+        build = _get_windows_build_from_rtl()
+        if build is None:
+            build = int(sys.getwindowsversion().build)
+    except _WINDOW_EFFECT_ERRORS:
+        logger.debug("is_glass_background_supported: version detection failed", exc_info=True)
+        return False
+    return build >= 22000
+
+
 def _qpaint_composition_mode(name: str):
     try:
         from qt_compat import QPainter

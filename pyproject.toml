@@ -41,6 +41,3 @@ exclude_lines = [
 "tests/test_popup_search_ui.py" = ["E402"]
 "ui/config_window/main_window.py" = ["E402"]
 "ui/config_window/settings_panel.py" = ["E402"]
-"core/chain/__init__.py" = ["F401"]
-"ui/launcher_popup/popup_data_refresh.py" = ["F401"]
-"ui/launcher_popup/popup_window.py" = ["F401"]

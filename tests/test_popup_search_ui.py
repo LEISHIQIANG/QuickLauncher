@@ -1658,7 +1658,7 @@ def test_plain_search_panel_command_preserves_typed_args(monkeypatch):
     assert popup.search_query == "proc python"
 
 
-def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
+def test_direct_slash_command_does_not_close_when_pinned(monkeypatch):
     from core.command_registry import COMMAND_INTERACTION_DIRECT, CommandDefinition, CommandResult
 
     popup = _popup_with_items([])
@@ -1726,7 +1726,7 @@ def test_direct_slash_command_closes_even_when_pinned(monkeypatch):
 
     popup._execute_item(item)
 
-    assert hidden == [True]
+    assert hidden == []
     assert calls == [("env", False)]
 
 

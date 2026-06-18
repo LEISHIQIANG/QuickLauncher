@@ -17,7 +17,7 @@ from qt_compat import (
 )
 from ui.utils.safe_file_dialog import get_open_file_name
 from ui.utils.ui_scale import sp
-from ui.utils.window_effect import is_win10
+from ui.utils.window_effect import is_glass_background_supported, is_win10
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +41,29 @@ class SettingsAppearancePageMixin:
         self.bg_theme_radio = QRadioButton(tr("跟随主题"))
         self.bg_image_radio = QRadioButton(tr("图片背景"))
         self.bg_acrylic_radio = QRadioButton(tr("亚克力背景"))
+        self.bg_glass_radio = QRadioButton(tr("玻璃背景"))
 
         self.bg_mode_group.addButton(self.bg_theme_radio, 0)
         self.bg_mode_group.addButton(self.bg_image_radio, 1)
         self.bg_mode_group.addButton(self.bg_acrylic_radio, 2)
+        self.bg_mode_group.addButton(self.bg_glass_radio, 3)
         self.bg_mode_group.buttonClicked.connect(self._on_bg_mode_changed)
+
+        # 仅在支持 WDA_EXCLUDEFROMCAPTURE 的系统上才显示"玻璃背景"选项。
+        # 阈值取 build >= 22000（仅 Win11）：旧版 Win10（< 19041）调用必失败；
+        # 实测 Win10 22H2（19045）也会被很多显卡驱动 / 远程桌面拒绝，
+        # 因此干脆不暴露该入口，避免用户选完后看到托盘错误气泡。
+        self._glass_background_available = is_glass_background_supported()
+        if not self._glass_background_available:
+            self.bg_glass_radio.setVisible(False)
+        else:
+            self.bg_glass_radio.setVisible(True)
 
         mode_layout.addWidget(self.bg_theme_radio)
         mode_layout.addWidget(self.bg_image_radio)
         mode_layout.addWidget(self.bg_acrylic_radio)
+        if self._glass_background_available:
+            mode_layout.addWidget(self.bg_glass_radio)
         mode_layout.addStretch()
         layout.addLayout(mode_layout)
 
@@ -264,6 +278,26 @@ class SettingsAppearancePageMixin:
             current_alpha = getattr(settings, "acrylic_bg_alpha", 90)
             current_blur = getattr(settings, "acrylic_blur_radius", 0)
             current_edge = getattr(settings, "acrylic_edge_opacity", 0.0)
+        elif settings.bg_mode == "glass":
+            # 在不支持 WDA_EXCLUDEFROMCAPTURE 的系统上把残留的 glass 配置
+            # 静默回退到 theme，避免启动时托盘报错；同时持久化修正后的值，
+            # 下次启动不会再读到这个非法值。
+            if not getattr(self, "_glass_background_available", True):
+                self.bg_theme_radio.setChecked(True)
+                self.bg_image_widget.setVisible(False)
+                current_alpha = getattr(settings, "theme_bg_alpha", 90)
+                current_blur = getattr(settings, "theme_blur_radius", 0)
+                current_edge = getattr(settings, "theme_edge_opacity", 0.0)
+                try:
+                    self.data_manager.update_settings(immediate=False, bg_mode="theme")
+                except Exception as exc:
+                    logger.debug("回退玻璃背景配置失败: %s", exc, exc_info=True)
+            else:
+                self.bg_glass_radio.setChecked(True)
+                self.bg_image_widget.setVisible(False)
+                current_alpha = getattr(settings, "glass_bg_alpha", 30)
+                current_blur = getattr(settings, "glass_blur_radius", 20)
+                current_edge = getattr(settings, "glass_edge_opacity", 0.9)
 
         self.bg_alpha_slider.blockSignals(True)
         self.bg_alpha_slider.setValue(current_alpha)
@@ -342,6 +376,8 @@ class SettingsAppearancePageMixin:
                 self.data_manager.update_settings(immediate=False, image_bg_alpha=value)
             elif mode == "acrylic":
                 self.data_manager.update_settings(immediate=False, acrylic_bg_alpha=value)
+            elif mode == "glass":
+                self.data_manager.update_settings(immediate=False, glass_bg_alpha=value)
 
     def _on_dock_bg_alpha_changed(self, value):
         self.dock_bg_alpha_label.setText(f"{value}%")
@@ -361,6 +397,8 @@ class SettingsAppearancePageMixin:
             mode = "image"
         elif button == self.bg_acrylic_radio:
             mode = "acrylic"
+        elif button == self.bg_glass_radio:
+            mode = "glass"
 
         self.bg_image_widget.setVisible(mode == "image")
         self._update_ui_state_for_mode(mode)
@@ -374,10 +412,14 @@ class SettingsAppearancePageMixin:
             target_alpha = getattr(settings, "image_bg_alpha", 90)
             target_blur = getattr(settings, "image_blur_radius", 0)
             target_edge = getattr(settings, "image_edge_opacity", 0.0)
-        else:  # acrylic
+        elif mode == "acrylic":
             target_alpha = getattr(settings, "acrylic_bg_alpha", 90)
             target_blur = getattr(settings, "acrylic_blur_radius", 0)
             target_edge = getattr(settings, "acrylic_edge_opacity", 0.0)
+        else:  # glass
+            target_alpha = getattr(settings, "glass_bg_alpha", 30)
+            target_blur = getattr(settings, "glass_blur_radius", 20)
+            target_edge = getattr(settings, "glass_edge_opacity", 0.9)
 
         self.bg_alpha_slider.blockSignals(True)
         self.bg_alpha_slider.setValue(target_alpha)
@@ -425,6 +467,8 @@ class SettingsAppearancePageMixin:
                 self.data_manager.update_settings(immediate=False, image_blur_radius=value)
             elif mode == "acrylic":
                 self.data_manager.update_settings(immediate=False, acrylic_blur_radius=value)
+            elif mode == "glass":
+                self.data_manager.update_settings(immediate=False, glass_blur_radius=value)
 
         self._schedule_slider_settings_changed()
 
@@ -443,6 +487,8 @@ class SettingsAppearancePageMixin:
                 self.data_manager.update_settings(immediate=False, image_edge_opacity=value / 100.0)
             elif mode == "acrylic":
                 self.data_manager.update_settings(immediate=False, acrylic_edge_opacity=value / 100.0)
+            elif mode == "glass":
+                self.data_manager.update_settings(immediate=False, glass_edge_opacity=value / 100.0)
 
         self._schedule_slider_settings_changed()
 

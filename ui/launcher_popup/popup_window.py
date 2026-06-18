@@ -18,12 +18,12 @@ from core.windows_uipi import allow_drag_drop_for_widget
 from qt_compat import (
     QFont,
     QImage,
-    QtCompat,
     QTimer,
     QWidget,
     pyqtProperty,
     pyqtSignal,
 )
+from ui.launcher_popup.glass_background import GlassBackgroundError, GlassBackgroundRenderer
 from ui.launcher_popup.popup_background import PopupBackgroundMixin
 from ui.launcher_popup.popup_command_result import PopupCommandResultMixin
 from ui.launcher_popup.popup_data_refresh import PopupDataRefreshMixin
@@ -38,9 +38,9 @@ from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowE
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
 from ui.launcher_popup.popup_window_hwnd import PopupWindowHwndMixin
 from ui.launcher_popup.popup_window_lifecycle import PopupWindowLifecycleMixin
-from ui.utils.interruptible_animation import is_animation_running, set_precise_timer, stop_named_animations
-from ui.utils.ui_scale import sp, spf
-from ui.utils.window_effect import WindowEffect
+from ui.utils.interruptible_animation import set_precise_timer, stop_named_animations
+from ui.utils.ui_scale import sp
+from ui.utils.window_effect import WindowEffect, is_glass_background_supported
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +50,6 @@ try:
     HAS_EXECUTOR = True
 except ImportError:
     HAS_EXECUTOR = False
-
-try:
-    from core import IconExtractor
-    from core.icon_extractor import should_invert_icon as _should_invert_icon
-
-    HAS_ICON_EXTRACTOR = True
-except ImportError:
-    HAS_ICON_EXTRACTOR = False
-    _should_invert_icon = None  # type: ignore[assignment]
 
 
 class LauncherPopup(
@@ -259,15 +250,13 @@ class LauncherPopup(
         self._pinned_window_drag_offset = None
         # ===== 固定窗口拖动状态结束 =====
 
-        # ===== 双击检测相关状态 =====
-        # ===== 双击检测状态结束 =====
-
         # 背景缓存
         self._bg_cache = None  # type: ignore[unused-ignore, assignment]
         self._last_bg_params = None
         self._cached_bg_path = None
         self._win10_fallback_bg = None  # Win10回退背景，避免重新显示时闪烁
         self._last_effect_state = None
+        self._glass_renderer = GlassBackgroundRenderer(self)
 
         # 布局参数
         self._base_padding = sp(8)
@@ -371,6 +360,46 @@ class LauncherPopup(
 
     revealProgress = pyqtProperty(float, getRevealProgress, setRevealProgress)
 
+    def _prepare_selected_background(self) -> bool:
+        """Prepare the selected background before the popup becomes visible."""
+        if getattr(self.settings, "bg_mode", "theme") != "glass":
+            self._glass_renderer.stop(destroy=True)
+            return True
+        # 防御性回退：系统不支持 WDA_EXCLUDEFROMCAPTURE 时（例如旧版 Win10），
+        # 即便配置里残留 bg_mode="glass"（旧机器迁移 / 手动改 data.json），
+        # 也不要尝试启动玻璃背景渲染线程，避免触发托盘错误气泡。
+        if not is_glass_background_supported():
+            logger.warning("当前系统不支持玻璃背景，bg_mode='glass' 已回退为 'theme'")
+            self._glass_renderer.stop(destroy=True)
+            try:
+                self.data_manager.update_settings(bg_mode="theme")
+                # 同步本对象的内存快照，避免每次 show 都重跑一次回退逻辑。
+                self.settings = self.data_manager.get_settings()
+            except Exception as exc:
+                logger.debug("回退 bg_mode 失败: %s", exc, exc_info=True)
+            return True
+        try:
+            self._glass_renderer.prepare()
+            return True
+        except GlassBackgroundError as exc:
+            self._handle_glass_background_failure(str(exc), hide_popup=False)
+            return False
+
+    def _handle_glass_background_failure(self, message: str, *, hide_popup: bool = True) -> None:
+        logger.error("玻璃背景不可用，拒绝显示弹窗: %s", message)
+        try:
+            self._glass_renderer.stop(destroy=True)
+        except Exception:
+            logger.debug("停止玻璃背景失败", exc_info=True)
+        if hide_popup and self.isVisible():
+            self.hide()
+        try:
+            tray_icon = getattr(getattr(self, "tray_app", None), "tray_icon", None)
+            if tray_icon is not None:
+                tray_icon.showMessage("QuickLauncher", f"玻璃背景启动失败：{message}")
+        except Exception:
+            logger.debug("显示玻璃背景失败通知失败", exc_info=True)
+
     def showEvent(self, event):
         self._closing = False
         generation = self._next_lifecycle_generation()
@@ -429,6 +458,7 @@ class LauncherPopup(
         except Exception as exc:
             logger.debug("停止自动关闭定时器失败: %s", exc, exc_info=True)
         self._release_background_cache()
+        self._glass_renderer.stop()
 
         # ===== 修复 Win10 左键选择失效 bug =====
         # 弹窗隐藏时必须主动恢复之前的前台窗口焦点
@@ -456,6 +486,10 @@ class LauncherPopup(
             self._release_background_cache()
         except Exception as exc:
             logger.debug("释放背景缓存失败: %s", exc, exc_info=True)
+        try:
+            self._glass_renderer.close()
+        except Exception as exc:
+            logger.debug("关闭玻璃背景失败: %s", exc, exc_info=True)
         try:
             self.stop_background_threads()
         except Exception as exc:

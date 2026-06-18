@@ -58,7 +58,6 @@ from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.smooth_scroll import SmoothScrollArea
 from ui.utils.ui_scale import font_px, scale_qss, sp
-from ui.view_models.icon_grid_view_model import IconGridViewModel
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
@@ -188,16 +187,25 @@ class SimpleStatusDialog(QDialog):
 
 
 class MoveFolderDialog(BaseDialog):
-    """移动到文件夹对话框"""
+    """移动到文件夹对话框 — 可选目标包含 Dock、普通文件夹和图标仓库"""
 
     def __init__(self, folders, parent=None):
         super().__init__(parent)
         self.folders = folders
         self.selected_folder = None
         self.setWindowTitle(tr("移动所选到"))
-        self.setFixedSize(sp(240), sp(135))
+        self.setFixedSize(sp(300), sp(135))
         self._setup_ui()
         self._apply_theme_colors()
+
+    def _folder_display_name(self, folder):
+        """为目标文件夹生成带有类型标注的显示名称"""
+        name = folder.name
+        if getattr(folder, "is_dock", False):
+            return f"\U0001f4cc {name}  [DOCK]"
+        if getattr(folder, "is_icon_repo", False):
+            return f"\U0001f4e6 {name}  [图标仓库]"
+        return f"\U0001f4c1 {name}"
 
     def _setup_ui(self):
         from qt_compat import QComboBox
@@ -213,7 +221,7 @@ class MoveFolderDialog(BaseDialog):
         self.combo = QComboBox()
         self.combo.setFixedHeight(sp(30))
         for folder in self.folders:
-            self.combo.addItem(folder.name, folder)
+            self.combo.addItem(self._folder_display_name(folder), folder)
         self.combo.showPopup = lambda: self._show_folder_popup()
         main_layout.addWidget(self.combo)
 
@@ -537,7 +545,7 @@ class IconWidget(QFrame):
     double_clicked = pyqtSignal()
     context_menu_requested = pyqtSignal(QPoint)
     drag_started = pyqtSignal(str)
-    _placeholder_icon_cache = OrderedDict()  # type: ignore[var-annotated]
+    _placeholder_icon_cache = OrderedDict()
     _MAX_PLACEHOLDER_ICON_CACHE = 80
 
     LIGHT_NORMAL_BG = "rgba(255, 255, 255, 100)"
@@ -681,8 +689,6 @@ class IconWidget(QFrame):
             pixmap = self._create_batch_launch_icon()
         elif self.shortcut.type == ShortcutType.CHAIN:
             pixmap = self._create_chain_icon()
-        elif self.shortcut.type == ShortcutType.MACRO:
-            pixmap = self._create_macro_icon()
         else:
             pixmap = None
 
@@ -697,25 +703,41 @@ class IconWidget(QFrame):
 
     def _placeholder_icon_cache_key(self):
         item_type = getattr(self.shortcut, "type", None)
-        name = getattr(self.shortcut, "name", "") or ""
+        first_char = self.shortcut.name[0] if getattr(self.shortcut, "name", "") else "?"
         if item_type in {
             ShortcutType.HOTKEY,
             ShortcutType.URL,
             ShortcutType.COMMAND,
             ShortcutType.BATCH_LAUNCH,
             ShortcutType.CHAIN,
-            ShortcutType.MACRO,
         }:
-            name = ""
-        dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
-        return (item_type, int(self.icon_size), name, self.theme, float(dpr))
+            first_char = ""
+        return (item_type, int(self.icon_size), first_char)
 
     def _create_default_icon(self) -> QPixmap:
-        from ui.utils.default_icon_renderer import render_default_icon
+        size = self.icon_size
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QtCompat.transparent)
 
-        name = getattr(self.shortcut, "name", "") or ""
-        dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
-        return render_default_icon(name, self.icon_size, self.theme, dpr=dpr)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QtCompat.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
+        painter.setBrush(QColor(135, 206, 250))
+        painter.setPen(QtCompat.NoPen)
+        margin = size // 8
+        radius = size // 6
+        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
+
+        first_char = self.shortcut.name[0] if self.shortcut.name else "?"
+        painter.setPen(QColor(255, 255, 255))
+        font = QFont("Segoe UI")
+        font.setPixelSize(max(1, int(size * 0.4)))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, first_char)
+        painter.end()
+
+        return pixmap
 
     def _create_hotkey_icon(self) -> QPixmap:
         size = self.icon_size
@@ -833,29 +855,6 @@ class IconWidget(QFrame):
         painter.end()
         return pixmap
 
-    def _create_macro_icon(self) -> QPixmap:
-        size = self.icon_size
-        pixmap = QPixmap(size, size)
-        pixmap.fill(QtCompat.transparent)
-
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-
-        painter.setBrush(QColor(192, 132, 252))
-        painter.setPen(QtCompat.NoPen)
-        margin = size // 8
-        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-
-        painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI Symbol")
-        font.setPixelSize(max(1, size // 3))
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⏺")
-
-        painter.end()
-        return pixmap
-
     def _set_normal_style(self):
         self.setStyleSheet("IconWidget { background: transparent; border: none; }")
         if hasattr(self, "icon_frame"):
@@ -960,6 +959,10 @@ class IconWidget(QFrame):
         return pixmap
 
     def _start_drag(self):
+        # 系统图标不允许拖动
+        if getattr(self.shortcut, "_icon_repo_source", "") == "system":
+            return
+
         grid_parent = None
         try:
             parent = self.parent()
@@ -1055,7 +1058,7 @@ class IconGrid(QWidget):
 
     shortcut_edit_requested = pyqtSignal(ShortcutItem)
     shortcut_delete_requested = pyqtSignal(ShortcutItem)
-    shortcut_added = pyqtSignal()  # 拖拽到桌面创建快捷方式
+    shortcut_added = pyqtSignal()  # 新增：拖放添加图标后发送
     add_file_requested = pyqtSignal()
     add_hotkey_requested = pyqtSignal()
     add_url_requested = pyqtSignal()
@@ -1067,8 +1070,8 @@ class IconGrid(QWidget):
         super().__init__()
         self.data_manager = data_manager
         self.current_folder_id = None
-        self.icon_widgets = []  # type: ignore[var-annotated]
-        self.selected_shortcut_ids = set()  # type: ignore[var-annotated]
+        self.icon_widgets = []
+        self.selected_shortcut_ids = set()
         self._last_selected_index = -1
         self._batch_undo_snapshot = None
         self._icon_size = 24
@@ -1076,28 +1079,13 @@ class IconGrid(QWidget):
         self._icon_load_generation = 0
         self._favicon_fetch_generation = 0
         self._favicon_fetch_success_count = 0
-        self._favicon_fetch_shortcuts = {}  # type: ignore[var-annotated]
+        self._favicon_fetch_shortcuts = {}
         self._favicon_fetch_status_dialog = None
         self._favicon_fetch_thread = None
         self._favicon_fetch_worker = None
 
-        # P1-06 Stage 3: instantiate the business-state view-model.
-        # The widget keeps its own ``icon_widgets`` / selected id set
-        # for the QWidget layer; the view-model is the external API
-        # for future presenters that need to read or mutate icon
-        # state without going through the widget.
-
-        self.view_model = IconGridViewModel(self)
-        # Forward the view-model signals so existing listeners keep
-        # working.
-        self.view_model.selection_changed.connect(self._on_view_model_selection_changed)
-
         self._setup_ui()
         self.setAcceptDrops(True)
-
-    def _on_view_model_selection_changed(self, _selected: object) -> None:
-        """Forward the view-model selection to the widget's id set."""
-        self.selected_shortcut_ids = set(self.view_model.get_selection())
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -1451,7 +1439,7 @@ class IconGrid(QWidget):
 
     def load_folder(self, folder_id: str):
         """加载文件夹内容"""
-        self.current_folder_id = folder_id  # type: ignore[assignment]
+        self.current_folder_id = folder_id
         self.selected_shortcut_ids.clear()
         self._last_selected_index = -1
         self._clear_icons()
@@ -1507,7 +1495,7 @@ class IconGrid(QWidget):
             if shortcut.type not in (ShortcutType.HOTKEY, ShortcutType.URL, ShortcutType.COMMAND):
                 icon_tasks.append((shortcut.id, shortcut.icon_path, shortcut.target_path, icon_size, shortcut.type))
             elif shortcut.icon_path:
-                icon_tasks.append((shortcut.id, shortcut.icon_path, None, icon_size, shortcut.type))  # type: ignore[arg-type]
+                icon_tasks.append((shortcut.id, shortcut.icon_path, None, icon_size, shortcut.type))
 
         self._place_icons()
 
@@ -1551,10 +1539,22 @@ class IconGrid(QWidget):
         self.hint_container.show()
         self._shortcut_map = {}
 
+    @staticmethod
+    def _is_system_icon_repo_item(shortcut: ShortcutItem | None) -> bool:
+        return getattr(shortcut, "_icon_repo_source", "") == "system"
+
     def _filter_mutable_shortcut_ids(self, ids) -> list[str]:
-        return list(ids or [])
+        shortcut_map = vars(self).get("_shortcut_map", {}) or {}
+        result = []
+        for sid in ids or []:
+            if self._is_system_icon_repo_item(shortcut_map.get(sid)):
+                continue
+            result.append(sid)
+        return result
 
     def _emit_edit_if_allowed(self, shortcut: ShortcutItem):
+        if self._is_system_icon_repo_item(shortcut):
+            return
         self.shortcut_edit_requested.emit(shortcut)
 
     def _stop_icon_thread(self):
@@ -1701,7 +1701,7 @@ class IconGrid(QWidget):
 
         success_count = max(int(worker_success or 0), int(getattr(self, "_favicon_fetch_success_count", 0) or 0))
         self.data_manager.save(immediate=True)
-        self.load_folder(self.current_folder_id)  # type: ignore[arg-type]
+        self.load_folder(self.current_folder_id)
         self.shortcut_added.emit()
 
         ThemedMessageBox.information(
@@ -1790,7 +1790,7 @@ class IconGrid(QWidget):
             icon_path = item.icon_path
             target_path = item.target_path
             if not icon_path and shortcut_uses_folder_icon(item.type, target_path):
-                icon_path = default_folder_icon_path()  # type: ignore[assignment]
+                icon_path = default_folder_icon_path()
                 target_path = ""
 
             if icon_path:
@@ -1869,7 +1869,7 @@ class IconGrid(QWidget):
             logger.error("撤销批量操作失败: %s", e, exc_info=True)
 
     def _confirm_batch(self, title: str, count: int) -> bool:
-        return (  # type: ignore[no-any-return]
+        return (
             ThemedMessageBox.question(
                 self,
                 tr(title),
@@ -1893,7 +1893,7 @@ class IconGrid(QWidget):
             return
         self._take_batch_snapshot()
         self.data_manager.set_shortcuts_enabled_batch(ids, enabled)
-        self.load_folder(self.current_folder_id)  # type: ignore[arg-type]
+        self.load_folder(self.current_folder_id)
         self.shortcut_added.emit()
 
     def _batch_move(self, ids):
@@ -1981,22 +1981,28 @@ class IconGrid(QWidget):
 
         ids = self._selected_ids_for(shortcut)
         multi = len(ids) > 1
+        mutable_ids = self._filter_mutable_shortcut_ids(ids)
+        system_item = self._is_system_icon_repo_item(shortcut)
         has_url_shortcuts = self._has_url_shortcuts(ids)
 
         menu = PopupMenu(theme=theme, radius=12, parent=None)
-        menu.add_action("编辑", lambda: self._emit_edit_if_allowed(shortcut), enabled=not multi)
+        menu.add_action("编辑", lambda: self._emit_edit_if_allowed(shortcut), enabled=not multi and not system_item)
         menu.add_separator()
-        menu.add_action("启用所选", lambda ids=ids: self._batch_set_enabled(ids, True), enabled=bool(ids))
-        menu.add_action("禁用所选", lambda ids=ids: self._batch_set_enabled(ids, False), enabled=bool(ids))
+        menu.add_action(
+            "启用所选", lambda ids=mutable_ids: self._batch_set_enabled(ids, True), enabled=bool(mutable_ids)
+        )
+        menu.add_action(
+            "禁用所选", lambda ids=mutable_ids: self._batch_set_enabled(ids, False), enabled=bool(mutable_ids)
+        )
         menu.add_action("移动所选到...", lambda ids=ids: self._batch_move(ids), enabled=bool(ids))
         if multi and has_url_shortcuts:
             menu.add_separator()
             menu.add_action(tr("批量获取图标"), lambda ids=ids: self._batch_fetch_icons(ids), enabled=True)
         menu.add_separator()
         if multi:
-            menu.add_action(tr("删除所选"), lambda ids=ids: self._batch_delete(ids), enabled=bool(ids))
+            menu.add_action(tr("删除所选"), lambda ids=mutable_ids: self._batch_delete(ids), enabled=bool(mutable_ids))
         else:
-            menu.add_action(tr("删除"), lambda: self.shortcut_delete_requested.emit(shortcut), enabled=True)
+            menu.add_action(tr("删除"), lambda: self.shortcut_delete_requested.emit(shortcut), enabled=not system_item)
         if self._batch_undo_snapshot:
             menu.add_separator()
             menu.add_action(tr("撤销上次批量操作"), self._restore_batch_snapshot, enabled=True)
@@ -2018,10 +2024,10 @@ class IconGrid(QWidget):
         menu.add_action(tr("快捷键"), lambda: self.add_hotkey_requested.emit(), enabled=True)
         menu.add_action(tr("打开网址"), lambda: self.add_url_requested.emit(), enabled=True)
         menu.add_action(tr("运行命令"), lambda: self.add_command_requested.emit(), enabled=True)
-        menu.add_action(tr("宏录制"), lambda: self.add_macro_requested.emit(), enabled=True)
         menu.add_separator()
         menu.add_action(tr("批量启动"), lambda: self._show_batch_launch_dialog(), enabled=True)
         menu.add_action(tr("新建动作链"), lambda: self.add_chain_requested.emit(), enabled=True)
+        menu.add_action(tr("宏录制"), lambda: self.add_macro_requested.emit(), enabled=True)
         if self._batch_undo_snapshot:
             menu.add_separator()
             menu.add_action(tr("撤销上次批量操作"), self._restore_batch_snapshot, enabled=True)
@@ -2073,7 +2079,7 @@ class IconGrid(QWidget):
                 sid = self._widget_shortcut_id(widget)
                 if sid in selected:
                     ids.append(sid)
-            return ids or [source_id]  # type: ignore[return-value]
+            return ids or [source_id]
         return [source_id]
 
     def create_drag_preview_pixmap(self, shortcut_ids: list[str], source_widget: IconWidget) -> QPixmap:
@@ -2219,7 +2225,7 @@ class IconGrid(QWidget):
         except Exception:
             return False
 
-        return moved_px < max(10, int(self._get_cell_size() * 0.25))  # type: ignore[no-any-return]
+        return moved_px < max(10, int(self._get_cell_size() * 0.25))
 
     def _record_realtime_swap(self, target_id: str, pointer_pos: QPoint | None):
         self._last_realtime_swap_target_id = target_id

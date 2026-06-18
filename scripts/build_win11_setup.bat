@@ -167,12 +167,18 @@ REM set "HTTP_PROXY="
 REM set "HTTPS_PROXY="
 
 echo   Installing/updating PyQt5, Nuitka and other dependencies...
-!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 echo.
 echo [3/4] Starting Nuitka compilation (max performance mode)...
 echo   [!] This may take several minutes, please wait...
+
+!PYTHON_CMD! scripts\check_glass_background.py
+if !ERRORLEVEL! NEQ 0 (
+    echo   [ERROR] Pure-Python glass renderer validation failed.
+    exit /b 1
+)
 
 REM Clean all caches (ensure latest code is used)
 echo   Cleaning all build caches...
@@ -214,6 +220,12 @@ if "%QL_KEEP_GRAPHICS_RUNTIME%"=="1" (
 
 REM Nuitka build command - small runtime, with first-frame smoothness guarded by
 REM no-UPX default and explicit manifest embedding below.
+REM
+REM Do NOT add http.server to --nofollow-import-to: core/commands_utils.py
+REM uses it for the QR file server, and excluding it leaves the shim
+REM core/commands.py with an unresolved relative import. That breaks
+REM build_builtin_command_definitions() and the Settings -> Built-in Command
+REM Management list ends up empty in the packaged build.
 !PYTHON_CMD! -m nuitka ^
     --mingw64 ^
     --standalone ^
@@ -267,6 +279,7 @@ REM no-UPX default and explicit manifest embedding below.
     --include-module=win32com.shell.shell ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
+    --include-module=PIL.ImageFilter ^
     --include-module=PIL.ImageDraw ^
     --include-module=PIL.ImageFont ^
     --include-module=PIL.BmpImagePlugin ^
@@ -281,7 +294,7 @@ REM no-UPX default and explicit manifest embedding below.
     --include-module=ssl ^
     --include-module=_ssl ^
     --include-module=_hashlib ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,numpy,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,http.server,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --output-filename=QuickLauncher.exe ^
     main.py
@@ -307,6 +320,32 @@ REM mixed-DPI Windows 11 desktops.
 set "MT_EXE="
 for /f "delims=" %%m in ('where mt.exe 2^>nul') do (
     if not defined MT_EXE set "MT_EXE=%%m"
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles(x86)%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x64\mt.exe" set "MT_EXE=%%d\x64\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles(x86)%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x86\mt.exe" set "MT_EXE=%%d\x86\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x64\mt.exe" set "MT_EXE=%ProgramFiles(x86)%\Windows Kits\10\bin\x64\mt.exe"
+)
+if not defined MT_EXE (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x86\mt.exe" set "MT_EXE=%ProgramFiles(x86)%\Windows Kits\10\bin\x86\mt.exe"
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x64\mt.exe" set "MT_EXE=%%d\x64\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x86\mt.exe" set "MT_EXE=%%d\x86\mt.exe"
+    )
 )
 if defined MT_EXE (
     if exist "QuickLauncher.manifest" (
