@@ -51,8 +51,8 @@ def _support_image_path() -> str:
     module_root = str(app_root())
     exe_root = os.path.dirname(os.path.abspath(sys.argv[0]))
     candidates = [
-        os.path.join(module_root, "assets", "support.jpg"),
-        os.path.join(exe_root, "assets", "support.jpg"),
+        os.path.join(module_root, "assets", "support.webp"),
+        os.path.join(exe_root, "assets", "support.webp"),
     ]
     for path in candidates:
         if os.path.exists(path):

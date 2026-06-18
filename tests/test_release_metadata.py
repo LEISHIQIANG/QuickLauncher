@@ -49,7 +49,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert '--min 3.12 --max 3.12 --prefer "3.12"' in script
     assert "plugin-bundled wxPython is cp312" in script
     assert "--include-data-dir=plugins=plugins" not in script
-    assert "--include-data-files=plugins\\PLUGIN_DEV.md=PLUGIN_DEV.md" in script
+    assert "--include-data-files=plugins\\PLUGIN_DEV.md=PLUGIN_DEV.md" not in script
     assert "--include-data-files=modules\\action_chain\\module.json=modules\\action_chain\\module.json" in script
     assert "wxPython==" not in script
     assert "--include-module=wx" not in script
@@ -60,7 +60,7 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert 'xcopy "plugins" "dist\\QuickLauncher\\plugins\\" /E /I /Y' not in script
     assert 'mkdir "dist\\QuickLauncher\\plugins"' in script
     assert "dist\\QuickLauncher\\.plugins" not in script
-    assert 'copy /Y "plugins\\PLUGIN_DEV.md" "dist\\QuickLauncher\\"' in script
+    assert 'copy /Y "plugins\\PLUGIN_DEV.md" "dist\\QuickLauncher\\"' not in script
     assert "Failed to remove old dist\\QuickLauncher" in script
     assert 'robocopy "dist\\main.dist" "dist\\QuickLauncher" /MIR' in script
     assert "Start-Sleep -Seconds 2" in script

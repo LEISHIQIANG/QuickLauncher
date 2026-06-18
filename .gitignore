@@ -94,4 +94,6 @@ services/.build_type
 # 临时测试/计划文件
 _test_update_dialog.py
 剪切板与选中文字交互完善计划书.md
+发布体积优化.md
+架构优化.md
 tmp/

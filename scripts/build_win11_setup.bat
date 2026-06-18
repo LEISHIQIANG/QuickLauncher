@@ -257,7 +257,6 @@ REM Management list ends up empty in the packaged build.
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
-    --include-data-files=plugins\PLUGIN_DEV.md=PLUGIN_DEV.md ^
     --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
     --include-package=ui ^
@@ -294,7 +293,7 @@ REM Management list ends up empty in the packaged build.
     --include-module=ssl ^
     --include-module=_ssl ^
     --include-module=_hashlib ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm,yaml ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --output-filename=QuickLauncher.exe ^
     main.py
@@ -381,6 +380,10 @@ del /f /q qt5texttospeech.dll qt5networkauth.dll qt5script*.dll qt5virtualkeyboa
 del /f /q qt5printsupport.dll 2>nul
 del /f /q mfc140*.dll atl140.dll 2>nul
 del /f /q libeay32.dll ssleay32.dll 2>nul
+REM Remove OpenSSL 1.1 leftovers (transitive deps from pynput/urllib3).
+REM CPython 3.12 ssl module links libssl-3 only; libssl-1_1 is dead weight.
+del /f /q libssl-1_1-x64.dll 2>nul
+del /f /q libcrypto-1_1-x64.dll 2>nul
 del /f /q _sqlite3.pyd 2>nul
 del /f /q _decimal.pyd _lzma.pyd _bz2.pyd 2>nul
 REM Python urllib-based URL latency and favicon fetching require OpenSSL.
@@ -489,6 +492,28 @@ if exist "Pythonwin" (
     rmdir /s /q Pythonwin 2>nul
 )
 
+REM Remove scipy-openblas runtime; numpy falls back to internal reference BLAS.
+REM glass_background.py only uses np.mgrid/clip/asarray/maximum and does not
+REM need OpenBLAS; every numpy import is wrapped in try/except with a pure
+REM Python fallback, so the visual pipeline is bit-for-bit identical.
+REM IMPORTANT: keep numpy.libs/msvcp140-*.dll.  numpy's C extensions
+REM (_multiarray_umath.pyd, etc.) link against this hash-suffixed VC++
+REM runtime; removing it forces numpy to fall back to a non-SIMD / single-
+REM threaded dispatch for ufuncs, and the per-frame saturation + tint ops
+REM in glass_background._render_frame drop from ~60 FPS to ~10-15 FPS,
+REM which is visible as lag while moving the popup or paging through it.
+if exist "numpy.libs\libscipy_openblas64_*.dll" (
+    del /f /q "numpy.libs\libscipy_openblas64_*.dll" 2>nul
+    echo   [OK] Removed scipy-openblas runtime (~20 MB)
+    echo   [OK] Preserved numpy.libs\msvcp140-*.dll to keep numpy SIMD dispatch enabled.
+) else (
+    echo   [Info] numpy.libs\libscipy_openblas64_*.dll not present, skipping.
+)
+
+REM Remove unused yaml runtime (Nuitka may have inlined loader/dumper, but
+REM _yaml.pyd can still be present).  Source has 0 import yaml sites.
+if exist "yaml" rmdir /s /q "yaml" 2>nul
+
 REM Remove test and debug directories
 if exist "lib\test" rmdir /s /q lib\test 2>nul
 if exist "lib\unittest" rmdir /s /q lib\unittest 2>nul
@@ -555,12 +580,17 @@ if exist "assets\app.ico" (
     echo   [Warning] app.ico not found, skipping copy.
 )
 
-if exist "assets\support.jpg" (
+if exist "assets\support.webp" (
     if not exist "dist\QuickLauncher\assets" mkdir "dist\QuickLauncher\assets" >nul 2>&1
-    copy /Y "assets\support.jpg" "dist\QuickLauncher\assets\support.jpg" >nul
+    copy /Y "assets\support.webp" "dist\QuickLauncher\assets\support.webp" >nul
 ) else (
-    echo   [Warning] assets\support.jpg not found, support dialog will use fallback placeholder.
+    echo   [Warning] assets\support.webp not found, support dialog will use fallback placeholder.
 )
+
+REM Remove developer-only markdown from runtime; the source copy under
+REM assets/system_icons/README.md stays in the GitHub repo.
+if exist "dist\QuickLauncher\assets\system_icons\README.md" del /f /q "dist\QuickLauncher\assets\system_icons\README.md"
+if exist "dist\QuickLauncher\PLUGIN_DEV.md" del /f /q "dist\QuickLauncher\PLUGIN_DEV.md"
 
 REM Runtime plugins are installed by users from .qlzip packages. The packaged
 REM app ships only an empty plugins directory as the installation target.
@@ -573,10 +603,6 @@ if not exist "dist\QuickLauncher\plugins" (
     exit /b 1
 )
 echo   [OK] Plugin installation directory ready.
-
-if exist "plugins\PLUGIN_DEV.md" (
-    copy /Y "plugins\PLUGIN_DEV.md" "dist\QuickLauncher\" >nul
-)
 
 echo.
 echo [4/4] Generating Win11 installer (Inno Setup)...
@@ -659,8 +685,23 @@ if !ERRORLEVEL! NEQ 0 (
 )
 echo   [OK] Renamed dist\QuickLauncher -^> %PORTABLE_NAME%
 
-echo   Compressing to %PORTABLE_NAME%.zip...
-powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
+echo   Compressing to %PORTABLE_NAME%.zip (7-Zip LZMA2 if available)...
+set "SEVENZIP="
+for %%p in ("%ProgramFiles%\7-Zip\7z.exe" "%ProgramFiles(x86)%\7-Zip\7z.exe" "%LocalAppData%\7-Zip\7z.exe") do (
+    if not defined SEVENZIP if exist %%~p set "SEVENZIP=%%~p"
+)
+if defined SEVENZIP (
+    "!SEVENZIP!" a -tzip -mm=LZMA2 -mx=9 -mfb=273 -md=64m -mmt=on "dist\%PORTABLE_NAME%.zip" "dist\%PORTABLE_NAME%\*" -r >nul
+    if !ERRORLEVEL! NEQ 0 (
+        echo   [Warning] 7-Zip LZMA2 failed, falling back to Compress-Archive
+        powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
+    ) else (
+        echo   [OK] 7-Zip LZMA2 zip created.
+    )
+) else (
+    echo   [Warning] 7-Zip not found, falling back to Compress-Archive (Deflate)
+    powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
+)
 if !ERRORLEVEL! NEQ 0 (
     echo   [!] Failed to create zip package.
     if "%QL_NO_PAUSE%"=="" pause

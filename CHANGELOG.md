@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Changed
 
 - 优化整理 UI 相关代码，清理死代码和无用代码。
+- 安装包体积优化：installer 从 ~39 MB 降至 ~21 MB，portable zip 从 ~57 MB 降至 ~32 MB
+  - 移除 `numpy.libs/libscipy_openblas64_*.dll`（~20 MB），保留 `numpy.libs/msvcp140-*.dll`（numpy C 扩展依赖，否则 saturation/tint ufunc 退化为单线程串行，移动窗口/翻页会卡顿）
+  - 移除 OpenSSL 1.1 残留 DLL（`libssl-1_1-x64.dll` + `libcrypto-1_1-x64.dll`，~3.7 MB；CPython 3.12 走 `libssl-3` 路径）
+  - 移除未使用的 PyYAML 运行时（`yaml/_yaml.pyd`，~254 KB；源码 0 引用）
+  - 清理冗余资源（`app_optimized_30.ico` 143 KB、`PLUGIN_DEV.md` 25 KB、`assets/system_icons/README.md` 5.6 KB 不再进 runtime；`support.jpg` 72 KB → `support.webp` 39 KB）
+  - portable zip 改用 7-Zip LZMA2 压缩（自动回退 PowerShell Deflate）
 
 ## [1.6.3.3] - 2026-06-17
 

@@ -8,7 +8,6 @@ MAX_COMMAND_ICON_SIZE_BYTES = 64 * 1024
 MAX_COMMAND_ICON_DIMENSION = 128
 BUNDLED_ICO_BUDGETS = {
     "app.ico": 160 * 1024,
-    "app_optimized_30.ico": 160 * 1024,
     "Folder.ico": 32 * 1024,
     "setting.ico": 32 * 1024,
     "setting_white.ico": 32 * 1024,

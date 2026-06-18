@@ -8,7 +8,7 @@
 |---|---|
 | `.plugins/` | 源码仓库中的插件包目录，供发布前验证和手动安装测试 |
 | `plugins/` | QuickLauncher 运行时插件安装目录，安装 `.qlzip` 后才会解包到这里 |
-| `plugins/PLUGIN_DEV.md` | 插件开发和打包说明，发布包会复制到应用目录 |
+| `plugins/PLUGIN_DEV.md` | 插件开发和打包说明，仅在源码仓库保留，runtime 不打包 |
 
 发布包只创建空的 `plugins/` 安装目录，不直接打包源码插件目录。这样可以先验证主程序，再通过设置页安装 `.plugins/` 下的插件包。
 
