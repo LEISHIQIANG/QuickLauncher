@@ -166,8 +166,26 @@ def collect_tr_sources(
     return sources
 
 
+def _extract_string_dict(value: ast.AST) -> dict[str, str]:
+    """Extract string→string mappings from an AST Dict node."""
+    if not isinstance(value, ast.Dict):
+        return {}
+    result: dict[str, str] = {}
+    for k, v in zip(value.keys, value.values):
+        if not isinstance(k, ast.Constant) or not isinstance(v, ast.Constant):
+            continue
+        if not isinstance(k.value, str) or not isinstance(v.value, str):
+            continue
+        result[k.value] = v.value
+    return result
+
+
 def load_translation_dict(repo_root: Path) -> dict[str, str]:
-    """Return the ``_EN_US`` mapping from :mod:`core.i18n` without importing Qt."""
+    """Return the ``_EN_US`` mapping from :mod:`core.i18n` without importing Qt.
+
+    Handles both the main ``_EN_US = {...}`` dictionary and any
+    ``_EN_US.update({...})`` calls that follow it.
+    """
     i18n_path = repo_root / "core" / "i18n.py"
     try:
         source = i18n_path.read_text(encoding="utf-8-sig")
@@ -176,30 +194,28 @@ def load_translation_dict(repo_root: Path) -> dict[str, str]:
         print(f"failed to parse {i18n_path}: {exc}", file=sys.stderr)
         return {}
 
+    result: dict[str, str] = {}
     for node in tree.body:
+        # Main assignment: _EN_US = {...} or _EN_US: dict = {...}
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "_EN_US":
-            value = node.value
+            result.update(_extract_string_dict(node.value))
         elif isinstance(node, ast.Assign):
-            matched = False
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "_EN_US":
-                    matched = True
+                    result.update(_extract_string_dict(node.value))
                     break
-            if not matched:
-                continue
-            value = node.value
-        else:
-            continue
-        if isinstance(value, ast.Dict):
-            result: dict[str, str] = {}
-            for k, v in zip(value.keys, value.values):
-                if not isinstance(k, ast.Constant) or not isinstance(v, ast.Constant):
-                    continue
-                if not isinstance(k.value, str) or not isinstance(v.value, str):
-                    continue
-                result[k.value] = v.value
-            return result
-    return {}
+        # _EN_US.update({...}) call
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+            if (
+                isinstance(call.func, ast.Attribute)
+                and call.func.attr == "update"
+                and isinstance(call.func.value, ast.Name)
+                and call.func.value.id == "_EN_US"
+                and call.args
+            ):
+                result.update(_extract_string_dict(call.args[0]))
+    return result
 
 
 def _parse_args() -> argparse.Namespace:

@@ -996,7 +996,7 @@ class AppData:
     """应用数据"""
 
     version: str = "2.5"
-    config_schema_version: int = 0
+    config_schema_version: int = 1
     settings: AppSettings = field(default_factory=AppSettings)
     folders: list[Folder] = field(default_factory=list)
 

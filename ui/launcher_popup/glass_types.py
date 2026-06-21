@@ -210,10 +210,12 @@ class _FrameBuffer:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._generation = 0
-        self._image: QImage | None = None
-        self._width = 0
-        self._height = 0
+        self.image: QImage | None = None
+        self.width = 0
+        self.height = 0
+        self.stride = 0
+        self.readers = 0
+        self.generation = 0
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
