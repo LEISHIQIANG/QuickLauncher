@@ -31,6 +31,7 @@ from ui.styles.design_tokens import BorderScale, SurfaceScale, TextScale
 from ui.styles.design_tokens import border as token_border
 from ui.styles.design_tokens import surface as token_surface
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.styles.managers import StyleManager
 from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
@@ -234,7 +235,7 @@ class ProgressDialog(QDialog):
 
         from ui.styles.style import get_dialog_stylesheet
 
-        self.setStyleSheet(get_dialog_stylesheet(self.theme))
+        StyleManager.apply_dialog_style(self, self.theme)
 
     def paintEvent(self, event):  # noqa: paint_perf
         """背景绘制 - 完全按照ThemedMessageBox的逻辑"""

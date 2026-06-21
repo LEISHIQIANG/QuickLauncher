@@ -42,6 +42,7 @@ from qt_compat import (
 )
 from ui.styles.design_tokens import StatusScale, surface, text
 from ui.styles.style import get_dialog_stylesheet
+from ui.styles.managers import StyleManager
 from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
@@ -130,7 +131,7 @@ class FolderInputDialog(BaseDialog):
     def _apply_theme(self):
         """应用主题"""
         self._apply_theme_colors()
-        self.setStyleSheet(get_dialog_stylesheet(self.theme))
+        StyleManager.apply_dialog_style(self, self.theme)
 
     def _on_ok(self):
         if self.input_edit.text().strip():
@@ -189,7 +190,7 @@ class FolderImportDialog(BaseDialog):
     def _apply_theme(self):
         """应用主题"""
         self._apply_theme_colors()
-        self.setStyleSheet(get_dialog_stylesheet(self.theme))
+        StyleManager.apply_dialog_style(self, self.theme)
 
     def is_auto_sync_checked(self):
         """返回自动同步复选框的状态"""

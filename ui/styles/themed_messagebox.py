@@ -292,7 +292,7 @@ class ThemedMessageBox(QDialog):
         theme = self._detect_theme()
         self._theme = theme
 
-        self.setStyleSheet(get_dialog_stylesheet(theme))
+        StyleManager.apply_dialog_style(self, theme)
 
         # 使用与主配置窗口一致的颜色和 alpha 值
         if theme == "dark":
@@ -567,7 +567,7 @@ class ThemedInputDialog(QDialog):
 
         from .style import get_dialog_stylesheet
 
-        self.setStyleSheet(get_dialog_stylesheet(theme))
+        StyleManager.apply_dialog_style(self, theme)
 
         if theme == "dark":
             self.bg_color = QColor(28, 28, 30, 180)

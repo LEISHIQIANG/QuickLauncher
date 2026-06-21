@@ -22,6 +22,7 @@ from qt_compat import (
 )
 from ui.config_window.base_dialog import BaseDialog
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.styles.managers import StyleManager
 from ui.themed_tool_window import ThemedToolWindow
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
@@ -885,7 +886,7 @@ class PluginCreateDialog(BaseDialog):
 
         from ui.styles.style import get_dialog_stylesheet
 
-        self.setStyleSheet(get_dialog_stylesheet(theme))
+        StyleManager.apply_dialog_style(self, theme)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(sp(16), sp(12), sp(16), sp(12))

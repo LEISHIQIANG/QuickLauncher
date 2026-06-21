@@ -31,6 +31,7 @@ from qt_compat import (
 )
 from ui.styles.design_tokens import BorderScale, SurfaceScale
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.styles.managers import StyleManager
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
 from ui.utils.pixel_snap import make_cosmetic_pen
@@ -135,7 +136,7 @@ class CompactProgressDialog(QDialog):
 
         from ui.styles.style import get_dialog_stylesheet
 
-        self.setStyleSheet(get_dialog_stylesheet(self.theme))
+        StyleManager.apply_dialog_style(self, self.theme)
         tune_font_rendering(self, recursive=True)
         self.title_label.setFont(get_qfont(13, 400))
 
