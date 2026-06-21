@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ── Lint ──────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff==0.8.4
+
+      - name: Run ruff
+        run: >
+          ruff check
+          core/
+          ui/
+          hooks/
+          services/
+          bootstrap/
+          main.py
+          scripts/
+          tests/
+
+  # ── Type Check ────────────────────────────────────────────────────
+  type-check:
+    name: Type Check (mypy)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install mypy==1.14.1
+
+      - name: Run mypy
+        run: python scripts/check_mypy_progress.py
+
+  # ── Tests ─────────────────────────────────────────────────────────
+  test:
+    name: Tests & Coverage
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest with coverage
+        run: >
+          python -m pytest tests/
+          --tb=short
+          --timeout=120
+          --timeout-method=thread
+          --cov=core
+          --cov=services
+          --cov=hooks
+          --cov=bootstrap
+          --cov-report=xml
+          --cov-report=term-missing
+          -q
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  # ── Release Gate ──────────────────────────────────────────────────
+  gate:
+    name: Release Gate
+    runs-on: windows-latest
+    needs: [lint, type-check, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run release gate (non-test steps)
+        run: python scripts/release_gate.py --skip-tests --skip-smoke
