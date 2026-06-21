@@ -96,25 +96,27 @@ Glassmorphism.get_action_button_style("dark", is_delete=True)
 
 ## 三、已完成与遗留工作
 
-### 3.1 已完成（追加）
+### 3.1 已完成
 
 | 工作 | 完成情况 |
 |---|---|
-| **S6 动画系统统一** | `animations.py` API 包含 fade_in/fade_out/scale_in/slide_in/chain/parallel/cancel_all；`DisposableWidget` 已在 `popup_window.py` 作为 Mixin 使用；`DisposableAnimation` 可用 |
-| **S6 缓存策略** | `lru_cache.py` + `pixmap_cache` 已实现并在 8 个模块中使用（popup_icons/batch_launch/renderer/search 等） |
+| **架构改造 7 Steps** | qss/ 模块化、StyleBuilder、design_tokens、_colors.py 删除、StyleManager、字体栈 |
+| **StyleManager 迁移** | 完整样式表调用已收口到统一入口 |
+| **S6 动画系统统一** | `animations.py` API：fade_in/fade_out/scale_in/slide_in/chain/parallel/cancel_all；`DisposableWidget` 已在 `popup_window.py` 作为 Mixin 使用 |
+| **S6 缓存策略** | `lru_cache.py` + `pixmap_cache` 已实现并在 8 个模块中使用 |
 | **S7 渲染热路径** | `repaint()` → `update()` 修复 3 处（icon_grid.py, safe_file_dialog.py） |
-| **S7 毛玻璃管线** | `glass_background.py` 1325→1035 行，拆出 `glass_types.py` (370行)：ctypes 结构体、_FrameBuffer、_DisplayAffinity、常量分离 |
+| **S7 毛玻璃管线** | `glass_background.py` 1325→1035 行；拆出 `glass_types.py` (370行) |
+| **S7 高 DPI** | 修复 3 个窗口图标 `QPixmap(64,64)` → `QPixmap(sp(64), sp(64))` + `setDevicePixelRatio` |
 
 ### 3.2 待办项
 
 | 工作 | 说明 | 难度 | 收益 |
 |---|---|---|---|
 | **S7 启动性能** | 主窗口 lazy load、毛玻璃占位背景、icons worker 化 | 中 | 首屏时间 |
-| **S7 高 DPI** | 图标 `setDevicePixelRatio`、`QPixmap` 缩放 | 低 | 4K 清晰度 |
 | **S7 渲染热路径深化** | `update()`→`update(rect)` 局部重绘、paintEvent `QPainterPath` 缓存 | 中 | 拖动 FPS |
 | **S8 L3 视觉灰度** | 像素对齐/focus ring/微动效/阴影升级/弹窗动画，Feature Flag 门控 | 低 | 精致度 |
 
-### 3.2 设计决策说明
+### 3.3 设计决策说明
 
 **为什么 `qss/tokens.py` 不从 `design_tokens.py` 动态取值？**
 
