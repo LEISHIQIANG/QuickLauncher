@@ -122,7 +122,8 @@ class ShortcutDialog(BaseDialog):
     def _setup_window_icon(self):
         """设置窗口图标"""
         try:
-            pixmap = QPixmap(64, 64)
+            pixmap = QPixmap(sp(64), sp(64))
+            pixmap.setDevicePixelRatio(1.0)
             pixmap.fill(QtCompat.transparent)
             painter = QPainter(pixmap)
             try:

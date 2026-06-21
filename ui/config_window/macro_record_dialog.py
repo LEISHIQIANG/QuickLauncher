@@ -658,7 +658,8 @@ class MacroRecordDialog(BaseDialog):
         if BaseDialog._is_compiled():
             return
         try:
-            pixmap = QPixmap(64, 64)
+            pixmap = QPixmap(sp(64), sp(64))
+            pixmap.setDevicePixelRatio(1.0)
             pixmap.fill(QtCompat.transparent)
             painter = QPainter(pixmap)
             try:
