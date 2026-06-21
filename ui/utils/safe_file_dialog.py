@@ -52,7 +52,7 @@ def _execute_dialog_synchronously(parent, func, *args, **kwargs):
             # logger.debug("[文件对话框追踪] 步骤 4: 尝试重绘与恢复父窗口亚克力特效")
             if hasattr(parent, "_apply_effects"):
                 parent._apply_effects()
-            parent.repaint()
+            parent.update()
             app = QApplication.instance()
             if app:
                 app.processEvents()

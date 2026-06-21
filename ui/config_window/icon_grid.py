@@ -216,8 +216,8 @@ class SimpleStatusDialog(QDialog):
         self.label.setText(text)
         self.label.update()
         if self.isVisible():
-            self.label.repaint()
-            self.repaint()
+            self.label.update()
+            self.update()
 
 
 class MoveFolderDialog(BaseDialog):
