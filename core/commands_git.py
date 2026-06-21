@@ -21,6 +21,14 @@ def _large_log_payload(**values) -> dict:
 
 def _run_git(repo: str, extra: list[str], timeout: float = 20.0) -> tuple[int, str, str, float]:
     started = time.perf_counter()
+    # Hide console window on Windows
+    popen_kwargs: dict = {}
+    if os.name == "nt":
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        popen_kwargs["startupinfo"] = startupinfo
     proc = subprocess.Popen(
         ["git", *extra],
         cwd=repo,
@@ -30,6 +38,7 @@ def _run_git(repo: str, extra: list[str], timeout: float = 20.0) -> tuple[int, s
         encoding="utf-8",
         errors="replace",
         shell=False,
+        **popen_kwargs,
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -109,6 +118,7 @@ def cmd_git(context: CommandContext) -> CommandResult:
     try:
         code, stdout, stderr, duration = _run_git(repo, ["rev-parse", "--is-inside-work-tree"], timeout=5.0)
     except Exception as e:
+        logger.debug("检查git工作区失败", exc_info=True)
         return CommandResult(
             success=False,
             message=f"无法运行 git: {e}",
@@ -157,6 +167,7 @@ def cmd_git(context: CommandContext) -> CommandResult:
             payload=_large_log_payload(repo=repo, subcommand=subcommand, timed_out=True),
         )
     except Exception as e:
+        logger.debug("Git命令执行失败", exc_info=True)
         return CommandResult(
             success=False,
             message=f"Git 命令执行失败: {e}",

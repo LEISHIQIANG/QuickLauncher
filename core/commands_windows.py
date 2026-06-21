@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from infrastructure.process import runtime as process_runtime
 
 from .command_registry import CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_env(context: CommandContext) -> CommandResult:
@@ -16,6 +20,7 @@ def cmd_env(context: CommandContext) -> CommandResult:
             payload={"_suppress_result_panel": True},
         )
     except Exception as e:
+        logger.debug("启动环境变量编辑器失败", exc_info=True)
         return CommandResult(success=False, message=f"启动环境变量编辑器失败: {e}", error="启动失败")
 
 
@@ -29,6 +34,7 @@ def cmd_god(context: CommandContext) -> CommandResult:
             payload={"_suppress_result_panel": True},
         )
     except Exception:
+        logger.debug("通过startfile打开上帝模式失败，尝试explorer", exc_info=True)
         try:
             process_runtime.popen(["explorer.exe", god_mode_guid])
             return CommandResult(
@@ -37,4 +43,5 @@ def cmd_god(context: CommandContext) -> CommandResult:
                 payload={"_suppress_result_panel": True},
             )
         except Exception as e:
+            logger.debug("打开上帝模式失败", exc_info=True)
             return CommandResult(success=False, message=f"打开上帝模式失败: {e}", error="打开失败")

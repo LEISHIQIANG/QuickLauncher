@@ -127,7 +127,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     param_values=ShortcutExecutor._command_param_values(shortcut),  # type: ignore[attr-defined]
                 )
             )
-        except Exception as e:
+        except (ImportError, RuntimeError, ValueError, AttributeError) as e:
             logger.exception("Command preprocessing failed closed: %s", e)
             from core.preprocessing.errors import PreprocessingResult, ValidationError
 
@@ -580,14 +580,14 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 command_type,
                 start,
             )
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             logger.error("Bash script fallback also failed", exc_info=True)
             return None
         finally:
             try:
                 if os.path.exists(script_path):
                     os.remove(script_path)
-            except Exception as exc:
+            except OSError as exc:
                 logger.debug("删除临时脚本失败: %s", exc, exc_info=True)
 
     @staticmethod
@@ -606,7 +606,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
             app = QApplication.instance()
             return bool(app and QThread.currentThread() == app.thread())
-        except Exception:
+        except (ImportError, RuntimeError, AttributeError):
             logger.debug("_is_qt_main_thread check failed", exc_info=True)
             return False
 
@@ -651,7 +651,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             )
             stdout, _ = process.communicate()
             return stdout
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.debug(f"静默执行失败: {e}")
             return ""
 
@@ -667,7 +667,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
             kwargs["startupinfo"] = startupinfo
-        except Exception as exc:
+        except (OSError, AttributeError) as exc:
             logger.debug("设置进程启动信息失败: %s", exc, exc_info=True)
 
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -675,6 +675,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             kwargs["creationflags"] = creationflags  # type: ignore[assignment]
         return kwargs
 
+    @staticmethod
     def _execute_command(shortcut: ShortcutItem) -> tuple[bool, str]:
         """执行命令类型快捷方式"""
         command = shortcut.command
@@ -763,7 +764,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return True, ""
         except FileNotFoundError:
             return False, ShortcutExecutor._powershell_launcher_error()  # type: ignore[attr-defined]
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("PowerShell命令启动失败", exc_info=True)
             return False, f"PowerShell command launch failed: {e}"
 
     @staticmethod
@@ -809,7 +811,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return True, ""
         except FileNotFoundError:
             return False, ShortcutExecutor._bash_launcher_error()  # type: ignore[attr-defined]
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("Bash可见命令启动失败", exc_info=True)
             return False, f"Bash command launch failed: {e}"
 
     @staticmethod
@@ -835,7 +838,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return True, ""
         except FileNotFoundError:
             return False, ShortcutExecutor._bash_launcher_error()  # type: ignore[attr-defined]
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("Bash静默命令启动失败", exc_info=True)
             return False, f"Bash command launch failed: {e}"
 
     @staticmethod
@@ -880,7 +884,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
         except FileNotFoundError:
             ShortcutExecutor._remove_temp_python_script(tmp_path)  # type: ignore[attr-defined]
             return False, ShortcutExecutor._python_launcher_error()  # type: ignore[attr-defined]
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("Python可见代码执行失败", exc_info=True)
             ShortcutExecutor._remove_temp_python_script(tmp_path)  # type: ignore[attr-defined]
             return False, f"Python 代码执行失败: {e}"
 
@@ -889,7 +894,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         try:
             if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("删除临时Python文件失败: %s", exc, exc_info=True)
 
     @staticmethod
@@ -936,7 +941,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                             process.communicate(input=command.encode("utf-8"))
                         else:
                             raise
-                except Exception as e:
+                except (OSError, subprocess.SubprocessError) as e:
                     logger.error(f"Python stdin exec failed: {e}")
 
             start_background_thread(
@@ -948,7 +953,8 @@ class CommandExecutionMixin(CommandLauncherMixin):
             return True, ""
         except FileNotFoundError:
             return False, ShortcutExecutor._python_launcher_error()  # type: ignore[attr-defined]
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("Python静默代码启动失败", exc_info=True)
             return False, f"Python 代码启动失败: {e}"
 
     @staticmethod
@@ -966,7 +972,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             error_msg = ""
         except (ValueError, RuntimeError) as e:
             return False, str(e)
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             error_msg = f"命令启动失败: {e}"
             logger.error(error_msg)
         if process is not None:
@@ -995,7 +1001,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 stdin_pipe.close()
             logger.debug("执行命令(Silent CMD stdin): %s", command)
             return True, ""
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             error_msg = f"命令启动失败: {e}"
             logger.error(error_msg)
             return False, error_msg
@@ -1095,13 +1101,13 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 proc.wait(timeout=2.0)
             except subprocess.TimeoutExpired:
                 logger.debug("命令进程超时未完成，继续执行焦点恢复")
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 logger.debug(f"等待命令进程时出错: {e}")
             time.sleep(0.05)
             try:
                 ShortcutExecutor.restore_foreground_window()  # type: ignore[attr-defined]
                 logger.debug("CMD 命令执行后：已恢复焦点")
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug(f"CMD 命令执行后恢复焦点失败: {e}")
 
         start_background_thread(
@@ -1153,7 +1159,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         try:
             try:
                 ShortcutExecutor.restore_foreground_window_fast(timeout_ms=300)  # type: ignore[attr-defined]
-            except Exception:
+            except (OSError, AttributeError):
                 ShortcutExecutor.restore_foreground_window()  # type: ignore[attr-defined]
             time.sleep(0.08)
             if hasattr(ShortcutExecutor, "_execute_hotkey_sendinput"):
@@ -1171,7 +1177,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             if not clipboard_service.restore_snapshot(snapshot):
                 try:
                     clipboard_service.write_text(original_text)
-                except Exception as exc:
+                except (OSError, AttributeError) as exc:
                     logger.debug("恢复剪贴板文本失败: %s", exc, exc_info=True)
 
     @staticmethod
@@ -1210,7 +1216,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             os.startfile(path)
             logger.info("已打开内置目录: %s", path)
             return True
-        except Exception as e:
+        except (OSError, FileNotFoundError) as e:
             logger.error("打开内置目录失败 %s: %s", command, e, exc_info=True)
             return False
 
@@ -1233,7 +1239,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 logger.debug("Opened built-in filesystem target: %s", path)
                 return True
             return ShortcutExecutor._shell_execute_open(path)  # type: ignore[attr-defined, no-any-return]
-        except Exception as e:
+        except (OSError, FileNotFoundError) as e:
             logger.error("Open built-in filesystem target failed %s: %s", path, e, exc_info=True)
             return False
 
@@ -1249,7 +1255,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 if ShortcutExecutor._shell_execute_open("notepad.exe", params):  # type: ignore[attr-defined]
                     logger.info("Opened built-in text file via notepad: %s", path)
                     return True
-            except Exception:
+            except (OSError, subprocess.SubprocessError):
                 logger.debug("Opening built-in text file via notepad failed: %s", path, exc_info=True)
 
         return ShortcutExecutor._open_filesystem_target(  # type: ignore[attr-defined, no-any-return]
@@ -1289,7 +1295,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 if callable(opener):
                     opener("ms-settings:")
                     return True
-            except Exception:
+            except (OSError, AttributeError):
                 logger.debug("os.startfile(ms-settings:) failed", exc_info=True)
 
         specs = {
@@ -1317,7 +1323,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 env=ShortcutExecutor._sanitized_child_env(),  # type: ignore[attr-defined]
             )
             return True
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.error("Open Windows built-in command failed %s: %s", command, e)
         return False
 
@@ -1399,7 +1405,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 )
             except OSError as exc:
                 if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):  # type: ignore[attr-defined]
-                    fallback = ShortcutExecutor._bash_capture_via_script(  # type: ignore[attr-defined, no-any-return]
+                    fallback = ShortcutExecutor._bash_capture_via_script(  # type: ignore[attr-defined]
                         command,
                         cwd,
                         env,
@@ -1454,7 +1460,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 cancel_event=cancel_event,
                 popen_args=popen_args,
             )
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.info(
                 "[cmd-capture] run_command_capture 异常 argv=%r err=%r",
                 popen_args,
@@ -1553,7 +1559,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             finally:
                 try:
                     pipe.close()
-                except Exception as exc:
+                except OSError as exc:
                     logger.debug("关闭输出管道失败: %s", exc, exc_info=True)
 
         executor = ShortcutExecutor._get_executor()  # type: ignore[attr-defined]
@@ -1597,7 +1603,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
         try:
             process.wait(timeout=PROCESS_TERMINATE_WAIT_SECONDS)
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             logger.debug("等待进程结束失败: %s", exc, exc_info=True)
         ShortcutExecutor._drain_capture_queue(output_queue, stdout_parts, stderr_parts)  # type: ignore[attr-defined]
         return ShortcutExecutor._finalize_capture_bytes(  # type: ignore[attr-defined, no-any-return]
@@ -1962,7 +1968,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                         from core.file_selection import get_selected_files_for_process
 
                         selected_files = get_selected_files_for_process() or []
-                    except Exception as exc:
+                    except (ImportError, AttributeError) as exc:
                         logger.debug("获取选中文件失败: %s", exc, exc_info=True)
 
                     clipboard_text = ""
@@ -1979,7 +1985,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
                             kind, _, _ = classify_text(snapshot.text)
                             clipboard_kind = kind
-                    except Exception as exc:
+                    except (OSError, ImportError, AttributeError) as exc:
                         logger.debug("读取剪贴板快照失败: %s", exc, exc_info=True)
 
                     ctx = CommandContext(
@@ -1995,7 +2001,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     payload = result.payload if isinstance(getattr(result, "payload", {}), dict) else {}
                     if not payload.get("_suppress_result_panel"):
                         set_pending_command_result(result)
-                    return result.success
+                    return bool(result.success)
         except Exception as exc:
             logger.debug("执行内置命令失败: %s", exc, exc_info=True)
 
@@ -2007,7 +2013,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 from application.ports.ui_actions import UIAction
 
                 action = UIAction.parse(canonical)
-                ui_actions = getattr(ShortcutExecutor, "resolve_ui_actions", lambda: None)()  # type: ignore[attr-defined,no-any-return]
+                ui_actions = getattr(ShortcutExecutor, "resolve_ui_actions", lambda: None)()
                 if action is None or ui_actions is None:
                     if canonical in filesystem_builtin_commands:
                         return ShortcutExecutor._open_builtin_filesystem_target(canonical)  # type: ignore[attr-defined, no-any-return]

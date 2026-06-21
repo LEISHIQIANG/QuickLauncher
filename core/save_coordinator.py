@@ -202,6 +202,7 @@ class SaveCoordinator:
             try:
                 status["current_issues"] = validate_app_data(dm.data)
             except Exception as exc:
+                logger.debug("验证应用数据失败: %s", exc, exc_info=True)
                 status["current_issues"] = [str(exc)]
                 status["status"] = "error"
             return status

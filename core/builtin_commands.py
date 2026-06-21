@@ -262,8 +262,9 @@ def canonical_builtin_command(command: str) -> str:
             if canonical:
                 cmd_def = registry.get(canonical)
                 if cmd_def is not None and isinstance(cmd_def.handler, _CallbackHandler):
-                    return cmd_def.handler._callback_name
-                return canonical
+                    name: str = cmd_def.handler._callback_name
+                    return name
+                return str(canonical)
     except Exception as exc:
         logger.debug("获取规范命令名失败: %s", exc, exc_info=True)
 
@@ -289,8 +290,9 @@ def canonical_builtin_command(command: str) -> str:
             if canonical:
                 cmd_def = registry.get(canonical)
                 if cmd_def is not None and isinstance(cmd_def.handler, _CallbackHandler):
-                    return cmd_def.handler._callback_name
-                return canonical
+                    name2: str = cmd_def.handler._callback_name
+                    return name2
+                return str(canonical)
     except Exception as exc:
         logger.debug("获取规范命令名失败: %s", exc, exc_info=True)
     return BUILTIN_COMMAND_ALIASES.get(cmd_name.lower(), "") or SIMPLE_WINDOWS_SYSTEM_COMMAND_ALIASES.get(

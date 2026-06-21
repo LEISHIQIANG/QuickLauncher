@@ -35,7 +35,7 @@ def _import_pynput():
         _pynput_Key = K
         _pynput_KeyboardController = KC
         HAS_PYNPUT = True
-    except Exception:
+    except (ImportError, AttributeError):
         HAS_PYNPUT = False
 
 
@@ -68,7 +68,7 @@ class HotkeyExecutionMixin:
         scan = 0
         try:
             scan = user32.MapVirtualKeyW(vk, 0) & 0xFF
-        except Exception:
+        except (OSError, AttributeError):
             scan = 0
 
         if scan:
@@ -81,7 +81,7 @@ class HotkeyExecutionMixin:
         try:
             sent = SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
             return int(sent or 0) == 1
-        except Exception:
+        except (OSError, AttributeError):
             return False
 
     @staticmethod
@@ -90,14 +90,14 @@ class HotkeyExecutionMixin:
         KEYEVENTF_EXTENDEDKEY = 0x0001
         try:
             ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("_sendinput_key_event 释放 VK=0x%02X 失败: %s", vk, e)
         try:
             flags = KEYEVENTF_KEYUP
             if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                 flags |= KEYEVENTF_EXTENDEDKEY
             user32.keybd_event(vk, 0, flags, 0)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("keybd_event 释放 VK=0x%02X 失败: %s", vk, e)
 
     @staticmethod
@@ -107,7 +107,7 @@ class HotkeyExecutionMixin:
             try:
                 if (user32.GetAsyncKeyState(vk) & 0x8000) != 0:
                     ShortcutExecutor._release_vk_strong(vk)  # type: ignore[attr-defined]
-            except Exception:
+            except (OSError, AttributeError):
                 continue
 
     @classmethod
@@ -134,7 +134,7 @@ class HotkeyExecutionMixin:
                 cls._previous_hwnd_process_id = process_id  # type: ignore[attr-defined]
             logger.debug("保存前台窗口: hwnd=%s pid=%s", hwnd, process_id)
             return True
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("Failed to save foreground window: %s", e, exc_info=True)
             return False
 
@@ -202,7 +202,7 @@ class HotkeyExecutionMixin:
                     with cls._foreground_window_lock:  # type: ignore[attr-defined]
                         cls._previous_hwnd = None  # type: ignore[attr-defined]
                         cls._previous_hwnd_process_id = None  # type: ignore[attr-defined]
-            except Exception:
+            except (OSError, AttributeError):
                 hwnd = None
 
         if hwnd:
@@ -221,7 +221,7 @@ class HotkeyExecutionMixin:
 
                 logger.debug(f"恢复前台窗口: {hwnd}")
                 return True
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug(f"恢复前台窗口失败: {e}")
 
         # ===== 后备方案：激活桌面窗口 =====
@@ -238,7 +238,7 @@ class HotkeyExecutionMixin:
                     user32.SetForegroundWindow(progman)
                     logger.debug(f"后备方案：激活 Progman (桌面): {progman}")
                     return True
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug(f"后备焦点恢复失败: {e}")
 
         return False
@@ -343,7 +343,7 @@ class HotkeyExecutionMixin:
                 pressed_by_us.remove(vk)
                 time.sleep(0.010)
             return True
-        except Exception as exc:
+        except (OSError, AttributeError) as exc:
             logger.error("[Hotkey] 错误: %s", exc)
             return False
         finally:
@@ -359,11 +359,11 @@ class HotkeyExecutionMixin:
         try:
             for vk in [0x10, 0x11, 0x12, 0x5B, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5]:
                 user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.error(f"强制释放修饰键失败: {e}")
         try:
             ShortcutExecutor._release_modifiers_strong()  # type: ignore[attr-defined]
-        except Exception as exc:
+        except (OSError, AttributeError) as exc:
             logger.debug("强制释放修饰键调用失败: %s", exc, exc_info=True)
 
     @staticmethod
@@ -378,7 +378,7 @@ class HotkeyExecutionMixin:
             if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                 flags |= KEYEVENTF_EXTENDEDKEY
             user32.keybd_event(vk, 0, flags, 0)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("keybd_event 释放 %s(VK=0x%02X) 失败: %s", key, vk, e)
 
     @staticmethod
@@ -416,7 +416,7 @@ class HotkeyExecutionMixin:
                 state = user32.GetAsyncKeyState(vk)
                 if (state & 0x8000) != 0:
                     stuck_keys.append((vk, name))
-            except Exception as exc:
+            except (OSError, AttributeError) as exc:
                 logger.debug("检测修饰键状态失败: %s", exc, exc_info=True)
 
         # 如果有卡住的键，尝试释放
@@ -434,7 +434,7 @@ class HotkeyExecutionMixin:
                             flags |= KEYEVENTF_EXTENDEDKEY
                         user32.keybd_event(vk, 0, flags, 0)
                         time.sleep(0.002)
-                    except Exception as exc:
+                    except (OSError, AttributeError) as exc:
                         logger.debug("keybd_event释放修饰键失败: %s", exc, exc_info=True)
 
                     # 检查是否已释放
@@ -443,7 +443,7 @@ class HotkeyExecutionMixin:
                         if (state & 0x8000) == 0:
                             released = True
                             break
-                    except Exception as exc:
+                    except (OSError, AttributeError) as exc:
                         logger.debug("检查修饰键释放状态失败: %s", exc, exc_info=True)
 
                 # 尝试方法2: _release_vk_strong
@@ -451,7 +451,7 @@ class HotkeyExecutionMixin:
                     try:
                         ShortcutExecutor._release_vk_strong(vk)  # type: ignore[attr-defined]
                         time.sleep(0.005)
-                    except Exception as exc:
+                    except (OSError, AttributeError) as exc:
                         logger.debug("强力释放修饰键失败: %s", exc, exc_info=True)
 
                     # 再次检查
@@ -459,7 +459,7 @@ class HotkeyExecutionMixin:
                         state = user32.GetAsyncKeyState(vk)
                         if (state & 0x8000) == 0:
                             released = True
-                    except Exception as exc:
+                    except (OSError, AttributeError) as exc:
                         logger.debug("再次检查修饰键释放状态失败: %s", exc, exc_info=True)
 
                 # 尝试方法3: SendInput（使用模块级结构）
@@ -467,7 +467,7 @@ class HotkeyExecutionMixin:
                     try:
                         ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
                         time.sleep(0.002)
-                    except Exception as exc:
+                    except (OSError, AttributeError) as exc:
                         logger.debug("SendInput释放修饰键失败: %s", exc, exc_info=True)
 
                 if released:
@@ -515,7 +515,7 @@ class HotkeyExecutionMixin:
                 if ShortcutExecutor._is_extended_vk(vk):  # type: ignore[attr-defined]
                     flags |= KEYEVENTF_EXTENDEDKEY
                 user32.keybd_event(vk, 0, flags, 0)
-            except Exception as exc:
+            except (OSError, AttributeError) as exc:
                 logger.debug("预执行清理keybd_event释放失败: %s", exc, exc_info=True)
 
         time.sleep(0.015)
@@ -524,7 +524,7 @@ class HotkeyExecutionMixin:
         for vk in all_modifier_vks:
             try:
                 ShortcutExecutor._sendinput_key_event(vk, True)  # type: ignore[attr-defined]
-            except Exception as exc:
+            except (OSError, AttributeError) as exc:
                 logger.debug("预执行清理SendInput释放失败: %s", exc, exc_info=True)
 
         time.sleep(0.015)
@@ -536,7 +536,7 @@ class HotkeyExecutionMixin:
                 try:
                     if (user32.GetAsyncKeyState(vk) & 0x8000) != 0:
                         still_stuck.append(vk)
-                except Exception as exc:
+                except (OSError, AttributeError) as exc:
                     logger.debug("预执行检测残留按键状态失败: %s", exc, exc_info=True)
 
             if not still_stuck:
@@ -547,7 +547,7 @@ class HotkeyExecutionMixin:
                 try:
                     ShortcutExecutor._release_vk_strong(vk)  # type: ignore[attr-defined]
                     time.sleep(0.003)
-                except Exception as exc:
+                except (OSError, AttributeError) as exc:
                     logger.debug("预执行强力释放残留按键失败: %s", exc, exc_info=True)
 
             time.sleep(0.020)
@@ -606,7 +606,7 @@ class HotkeyExecutionMixin:
 
             return result
 
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.error(f"执行快捷键失败: {e}")
             return False
         finally:

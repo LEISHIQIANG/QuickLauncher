@@ -35,8 +35,8 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
-from ui.styles.design_tokens import surface
-from ui.styles.style import Colors, Glassmorphism, PopupMenu
+from ui.styles.design_tokens import selection_bg_qss, selection_text_qss, surface
+from ui.styles.style import Glassmorphism, PopupMenu
 from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import scale_qss, sp
 
@@ -745,8 +745,8 @@ class ChainDialog(
         tip_bg = "rgba(44, 44, 48, 240)" if theme == "dark" else "rgba(255, 255, 255, 240)"
         tip_fg = "#ffffff" if theme == "dark" else "#1c1c1e"
         tip_border = "rgba(255, 255, 255, 0.15)" if theme == "dark" else "rgba(0, 0, 0, 0.1)"
-        selection_bg = Colors.get_selection_bg(theme)
-        selection_text = Colors.get_selection_text(theme)
+        selection_bg = selection_bg_qss(theme)
+        selection_text = selection_text_qss(theme)
 
         custom = base_style + scale_qss(
             f"""

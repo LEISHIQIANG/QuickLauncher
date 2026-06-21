@@ -131,14 +131,9 @@ class ClipboardSnapshot:
         return not self.text and not self.file_paths and not self.html and not self.image_info
 
 
-@dataclass
-class ClipboardClassification:
-    kind: str
-    confidence: float
-    summary: str
-    actions: list[str] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
-
+# ClipboardClassification moved to clipboard_classifiers to break circular dependency.
+# Re-exported here for backward compatibility.
+from .clipboard_classifiers import ClipboardClassification  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # ── Constants ─────────────────────────────────────────────────────────────
@@ -312,7 +307,7 @@ class Win32ClipboardImpl:
                     if isinstance(data, bytes | bytearray):
                         try:
                             return data.decode("mbcs", errors="replace")
-                        except Exception:
+                        except (ValueError, UnicodeDecodeError):
                             logger.debug("MBCS decode failed, using utf-8 replace", exc_info=True)
                             return data.decode(errors="replace")
                     return data or ""
@@ -339,7 +334,7 @@ class Win32ClipboardImpl:
             finally:
                 win32clipboard.CloseClipboard()
         except Exception as e:
-            logger.debug("write_text failed: %s", e)
+            logger.debug("write_text failed: %s", e, exc_info=True)
             return False
 
     @staticmethod
@@ -469,7 +464,7 @@ class Win32ClipboardImpl:
                         if isinstance(data, bytes | bytearray):
                             try:
                                 snapshot.text = data.decode("mbcs", errors="replace")
-                            except Exception:
+                            except (ValueError, UnicodeDecodeError):
                                 logger.debug("Snapshot MBCS decode failed, using utf-8 replace", exc_info=True)
                                 snapshot.text = data.decode(errors="replace")
                         else:
@@ -483,7 +478,7 @@ class Win32ClipboardImpl:
                     if isinstance(data, bytes | bytearray):
                         try:
                             snapshot.html = data.decode("utf-8", errors="replace")
-                        except Exception:
+                        except (ValueError, UnicodeDecodeError):
                             logger.debug("Snapshot HTML decode failed, using str()", exc_info=True)
                             snapshot.html = str(data)
                     elif isinstance(data, str):
@@ -496,7 +491,7 @@ class Win32ClipboardImpl:
                 if fmt in {win32con.CF_UNICODETEXT, win32con.CF_TEXT, CF_HDROP}:
                     snapshot.formats[fmt] = data
 
-        except (win32clipboard.error, ClipboardError, OSError, RuntimeError, TypeError, ValueError) as e:
+        except Exception as e:
             logger.debug("读取剪贴板快照失败: %s", e, exc_info=True)
             snapshot.error = str(e)
         finally:
@@ -527,7 +522,7 @@ class Win32ClipboardImpl:
                         win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, snapshot.text)
                     except Exception as e:
                         ok = False
-                        logger.debug("restore CF_UNICODETEXT failed: %s", e)
+                        logger.debug("restore CF_UNICODETEXT failed: %s", e, exc_info=True)
 
                 # Restore file paths
                 if snapshot.file_paths:
@@ -535,7 +530,7 @@ class Win32ClipboardImpl:
                         win32clipboard.SetClipboardData(CF_HDROP, snapshot.file_paths)
                     except Exception as e:
                         ok = False
-                        logger.debug("restore CF_HDROP failed: %s", e)
+                        logger.debug("restore CF_HDROP failed: %s", e, exc_info=True)
 
                 # Restore other formats from stored binary
                 for fmt, data in snapshot.formats.items():
@@ -551,7 +546,7 @@ class Win32ClipboardImpl:
             finally:
                 win32clipboard.CloseClipboard()
         except Exception as e:
-            logger.debug("restore_snapshot failed: %s", e)
+            logger.debug("restore_snapshot failed: %s", e, exc_info=True)
             return False
 
     @staticmethod
@@ -604,7 +599,7 @@ class Win32ClipboardImpl:
             finally:
                 win32clipboard.CloseClipboard()
         except Exception as e:
-            logger.debug("write_html failed: %s", e)
+            logger.debug("write_html failed: %s", e, exc_info=True)
             return False
 
 
@@ -687,11 +682,11 @@ class QtClipboardBridge:
                             text = Win32ClipboardImpl.read_text()
                             if text is not None:
                                 QApplication.clipboard().setText(text)  # type: ignore[unused-ignore, union-attr]
-                        except Exception as exc:
+                        except (ImportError, RuntimeError, AttributeError) as exc:
                             logger.debug("Qt剪贴板同步失败: %s", exc, exc_info=True)
 
                 cls._instance = _Bridge()
-            except Exception:
+            except (ImportError, RuntimeError, AttributeError):
                 logger.warning("QtClipboardBridge singleton creation failed", exc_info=True)
                 cls._instance = None
         return cls._instance
@@ -702,7 +697,7 @@ class QtClipboardBridge:
         if bridge is not None:
             try:
                 bridge.notify_change()
-            except Exception as exc:
+            except (RuntimeError, AttributeError) as exc:
                 logger.debug("剪贴板桥接通知失败: %s", exc, exc_info=True)
 
 
@@ -823,7 +818,7 @@ class ClipboardService:
                 self._check_sequence_change()
             return result
         except Exception as e:
-            logger.debug("restore_snapshot failed: %s", e)
+            logger.debug("restore_snapshot failed: %s", e, exc_info=True)
             return False
 
     # ---- format info ----
@@ -853,7 +848,7 @@ class ClipboardService:
             try:
                 cb(seq)
             except Exception as e:
-                logger.debug("clipboard listener error: %s", e)
+                logger.debug("clipboard listener error: %s", e, exc_info=True)
 
     def _check_sequence_change(self):
         seq = self.get_sequence_number()

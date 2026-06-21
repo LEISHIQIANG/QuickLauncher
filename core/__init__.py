@@ -1,5 +1,8 @@
 """核心模块"""
 
+import importlib
+import logging
+
 from .clipboard_classifiers import classify_clipboard as classify_clipboard
 from .clipboard_classifiers import classify_text as classify_text
 from .data_manager import DataManager as DataManager
@@ -25,6 +28,7 @@ _LAZY_EXPORTS = {
     "ShortcutExecutor": ("shortcut_executor", "ShortcutExecutor"),
     "WindowManager": ("window_manager", "WindowManager"),
     "auto_start_manager": ("auto_start_manager", None),
+    "registry": ("command_registry", "CommandRegistry"),
 }
 
 
@@ -32,9 +36,18 @@ def __getattr__(name: str):
     """Lazy: avoids circular import chains through core.__init__."""
     if name not in _LAZY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    # Lazy registry: deferred construction to avoid import-time side effect.
+    if name == "registry":
+        global _registry
+        if _registry is None:
+            from .command_registry import CommandRegistry
+
+            _registry = CommandRegistry()
+        globals()["registry"] = _registry
+        return _registry
     module_name, attr_name = _LAZY_EXPORTS[name]
     try:
-        module = __import__(f"{__name__}.{module_name}", fromlist=[attr_name] if attr_name else ["*"])
+        module = importlib.import_module(f".{module_name}", __name__)
         value = module if attr_name is None else getattr(module, attr_name)
     except ImportError:
         value = None
@@ -55,10 +68,18 @@ def __getattr__(name: str):
 
 from .command_registry import CommandRegistry
 
-logger = __import__("logging").getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-registry = CommandRegistry()
-_registry_initialized = False
+_registry = None
+
+
+def _get_registry():
+    """Internal accessor: returns the lazily-initialized CommandRegistry."""
+    global _registry
+    if _registry is None:
+        _registry = CommandRegistry()
+    return _registry
+
 
 plugin_manager = None
 data_manager = None
@@ -78,17 +99,21 @@ def get_data_manager():
     return data_manager
 
 
+_registry_ready = False
+
+
 def ensure_registry_initialized():
     """初始化命令注册中心（只执行一次）。"""
-    global _registry_initialized
-    if _registry_initialized:
+    global _registry_ready
+    if _registry_ready:
         return
     try:
+        reg = _get_registry()
         _register_builtin_commands()
-        c1 = registry.migrate_slash_commands()
-        c2 = registry.migrate_builtin_aliases()
-        total = registry.count()
-        _registry_initialized = True
+        c1 = reg.migrate_slash_commands()
+        c2 = reg.migrate_builtin_aliases()
+        total = reg.count()
+        _registry_ready = True
         logger.info(
             "命令注册中心初始化完成: %d 条命令 (%d 旧, %d 新)",
             total,
@@ -100,7 +125,15 @@ def ensure_registry_initialized():
 
 
 def ensure_plugin_manager_initialized():
-    """初始化插件管理器（只执行一次）。"""
+    """初始化插件管理器（只执行一次）。
+
+    Service-locator rationale: PluginManager is constructed here (rather than
+    injected from bootstrap) because it must register itself into the command
+    registry before bootstrap's composition root finishes wiring the app
+    context.  Moving construction to bootstrap would create a circular
+    dependency between bootstrap and core.plugin_manager.  New code should
+    prefer AppContext.plugin_manager over this module-level accessor.
+    """
     global plugin_manager
     if plugin_manager is not None:
         return
@@ -108,7 +141,7 @@ def ensure_plugin_manager_initialized():
         # Lazy: avoids circular import via core.__init__.
         from .plugin_manager import PluginManager
 
-        plugin_manager = PluginManager(registry)
+        plugin_manager = PluginManager(_get_registry())
         plugin_manager.scan_plugins()
         logger.info("插件管理器初始化完成")
     except Exception as e:
@@ -131,13 +164,14 @@ def _register_builtin_commands():
         builtin_command_metadata,
     )
 
+    reg = _get_registry()
     count = 0
     for cmd_def in build_builtin_command_definitions():
         cmd_def.metadata = builtin_command_metadata(cmd_def.id, cmd_def.category)
         cmd_def.interaction_mode = (
             COMMAND_INTERACTION_PANEL if cmd_def.id in PANEL_COMMAND_IDS else COMMAND_INTERACTION_DIRECT
         )
-        if registry.register(cmd_def):
+        if reg.register(cmd_def):
             count += 1
     if count:
         logger.info("已注册 %d 个 Phase 2/3 内置命令", count)

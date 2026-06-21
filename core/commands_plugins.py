@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from .command_registry import CommandAction, CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def _get_plugin_manager():
@@ -18,6 +21,7 @@ def _get_plugin_manager():
             return pm
         return None
     except Exception:
+        logger.debug("获取插件管理器实例失败", exc_info=True)
         return None
 
 

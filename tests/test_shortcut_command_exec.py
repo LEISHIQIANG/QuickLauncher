@@ -1431,8 +1431,7 @@ def test_preprocessing_settings_failure_blocks_direct_execution(monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(
-        command_exec.ShortcutExecutor,
-        "_data_manager",
+        "core.data_manager",
         SimpleNamespace(get_settings=lambda: (_ for _ in ()).throw(RuntimeError("settings broken"))),
     )
     launched = []
@@ -1804,6 +1803,10 @@ def test_command_dialog_insert_menu_exposes_ip_variables(qapp):
         buttons["内网 IP"].click()
         qapp.processEvents()
         assert "{{LAN_IP}}" in dialog.command_edit.toPlainText()
+
+        # Re-show popup since clicking an action closes it and may delete child widgets
+        dialog._show_insert_popup()
+        buttons = {button.text(): button for button in dialog._insert_menu.findChildren(QPushButton)}
         buttons["公网 IP"].click()
         qapp.processEvents()
         assert "{{WAN_IP}}" in dialog.command_edit.toPlainText()

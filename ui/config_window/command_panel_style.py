@@ -7,7 +7,7 @@ import logging
 from qt_compat import (
     QLineEdit,
 )
-from ui.styles.style import Colors
+from ui.styles.design_tokens import selection_bg_qss, selection_text_qss
 from ui.utils.ui_scale import scale_qss
 
 logger = logging.getLogger(__name__)
@@ -54,8 +54,8 @@ class CommandPanelStyleMixin:
 
     def _style_command_input(self):
         text, placeholder, border, bg = self._command_input_colors()
-        selection_bg = Colors.get_selection_bg(self._theme)
-        selection_text = Colors.get_selection_text(self._theme)
+        selection_bg = selection_bg_qss(self._theme)
+        selection_text = selection_text_qss(self._theme)
         if hasattr(self, "command_input_group"):
             self.command_input_group.setStyleSheet(
                 scale_qss(
@@ -138,8 +138,8 @@ class CommandPanelStyleMixin:
 
     def _style_param_input(self, edit: QLineEdit):
         text, placeholder, border, bg = self._command_input_colors()
-        selection_bg = Colors.get_selection_bg(self._theme)
-        selection_text = Colors.get_selection_text(self._theme)
+        selection_bg = selection_bg_qss(self._theme)
+        selection_text = selection_text_qss(self._theme)
         edit.setStyleSheet(
             scale_qss(
                 f"""
@@ -219,8 +219,8 @@ class CommandPanelStyleMixin:
             grid = "rgba(0, 0, 0, 0.08)"
             bg = "rgba(0, 0, 0, 0.02)"
             header = "rgba(0, 0, 0, 0.04)"
-        selection_bg = Colors.get_selection_bg(self._theme)
-        selection_text = Colors.get_selection_text(self._theme)
+        selection_bg = selection_bg_qss(self._theme)
+        selection_text = selection_text_qss(self._theme)
         self.table.setStyleSheet(
             scale_qss(
                 f"""

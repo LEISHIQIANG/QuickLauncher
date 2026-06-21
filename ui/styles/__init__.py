@@ -3,7 +3,6 @@ UI 样式模块
 """
 
 from .style import (
-    Colors,
     PopupMenu,
     StyleSheet,
     get_button_stylesheet,
@@ -13,7 +12,6 @@ from .style import (
 from .theme_controller import get_app_theme, normalize_theme, resolve_theme
 
 __all__ = [
-    "Colors",
     "PopupMenu",
     "StyleSheet",
     "get_menu_stylesheet",

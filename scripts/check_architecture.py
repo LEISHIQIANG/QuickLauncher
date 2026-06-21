@@ -72,10 +72,14 @@ SENSITIVE_ADAPTERS: dict[str, str] = {
 DYNAMIC_IMPORT_ADAPTERS = frozenset(
     {
         "bootstrap.deps",
+        "core",  # __getattr__ is the lazy-export adapter for the package
         "core.chain.processor_loader",
         "core.module_registry",
         "core.plugin.runtime",
         "ui.config_window",
+        "ui.tray_app",  # deferred heavy-module loading for memory-guard callback
+        "ui.tray_mixins.popup_mixin",  # TrayApp mixin: deferred import to break cycle
+        "ui.tray_mixins.shutdown_mixin",  # TrayApp mixin: deferred import to break cycle
     }
 )
 
@@ -274,7 +278,10 @@ def _dynamic_imports(info: ModuleInfo) -> list[str]:
 
 
 def _service_locators(info: ModuleInfo) -> list[str]:
-    if info.name in {"bootstrap.composition_root", "bootstrap.gui_application", "bootstrap.plugin_factory"}:
+    # core is exempt: its ensure_plugin_manager_initialized() is a bootstrap
+    # helper that must construct PluginManager before the composition root
+    # finishes wiring (see rationale in core/__init__.py docstring).
+    if info.name in {"bootstrap.composition_root", "bootstrap.gui_application", "bootstrap.plugin_factory", "core"}:
         return []
     findings: list[str] = []
     for node in ast.walk(info.tree):

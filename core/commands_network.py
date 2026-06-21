@@ -95,6 +95,7 @@ def _fetch_public_ip(timeout: float = 2.0) -> tuple[str, str]:
             if parsed.version in (4, 6):
                 return ip_text, ""
         except Exception as e:
+            logger.debug("获取公网IP失败: %s", e, exc_info=True)
             last_error = str(e)
     return "", last_error or "公网 IP 服务无响应"
 
@@ -111,6 +112,7 @@ def cmd_ip(context: CommandContext) -> CommandResult:
             primary_ip = _get_primary_local_ip()
             local_entries = _get_local_ipv4_addresses()
     except Exception as e:
+        logger.debug("获取内网IP地址失败", exc_info=True)
         if not want_public:
             return CommandResult(success=False, message=f"无法获取内网 IP: {e}", error="网络错误")
 
@@ -208,6 +210,7 @@ def cmd_netdiag(context: CommandContext) -> CommandResult:
                 resolved_ips.append(str(ip))
         lines.append("DNS: " + (", ".join(resolved_ips[:6]) if resolved_ips else "无结果"))
     except Exception as e:
+        logger.debug("DNS解析失败", exc_info=True)
         lines.append(f"DNS: 解析失败（{e}）")
 
     ports = [requested_port] if requested_port else [443, 80]
@@ -220,6 +223,7 @@ def cmd_netdiag(context: CommandContext) -> CommandResult:
                 elapsed_ms = int((time.perf_counter() - start) * 1000)
                 lines.append(f"TCP {port}: 可连接（{elapsed_ms} ms）")
         except Exception as e:
+            logger.debug("TCP连接诊断失败", exc_info=True)
             lines.append(f"TCP {port}: 失败（{e}）")
 
     ping_args = ["ping", "-n" if os.name == "nt" else "-c", "4", host]
@@ -379,6 +383,7 @@ def cmd_tls(context: CommandContext) -> CommandResult:
     except ssl.SSLError as e:
         return CommandResult(success=False, message=f"TLS 握手失败: {e}", error="TLS 握手失败")
     except Exception as e:
+        logger.debug("TLS检查失败", exc_info=True)
         return CommandResult(
             success=False, message=f"TLS 检查失败: {display_host or host}:{port}\n{e}", error="连接失败"
         )
@@ -478,6 +483,7 @@ def _run_cmd(args: list[str]) -> tuple[bool, str]:
         primary_encoding = encodings[0] if encodings else "utf-8"
         return proc.returncode == 0, output.decode(primary_encoding, errors="replace")
     except Exception as e:
+        logger.debug("执行命令失败", exc_info=True)
         return False, str(e)
 
 
@@ -568,6 +574,7 @@ def cmd_hosts(context: CommandContext) -> CommandResult:
             )
         return CommandResult(success=False, message=error or "管理员权限请求被拒绝或失败", error="打开失败")
     except Exception as e:
+        logger.debug("打开hosts文件失败", exc_info=True)
         return CommandResult(success=False, message=f"无法打开 hosts 文件: {e}", error="错误")
 
 
@@ -602,6 +609,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
                     pids.add(conn.pid)
     except Exception:
         # Fallback to netstat -ano
+        logger.debug("通过psutil获取网络连接列表失败，回退到netstat", exc_info=True)
         success, out = _run_cmd(["netstat", "-ano"])
         if success:
             for line in out.splitlines():
@@ -630,6 +638,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
             exe = proc.exe()
             process_details.append({"pid": pid, "name": name, "exe": exe})
         except Exception:
+            logger.debug("获取进程详细信息失败", exc_info=True)
             process_details.append({"pid": pid, "name": "未知进程", "exe": "未知路径"})
 
     if should_kill:
@@ -645,6 +654,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
                 killed_pids.append(pid)
                 success_term = True
             except Exception:
+                logger.debug("终止进程PID=%s失败，尝试kill", pid, exc_info=True)
                 try:
                     proc = psutil.Process(pid)
                     proc.kill()
@@ -667,6 +677,7 @@ def cmd_port(context: CommandContext) -> CommandResult:
                     else:
                         errors.append(f"PID {pid}: taskkill 失败")
                 except Exception as ex:
+                    logger.debug("taskkill终止进程PID=%s失败: %s", pid, ex, exc_info=True)
                     errors.append(f"PID {pid}: {ex}")
 
         if killed_pids:

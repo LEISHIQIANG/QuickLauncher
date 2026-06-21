@@ -139,6 +139,7 @@ def cmd_clip(context: CommandContext) -> CommandResult:
                 if len(files) > 5:
                     lines.append(f"  ... 还有 {len(files) - 5} 个文件")
         except Exception:
+            logger.debug("读取剪贴板文件列表失败", exc_info=True)
             lines.append(f"内容: {clipboard_text[:200]}")
     else:
         lines.append(f"内容: {clipboard_text[:200]}")

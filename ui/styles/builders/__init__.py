@@ -28,8 +28,6 @@ def _normalize_hex(value: str) -> str:
     text = str(value or "").strip()
     if not text:
         return text
-    if text.startswith("#") and len(text) in (4, 5, 7, 9):
-        return text.lower()
     if text.startswith("rgba") or text.startswith("rgb"):
         return text
     return text
@@ -103,11 +101,14 @@ class StyleBuilder:
     # ── render ───────────────────────────────────────────────────────
 
     def render(self) -> str:
-        if not self._tokens:
-            return self._template
-        out = self._template
-        for key, value in self._tokens.items():
-            out = out.replace("{{" + key + "}}", value)
+        out = str(self._template)
+        if self._tokens:
+            for key, value in self._tokens.items():
+                marker = "{{" + key + "}}"
+                out = out.replace(marker, value)
+        # Simple direct unescape — no regex tricks
+        out = out.replace("{{", "{")
+        out = out.replace("}}", "}")
         return out
 
     # ── Python protocol ──────────────────────────────────────────────

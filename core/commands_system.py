@@ -54,9 +54,11 @@ def cmd_process(context: CommandContext) -> CommandResult:
             try:
                 proc.wait(timeout=3)
             except Exception:
+                logger.debug("等待进程终止超时，强制终止", exc_info=True)
                 proc.kill()
             return CommandResult(success=True, message=f"已终止进程 PID {pid}: {name}")
         except Exception as e:
+            logger.debug("终止进程失败", exc_info=True)
             return CommandResult(success=False, message=f"终止进程失败: {e}", error="终止失败")
 
     keyword = ""
@@ -77,6 +79,7 @@ def cmd_process(context: CommandContext) -> CommandResult:
                     proc.cpu_percent()
                 proc_list.append(proc)
             except Exception:
+                logger.debug("采集进程CPU占用率失败", exc_info=True)
                 continue
         time.sleep(0.1)
         for proc in proc_list:
@@ -88,12 +91,14 @@ def cmd_process(context: CommandContext) -> CommandResult:
                     info["cpu_percent"] = info.get("cpu_percent") or 0.0
                 rows.append(info)
             except Exception:
+                logger.debug("获取进程详细信息失败", exc_info=True)
                 continue
     else:
         for proc in psutil.process_iter(["pid", "name", "exe", "memory_info", "cpu_percent"]):
             try:
                 info = dict(proc.info)
             except Exception:
+                logger.debug("获取进程信息失败", exc_info=True)
                 continue
             haystack = f"{info.get('name') or ''} {info.get('exe') or ''}".lower()
             if keyword and keyword not in haystack:
@@ -161,4 +166,5 @@ def cmd_sysreport(context: CommandContext) -> CommandResult:
             actions=[CommandAction(type="copy", label="复制系统快照", value=message)],
         )
     except Exception as e:
+        logger.debug("生成系统快照失败", exc_info=True)
         return CommandResult(success=False, message=f"生成系统快照失败: {e}", error="系统信息失败")

@@ -34,7 +34,17 @@ class StartupMixin:
         plugin_manager = None
         load_start = time.perf_counter()
         try:
-            plugin_manager = getattr(self, "plugin_manager", None)
+            try:
+                plugin_manager = getattr(self, "plugin_manager", None)
+            except RuntimeError:
+                plugin_manager = None
+            if plugin_manager is None:
+                try:
+                    from core import plugin_manager as _core_pm
+
+                    plugin_manager = _core_pm
+                except Exception:
+                    logger.debug("无法从core模块获取plugin_manager", exc_info=True)
             if plugin_manager is None:
                 pending.clear()
                 return

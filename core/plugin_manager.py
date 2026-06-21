@@ -368,7 +368,7 @@ class PluginAPI:
             from core.module_registry import get_module_registry
 
             ok = get_module_registry().register_external_manifest(module_id, module_manifest)
-        except Exception:
+        except (ImportError, RuntimeError, AttributeError):
             logger.debug("插件模块注册失败: %s -> %s", module_id, module_manifest, exc_info=True)
             return False
         if ok:
@@ -389,7 +389,7 @@ class PluginAPI:
             ok = register_external_processor(
                 definition, handler, owner=self._plugin_id, permissions=frozenset(self._permissions)
             )
-        except Exception:
+        except (ImportError, RuntimeError, AttributeError):
             logger.debug("插件动作链电池注册失败: %s", definition, exc_info=True)
             return False
         if ok:
@@ -583,7 +583,7 @@ class PluginAPI:
                 from core.chain_processors import unregister_external_processors
 
                 unregister_external_processors(self._plugin_id)
-            except Exception:
+            except (ImportError, RuntimeError, AttributeError):
                 logger.debug("插件动作链电池回滚失败: %s", self._plugin_id, exc_info=True)
             self._registered_chain_processors.clear()
 
@@ -666,7 +666,7 @@ class PluginAPI:
             plugin_root = self._plugin_dir.resolve()
             if path.exists() and (path == plugin_root or plugin_root in path.parents):
                 return str(path)
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             logger.debug("插件 API 读取剪贴板失败: %s", exc, exc_info=True)
             return ""
         return ""
@@ -818,7 +818,7 @@ class PluginAPI:
 
             cb = QApplication.clipboard()
             return cb.text() or ""  # type: ignore[unused-ignore, union-attr]
-        except Exception:
+        except (ImportError, RuntimeError, AttributeError):
             logger.debug("read_clipboard failed", exc_info=True)
             return ""
 
@@ -828,7 +828,7 @@ class PluginAPI:
             from qt_compat import QApplication
 
             QApplication.clipboard().setText(text)  # type: ignore[unused-ignore, union-attr]
-        except Exception as exc:
+        except (ImportError, RuntimeError, AttributeError) as exc:
             logger.debug("写入剪贴板失败: %s", exc, exc_info=True)
 
     def get_selected_files(self) -> list[str]:
@@ -837,7 +837,7 @@ class PluginAPI:
             from core.file_selection import get_selected_files_for_process
 
             return get_selected_files_for_process() or []
-        except Exception as exc:
+        except (ImportError, AttributeError, RuntimeError) as exc:
             logger.debug("插件 API 获取选中文件失败: %s", exc, exc_info=True)
             return []
 
@@ -848,7 +848,7 @@ class PluginAPI:
 
             theme = getattr(get_data_manager().get_settings(), "theme", "dark")
             return theme if theme in ("dark", "light") else "dark"
-        except Exception as exc:
+        except (ImportError, AttributeError) as exc:
             logger.debug("插件 API 获取主题失败: %s", exc, exc_info=True)
             return "dark"
 
@@ -858,7 +858,7 @@ class PluginAPI:
             from core.version import APP_VERSION
 
             return str(APP_VERSION)
-        except Exception as exc:
+        except (ImportError, AttributeError) as exc:
             logger.debug("插件 API 获取应用版本失败: %s", exc, exc_info=True)
             return ""
 
@@ -872,7 +872,7 @@ class PluginAPI:
             from .shortcut_executor import ShortcutExecutor
 
             return ShortcutExecutor._launch_with_privilege(parsed.geturl(), run_as_admin=False)
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             return False, str(exc)
 
     def open_file(self, path: str | Path) -> tuple[bool, str]:
@@ -885,7 +885,7 @@ class PluginAPI:
             from .shortcut_executor import ShortcutExecutor
 
             return ShortcutExecutor._launch_with_privilege(str(target), run_as_admin=False)
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             return False, str(exc)
 
     def open_folder(self, path: str | Path) -> tuple[bool, str]:
@@ -898,7 +898,7 @@ class PluginAPI:
             from .shortcut_executor import ShortcutExecutor
 
             return ShortcutExecutor._launch_with_privilege(str(target), run_as_admin=False)
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             return False, str(exc)
 
     def read_text_file(
@@ -1302,7 +1302,7 @@ class PluginAPI:
                     shell=False,
                 )
                 return True, ""
-            except Exception as exc:
+            except (OSError, subprocess.SubprocessError) as exc:
                 return False, str(exc)
         return ShortcutExecutor._launch_with_privilege(
             target,
@@ -1344,7 +1344,7 @@ class PluginAPI:
                     shell=False,
                 )
                 return True, ""
-            except Exception as exc:
+            except (OSError, subprocess.SubprocessError) as exc:
                 return False, str(exc)
         params = subprocess.list2cmdline(["/d", "/s", cmd_flag, command])
         return self.launch_target(
@@ -1415,7 +1415,7 @@ def _is_builtin_plugin_package(package_path: str, plugin_id: str) -> bool:
             for chunk in iter(lambda: package_file.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest() == expected_hash
-    except Exception:
+    except (OSError, ValueError, TypeError):
         logger.debug("判断官方插件包来源失败: %s", package_path, exc_info=True)
         return False
 
@@ -1465,7 +1465,7 @@ class PluginManager:
             if not isinstance(plugins, dict):
                 plugins = {}
             return {"schema": PLUGIN_STATE_SCHEMA, "plugins": plugins}
-        except Exception as exc:
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
             logger.debug("load plugin state failed: %s", exc)
             return {"schema": PLUGIN_STATE_SCHEMA, "plugins": {}}
 
@@ -1473,7 +1473,7 @@ class PluginManager:
         try:
             self._config_dir.mkdir(parents=True, exist_ok=True)
             self._state_file.write_text(json.dumps(self._plugin_state, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception as exc:
+        except (OSError, ValueError, TypeError) as exc:
             logger.debug("save plugin state failed: %s", exc)
 
     def _apply_persisted_state(self, info: PluginInfo) -> PluginInfo:
@@ -1541,7 +1541,7 @@ class PluginManager:
             active_searches = cancel_search_tasks_for_plugin(plugin_id)
             if active_searches:
                 logger.warning("插件 %s 隔离时仍有 %d 个搜索任务处于活动或排队状态", plugin_id, active_searches)
-        except Exception as exc:
+        except (ImportError, AttributeError, RuntimeError) as exc:
             logger.debug("取消插件搜索任务失败 %s: %s", plugin_id, exc, exc_info=True)
         _drain_plugin_executors(self._plugin_active_executors, plugin_id)
         info.status = "quarantined"
@@ -1554,7 +1554,7 @@ class PluginManager:
             from .event_log import log_event
 
             log_event("plugin.quarantined", f"Plugin {plugin_id} quarantined", {"reason": reason})
-        except Exception as exc:
+        except (ImportError, AttributeError, OSError) as exc:
             logger.debug("记录插件隔离事件失败: %s", exc, exc_info=True)
 
     def clear_quarantine(self, plugin_id: str) -> bool:
@@ -1592,7 +1592,7 @@ class PluginManager:
             }
             with self._error_log_file.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             logger.debug("append plugin error failed: %s", exc)
 
     def _rotate_plugin_error_log(self) -> None:
@@ -1610,7 +1610,7 @@ class PluginManager:
             if first.exists():
                 first.unlink()
             self._error_log_file.replace(first)
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("rotate plugin error log failed: %s", exc)
 
     def _save_enabled(self) -> None:
@@ -1733,7 +1733,7 @@ class PluginManager:
             info.enabled_at = time.time()
             info.last_error_at = 0.0
             return True
-        except Exception as e:
+        except (ImportError, OSError, AttributeError, ValueError, RuntimeError) as e:
             info.status = "error"
             info.error = str(e)
             info.last_error_at = time.time()
@@ -1834,7 +1834,7 @@ class PluginManager:
             from .command_registry import cancel_search_tasks_for_plugin
 
             cancel_search_tasks_for_plugin(plugin_id)
-        except Exception as exc:
+        except (ImportError, AttributeError, RuntimeError) as exc:
             logger.debug("取消插件搜索任务失败 %s: %s", plugin_id, exc, exc_info=True)
 
         self._isolated_runtime.unload(plugin_id)
@@ -1852,7 +1852,7 @@ class PluginManager:
                         except TypeError:
                             hook()
                         logger.info("已执行插件 %s 的清理钩子 %s", plugin_id, hook_name)
-                    except Exception as e:
+                    except (OSError, AttributeError, RuntimeError) as e:
                         logger.warning("执行插件 %s 的清理钩子 %s 失败: %s", plugin_id, hook_name, e)
         if api is not None:
             api.close()
@@ -1870,14 +1870,14 @@ class PluginManager:
                 from core.module_registry import get_module_registry
 
                 get_module_registry().unregister_external_manifest(module_id, manifest_path)
-            except Exception:
+            except (ImportError, AttributeError):
                 logger.debug("插件模块反注册失败: %s", module_id, exc_info=True)
         info.registered_modules.clear()
         try:
             from core.chain_processors import unregister_external_processors
 
             unregister_external_processors(plugin_id)
-        except Exception:
+        except (ImportError, AttributeError):
             logger.debug("插件动作链电池反注册失败: %s", plugin_id, exc_info=True)
         info.registered_chain_processors.clear()
         # Clean up search sources
@@ -1970,7 +1970,7 @@ class PluginManager:
         for plugin_id in list(self._active_apis):
             try:
                 self.disable_plugin(plugin_id, persist=False)
-            except Exception:
+            except (OSError, RuntimeError, AttributeError):
                 logger.debug("关闭插件失败: %s", plugin_id, exc_info=True)
         self._isolated_runtime.close()
 

@@ -35,7 +35,7 @@ try:
 
     QT_AVAILABLE = True
     logger.debug("icon_extractor: using %s", QT_LIB)
-except Exception as e:
+except (ImportError, RuntimeError, AttributeError) as e:
     QT_AVAILABLE = False
     logger.debug("Qt compatibility layer is unavailable: %s", e)
 
@@ -367,7 +367,8 @@ class IconExtractor:
                         if visible >= 2:
                             return False
             return checked > 0
-        except Exception:
+        except (RuntimeError, AttributeError):
+            logger.debug("检查图标是否为视觉空白失败", exc_info=True)
             return False
 
     @staticmethod
@@ -387,7 +388,8 @@ class IconExtractor:
             return ""
         try:
             return os.path.normcase(os.path.abspath(path))
-        except Exception:
+        except (OSError, ValueError):
+            logger.debug("规范化路径大小写失败", exc_info=True)
             return os.path.normcase(str(path))
 
     @staticmethod
@@ -496,7 +498,7 @@ class IconExtractor:
         painter = QPainter(canvas)
         try:
             painter.setCompositionMode(QPainter.CompositionMode_Source)
-        except Exception as exc:
+        except (RuntimeError, AttributeError) as exc:
             logger.debug("设置合成模式失败: %s", exc, exc_info=True)
         painter.drawImage((size - scaled.width()) // 2, (size - scaled.height()) // 2, scaled)
         painter.end()
@@ -571,10 +573,9 @@ class IconExtractor:
         try:
             if QApplication.instance() is None:
                 return None
-        except Exception:
+        except (RuntimeError, AttributeError):
+            logger.debug("检查QApplication实例失败", exc_info=True)
             return None
-
-        file_path = cls._clean_path(file_path)
         target_path = cls._clean_path(target_path or file_path)
         cls._diag(
             "extract start file=%s target=%s size=%s dpr=%s return_image=%s fallback=%s",
@@ -609,7 +610,7 @@ class IconExtractor:
         if cls._is_valid_icon(result):
             try:
                 result.setDevicePixelRatio(dpr)
-            except Exception as exc:
+            except (RuntimeError, AttributeError) as exc:
                 logger.debug("设置图标设备像素比失败: %s", exc, exc_info=True)
             cls._remember_cache(cache_key, result)
             cls._diag(
@@ -639,7 +640,7 @@ class IconExtractor:
                         name = os.path.splitext(os.path.basename(path))[0]
                         if name:
                             break
-                    except Exception as exc:
+                    except (OSError, ValueError) as exc:
                         logger.debug("提取文件名失败: %s", exc, exc_info=True)
             default_icon = cls._create_default_icon(size, name, dpr)  # type: ignore[arg-type]
             return default_icon
@@ -778,7 +779,7 @@ class IconExtractor:
                         return icon
                 finally:
                     cls._destroy_icon(hicon)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("SHGetFileInfo failed: %s", e)
 
         if not use_file_attributes:
@@ -840,7 +841,7 @@ class IconExtractor:
             finally:
                 free = ctypes.WINFUNCTYPE(None, ctypes.c_void_p)(("CoTaskMemFree", ctypes.windll.ole32))
                 free(pidl.value)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("Shell PIDL icon extraction failed: %s", e)
         return None
 
@@ -853,7 +854,7 @@ class IconExtractor:
             destroy_icon.argtypes = [wintypes.HICON]
             destroy_icon.restype = wintypes.BOOL
             destroy_icon(hicon)
-        except Exception as exc:
+        except (OSError, AttributeError) as exc:
             logger.debug("销毁图标句柄失败: %s", exc, exc_info=True)
 
     @classmethod
@@ -883,7 +884,7 @@ class IconExtractor:
                         image.height(),
                     )
                     return cls._render_square_icon(image, size, return_image=return_image)
-        except Exception as e:
+        except (RuntimeError, OSError, AttributeError) as e:
             logger.debug("QImage.fromHICON failed: %s", e)
 
         # 2. 备选尝试 QtWin 接口
@@ -901,7 +902,7 @@ class IconExtractor:
                         pixmap.height(),
                     )
                     return cls._render_square_icon(pixmap, size, return_image=return_image)
-            except Exception as e:
+            except (ImportError, RuntimeError, AttributeError) as e:
                 logger.debug("QtWin.fromHICON failed: %s", e)
 
         # 3. 终极备选：有 Win32 接口时，直接读取位图 Bits 字节流，绕过 Pillow PNG 转换
@@ -945,38 +946,38 @@ class IconExtractor:
                     image.height(),
                 )
                 return cls._render_square_icon(image, size, return_image=return_image)
-            except Exception as e:
+            except (OSError, RuntimeError, AttributeError) as e:
                 logger.debug("win32 raw bitmap extraction failed: %s", e)
             finally:
                 try:
                     if hdc_mem2 is not None and old_bmp is not None:
                         hdc_mem2.SelectObject(old_bmp)
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("恢复位图对象失败: %s", exc, exc_info=True)
                 try:
                     if hdc_mem2 is not None:
                         hdc_mem2.DeleteDC()
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("删除内存DC2失败: %s", exc, exc_info=True)
                 try:
                     if hdc_mem is not None:
                         hdc_mem.DeleteDC()
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("删除内存DC失败: %s", exc, exc_info=True)
                 try:
                     if hdc is not None:
                         win32gui.ReleaseDC(0, hdc)
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("释放设备上下文失败: %s", exc, exc_info=True)
                 try:
                     if hbm_color is not None:
                         win32gui.DeleteObject(hbm_color)
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("删除颜色位图失败: %s", exc, exc_info=True)
                 try:
                     if hbm_mask is not None:
                         win32gui.DeleteObject(hbm_mask)
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("删除掩码位图失败: %s", exc, exc_info=True)
 
         return None
@@ -1015,7 +1016,7 @@ class IconExtractor:
             cnt = extract_icon_ex(path, -1, None, None, 0)
             if cnt > 0:
                 return cnt  # type: ignore[no-any-return]
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("Failed to count icons: %s", e)
 
         return 0
@@ -1083,7 +1084,7 @@ class IconExtractor:
                     return result
                 finally:
                     cls._destroy_icon(phicon)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("PrivateExtractIcons failed (%s,%s): %s", path, index, e)
 
         try:
@@ -1109,7 +1110,7 @@ class IconExtractor:
                         return result
                 finally:
                     cls._destroy_icon(hicon)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("ExtractIconW failed (%s,%s): %s", path, index, e)
 
         return None
@@ -1200,7 +1201,7 @@ class IconExtractor:
                     cls._diag("custom executable icon ok path=%s size=%s", icon_path, size)
                 return result
 
-        except Exception as e:
+        except (OSError, RuntimeError, AttributeError) as e:
             logger.debug("Failed to load icon file: %s", e)
 
         return None
@@ -1226,7 +1227,7 @@ class IconExtractor:
         try:
             image.invertPixels(QImage.InvertRgb)
             return
-        except Exception:
+        except (RuntimeError, AttributeError):
             logger.debug("QImage.invertPixels unavailable; falling back to pixel loop", exc_info=True)
 
         for y in range(image.height()):

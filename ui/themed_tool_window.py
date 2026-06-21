@@ -27,9 +27,10 @@ from qt_compat import (
 )
 from runtime_paths import app_root
 from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import selection_bg_qss, selection_text_qss
 from ui.styles.design_tokens import surface as token_surface
 from ui.styles.l3_features import show_focus_ring as l3_show_focus_ring
-from ui.styles.style import Colors, StyleSheet
+from ui.styles.style import StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
@@ -184,8 +185,8 @@ class _ThemedToolWindowBase:
             text_primary = "rgba(255, 255, 255, 0.9)"
         else:
             text_primary = "rgba(28, 28, 30, 0.9)"
-        selection_bg = Colors.get_selection_bg(theme)
-        selection_text = Colors.get_selection_text(theme)
+        selection_bg = selection_bg_qss(theme)
+        selection_text = selection_text_qss(theme)
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
         widget.setStyleSheet(
             scale_qss(
@@ -219,8 +220,8 @@ class _ThemedToolWindowBase:
             text_primary = "rgba(28, 28, 30, 0.9)"
             item_hover = "rgba(0, 0, 0, 0.04)"
             border = "rgba(0, 0, 0, 0.06)"
-        item_selected = Colors.get_selection_bg(theme)
-        selected_text = Colors.get_selection_text(theme)
+        item_selected = selection_bg_qss(theme)
+        selected_text = selection_text_qss(theme)
         selected_border = "rgba(10, 132, 255, 0.42)" if theme == "dark" else "rgba(0, 122, 255, 0.22)"
         padding = "4px 7px" if compact else "8px 10px"
         radius = "4px" if compact else "6px"

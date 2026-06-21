@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import os
 import urllib.parse
 import uuid
 from datetime import UTC, datetime
 
 from .command_registry import CommandAction, CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_urlencode(context: CommandContext) -> CommandResult:
@@ -54,6 +57,7 @@ def cmd_urlencode(context: CommandContext) -> CommandResult:
                 actions=[CommandAction(type="copy", label="复制结果", value=decoded)],
             )
         except Exception:
+            logger.debug("URL解码失败", exc_info=True)
             return CommandResult(success=False, message="URL 解码失败", error="解码失败")
     else:
         encoded = urllib.parse.quote(target, safe="")
@@ -276,6 +280,7 @@ def cmd_base64(context: CommandContext) -> CommandResult:
                 actions=[CommandAction(type="copy", label="复制结果", value=decoded)],
             )
         except Exception:
+            logger.debug("Base64解码失败", exc_info=True)
             return CommandResult(
                 success=False,
                 message="Base64 解码失败，请检查输入是否为合法的 Base64 编码",

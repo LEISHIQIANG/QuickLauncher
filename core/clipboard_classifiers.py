@@ -12,12 +12,24 @@ import json
 import logging
 import os
 import re
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .clipboard_service import ClipboardClassification, ClipboardSnapshot
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# ── Data models (moved here from clipboard_service to break cycle) ────────
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ClipboardClassification:
+    kind: str
+    confidence: float
+    summary: str
+    actions: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
 
 # ---------------------------------------------------------------------------
 # ── Constants ─────────────────────────────────────────────────────────────
@@ -312,10 +324,13 @@ def _make_summary(text: str, kind: str) -> str:
         return text[:100].replace("\n", " ").strip()
 
 
-def classify_clipboard(snapshot: ClipboardSnapshot) -> ClipboardClassification:
-    """Classify clipboard content from a snapshot."""
-    from .clipboard_service import ClipboardClassification
+def classify_clipboard(snapshot) -> ClipboardClassification:
+    """Classify clipboard content from a snapshot.
 
+    The *snapshot* parameter accepts any object that exposes the same
+    attributes as ``ClipboardSnapshot`` (duck-typed to avoid importing
+    from ``clipboard_service`` and creating a circular dependency).
+    """
     # Priority: file_list > image > html > text
     if snapshot.file_paths:
         return ClipboardClassification(

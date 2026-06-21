@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import inspect
 import logging
 import threading
 import time
@@ -325,7 +326,7 @@ class CommandExecutionService:
 
             # 检查函数签名以决定是否传递 cancel_event，避免宽泛 except TypeError
             _fn = ShortcutExecutor.run_command_capture
-            if "cancel_event" in __import__("inspect").signature(_fn).parameters:
+            if "cancel_event" in inspect.signature(_fn).parameters:
                 result = _fn(runtime_shortcut, cancel_event=handle.cancel_event)
             else:
                 result = _fn(runtime_shortcut)
@@ -457,7 +458,10 @@ class CommandExecutionService:
             from core import registry
 
             if registry is not None:
-                return registry.get(command_id) or registry.get(registry.get_canonical(command_id))
+                result = registry.get(command_id) or registry.get(registry.get_canonical(command_id))
+                if result is not None:
+                    return result  # type: ignore[no-any-return]
+                return None
         except Exception:
             logger.debug("Command lookup failed: %s", command_id, exc_info=True)
         return None

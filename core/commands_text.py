@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 
 from .command_registry import CommandAction, CommandContext, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 def _text_from_args_or_clipboard(context: CommandContext, args_text: str | None = None) -> str:
@@ -107,6 +110,7 @@ def cmd_jwt(context: CommandContext) -> CommandResult:
         header = _decode_base64url_json(parts[0])
         payload = _decode_base64url_json(parts[1])
     except Exception as e:
+        logger.debug("JWT解码失败", exc_info=True)
         return CommandResult(success=False, message=f"JWT 解码失败: {e}", error="解码失败")
 
     header_text = json.dumps(header, ensure_ascii=False, indent=2)
@@ -168,6 +172,7 @@ def cmd_path_audit(context: CommandContext) -> CommandResult:
                 command_name = stem.lower() if os.name == "nt" else name.lower()
                 executable_names.setdefault(command_name, []).append(full)
         except Exception:
+            logger.debug("扫描目录中的可执行文件失败", exc_info=True)
             continue
 
     shadowed = {

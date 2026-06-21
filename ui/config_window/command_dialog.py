@@ -33,7 +33,8 @@ from qt_compat import (
     QVBoxLayout,
 )
 from runtime_paths import app_root
-from ui.styles.style import Colors, Glassmorphism, PopupMenu, StyleSheet
+from ui.styles.design_tokens import selection_bg_qss, selection_text_qss
+from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 from ui.utils.safe_file_dialog import get_existing_directory
 from ui.utils.ui_scale import scale_qss, sp
@@ -269,8 +270,8 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         border_color = "rgba(255, 255, 255, 0.06)" if theme == "dark" else "rgba(0, 0, 0, 0.04)"
         title_color = "rgba(255, 255, 255, 0.6)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
         text_primary = "#FFFFFF" if theme == "dark" else "#1C1C1E"
-        selection_bg = Colors.get_selection_bg(theme)
-        selection_text = Colors.get_selection_text(theme)
+        selection_bg = selection_bg_qss(theme)
+        selection_text = selection_text_qss(theme)
 
         custom_style = base_style + scale_qss(
             f"""
@@ -1071,8 +1072,8 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         self._update_builtin_advanced_options()
 
     def _selected_popup_button_qss(self) -> str:
-        bg = Colors.get_selection_bg(self.theme)
-        fg = Colors.get_selection_text(self.theme)
+        bg = selection_bg_qss(self.theme)
+        fg = selection_text_qss(self.theme)
         border = "rgba(10, 132, 255, 0.42)" if self.theme == "dark" else "rgba(0, 122, 255, 0.22)"
         return f"QPushButton{{ background:{bg}; color:{fg}; border:1px solid {border}; }}"
 

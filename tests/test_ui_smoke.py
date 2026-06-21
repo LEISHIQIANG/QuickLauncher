@@ -134,7 +134,7 @@ def test_diagnostics_window_one_click_fix_smoke(qapp, tmp_path, monkeypatch):
 
 def test_update_dialog_available_create_close_smoke(qapp, monkeypatch):
     from qt_compat import QDialog
-    from services.update.ui import UpdateDialog
+    from ui.update_dialog import UpdateDialog
 
     monkeypatch.setattr(QDialog, "exec_", lambda self: 0)
     called = {"download": False, "skip": False}
@@ -150,7 +150,7 @@ def test_update_dialog_available_create_close_smoke(qapp, monkeypatch):
 
 
 def test_update_status_message_smoke():
-    from services.update.ui import UpdateDialog
+    from ui.update_dialog import UpdateDialog
 
     assert "50%" in UpdateDialog.show_download_progress_text(5, 10)
 

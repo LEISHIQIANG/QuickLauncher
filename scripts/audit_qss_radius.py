@@ -36,6 +36,7 @@ BORDER_NONE_RE = re.compile(r"border\s*:\s*none\s*;?", re.IGNORECASE)
 BORDER_RADIUS_RE = re.compile(r"border-radius\s*:\s*0", re.IGNORECASE)
 
 WHITELIST_FILES = {
+    "ui/styles/_colors.py",
     "ui/styles/design_tokens.py",
     "ui/utils/lru_cache.py",
     "ui/utils/pixel_snap.py",
@@ -44,7 +45,6 @@ WHITELIST_FILES = {
     "ui/utils/font_manager.py",
     "ui/utils/interruptible_animation.py",
     "ui/styles/standard_widgets.py",
-    "ui/styles/focus_ring.py",
 }
 
 

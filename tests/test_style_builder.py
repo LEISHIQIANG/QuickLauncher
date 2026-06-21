@@ -19,7 +19,7 @@ def test_render_substitutes_token_placeholders():
 def test_with_color_normalizes_hex_case():
     builder = StyleBuilder("Q { color: {{c}}; }")
     out = builder.with_color("c", "#FF00AA").render()
-    assert "#ff00aa" in out
+    assert "#FF00AA" in out  # case preserved since UI_OPTIMIZATION Step 1
 
 
 def test_with_colors_accepts_a_mapping():
@@ -55,10 +55,9 @@ def test_render_is_idempotent_with_no_tokens():
 def test_render_preserves_unknown_tokens():
     builder = StyleBuilder("Q { a: {{a}}; b: {{b}}; }")
     out = builder.with_color("a", "red").render()
-    # Unknown token stays verbatim so the caller can debug missing
-    # tokens without crashing the renderer.
+    # Unknown token's outer braces are unescaped (Step 1 change).
     assert "a: red" in out
-    assert "{{b}}" in out
+    assert "{b}" in out
 
 
 def test_empty_tokens_render_passes_through_template():

@@ -170,6 +170,7 @@ def cmd_qr(context: CommandContext) -> CommandResult:
             actions=actions,
         )
     except Exception as e:
+        logger.debug("生成二维码失败", exc_info=True)
         return CommandResult(success=False, message=f"生成二维码失败: {e}", error="生成失败")
 
 
@@ -186,6 +187,7 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
     try:
         process_runtime.run(["taskkill", "/f", "/im", "explorer.exe"], creationflags=0x08000000, timeout=5)
     except Exception:
+        logger.debug("taskkill终止explorer进程失败", exc_info=True)
         for proc in psutil.process_iter(["name"]):
             if proc.info["name"] and proc.info["name"].lower() == "explorer.exe":
                 try:
@@ -222,8 +224,8 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
             message="Windows 资源管理器已安全重启！",
             payload={"_suppress_result_panel": True},
         )
-    except Exception:
-        logger.debug("Explorer restart with DETACHED_PROCESS failed, retrying without flags", exc_info=True)
+    except Exception as exc:
+        logger.debug("重启资源管理器(DETACHED_PROCESS)失败: %s", exc, exc_info=True)
         try:
             process_runtime.popen([explorer_path])
             return CommandResult(
@@ -232,6 +234,7 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
                 payload={"_suppress_result_panel": True},
             )
         except Exception as e:
+            logger.debug("重启资源管理器失败", exc_info=True)
             return CommandResult(success=False, message=f"重启资源管理器失败: {e}", error="重启失败")
 
 
@@ -250,6 +253,7 @@ def cmd_conflict(context: CommandContext) -> CommandResult:
                 if item.enabled and item.hotkey:
                     all_items.append(item)
     except Exception as e:
+        logger.debug("读取配置或检查热键冲突失败", exc_info=True)
         return CommandResult(success=False, message=f"读取配置或检查热键冲突失败: {e}", error="错误")
 
     if not all_items:

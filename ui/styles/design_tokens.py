@@ -49,6 +49,10 @@ __all__ = [
     "duration",
     "easing",
     "Theme",
+    "hex_qss",
+    "selection_bg_qss",
+    "selection_text_qss",
+    "selection_hover_bg_qss",
 ]
 
 
@@ -475,3 +479,39 @@ def apply_motion_scale(value: int, scale: float = 1.0) -> int:
     except (TypeError, ValueError):
         return int(value)
     return max(0, min(1000, scaled))
+
+
+# ---------------------------------------------------------------------------
+# QSS bridge helpers
+# ---------------------------------------------------------------------------
+
+
+def _qss_color(color: QColor) -> str:
+    """QColor → ``rgba(r, g, b, a)``."""
+    return f"rgba({color.red()}, {color.green()}, {color.blue()}, {color.alpha()})"
+
+
+def hex_qss(color: QColor) -> str:
+    """QColor → ``#rrggbb`` (drops alpha)."""
+    return f"#{color.red():02x}{color.green():02x}{color.blue():02x}"
+
+
+def selection_bg_qss(theme: str) -> str:
+    """Return ``rgba(10, 132, 255, 0.30)`` for dark, ``rgba(0, 122, 255, 0.14)`` for light."""
+    if theme == "dark":
+        return "rgba(10, 132, 255, 0.30)"
+    return "rgba(0, 122, 255, 0.14)"
+
+
+def selection_text_qss(theme: str) -> str:
+    """Return ``rgba(255, 255, 255, 0.95)`` for dark, ``rgba(28, 28, 30, 0.96)`` for light."""
+    if theme == "dark":
+        return "rgba(255, 255, 255, 0.95)"
+    return "rgba(28, 28, 30, 0.96)"
+
+
+def selection_hover_bg_qss(theme: str) -> str:
+    """Return ``rgba(255, 255, 255, 0.08)`` for dark, ``rgba(0, 0, 0, 0.05)`` for light."""
+    if theme == "dark":
+        return "rgba(255, 255, 255, 0.08)"
+    return "rgba(0, 0, 0, 0.05)"

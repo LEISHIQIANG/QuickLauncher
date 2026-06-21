@@ -278,7 +278,7 @@ def _get_current_user_sid() -> str:
 
         sid_obj, _, _ = win32security.LookupAccountName(None, account_name)
         return win32security.ConvertSidToStringSid(sid_obj) or ""
-    except Exception as e:
+    except (OSError, ImportError, AttributeError) as e:
         logger.debug("获取用户 SID 失败: %s", e)
         return ""
 
@@ -318,10 +318,11 @@ def _is_current_account_admin() -> bool:
             or status.get("is_user_an_admin")
             or status.get("elevation_type") in ("Limited", "Full")
         )
-    except Exception:
+    except (OSError, ImportError, AttributeError):
+        logger.debug("get_process_elevation_status失败，尝试shell32检测管理员", exc_info=True)
         try:
             return bool(shell32.IsUserAnAdmin())
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("管理员权限检测失败 (get_process_elevation_status + shell32 均失败): %s", e)
             return False
 
@@ -334,10 +335,11 @@ def _is_current_process_elevated() -> bool:
 
         status = get_process_elevation_status()
         return bool(status.get("elevated"))
-    except Exception:
+    except (OSError, ImportError, AttributeError):
+        logger.debug("get_process_elevation_status失败，尝试shell32检测提权", exc_info=True)
         try:
             return bool(shell32.IsUserAnAdmin())
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("进程提权检测失败: %s", e)
             return False
 
@@ -378,7 +380,7 @@ def _build_task_definition(
     if set_trigger_user and user_id:
         try:
             trigger.UserId = user_id
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("设置任务触发器 UserId 失败: %s", e)
 
     action = task_def.Actions.Create(0)  # TASK_ACTION_EXEC
@@ -393,12 +395,12 @@ def _build_task_definition(
     if set_principal_user and user_id:
         try:
             task_def.Principal.UserId = user_id
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("设置任务主体 UserId 失败: %s", e)
     try:
         # Best-effort scheduler hint; admin accounts are actually lowered by the launcher path.
         task_def.Principal.ProcessTokenSidType = 2
-    except Exception as e:
+    except (OSError, AttributeError) as e:
         logger.debug("设置 ProcessTokenSidType 失败 (可忽略): %s", e)
 
     return task_def
@@ -566,7 +568,7 @@ def _validate_task_launch_spec(
             return False, f"cwd_mismatch: actual={actual_cwd} expected={expected_cwd}"
 
         return True, f"ok: mode={task_mode} trigger_delay={expected_delay or 'none'}"
-    except Exception as exc:
+    except (OSError, AttributeError, ValueError, TypeError) as exc:
         logger.debug("任务定义读取失败: %s", exc, exc_info=True)
         return False, f"task_definition_read_failed: {exc}"
 
@@ -626,7 +628,7 @@ def _run_elevated_helper(
             logger.error("自启动 helper 执行超时，已终止 helper 进程")
             try:
                 kernel32.TerminateProcess(sei.hProcess, HELPER_EXIT_FAILED)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.warning("TerminateProcess 失败: %s", e)
             return False, "failed"
 
@@ -647,7 +649,7 @@ def _run_elevated_helper(
         if sei.hProcess:
             try:
                 kernel32.CloseHandle(sei.hProcess)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("CloseHandle(hProcess) 失败: %s", e)
 
 
@@ -682,7 +684,7 @@ def _get_last_error_text() -> str:
         return "error=0"
     try:
         return f"error={code} ({ctypes.FormatError(code).strip()})"
-    except Exception:
+    except (OSError, AttributeError, ValueError):
         logger.debug("FormatError failed for code %d", code, exc_info=True)
         return f"error={code}"
 
@@ -699,7 +701,7 @@ def _launch_with_current_token(target: str, arguments: str = "", working_dir: st
         process_runtime.popen(_build_process_command_line(target, arguments), cwd=working_dir or None, shell=False)
         logger.info("自启动中转已用当前令牌启动: %s %s", target, arguments or "")
         return True
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("自启动中转当前令牌启动失败: %s", exc)
         return False
 
@@ -773,7 +775,7 @@ def enable_impersonate_privilege() -> bool:
             return True
         finally:
             kernel32.CloseHandle(h_token)
-    except Exception as exc:
+    except (OSError, ImportError, AttributeError) as exc:
         logger.debug("Failed to enable Impersonate privilege: %s", exc)
         return False
 
@@ -829,17 +831,17 @@ def _create_process_with_token(
         if proc_info.hThread:
             try:
                 kernel32.CloseHandle(proc_info.hThread)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("CloseHandle(hThread) 失败: %s", e)
         if proc_info.hProcess:
             try:
                 kernel32.CloseHandle(proc_info.hProcess)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("CloseHandle(hProcess) 失败: %s", e)
         if env_created and env:
             try:
                 userenv.DestroyEnvironmentBlock(env)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("DestroyEnvironmentBlock 失败: %s", e)
 
 
@@ -863,12 +865,12 @@ def _open_process_token_for_pid(pid: int, desired_access: int):
         if token:
             try:
                 kernel32.CloseHandle(token)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("CloseHandle(token) 失败: %s", e)
         if process:
             try:
                 kernel32.CloseHandle(process)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("CloseHandle(process) 失败: %s", e)
 
 
@@ -894,7 +896,7 @@ def _is_process_elevated_by_pid(pid: int) -> bool | None:
     finally:
         try:
             kernel32.CloseHandle(token)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("CloseHandle(token) 失败: %s", e)
 
 
@@ -952,11 +954,11 @@ def _get_shell_explorer_primary_token() -> tuple[object | None, int | None, str]
         if primary_token:
             try:
                 kernel32.CloseHandle(primary_token)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("CloseHandle(primary_token) 失败: %s", e)
         try:
             kernel32.CloseHandle(token)
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("CloseHandle(token) 失败: %s", e)
 
 
@@ -1010,7 +1012,7 @@ def _launch_via_explorer_token(
             finally:
                 try:
                     kernel32.CloseHandle(token)
-                except Exception as e:
+                except (OSError, AttributeError) as e:
                     logger.debug("CloseHandle(token) 失败: %s", e)
 
         if reason == "shell_elevated":
@@ -1076,7 +1078,7 @@ def run_autostart_launcher(
         from core.windows_uipi import format_process_elevation_status
 
         logger.info("自启动中转权限状态: %s", format_process_elevation_status())
-    except Exception as exc:
+    except (OSError, ImportError, AttributeError) as exc:
         logger.debug("自启动中转权限状态检测失败: %s", exc)
 
     logger.info("自启动中转准备降权启动: path=%s args=%s cwd=%s", path, args, cwd)
@@ -1093,7 +1095,7 @@ def _get_task_scheduler_service():
         import pythoncom
 
         pythoncom.CoInitialize()
-    except Exception as e:
+    except (OSError, ImportError, AttributeError) as e:
         logger.debug("CoInitialize 失败 (可能已初始化): %s", e)
 
     import win32com.client
@@ -1116,9 +1118,9 @@ def _cleanup_legacy_task_scheduler_tasks() -> list[str]:
             try:
                 root_folder.DeleteTask(legacy_name, 0)
                 removed.append(legacy_name)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("删除旧版任务 %s 失败 (可能不存在): %s", legacy_name, e)
-    except Exception as exc:
+    except (OSError, ImportError, AttributeError) as exc:
         logger.debug("清理旧版计划任务失败: %s", exc)
 
     if removed:
@@ -1145,7 +1147,7 @@ def enable_task_scheduler(exe_path: str | None = None, arguments: str = "", work
 
             try:
                 root_folder.DeleteTask(TASK_NAME, 0)
-            except Exception as e:
+            except (OSError, AttributeError) as e:
                 logger.debug("删除旧任务失败 (首次注册属正常): %s", e)
 
             user_id = _get_current_user_identity()
@@ -1180,7 +1182,7 @@ def enable_task_scheduler(exe_path: str | None = None, arguments: str = "", work
                 return True
 
             logger.warning("Task Scheduler 任务创建后验证失败: %s", task_reason)
-        except Exception as exc:
+        except (OSError, AttributeError, RuntimeError) as exc:
             logger.warning("Task Scheduler 创建失败 (attempt %s): %s", attempt + 1, exc)
 
         if attempt == 0:
@@ -1204,7 +1206,7 @@ def disable_task_scheduler() -> bool:
         try:
             root_folder.DeleteTask(TASK_NAME, 0)
             removed = True
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.debug("删除自启动任务失败 (可能不存在): %s", e)
 
         if _cleanup_legacy_task_scheduler_tasks():
@@ -1213,7 +1215,7 @@ def disable_task_scheduler() -> bool:
         if removed:
             logger.info("Task Scheduler 自启动任务已删除")
         return removed
-    except Exception as exc:
+    except (OSError, ImportError, AttributeError) as exc:
         logger.debug("删除 Task Scheduler 任务失败: %s", exc)
         return False
 
@@ -1232,7 +1234,7 @@ def get_task_scheduler_check_result(
         root_folder = scheduler.GetFolder("\\")
         task = root_folder.GetTask(TASK_NAME)
         return _validate_task_launch_spec(task, exe_path, arguments, working_dir)
-    except Exception as exc:
+    except (OSError, ImportError, AttributeError) as exc:
         logger.debug("任务调度器检查失败: %s", exc, exc_info=True)
         return False, f"task_missing_or_inaccessible: {exc}"
 
@@ -1379,9 +1381,9 @@ def _has_legacy_tasks() -> bool:
             try:
                 root_folder.GetTask(name)
                 return True
-            except Exception:
+            except (OSError, AttributeError):
                 logger.debug("旧版任务 %s 不存在", name)
-    except Exception as e:
+    except (OSError, ImportError, AttributeError) as e:
         logger.debug("检查旧版任务失败: %s", e)
     return False
 

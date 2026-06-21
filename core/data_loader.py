@@ -63,13 +63,21 @@ class DataLoader:
         if dm.data_file.exists():
             try:
                 loaded, issues = load_valid_data_file(dm.data_file)
+                # Separate migration notes from real issues
+                migration_notes = [i for i in issues if i.startswith("config_schema_migrated:")]
+                real_issues = [i for i in issues if not i.startswith("config_schema_migrated:")]
+                # Store migration notes separately
+                if migration_notes:
+                    dm._config_schema_migration_notes = migration_notes  # type: ignore[attr-defined]
+                    for note in migration_notes:
+                        logger.info("配置架构迁移完成: %s", note)
                 dm._config_status = {
-                    "status": "warn" if issues else "ok",
+                    "status": "warn" if real_issues else "ok",
                     "source": str(dm.data_file),
-                    "issues": issues,
+                    "issues": real_issues,
                 }
-                if issues:
-                    logger.warning("data manager message: %s", issues)
+                if real_issues:
+                    logger.warning("data manager message: %s", real_issues)
                 dm._write_recovery_report(
                     ConfigRecoveryReport(
                         status="ok",
@@ -322,6 +330,7 @@ class DataLoader:
                 if disk_folders != mem_folders:
                     issues.append(f"folder count mismatch: disk={disk_folders}, mem={mem_folders}")
             except Exception as exc:
+                logger.debug("data.json一致性验证失败: %s", exc, exc_info=True)
                 issues.append(f"data.json verification failed: {exc}")
         else:
             issues.append("data.json does not exist after transaction")
@@ -356,6 +365,7 @@ class DataLoader:
                             safe_rmtree_child(root_path, target)
                             stats["dirs_removed"] += 1
                     except Exception as e:
+                        logger.debug("删除子项失败: %s", e, exc_info=True)
                         stats["errors"].append(f"Failed to remove {label} item {item}: {e}")
 
             def report(msg, progress):
@@ -381,18 +391,21 @@ class DataLoader:
                     logger.debug("删除注册表启动项失败", exc_info=True)
                 winreg.CloseKey(reg_key)
             except Exception as e:
+                logger.debug("注册表启动项清理失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset step failed: {e}")
 
             report("Removing icon cache...", 0.3)
             try:
                 remove_children_safely(dm.icons_dir, "icons")
             except Exception as e:
+                logger.debug("图标缓存清理失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset step failed: {e}")
 
             report("Removing app data...", 0.6)
             try:
                 remove_children_safely(dm.app_dir, "app data")
             except Exception as e:
+                logger.debug("应用数据清理失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset step failed: {e}")
 
             report("Resetting in-memory configuration...", 0.9)
@@ -401,6 +414,7 @@ class DataLoader:
                 dm.data = AppData()
                 dm._last_saved_data_dict = None
             except Exception as e:
+                logger.debug("内存配置重置失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset step failed: {e}")
 
             # Persist the clean state to disk directly
@@ -411,6 +425,7 @@ class DataLoader:
                 with open(data_file, "w", encoding="utf-8") as f:
                     json.dump(default_data, f, ensure_ascii=False, indent=2)
             except Exception as e:
+                logger.debug("恢复出厂设置持久化失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset persist failed: {e}")
 
             return stats
