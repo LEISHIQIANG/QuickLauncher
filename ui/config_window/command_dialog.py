@@ -28,7 +28,6 @@ from qt_compat import (
     QRadioButton,
     QSpinBox,
     QStackedWidget,
-    Qt,
     QtCompat,
     QTimer,
     QVBoxLayout,
@@ -1259,7 +1258,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
             if self.theme == "dark":
-                color = QColor(Qt.white)
+                color = QColor(QtCompat.white)
                 color.setAlpha(150)
             else:
                 color = QColor(TextScale.tertiary_light)

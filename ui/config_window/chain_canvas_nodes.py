@@ -168,7 +168,7 @@ class PortItem(QGraphicsEllipseItem):
         self.setPos(x, y)
         self.color = QColor("#4DB6AC") if direction == "input" else QColor("#64B5F6")
         self.setBrush(QBrush(self.color))
-        pen_color = QColor(Qt.white)
+        pen_color = QColor(QtCompat.white)
         pen_color.setAlpha(150)
         self.setPen(make_cosmetic_pen(pen_color, 1.2, 1))
         self.setCursor(Qt.PointingHandCursor)  # type: ignore[unused-ignore, attr-defined]
@@ -176,7 +176,7 @@ class PortItem(QGraphicsEllipseItem):
 
     def hoverEnterEvent(self, event):
         self.setBrush(QBrush(self.color.lighter(115)))
-        pen_color = QColor(Qt.white)
+        pen_color = QColor(QtCompat.white)
         pen_color.setAlpha(230)
         self.setPen(make_cosmetic_pen(pen_color, 1.8, 1))
         self.setRect(-spf(7.5), -spf(7.5), spf(15), spf(15))
@@ -184,7 +184,7 @@ class PortItem(QGraphicsEllipseItem):
 
     def hoverLeaveEvent(self, event):
         self.setBrush(QBrush(self.color))
-        pen_color = QColor(Qt.white)
+        pen_color = QColor(QtCompat.white)
         pen_color.setAlpha(150)
         self.setPen(make_cosmetic_pen(pen_color, 1.2, 1))
         self.setRect(-sp(6), -sp(6), sp(12), sp(12))

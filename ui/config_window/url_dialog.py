@@ -23,7 +23,6 @@ from qt_compat import (
     QPixmap,
     QPushButton,
     QRectF,
-    Qt,
     QtCompat,
     QTimer,
     QVBoxLayout,
@@ -629,7 +628,7 @@ class UrlDialog(BaseDialog):
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 8, 8)
 
-        painter.setPen(QColor(Qt.white))
+        painter.setPen(QColor(QtCompat.white))
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "🌐")

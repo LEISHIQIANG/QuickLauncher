@@ -994,7 +994,7 @@ class ChainDialog(
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-        painter.setPen(QColor(Qt.white))
+        painter.setPen(QColor(QtCompat.white))
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⛓")  # ⚓ chain symbol

@@ -148,7 +148,7 @@ def paint_win10_rounded_surface(
     or GDI window regions.
     """
     try:
-        from qt_compat import QColor, QPainterPath, QPen, QRectF, Qt, QtCompat
+        from qt_compat import QColor, QPainterPath, QPen, QRectF, QtCompat
 
         painter.setRenderHint(QtCompat.Antialiasing, True)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
@@ -158,7 +158,7 @@ def paint_win10_rounded_surface(
         source_over_mode = _qpaint_composition_mode("SourceOver")
         if source_mode is not None:
             painter.setCompositionMode(source_mode)
-        painter.fillRect(widget.rect(), QColor(Qt.transparent))
+        painter.fillRect(widget.rect(), QColor(QtCompat.transparent))
         if source_over_mode is not None:
             painter.setCompositionMode(source_over_mode)
 
@@ -779,7 +779,7 @@ class _Win10ShadowWindow:
 
             import math
 
-            from qt_compat import QImage, QPixmap, Qt
+            from qt_compat import QImage, QPixmap, Qt, QtCompat
 
             # 创建高DPI透明QImage
             image = QImage(
@@ -852,7 +852,7 @@ class _Win10ShadowWindow:
                 inner = QPainterPath()
                 inner.addRoundedRect(content, radius, radius)
                 image_painter.setCompositionMode(QPainter.CompositionMode_Clear)
-                image_painter.fillPath(inner, QColor(Qt.transparent))
+                image_painter.fillPath(inner, QColor(QtCompat.transparent))
             finally:
                 image_painter.end()
 
