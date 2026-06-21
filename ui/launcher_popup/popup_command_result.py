@@ -845,9 +845,17 @@ class PopupCommandResultMixin:
                 painter.drawRoundedRect(QRectF(draw_rect), sp(5), sp(5))
 
                 # Exquisite text color and modern font selection
-                btn_text_color = QColor(255, 255, 255, 220) if is_dark else QColor(accent_color).darker(150)
+                if is_dark:
+                    btn_text_color = QColor(Qt.white)
+                    btn_text_color.setAlpha(220)
+                else:
+                    btn_text_color = QColor(accent_color).darker(150)
                 if is_hovered or is_pressed:
-                    btn_text_color = QColor(255, 255, 255, 245) if is_dark else QColor(accent_color).darker(175)
+                    if is_dark:
+                        btn_text_color = QColor(Qt.white)
+                        btn_text_color.setAlpha(245)
+                    else:
+                        btn_text_color = QColor(accent_color).darker(175)
                 painter.setPen(btn_text_color)
 
                 import os

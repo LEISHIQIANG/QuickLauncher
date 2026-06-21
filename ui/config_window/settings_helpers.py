@@ -448,7 +448,9 @@ class SwitchButton(QCheckBox):
             knob_y = sw_y + knob_margin
 
             # Draw knob shadow
-            shadow_pen = QPen(QColor(0, 0, 0, 30), 0.5)
+            _shadow_color = QColor()
+            _shadow_color.setRgb(0, 0, 0, 30)
+            shadow_pen = QPen(_shadow_color, 0.5)
             shadow_pen.setCosmetic(True)
             painter.setPen(shadow_pen)
             painter.setBrush(QBrush(QColor("#FFFFFF")))

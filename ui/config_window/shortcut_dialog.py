@@ -28,11 +28,13 @@ from qt_compat import (
     QPixmap,
     QPushButton,
     QRectF,
+    Qt,
     QtCompat,
     QThread,
     QVBoxLayout,
     pyqtSignal,
 )
+from ui.styles.design_tokens import StatusScale
 from ui.styles.style import Glassmorphism
 from ui.utils.pixel_snap import create_pixmap
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
@@ -132,7 +134,7 @@ class ShortcutDialog(BaseDialog):
                 font = QFont("Segoe UI Emoji", font_px(40))
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
-                painter.setPen(QColor(70, 130, 180))
+                painter.setPen(QColor(StatusScale.info))
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "📁")
             finally:
                 painter.end()
@@ -421,12 +423,12 @@ class ShortcutDialog(BaseDialog):
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        painter.setBrush(QColor(70, 130, 180))
+        painter.setBrush(QColor(StatusScale.info))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(Qt.white))
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "📄")

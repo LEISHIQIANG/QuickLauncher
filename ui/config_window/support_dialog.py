@@ -223,9 +223,12 @@ class SupportDialog(QDialog):
 
         # 5. 绘制卡片玻璃极细边框
         if self.theme == "dark":
-            border_color = QColor(255, 255, 255, 38)
+            _bc = QColor()
+            _bc.setRgb(255, 255, 255, 38)
         else:
-            border_color = QColor(0, 0, 0, 22)
+            _bc = QColor()
+            _bc.setRgb(0, 0, 0, 22)
+        border_color = _bc
         border_path = QPainterPath()
         border_path.addRoundedRect(QRectF(cx, cy, pw, ph), sp(20), sp(20))
         pen = QPen(border_color, 1.0)
@@ -239,9 +242,12 @@ class SupportDialog(QDialog):
         close_font = QFont("Microsoft YaHei", font_px(9))
         painter.setFont(close_font)
         if self.theme == "dark":
-            text_color = QColor(255, 255, 255, 140)
+            _tc = QColor()
+            _tc.setRgb(255, 255, 255, 140)
         else:
-            text_color = QColor(28, 28, 30, 140)
+            _tc = QColor()
+            _tc.setRgb(28, 28, 30, 140)
+        text_color = _tc
         painter.setPen(QPen(text_color))
         # 居中绘制在海报正下方 20px 处
         painter.drawText(QRect(0, cy + ph + sp(20), self.width(), sp(24)), Qt.AlignCenter, tr("✕ 点击空白处关闭"))

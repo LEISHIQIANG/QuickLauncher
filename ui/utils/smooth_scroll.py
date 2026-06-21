@@ -81,7 +81,7 @@ class _EdgeFeedbackOverlay(QWidget):
                 shadow = QColor(0, 0, 0, int(22 * self._top_opacity))
                 gradient.setColorAt(0.0, color)
                 gradient.setColorAt(0.24, shadow)
-                gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+                gradient.setColorAt(1.0, QColor(Qt.transparent))
                 painter.fillRect(QRectF(0, 0, width, height), gradient)
 
             if self._bottom_opacity > 0.001:
@@ -90,7 +90,7 @@ class _EdgeFeedbackOverlay(QWidget):
                 shadow = QColor(0, 0, 0, int(22 * self._bottom_opacity))
                 gradient.setColorAt(0.0, color)
                 gradient.setColorAt(0.24, shadow)
-                gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+                gradient.setColorAt(1.0, QColor(Qt.transparent))
                 painter.fillRect(QRectF(0, self.height() - height, width, height), gradient)
         finally:
             painter.end()

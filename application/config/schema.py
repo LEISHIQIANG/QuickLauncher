@@ -116,9 +116,7 @@ def register_migration(source_version: int, migration: Migration) -> None:
     deployments, not as runtime configuration.
     """
     if source_version in MIGRATIONS:
-        raise ConfigMigrationError(
-            f"migration v{source_version}->v{source_version + 1} already registered"
-        )
+        raise ConfigMigrationError(f"migration v{source_version}->v{source_version + 1} already registered")
     if source_version + 1 > CURRENT_CONFIG_SCHEMA_VERSION:
         raise ConfigMigrationError(
             f"cannot register v{source_version}->v{source_version + 1}: "
@@ -145,8 +143,7 @@ def migrate_config(raw: Mapping[str, Any]) -> ConfigMigrationResult:
         )
     if raw_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ConfigMigrationError(
-            f"config schema {raw_version} is not in the supported set "
-            f"{sorted(SUPPORTED_SCHEMA_VERSIONS)}"
+            f"config schema {raw_version} is not in the supported set " f"{sorted(SUPPORTED_SCHEMA_VERSIONS)}"
         )
     version = raw_version
     while version < CURRENT_CONFIG_SCHEMA_VERSION:

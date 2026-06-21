@@ -23,10 +23,12 @@ from qt_compat import (
     QPixmap,
     QPushButton,
     QRectF,
+    Qt,
     QtCompat,
     QTimer,
     QVBoxLayout,
 )
+from ui.styles.design_tokens import StatusScale
 from ui.styles.style import Glassmorphism
 from ui.utils.pixel_snap import create_pixmap
 from ui.utils.safe_file_dialog import get_open_file_name
@@ -118,7 +120,7 @@ class UrlDialog(BaseDialog):
                 font = QFont("Segoe UI Emoji", font_px(40))
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
-                painter.setPen(QColor(100, 149, 237))
+                painter.setPen(QColor(StatusScale.info))
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "🌐")
             finally:
                 painter.end()
@@ -622,12 +624,12 @@ class UrlDialog(BaseDialog):
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
         # 使用更柔和的颜色
-        painter.setBrush(QColor(60, 160, 120))
+        painter.setBrush(QColor(StatusScale.success))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 8, 8)
 
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(Qt.white))
         font = QFont("Segoe UI Symbol", size // 3)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "🌐")

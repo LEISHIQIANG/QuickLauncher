@@ -72,7 +72,9 @@ class CommandDialogFormMixin:
                 from qt_compat import QPoint, QPolygon
 
                 painter.setPen(QtCompat.NoPen)
-                painter.setBrush(QColor(255, 200, 0))
+                _lightning_yellow = QColor()
+                _lightning_yellow.setRgb(255, 200, 0)
+                painter.setBrush(_lightning_yellow)
 
                 # 闪电形状的点
                 points = [

@@ -271,7 +271,10 @@ class IconFlashOverlay(QWidget):
         painter.drawPixmap(0, 0, pixmap)
         painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
         theme = getattr(getattr(self.launcher, "settings", None), "theme", "dark")
-        color = QColor(200, 200, 200) if theme == "dark" else QColor(255, 255, 255)
+        _tint_dark = QColor()
+        _tint_dark.setRgb(200, 200, 200)
+        _tint_light = QColor(Qt.white)
+        color = _tint_dark if theme == "dark" else _tint_light
         painter.fillRect(cover.rect(), color)
         painter.end()
         return cover

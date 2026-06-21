@@ -28,6 +28,7 @@ from qt_compat import (
     QWidget,
 )
 from ui.command_icon_renderer import render_builtin_command_icon
+from ui.styles.design_tokens import StatusScale
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.font_manager import get_font_css_with_size
 from ui.utils.ui_scale import scale_qss, sp
@@ -106,9 +107,11 @@ class DragDropListWidget(QListWidget):
         # Soft fresh mint overlay border around the preview
         painter.setOpacity(0.9)
         if self.theme == "dark":
-            border_color = QColor(168, 230, 207, 150)
+            border_color = QColor(StatusScale.success).lighter(140)
+            border_color.setAlpha(150)
         else:
-            border_color = QColor(70, 180, 140, 220)
+            border_color = QColor(StatusScale.success)
+            border_color.setAlpha(220)
 
         pen = QPen(border_color, 1.5)
         pen.setJoinStyle(QtCompat.RoundJoin)

@@ -459,8 +459,8 @@ class CommandPanelWindow(ThemedToolWindow):
             column = index % columns
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.setMinimumWidth(self._button_text_width(button))
-            button.setMinimumHeight(sp(26))
-            button.setFixedHeight(sp(26))
+            button.setMinimumHeight(sp(28))
+            button.setFixedHeight(sp(28))
             self._apply_compact_button_style(button)
             grid.addWidget(button, row, column)
         for column in range(columns):
@@ -470,9 +470,9 @@ class CommandPanelWindow(ThemedToolWindow):
     def _button_text_width(button) -> int:
         text = str(button.text() or "")
         try:
-            return int(button.fontMetrics().horizontalAdvance(text) + sp(22))
+            return int(button.fontMetrics().horizontalAdvance(text) + sp(24))
         except Exception:
-            return max(sp(64), len(text) * sp(7) + sp(22))
+            return max(sp(64), len(text) * sp(7) + sp(24))
 
     @staticmethod
     def _neutralize_button_default(button):

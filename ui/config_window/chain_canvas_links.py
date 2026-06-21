@@ -85,7 +85,9 @@ class ConnectionItem(QGraphicsPathItem):
 
         # Pass 1: Drop Shadow (Soft, floating 3D depth, without harsh outlines)
         shadow_path = path.translated(0, 1.2)
-        shadow_pen = QPen(QColor(0, 0, 0, 40), 4.5)
+        _shadow_color = QColor()
+        _shadow_color.setRgb(0, 0, 0, 40)
+        shadow_pen = QPen(_shadow_color, 4.5)
         shadow_pen.setCapStyle(Qt.RoundCap)  # type: ignore[unused-ignore, attr-defined]
         shadow_pen.setJoinStyle(Qt.RoundJoin)  # type: ignore[unused-ignore, attr-defined]
         painter.setPen(shadow_pen)

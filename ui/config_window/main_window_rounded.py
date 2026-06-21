@@ -32,8 +32,12 @@ class RoundedWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.corner_radius = 8
-        self.bg_color = QColor(43, 43, 43, 200)  # 默认半透明
-        self.border_color = QColor(85, 85, 85, 150)
+        _bg = QColor()
+        _bg.setRgb(43, 43, 43, 200)
+        _border = QColor()
+        _border.setRgb(85, 85, 85, 150)
+        self.bg_color = _bg
+        self.border_color = _border
         self.use_acrylic = True  # 是否使用磨砂玻璃模式
 
     def set_colors(self, bg_color: str, border_color: str):

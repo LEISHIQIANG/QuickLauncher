@@ -59,6 +59,7 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
+from ui.styles.design_tokens import StatusScale
 from ui.styles.style import Glassmorphism
 from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import font_px, scale_qss, sp
@@ -101,18 +102,15 @@ _ACTION_HWHEEL = "滚轮-横"
 
 # 颜色方案（按当前主题区分按下 / 抬起 / 滚轮），不引入新 QSS，仅作为 QTextCharFormat 前景色使用
 def _press_color(theme: str) -> QColor:
-    # 深色：淡绿；浅色：深绿
-    return QColor(120, 220, 150) if theme == "dark" else QColor(20, 130, 60)
+    return QColor(StatusScale.success).lighter(120) if theme == "dark" else QColor(StatusScale.success)
 
 
 def _release_color(theme: str) -> QColor:
-    # 深色：偏粉的橙；浅色：深红
-    return QColor(255, 145, 120) if theme == "dark" else QColor(170, 40, 40)
+    return QColor(StatusScale.error).lighter(120) if theme == "dark" else QColor(StatusScale.error)
 
 
 def _wheel_color(theme: str) -> QColor:
-    # 深色：淡蓝；浅色：深蓝
-    return QColor(120, 180, 240) if theme == "dark" else QColor(40, 90, 200)
+    return QColor(StatusScale.info).lighter(120) if theme == "dark" else QColor(StatusScale.info)
 
 
 _MOUSE_BUTTON_NAMES = {
@@ -668,7 +666,9 @@ class MacroRecordDialog(BaseDialog):
                 font = QFont("Segoe UI Symbol", font_px(38))
                 font.setStyleHint(QFont.StyleHint.SansSerif)
                 painter.setFont(font)
-                painter.setPen(QColor(192, 132, 252))
+                _purple = QColor()
+                _purple.setRgb(192, 132, 252)
+                painter.setPen(_purple)
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⏺")
             finally:
                 painter.end()
@@ -1121,11 +1121,13 @@ class MacroRecordDialog(BaseDialog):
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-            painter.setBrush(QColor(192, 132, 252))
+            _icon_purple = QColor()
+            _icon_purple.setRgb(192, 132, 252)
+            painter.setBrush(_icon_purple)
             painter.setPen(QtCompat.NoPen)
             margin = size // 8
             painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-            painter.setPen(QColor(255, 255, 255))
+            painter.setPen(QColor(Qt.white))
             painter.setFont(QFont("Segoe UI Symbol", size // 3))
             painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⏺")
         finally:

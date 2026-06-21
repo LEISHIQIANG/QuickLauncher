@@ -33,7 +33,7 @@ from qt_compat import (
     pyqtProperty,
 )
 from ui.config_window.support_dialog import _rounded_pixmap, _support_image_path
-from ui.styles.design_tokens import StatusScale
+from ui.styles.design_tokens import StatusScale, TextScale
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_animation, stop_named_animations
@@ -666,7 +666,7 @@ class DrinkCard(QFrame):
             g_color.setAlpha(glow_intensity)
 
             spotlight.setColorAt(0.0, g_color)
-            spotlight.setColorAt(1.0, QColor(0, 0, 0, 0))
+            spotlight.setColorAt(1.0, QColor(Qt.transparent))
 
             painter.setPen(QtCompat.NoPen)
             painter.setBrush(QBrush(spotlight))
@@ -690,9 +690,9 @@ class DrinkCard(QFrame):
             fade_curve = 1.0 - abs(self._sweep_progress - 0.5) * 2.0
             shimmer_alpha = int(40 * max(0.0, fade_curve))  # 降低亮度
 
-            shimmer.setColorAt(0.0, QColor(255, 255, 255, 0))
+            shimmer.setColorAt(0.0, QColor(Qt.transparent))
             shimmer.setColorAt(0.5, QColor(255, 255, 255, shimmer_alpha))
-            shimmer.setColorAt(1.0, QColor(255, 255, 255, 0))
+            shimmer.setColorAt(1.0, QColor(Qt.transparent))
 
             painter.save()
             painter.setClipPath(path)
@@ -891,7 +891,7 @@ class SettingsSupportPageMixin:
         pixmap = QPixmap(support_img_path)
         if pixmap.isNull():
             pixmap = QPixmap(130, 130)
-            pixmap.fill(QColor(128, 128, 128))
+            pixmap.fill(QColor(TextScale.tertiary_dark))
         else:
             pixmap = pixmap.scaled(sp(120), sp(120), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
             pixmap = _rounded_pixmap(pixmap, 10)

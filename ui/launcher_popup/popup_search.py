@@ -9,7 +9,7 @@ from core.search_engines import build_search_url, parse_search_action
 from core.slash_commands import find_matching_commands
 from qt_compat import QApplication, QColor, QFont, QFontMetrics, QPoint, QRect, QRectF, Qt, QTimer
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
-from ui.styles.design_tokens import TextScale
+from ui.styles.design_tokens import StatusScale, TextScale
 from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import font_px, sp
 
@@ -1137,8 +1137,14 @@ class PopupSearchMixin:
             theme = getattr(self.settings, "theme", "dark")
             # 文本色走 TextScale token；hover overlay 与基线一致 (8% white/black)
             text_color = QColor(TextScale.primary_dark) if theme == "dark" else QColor(TextScale.primary_light)
-            hover_color = QColor(255, 255, 255, 20) if theme == "dark" else QColor(0, 0, 0, 20)
-            drop_highlight_color = QColor(0, 120, 215, 100)
+            if theme == "dark":
+                hover_color = QColor(Qt.white)
+                hover_color.setAlpha(20)
+            else:
+                hover_color = QColor(Qt.black)
+                hover_color.setAlpha(20)
+            drop_highlight_color = QColor(StatusScale.info)
+            drop_highlight_color.setAlpha(100)
             bg_mode = getattr(self.settings, "bg_mode", "acrylic")
             try:
                 self._get_page_animation_pixmap(page_idx, text_color, hover_color, drop_highlight_color, bg_mode)
@@ -1159,8 +1165,14 @@ class PopupSearchMixin:
         """预热指定页面的绘图缓存"""
         theme = getattr(self.settings, "theme", "dark")
         text_color = QColor(TextScale.primary_dark) if theme == "dark" else QColor(TextScale.primary_light)
-        hover_color = QColor(255, 255, 255, 20) if theme == "dark" else QColor(0, 0, 0, 20)
-        drop_highlight_color = QColor(0, 120, 215, 100)
+        if theme == "dark":
+            hover_color = QColor(Qt.white)
+            hover_color.setAlpha(20)
+        else:
+            hover_color = QColor(Qt.black)
+            hover_color.setAlpha(20)
+        drop_highlight_color = QColor(StatusScale.info)
+        drop_highlight_color.setAlpha(100)
         bg_mode = getattr(self.settings, "bg_mode", "acrylic")
         for page_idx in pages:
             try:

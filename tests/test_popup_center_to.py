@@ -176,13 +176,13 @@ def test_center_to_bottom_right(monkeypatch):
 
     LauncherPopup._center_to(popup, 0, 0, 400, 300)
 
-    # bottom_right 初始：left = right - w - sp(10) = 1919 - 400 - 10 = 1509
-    #                  top = bottom - h - sp(10) = 1079 - 300 - 10 = 769
+    # bottom_right 初始：left = right - w - sp(12) = 1919 - 400 - 12 = 1507
+    #                  top = bottom - h - sp(12) = 1079 - 300 - 12 = 767
     # 边界裁剪 edge_inset=2：
-    #   left = max(2, min(1509, 1919-400-2)) = max(2, min(1509, 1517)) = 1509
-    #   top  = max(2, min(769, 1079-300-2)) = max(2, min(769, 777)) = 769
+    #   left = max(2, min(1507, 1919-400-2)) = max(2, min(1507, 1517)) = 1507
+    #   top  = max(2, min(767, 1079-300-2)) = max(2, min(767, 777)) = 767
     # 初始位置已经满足约束，所以 min 不触发
-    assert popup._moves[-1] == (1509, 769)
+    assert popup._moves[-1] == (1507, 767)
 
 
 # ---------------------------------------------------------------------------
@@ -243,10 +243,10 @@ def test_center_to_uses_available_not_full_geometry(monkeypatch):
     LauncherPopup._center_to(popup, 0, 0, 400, 300)
 
     # avail.bottom() = 1039，不是 geo.bottom() = 1079
-    # bottom_right 初始：top = 1039 - 300 - 10 = 729
-    # 边界裁剪 edge_inset=2：top = max(2, min(729, 1039-300-2)) = max(2, min(729, 737)) = 729
-    # left = 1919 - 400 - 10 = 1509 → max(2, min(1509, 1919-400-2)) = max(2, min(1509, 1517)) = 1509
-    assert popup._moves[-1] == (1509, 729)
+    # bottom_right 初始：top = 1039 - 300 - 12 = 727
+    # 边界裁剪 edge_inset=2：top = max(2, min(727, 1039-300-2)) = max(2, min(727, 737)) = 727
+    # left = 1919 - 400 - 12 = 1507 → max(2, min(1507, 1919-400-2)) = max(2, min(1507, 1517)) = 1507
+    assert popup._moves[-1] == (1507, 727)
 
 
 def test_center_to_handles_no_screen_match(monkeypatch):

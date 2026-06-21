@@ -28,12 +28,13 @@ from qt_compat import (
     QRadioButton,
     QSpinBox,
     QStackedWidget,
+    Qt,
     QtCompat,
     QTimer,
     QVBoxLayout,
 )
 from runtime_paths import app_root
-from ui.styles.design_tokens import selection_bg_qss, selection_text_qss
+from ui.styles.design_tokens import TextScale, selection_bg_qss, selection_text_qss
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.tooltip_helper import install_tooltip
 from ui.utils.safe_file_dialog import get_existing_directory
@@ -239,7 +240,9 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
                 from qt_compat import QPoint, QPolygon
 
                 painter.setPen(QtCompat.NoPen)
-                painter.setBrush(QColor(255, 200, 0))
+                _lightning_yellow = QColor()
+                _lightning_yellow.setRgb(255, 200, 0)
+                painter.setBrush(_lightning_yellow)
 
                 # 闪电形状的点
                 points = [
@@ -1255,7 +1258,12 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-            color = QColor(255, 255, 255, 150) if self.theme == "dark" else QColor(60, 60, 67, 150)
+            if self.theme == "dark":
+                color = QColor(Qt.white)
+                color.setAlpha(150)
+            else:
+                color = QColor(TextScale.tertiary_light)
+                color.setAlpha(150)
             painter.setPen(QPen(color, 1.4))
             if expanded:
                 painter.drawLine(4, 5, 9, 2)

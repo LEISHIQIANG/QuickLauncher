@@ -34,6 +34,7 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
+from ui.styles.design_tokens import StatusScale
 from ui.styles.style import Glassmorphism
 from ui.tooltip_helper import install_tooltip
 from ui.utils.pixel_snap import create_pixmap
@@ -529,7 +530,7 @@ class HotkeyDialog(BaseDialog):
                 painter.setRenderHint(QtCompat.Antialiasing)
                 painter.setRenderHint(QtCompat.HighQualityAntialiasing)
                 painter.setFont(QFont("Segoe UI Symbol", font_px(38)))
-                painter.setPen(QColor(144, 238, 144))
+                painter.setPen(QColor(StatusScale.success).lighter(130))
                 painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌘")
             finally:
                 painter.end()
@@ -835,11 +836,11 @@ class HotkeyDialog(BaseDialog):
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-            painter.setBrush(QColor(70, 130, 180))
+            painter.setBrush(QColor(StatusScale.info))
             painter.setPen(QtCompat.NoPen)
             margin = size // 8
             painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-            painter.setPen(QColor(255, 255, 255))
+            painter.setPen(QColor(Qt.white))
             painter.setFont(QFont("Segoe UI Symbol", size // 3))
             painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌘")
         finally:

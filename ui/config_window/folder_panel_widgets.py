@@ -231,7 +231,7 @@ class FolderItemWidget(QWidget):
         self.update()
         super().enterEvent(event)
 
-    def paintEvent(self, event):  # NOTE: paint_perf
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -375,7 +375,7 @@ class FolderListWidget(QListWidget):
             self._pill_rect = QRectF(visual_rect).adjusted(sp(4), sp(1), sp(-2), sp(-1))
             self.viewport().update()
 
-    def paintEvent(self, event):  # NOTE: paint_perf
+    def paintEvent(self, event):  # noqa: paint_perf
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)

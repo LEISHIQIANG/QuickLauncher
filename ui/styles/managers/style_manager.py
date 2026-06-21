@@ -31,6 +31,7 @@ class StyleManager:
     def apply_dialog_style(cls, window, theme: str) -> None:
         """Apply ``get_dialog_stylesheet(theme)`` to *window*."""
         from ui.styles._public_functions import get_dialog_stylesheet
+
         qss = get_dialog_stylesheet(theme)
         window.setStyleSheet(qss)
         cls._register(window)
@@ -39,6 +40,7 @@ class StyleManager:
     def apply_glass_style(cls, window, theme: str) -> None:
         """Apply ``get_full_glassmorphism_stylesheet(theme)`` to *window*."""
         from ui.styles.glassmorphism import Glassmorphism
+
         qss = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
         window.setStyleSheet(qss)
         cls._register(window)
@@ -47,6 +49,7 @@ class StyleManager:
     def apply_theme(cls, window, theme: str) -> None:
         """Apply ``compose_full_stylesheet(theme)`` to *window*."""
         from ui.styles.qss import compose_full_stylesheet
+
         qss = scale_qss(compose_full_stylesheet(theme))
         window.setStyleSheet(qss)
         cls._register(window)
@@ -55,6 +58,7 @@ class StyleManager:
     def apply_component_style(cls, widget, style_key: str, theme: str) -> None:
         """Apply a single component QSS by ``"component.variant"`` key."""
         from ui.styles.qss import get_component_style
+
         qss = get_component_style(style_key, theme)
         widget.setStyleSheet(scale_qss(qss))
 

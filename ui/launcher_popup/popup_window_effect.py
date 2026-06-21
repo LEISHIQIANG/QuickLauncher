@@ -527,8 +527,8 @@ class PopupLayoutMixin:
             top = work_area.center().y() - window_height // 2
         elif align_mode == "bottom_right":
             # bottom_right 模式保留稍大的 10px corner inset。
-            left = work_area.right() - window_width - sp(10)
-            top = work_area.bottom() - window_height - sp(10)
+            left = work_area.right() - window_width - sp(12)
+            top = work_area.bottom() - window_height - sp(12)
         elif align_mode == "mouse_top_left":
             left = lx
             top = ly

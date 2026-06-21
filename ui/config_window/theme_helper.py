@@ -200,7 +200,9 @@ def create_ios_switch_icon(checked: bool, theme: str) -> str:
 
             # Draw knob
             knob_size = h - 4
-            pen = QPen(QColor(0, 0, 0, 50), 1)
+            _shadow_color = QColor()
+            _shadow_color.setRgb(0, 0, 0, 50)
+            pen = QPen(_shadow_color, 1)
             pen.setJoinStyle(QtCompat.RoundJoin)
             pen.setCapStyle(QtCompat.RoundCap)
             painter.setPen(pen)
@@ -493,4 +495,5 @@ def apply_theme_to_dialog(dialog, theme: str):
         dialog.setStyleSheet(glassmorphism_style + dialog_extra)
     except ImportError:
         from ui.styles.managers import StyleManager
+
         StyleManager.apply_dialog_style(dialog, theme)

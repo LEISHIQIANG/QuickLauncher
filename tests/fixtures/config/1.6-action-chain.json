@@ -1,0 +1,14 @@
+{
+  "version": "2.5",
+  "settings": {},
+  "folders": [{
+    "id": "default",
+    "name": "常用",
+    "items": [{
+      "id": "legacy-chain",
+      "name": "Legacy Chain",
+      "type": "chain",
+      "chain_steps": [{"shortcut_id": "target", "delay_ms": 10}]
+    }]
+  }]
+}

@@ -103,7 +103,8 @@ class ToastNotification(QWidget):
                 bg_color = QColor(StatusScale.error)
                 bg_color.setAlpha(210)
                 # 错误状态边框色：浅粉红 + alpha 180，与基线完全一致
-                border_color = QColor(255, 205, 210, 180)
+                border_color = QColor(StatusScale.error)
+                border_color.setAlpha(180)
             elif self._theme == "dark":
                 from ui.styles.design_tokens import surface_platform
 
