@@ -11,11 +11,15 @@ class DomainError(ApplicationError):
     code = "domain_error"
 
 
-class ValidationError(ApplicationError):
+class ValidationError(ApplicationError, ValueError):
+    """Raised when data fails schema or business-rule validation."""
+
     code = "validation_error"
 
 
-class InfrastructureError(ApplicationError):
+class InfrastructureError(ApplicationError, RuntimeError):
+    """Raised when an infrastructure adapter encounters a fatal error."""
+
     code = "infrastructure_error"
 
 
@@ -23,7 +27,9 @@ class UserCancelled(ApplicationError):
     code = "user_cancelled"
 
 
-class OperationTimeout(ApplicationError):
+class OperationTimeout(ApplicationError, TimeoutError):
+    """Raised when an operation exceeds its allotted time budget."""
+
     code = "timeout"
 
 

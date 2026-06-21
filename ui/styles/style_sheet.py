@@ -13,7 +13,8 @@ class StyleSheet:
 
     @staticmethod
     def micro_animations_disabled_suffix() -> str:
-        return "* { transition-duration: 0ms !important; }\n"
+        # Qt Style Sheets do not implement CSS transitions.
+        return ""
 
     @staticmethod
     def get_button_style(theme: str) -> str:

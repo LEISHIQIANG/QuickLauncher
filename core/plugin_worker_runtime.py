@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from application.errors import DomainError, OperationTimeout
 from extensions.sdk.worker_protocol import CAP_HEARTBEAT, negotiate_worker
 from infrastructure.process import runtime as process_runtime
 from runtime_paths import app_executable, app_root, is_packaged_runtime
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 _MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 
 
-class PluginWorkerError(RuntimeError):
+class PluginWorkerError(RuntimeError, DomainError):
     pass
 
 
@@ -160,7 +161,7 @@ class PersistentPluginWorker:
                         break
                     except TimeoutError:
                         if time.monotonic() >= deadline:
-                            raise TimeoutError(f"plugin worker startup timed out after {timeout:.1f}s") from None
+                            raise OperationTimeout(f"plugin worker startup timed out after {timeout:.1f}s") from None
                 if address[0] not in ("127.0.0.1", "::1"):
                     connection.close()
                     raise PluginWorkerError("plugin worker connected from a non-loopback address")
@@ -168,7 +169,7 @@ class PersistentPluginWorker:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     channel.close()
-                    raise TimeoutError(f"plugin worker startup timed out after {timeout:.1f}s")
+                    raise OperationTimeout(f"plugin worker startup timed out after {timeout:.1f}s")
                 try:
                     hello = channel.receive(timeout=remaining)
                 except EOFError as exc:

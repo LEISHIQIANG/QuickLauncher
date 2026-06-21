@@ -254,6 +254,7 @@ def _execute_python_cell(source: str, values: dict[str, Any]) -> CommandResult:
             return _ok_outputs(outputs)
         return _ok_outputs({"output": str(outputs)})
     except Exception as exc:
+        logger.debug("电池执行失败: %s", exc, exc_info=True)
         return CommandResult(success=False, message=f"脚本电池执行失败: {exc}", display_type="text", error=str(exc))
 
 
@@ -528,6 +529,7 @@ def _img_resize(values: dict[str, Any]) -> CommandResult:
         img.save(new_path)
         return _ok_file(new_path)
     except Exception as exc:
+        logger.debug("图片调整失败: %s", exc, exc_info=True)
         return _processor_error_result(f"图片调整失败: {exc}")
 
 
@@ -544,6 +546,7 @@ def _img_convert(values: dict[str, Any]) -> CommandResult:
         img.save(new_path)
         return _ok_file(new_path)
     except Exception as exc:
+        logger.debug("图片转换失败: %s", exc, exc_info=True)
         return _processor_error_result(f"图片转换失败: {exc}")
 
 
@@ -575,6 +578,7 @@ def _img_watermark(values: dict[str, Any]) -> CommandResult:
         img.save(new_path)
         return _ok_file(new_path)
     except Exception as exc:
+        logger.debug("水印添加失败: %s", exc, exc_info=True)
         return _processor_error_result(f"水印添加失败: {exc}")
 
 
@@ -597,6 +601,7 @@ def _img_crop(values: dict[str, Any]) -> CommandResult:
         new_img.save(new_path)
         return _ok_file(new_path)
     except Exception as exc:
+        logger.debug("图片裁剪失败: %s", exc, exc_info=True)
         return _processor_error_result(f"图片裁剪失败: {exc}")
 
 
@@ -614,6 +619,7 @@ def _img_rotate(values: dict[str, Any]) -> CommandResult:
         new_img.save(new_path)
         return _ok_file(new_path)
     except Exception as exc:
+        logger.debug("图片旋转失败: %s", exc, exc_info=True)
         return _processor_error_result(f"图片旋转失败: {exc}")
 
 

@@ -87,6 +87,7 @@ data_manager = None
 
 def get_plugin_manager():
     """迁移垫片:新代码应通过 AppContext.plugin_manager 取依赖。"""
+    logger.debug("service locator accessed: get_plugin_manager() — prefer AppContext")
     if plugin_manager is None:
         raise RuntimeError("PluginManager 尚未初始化，请先调用 ensure_plugin_manager_initialized()")
     return plugin_manager
@@ -94,6 +95,7 @@ def get_plugin_manager():
 
 def get_data_manager():
     """迁移垫片:新代码应通过 AppContext.data_manager 取依赖。"""
+    logger.debug("service locator accessed: get_data_manager() — prefer AppContext")
     if data_manager is None:
         raise RuntimeError("DataManager 尚未初始化，请先调用 set_data_manager()")
     return data_manager

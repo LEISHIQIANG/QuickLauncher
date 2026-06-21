@@ -5,6 +5,7 @@ import logging
 from core.i18n import tr
 from qt_compat import (
     QButtonGroup,
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -18,6 +19,8 @@ from qt_compat import (
 from ui.utils.safe_file_dialog import get_open_file_name
 from ui.utils.ui_scale import sp
 from ui.utils.window_effect import is_glass_background_supported, is_win10
+
+from .settings_helpers import SwitchButton
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +193,60 @@ class SettingsAppearancePageMixin:
 
         layout.addLayout(grid_effect)
 
+        # L3 视觉灰度开关。默认值保持现有视觉；用户可以按设备性能回退。
+        layout, self.l3_quality_group = page.add_group("视觉质量与动效")
+        l3_grid = QGridLayout()
+        l3_grid.setVerticalSpacing(sp(8))
+
+        self.low_end_mode_switch = SwitchButton("低端机模式")
+        self.focus_ring_switch = SwitchButton("键盘焦点环")
+        self.micro_animations_switch = SwitchButton("微动效")
+        self.window_animations_switch = SwitchButton("窗口动画")
+        self.pixel_snap_switch = SwitchButton("高 DPI 像素对齐（实验）")
+        for switch in (
+            self.low_end_mode_switch,
+            self.focus_ring_switch,
+            self.micro_animations_switch,
+            self.window_animations_switch,
+            self.pixel_snap_switch,
+        ):
+            switch.stateChanged.connect(self._on_l3_quality_changed)
+
+        l3_grid.addWidget(self.low_end_mode_switch, 0, 0)
+        l3_grid.addWidget(self.focus_ring_switch, 0, 1)
+        l3_grid.addWidget(self.micro_animations_switch, 1, 0)
+        l3_grid.addWidget(self.window_animations_switch, 1, 1)
+        l3_grid.addWidget(self.pixel_snap_switch, 2, 0, 1, 2)
+
+        l3_grid.addWidget(self._create_label("动效速度"), 3, 0)
+        motion_row = QHBoxLayout()
+        self.motion_scale_slider = QSlider(QtCompat.Horizontal)
+        self.motion_scale_slider.setRange(50, 200)
+        self.motion_scale_slider.setSingleStep(10)
+        self.motion_scale_slider.valueChanged.connect(self._on_l3_quality_changed)
+        self.motion_scale_label = QLabel("100%")
+        self.motion_scale_label.setMinimumWidth(sp(40))
+        motion_row.addWidget(self.motion_scale_slider)
+        motion_row.addWidget(self.motion_scale_label)
+        l3_grid.addLayout(motion_row, 3, 1)
+
+        self.elevation_profile_combo = QComboBox()
+        self.elevation_profile_combo.addItem("自动", "auto")
+        self.elevation_profile_combo.addItem("低", "low")
+        self.elevation_profile_combo.addItem("高", "high")
+        self.elevation_profile_combo.currentIndexChanged.connect(self._on_l3_quality_changed)
+        l3_grid.addWidget(self._create_label("阴影层级"), 4, 0)
+        l3_grid.addWidget(self.elevation_profile_combo, 4, 1)
+
+        self.glass_quality_combo = QComboBox()
+        self.glass_quality_combo.addItem("自动", "auto")
+        self.glass_quality_combo.addItem("性能优先", "low")
+        self.glass_quality_combo.addItem("质量优先", "high")
+        self.glass_quality_combo.currentIndexChanged.connect(self._on_l3_quality_changed)
+        l3_grid.addWidget(self._create_label("玻璃质量"), 5, 0)
+        l3_grid.addWidget(self.glass_quality_combo, 5, 1)
+        layout.addLayout(l3_grid)
+
         # Win10 外阴影
         layout, self.win10_shadow_group = page.add_group("Win10外阴影")
         self.win10_shadow_group.setVisible(is_win10())
@@ -242,6 +299,33 @@ class SettingsAppearancePageMixin:
         self.icon_alpha_label.setText(f"{int(settings.icon_alpha * 100)}%")
 
         self.bg_path_edit.setText(settings.custom_bg_path)
+
+        l3_controls = (
+            self.low_end_mode_switch,
+            self.focus_ring_switch,
+            self.micro_animations_switch,
+            self.window_animations_switch,
+            self.pixel_snap_switch,
+            self.motion_scale_slider,
+            self.elevation_profile_combo,
+            self.glass_quality_combo,
+        )
+        for control in l3_controls:
+            control.blockSignals(True)
+        try:
+            self.low_end_mode_switch.setChecked(bool(getattr(settings, "low_end_mode", False)))
+            self.focus_ring_switch.setChecked(bool(getattr(settings, "show_focus_ring", True)))
+            self.micro_animations_switch.setChecked(bool(getattr(settings, "micro_animations", True)))
+            self.window_animations_switch.setChecked(bool(getattr(settings, "window_animations", True)))
+            self.pixel_snap_switch.setChecked(bool(getattr(settings, "experimental_pixel_snap", False)))
+            self.motion_scale_slider.setValue(int(round(float(getattr(settings, "motion_scale", 1.0)) * 100)))
+            self._set_combo_data(self.elevation_profile_combo, getattr(settings, "elevation_profile", "auto"))
+            self._set_combo_data(self.glass_quality_combo, getattr(settings, "glass_quality", "auto"))
+        finally:
+            for control in l3_controls:
+                control.blockSignals(False)
+        self.motion_scale_label.setText(f"{self.motion_scale_slider.value()}%")
+        self._sync_l3_control_state()
 
         self.blur_radius_slider.setValue(settings.bg_blur_radius)
         self.blur_radius_label.setText(str(settings.bg_blur_radius))
@@ -350,6 +434,41 @@ class SettingsAppearancePageMixin:
             updates["corner_radius"] = self.corner_spin.value()
 
         self.data_manager.update_settings(immediate=False, **updates)
+
+    @staticmethod
+    def _set_combo_data(combo, value):
+        index = combo.findData(str(value or "auto"))
+        combo.setCurrentIndex(index if index >= 0 else 0)
+
+    def _sync_l3_control_state(self):
+        enabled = not self.low_end_mode_switch.isChecked()
+        for control in (
+            self.focus_ring_switch,
+            self.micro_animations_switch,
+            self.window_animations_switch,
+            self.motion_scale_slider,
+            self.elevation_profile_combo,
+            self.glass_quality_combo,
+        ):
+            control.setEnabled(enabled)
+
+    def _on_l3_quality_changed(self, _value=None):
+        self.motion_scale_label.setText(f"{self.motion_scale_slider.value()}%")
+        self._sync_l3_control_state()
+        if self._updating:
+            return
+        self.data_manager.update_settings(
+            immediate=False,
+            low_end_mode=self.low_end_mode_switch.isChecked(),
+            show_focus_ring=self.focus_ring_switch.isChecked(),
+            micro_animations=self.micro_animations_switch.isChecked(),
+            window_animations=self.window_animations_switch.isChecked(),
+            experimental_pixel_snap=self.pixel_snap_switch.isChecked(),
+            motion_scale=self.motion_scale_slider.value() / 100.0,
+            elevation_profile=str(self.elevation_profile_combo.currentData() or "auto"),
+            glass_quality=str(self.glass_quality_combo.currentData() or "auto"),
+        )
+        self._schedule_slider_settings_changed()
 
     def _on_dock_size_changed(self):
         if self._updating:

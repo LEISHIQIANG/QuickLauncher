@@ -4,6 +4,7 @@
 
 import logging
 import time
+from typing import cast
 
 from runtime_paths import is_packaged_runtime
 
@@ -746,7 +747,7 @@ class ConfigWindow(QMainWindow):
 
         folder = self.data_manager.data.get_folder_by_id(folder_id)
         if folder:
-            shortcut = next((item for item in folder.items if item.id == shortcut.id), shortcut)
+            shortcut = next((cast(ShortcutItem, item) for item in folder.items if item.id == shortcut.id), shortcut)
 
         if shortcut.type == ShortcutType.HOTKEY:
             from .hotkey_dialog import HotkeyDialog

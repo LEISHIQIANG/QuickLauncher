@@ -95,3 +95,15 @@ def qapp():
 
     app = QApplication.instance() or QApplication([])
     return app
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ui_scale():
+    """Prevent module-global UI scale changes from leaking between tests."""
+    from ui.utils.ui_scale import set_scale
+
+    set_scale(100)
+    try:
+        yield
+    finally:
+        set_scale(100)

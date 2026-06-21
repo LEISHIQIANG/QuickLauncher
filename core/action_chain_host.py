@@ -70,6 +70,19 @@ class DefaultActionChainHostAPI:
         if target.type in (ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH):
             return {"success": False, "message": "暂不支持嵌套或循环引用动作链。", "error": "nested_chain"}
         success, detail, error, result = self.execute_runtime_shortcut(target, cancel_event)
+        if success:
+            try:
+                from application.events import ShortcutExecuted, event_bus
+
+                event_bus.publish(
+                    ShortcutExecuted(
+                        shortcut_id=shortcut_id,
+                        shortcut_name=target.name,
+                        shortcut_type=target.type.value if hasattr(target.type, "value") else str(target.type),
+                    )
+                )
+            except Exception:
+                logger.debug("发布快捷方式执行事件失败", exc_info=True)
         payload = getattr(result, "payload", {}) if result is not None else {}
         return {
             "success": bool(success),

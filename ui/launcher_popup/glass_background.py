@@ -15,9 +15,11 @@ glass, so we keep the call here.
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import threading
 import time
+from ctypes import wintypes
 
 from PIL import Image as PILImage
 from PIL import ImageFilter
@@ -25,13 +27,14 @@ from PIL import ImageFilter
 from qt_compat import QColor, QImage, QPainter, QRect, QtCompat, QTimer
 from ui.launcher_popup.glass_types import (
     BUFFER_COUNT,
-    WDA_EXCLUDEFROMCAPTURE,
+    WDA_EXCLUDEFROMCAPTURE,  # noqa: F401 - public compatibility export
     GlassBackgroundError,
+    _blur_downsample,
     _DisplayAffinity,
     _FrameBuffer,
     _Rect,
-    _blur_downsample,
 )
+from ui.styles.l3_features import glass_quality
 from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
@@ -247,6 +250,7 @@ def _render_frame(
     highlight: float,
     brightness: float,
     opacity: float,
+    glass_quality: str = "auto",
     precomputed_layers: dict | None = None,
 ) -> bytes:
     """Replicate the Direct2D layer order on top of a captured BGRA frame.
@@ -262,7 +266,7 @@ def _render_frame(
     src = PILImage.frombuffer("RGBA", (width, height), captured_bgra, "raw", "BGRA", stride, 1)
 
     if blur_radius > 0.0:
-        downscale, downscale_h = _blur_downsample(width, height)
+        downscale, downscale_h = _blur_downsample(width, height, glass_quality)
         if downscale < width or downscale_h < height:
             small = src.resize((downscale, downscale_h), PILImage.Resampling.BILINEAR)
             # BoxBlur is ~2× faster than GaussianBlur and produces a
@@ -463,6 +467,7 @@ def _build_config(
         "blur_radius": float(sp(blur_radius_setting) * scale),
         "saturation": 2.5,
         "corner_radius": float(sp(corner_radius_setting) * scale),
+        "glass_quality": glass_quality(settings),
         "inset_left": margin,
         "inset_top": margin + top_inset,
         "inset_right": margin,
@@ -876,6 +881,7 @@ class GlassBackgroundRenderer:
                 highlight=highlight,
                 brightness=brightness,
                 opacity=float(config.get("opacity", 0.3)),
+                glass_quality=str(config.get("glass_quality", "auto")),
                 precomputed_layers=layers,
             )
             if not rendered:

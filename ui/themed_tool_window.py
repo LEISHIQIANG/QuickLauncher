@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import cast
 
 from qt_compat import (
     QColor,
@@ -24,6 +25,7 @@ from qt_compat import (
     QSize,
     QtCompat,
     QVBoxLayout,
+    QWidget,
 )
 from runtime_paths import app_root
 from ui.styles.design_tokens import border as token_border
@@ -52,23 +54,23 @@ class _ThemedToolWindowBase:
     """Reusable frameless shell shared by dialog and top-level widget windows."""
 
     def __init__(self, title: str, theme: str = "light", parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore[call-arg]
         self._theme = normalize_theme(theme, default="light")
         self._blur_applied = False
         self._drag_pos = None
-        self.setWindowTitle(title)
+        self.setWindowTitle(title)  # type: ignore[attr-defined]
         # Apply the frameless flags before opacity or any other property that
         # can force Qt to create the native HWND.  On Windows, creating the
         # handle first produces a short-lived default QDialog with a system
         # title bar before setWindowFlags() recreates it as frameless.
         apply_custom_window_chrome(self, kind="window", translucent=True)
-        self.setWindowOpacity(0)
+        self.setWindowOpacity(0)  # type: ignore[attr-defined]
         self._load_window_icon()
         self._setup_shell(title)
         self._apply_theme()
 
     def _setup_shell(self, title: str):
-        self.root_layout = QVBoxLayout(self)
+        self.root_layout = QVBoxLayout(cast(QWidget, self))
         self.root_layout.setContentsMargins(sp(12), 0, 0, sp(12))
         self.root_layout.setSpacing(sp(6))
 
@@ -90,7 +92,7 @@ class _ThemedToolWindowBase:
         self.close_btn_top = QPushButton("✕")
         self.close_btn_top.setFixedSize(sp(48), sp(32))
         self.close_btn_top.setCursor(QtCompat.PointingHandCursor)
-        self.close_btn_top.clicked.connect(self.close)  # type: ignore[unused-ignore, arg-type]
+        self.close_btn_top.clicked.connect(self.close)  # type: ignore[attr-defined]
         title_bar.addWidget(self.close_btn_top)
         self.root_layout.addLayout(title_bar)
 
@@ -116,7 +118,7 @@ class _ThemedToolWindowBase:
         self._theme = normalize_theme(theme, default="light")
         self._apply_theme()
         self._apply_content_theme()
-        if self.isVisible():
+        if self.isVisible():  # type: ignore[attr-defined]
             self._apply_blur_effect()
 
     def _apply_theme(self):

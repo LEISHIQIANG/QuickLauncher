@@ -529,7 +529,6 @@ class PopupMenu(QWidget):
     def hideEvent(self, event):
         self._leave_timer.stop()
         PopupMenu._release_popup(self)
-        self.deleteLater()
         return super().hideEvent(event)
 
     def closeEvent(self, event):

@@ -11,6 +11,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from application.errors import UserCancelled
+
 __all__ = [
     "ChainRunContext",
     "ChainNodeRunSnapshot",
@@ -206,7 +208,7 @@ class ChainRunContext:
         return time.time() - self.started_at
 
 
-class CancelledError(Exception):
+class CancelledError(UserCancelled):
     """Raised when an action chain run is cancelled."""
 
     pass

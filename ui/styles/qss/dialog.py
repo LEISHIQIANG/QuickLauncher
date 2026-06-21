@@ -17,17 +17,11 @@ def get_dialog_stylesheet(theme: str, settings=None) -> str:
     def _noop_focus(_s=None):
         return False
 
-    def _noop_anim(_s=None):
-        return True
-
     try:
-        from ui.styles.l3_features import micro_animations as _ma
         from ui.styles.l3_features import show_focus_ring as _sfr
     except Exception:
         _sfr = _noop_focus
-        _ma = _noop_anim
     show_focus_ring = _sfr
-    micro_animations = _ma
 
     font_family = get_font_css().removeprefix("font-family: ").removesuffix(";")
     text_primary = "#FFFFFF" if theme == "dark" else "#1C1C1E"
@@ -100,17 +94,6 @@ def get_dialog_stylesheet(theme: str, settings=None) -> str:
     except Exception as exc:
         logger.debug("Focus ring QSS load failed: %s", exc, exc_info=True)
 
-    transitions_suffix = ""
-    try:
-        if not micro_animations(settings):
-            transitions_suffix = (
-                "* { transition: none !important; "
-                "transition-property: none !important; "
-                "transition-duration: 0ms !important; }\n"
-            )
-    except Exception as exc:
-        logger.debug("L3 micro-animations load failed: %s", exc, exc_info=True)
-
     full_css = (
         base
         + button.get_plain_style(theme)
@@ -120,6 +103,5 @@ def get_dialog_stylesheet(theme: str, settings=None) -> str:
         + groupbox.get_plain_style(theme)
         + slider.get_plain_style(theme)
         + focus_qss
-        + transitions_suffix
     )
     return scale_qss(full_css)

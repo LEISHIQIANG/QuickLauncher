@@ -13,7 +13,7 @@ from __future__ import annotations
 import copy
 import logging
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .data_models import ShortcutItem
 
@@ -51,7 +51,7 @@ class ShortcutService:
             for folder in dm.data.folders:
                 for item in folder.items:
                     if item.id == shortcut_id:
-                        return folder, item
+                        return folder, cast(ShortcutItem, item)
         return None, None
 
     def get_by_id(self, shortcut_id: str) -> ShortcutItem | None:

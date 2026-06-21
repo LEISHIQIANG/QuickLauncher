@@ -34,12 +34,7 @@ def get_button_stylesheet(theme: str, settings=None) -> str:
         from ui.styles.l3_features import micro_animations
 
         if not micro_animations(settings):
-            suffix = (
-                "* { transition: none !important; "
-                "transition-property: none !important; "
-                "transition-duration: 0ms !important; }\n"
-            )
-            return scale_qss(base + suffix)
+            return scale_qss(base)
     except Exception as exc:
         logger.debug("L3 micro-animations suffix failed: %s", exc, exc_info=True)
     return scale_qss(base)

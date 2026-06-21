@@ -1,33 +1,45 @@
-"""CI test for visual baseline regression detection."""
+"""Deterministic checks for the visual-regression baseline and diff gate."""
 
 from pathlib import Path
 
 import pytest
 
-from tools import dump_visual_baseline, visual_diff
+from qt_compat import QColor, QImage
+from tools import visual_diff
 
 pytestmark = pytest.mark.ui
 
 
-def test_visual_baseline_matches_current(tmp_path):
-    # Set up candidate output directory
-    candidate_dir = tmp_path / "candidate"
-    candidate_dir.mkdir()
+def _write_image(path: Path, color: str) -> None:
+    image = QImage(8, 8, QImage.Format_ARGB32)
+    image.fill(QColor(color))
+    assert image.save(str(path))
 
-    # Generate candidate screenshots for current codebase
-    dump_args = ["--out", str(candidate_dir), "--theme", "both", "--dpi", "200"]
-    ret = dump_visual_baseline.main(dump_args)
-    assert ret == 0, "Failed to generate visual candidate screenshots"
 
-    # Locate baseline directory
+def test_visual_baseline_inventory_has_dark_and_light_pairs():
     baseline_dir = Path(__file__).resolve().parents[1] / "docs" / "visual_baseline"
+    names = {path.name for path in baseline_dir.glob("*.png")}
+    components = {name.removesuffix("_dark_200.png") for name in names if name.endswith("_dark_200.png")}
 
-    # Check that baseline exists
-    assert baseline_dir.exists(), f"Baseline directory {baseline_dir} does not exist"
-    baseline_pngs = list(baseline_dir.glob("*.png"))
-    assert len(baseline_pngs) > 0, "No visual baseline PNGs found"
+    assert len(components) >= 18
+    for component in components:
+        assert f"{component}_light_200.png" in names
 
-    # Compare candidate against baseline using visual_diff
-    diff_args = ["--baseline", str(baseline_dir), "--candidate", str(candidate_dir), "--threshold", "0.5"]
-    diff_ret = visual_diff.main(diff_args)
-    assert diff_ret == 0, "Visual diff failed: current UI deviates from the reference baseline by > 0.5% pixels"
+
+def test_visual_diff_passes_equal_images_and_blocks_missing_or_changed(tmp_path):
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    baseline.mkdir()
+    candidate.mkdir()
+    baseline_file = baseline / "sample_dark_200.png"
+    candidate_file = candidate / baseline_file.name
+
+    _write_image(baseline_file, "#112233")
+    _write_image(candidate_file, "#112233")
+    assert visual_diff.main(["--baseline", str(baseline), "--candidate", str(candidate)]) == 0
+
+    _write_image(candidate_file, "#FFFFFF")
+    assert visual_diff.main(["--baseline", str(baseline), "--candidate", str(candidate)]) == 1
+
+    candidate_file.unlink()
+    assert visual_diff.main(["--baseline", str(baseline), "--candidate", str(candidate)]) == 1

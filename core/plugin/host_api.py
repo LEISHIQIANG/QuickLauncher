@@ -144,8 +144,12 @@ class PluginAPI:
             return False
         try:
             if self._module_registry is None:
-                return False
-            ok = self._module_registry.register_external_manifest(module_id, module_manifest)
+                from core.module_registry import get_module_registry
+
+                module_registry = get_module_registry()
+            else:
+                module_registry = self._module_registry
+            ok = module_registry.register_external_manifest(module_id, module_manifest)
         except Exception:
             logger.debug("插件模块注册失败: %s -> %s", module_id, module_manifest, exc_info=True)
             return False
@@ -534,6 +538,7 @@ class PluginAPI:
                 try:
                     result_holder["result"] = handler(context)
                 except Exception as exc:
+                    logger.debug("Plugin handler failed: %s", exc, exc_info=True)
                     result_holder["error"] = exc
                     result_holder["trace"] = traceback.format_exc()
                 finally:
@@ -622,7 +627,12 @@ class PluginAPI:
     def get_theme(self) -> str:
         """Return the current host theme without exposing the DataManager object."""
         try:
-            theme = self._theme_provider() if self._theme_provider is not None else "dark"
+            if self._theme_provider is None:
+                from core import get_data_manager
+
+                theme = getattr(get_data_manager().get_settings(), "theme", "dark")
+            else:
+                theme = self._theme_provider()
             return theme if theme in ("dark", "light") else "dark"
         except Exception as exc:
             logger.debug("插件 API 获取主题失败: %s", exc, exc_info=True)
@@ -650,6 +660,7 @@ class PluginAPI:
             ok, error = ShortcutExecutor._launch_with_privilege(parsed.geturl(), run_as_admin=False)
             return bool(ok), str(error or "")
         except Exception as exc:
+            logger.debug("Plugin open_url failed: url=%s, %s", url, exc, exc_info=True)
             return False, str(exc)
 
     def open_file(self, path: str | Path) -> tuple[bool, str]:
@@ -664,6 +675,7 @@ class PluginAPI:
             ok, error = ShortcutExecutor._launch_with_privilege(str(target), run_as_admin=False)
             return bool(ok), str(error or "")
         except Exception as exc:
+            logger.debug("Plugin open_file failed: path=%s, %s", target, exc, exc_info=True)
             return False, str(exc)
 
     def open_folder(self, path: str | Path) -> tuple[bool, str]:
@@ -678,6 +690,7 @@ class PluginAPI:
             ok, error = ShortcutExecutor._launch_with_privilege(str(target), run_as_admin=False)
             return bool(ok), str(error or "")
         except Exception as exc:
+            logger.debug("Plugin open_folder failed: path=%s, %s", target, exc, exc_info=True)
             return False, str(exc)
 
     def read_text_file(
@@ -756,7 +769,7 @@ class PluginAPI:
                 request.add_header(key_text, str(value or ""))
         with safe_urlopen(request, timeout=timeout_value) as response:
             try:
-                from .network_security import read_limited_response
+                from core.network_security import read_limited_response
 
                 raw = read_limited_response(response, limit)
             except ResponseTooLargeError as exc:
@@ -955,7 +968,7 @@ class PluginAPI:
         with self._persistent_helpers_lock:
             worker = self._persistent_helpers.get(key)
             if worker is None:
-                from .plugin_worker_runtime import PersistentPluginWorker
+                from core.plugin_worker_runtime import PersistentPluginWorker
 
                 worker = PersistentPluginWorker(
                     plugin_id=self._plugin_id,
@@ -1082,6 +1095,7 @@ class PluginAPI:
                 )
                 return True, ""
             except Exception as exc:
+                logger.debug("Plugin read_text_file exec failed: %s", exc, exc_info=True)
                 return False, str(exc)
         ok, error = ShortcutExecutor._launch_with_privilege(
             target,
@@ -1125,6 +1139,7 @@ class PluginAPI:
                 )
                 return True, ""
             except Exception as exc:
+                logger.debug("Plugin write_text_file exec failed: %s", exc, exc_info=True)
                 return False, str(exc)
         params = subprocess.list2cmdline(["/d", "/s", cmd_flag, command])
         return self.launch_target(

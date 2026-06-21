@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import ctypes
 import logging
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
 _GUI_HANDLE_LIMIT = 10_000  # Windows default per-process limit
 _GUI_WARN_THRESHOLD = 7_000  # emit warning above this count
+_last_warn_time = 0.0
 
 
 def get_gdi_handle_count() -> int:
@@ -99,7 +101,7 @@ def relieve_gdi_pressure(target: int = 8_500, max_attempts: int = 3) -> int:
         try:
             from qt_compat import QEvent
 
-            QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+            QApplication.sendPostedEvents(None, cast(Any, QEvent).DeferredDelete)
         except Exception:
             logger.debug("处理 Qt DeferredDelete 事件失败", exc_info=True)
         app.processEvents()
@@ -137,6 +139,8 @@ def warn_if_near_limit() -> int:
     Warnings are emitted at most once every 60 seconds to avoid
     flooding the log.
     """
+    global _last_warn_time
+
     gdi_count, user_count = get_gui_handle_counts()
     if gdi_count < 0 and user_count < 0:
         return -1
@@ -144,13 +148,12 @@ def warn_if_near_limit() -> int:
         import time as _time
 
         now = _time.monotonic()
-        last_warn = getattr(warn_if_near_limit, "_last_warn_time", 0.0)
-        if now - last_warn >= 60.0:
+        if now - _last_warn_time >= 60.0:
             logger.warning(
                 "GDI 句柄数 %d / %d (USER %d) 接近系统上限，" "后续窗口创建可能失败。请检查是否有窗口/阴影资源泄漏。",
                 gdi_count,
                 _GUI_HANDLE_LIMIT,
                 user_count,
             )
-            warn_if_near_limit._last_warn_time = now
+            _last_warn_time = now
     return gdi_count

@@ -95,7 +95,7 @@ class PluginWorkerSupervisor:
             worker = self._workers.get(normalized)
         if worker is None:
             return False
-        return worker.cancel(request_id)
+        return worker.cancel(request_id)  # type: ignore[attr-defined, no-any-return]
 
     def stop(self, key: str) -> None:
         normalized = str(key or "").replace("\\", "/").lower()

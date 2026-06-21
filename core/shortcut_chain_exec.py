@@ -52,6 +52,7 @@ def execute_shortcut_chain(
             try:
                 status = api.availability_status()
             except Exception:
+                logger.debug("Failed to check API availability status", exc_info=True)
                 status = record.status
         return unavailable_result(status)
     result = api.execute_chain(
@@ -466,6 +467,7 @@ def _runtime_input_files(target: ShortcutItem) -> list[str]:
         try:
             decoded = json.loads(text)
         except Exception:
+            logger.debug("Failed to parse candidates JSON", exc_info=True)
             decoded = None
         if isinstance(decoded, list):
             candidates = decoded

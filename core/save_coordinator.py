@@ -29,6 +29,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from application.ports.persistence import ConfigStatePort
+
 from .config_validation import validate_app_data
 from .import_security import has_report_warnings, new_import_report
 
@@ -44,8 +46,9 @@ _MAX_DELAYED_SAVE_RETRIES = 3
 class SaveCoordinator:
     """Coordinate debounced / batched / atomic writes to ``data.json``."""
 
-    def __init__(self, dm: DataManager) -> None:
+    def __init__(self, dm: DataManager, state: ConfigStatePort | None = None) -> None:
         self._dm = dm
+        self._state = state  # ConfigStatePort — future migration target for coordination fields
         self._delayed_retry_count = 0
         self._batch_snapshot: dict[str, Any] | None = None
         self._batch_failed = False
@@ -328,6 +331,20 @@ class SaveCoordinator:
                     dm._pending_history_summary = ""
                 dm._last_saved_data_dict = next_data_dict
                 dm._config_status = {"status": "ok", "source": str(dm.data_file), "issues": []}
+                # Publish event for downstream consumers (port adapters, UI, plugins).
+                try:
+                    from application.events import ConfigSaved as ConfigSavedEvent
+                    from application.events import event_bus
+
+                    event_bus.publish(
+                        ConfigSavedEvent(
+                            revision=dm._runtime_revision,
+                            file_path=str(dm.data_file),
+                        )
+                    )
+                except Exception as exc:
+                    logger.debug("ConfigSaved event publish failed: %s", exc, exc_info=True)
+
         return write_success
 
     def _replace_data_file(self, temp_file: Path) -> None:

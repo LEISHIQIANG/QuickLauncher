@@ -136,7 +136,7 @@ class PopupSearchMixin:
         base_pixel_size = base_font.pixelSize() if base_font is not None else -1
         if base_pixel_size <= 0:
             base_pixel_size = font_px(10)
-        target_pixel_size = max(font_px(10), base_pixel_size + sp(4))
+        target_pixel_size = max(font_px(10), base_pixel_size + sp(2))
         cache_key = (base_pixel_size, target_pixel_size)
         cached = self.__dict__.get("_search_font_cache")
         if cached is not None and cached[0] == cache_key:
@@ -915,7 +915,7 @@ class PopupSearchMixin:
 
     def _search_animation_update_rect(self) -> QRect:
         """返回用于重绘搜索栏区域的 QRect"""
-        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(4))  # type: ignore[attr-defined]
+        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(2))  # type: ignore[attr-defined]
 
     def _remember_search_body_anchor(self):
         """记录固定布局的位置，兼容刷新期间的旧状态字段。"""

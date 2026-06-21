@@ -9,6 +9,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from types import SimpleNamespace
 
+from application.errors import ValidationError
+
 from .data_models import AppData, AppSettings, ShortcutType
 from .import_security import skip_setting
 from .trigger_config import normalize_trigger_settings
@@ -192,12 +194,12 @@ def sanitize_settings_dict(settings: object, report: dict | None = None) -> dict
 def sanitize_app_data_dict(data: object, report: dict | None = None) -> dict:
     """Sanitize imported AppData dictionaries before deserialization."""
     if not isinstance(data, dict):
-        raise ValueError("root_not_object")
+        raise ValidationError("root_not_object")
     sanitized = dict(data)
     sanitized["settings"] = sanitize_settings_dict(data.get("settings", {}), report)
     folders = data.get("folders", [])
     if not isinstance(folders, list):
-        raise ValueError("folders_not_list")
+        raise ValidationError("folders_not_list")
     sanitized_folders = []
     for folder in folders[:512]:
         if not isinstance(folder, dict):

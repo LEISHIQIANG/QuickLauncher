@@ -5,6 +5,7 @@ import os
 import uuid
 import zipfile
 from datetime import datetime
+from typing import cast
 
 from .config_validation import sanitize_settings_dict
 from .data_manager import DataManager
@@ -117,7 +118,7 @@ class ConfigImporter:
                 for item in folder.items:
                     # 只导出指定类型
                     if item.type in (ShortcutType.HOTKEY, ShortcutType.URL, ShortcutType.COMMAND):
-                        item_dict = item.to_dict()
+                        item_dict = cast(ShortcutItem, item).to_dict()
 
                         # 处理图标
                         icon_path = item.icon_path

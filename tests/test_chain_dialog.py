@@ -881,13 +881,13 @@ def test_chain_canvas_auto_arrange_nodes(qapp):
     arranged = sorted(canvas_widget.canvas["nodes"], key=lambda n: int(n.get("order", 0) or 0))
     assert [(node["order"], node["x"], node["y"]) for node in arranged[:3]] == [
         (1, 40.0, 60.0),
-        (2, 270.0, 60.0),
-        (3, 500.0, 60.0),
+        (2, 272.0, 60.0),
+        (3, 504.0, 60.0),
     ]
-    assert arranged[7]["x"] == 40.0 + 7 * 230.0
+    assert arranged[7]["x"] == 40.0 + 7 * 232.0
     assert arranged[7]["y"] == 60.0
     assert arranged[8]["x"] == 40.0
-    assert arranged[8]["y"] == 210.0
+    assert arranged[8]["y"] == 212.0
     assert canvas_widget.node_items[first["id"]].isSelected() is True
     assert len(canvas_widget.connection_items) == 1
     assert canvas_widget.connection_items[0].path().isEmpty() is False
@@ -895,8 +895,8 @@ def test_chain_canvas_auto_arrange_nodes(qapp):
     canvas_widget._sync_order_from_positions()
     assert [(node["order"], node["x"], node["y"]) for node in arranged[:3]] == [
         (1, 40.0, 60.0),
-        (2, 270.0, 60.0),
-        (3, 500.0, 60.0),
+        (2, 272.0, 60.0),
+        (3, 504.0, 60.0),
     ]
 
     from qt_compat import Qt

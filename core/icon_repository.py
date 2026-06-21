@@ -19,7 +19,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from .config_services import ConfigDataStore, IconRepository
 from .data_models import Folder, ShortcutItem
@@ -141,7 +141,7 @@ class IconRepositoryService:
             name=_ICON_REPO_NAME,
             is_system=True,
             is_icon_repo=True,
-            items=items,
+            items=cast(Any, items),
         )
 
     # ── persistence ───────────────────────────────────────────────────

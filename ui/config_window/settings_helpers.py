@@ -30,8 +30,8 @@ from qt_compat import (
 from ui.styles.design_tokens import BorderScale, SurfaceScale, TextScale
 from ui.styles.design_tokens import border as token_border
 from ui.styles.design_tokens import surface as token_surface
-from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.styles.managers import StyleManager
+from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
@@ -233,8 +233,6 @@ class ProgressDialog(QDialog):
         self.btn_layout.addWidget(self.ok_btn)
         main_layout.addLayout(self.btn_layout)
 
-        from ui.styles.style import get_dialog_stylesheet
-
         StyleManager.apply_dialog_style(self, self.theme)
 
     def paintEvent(self, event):  # noqa: paint_perf
@@ -374,6 +372,17 @@ class SwitchButton(QCheckBox):
     def _on_state_changed(self, state):
         checked = self.isChecked()
         self._anim.stop()
+        try:
+            from ui.runtime_settings import current_settings
+            from ui.styles.l3_features import micro_animations
+
+            animate = micro_animations(current_settings())
+        except Exception:
+            animate = True
+        if not animate:
+            self._progress = 1.0 if checked else 0.0
+            self.update()
+            return
         self._anim.setStartValue(self._progress)
         self._anim.setEndValue(1.0 if checked else 0.0)
         self._anim.start()

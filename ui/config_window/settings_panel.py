@@ -40,9 +40,9 @@ from qt_compat import (
 from ui.styles.design_tokens import GroupIconScale, SurfaceScale, TextScale
 from ui.styles.design_tokens import border as token_border
 from ui.styles.design_tokens import surface as token_surface
+from ui.styles.managers import StyleManager
 from ui.styles.style import StyleSheet
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.styles.managers import StyleManager
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
 from ui.utils.pixel_snap import create_pixmap, make_cosmetic_pen
@@ -145,8 +145,6 @@ class CompactProgressDialog(QDialog):
         self.ok_btn.setVisible(False)
         self.btn_layout.addWidget(self.ok_btn)
         main_layout.addLayout(self.btn_layout)
-
-        from ui.styles.style import get_dialog_stylesheet
 
         StyleManager.apply_dialog_style(self, self.theme)
         tune_font_rendering(self, recursive=True)

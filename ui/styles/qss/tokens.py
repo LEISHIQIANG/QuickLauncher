@@ -9,14 +9,10 @@ from __future__ import annotations
 
 from ui.styles.design_tokens import selection_bg_qss, selection_text_qss
 
-_MICRO_ANIM_TRANSITION = "80ms"
-_MICRO_ANIM_EASING = "cubic-bezier(0.4, 0.0, 0.2, 1.0)"
-
-TRANSITION_CSS = (
-    f"transition: background-color {_MICRO_ANIM_TRANSITION} {_MICRO_ANIM_EASING}, "
-    f"color {_MICRO_ANIM_TRANSITION} {_MICRO_ANIM_EASING}, "
-    f"border-color {_MICRO_ANIM_TRANSITION} {_MICRO_ANIM_EASING};"
-)
+# Qt Style Sheets do not support CSS transitions. Runtime micro-interactions
+# are implemented with Qt animations; keep this token empty so style output
+# never contains declarations silently ignored by Qt.
+TRANSITION_CSS = ""
 
 # ----- Plain button (from StyleSheet.get_button_style) -----
 

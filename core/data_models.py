@@ -2,6 +2,8 @@
 数据模型定义
 """
 
+from __future__ import annotations
+
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -32,6 +34,13 @@ def _binding_value_items(value) -> list[str]:
     return [normalized] if normalized else []
 
 
+ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
+ACTION_CHAIN_MODULE_VERSION = "0.1.0"
+ACTION_CHAIN_SCHEMA_VERSION = 1
+BATCH_LAUNCH_MODULE_ID = "quicklauncher.batch_launch"
+BATCH_LAUNCH_MODULE_VERSION = "0.1.0"
+
+
 class ShortcutType(Enum):
     """快捷方式类型"""
 
@@ -43,13 +52,6 @@ class ShortcutType(Enum):
     CHAIN = "chain"
     BATCH_LAUNCH = "batch_launch"
     MACRO = "macro"
-
-
-ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
-ACTION_CHAIN_MODULE_VERSION = "0.1.0"
-ACTION_CHAIN_SCHEMA_VERSION = 1
-BATCH_LAUNCH_MODULE_ID = "quicklauncher.batch_launch"
-BATCH_LAUNCH_MODULE_VERSION = "0.1.0"
 
 
 @dataclass
@@ -84,26 +86,26 @@ class ShortcutItem:
 
     # 命令类型
     command: str = ""
-    command_type: str = "cmd"  # cmd, powershell, python, bash, builtin
+    command_type: str = "cmd"
     show_window: bool = False
     command_variables_enabled: bool = False
     capture_output: bool = False
     command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS
     command_output_max_chars: int = DEFAULT_COMMAND_OUTPUT_MAX_CHARS
-    command_panel_size: str = "medium"  # small, medium, large
+    command_panel_size: str = "medium"
     command_params: list[dict] = field(default_factory=list)
     command_env: dict = field(default_factory=dict)
     command_encoding: str = "auto"
     chain_steps: list[dict] = field(default_factory=list)
     chain_canvas: dict = field(default_factory=dict)
-    chain_result_window: str = "medium"  # none, small, medium, large
+    chain_result_window: str = "medium"
     module_id: str = ""
     module_version: str = ""
     chain_schema_version: int = ACTION_CHAIN_SCHEMA_VERSION
     chain_ref: str = ""
     chain_data: dict = field(default_factory=dict)
     batch_launch_steps: list[dict] = field(default_factory=list)
-    raw_mode: bool = False  # 原始模式，跳过变量预处理
+    raw_mode: bool = False
 
     # 宏录制类型
     macro_events: list[dict] = field(default_factory=list)
@@ -111,17 +113,16 @@ class ShortcutItem:
     macro_hide_while_recording: bool = False
 
     # 触发模式
-    trigger_mode: str = "immediate"  # immediate (立即触发), after_close (窗口关闭后触发)
+    trigger_mode: str = "immediate"
 
     # 图标
     icon_path: str = ""
     icon_data: str = ""
     alias: str = ""
 
-    # 图标反转设置（按主题独立控制）
+    # 图标反转设置
     icon_invert_light: bool = False
     icon_invert_dark: bool = False
-    # 旧版兼容字段（迁移后不再使用）
     icon_invert_with_theme: bool = False
     icon_invert_current: bool = False
     icon_invert_theme_when_set: str = ""
@@ -187,7 +188,7 @@ class ShortcutItem:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ShortcutItem":
+    def from_dict(cls, data: dict) -> ShortcutItem:
         item = cls()
         item.id = data.get("id", str(uuid.uuid4()))
         item.name = data.get("name", "")
@@ -619,9 +620,9 @@ class Folder:
     items: list[ShortcutItem] = field(default_factory=list)
 
     # 文件夹自动导入功能
-    linked_path: str = ""  # 绑定的物理文件夹路径
-    auto_sync: bool = False  # 是否启用自动同步
-    last_sync_time: float = 0.0  # 最后同步时间戳
+    linked_path: str = ""
+    auto_sync: bool = False
+    last_sync_time: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -638,7 +639,7 @@ class Folder:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Folder":
+    def from_dict(cls, data: dict) -> Folder:
         folder = cls()
         folder.id = data.get("id", str(uuid.uuid4()))
         folder.name = data.get("name", "")
@@ -951,7 +952,7 @@ class AppSettings:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "AppSettings":
+    def from_dict(cls, data: dict) -> AppSettings:
         settings = cls()
         for key, value in data.items():
             if hasattr(settings, key):
@@ -1033,7 +1034,7 @@ class AppData:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "AppData":
+    def from_dict(cls, data: dict) -> AppData:
         app_data = cls.__new__(cls)
         app_data.version = data.get("version", "1.0")
         app_data.config_schema_version = int(data.get("config_schema_version", 0))
@@ -1042,3 +1043,35 @@ class AppData:
         if not app_data.folders:
             app_data._create_default_folders()
         return app_data
+
+
+# ── Core ↔ Domain 边界类型收窄 ──────────────────────────────────────
+#
+# core/data_models.py 与 domain/models.py 中的 ShortcutItem / Folder /
+# AppSettings / AppData 具有完全相同的字段定义（domain 是纯模型，core 是
+# DTO + 序列化）。为避免字段重复继承带来的 mypy 类型错误，此处通过显式
+# 类型收窄函数建立边界契约，而不改写模型的继承结构。
+#
+# 未来方向：当 mypy / dataclass 继承支持足够稳定时，可考虑将 core 的 DTO
+# 改为组合模式（持有 domain 模型作为内字段），或改为 Protocol 约束。
+
+
+def _is_shortcut_item(obj: object) -> bool:
+    """Return True if *obj* has the structural shape of a ShortcutItem.
+
+    Structural check — works for both ``core.data_models.ShortcutItem``
+    and ``domain.models.ShortcutItem`` since they have identical fields.
+    """
+    return hasattr(obj, "id") and hasattr(obj, "type") and hasattr(obj, "name")
+
+
+def _is_folder(obj: object) -> bool:
+    """Return True if *obj* has the structural shape of a Folder."""
+    return hasattr(obj, "id") and hasattr(obj, "items") and hasattr(obj, "name")
+
+
+# Type aliases kept private to avoid polluting the public API of this module.
+# External code should import from ``domain.models`` for the pure model and
+# from ``core.data_models`` for the DTO/serializable version.  The structural
+# guards above allow cross-boundary code to narrow from ``object`` without
+# importing the domain package directly from core.

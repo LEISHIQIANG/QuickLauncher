@@ -61,19 +61,10 @@ def focus_ring_qss(theme: str = "dark") -> str:
     return _FOCUS_RING_BASE.format(focus_color=color)
 
 
-_PRESSED_TRANSITION_BASE = """
-/* Subtle 80 ms colour transition on :pressed for high-frequency buttons. */
-QPushButton {{
-    transition: background-color {duration}ms {easing},
-                color {duration}ms {easing};
-}}
-"""
-
-
 def pressed_transition_qss(duration_ms: int = 80, easing: str = "cubic-bezier(0.4, 0.0, 0.2, 1.0)") -> str:
-    """Return a QSS fragment that adds an 80 ms :pressed colour transition."""
-
-    return _PRESSED_TRANSITION_BASE.format(duration=duration_ms, easing=easing)
+    """Compatibility shim; Qt QSS has no CSS transition support."""
+    del duration_ms, easing
+    return ""
 
 
 def micro_animation_qss(theme: str = "dark", duration_ms: int = 120) -> str:

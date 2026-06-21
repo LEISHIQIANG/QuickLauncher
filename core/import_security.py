@@ -6,6 +6,8 @@ import os
 import zipfile
 from pathlib import PurePosixPath
 
+from application.errors import SecurityViolation
+
 MAX_ZIP_ENTRIES = 2048
 MAX_ZIP_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_CONFIG_BYTES = 10 * 1024 * 1024
@@ -54,7 +56,7 @@ def has_report_warnings(report: dict | None) -> bool:
     return bool(report.get("warnings") or report.get("skipped_files") or report.get("skipped_settings"))
 
 
-class UnsafeZipError(ValueError):
+class UnsafeZipError(ValueError, SecurityViolation):
     """Raised when a ZIP package should not be processed further."""
 
 

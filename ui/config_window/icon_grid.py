@@ -9,7 +9,7 @@ import logging
 import os
 import time
 from collections import OrderedDict
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from core import AppData, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
@@ -54,17 +54,18 @@ from qt_compat import (
 )
 from ui.styles.design_tokens import (
     StatusScale,
+    elevation,
     surface,
 )
 from ui.styles.design_tokens import (
     border as token_border,
 )
-from ui.styles.design_tokens import elevation as token_elevation
 
 # 使用统一的风格组件
 from ui.styles.design_tokens import (
     surface as token_surface,
 )
+from ui.styles.l3_features import resolved_elevation_level
 from ui.styles.style import Glassmorphism, PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -76,7 +77,6 @@ from ui.utils.window_effect import is_win10
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
-from .batch_launch_dialog import BatchLaunchDialog
 from .icon_grid_ordering import move_drag_group_order
 from .icon_grid_palette import (
     BADGE_BG,
@@ -1311,7 +1311,10 @@ class IconGrid(QWidget):
             btn.setIcon(create_action_button_icon(kind, theme, sp(18)))
             btn.setIconSize(QSize(sp(18), sp(18)))
             shadow = QGraphicsDropShadowEffect()
-            offset_y, blur_r, shadow_color = token_elevation(1, is_win10=is_win10())
+            win10 = is_win10()
+            settings = self.data_manager.get_settings()
+            level = resolved_elevation_level(1, settings, is_win10=win10)
+            offset_y, blur_r, shadow_color = elevation(level, is_win10=win10)
             shadow.setBlurRadius(blur_r)
             shadow.setOffset(0, offset_y)
             shadow.setColor(shadow_color)
@@ -1526,7 +1529,8 @@ class IconGrid(QWidget):
             logger.debug("获取主题设置: %s", exc, exc_info=True)
         icon_tasks: list[tuple[str, str, str | None, int, ShortcutType]] = []
         for _i, shortcut in enumerate(items):
-            widget = IconWidget(shortcut, icon_size=icon_size, cell_size=cell_size, theme=theme)
+            typed_shortcut = cast(ShortcutItem, shortcut)
+            widget = IconWidget(typed_shortcut, icon_size=icon_size, cell_size=cell_size, theme=theme)
             widget.setParent(self.container)
             widget.clicked.connect(lambda s=shortcut: self._on_item_clicked(s))
             widget.double_clicked.connect(lambda s=shortcut: self._emit_edit_if_allowed(s))
@@ -2082,6 +2086,8 @@ class IconGrid(QWidget):
         if not self.current_folder_id:
             return
         try:
+            from .batch_launch_dialog import BatchLaunchDialog
+
             dialog = BatchLaunchDialog(self.data_manager, self.current_folder_id, self)
             if dialog.exec() == QDialog.Accepted:
                 self.load_folder(self.current_folder_id)

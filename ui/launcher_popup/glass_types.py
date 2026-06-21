@@ -30,16 +30,15 @@ class GlassBackgroundError(RuntimeError):
 
 
 class _Rect(ctypes.Structure):
-    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
-                ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
 
     @property
     def width(self) -> int:
-        return self.right - self.left
+        return int(self.right - self.left)
 
     @property
     def height(self) -> int:
-        return self.bottom - self.top
+        return int(self.bottom - self.top)
 
 
 class _POINT(ctypes.Structure):
@@ -79,8 +78,12 @@ class _DisplayAffinity:
         self._gdi32.CreateDCW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_void_p]
         self._gdi32.CreateDCW.restype = wintypes.HDC
         self._gdi32.CreateDIBSection.argtypes = [
-            wintypes.HDC, ctypes.c_void_p, ctypes.c_uint,
-            ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, ctypes.c_uint,
+            wintypes.HDC,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+            ctypes.POINTER(ctypes.c_void_p),
+            wintypes.HANDLE,
+            ctypes.c_uint,
         ]
         self._gdi32.CreateDIBSection.restype = wintypes.HBITMAP
         self._gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
@@ -90,13 +93,25 @@ class _DisplayAffinity:
         self._gdi32.DeleteDC.argtypes = [wintypes.HDC]
         self._gdi32.DeleteDC.restype = wintypes.BOOL
         self._gdi32.BitBlt.argtypes = [
-            wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-            wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD,
+            wintypes.HDC,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.HDC,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.DWORD,
         ]
         self._gdi32.BitBlt.restype = wintypes.BOOL
         self._gdi32.GetDIBits.argtypes = [
-            wintypes.HDC, wintypes.HBITMAP, ctypes.c_uint, ctypes.c_uint,
-            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint,
+            wintypes.HDC,
+            wintypes.HBITMAP,
+            ctypes.c_uint,
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_uint,
         ]
         self._gdi32.GetDIBits.restype = ctypes.c_int
         self._user32.MonitorFromPoint.argtypes = [ctypes.POINTER(_POINT), wintypes.DWORD]
@@ -107,11 +122,13 @@ class _DisplayAffinity:
     def set_exclude_from_capture(self, hwnd: int) -> tuple[bool, int]:
         previous = wintypes.DWORD(0)
         if self._user32.GetWindowDisplayAffinity(wintypes.HWND(int(hwnd)), ctypes.byref(previous)):
-            ok = bool(self._user32.SetWindowDisplayAffinity(
-                wintypes.HWND(int(hwnd)), wintypes.DWORD(WDA_EXCLUDEFROMCAPTURE)))
+            ok = bool(
+                self._user32.SetWindowDisplayAffinity(wintypes.HWND(int(hwnd)), wintypes.DWORD(WDA_EXCLUDEFROMCAPTURE))
+            )
             return ok, int(previous.value)
-        ok = bool(self._user32.SetWindowDisplayAffinity(
-            wintypes.HWND(int(hwnd)), wintypes.DWORD(WDA_EXCLUDEFROMCAPTURE)))
+        ok = bool(
+            self._user32.SetWindowDisplayAffinity(wintypes.HWND(int(hwnd)), wintypes.DWORD(WDA_EXCLUDEFROMCAPTURE))
+        )
         return ok, 0
 
     def restore(self, hwnd: int, previous: int) -> None:
@@ -157,17 +174,25 @@ class _DisplayAffinity:
             if not memory:
                 return None
             try:
+
                 class BITMAPINFOHEADER(ctypes.Structure):
                     _fields_ = [
-                        ("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32),
-                        ("biHeight", ctypes.c_int32), ("biPlanes", ctypes.c_uint16),
-                        ("biBitCount", ctypes.c_uint16), ("biCompression", ctypes.c_uint32),
-                        ("biSizeImage", ctypes.c_uint32), ("biXPelsPerMeter", ctypes.c_int32),
-                        ("biYPelsPerMeter", ctypes.c_int32), ("biClrUsed", ctypes.c_uint32),
+                        ("biSize", ctypes.c_uint32),
+                        ("biWidth", ctypes.c_int32),
+                        ("biHeight", ctypes.c_int32),
+                        ("biPlanes", ctypes.c_uint16),
+                        ("biBitCount", ctypes.c_uint16),
+                        ("biCompression", ctypes.c_uint32),
+                        ("biSizeImage", ctypes.c_uint32),
+                        ("biXPelsPerMeter", ctypes.c_int32),
+                        ("biYPelsPerMeter", ctypes.c_int32),
+                        ("biClrUsed", ctypes.c_uint32),
                         ("biClrImportant", ctypes.c_uint32),
                     ]
+
                 class BITMAPINFO(ctypes.Structure):
                     _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", ctypes.c_uint32 * 3)]
+
                 bmi = BITMAPINFO()
                 bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
                 bmi.bmiHeader.biWidth = width
@@ -186,8 +211,14 @@ class _DisplayAffinity:
                     SRCCOPY = 0x00CC0020
                     CAPTUREBLT = 0x40000000
                     if not self._gdi32.BitBlt(
-                        memory, 0, 0, width, height, screen,
-                        int(rect.left) - monitor_offset_x, int(rect.top) - monitor_offset_y,
+                        memory,
+                        0,
+                        0,
+                        width,
+                        height,
+                        screen,
+                        int(rect.left) - monitor_offset_x,
+                        int(rect.top) - monitor_offset_y,
                         SRCCOPY | CAPTUREBLT,
                     ):
                         return None
@@ -221,6 +252,11 @@ class _FrameBuffer:
 # ── Helpers ────────────────────────────────────────────────────────────
 
 
-def _blur_downsample(width: int, height: int) -> tuple[int, int]:
-    factor = _HIGH_RES_BLUR_DOWNSAMPLE if width * height >= _HIGH_RES_PIXEL_THRESHOLD else _BACKEND_BLUR_DOWNSAMPLE
+def _blur_downsample(width: int, height: int, quality: str = "auto") -> tuple[int, int]:
+    if quality == "low":
+        factor = 0.15
+    elif quality == "high":
+        factor = 0.25
+    else:
+        factor = _HIGH_RES_BLUR_DOWNSAMPLE if width * height >= _HIGH_RES_PIXEL_THRESHOLD else _BACKEND_BLUR_DOWNSAMPLE
     return max(1, int(round(width * factor))), max(1, int(round(height * factor)))

@@ -118,17 +118,24 @@ class PopupWindowAnimationMixin:
         """窗口消失动画 - 从外向中心收缩"""
         host = cast(Any, self)
         stop_named_animations(host, "hide_anim_group")
+        if not window_animations(getattr(host, "settings", None)):
+            host._is_hiding = False
+            host._reveal_progress = 0.0
+            host.setWindowOpacity(1.0)
+            super().hide()
+            return
         generation = host._next_visibility_animation_generation()
         # 透明度动画
         host.hide_opacity_anim = QtCompat.QPropertyAnimation(host, b"windowOpacity")
-        host.hide_opacity_anim.setDuration(100)
+        hide_ms = int(L3Features.effective_animation_duration("DIALOG_CLOSE", getattr(host, "settings", None)))
+        host.hide_opacity_anim.setDuration(max(1, hide_ms))
         host.hide_opacity_anim.setStartValue(host.windowOpacity())
         host.hide_opacity_anim.setEndValue(0.0)
         host.hide_opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         # 收缩进度动画
         host.hide_reveal_anim = QtCompat.QPropertyAnimation(host, b"revealProgress")
-        host.hide_reveal_anim.setDuration(100)
+        host.hide_reveal_anim.setDuration(max(1, hide_ms))
         host.hide_reveal_anim.setStartValue(host._reveal_progress)
         host.hide_reveal_anim.setEndValue(0.0)
         host.hide_reveal_anim.setEasingCurve(QtCompat.OutCubic)

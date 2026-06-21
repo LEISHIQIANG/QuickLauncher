@@ -255,6 +255,7 @@ def get_favicon_cache_stats(data=None) -> dict:
         try:
             file_size = entry.stat().st_size
         except Exception:
+            logger.debug("Failed to stat cached file: %s", entry.path, exc_info=True)
             continue
 
         is_used = _normalize_path(entry.path) in used_paths
@@ -298,6 +299,7 @@ def clean_unused_favicon_cache(data, dry_run: bool = False) -> dict:
         try:
             file_size = entry.stat().st_size
         except Exception:
+            logger.debug("Failed to stat favicon file: %s", entry.path, exc_info=True)
             continue
 
         size_mb = file_size / (1024 * 1024)
@@ -305,6 +307,7 @@ def clean_unused_favicon_cache(data, dry_run: bool = False) -> dict:
             try:
                 os.remove(entry.path)
             except Exception:
+                logger.debug("Failed to remove favicon file: %s", entry.path, exc_info=True)
                 stats["failed"] += 1  # type: ignore[operator]
                 continue
 
@@ -369,6 +372,7 @@ def _is_usable_png(path: str) -> bool:
         with Image.open(path) as image:
             return image.size == (_CACHE_SIZE, _CACHE_SIZE) and _has_visible_pixels(image.convert("RGBA"))
     except Exception:
+        logger.debug("Failed to validate cached icon: %s", path, exc_info=True)
         return False
 
 
@@ -735,6 +739,7 @@ def _decode_data_url_bytes(data: bytes, content_type: str) -> tuple[bytes, str]:
             return b"", new_type
         return decoded, new_type
     except Exception:
+        logger.debug("Failed to parse favicon payload: %s", content_type, exc_info=True)
         return b"", content_type
 
 
@@ -941,6 +946,7 @@ def _parse_viewbox(svg: str) -> tuple[float, float, float, float] | None:
     try:
         return tuple(float(part) for part in match.groups())  # type: ignore[return-value]
     except Exception:
+        logger.debug("Failed to parse SVG dimension from: %s", match.group(0), exc_info=True)
         return None
 
 
@@ -960,6 +966,7 @@ def _has_visible_pixels(image) -> bool:
     try:
         return image.getchannel("A").getbbox() is not None
     except Exception:
+        logger.debug("Failed to check visible pixels in image", exc_info=True)
         return False
 
 

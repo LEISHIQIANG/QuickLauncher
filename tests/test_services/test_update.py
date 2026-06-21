@@ -260,21 +260,20 @@ class TestUpdateChecker:
         assert any(event == "check_validation_error" for event, _ in events)
 
     def test_state_file_uses_config_root_and_reads_legacy_path(self, tmp_path):
-        fake_manager = MagicMock()
-        fake_manager.app_dir = tmp_path / "config"
-        fake_manager.app_dir.mkdir()
-        legacy_dir = fake_manager.app_dir / "config"
+        config_root = tmp_path / "config"
+        config_root.mkdir()
+        legacy_dir = config_root / "config"
         legacy_dir.mkdir()
         legacy_file = legacy_dir / ".update_state.json"
         legacy_file.write_text('{"skipped_version": "9.9.9.9"}', encoding="utf-8")
 
-        with patch("core.data_manager.DataManager", return_value=fake_manager):
+        with patch("services.update.checker.config_dir", return_value=config_root):
             checker = UpdateChecker(UpdateConfig(check_interval_hours=0))
-            assert checker._get_state_file() == os.path.join(fake_manager.app_dir, ".update_state.json")
+            assert checker._get_state_file() == os.path.join(config_root, ".update_state.json")
             state = checker._load_state()
 
         assert state["skipped_version"] == "9.9.9.9"
-        assert (fake_manager.app_dir / ".update_state.json").exists()
+        assert (config_root / ".update_state.json").exists()
 
 
 class TestUpdateDownloader:

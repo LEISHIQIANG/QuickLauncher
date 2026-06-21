@@ -42,6 +42,7 @@ __all__ = [
     "elevation_profile",
     "glass_quality",
     "effective_animation_duration",
+    "resolved_elevation_level",
 ]
 
 
@@ -111,6 +112,8 @@ def elevation_profile(settings=None) -> str:
     * ``low``  — pins every platform to ``elev_1``
     * ``high`` — uses ``elev_2/3`` (1.7.0 has no ``elev_4`` yet)
     """
+    if is_low_end_mode(settings):
+        return "low"
     value = _resolve(
         lambda s: str(getattr(s, "elevation_profile", "auto") or "auto"),
         settings,
@@ -123,6 +126,8 @@ def elevation_profile(settings=None) -> str:
 
 def glass_quality(settings=None) -> str:
     """Return the glass quality profile: ``auto`` / ``low`` / ``high`` (5.5)."""
+    if is_low_end_mode(settings):
+        return "low"
     value = _resolve(
         lambda s: str(getattr(s, "glass_quality", "auto") or "auto"),
         settings,
@@ -131,6 +136,17 @@ def glass_quality(settings=None) -> str:
     if value not in ("auto", "low", "high"):
         return "auto"
     return value
+
+
+def resolved_elevation_level(base_level: int, settings=None, *, is_win10: bool = False) -> int:
+    """Resolve an elevation token level for the selected quality profile."""
+    base = max(0, min(3, int(base_level)))
+    profile = elevation_profile(settings)
+    if profile == "low" or is_win10:
+        return min(base, 1)
+    if profile == "high":
+        return min(3, max(2, base + 1))
+    return base
 
 
 def effective_animation_duration(
@@ -164,4 +180,5 @@ class L3Features:
     experimental_pixel_snap = staticmethod(experimental_pixel_snap)
     elevation_profile = staticmethod(elevation_profile)
     glass_quality = staticmethod(glass_quality)
+    resolved_elevation_level = staticmethod(resolved_elevation_level)
     effective_animation_duration = staticmethod(effective_animation_duration)

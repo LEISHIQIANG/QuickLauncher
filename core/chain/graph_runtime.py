@@ -20,6 +20,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from application.errors import UserCancelled
+
 from .graph_models import (
     ChainGraph,
     ChainNode,
@@ -248,7 +250,7 @@ class GraphExecutionContext:
         return time.time() - self.started_at
 
 
-class CancelledError(Exception):
+class CancelledError(UserCancelled):
     """Raised when execution is cancelled."""
 
     pass

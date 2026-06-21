@@ -1,7 +1,7 @@
 # QuickLauncher UI 样式架构优化报告
 
 > **基线版本:** QuickLauncher V1.6.3.6
-> **状态:** 全部 7 个 Step 已完成，架构改造已上线运行
+> **状态:** S1-S8 已完成；启动、渲染热路径和 L3 质量开关已落地
 > **核心原则：视觉零变化。所有 QSS 输出与原始逐字节匹配（38/38 验证通过）。**
 
 ---
@@ -111,14 +111,16 @@ Glassmorphism.get_action_button_style("dark", is_delete=True)
 | **S7 渲染热路径** | `repaint()` → `update()` 修复 3 处（icon_grid.py, safe_file_dialog.py） |
 | **S7 毛玻璃管线** | `glass_background.py` 1325→1035 行；拆出 `glass_types.py` (370行) |
 | **S7 高 DPI** | 修复 3 个窗口图标 `QPixmap(64,64)` → `QPixmap(sp(64), sp(64))` + `setDevicePixelRatio` |
+| **S7 启动性能** | 设置页按需创建、弹窗图标分批预热、毛玻璃四缓冲与质量分档已接入 |
+| **S7 局部重绘** | 搜索、悬浮、动画等高频路径改用脏矩形更新；圆角路径缓存并复用 |
+| **S8 L3 视觉质量** | 低性能模式、焦点环、微动效、窗口动画、像素对齐、动效倍率、阴影和毛玻璃质量均可配置并持久化 |
+| **Qt QSS 兼容性** | 清除 Qt 不支持的 `transition` 声明，避免无效样式和解析噪声 |
+| **视觉回归门禁** | 缺失基线、捕获失败和差异均返回失败，不再允许假绿 |
+| **插件架构收口** | PluginAPI、PluginManifest、PluginInfo 使用提取后的单一实现，移除重复实现 |
 
-### 3.2 待办项
+### 3.2 后续观察项
 
-| 工作 | 说明 | 难度 | 收益 |
-|---|---|---|---|
-| **S7 启动性能** | 主窗口 lazy load、毛玻璃占位背景、icons worker 化 | 中 | 首屏时间 |
-| **S7 渲染热路径深化** | `update()`→`update(rect)` 局部重绘、paintEvent `QPainterPath` 缓存 | 中 | 拖动 FPS |
-| **S8 L3 视觉灰度** | 像素对齐/focus ring/微动效/阴影升级/弹窗动画，Feature Flag 门控 | 低 | 精致度 |
+文档原列的 S7/S8 待办项均已完成。后续只需在真实设备上持续记录冷启动耗时、拖动帧时间和不同显卡下的毛玻璃降级命中率；这些属于运行数据观察，不再是本轮代码缺口。
 
 ### 3.3 设计决策说明
 
@@ -139,3 +141,6 @@ Glassmorphism.get_action_button_style("dark", is_delete=True)
 | 5 | StyleBuilder 使用方 ≥ 6 | ✅ | 所有组件模块 |
 | 6 | 38 样式输出零差异 | ✅ | 逐字节匹配 |
 | 7 | 32 测试全部通过 | ✅ | pytest |
+| 8 | UI 专项审计 | ✅ | paint、阴影、高 DPI、动画生命周期、定时器泄漏全部通过 |
+| 9 | mypy | ✅ | 0 errors |
+| 10 | 完整发布门禁 | ✅ | 8 段门禁全通过；4098 passed / 1 skipped，coverage ≥ 67% |

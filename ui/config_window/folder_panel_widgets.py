@@ -41,7 +41,6 @@ from qt_compat import (
     pyqtProperty,
 )
 from ui.styles.design_tokens import StatusScale, surface, text
-from ui.styles.style import get_dialog_stylesheet
 from ui.styles.managers import StyleManager
 from ui.utils.ui_scale import scale_qss, sp
 

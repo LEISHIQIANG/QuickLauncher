@@ -7,10 +7,14 @@ from __future__ import annotations
 import copy
 import logging
 import os
+from typing import TYPE_CHECKING
 
 from core import ShortcutItem, ShortcutType
 from core.i18n import tr
 from core.shortcut_icon_helpers import default_folder_icon_path, shortcut_uses_folder_icon
+
+if TYPE_CHECKING:
+    from .chain_dialog_step_card import StepCardWidget
 from qt_compat import (
     QCheckBox,
     QColor,
@@ -46,7 +50,6 @@ from .chain_dialog_bindings import ChainDialogBindingsMixin
 from .chain_dialog_close_animation import ChainDialogCloseAnimationMixin
 from .chain_dialog_module_bar import GrasshopperGroupWidget, make_module_button
 from .chain_dialog_risk import ChainDialogRiskMixin
-from .chain_dialog_step_card import StepCardWidget
 from .chain_dialog_test_runner import ChainDialogTestRunnerMixin
 from .icon_browse_helper import choose_custom_icon
 from .theme_helper import get_compact_checkbox_stylesheet, get_small_checkbox_stylesheet
@@ -1069,6 +1072,8 @@ class ChainDialog(
             name = getattr(target, "name", sid) if target else sid
             stype = getattr(target, "type", ShortcutType.FILE) if target else ShortcutType.FILE
             icon = self._load_step_icon(target)
+            from .chain_dialog_step_card import StepCardWidget
+
             card = StepCardWidget(i, step, name, stype, icon, parent=self._cards_container)
             card.clicked.connect(self._on_card_clicked)
             card.step_changed.connect(self._on_step_changed)
@@ -1095,6 +1100,8 @@ class ChainDialog(
         self._refresh_risk_analysis()
 
     def _find_card(self, index: int) -> StepCardWidget | None:
+        from .chain_dialog_step_card import StepCardWidget
+
         if not hasattr(self, "_cards_layout"):
             return None
         for i in range(self._cards_layout.count()):
@@ -1105,6 +1112,8 @@ class ChainDialog(
         return None
 
     def _update_selection(self):
+        from .chain_dialog_step_card import StepCardWidget
+
         for i in range(self._cards_layout.count()):
             item = self._cards_layout.itemAt(i)
             w = item.widget() if item else None

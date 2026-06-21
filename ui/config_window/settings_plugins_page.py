@@ -21,8 +21,8 @@ from qt_compat import (
     QWidget,
 )
 from ui.config_window.base_dialog import BaseDialog
-from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.managers import StyleManager
+from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
 from ui.tooltip_helper import install_tooltip
 from ui.utils.font_manager import get_font_css_with_size
@@ -883,8 +883,6 @@ class PluginCreateDialog(BaseDialog):
         self.setModal(True)
         self.setMinimumSize(sp(340), sp(320))
         self.theme = theme
-
-        from ui.styles.style import get_dialog_stylesheet
 
         StyleManager.apply_dialog_style(self, theme)
 

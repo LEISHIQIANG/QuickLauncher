@@ -42,9 +42,9 @@ def test_glass_settings_validation_clamps_native_parameters():
     assert result["glass_edge_opacity"] == 1.0
 
 
-def test_python_renderer_contract_has_versioned_triple_buffer_renderer():
+def test_python_renderer_contract_has_versioned_four_buffer_renderer():
     assert glass_background.GLASS_ABI_VERSION == 1
-    assert glass_background.BUFFER_COUNT == 3
+    assert glass_background.BUFFER_COUNT == 4
     assert glass_background.TARGET_FPS >= 1
     assert glass_background.WDA_EXCLUDEFROMCAPTURE == 0x11
 

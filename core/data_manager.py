@@ -22,6 +22,7 @@ from .config_services import (
     IconRepository,
     SaveScheduler,
 )
+from .config_state import ConfigState
 from .data_loader import DataLoader
 from .data_models import (
     AppData,
@@ -151,16 +152,12 @@ class DataManager:
 
         self._save_timer = None
         self._save_pending = False
-        self._save_lock = threading.RLock()
-        self._write_lock = threading.Lock()
         self._save_delay = 0.5  # Merge rapid consecutive saves within 500 ms.
-        self._batch_depth = 0
-        self._batch_dirty = False
-        self._batch_force_immediate = False
-        self._runtime_revision = 0
-        self._pending_history_action = "\u914d\u7f6e\u53d8\u66f4"
-        self._pending_history_summary = ""
-        self._suppress_next_history = False
+
+        # W2 stage A: shared coordination state owned by ConfigState.
+        self._config_state = ConfigState()
+        self._config_state.attach_to_host(self)
+
         self._last_saved_data_dict = None
         self._config_status = {"status": "unknown", "source": "", "issues": []}
         self._last_import_report = new_import_report()
@@ -187,6 +184,18 @@ class DataManager:
         self._attach_icon_repo_folder()
         set_language(getattr(self.data.settings, "language", "zh_CN"))
         self._last_saved_data_dict = self._main_data_dict()
+        # Publish ConfigLoaded event for downstream consumers.
+        try:
+            from application.events import ConfigLoaded, event_bus
+
+            event_bus.publish(
+                ConfigLoaded(
+                    version=self.data.version,
+                    schema_version=self.data.config_schema_version,
+                )
+            )
+        except Exception as exc:
+            logger.debug("ConfigLoaded event publish failed: %s", exc, exc_info=True)
         if repair_report.changed and self.data_file.exists():
             logger.info("Repaired config/data.json: %s", repair_report.to_dict())
             self._suppress_next_history = True
@@ -195,6 +204,124 @@ class DataManager:
     def get_runtime_revision(self) -> int:
         """Data manager."""
         return int(self._runtime_revision)
+
+    @property
+    def clock(self):
+        """Clock port adapter (lazy singleton)."""
+        clock = getattr(self, "_clock", None)
+        if clock is None:
+            from infrastructure.system_clock import system_clock
+
+            self._clock = system_clock
+            clock = system_clock
+        return clock
+
+    # ── ConfigState port properties (W2 stage B: read-only routing) ──
+
+    @property
+    def save_lock(self):
+        """Shared re-entrant lock for save coordination (ConfigStatePort)."""
+        return self._save_lock
+
+    @property
+    def write_lock(self):
+        """Shared exclusive lock for write serialization (ConfigStatePort)."""
+        return self._write_lock
+
+    @property
+    def runtime_revision(self) -> int:
+        """Monotonic revision counter incremented on each save (ConfigStatePort)."""
+        return int(self._runtime_revision)
+
+    @property
+    def batch_depth(self) -> int:
+        """Nesting depth of the batch-write context (ConfigStatePort)."""
+        return int(self._batch_depth)
+
+    @property
+    def batch_dirty(self) -> bool:
+        """Whether the batch has pending modifications (ConfigStatePort)."""
+        return bool(self._batch_dirty)
+
+    @property
+    def batch_force_immediate(self) -> bool:
+        """Whether to force the next save immediately (ConfigStatePort)."""
+        return bool(self._batch_force_immediate)
+
+    @property
+    def pending_history_action(self) -> str:
+        """Pending history annotation for the next save (ConfigStatePort)."""
+        return str(self._pending_history_action)
+
+    @property
+    def pending_history_summary(self) -> str:
+        """Pending history summary for the next save (ConfigStatePort)."""
+        return str(self._pending_history_summary)
+
+    @property
+    def suppress_next_history(self) -> bool:
+        """Whether to skip history recording on next save (ConfigStatePort)."""
+        return bool(self._suppress_next_history)
+
+    @property
+    def deleted_system_ids(self) -> set[str]:
+        """Set of icon-repo system IDs deleted in this session (ConfigStatePort)."""
+        return self._deleted_system_ids
+
+    @property
+    def state_store(self):
+        """StateStore backed by loaded AppData (lazy singleton).
+
+        Provides revision-gated atomic state updates via
+        :class:`application.state.store.StateStore`.
+        """
+        store = getattr(self, "_state_store", None)
+        if store is None:
+            from application.state.store import StateStore
+
+            store = StateStore(
+                self._main_data_dict() if self.data is not None else {},
+                revision=self._runtime_revision,
+            )
+            self._state_store = store
+        return store
+
+    @property
+    def config_repository(self):
+        """ConfigRepository port adapter (lazy singleton)."""
+        repo = getattr(self, "_config_repo", None)
+        if repo is None:
+            from infrastructure.persistence.adapters import ConfigRepositoryAdapter
+
+            repo = ConfigRepositoryAdapter(self._get_config_store())
+            self._config_repo = repo
+        return repo
+
+    @property
+    def backup_store(self):
+        """BackupStore port adapter (lazy singleton)."""
+        store = getattr(self, "_backup_store", None)
+        if store is None:
+            from infrastructure.persistence.adapters import BackupStoreAdapter
+
+            store = BackupStoreAdapter(self._get_backup_service(), self.data_file)
+            self._backup_store = store
+        return store
+
+    @property
+    def history_store(self):
+        """HistoryStore port adapter (lazy singleton)."""
+        store = getattr(self, "_history_store", None)
+        if store is None:
+            from infrastructure.persistence.adapters import HistoryStoreAdapter
+
+            history_manager = getattr(self, "history_manager", None)
+            if history_manager is None:
+                history_manager = ConfigHistoryManager(self.history_dir, self._max_history_snapshots)
+                self.history_manager = history_manager
+            store = HistoryStoreAdapter(history_manager)
+            self._history_store = store
+        return store
 
     def _ensure_dirs(self):
         """Data manager."""
@@ -282,7 +409,23 @@ class DataManager:
     def _get_save_coordinator(self) -> SaveCoordinator:
         service = getattr(self, "save_coordinator", None)
         if service is None:
-            service = SaveCoordinator(self)
+            state = getattr(self, "_config_state", None)
+            if state is None:
+                state = ConfigState(
+                    save_lock=getattr(self, "_save_lock", threading.RLock()),
+                    write_lock=getattr(self, "_write_lock", threading.Lock()),
+                    runtime_revision=int(getattr(self, "_runtime_revision", 0)),
+                    batch_depth=int(getattr(self, "_batch_depth", 0)),
+                    batch_dirty=bool(getattr(self, "_batch_dirty", False)),
+                    batch_force_immediate=bool(getattr(self, "_batch_force_immediate", False)),
+                    pending_history_action=str(getattr(self, "_pending_history_action", "配置变更")),
+                    pending_history_summary=str(getattr(self, "_pending_history_summary", "")),
+                    suppress_next_history=bool(getattr(self, "_suppress_next_history", False)),
+                    deleted_system_ids=set(getattr(self, "_deleted_system_ids", set())),
+                )
+                self._config_state = state
+                state.attach_to_host(self)
+            service = SaveCoordinator(self, state=state)
             self.save_coordinator = service
         return service
 

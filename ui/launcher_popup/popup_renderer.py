@@ -1266,7 +1266,7 @@ class PopupRendererMixin:
 
             card_size = icon_size + card_pad * 2
             card_x = x + (cell_size - card_size) // 2
-            card_y = y - card_pad
+            card_y = y - card_pad - sp(1)
 
             # ===== 绘制背景 =====
             if i == self._drag_dock_hover_index:  # type: ignore[attr-defined]

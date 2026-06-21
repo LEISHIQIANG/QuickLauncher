@@ -98,7 +98,15 @@ class ConfigState:
         For now the dataclass is the single source of truth; direct writes
         to ``dm._batch_dirty`` from service code are converted in stage C.
         """
-        # Bind legacy names to the same lock / set instances.
         host._save_lock = self.save_lock
         host._write_lock = self.write_lock
         host._deleted_system_ids = self.deleted_system_ids
+        # Stage A bridge: immutable primitives are copied at init time.
+        # Stage C will add host properties that sync back to ConfigState.
+        host._batch_depth = int(self.batch_depth)
+        host._batch_dirty = bool(self.batch_dirty)
+        host._batch_force_immediate = bool(self.batch_force_immediate)
+        host._runtime_revision = int(self.runtime_revision)
+        host._pending_history_action = str(self.pending_history_action)
+        host._pending_history_summary = str(self.pending_history_summary)
+        host._suppress_next_history = bool(self.suppress_next_history)

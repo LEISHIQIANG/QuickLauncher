@@ -3,11 +3,10 @@
 提供跟随主题的 QMessageBox 替代品
 """
 
-# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
-#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 import sys
+from functools import lru_cache
 
 from core.i18n import tr
 from hooks.hook_pause import mouse_hook_paused
@@ -28,17 +27,31 @@ from qt_compat import (
     QWidget,
 )
 from runtime_paths import app_root
+from ui.styles.managers import StyleManager
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
-from ui.utils.pixel_snap import make_cosmetic_pen
+from ui.utils.pixel_snap import device_pixel_ratio, make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
-from .style import get_dialog_stylesheet
 from .window_chrome import apply_custom_window_chrome
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=32)
+def _rounded_surface_path(width: int, height: int, radius: int, inset: float) -> QPainterPath:
+    path = QPainterPath()
+    path.addRoundedRect(
+        inset,
+        inset,
+        width - inset * 2,
+        height - inset * 2,
+        radius,
+        radius,
+    )
+    return path
 
 
 def _execute_native_message_box(parent, title, text, icon_type, buttons) -> int:
@@ -234,7 +247,11 @@ class ThemedMessageBox(QDialog):
         pixmap = QPixmap(path)
         if pixmap.isNull():
             return pixmap
-        return pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        dpr = device_pixel_ratio()
+        physical_size = max(1, int(round(size * dpr)))
+        scaled = pixmap.scaled(physical_size, physical_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        scaled.setDevicePixelRatio(dpr)
+        return scaled
 
     @classmethod
     def _get_icon_path(cls, icon_type):
@@ -306,8 +323,9 @@ class ThemedMessageBox(QDialog):
         if self._title_label is not None:
             self._title_label.setFont(get_qfont(13, 400))
 
-    def paintEvent(self, event):  # noqa: paint_perf
+    def paintEvent(self, event):  # noqa: N802 (Qt override)
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
+        # noqa: paint_perf - rounded path is cached; render hints are painter-local state.
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
@@ -319,15 +337,7 @@ class ThemedMessageBox(QDialog):
 
             inset = 1.0 if is_win10() else 0.5
 
-            path = QPainterPath()
-            path.addRoundedRect(
-                inset,
-                inset,
-                self.width() - inset * 2,
-                self.height() - inset * 2,
-                self.corner_radius,
-                self.corner_radius,
-            )
+            path = _rounded_surface_path(self.width(), self.height(), self.corner_radius, inset)
 
             # 磨砂玻璃模式：与RoundedWindow完全一致
             tint_color = QColor(self.bg_color)
@@ -565,8 +575,6 @@ class ThemedInputDialog(QDialog):
         theme = ThemedMessageBox._detect_theme(self)
         self._theme = theme
 
-        from .style import get_dialog_stylesheet
-
         StyleManager.apply_dialog_style(self, theme)
 
         if theme == "dark":
@@ -580,8 +588,9 @@ class ThemedInputDialog(QDialog):
         if self._title_label is not None:
             self._title_label.setFont(get_qfont(13, 400))
 
-    def paintEvent(self, event):  # noqa: paint_perf
+    def paintEvent(self, event):  # noqa: N802 (Qt override)
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
+        # noqa: paint_perf - rounded path is cached; render hints are painter-local state.
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
@@ -593,15 +602,7 @@ class ThemedInputDialog(QDialog):
 
             inset = 1.0 if is_win10() else 0.5
 
-            path = QPainterPath()
-            path.addRoundedRect(
-                inset,
-                inset,
-                self.width() - inset * 2,
-                self.height() - inset * 2,
-                self.corner_radius,
-                self.corner_radius,
-            )
+            path = _rounded_surface_path(self.width(), self.height(), self.corner_radius, inset)
 
             # 磨砂玻璃模式：与RoundedWindow完全一致
             tint_color = QColor(self.bg_color)

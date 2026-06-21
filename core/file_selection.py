@@ -23,6 +23,7 @@ try:
         _window_selection_kind,
     )
 except Exception:  # noqa: BLE001
+    logger.debug("Failed to import window_detection", exc_info=True)
     HAS_WIN32_SHELL = False
 
 
@@ -32,6 +33,7 @@ def _selected_item_paths(selected_items) -> list[str]:
     try:
         count = selected_items.Count
     except Exception:
+        logger.debug("Failed to get SelectedItems count", exc_info=True)
         return paths
     for i in range(count):
         try:
@@ -39,6 +41,7 @@ def _selected_item_paths(selected_items) -> list[str]:
             if path:
                 paths.append(path)
         except Exception:
+            logger.debug("Failed to get path for item %s", i, exc_info=True)
             continue
     return paths
 
@@ -81,6 +84,7 @@ def get_selected_files_for_process() -> list[str]:
                         selected_items = w.Document.SelectedItems()
                         return _selected_item_paths(selected_items)
                 except Exception:
+                    logger.debug("Failed to inspect Explorer window", exc_info=True)
                     continue
         finally:
             pythoncom.CoUninitialize()

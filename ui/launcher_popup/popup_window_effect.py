@@ -500,7 +500,7 @@ class PopupLayoutMixin:
 
         # 最小边界安全距离：sp(4) ≈ 2px（@ 100% scale）
         # 用户偏好弹窗紧贴屏幕边缘，不再使用 sp(20) 那种大间距
-        edge_inset = sp(4)
+        edge_inset = sp(2)
         screen = pick_best_screen_for_popup(
             int(x),
             int(y),
@@ -523,9 +523,9 @@ class PopupLayoutMixin:
             left = work_area.center().x() - window_width // 2
             top = work_area.center().y() - window_height // 2
         elif align_mode == "bottom_right":
-            # bottom_right 模式保留 sp(8) 的边距（用户明确设置的 corner inset）
-            left = work_area.right() - window_width - sp(8)
-            top = work_area.bottom() - window_height - sp(8)
+            # bottom_right 模式保留稍大的 10px corner inset。
+            left = work_area.right() - window_width - sp(10)
+            top = work_area.bottom() - window_height - sp(10)
         elif align_mode == "mouse_top_left":
             left = lx
             top = ly

@@ -650,9 +650,9 @@ def register(api):
             assert os.path.exists(os.path.join(tmp, ".config", "plugin_errors.jsonl"))
 
     def test_plugin_command_timeout_returns_without_waiting_for_handler(self, monkeypatch):
-        import core.plugin_manager as plugin_manager
+        import core.plugin.host_api as host_api
 
-        monkeypatch.setattr(plugin_manager, "PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(host_api, "PLUGIN_COMMAND_SOFT_TIMEOUT_SECONDS", 0.01)
         with tempfile.TemporaryDirectory() as tmp:
             _create_plugin_dir(tmp, "timeout_plugin", main_py=_SAMPLE_MAIN_COMMAND_TIMEOUT)
             reg = CommandRegistry()
@@ -1090,7 +1090,7 @@ class TestPluginAPI:
             def getcode(self):
                 return 200
 
-        monkeypatch.setattr("core.plugin_manager.safe_urlopen", lambda request, timeout: FakeResponse())
+        monkeypatch.setattr("core.plugin.host_api.safe_urlopen", lambda request, timeout: FakeResponse())
         api = PluginAPI("test", ".", ["network.request"], CommandRegistry())
 
         response = api.http_request("https://example.com/api", headers={"X-Test": "1"})
