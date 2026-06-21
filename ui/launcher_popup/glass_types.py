@@ -208,8 +208,6 @@ class _DisplayAffinity:
 class _FrameBuffer:
     """Triple-buffer slot for a single premultiplied BGRA frame."""
 
-    __slots__ = ("_lock", "_generation", "_image", "_width", "_height")
-
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._generation = 0
