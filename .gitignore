@@ -70,10 +70,10 @@ dmypy.json
 bandit-report.json
 
 # 不需要上传的文件
-config/
-dist/
-docs/
-docs/_drafts/
+/config/
+/dist/
+/docs/
+/docs/_drafts/
 temp_icons/
 icons/
 nuitka-crash-report.xml
