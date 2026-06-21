@@ -94,18 +94,24 @@ Glassmorphism.get_action_button_style("dark", is_delete=True)
 
 ---
 
-## 三、遗留工作
+## 三、已完成与遗留工作
 
-### 3.1 后续可优化项（非破坏性）
+### 3.1 已完成（追加）
+
+| 工作 | 完成情况 |
+|---|---|
+| **S6 动画系统统一** | `animations.py` API 包含 fade_in/fade_out/scale_in/slide_in/chain/parallel/cancel_all；`DisposableWidget` 已在 `popup_window.py` 作为 Mixin 使用；`DisposableAnimation` 可用 |
+| **S6 缓存策略** | `lru_cache.py` + `pixmap_cache` 已实现并在 8 个模块中使用（popup_icons/batch_launch/renderer/search 等） |
+| **S7 渲染热路径** | `repaint()` → `update()` 修复 3 处（icon_grid.py, safe_file_dialog.py） |
+| **S7 毛玻璃管线** | `glass_background.py` 1325→1035 行，拆出 `glass_types.py` (370行)：ctypes 结构体、_FrameBuffer、_DisplayAffinity、常量分离 |
+
+### 3.2 待办项
 
 | 工作 | 说明 | 难度 | 收益 |
 |---|---|---|---|
-| **S6 动画系统统一** | `animations.py` API 就绪但 0 业务组件使用；Owner-Disposable 模式待接入 | 中 | 动画生命周期安全 |
-| **S6 缓存策略** | LRU 装饰器未实现；缩略图/QPainterPath/QPixmap 可缓存 | 低 | 滚动/拖动流畅度 |
-| **S7 渲染热路径** | `update()`→`update(rect)` 局部重绘；paintEvent 中 `QPainterPath` 缓存 | 中 | 拖动 FPS |
-| **S7 毛玻璃管线** | `glass_background.py` 1227 行待拆分 + 四缓冲 + downsample 自适应 | 高 | 4K 屏 FPS |
 | **S7 启动性能** | 主窗口 lazy load、毛玻璃占位背景、icons worker 化 | 中 | 首屏时间 |
 | **S7 高 DPI** | 图标 `setDevicePixelRatio`、`QPixmap` 缩放 | 低 | 4K 清晰度 |
+| **S7 渲染热路径深化** | `update()`→`update(rect)` 局部重绘、paintEvent `QPainterPath` 缓存 | 中 | 拖动 FPS |
 | **S8 L3 视觉灰度** | 像素对齐/focus ring/微动效/阴影升级/弹窗动画，Feature Flag 门控 | 低 | 精致度 |
 
 ### 3.2 设计决策说明
