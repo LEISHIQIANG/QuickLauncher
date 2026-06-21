@@ -492,5 +492,5 @@ def apply_theme_to_dialog(dialog, theme: str):
         dialog_extra = get_dialog_stylesheet(theme)
         dialog.setStyleSheet(glassmorphism_style + dialog_extra)
     except ImportError:
-        # 回退到基础样式
-        dialog.setStyleSheet(get_dialog_stylesheet(theme))
+        from ui.styles.managers import StyleManager
+        StyleManager.apply_dialog_style(dialog, theme)
