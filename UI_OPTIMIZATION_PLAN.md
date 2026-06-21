@@ -78,19 +78,23 @@ Glassmorphism.get_action_button_style("dark", is_delete=True)
 | **StyleManager** | 不存在 | `managers/style_manager.py` 统一入口 |
 | **样式输出** | 无验证 | 38 个方法逐字节匹配 |
 
-### 文件行数对比
+### 文件行数对比（截至 2026-06-21）
 
 | 文件 | 改造前 | 改造后 | 变化 |
 |---|---|---|---|
-| `glassmorphism.py` | 883 | 88 | -795 |
-| `style_sheet.py` | 470 | 30 | -440 |
+| `glassmorphism.py` | 883 | 80 | -803 |
+| `style_sheet.py` | 470 | 40 | -430 |
 | `_colors.py` | 88 | 0 (已删) | -88 |
-| `_public_functions.py` | 207 | 42 | -165 |
+| `_public_functions.py` | 207 | 45 | -162 |
 | `style.py` | 44 | 27 | -17 |
-| `design_tokens.py` | 477 | 544 | +67 |
-| `builders/__init__.py` | 119 | 131 | +12 |
-| **新文件** | 0 | ~950 (qss/ + managers/) | +950 |
-| **合计** | ~2288 | ~1812 | **-476 净减少** |
+| `_init__.py` | 25 | 23 | -2 |
+| `design_tokens.py` | 477 | 517 | +40 |
+| `builders/__init__.py` | 119 | 120 | +1 |
+| **qss/ 子模块 (12 文件)** | 0 | 1543 | +1543 |
+| **managers/ (2 文件)** | 0 | 109 | +109 |
+| **合计** | ~2288 | ~2504 | **+216** |
+
+> 注：合计增加是因为 qss/ 模块将原 facade 文件中的内联 QSS + 组件 token 单独提取为新文件，功能等价，代码量增加属于正常的模块化代价。架构整洁度收益远大于行数增长。
 
 ---
 
