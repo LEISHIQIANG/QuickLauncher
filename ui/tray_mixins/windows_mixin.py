@@ -2,9 +2,15 @@
 各窗口的 show 方法。
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ui.command_panel_window import CommandPanelWindow
 
 logger = logging.getLogger(__name__)
 
@@ -374,7 +380,7 @@ class WindowsMixin:
 
     def _load_command_panel_content(
         self,
-        window,
+        window: CommandPanelWindow,
         generation: int,
         *,
         command_id="",
@@ -410,7 +416,7 @@ class WindowsMixin:
         except Exception as exc:
             logger.error("加载命令面板动态内容失败: %s", exc, exc_info=True)
 
-    def _present_command_panel_window(self, window):
+    def _present_command_panel_window(self, window: CommandPanelWindow):
         """Show the current command panel only after its first layout is ready."""
         if window is not getattr(self, "command_panel_window", None):
             return
