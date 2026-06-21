@@ -365,18 +365,15 @@ def test_command_panel_shows_distinct_status_and_renames_history(qapp):
         "完成": ("完成", "success"),
         "失败": ("失败", "failure"),
     }
-    styles = set()
-    for state, (label, kind) in expected.items():
+    for state, (_label, kind) in expected.items():
         win._update_subtitle(state)
-        assert not win.status_badge.isHidden()
-        assert win.status_label.text() == label
-        assert win.status_label.property("status_kind") == kind
+        assert not win.status_indicator.isHidden()
         assert win.status_indicator.is_ripple_active() is (kind == "running")
-        styles.add(win.status_badge.styleSheet())
 
     win._refresh_history()
 
-    assert len(styles) == 3
+    win._refresh_history()
+
     assert win.history_toggle_btn.text() == ""
     assert win.history_toggle_btn.toolTip() == "最近命令"
 
@@ -393,8 +390,8 @@ def test_showing_failed_stored_result_keeps_failure_status(qapp):
 
     win.show_result(result_id)
 
-    assert win.status_label.text() == "失败"
-    assert win.status_label.property("status_kind") == "failure"
+    assert not win.status_indicator.isHidden()
+    assert win.status_indicator.is_ripple_active() is False
 
 
 def test_payload_window_size_overrides_definition_default(qapp):

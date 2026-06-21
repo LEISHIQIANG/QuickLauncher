@@ -21,7 +21,6 @@ from qt_compat import (
     QVBoxLayout,
 )
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import surface as token_surface
 from ui.styles.style import Glassmorphism
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -165,11 +164,13 @@ class WelcomeGuide(QDialog):
 
     def _apply_theme(self, theme: str):
         self.theme = theme
+        from ui.styles.design_tokens import surface_platform
+
         if theme == "dark":
-            self.bg_color = token_surface(theme, "bg_glass_dark_win10")
+            self.bg_color = surface_platform(theme, "bg_glass_dark")
             self.border_color = token_border(theme, "subtle_dark")
         else:
-            self.bg_color = token_surface(theme, "bg_glass_light_win10")
+            self.bg_color = surface_platform(theme, "bg_glass_light")
             self.border_color = token_border(theme, "subtle_light")
 
         # 使用 Glassmorphism 样式

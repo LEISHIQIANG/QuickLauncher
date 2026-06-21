@@ -22,7 +22,6 @@ from qt_compat import (
 )
 from ui.styles.design_tokens import StatusScale
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import surface as token_surface
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont
 from ui.utils.pixel_snap import make_cosmetic_pen
@@ -106,10 +105,14 @@ class ToastNotification(QWidget):
                 # 错误状态边框色：浅粉红 + alpha 180，与基线完全一致
                 border_color = QColor(255, 205, 210, 180)
             elif self._theme == "dark":
-                bg_color = token_surface(self._theme, "bg_glass_dark_win10")
+                from ui.styles.design_tokens import surface_platform
+
+                bg_color = surface_platform(self._theme, "bg_glass_dark")
                 border_color = token_border(self._theme, "subtle_dark")
             else:
-                bg_color = token_surface(self._theme, "bg_glass_light_win10")
+                from ui.styles.design_tokens import surface_platform
+
+                bg_color = surface_platform(self._theme, "bg_glass_light")
                 border_color = token_border(self._theme, "subtle_light")
 
             if is_win10():

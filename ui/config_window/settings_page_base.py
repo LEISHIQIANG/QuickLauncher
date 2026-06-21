@@ -1,7 +1,7 @@
 """Base settings page — extracted from settings_panel (per §4.7)."""
 
-# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
-#            honours devicePixelRatio at the paint-time context.
+# NOTE: pixmap_dpi — QPixmap constructed locally; drawn via painter that
+#       honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import logging

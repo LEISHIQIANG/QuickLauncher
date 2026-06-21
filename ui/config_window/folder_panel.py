@@ -36,7 +36,6 @@ from qt_compat import (
 )
 from runtime_paths import app_root
 from ui.styles.design_tokens import StatusScale, elevation
-from ui.styles.l3_features import resolved_elevation_level
 from ui.styles.style import PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.pixel_snap import create_pixmap
@@ -225,9 +224,7 @@ class FolderPanel(QWidget):
 
         shadow = QGraphicsDropShadowEffect()
         win10 = is_win10()
-        settings = self.data_manager.get_settings()
-        level = resolved_elevation_level(1, settings, is_win10=win10)
-        offset_y, blur_r, shadow_color = elevation(level, is_win10=win10)
+        offset_y, blur_r, shadow_color = elevation(1, is_win10=win10)
         shadow.setBlurRadius(blur_r)
         shadow.setOffset(0, offset_y)
         shadow.setColor(shadow_color)

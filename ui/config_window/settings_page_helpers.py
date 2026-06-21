@@ -1,7 +1,5 @@
 """Shared settings page helpers."""
 
-import sys
-
 from core.i18n import is_chinese, tr
 from qt_compat import (
     QLabel,
@@ -44,14 +42,27 @@ class SettingsPageHelpersMixin:
         return spinbox
 
     def _is_win11(self) -> bool:
+        """Check whether the current host is Windows 11 (build >= 22000).
+
+        Uses the canonical :func:`ui.utils.window_effect.is_win11` which reads
+        the true OS build via ``RtlGetVersion`` (unaffected by compatibility
+        manifests) and caches the result process-wide.
+        """
         try:
-            return sys.getwindowsversion().build >= 22000
+            from ui.utils.window_effect import is_win11 as _canonical_is_win11
+
+            return bool(_canonical_is_win11())
         except Exception:
             return False
 
     def _is_win10(self) -> bool:
+        """Check whether the current host is Windows 10 (build < 22000).
+
+        See :meth:`_is_win11` for the rationale of using the canonical helper.
+        """
         try:
-            v = sys.getwindowsversion()
-            return v.major == 10 and v.build < 22000
+            from ui.utils.window_effect import is_win10 as _canonical_is_win10
+
+            return bool(_canonical_is_win10())
         except Exception:
             return False

@@ -29,9 +29,7 @@ from qt_compat import (
 )
 from runtime_paths import app_root
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import selection_bg_qss, selection_text_qss
-from ui.styles.design_tokens import surface as token_surface
-from ui.styles.l3_features import show_focus_ring as l3_show_focus_ring
+from ui.styles.design_tokens import selection_bg_qss, selection_text_qss, surface_platform
 from ui.styles.style import StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -373,10 +371,10 @@ class _ThemedToolWindowBase:
 
             radius = sp(8)
             if self._theme == "dark":
-                bg = token_surface(self._theme, "bg_glass_dark_win10")
+                bg = surface_platform(self._theme, "bg_glass_dark")
                 border = token_border(self._theme, "subtle_dark")
             else:
-                bg = token_surface(self._theme, "bg_glass_light_win10")
+                bg = surface_platform(self._theme, "bg_glass_light")
                 border = token_border(self._theme, "subtle_light")
 
             if is_win10():
@@ -402,28 +400,6 @@ class _ThemedToolWindowBase:
             # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
             painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
-
-            # L3 §5.2 — Focus Ring: 键盘焦点时在 rounded 路径上画 1px 圆角高亮环
-            try:
-                from ui.styles.design_tokens import BorderScale
-
-                if l3_show_focus_ring(getattr(self, "_settings", None)) and self.hasFocus():
-                    ring_color = QColor(BorderScale.focus_dark) if self._theme == "dark" else QColor(BorderScale.focus)
-                    ring_pen = make_cosmetic_pen(ring_color, 1)
-                    painter.setPen(ring_pen)
-                    painter.setBrush(QtCompat.NoBrush)
-                    ring_path = QPainterPath()
-                    ring_path.addRoundedRect(
-                        spf(1.0),
-                        spf(1.0),
-                        self.width() - spf(2.0),
-                        self.height() - spf(2.0),
-                        sp(8),
-                        sp(8),
-                    )
-                    painter.drawPath(ring_path)
-            except Exception as exc:  # pragma: no cover
-                logger.debug("L3 焦点环绘制失败: %s", exc, exc_info=True)
         finally:
             painter.end()
 

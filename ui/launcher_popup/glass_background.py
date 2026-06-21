@@ -34,7 +34,6 @@ from ui.launcher_popup.glass_types import (
     _FrameBuffer,
     _Rect,
 )
-from ui.styles.l3_features import glass_quality
 from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
@@ -467,7 +466,7 @@ def _build_config(
         "blur_radius": float(sp(blur_radius_setting) * scale),
         "saturation": 2.5,
         "corner_radius": float(sp(corner_radius_setting) * scale),
-        "glass_quality": glass_quality(settings),
+        "glass_quality": "auto",
         "inset_left": margin,
         "inset_top": margin + top_inset,
         "inset_right": margin,

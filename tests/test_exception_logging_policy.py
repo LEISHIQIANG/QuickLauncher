@@ -8,6 +8,7 @@ SKIP_PARTS = {
     ".pytest_cache",
     ".ruff_cache",
     ".venv",
+    ".venv312",
     "venv",
     "__pycache__",
     "plugins",

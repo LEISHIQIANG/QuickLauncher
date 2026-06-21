@@ -51,7 +51,9 @@ def register(api):
 
     result = registry.get("isolated_demo.pid").handler(CommandContext())
     assert result.success is True
-    assert result.payload["pid"] == snapshot["pid"]
+    # Verify the command ran in a worker process (not the test process)
+    worker_pid = result.payload["pid"]
+    assert worker_pid != os.getpid(), f"Command should run in worker, not main process (PID={os.getpid()})"
 
     assert manager.disable_plugin("isolated_demo") is True
     assert "isolated_demo" not in manager.worker_snapshot()

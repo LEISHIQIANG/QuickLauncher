@@ -23,6 +23,9 @@ except ImportError:
 class PopupItemExecutionMixin:
     """Execute shortcut items: commands, URLs, files, with command panel v2 support."""
 
+    _executing: bool
+    search_query: str
+
     def _get_popup_execution_service(self):
         """Return a process-wide shared :class:`CommandExecutionService`.
 
@@ -69,7 +72,7 @@ class PopupItemExecutionMixin:
 
     def _execute_item(self, item: ShortcutItem, force_new: bool = False):
         """执行项目"""
-        if self._executing:  # type: ignore[has-type]
+        if self._executing:
             return
 
         if self._should_wait_for_selection(item, force_new):

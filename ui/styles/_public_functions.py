@@ -30,11 +30,4 @@ def get_dialog_stylesheet(theme: str, settings=None) -> str:
 def get_button_stylesheet(theme: str, settings=None) -> str:
     """获取按钮样式表"""
     base = _get_plain_button(theme)
-    try:
-        from ui.styles.l3_features import micro_animations
-
-        if not micro_animations(settings):
-            return scale_qss(base)
-    except Exception as exc:
-        logger.debug("L3 micro-animations suffix failed: %s", exc, exc_info=True)
     return scale_qss(base)

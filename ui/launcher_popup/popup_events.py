@@ -30,6 +30,8 @@ _LAST_PAGE_INDEX_SAVE_DELAY_MS = 450
 class PopupEventsMixin:
     """Mouse, keyboard, wheel events, page switching, and auto-close."""
 
+    _page_anim_last_ts: float
+
     def _get_event_pos(self, event):
         """获取事件位置"""
         if hasattr(event, "position"):

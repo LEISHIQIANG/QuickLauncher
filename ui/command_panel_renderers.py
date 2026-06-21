@@ -338,8 +338,6 @@ def render_actions(panel: CommandPanelWindow, result: CommandResult) -> None:
         btn.clicked.connect(lambda _checked=False, a=action: panel._execute_action(a))
         btn.show()
     panel.more_btn.setVisible(extra_count > 1)
-    panel.copy_btn.setEnabled(bool(panel._rendered_text))
-    panel.save_btn.setEnabled(bool(panel._rendered_text))
     panel._relayout_footer_buttons()
 
 

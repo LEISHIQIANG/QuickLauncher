@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class PopupDragDropMixin:
+    _executing: bool
+
     def dragEnterEvent(self, event):
         """拖拽进入事件"""
         mime_data = event.mimeData()
@@ -188,7 +190,7 @@ class PopupDragDropMixin:
 
     def _execute_drop(self, item: ShortcutItem, files: list):
         """执行拖放打开操作"""
-        if self._executing:  # type: ignore[has-type]
+        if self._executing:
             return
 
         self._executing = True

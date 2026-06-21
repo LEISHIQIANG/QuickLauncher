@@ -17,6 +17,24 @@ exclude = [
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP"]
 ignore = ["E501", "B905"]
+external = [
+    "BLE001",
+    "D401",
+    "E731",
+    "F811",
+    "F821",
+    "N802",
+    "N814",
+    "PG001",
+    "S102",
+    "S110",
+    "S324",
+    "SIM115",
+    "SLF001",
+    "paint_event",
+    "paint_perf",
+    "pixmap_dpi",
+]
 
 [tool.coverage.run]
 source = ["core", "ui", "hooks", "bootstrap", "services"]

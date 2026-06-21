@@ -97,3 +97,7 @@ _test_update_dialog.py
 发布体积优化.md
 架构优化.md
 tmp/
+
+# WorkBuddy 本地数据
+.workbuddy/
+debug_crash.log

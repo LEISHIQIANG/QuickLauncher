@@ -14,15 +14,6 @@ logger = logging.getLogger(__name__)
 def get_dialog_stylesheet(theme: str, settings=None) -> str:
     """Return complete dialog QSS — base + each component in original order."""
 
-    def _noop_focus(_s=None):
-        return False
-
-    try:
-        from ui.styles.l3_features import show_focus_ring as _sfr
-    except Exception:
-        _sfr = _noop_focus
-    show_focus_ring = _sfr
-
     font_family = get_font_css().removeprefix("font-family: ").removesuffix(";")
     text_primary = "#FFFFFF" if theme == "dark" else "#1C1C1E"
     text_secondary = "#8E8E93"
@@ -87,10 +78,9 @@ def get_dialog_stylesheet(theme: str, settings=None) -> str:
 
     focus_qss = ""
     try:
-        if show_focus_ring(settings):
-            from ui.styles.focus_ring import focus_ring_qss
+        from ui.styles.focus_ring import focus_ring_qss
 
-            focus_qss = focus_ring_qss(theme)
+        focus_qss = focus_ring_qss(theme)
     except Exception as exc:
         logger.debug("Focus ring QSS load failed: %s", exc, exc_info=True)
 

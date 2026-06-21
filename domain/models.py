@@ -299,16 +299,6 @@ class AppSettings:
     # UI 全局缩放百分比 (独立于 Windows/Qt DPI)
     ui_scale_percent: int = 100
 
-    # L3 视觉与流畅度设置 (W6.3 L3 optimization fields)
-    low_end_mode: bool = False
-    motion_scale: float = 1.0
-    show_focus_ring: bool = True
-    micro_animations: bool = True
-    window_animations: bool = True
-    experimental_pixel_snap: bool = False
-    elevation_profile: str = "auto"
-    glass_quality: str = "auto"
-
     @property
     def bg_alpha_255(self) -> int:
         """将 0-100 的透明度转换为 0-255"""

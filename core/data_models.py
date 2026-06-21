@@ -7,7 +7,8 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
+
+from domain.models import DEFAULT_SPECIAL_APPS, ShortcutType  # Re-exported for backward compatibility
 
 from .runtime_constants import (
     COMMAND_CHAIN_MAX_STEPS,
@@ -39,19 +40,6 @@ ACTION_CHAIN_MODULE_VERSION = "0.1.0"
 ACTION_CHAIN_SCHEMA_VERSION = 1
 BATCH_LAUNCH_MODULE_ID = "quicklauncher.batch_launch"
 BATCH_LAUNCH_MODULE_VERSION = "0.1.0"
-
-
-class ShortcutType(Enum):
-    """快捷方式类型"""
-
-    FILE = "file"
-    FOLDER = "folder"
-    URL = "url"
-    HOTKEY = "hotkey"
-    COMMAND = "command"
-    CHAIN = "chain"
-    BATCH_LAUNCH = "batch_launch"
-    MACRO = "macro"
 
 
 @dataclass
@@ -654,41 +642,7 @@ class Folder:
         return folder
 
 
-# 默认特殊应用列表（需要Ctrl+中键触发的软件）
-DEFAULT_SPECIAL_APPS = [
-    "acad",
-    "autocad",
-    "revit",
-    "sketchup",
-    "rhino",
-    "rhino8",
-    "blender",
-    "maya",
-    "3dsmax",
-    "zbrush",
-    "substance",
-    "cinema4d",
-    "houdini",
-    "nuke",
-    "aftereffects",
-    "premiere",
-    "fusion360",
-    "solidworks",
-    "catia",
-    "inventor",
-    "navisworks",
-    # 国产CAD
-    "gcad",
-    "gstarcad",
-    "zwcad",
-    "caxa",
-    "bricscad",
-    # CAD看图软件
-    "cadreader",
-    "fastcad",
-    "dwgviewr",
-    "cadsee",
-]
+# DEFAULT_SPECIAL_APPS re-exported from domain.models (line 5)
 
 
 @dataclass
@@ -811,41 +765,6 @@ class AppSettings:
     # UI 全局缩放百分比 (独立于 Windows/Qt DPI)
     ui_scale_percent: int = 100
 
-    # ----------------------------------------------------------------
-    # L3 视觉精致化 / 流畅度设置 — 见 UI_OPTIMIZATION_PLAN.md §九
-    # ----------------------------------------------------------------
-    # 1.7.0 S8 之前为 advisory 模式（不阻断本地提交），S8 灰度前升级为 blocking
-    motion_scale: float = 1.0  # 0.5-2.0，全局动效缩放（无障碍偏好）
-
-    # Focus Ring (5.2) — 键盘 Tab 焦点 1px 圆角高亮环
-    show_focus_ring: bool = True
-
-    # 微动效 (5.3) — 按钮 :pressed 80ms 颜色过渡
-    micro_animations: bool = True
-
-    # 弹窗出现/消失动画 (5.6)
-    # 关闭后瞬切回原行为（兼容低性能设备）
-    window_animations: bool = True
-
-    # 实验性像素对齐 (5.1) — 灰度期默认 False，S8 灰度前可开启
-    experimental_pixel_snap: bool = False
-
-    # 阴影强度 (5.4)
-    # "auto"：Win11 → elev_1/2/3，Win10 → elev_1
-    # "low"  ：所有平台统一 elev_1
-    # "high" ：Win11 → elev_2/3/4（预留，1.7.0 暂未使用 elev_4）
-    elevation_profile: str = "auto"
-
-    # 毛玻璃质量 (5.5)
-    # "auto"：物理像素 > 2.5M → BUFFER 4 + downsample 0.20
-    #       否则 BUFFER 3 + downsample 0.25
-    # "low" ：强制 BUFFER 3 + downsample 0.15
-    # "high"：强制 BUFFER 4 + downsample 0.25
-    glass_quality: str = "auto"
-
-    # 低端机模式 — 关闭所有 L3 特性 + 降级阴影/玻璃
-    low_end_mode: bool = False
-
     @property
     def bg_alpha_255(self) -> int:
         """将 0-100 的透明度转换为 0-255"""
@@ -940,15 +859,6 @@ class AppSettings:
             "light_acrylic": self.light_acrylic,
             "light_bg_alpha_filter": self.light_bg_alpha_filter,
             "ui_scale_percent": self.ui_scale_percent,
-            # L3 视觉精致化设置
-            "motion_scale": self.motion_scale,
-            "show_focus_ring": self.show_focus_ring,
-            "micro_animations": self.micro_animations,
-            "window_animations": self.window_animations,
-            "experimental_pixel_snap": self.experimental_pixel_snap,
-            "elevation_profile": self.elevation_profile,
-            "glass_quality": self.glass_quality,
-            "low_end_mode": self.low_end_mode,
         }
 
     @classmethod

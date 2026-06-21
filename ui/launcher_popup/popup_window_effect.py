@@ -63,10 +63,14 @@ class PopupWindowEffectMixin:
 
         return desired
 
-    def _apply_win10_rounded_mask(self, margin: int, clip_w: int, clip_h: int, radius: int):
-        logger.info(
-            f"[MASK] 设置Win10遮罩: clip={clip_w}x{clip_h}, window={self.width()}x{self.height()}, margin={margin}, radius={radius}"  # type: ignore[attr-defined]
-        )
+    def _apply_rounded_mask(self, margin: int, clip_w: int, clip_h: int, radius: int):
+        """Apply a rounded-rect window mask for hit-test / clipping.
+
+        On Win10, Qt's :func:`paint_win10_rounded_surface` handles
+        anti-aliased corners via per-pixel alpha, so we clear any GDI
+        mask to avoid 1-bit jagged edges. On Win11, DWM native rounding
+        is preferred, but a QRegion mask is still used as a fallback.
+        """
         if is_win10():
             self.clearMask()  # type: ignore[attr-defined]
             self.update()  # type: ignore[attr-defined]
@@ -79,7 +83,6 @@ class PopupWindowEffectMixin:
         path = QPainterPath()
         path.addRoundedRect(rect, r, r)
         self.setMask(QRegion(path.toFillPolygon().toPolygon()))  # type: ignore[attr-defined]
-        logger.info("[MASK] 遮罩已应用")
 
     def _snapshot_effect_state(self):
         """收集当前效果相关参数快照，用于跳过无变化的 DWM 重建。"""

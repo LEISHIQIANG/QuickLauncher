@@ -258,10 +258,11 @@ class ConfigWindow(QMainWindow):
         # 右侧版本信息 - 纯文本QLabel
         import platform
 
-        # 判断 Windows 版本
+        # 判断 Windows 版本 — 使用 canonical RtlGetVersion 检测（不受兼容性清单影响）
         if platform.system() == "Windows":
-            build = int(platform.version().split(".")[-1])
-            system_version = f"Win{'11' if build >= 22000 else '10'}"
+            from ui.utils.window_effect import is_win11 as _canonical_is_win11
+
+            system_version = "Win11" if _canonical_is_win11() else "Win10"
         else:
             system_version = platform.system()
 

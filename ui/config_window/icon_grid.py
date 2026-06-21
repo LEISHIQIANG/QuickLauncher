@@ -65,7 +65,6 @@ from ui.styles.design_tokens import (
 from ui.styles.design_tokens import (
     surface as token_surface,
 )
-from ui.styles.l3_features import resolved_elevation_level
 from ui.styles.style import Glassmorphism, PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
@@ -116,7 +115,9 @@ class SimpleStatusDialog(QDialog):
 
         self.corner_radius = 8
         # 默认主题色取自 design token；通过 _apply_theme() 在切换主题时更新
-        self.bg_color = token_surface("dark", "bg_glass_dark_win10")
+        from ui.styles.design_tokens import surface_platform
+
+        self.bg_color = surface_platform("dark", "bg_glass_dark")
         self.border_color = token_border("dark", "subtle_dark")
         self._acrylic_applied = False
         self._dialog_finished = False
@@ -134,11 +135,13 @@ class SimpleStatusDialog(QDialog):
 
     def _apply_theme(self):
         theme = self._detect_theme()
+        from ui.styles.design_tokens import surface_platform
+
         if theme == "dark":
-            self.bg_color = token_surface(theme, "bg_glass_dark_win10")
+            self.bg_color = surface_platform(theme, "bg_glass_dark")
             self.border_color = token_border(theme, "subtle_dark")
         else:
-            self.bg_color = token_surface(theme, "bg_glass_light_win10")
+            self.bg_color = surface_platform(theme, "bg_glass_light")
             self.border_color = token_border(theme, "subtle_light")
 
     def _detect_theme(self):
@@ -1312,9 +1315,7 @@ class IconGrid(QWidget):
             btn.setIconSize(QSize(sp(18), sp(18)))
             shadow = QGraphicsDropShadowEffect()
             win10 = is_win10()
-            settings = self.data_manager.get_settings()
-            level = resolved_elevation_level(1, settings, is_win10=win10)
-            offset_y, blur_r, shadow_color = elevation(level, is_win10=win10)
+            offset_y, blur_r, shadow_color = elevation(1, is_win10=win10)
             shadow.setBlurRadius(blur_r)
             shadow.setOffset(0, offset_y)
             shadow.setColor(shadow_color)

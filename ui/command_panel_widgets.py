@@ -5,13 +5,11 @@ Extracted in 1.6.3.4 so the main command-panel file can focus on the
 
 * :class:`CommandHistoryDropButton` — a self-painted down-chevron used
   next to the command input.
-* :class:`CommandStatusIndicator` — a tiny dot with a breathing ripple
-  while a command is running.
+* :class:`CommandStatusIndicator` — an animated radial-ripple dot:
+  blue expanding concentric rings while running, green static dot on success.
 """
 
 from __future__ import annotations
-
-import math
 
 from qt_compat import (
     QColor,
@@ -65,23 +63,39 @@ class CommandHistoryDropButton(QPushButton):
 
 
 class CommandStatusIndicator(QWidget):
-    """Small status dot with a breathing ripple while a command is running."""
+    """Animated status dot with expanding radial-ripple rings.
+
+    * **running** — blue central dot surrounded by 3 staggered concentric
+      rings that expand outward and fade, creating a radar-pulse effect.
+    * **success** — green solid dot, ripple stopped.
+    * **failure / warning / neutral** — coloured solid dot, no animation.
+
+    Uses :attr:`StatusScale` tokens for consistent palette alignment with
+    the rest of the UI (toasts, popups, result cards).
+    """
+
+    _RIPPLE_COUNT = 4
+    _RIPPLE_STAGGER = 1.0 / _RIPPLE_COUNT
+    _TIMER_MS = 30
+    _STEP = 0.045
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._kind = "neutral"
         self._theme = "light"
-        self._phase = 0.0
+        self._phases: list[float] = []
         self._timer = QTimer(self)
-        self._timer.setInterval(45)
+        self._timer.setInterval(self._TIMER_MS)
         self._timer.timeout.connect(self._advance_ripple)
-        self.setFixedSize(sp(18), sp(18))
+        self.setFixedSize(sp(30), sp(30))
 
-    def set_status(self, kind: str, theme: str):
+    # -- public -----------------------------------------------------------
+
+    def set_status(self, kind: str, theme: str) -> None:
         self._kind = str(kind or "neutral")
         self._theme = str(theme or "light")
-        self._phase = 0.0
         if self._kind == "running":
+            self._phases = [i * self._RIPPLE_STAGGER for i in range(self._RIPPLE_COUNT)]
             if not self._timer.isActive():
                 self._timer.start()
         else:
@@ -91,19 +105,28 @@ class CommandStatusIndicator(QWidget):
     def is_ripple_active(self) -> bool:
         return self._timer.isActive()  # type: ignore[no-any-return]
 
-    def _advance_ripple(self):
-        self._phase = (self._phase + 0.18) % (math.pi * 2)
+    # -- animation --------------------------------------------------------
+
+    def _advance_ripple(self) -> None:
+        for i in range(len(self._phases)):
+            self._phases[i] += self._STEP
+            if self._phases[i] >= 0.98:
+                self._phases[i] = 0.0
         self.update()
+
+    # -- painting ---------------------------------------------------------
 
     def paintEvent(self, event):  # noqa: paint_perf
         del event
-        # 状态色取自 StatusScale token — 与状态指示器 / 弹窗 / toast 统一
+
+        # Status colours drawn from the same design tokens as status
+        # indicators, toasts and result cards.
         colors = {
             "running": QColor(StatusScale.info),  # 10, 132, 255
             "success": QColor(StatusScale.success),  # 48, 209, 88
             "failure": QColor(StatusScale.error),  # 255, 69, 58
             "warning": QColor(StatusScale.warning),  # 255, 159, 10
-            "neutral": QColor(142, 142, 147),  # 中性灰，无精确 token
+            "neutral": QColor(142, 142, 147),
         }
         color = QColor(colors.get(self._kind, colors["neutral"]))
         if self._theme == "light":
@@ -112,26 +135,33 @@ class CommandStatusIndicator(QWidget):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.Antialiasing)
-            center_x = self.width() / 2
-            center_y = self.height() / 2
-            if self._kind == "running":
-                wave = (math.sin(self._phase) + 1.0) / 2.0
-                radius = spf(4.3) + wave * spf(3.0)
-                ring = QColor(color)
-                ring.setAlpha(int(105 - wave * 62))
-                painter.setBrush(Qt.NoBrush)
-                painter.setPen(QPen(ring, spf(1.2)))
-                painter.drawEllipse(QRectF(center_x - radius, center_y - radius, radius * 2, radius * 2))
+            cx = self.width() / 2.0
+            cy = self.height() / 2.0
+            max_radius = min(cx, cy) - spf(3.0)
 
+            # ---- radial ripple rings (running only) ----------------------
+            if self._kind == "running":
+                for phase in self._phases:
+                    if phase < 0.015:
+                        continue  # skip invisible / just-reset rings
+                    r = phase * max_radius
+                    alpha = int((1.0 - phase) * 180)
+                    ring = QColor(color)
+                    ring.setAlpha(alpha)
+                    painter.setPen(QPen(ring, spf(2.2)))
+                    painter.setBrush(Qt.NoBrush)
+                    painter.drawEllipse(QRectF(cx - r, cy - r, r * 2.0, r * 2.0))
+
+            # ---- central dot (always visible) ----------------------------
             painter.setPen(Qt.NoPen)
             painter.setBrush(color)
-            core_radius = spf(2.8 if self._kind == "running" else 3.5)
+            core_radius = spf(3.8 if self._kind == "running" else 5.0)
             painter.drawEllipse(
                 QRectF(
-                    center_x - core_radius,
-                    center_y - core_radius,
-                    core_radius * 2,
-                    core_radius * 2,
+                    cx - core_radius,
+                    cy - core_radius,
+                    core_radius * 2.0,
+                    core_radius * 2.0,
                 )
             )
         finally:

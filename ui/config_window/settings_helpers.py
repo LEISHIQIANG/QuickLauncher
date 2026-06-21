@@ -29,7 +29,6 @@ from qt_compat import (
 )
 from ui.styles.design_tokens import BorderScale, SurfaceScale, TextScale
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import surface as token_surface
 from ui.styles.managers import StyleManager
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.pixel_snap import make_cosmetic_pen
@@ -198,12 +197,14 @@ class ProgressDialog(QDialog):
         self._setup_ui()
 
     def _detect_theme(self):
+        from ui.styles.design_tokens import surface_platform
+
         if self.theme == "dark":
-            self.bg_color = token_surface(self.theme, "bg_glass_dark_win10")
+            self.bg_color = surface_platform(self.theme, "bg_glass_dark")
             self.border_color = token_border(self.theme, "subtle_dark")
             self.text_color = "#dddddd"
         else:
-            self.bg_color = token_surface(self.theme, "bg_glass_light_win10")
+            self.bg_color = surface_platform(self.theme, "bg_glass_light")
             self.border_color = token_border(self.theme, "subtle_light")
             self.text_color = "#333333"
 
@@ -302,10 +303,7 @@ class ProgressDialog(QDialog):
             if is_win11():
                 effect.set_round_corners(hwnd, enable=True)
                 effect.enable_window_shadow(hwnd, self.corner_radius)
-            else:
-                w, h = self.width(), self.height()
-                if w > 0 and h > 0:
-                    effect.set_window_region(hwnd, w, h, self.corner_radius)
+            # Win10: enable_acrylic_for_config_window handles shadows + DWM opacity internally
 
             enable_acrylic_for_config_window(self, self.theme, blur_amount=30, radius=self.corner_radius)
         except Exception as exc:
@@ -372,17 +370,6 @@ class SwitchButton(QCheckBox):
     def _on_state_changed(self, state):
         checked = self.isChecked()
         self._anim.stop()
-        try:
-            from ui.runtime_settings import current_settings
-            from ui.styles.l3_features import micro_animations
-
-            animate = micro_animations(current_settings())
-        except Exception:
-            animate = True
-        if not animate:
-            self._progress = 1.0 if checked else 0.0
-            self.update()
-            return
         self._anim.setStartValue(self._progress)
         self._anim.setEndValue(1.0 if checked else 0.0)
         self._anim.start()

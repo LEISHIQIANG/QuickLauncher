@@ -53,6 +53,7 @@ __all__ = [
     "selection_bg_qss",
     "selection_text_qss",
     "selection_hover_bg_qss",
+    "surface_platform",
 ]
 
 
@@ -447,6 +448,27 @@ def elevation(level: int, *, is_win10: bool = False) -> tuple[int, int, QColor]:
     return Elevation.for_level(level, is_win10=is_win10)
 
 
+def surface_platform(theme: str, key_stem: str) -> QColor:
+    """Resolve a platform-aware glass background colour.
+
+    ``key_stem`` is the prefix *without* the ``_win10`` / ``_win11`` suffix,
+    e.g. ``"bg_glass_dark"`` or ``"bg_glass_light"``. The function appends
+    ``_win11`` on Windows 11 and ``_win10`` on Windows 10 so every component
+    automatically gets the correct transparency level without repeating
+    ``is_win11()`` checks.
+
+    On non-Windows platforms or when version detection fails, falls back
+    to the ``_win10`` variant (more opaque / safe default).
+    """
+    try:
+        from ui.utils.window_effect import is_win11 as _is_win11
+    except Exception:
+        _is_win11 = lambda: False  # noqa: E731
+
+    platform_suffix = "_win11" if _is_win11() else "_win10"
+    return surface(theme, f"{key_stem}{platform_suffix}")
+
+
 def duration(key: str) -> int:
     """Resolve a :class:`DurationScale` key in milliseconds."""
 
@@ -463,22 +485,6 @@ def easing(key: str) -> str:
     if value is None:
         return EasingScale.STANDARD
     return str(value)
-
-
-def apply_motion_scale(value: int, scale: float = 1.0) -> int:
-    """Multiply a duration by the user motion-scale preference.
-
-    Honours ``Settings.motion_scale`` (range 0.5–2.0) for accessibility. The
-    value is clamped to ``[0, 1000]`` to avoid pathological animations.
-    """
-
-    if scale is None or scale == 1.0:
-        return int(value)
-    try:
-        scaled = int(round(value * float(scale)))
-    except (TypeError, ValueError):
-        return int(value)
-    return max(0, min(1000, scaled))
 
 
 # ---------------------------------------------------------------------------

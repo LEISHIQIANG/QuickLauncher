@@ -447,12 +447,14 @@ class TestUpdateInstaller:
 
     @patch("services.update.installer.sys.exit")
     @patch("services.update.installer.subprocess.Popen")
-    def test_install_requires_matching_hash_before_popen(self, mock_popen, mock_exit):
+    def test_install_requires_matching_hash_before_popen(self, mock_popen, mock_exit, tmp_path):
         content = b"installer"
         expected_hash = "sha256:" + hashlib.sha256(content).hexdigest()
         installer = UpdateInstaller()
 
-        path = "G:/updates/QuickLauncher_Setup.exe"
+        session_dir = tmp_path / "updates" / "session-1"
+        session_dir.mkdir(parents=True)
+        path = str(session_dir / "QuickLauncher_Setup.exe")
         with (
             patch("services.update.installer.os.path.isfile", return_value=True),
             patch("builtins.open", mock_open(read_data=content)),
@@ -528,11 +530,13 @@ class TestUpdateInstaller:
         assert state["first_start"]["confirmed"] is True
 
     @patch("services.update.installer.subprocess.Popen")
-    def test_install_rejects_hash_mismatch(self, mock_popen):
+    def test_install_rejects_hash_mismatch(self, mock_popen, tmp_path):
         installer = UpdateInstaller()
         events = []
         installer.add_listener(lambda event, data: events.append((event, data)))
-        path = "G:/updates/QuickLauncher_Setup.exe"
+        session_dir = tmp_path / "updates" / "session-1"
+        session_dir.mkdir(parents=True)
+        path = str(session_dir / "QuickLauncher_Setup.exe")
         with (
             patch("services.update.installer.os.path.isfile", return_value=True),
             patch("builtins.open", mock_open(read_data=b"installer")),

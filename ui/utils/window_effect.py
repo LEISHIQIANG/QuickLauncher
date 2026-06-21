@@ -62,7 +62,7 @@ def _get_windows_build_from_rtl() -> int | None:
     return None
 
 
-def get_windows_version():
+def get_windows_version() -> str:
     """获取 Windows 版本信息（带缓存）"""
     global _windows_version_cache
     if _windows_version_cache is not None:
@@ -81,41 +81,34 @@ def get_windows_version():
     return _windows_version_cache
 
 
-def is_win11():
+def is_win11() -> bool:
     """检测是否为 Windows 11"""
     return get_windows_version() == "win11"
 
 
-def is_win10():
+def is_win10() -> bool:
     """检测是否为 Windows 10"""
     return get_windows_version() == "win10"
 
 
 def is_glass_background_supported() -> bool:
-    """检测当前系统是否支持"玻璃背景"所需的 WDA_EXCLUDEFROMCAPTURE。
+    """Detect whether the current system supports WDA_EXCLUDEFROMCAPTURE.
 
-    SetWindowDisplayAffinity 的 WDA_EXCLUDEFROMCAPTURE 标志（0x11）虽然
-    在文档上从 Windows 10 2004（build 19041）开始支持，但实测在很多
-    Windows 10 22H2（build 19045）+ 各种显卡驱动 / 远程桌面 / VDI
-    组合下都会返回 FALSE，DLL 端会立刻 GLASS_ERROR_DISPLAY_AFFINITY
-    并拒绝启动渲染线程，触发托盘错误气泡。
+    SetWindowDisplayAffinity's WDA_EXCLUDEFROMCAPTURE flag (0x11) is documented
+    as supported from Windows 10 2004 (build 19041), but real-world testing
+    shows it fails on many Win10 22H2 (build 19045) combinations of GPU drivers,
+    remote desktop, and VDI. The DLL side immediately returns
+    GLASS_ERROR_DISPLAY_AFFINITY and refuses to start the render thread, which
+    triggers tray error bubbles on every popup show.
 
-    因此这里只放开 Windows 11（build >= 22000）。Win10 用户即使 build
-    满足也不会看到"玻璃背景"选项，避免每次启动都收到错误气泡。
+    We therefore only expose the glass background option on Windows 11
+    (build >= 22000). Win10 users will not see the option and any stored
+    ``bg_mode="glass"`` config will be silently downgraded to ``"theme"``.
 
     Returns:
-        bool: True 表示当前系统可以启用玻璃背景；False 时调用方应隐藏
-        设置面板里的"玻璃背景"选项，并在加载历史配置时把 bg_mode="glass"
-        静默回退到 "theme"。
+        bool: True when the glass background can be safely enabled.
     """
-    try:
-        build = _get_windows_build_from_rtl()
-        if build is None:
-            build = int(sys.getwindowsversion().build)
-    except _WINDOW_EFFECT_ERRORS:
-        logger.debug("is_glass_background_supported: version detection failed", exc_info=True)
-        return False
-    return build >= 22000
+    return is_win11()
 
 
 def _qpaint_composition_mode(name: str):
@@ -1347,7 +1340,8 @@ class WindowEffect:
         应用统一的圆角效果（自动适配 Win10/Win11）
 
         Win11: 使用 DWM 原生圆角
-        Win10: 使用窗口区域裁剪
+        Win10: Qt paintEvent 通过 paint_win10_rounded_surface 自绘抗锯齿圆角，
+               不使用 GDI SetWindowRgn（会降级为 1-bit 锯齿裁剪）。
 
         Args:
             hwnd: 窗口句柄
@@ -1358,9 +1352,7 @@ class WindowEffect:
         if is_win11():
             # Win11 使用 DWM 原生圆角
             self.set_round_corners(hwnd, enable=True)
-        else:
-            # Win10 使用区域裁剪
-            self.set_window_region(hwnd, w, h, r)
+        # Win10: 圆角由各窗口 paintEvent → paint_win10_rounded_surface 绘制
 
     def apply_unified_blur_effect(self, hwnd: int, gradient_color: str = None, enable: bool = True):  # type: ignore[assignment]
         """
@@ -1547,9 +1539,13 @@ def enable_window_shadow_and_round_corners(widget, radius: int = 12, force_regio
                 h = widget.height()
                 if w > 0 and h > 0:
                     install_win10_window_shadow(widget, radius)
-                    # Win10 仅使用 SetWindowRgn 裁剪形状，背景由 Qt 自绘。
-                    effect.set_window_region(hwnd, w, h, radius)
+                    # Win10: 圆角由 paintEvent → paint_win10_rounded_surface 自绘，
+                    # 不使用 SetWindowRgn（1-bit 锯齿）。显式关闭 DWM blur 避免黑色遮罩。
                     effect.set_dwm_blur_behind(hwnd, w, h, radius, enable=False)
+                    try:
+                        widget.update()
+                    except _WINDOW_EFFECT_ERRORS as exc:
+                        logger.debug("刷新Win10窗口区域失败: %s", exc, exc_info=True)
                     return True
             except _WINDOW_EFFECT_ERRORS as exc:
                 logger.debug("应用Win10窗口区域裁剪失败: %s", exc, exc_info=True)
@@ -1605,7 +1601,9 @@ def enable_acrylic_for_config_window(widget, theme: str = "dark", blur_amount: i
             w = widget.width()
             h = widget.height()
             if w > 0 and h > 0:
-                effect.set_window_region(hwnd, w, h, radius)
+                # Win10: paintEvent → paint_win10_rounded_surface 绘制抗锯齿圆角，
+                # 不使用 GDI SetWindowRgn
+                pass
             effect.set_dwm_blur_behind(hwnd, 0, 0, 0, enable=False)
             try:
                 widget.update()

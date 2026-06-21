@@ -29,7 +29,7 @@ from qt_compat import (
 )
 from runtime_paths import app_root
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import surface as token_surface
+from ui.styles.design_tokens import surface_platform
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.themed_messagebox import ThemedMessageBox
@@ -389,10 +389,10 @@ class LogWindow(QDialog):
             inset = spf(1.0) if is_win10() else spf(4.0)
 
             if self._theme == "dark":
-                bg = token_surface(self._theme, "bg_glass_dark_win10")
+                bg = surface_platform(self._theme, "bg_glass_dark")
                 border = token_border(self._theme, "subtle_dark")
             else:
-                bg = token_surface(self._theme, "bg_glass_light_win10")
+                bg = surface_platform(self._theme, "bg_glass_light")
                 border = token_border(self._theme, "subtle_light")
 
             if is_win10():

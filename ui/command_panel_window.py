@@ -160,7 +160,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.text.setPlainText("正在加载...")
         self._rendered_text = "正在加载..."
         self.set_subtitle("")
-        self.status_badge.setVisible(False)
+        self.status_indicator.setVisible(False)
         self._apply_size_preset(self._initial_size_key(command_id=command_id, result_id=result_id, shortcut=shortcut))
 
     def _initial_size_key(self, *, command_id="", result_id=None, shortcut=None) -> str:
@@ -227,23 +227,16 @@ class CommandPanelWindow(ThemedToolWindow):
         self.cancel_btn = None
         self.content_layout.addLayout(input_row)
 
-        self.status_badge = QWidget()
-        self.status_badge.setObjectName("CommandStatusBadge")
-        badge_layout = QHBoxLayout(self.status_badge)
-        badge_layout.setContentsMargins(sp(8), sp(4), sp(8), sp(4))
-        badge_layout.setSpacing(sp(3))
-        self.status_indicator = CommandStatusIndicator(self.status_badge)
-        badge_layout.addWidget(self.status_indicator)
-        self.status_label = QLabel("")
-        badge_layout.addWidget(self.status_label)
-        self.status_badge.setVisible(False)
+        # 状态指示器：子窗口叠加层，位于"执行"按钮正上方，不占布局空间
+        self.status_indicator = CommandStatusIndicator(self)
+        self.status_indicator.setVisible(False)
+        self.status_indicator.raise_()
 
         self.root_layout.removeWidget(self.subtitle_label)
         summary_row = QHBoxLayout()
         summary_row.setContentsMargins(0, 0, sp(4), 0)
         summary_row.setSpacing(sp(8))
         summary_row.addWidget(self.subtitle_label, 1)
-        summary_row.addWidget(self.status_badge)
         self.root_layout.insertLayout(1, summary_row)
 
         self.param_container = QWidget()
@@ -390,17 +383,55 @@ class CommandPanelWindow(ThemedToolWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._relayout_footer_buttons()
+        self._position_status_indicator()
+
+    def _position_status_indicator(self):
+        """Position the status indicator centred above the run button."""
+        indicator = getattr(self, "status_indicator", None)
+        if indicator is None or not indicator.isVisible():
+            return
+        btn = getattr(self, "run_btn", None)
+        if btn is None:
+            return
+        btn_center = btn.mapTo(self, btn.rect().center())
+        sz = indicator.size()
+        indicator.move(btn_center.x() - sz.width() // 2, btn_center.y() - sz.height() - sp(12))
+
+    def _update_generic_button_visibility(self):
+        """Show/hide generic copy/save buttons based on context.
+
+        * Hidden during command execution (streaming results are incomplete).
+        * Hidden when result-specific actions already provide copy/save functionality.
+        * Hidden when there is no renderable text.
+        """
+        if self._running:
+            self.copy_btn.setVisible(False)
+            self.save_btn.setVisible(False)
+            return
+
+        actions = getattr(self, "_all_actions", [])
+        action_types = {getattr(a, "type", "") for a in actions if hasattr(a, "type")}
+
+        has_copy_action = bool(action_types & {"copy", "copy_table", "copy_json"})
+        has_save_action = bool(action_types & {"save_text", "save_file", "save_csv", "save_json"})
+        has_text = bool(self._rendered_text)
+
+        self.copy_btn.setVisible(not has_copy_action and has_text)
+        self.save_btn.setVisible(not has_save_action and has_text)
 
     def _relayout_footer_buttons(self):
         grid = getattr(self, "footer_button_grid", None)
         if grid is None:
             return
+
+        self._update_generic_button_visibility()
+
         buttons = [
+            *getattr(self, "action_buttons", []),
+            getattr(self, "more_btn", None),
             getattr(self, "copy_btn", None),
             getattr(self, "save_btn", None),
             getattr(self, "rerun_btn", None),
-            *getattr(self, "action_buttons", []),
-            getattr(self, "more_btn", None),
         ]
         visible_buttons = [button for button in buttons if button is not None and not button.isHidden()]
         for index in reversed(range(grid.count())):
@@ -427,8 +458,10 @@ class CommandPanelWindow(ThemedToolWindow):
             row = index // columns
             column = index % columns
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            button.setMinimumWidth(0)
-            button.setMinimumHeight(sp(32))
+            button.setMinimumWidth(self._button_text_width(button))
+            button.setMinimumHeight(sp(26))
+            button.setFixedHeight(sp(26))
+            self._apply_compact_button_style(button)
             grid.addWidget(button, row, column)
         for column in range(columns):
             grid.setColumnStretch(column, 1)
@@ -437,9 +470,9 @@ class CommandPanelWindow(ThemedToolWindow):
     def _button_text_width(button) -> int:
         text = str(button.text() or "")
         try:
-            return int(button.fontMetrics().horizontalAdvance(text) + sp(28))
+            return int(button.fontMetrics().horizontalAdvance(text) + sp(22))
         except Exception:
-            return max(sp(76), len(text) * sp(8) + sp(28))
+            return max(sp(64), len(text) * sp(7) + sp(22))
 
     @staticmethod
     def _neutralize_button_default(button):
@@ -448,6 +481,49 @@ class CommandPanelWindow(ThemedToolWindow):
             button.setDefault(False)
         except Exception as exc:
             logger.debug("设置按钮默认属性: %s", exc, exc_info=True)
+
+    @staticmethod
+    def _apply_compact_button_style(button):
+        """Apply a compact stylesheet suitable for footer buttons.
+
+        Uses a smaller font (10 px) and tighter padding than the default
+        ``style_buttons`` to keep the footer row lean.
+        """
+        # footer buttons use a neutral tint; theme colour is
+        # applied by _style_action_button for primary/danger roles.
+        btn_bg = "rgba(0, 0, 0, 0.04)"
+        btn_border = "rgba(0, 0, 0, 0.06)"
+        btn_hover = "rgba(0, 122, 255, 0.82)"
+        btn_text = "#1c1c1e"
+        disabled = "rgba(60, 60, 67, 0.35)"
+        button.setStyleSheet(
+            scale_qss(
+                f"""
+            QPushButton {{
+                font-size: 10px;
+                padding: 3px 8px;
+                background: {btn_bg};
+                border: 1px solid {btn_border};
+                border-radius: 5px;
+                color: {btn_text};
+            }}
+            QPushButton:hover {{
+                background-color: {btn_hover};
+                color: white;
+                border: 1px solid {btn_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(0, 90, 200, 0.92);
+                color: white;
+            }}
+            QPushButton:disabled {{
+                color: {disabled};
+                background: transparent;
+                border: 1px solid {btn_border};
+            }}
+        """
+            )
+        )
 
     def _apply_content_theme(self):
         if hasattr(self, "text"):
@@ -472,7 +548,7 @@ class CommandPanelWindow(ThemedToolWindow):
             self._style_command_input()
         if hasattr(self, "_param_widgets"):
             self._style_param_inputs()
-        if hasattr(self, "status_label"):
+        if hasattr(self, "status_indicator"):
             self._style_status_label()
         if hasattr(self, "param_error_label"):
             self._style_param_error_label()
@@ -483,7 +559,9 @@ class CommandPanelWindow(ThemedToolWindow):
         if hasattr(self, "command_suggestion_popup"):
             self._style_command_suggestions()
         if hasattr(self, "history_label"):
-            self.history_label.setStyleSheet(getattr(self.status_label, "styleSheet", lambda: "")())
+            self.history_label.setStyleSheet(
+                scale_qss("font-size: 11px; color: rgba(60,60,67,0.72); background: transparent;")
+            )
 
     def _style_command_input(self):
         text, placeholder, border, bg = self._command_input_colors()
@@ -603,36 +681,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 self._style_param_input(edit)
 
     def _style_status_label(self):
-        kind = str(self.status_label.property("status_kind") or "neutral")
-        if self._theme == "dark":
-            palette = {
-                "running": ("rgba(105, 190, 255, 0.98)", "rgba(10, 132, 255, 0.16)", "rgba(10, 132, 255, 0.42)"),
-                "success": ("rgba(91, 214, 135, 0.98)", "rgba(48, 209, 88, 0.14)", "rgba(48, 209, 88, 0.38)"),
-                "failure": ("rgba(255, 112, 112, 0.98)", "rgba(255, 69, 58, 0.15)", "rgba(255, 69, 58, 0.42)"),
-                "warning": ("rgba(255, 204, 92, 0.98)", "rgba(255, 159, 10, 0.15)", "rgba(255, 159, 10, 0.38)"),
-                "neutral": ("rgba(255, 255, 255, 0.66)", "rgba(255, 255, 255, 0.08)", "rgba(255, 255, 255, 0.15)"),
-            }
-        else:
-            palette = {
-                "running": ("rgba(0, 102, 204, 0.96)", "rgba(0, 122, 255, 0.10)", "rgba(0, 122, 255, 0.30)"),
-                "success": ("rgba(24, 128, 56, 0.96)", "rgba(40, 167, 69, 0.10)", "rgba(40, 167, 69, 0.28)"),
-                "failure": ("rgba(190, 40, 40, 0.96)", "rgba(220, 53, 69, 0.10)", "rgba(220, 53, 69, 0.30)"),
-                "warning": ("rgba(156, 92, 0, 0.96)", "rgba(255, 159, 10, 0.11)", "rgba(214, 126, 0, 0.28)"),
-                "neutral": ("rgba(60, 60, 67, 0.72)", "rgba(60, 60, 67, 0.07)", "rgba(60, 60, 67, 0.14)"),
-            }
-        color, background, border = palette.get(kind, palette["neutral"])
-        self.status_badge.setStyleSheet(
-            scale_qss(
-                f"QWidget#CommandStatusBadge {{ background: {background}; border: 1px solid {border};"
-                " border-radius: 9px; }"
-            )
-        )
-        self.status_label.setStyleSheet(
-            scale_qss(
-                f"QLabel {{ font-size: 11px; font-weight: 500; color: {color};"
-                " background: transparent; border: none; border-radius: 0; padding: 0; }"
-            )
-        )
+        kind = str(self.status_indicator._kind)
         self.status_indicator.set_status(kind, self._theme)
 
     def _style_param_error_label(self):
@@ -1473,11 +1522,11 @@ class CommandPanelWindow(ThemedToolWindow):
             scale_qss(
                 f"""
             QPushButton {{
-                font-size: 11px;
-                padding: 6px 10px;
+                font-size: 10px;
+                padding: 3px 8px;
                 background: {bg};
                 border: 1px solid {bg};
-                border-radius: 6px;
+                border-radius: 5px;
                 color: #ffffff;
             }}
             QPushButton:hover {{
@@ -1524,10 +1573,9 @@ class CommandPanelWindow(ThemedToolWindow):
             subtitle_parts.append(metadata)
         self.set_subtitle(" / ".join(subtitle_parts))
         display_state, status_kind = self._status_display(state)
-        self.status_label.setProperty("status_kind", status_kind)
-        self.status_label.setText(display_state)
-        self._style_status_label()
-        self.status_badge.setVisible(bool(display_state))
+        self.status_indicator.set_status(status_kind, self._theme)
+        self.status_indicator.setVisible(bool(display_state))
+        self._position_status_indicator()
 
     @staticmethod
     def _status_display(state: str) -> tuple[str, str]:
@@ -1567,6 +1615,7 @@ class CommandPanelWindow(ThemedToolWindow):
         if self.cancel_btn is not None:
             self.cancel_btn.setEnabled(running)
         self.rerun_btn.setEnabled((not running) and bool(self._current_command_id or self.command_input.text().strip()))
+        self._relayout_footer_buttons()
 
     def _rerun_from_input(self):
         raw = self.command_input.text().strip()

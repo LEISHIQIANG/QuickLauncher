@@ -7,7 +7,6 @@ import re
 from core.i18n import tr
 from services.update.config import UpdateInfo
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import surface as token_surface
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.pixel_snap import make_cosmetic_pen
 
@@ -232,11 +231,13 @@ class UpdateDialog:
         dialog.setWindowOpacity(0)
 
         corner_radius = 8
+        from ui.styles.design_tokens import surface_platform
+
         if theme == "dark":
-            bg_color = token_surface(theme, "bg_glass_dark_win10")
+            bg_color = surface_platform(theme, "bg_glass_dark")
             border_color = token_border(theme, "subtle_dark")
         else:
-            bg_color = token_surface(theme, "bg_glass_light_win10")
+            bg_color = surface_platform(theme, "bg_glass_light")
             border_color = token_border(theme, "subtle_light")
 
         title_color = "#ffffff" if theme == "dark" else "#1c1c1e"

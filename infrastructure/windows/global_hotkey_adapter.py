@@ -25,7 +25,7 @@ class HooksGlobalHotkeyAdapter:
     def register(self, hotkey: str, callback: Callable[[], None]) -> object:
         from hooks.hotkey_manager import HotkeyManager
 
-        host = HotkeyManager.instance()
+        host = HotkeyManager.instance()  # type: ignore[attr-defined]
         host_id = host.register(hotkey, callback)
         port_handle = self._next_handle()
         self._handles[port_handle] = int(host_id)
@@ -34,15 +34,15 @@ class HooksGlobalHotkeyAdapter:
     def unregister(self, handle: object) -> None:
         from hooks.hotkey_manager import HotkeyManager
 
-        port_handle = int(handle)  # type: ignore[arg-type]
+        port_handle = int(handle) if isinstance(handle, int | str) else 0
         host_id = self._handles.pop(port_handle, None)
         if host_id is None:
             return
-        HotkeyManager.instance().unregister(host_id)
+        HotkeyManager.instance().unregister(host_id)  # type: ignore[attr-defined]
 
     def close(self) -> None:
         from hooks.hotkey_manager import HotkeyManager
 
         for host_id in list(self._handles.values()):
-            HotkeyManager.instance().unregister(host_id)
+            HotkeyManager.instance().unregister(host_id)  # type: ignore[attr-defined]
         self._handles.clear()

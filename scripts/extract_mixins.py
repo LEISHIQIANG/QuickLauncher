@@ -45,7 +45,7 @@ popup_window_effect_methods = [
     "_get_win11_corner_preference",
     "_get_win11_effective_radius",
     "_get_paint_corner_radius",
-    "_apply_win10_rounded_mask",
+    "_apply_rounded_mask",
     "_update_window_effect",
 ]
 popup_layout_methods = [

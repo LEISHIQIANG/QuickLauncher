@@ -62,15 +62,6 @@ class FocusRingMixin:
     def _draw_focus_ring(self, painter: QPainter) -> None:
         if not isinstance(self, QWidget):
             return
-        try:
-            from ui.runtime_settings import current_settings
-            from ui.styles.l3_features import show_focus_ring
-
-            settings = current_settings()
-            if not show_focus_ring(settings):
-                return
-        except Exception as exc:
-            logger.debug("L3 focus-ring lookup failed: %s", exc, exc_info=True)
         if not self.hasFocus():
             return
         rect = self.rect()

@@ -111,7 +111,7 @@ _EN_US: dict[str, str] = {
     "跟随主题": "Mode",
     "图片背景": "Img",
     "亚克力背景": "Acryl",
-    "玻璃背景": "Glass",
+    "玻璃背景（实验）": "Glass (Experimental)",
     "选择背景图片...": "Image...",
     "浏览...": "View",
     "尺寸布局": "Size",

@@ -39,7 +39,7 @@ class CommandPanelStyleMixin:
             self._style_command_input()
         if hasattr(self, "_param_widgets"):
             self._style_param_inputs()
-        if hasattr(self, "status_label"):
+        if hasattr(self, "status_indicator"):
             self._style_status_label()
         if hasattr(self, "param_error_label"):
             self._style_param_error_label()
@@ -50,7 +50,9 @@ class CommandPanelStyleMixin:
         if hasattr(self, "command_suggestion_popup"):
             self._style_command_suggestions()
         if hasattr(self, "history_label"):
-            self.history_label.setStyleSheet(getattr(self.status_label, "styleSheet", lambda: "")())
+            self.history_label.setStyleSheet(
+                scale_qss("font-size: 11px; color: rgba(60,60,67,0.72); background: transparent;")
+            )
 
     def _style_command_input(self):
         text, placeholder, border, bg = self._command_input_colors()
@@ -170,36 +172,7 @@ class CommandPanelStyleMixin:
                 self._style_param_input(edit)
 
     def _style_status_label(self):
-        kind = str(self.status_label.property("status_kind") or "neutral")
-        if self._theme == "dark":
-            palette = {
-                "running": ("rgba(105, 190, 255, 0.98)", "rgba(10, 132, 255, 0.16)", "rgba(10, 132, 255, 0.42)"),
-                "success": ("rgba(91, 214, 135, 0.98)", "rgba(48, 209, 88, 0.14)", "rgba(48, 209, 88, 0.38)"),
-                "failure": ("rgba(255, 112, 112, 0.98)", "rgba(255, 69, 58, 0.15)", "rgba(255, 69, 58, 0.42)"),
-                "warning": ("rgba(255, 204, 92, 0.98)", "rgba(255, 159, 10, 0.15)", "rgba(255, 159, 10, 0.38)"),
-                "neutral": ("rgba(255, 255, 255, 0.66)", "rgba(255, 255, 255, 0.08)", "rgba(255, 255, 255, 0.15)"),
-            }
-        else:
-            palette = {
-                "running": ("rgba(0, 102, 204, 0.96)", "rgba(0, 122, 255, 0.10)", "rgba(0, 122, 255, 0.30)"),
-                "success": ("rgba(24, 128, 56, 0.96)", "rgba(40, 167, 69, 0.10)", "rgba(40, 167, 69, 0.28)"),
-                "failure": ("rgba(190, 40, 40, 0.96)", "rgba(220, 53, 69, 0.10)", "rgba(220, 53, 69, 0.30)"),
-                "warning": ("rgba(156, 92, 0, 0.96)", "rgba(255, 159, 10, 0.11)", "rgba(214, 126, 0, 0.28)"),
-                "neutral": ("rgba(60, 60, 67, 0.72)", "rgba(60, 60, 67, 0.07)", "rgba(60, 60, 67, 0.14)"),
-            }
-        color, background, border = palette.get(kind, palette["neutral"])
-        self.status_badge.setStyleSheet(
-            scale_qss(
-                f"QWidget#CommandStatusBadge {{ background: {background}; border: 1px solid {border};"
-                " border-radius: 9px; }"
-            )
-        )
-        self.status_label.setStyleSheet(
-            scale_qss(
-                f"QLabel {{ font-size: 11px; font-weight: 500; color: {color};"
-                " background: transparent; border-radius: 0; border: none; padding: 0; }"
-            )
-        )
+        kind = str(self.status_indicator._kind)
         self.status_indicator.set_status(kind, self._theme)
 
     def _style_param_error_label(self):

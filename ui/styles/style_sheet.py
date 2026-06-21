@@ -12,11 +12,6 @@ from .qss import button, combobox, groupbox, input, scrollbar, slider
 class StyleSheet:
 
     @staticmethod
-    def micro_animations_disabled_suffix() -> str:
-        # Qt Style Sheets do not implement CSS transitions.
-        return ""
-
-    @staticmethod
     def get_button_style(theme: str) -> str:
         return button.get_plain_style(theme)
 

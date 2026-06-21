@@ -12,7 +12,7 @@ import logging
 from typing import Any, cast
 
 from qt_compat import QtCompat
-from ui.styles.l3_features import L3Features, window_animations
+from ui.styles.motion import Duration
 from ui.utils.interruptible_animation import is_animation_running, stop_named_animations
 
 logger = logging.getLogger(__name__)
@@ -46,30 +46,12 @@ class PopupWindowAnimationMixin:
     def _start_show_animation(self):
         """窗口出现动画 - 从中心向外扩散"""
         host = cast(Any, self)
-        # L3 §5.6 — 如果 window_animations 关闭，则直接设到 1.0，跳过动画
-        if not window_animations(getattr(host, "settings", None)):
-            try:
-                host.setWindowOpacity(1.0)
-            except Exception:
-                logger.debug("Failed to set popup opacity without animation", exc_info=True)
-            try:
-                host._reveal_progress = 1.0
-            except Exception:
-                logger.debug("Failed to set popup reveal progress without animation", exc_info=True)
-            try:
-                host.update()
-            except Exception:
-                logger.debug("Failed to update popup without animation", exc_info=True)
-            return
         stop_named_animations(host, "anim_group", "hide_anim_group")
         generation = host._next_visibility_animation_generation()
         start_opacity = max(0.0, min(1.0, float(host.windowOpacity())))
         start_reveal = max(0.0, min(1.0, float(getattr(host, "_reveal_progress", 0.0))))
 
-        # L3 §5.6 — 应用 motion_scale 到所有动画时长
-        show_ms = int(L3Features.effective_animation_duration("DIALOG_OPEN", getattr(host, "settings", None)))
-        if show_ms <= 0:
-            show_ms = 100
+        show_ms = max(1, Duration.DIALOG_OPEN)
 
         # 透明度动画
         host.opacity_anim = QtCompat.QPropertyAnimation(host, b"windowOpacity")
@@ -118,17 +100,11 @@ class PopupWindowAnimationMixin:
         """窗口消失动画 - 从外向中心收缩"""
         host = cast(Any, self)
         stop_named_animations(host, "hide_anim_group")
-        if not window_animations(getattr(host, "settings", None)):
-            host._is_hiding = False
-            host._reveal_progress = 0.0
-            host.setWindowOpacity(1.0)
-            super().hide()
-            return
         generation = host._next_visibility_animation_generation()
         # 透明度动画
         host.hide_opacity_anim = QtCompat.QPropertyAnimation(host, b"windowOpacity")
-        hide_ms = int(L3Features.effective_animation_duration("DIALOG_CLOSE", getattr(host, "settings", None)))
-        host.hide_opacity_anim.setDuration(max(1, hide_ms))
+        hide_ms = max(1, Duration.DIALOG_CLOSE)
+        host.hide_opacity_anim.setDuration(hide_ms)
         host.hide_opacity_anim.setStartValue(host.windowOpacity())
         host.hide_opacity_anim.setEndValue(0.0)
         host.hide_opacity_anim.setEasingCurve(QtCompat.OutCubic)

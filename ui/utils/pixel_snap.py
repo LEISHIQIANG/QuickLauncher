@@ -68,14 +68,7 @@ logger = logging.getLogger(__name__)
 
 
 def _is_pixel_snap_enabled() -> bool:
-    try:
-        from ui.runtime_settings import current_settings
-        from ui.styles.l3_features import experimental_pixel_snap
-
-        settings = current_settings()
-        return experimental_pixel_snap(settings)
-    except Exception:
-        return False
+    return False
 
 
 def _to_rectf(rect: QRect | QRectF) -> QRectF:

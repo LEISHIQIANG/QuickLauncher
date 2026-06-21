@@ -9,7 +9,7 @@ from datetime import datetime
 from qt_compat import QColor, QDialog, QPainter, QPainterPath, QtCompat, QTimer
 from runtime_paths import config_dir, is_packaged_runtime
 from ui.styles.design_tokens import border as token_border
-from ui.styles.design_tokens import surface as token_surface
+from ui.styles.design_tokens import surface_platform
 from ui.styles.theme_controller import resolve_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
@@ -72,7 +72,7 @@ class BaseDialog(QDialog):
         self._dialog_animation_generation = 0
 
         # 使用 QColor 对象存储颜色（与主配置窗口一致）— 取自 design token
-        self.bg_color = token_surface("dark", "bg_glass_dark_win10")
+        self.bg_color = surface_platform("dark", "bg_glass_dark")
         self.border_color = token_border("dark", "subtle_dark")
         self._apply_theme_colors()
 
@@ -82,10 +82,10 @@ class BaseDialog(QDialog):
         self.theme = theme
 
         if theme == "dark":
-            self.bg_color = token_surface(theme, "bg_glass_dark_win10")
+            self.bg_color = surface_platform(theme, "bg_glass_dark")
             self.border_color = token_border(theme, "subtle_dark")
         else:
-            self.bg_color = token_surface(theme, "bg_glass_light_win10")
+            self.bg_color = surface_platform(theme, "bg_glass_light")
             self.border_color = token_border(theme, "subtle_light")
 
     def _get_theme_from_parent(self) -> str:

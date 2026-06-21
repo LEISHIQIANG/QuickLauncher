@@ -58,16 +58,7 @@ __all__ = [
 
 
 def _resolve_duration(base_duration_ms: int) -> int:
-    try:
-        from ui.runtime_settings import current_settings
-        from ui.styles.l3_features import motion_scale, window_animations
-
-        settings = current_settings()
-        if not window_animations(settings):
-            return 0
-        return max(0, int(round(base_duration_ms * motion_scale(settings))))
-    except Exception:
-        return base_duration_ms
+    return base_duration_ms
 
 
 def _new_property_animation(target: QWidget, prop: bytes) -> QPropertyAnimation:

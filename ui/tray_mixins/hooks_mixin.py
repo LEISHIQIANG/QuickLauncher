@@ -2,12 +2,18 @@
 鼠标/键盘钩子管理相关方法。
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING, Any
 
 from core.executor_manager import PROCESS_CHECK_EXECUTOR, ManagedExecutor, get_executor, shutdown_executor
 from qt_compat import QTimer
+
+if TYPE_CHECKING:
+    from hooks.mouse_hook_dll import MouseHook
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +47,9 @@ def _collect_special_process_pids(target_apps: set[str], cancel_event: threading
 class HooksMixin:
     """鼠标/键盘钩子管理相关方法。"""
 
+    mouse_hook: MouseHook | None
+    keyboard_hook: Any
+
     def _install_hook(self, attempt: int = 0):
         """安装鼠标钩子"""
         if self._install_mouse_backend():
@@ -61,9 +70,9 @@ class HooksMixin:
         try:
             from hooks.mouse_hook_dll import MouseHook
 
-            if self.mouse_hook:  # type: ignore[has-type]
+            if self.mouse_hook:
                 try:
-                    self.mouse_hook.uninstall()  # type: ignore[has-type]
+                    self.mouse_hook.uninstall()
                 except Exception as exc:
                     logger.debug("卸载鼠标钩子失败: %s", exc, exc_info=True)
                 self.mouse_hook = None

@@ -79,7 +79,7 @@ all_extracted = [
     "_get_win11_corner_preference",
     "_get_win11_effective_radius",
     "_get_paint_corner_radius",
-    "_apply_win10_rounded_mask",
+    "_apply_rounded_mask",
     "_update_window_effect",
     # Layout
     "_setup_window",
