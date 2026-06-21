@@ -15,6 +15,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from extensions.sdk.worker_protocol import CAP_HEARTBEAT, negotiate_worker
+from infrastructure.process import runtime as process_runtime
 from runtime_paths import app_executable, app_root, is_packaged_runtime
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,10 @@ _MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 
 class PluginWorkerError(RuntimeError):
     pass
+
+
+class PluginWorkerBackpressure(PluginWorkerError):
+    """Raised when a plugin exceeds its configured worker capacity."""
 
 
 class JsonLineChannel:
@@ -79,12 +85,18 @@ class PersistentPluginWorker:
         site_paths: list[Path] | None = None,
         cwd: Path | None = None,
         inherit_environment: bool = True,
+        required_capabilities: frozenset[str] = frozenset(),
+        host_call_handler: Any = None,
     ):
         self.plugin_id = str(plugin_id)
         self.script_path = Path(script_path).resolve(strict=False)
         self.site_paths = [Path(path).resolve(strict=False) for path in site_paths or []]
         self.cwd = Path(cwd or self.script_path.parent).resolve(strict=False)
         self.inherit_environment = bool(inherit_environment)
+        self.required_capabilities = frozenset(required_capabilities)
+        self.host_call_handler = host_call_handler
+        self.negotiated_capabilities: frozenset[str] = frozenset()
+        self.quarantined = False
         self._process: subprocess.Popen | None = None
         self._channel: JsonLineChannel | None = None
         self._request_lock = threading.Lock()
@@ -95,6 +107,10 @@ class PersistentPluginWorker:
     def running(self) -> bool:
         process = self._process
         return process is not None and process.poll() is None and self._channel is not None
+
+    @property
+    def pid(self) -> int | None:
+        return self._process.pid if self._process is not None else None
 
     def start(self, timeout: float = 45.0) -> None:
         with self._state_lock:
@@ -132,7 +148,7 @@ class PersistentPluginWorker:
             }
             started = time.perf_counter()
             try:
-                self._process = subprocess.Popen(command, **kwargs)
+                self._process = process_runtime.popen(command, **kwargs)
                 deadline = time.monotonic() + max(0.1, float(timeout))
                 while True:
                     if self._process.poll() is not None:
@@ -161,6 +177,9 @@ class PersistentPluginWorker:
                 if hello.get("type") != "ready" or not secrets.compare_digest(str(hello.get("token") or ""), token):
                     channel.close()
                     raise PluginWorkerError("plugin worker authentication failed")
+                negotiated = negotiate_worker(hello, self.required_capabilities)
+                self.negotiated_capabilities = negotiated.capabilities
+                self.quarantined = False
                 self._channel = channel
                 logger.info(
                     "插件常驻运行时就绪: plugin=%s pid=%s elapsed=%.1f ms",
@@ -174,19 +193,32 @@ class PersistentPluginWorker:
             finally:
                 listener.close()
 
-    def request(self, payload: dict[str, Any], timeout: float = 300.0) -> dict[str, Any]:
+    def request(
+        self,
+        payload: dict[str, Any],
+        timeout: float = 300.0,
+        *,
+        capability: str = "request",
+    ) -> dict[str, Any]:
         with self._request_lock:
             if not self.running:
                 self.start(timeout=min(max(5.0, float(timeout)), 60.0))
             channel = self._channel
             if channel is None:
                 raise PluginWorkerError("plugin worker is unavailable")
+            if capability and capability not in self.negotiated_capabilities:
+                raise PluginWorkerError(f"plugin worker capability unavailable: {capability}")
             self._request_seq += 1
             request_id = f"{self.plugin_id}-{self._request_seq}"
-            message = {"type": "request", "id": request_id, "payload": dict(payload or {})}
+            message = {
+                "type": "request",
+                "id": request_id,
+                "payload": dict(payload or {}),
+                "deadline_ms": int((time.time() + max(0.05, timeout)) * 1000),
+            }
             try:
                 channel.send(message)
-                response = channel.receive(timeout=timeout)
+                response = self._receive_response(channel, request_id, timeout)
                 if response.get("type") != "response" or response.get("id") != request_id:
                     raise PluginWorkerError("plugin worker returned a mismatched response")
                 result = response.get("payload")
@@ -197,6 +229,60 @@ class PersistentPluginWorker:
                     self._close_unlocked(force=True)
                 raise
             return result
+
+    def _receive_response(
+        self,
+        channel: JsonLineChannel,
+        request_id: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + max(0.05, float(timeout))
+        while True:
+            response = channel.receive(timeout=max(0.05, deadline - time.monotonic()))
+            if response.get("type") != "host_call":
+                return response
+            if response.get("id") != request_id:
+                raise PluginWorkerError("plugin worker returned a mismatched host call")
+            self._handle_host_call(channel, response)
+
+    def _handle_host_call(self, channel: JsonLineChannel, message: dict[str, Any]) -> None:
+        call_id = str(message.get("call_id") or "")
+        response: dict[str, Any] = {"type": "host_response", "call_id": call_id}
+        try:
+            if not callable(self.host_call_handler):
+                raise PermissionError("plugin host calls are disabled")
+            args = message.get("args")
+            kwargs = message.get("kwargs")
+            response["result"] = self.host_call_handler(
+                str(message.get("method") or ""),
+                list(args) if isinstance(args, list) else [],
+                dict(kwargs) if isinstance(kwargs, dict) else {},
+            )
+            response["ok"] = True
+        except Exception as exc:
+            response["ok"] = False
+            response["error"] = {"code": type(exc).__name__, "message": str(exc)}
+        channel.send(response)
+
+    def health_check(self, timeout: float = 3.0) -> bool:
+        if not self.running:
+            return False
+        if CAP_HEARTBEAT not in self.negotiated_capabilities:
+            return True
+        with self._request_lock:
+            channel = self._channel
+            if channel is None:
+                return False
+            heartbeat_id = f"health-{self.plugin_id}-{time.monotonic_ns()}"
+            try:
+                channel.send({"type": "heartbeat", "id": heartbeat_id})
+                response = channel.receive(timeout=timeout)
+                healthy = response.get("type") == "heartbeat_ack" and response.get("id") == heartbeat_id
+            except Exception:
+                healthy = False
+            if not healthy:
+                self.quarantined = True
+            return healthy
 
     def close(self, timeout: float = 3.0) -> None:
         with self._state_lock:
@@ -217,6 +303,7 @@ class PersistentPluginWorker:
             channel.close()
         process = self._process
         self._process = None
+        self.negotiated_capabilities = frozenset()
         if process is None or process.poll() is not None:
             return
         if force:

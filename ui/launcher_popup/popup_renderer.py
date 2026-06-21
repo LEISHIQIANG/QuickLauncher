@@ -1,5 +1,7 @@
 """Painting helpers for LauncherPopup."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import math
 import os
@@ -19,6 +21,7 @@ from qt_compat import (
     QRectF,
     QtCompat,
 )
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import font_px, sp
 from ui.utils.window_effect import is_win10
 
@@ -64,7 +67,7 @@ class PopupRendererMixin:
         margin = max(0, int(getattr(self, "shadow_margin", 0) or 0))
         if margin <= 0 or not is_win10():
             return
-        shadow_size = max(1, int(getattr(self, "shadow_size_px", 0) or max(1, margin - sp(2))))
+        shadow_size = max(1, int(getattr(self, "shadow_size_px", 0) or max(1, margin - sp(4))))
         shadow_distance = max(0, int(getattr(self, "shadow_distance_px", 0) or 0))
         cache_key = (
             self.width(),  # type: ignore[attr-defined]
@@ -122,7 +125,7 @@ class PopupRendererMixin:
         self._win10_internal_shadow_cache_key = cache_key
         painter.drawPixmap(0, 0, shadow_pixmap)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """绘制"""
         painter = QPainter(self)
         try:
@@ -264,15 +267,13 @@ class PopupRendererMixin:
             tint_color.setAlpha(paint_alpha)
             painter.fillPath(path, tint_color)
 
-            # 绘制 1px 半透明边框
+            # 绘制 1px 半透明边框（暗色: 85,85,85 alpha 120；亮色: 200,200,200 alpha 120）
             if self.settings.theme == "dark":
                 border_c = QColor(85, 85, 85, 120)
             else:
                 border_c = QColor(200, 200, 200, 120)
-            pen = QPen(border_c, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+            painter.setPen(make_cosmetic_pen(border_c, 1))
             painter.setBrush(QtCompat.NoBrush)
             painter.drawPath(path)
 
@@ -299,18 +300,13 @@ class PopupRendererMixin:
                     edge_c = QColor(255, 255, 255)
 
                 edge_c.setAlphaF(edge_opacity)
-                pen = QPen(edge_c, 1.0)
-                pen.setJoinStyle(QtCompat.RoundJoin)
-                pen.setCapStyle(QtCompat.RoundCap)
-                painter.setPen(pen)
+                # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+                painter.setPen(make_cosmetic_pen(edge_c, 1))
                 painter.setBrush(QtCompat.NoBrush)
                 painter.drawPath(make_border_path(1.0))
             else:
                 # 默认普通边框
-                pen = QPen(border_color, 1)
-                pen.setJoinStyle(QtCompat.RoundJoin)
-                pen.setCapStyle(QtCompat.RoundCap)
-                painter.setPen(pen)
+                painter.setPen(make_cosmetic_pen(border_color, 1))
                 painter.setBrush(QtCompat.NoBrush)
                 painter.drawPath(make_border_path(1.0))
 
@@ -365,7 +361,7 @@ class PopupRendererMixin:
         if self.is_pinned and dirty_rect.intersects(pinned_rect):
             painter.setBrush(QBrush(accent_color))
             painter.setPen(QtCompat.NoPen)
-            painter.drawEllipse(self.width() - shadow_margin - sp(14), pin_y_offset + sp(6), sp(8), sp(8))
+            painter.drawEllipse(self.width() - shadow_margin - sp(16), pin_y_offset + sp(6), sp(8), sp(8))
 
     def _draw_icons(
         self,
@@ -712,7 +708,7 @@ class PopupRendererMixin:
 
         # 4. 判断是否居中显示占位符
         show_centered = not bool(query) and not bool(preedit) and not getattr(self, "_search_forced_active", False)
-        icon_size = sp(14)
+        icon_size = sp(16)
         gap = sp(6)
 
         icon_color = QColor(text_color)
@@ -749,7 +745,7 @@ class PopupRendererMixin:
 
         # 6. 绘制文本
         text_rect = (
-            self._search_text_rect() if hasattr(self, "_search_text_rect") else rect.adjusted(sp(32), 0, -sp(14), 0)
+            self._search_text_rect() if hasattr(self, "_search_text_rect") else rect.adjusted(sp(32), 0, -sp(16), 0)
         )
         scroll_x = int(getattr(self, "__dict__", {}).get("_search_scroll_x", 0) or 0)
         draw_text_rect_typing = QRectF(text_rect)
@@ -792,7 +788,7 @@ class PopupRendererMixin:
             cursor = self._get_search_cursor_pos() if hasattr(self, "_get_search_cursor_pos") else len(query)
             underline_x = int(text_rect.left() + text_width(prefix + query[:cursor]) - scroll_x)
             underline_w = max(1, int(text_width(preedit)))
-            underline_y = int(text_rect.center().y() + metrics.ascent() / 2 + sp(2))
+            underline_y = int(text_rect.center().y() + metrics.ascent() / 2 + sp(4))
             painter.setPen(QPen(accent_color, 1))
             painter.save()
             painter.setClipRect(text_rect)
@@ -899,7 +895,7 @@ class PopupRendererMixin:
             else:
                 action_hint = "无匹配结果"
             y_offset = (
-                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(30))
+                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(32))
             )
             painter.drawText(
                 QRect(0, self.padding + y_offset, self.width(), self.content_height), QtCompat.AlignCenter, action_hint  # type: ignore[attr-defined]
@@ -931,7 +927,7 @@ class PopupRendererMixin:
             drop_highlight_color,
             bg_mode,
             y_offset=(
-                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(30))
+                self._body_y_offset() if hasattr(self, "_body_y_offset") else getattr(self, "search_bar_height", sp(32))
             ),
             selected_index=selected,
         )
@@ -1035,7 +1031,7 @@ class PopupRendererMixin:
             painter.setOpacity(opacity)
 
             if use_card:
-                card_pad = sp(2)
+                card_pad = sp(4)
                 card_size = icon_size + card_pad * 2
                 card_x = x + (cell_size - card_size) // 2
                 total_h = card_size + text_spacing + text_h
@@ -1130,8 +1126,8 @@ class PopupRendererMixin:
     def _draw_indicator(self, painter: QPainter, text_color: QColor, accent_color: QColor):
         """绘制页面指示器"""
         dot_size = sp(5)
-        active_w = sp(14)
-        spacing = sp(10)
+        active_w = sp(16)
+        spacing = sp(8)
         n = len(self.pages)  # type: ignore[attr-defined]
         pos = float(getattr(self, "_indicator_pos", self.current_page)) % max(1, n)  # type: ignore[arg-type, attr-defined]
 
@@ -1250,7 +1246,7 @@ class PopupRendererMixin:
         display_rows = self._dock_display_rows(visible_count, max_cols)  # type: ignore[attr-defined]
         dock_row_stride = self._get_dock_row_stride(display_rows)  # type: ignore[attr-defined]
         is_dark = self.settings.theme == "dark"  # type: ignore[attr-defined]
-        card_pad = sp(2)
+        card_pad = sp(4)
         card_r = sp(6)
         first_icon_y = self._dock_first_icon_y(display_rows)  # type: ignore[attr-defined]
 

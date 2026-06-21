@@ -11,7 +11,7 @@ import sys
 import threading
 from pathlib import Path
 
-from core.command_registry import COMMAND_INTERACTION_DIRECT, CommandAction, CommandResult
+from extensions.sdk import COMMAND_INTERACTION_DIRECT, CommandAction, CommandResult
 
 logger = logging.getLogger(__name__)
 SENTINEL = "QL_SCREENSHOT_QR_RESULT="

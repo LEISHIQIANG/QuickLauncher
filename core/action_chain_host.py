@@ -10,6 +10,7 @@ internal data structures.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from core.command_registry import CommandResult
@@ -29,8 +30,15 @@ class DefaultActionChainHostAPI:
     host_version = APP_VERSION
     api_version = "1.0"
 
-    def __init__(self, data_manager: Any = None):
+    def __init__(
+        self,
+        data_manager: Any = None,
+        editor: Callable[[Any, dict[str, Any] | None, Any], dict[str, Any] | None] | None = None,
+        shortcut_executor: Callable[[ShortcutItem, Any], tuple[bool, str, str, CommandResult | None]] | None = None,
+    ):
         self.data_manager = data_manager
+        self._editor = editor
+        self._shortcut_executor = shortcut_executor
 
     # ── Shortcut access ────────────────────────────────────────────────
 
@@ -56,14 +64,12 @@ class DefaultActionChainHostAPI:
         Returns:
             Dict with keys: success, message, error, payload
         """
-        from core.shortcut_chain_exec import _execute_step
-
         target = self.get_shortcut(shortcut_id)
         if target is None:
             return {"success": False, "message": "引用的快捷方式不存在。", "error": "missing_shortcut"}
         if target.type in (ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH):
             return {"success": False, "message": "暂不支持嵌套或循环引用动作链。", "error": "nested_chain"}
-        success, detail, error, result = _execute_step(target, cancel_event=cancel_event)
+        success, detail, error, result = self.execute_runtime_shortcut(target, cancel_event)
         payload = getattr(result, "payload", {}) if result is not None else {}
         return {
             "success": bool(success),
@@ -71,6 +77,13 @@ class DefaultActionChainHostAPI:
             "error": error,
             "payload": payload if isinstance(payload, dict) else {},
         }
+
+    def execute_runtime_shortcut(
+        self, target: ShortcutItem, cancel_event=None
+    ) -> tuple[bool, str, str, CommandResult | None]:
+        if self._shortcut_executor is None:
+            return False, "快捷方式执行端口未初始化。", "shortcut_executor_unavailable", None
+        return self._shortcut_executor(target, cancel_event)
 
     # ── Settings and theme ─────────────────────────────────────────────
 
@@ -119,6 +132,12 @@ class DefaultActionChainHostAPI:
             Selected folder path, or empty string if cancelled.
         """
         return ""
+
+    def open_chain_editor(self, parent: Any, chain_data: dict[str, Any] | None) -> dict[str, Any] | None:
+        if self._editor is None:
+            logger.warning("action-chain editor adapter is unavailable")
+            return chain_data
+        return self._editor(parent, chain_data, self)
 
     # ── Logging ────────────────────────────────────────────────────────
 

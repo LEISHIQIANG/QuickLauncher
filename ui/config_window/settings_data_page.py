@@ -149,7 +149,7 @@ class SettingsDataPageMixin:
 
         # 危险操作区域
         danger_layout, danger_group = page.add_group("危险操作")
-        danger_layout.setSpacing(sp(10))
+        danger_layout.setSpacing(sp(8))
 
         # 警告说明
         warning_label = QLabel(tr("以下操作不可逆，请谨慎使用"))
@@ -174,7 +174,7 @@ class SettingsDataPageMixin:
             QPushButton {{
                 background-color: #dc3545;
                 color: white;
-                border: none;
+                border: none; border-radius: 0;
                 padding: 0px 20px;
                 border-radius: 6px;
                 {get_font_css_with_size(13, 600)}

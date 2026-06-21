@@ -34,9 +34,7 @@ class StartupMixin:
         plugin_manager = None
         load_start = time.perf_counter()
         try:
-            import core
-
-            plugin_manager = core.plugin_manager
+            plugin_manager = getattr(self, "plugin_manager", None)
             if plugin_manager is None:
                 pending.clear()
                 return

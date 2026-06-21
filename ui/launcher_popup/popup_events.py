@@ -164,7 +164,7 @@ class PopupEventsMixin:
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size  # type: ignore[attr-defined]
                 first_icon_y = self._dock_first_icon_y(display_rows)  # type: ignore[attr-defined]
-                card_pad = sp(2)
+                card_pad = sp(4)
                 card_y = first_icon_y - card_pad
                 dock_row = (pos.y() - card_y) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
@@ -256,7 +256,7 @@ class PopupEventsMixin:
             display_rows = self._dock_display_rows(visible_count, max_cols)  # type: ignore[attr-defined]
             dock_row_stride = self._get_dock_row_stride(display_rows)  # type: ignore[attr-defined]
             icon_y = int(self._dock_first_icon_y(display_rows) + row * dock_row_stride)  # type: ignore[attr-defined]
-            card_pad = sp(2)
+            card_pad = sp(4)
             card_size = int(self.icon_size + card_pad * 2)  # type: ignore[attr-defined]
             card_x = int(x + (self.cell_size - card_size) // 2)  # type: ignore[attr-defined]
             card_y = int(icon_y - card_pad)
@@ -306,7 +306,7 @@ class PopupEventsMixin:
             return False
         # 获取结果面板区域的顶部和底部
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
-        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
+        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(40)) + shadow_margin
         y_bottom = self.__dict__.get("dock_y")
         if y_bottom is None:
             y_bottom = self.height() - shadow_margin - sp(6)  # type: ignore[attr-defined]
@@ -405,7 +405,7 @@ class PopupEventsMixin:
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
                 first_icon_y = self._dock_first_icon_y(display_rows)
-                card_pad = sp(2)
+                card_pad = sp(4)
                 card_y = first_icon_y - card_pad
                 dock_row = (pos.y() - card_y) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:

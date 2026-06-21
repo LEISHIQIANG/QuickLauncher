@@ -5,9 +5,10 @@ import pytest
 from core.command_registry import CommandAction, CommandDefinition, CommandMetadata, CommandParam, CommandResult
 from core.command_results import CommandResultStore
 from core.data_models import ShortcutItem, ShortcutType
-from qt_compat import QEvent, QPixmap, QPlainTextEdit, Qt, QTextOption, QTimer
+from qt_compat import QDialog, QEvent, QPixmap, QPlainTextEdit, Qt, QTextOption, QTimer
 from ui.command_panel_window import COMMAND_PANEL_SIZE_PRESETS, CommandPanelWindow
 from ui.tray_mixins.windows_mixin import WindowsMixin
+from ui.utils.ui_scale import sp
 
 pytestmark = pytest.mark.ui
 
@@ -25,23 +26,69 @@ def _window(qapp):
     return CommandPanelWindow(FakeDataManager(), CommandResultStore())
 
 
-def test_first_running_command_panel_waits_for_initial_result_layout(monkeypatch):
-    import qt_compat
+def test_command_panel_applies_frameless_chrome_before_native_opacity(monkeypatch, qapp):
+    import ui.themed_tool_window as themed_tool_window
+
+    calls = []
+    original_set_opacity = themed_tool_window.ThemedToolWindow.setWindowOpacity
+
+    def record_chrome(widget, **_kwargs):
+        calls.append("chrome")
+
+    def record_opacity(widget, opacity):
+        calls.append("opacity")
+        return original_set_opacity(widget, opacity)
+
+    monkeypatch.setattr(themed_tool_window, "apply_custom_window_chrome", record_chrome)
+    monkeypatch.setattr(themed_tool_window.ThemedToolWindow, "setWindowOpacity", record_opacity)
+
+    window = _window(qapp)
+    try:
+        assert calls.index("chrome") < calls.index("opacity")
+        assert isinstance(window, QDialog)
+    finally:
+        window.close()
+
+
+def test_command_panel_native_hwnd_never_has_a_windows_caption(qapp):
+    from ctypes import c_int, windll
+
+    window = _window(qapp)
+    try:
+        hwnd = int(window.winId())
+        style = int(windll.user32.GetWindowLongW(hwnd, c_int(-16)))
+        ws_caption = 0x00C00000
+
+        assert window.windowFlags() & Qt.FramelessWindowHint
+        assert style & ws_caption == 0
+    finally:
+        window.close()
+
+
+def test_first_running_command_panel_shows_prepared_running_shell_immediately(monkeypatch):
     import ui.command_panel_window as panel_mod
     import ui.utils.window_effect as window_effect
-
-    callbacks = []
 
     class FakePanel:
         def __init__(self, _data_manager, _result_store):
             self._running = False
             self.show_calls = 0
+            self.calls = []
+
+        def prepare_content_loading(self, **_kwargs):
+            self.calls.append("prepare")
+
+        def load_content_after_window_animation(self, callback):
+            self.calls.append("schedule")
+            callbacks.append(callback)
 
         def run_command(self, **_kwargs):
             self._running = True
+            self.calls.append("run")
 
         def show(self):
             self.show_calls += 1
+            self.calls.append("show")
 
         def raise_(self):
             return None
@@ -62,18 +109,49 @@ def test_first_running_command_panel_waits_for_initial_result_layout(monkeypatch
             return None
 
     monkeypatch.setattr(panel_mod, "CommandPanelWindow", FakePanel)
-    monkeypatch.setattr(qt_compat.QTimer, "singleShot", lambda _delay, callback: callbacks.append(callback))
+    callbacks = []
     monkeypatch.setattr(window_effect, "force_activate_window", lambda _hwnd: None)
 
     tray = Tray()
     assert tray.show_command_panel(command_id="test") is True
-    assert tray.command_panel_window.show_calls == 0
+    assert tray.command_panel_window.show_calls == 1
+    assert tray.command_panel_window.calls == ["prepare", "show", "schedule"]
     assert len(callbacks) == 1
 
     callbacks[0]()
 
-    assert tray.command_panel_window.show_calls == 1
+    assert tray.command_panel_window.calls == ["prepare", "show", "schedule", "run"]
     assert tray._command_panel_hwnd == 123
+
+
+def test_command_panel_uses_shared_tool_window_show_animation(qapp):
+    win = _window(qapp)
+    try:
+        assert win.windowOpacity() == 0.0
+
+        win.show()
+        qapp.processEvents()
+
+        assert hasattr(win, "opacity_anim")
+        assert hasattr(win, "pos_anim")
+        assert win.opacity_anim.duration() == 200
+        assert win.pos_anim.duration() == 200
+    finally:
+        win.close()
+
+
+def test_command_panel_shell_uses_shortcut_size_before_dynamic_content(qapp):
+    win = _window(qapp)
+    shortcut = ShortcutItem(type=ShortcutType.COMMAND, command_panel_size="small")
+    try:
+        win.prepare_content_loading(shortcut=shortcut)
+
+        width, height = COMMAND_PANEL_SIZE_PRESETS["small"]
+        assert win.width() == sp(width)
+        assert win.height() == sp(height)
+        assert win.text.toPlainText() == "正在加载..."
+    finally:
+        win.close()
 
 
 def test_command_panel_renders_text_and_log(qapp):
@@ -422,6 +500,49 @@ def test_confirm_render_keeps_action_states(qapp):
     assert win.action_buttons[0].isEnabled()
     assert win.action_buttons[1].text() == "Disabled"
     assert not win.action_buttons[1].isEnabled()
+
+
+def test_live_result_update_does_not_render_or_relayout_actions(qapp, monkeypatch):
+    import ui.command_panel_renderers as renderers
+
+    win = _window(qapp)
+    action_renders = []
+    monkeypatch.setattr(renderers, "render_actions", lambda panel, result: action_renders.append((panel, result)))
+
+    win.show_transient_result(
+        CommandResult(
+            message="running output",
+            display_type="log",
+            payload={"running": True, "window_size": "small"},
+            actions=[CommandAction(type="copy", label="Copy", value="running output")],
+        )
+    )
+
+    assert win.text.toPlainText() == "running output"
+    assert action_renders == []
+
+    win.show_transient_result(CommandResult(message="done", display_type="log"))
+
+    assert len(action_renders) == 1
+
+
+def test_footer_buttons_are_never_unparented_top_level_windows(qapp):
+    win = _window(qapp)
+    footer_buttons = [win.copy_btn, win.save_btn, win.rerun_btn, *win.action_buttons, win.more_btn]
+
+    assert all(button.parentWidget() is win.footer_button_container for button in footer_buttons)
+    assert all(not button.isWindow() for button in footer_buttons)
+
+    win.show_transient_result(
+        CommandResult(
+            message="done",
+            display_type="log",
+            actions=[CommandAction(type="copy", label="Copy", value="done")],
+        )
+    )
+
+    assert win.action_buttons[0].parentWidget() is win.footer_button_container
+    assert not win.action_buttons[0].isWindow()
 
 
 def test_command_panel_renders_structured_types(qapp, tmp_path):
@@ -802,7 +923,7 @@ def test_command_input_realtime_suggestions_match_full_command_ids(qapp, monkeyp
 
     win._apply_command_suggestion("tools.alpha")
     assert win.command_input.text() == "/tools.alpha "
-    assert not win.command_suggestion_popup.isVisible()
+    assert win.command_suggestion_popup is None or not win.command_suggestion_popup.isVisible()
 
 
 def test_command_input_suggestions_hide_when_input_loses_focus(qapp, monkeypatch):
@@ -837,7 +958,7 @@ def test_command_input_suggestions_hide_when_input_loses_focus(qapp, monkeypatch
     QTimer.singleShot(0, lambda: None)
     qapp.processEvents()
 
-    assert not win.command_suggestion_popup.isVisible()
+    assert win.command_suggestion_popup is None or not win.command_suggestion_popup.isVisible()
 
     win._focus_command_input()
     qapp.processEvents()
@@ -914,4 +1035,4 @@ def test_top_close_hides_panel_without_reopening_suggestions(qapp, monkeypatch):
     qapp.processEvents()
 
     assert not win.isVisible()
-    assert not win.command_suggestion_popup.isVisible()
+    assert win.command_suggestion_popup is None or not win.command_suggestion_popup.isVisible()

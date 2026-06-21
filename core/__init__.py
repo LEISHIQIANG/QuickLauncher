@@ -1,7 +1,5 @@
 """核心模块"""
 
-from collections.abc import Callable
-
 from .clipboard_classifiers import classify_clipboard as classify_clipboard
 from .clipboard_classifiers import classify_text as classify_text
 from .data_manager import DataManager as DataManager
@@ -45,68 +43,15 @@ def __getattr__(name: str):
 
 
 # ============================================================
-# 全局回调注册机制
-# 用于跨模块通信，解决打包版本中模块导入问题
-# ============================================================
-
-# 全局回调存储
-_callbacks: dict[str, Callable[..., object]] = {}
-
-
-def register_callback(name: str, callback):
-    """注册全局回调函数
-
-    Args:
-        name: 回调名称，如 'show_config_window'
-        callback: 回调函数
-    """
-    _callbacks[name] = callback
-
-
-def call_callback(name: str, *args, **kwargs):
-    """调用已注册的回调函数
-
-    Args:
-        name: 回调名称
-        *args, **kwargs: 传递给回调函数的参数
-
-    Returns:
-        回调函数的返回值，如果回调不存在则返回 None
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    callback = _callbacks.get(name)
-    if callback is not None:
-        try:
-            logger.debug(f"执行回调: {name}")
-            result = callback(*args, **kwargs)
-            logger.debug(f"回调执行完成: {name}")
-            return result
-        except Exception:
-            logger.exception("回调执行失败: %s", name)
-            return None
-    else:
-        logger.warning(f"回调未找到: {name}")
-    return None
-
-
-def has_callback(name: str) -> bool:
-    """检查回调是否已注册
-
-    Args:
-        name: 回调名称
-
-    Returns:
-        bool: 回调是否存在
-    """
-    return name in _callbacks
-
-
-# ============================================================
 # 命令注册中心 & 全局管理器
 # ============================================================
+#
+# W1 收尾(2026-06-19):全局字符串 callback 字典已删除。
+# UI 动作改走 application/ports/ui_actions.UIActions,数据访问改走
+# bootstrap.composition_root.build_app_context() 注入的服务。
+# 本模块仍保留命令注册中心(registry)与惰性 _LAZY_EXPORTS。
+# get_data_manager() / get_plugin_manager() 仅作迁移垫片保留接口,
+# 新代码应通过 AppContext 取依赖。
 
 from .command_registry import CommandRegistry
 
@@ -120,14 +65,14 @@ data_manager = None
 
 
 def get_plugin_manager():
-    """获取全局 PluginManager 实例，未初始化时抛出 RuntimeError。"""
+    """迁移垫片:新代码应通过 AppContext.plugin_manager 取依赖。"""
     if plugin_manager is None:
         raise RuntimeError("PluginManager 尚未初始化，请先调用 ensure_plugin_manager_initialized()")
     return plugin_manager
 
 
 def get_data_manager():
-    """获取全局 DataManager 实例，未初始化时抛出 RuntimeError。"""
+    """迁移垫片:新代码应通过 AppContext.data_manager 取依赖。"""
     if data_manager is None:
         raise RuntimeError("DataManager 尚未初始化，请先调用 set_data_manager()")
     return data_manager
@@ -171,7 +116,7 @@ def ensure_plugin_manager_initialized():
 
 
 def set_data_manager(dm):
-    """设置全局 DataManager 实例。"""
+    """设置全局 DataManager 实例（仅迁移垫片）。"""
     global data_manager
     data_manager = dm
 

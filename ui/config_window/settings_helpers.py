@@ -27,8 +27,12 @@ from qt_compat import (
     pyqtProperty,
     pyqtSignal,
 )
+from ui.styles.design_tokens import BorderScale, SurfaceScale, TextScale
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.window_chrome import apply_custom_window_chrome
-from ui.utils.ui_scale import scale_qss, sp, spf
+from ui.utils.pixel_snap import make_cosmetic_pen
+from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -101,16 +105,16 @@ class NumberedListDelegate(QStyledItemDelegate):
 
             if is_selected:
                 painter.setPen(QtCompat.NoPen)
-                painter.setBrush(QColor(0, 120, 215, 70))
+                painter.setBrush(SurfaceScale.bg_list_selection)
                 painter.drawRoundedRect(r, 6, 6)
             else:
                 # Normal/Hover background
                 if theme == "dark":
-                    bg_color = QColor(255, 255, 255, 30) if is_hover else QColor(255, 255, 255, 18)
-                    border_color = QColor(255, 255, 255, 22)
+                    bg_color = SurfaceScale.bg_list_item_hover_dark if is_hover else SurfaceScale.bg_list_item_dark
+                    border_color = BorderScale.list_item_dark
                 else:
-                    bg_color = QColor(120, 120, 128, 44) if is_hover else QColor(120, 120, 128, 26)
-                    border_color = QColor(60, 60, 67, 18)
+                    bg_color = SurfaceScale.bg_list_item_hover_light if is_hover else SurfaceScale.bg_list_item_light
+                    border_color = BorderScale.list_item_light
 
                 painter.setBrush(bg_color)
                 painter.setPen(QPen(border_color, 1))
@@ -122,22 +126,23 @@ class NumberedListDelegate(QStyledItemDelegate):
             font = option.font
             font.setPointSize(9)
             painter.setFont(font)
-            num_color = QColor(255, 255, 255, 100) if theme == "dark" else QColor(0, 0, 0, 80)
+            num_color = TextScale.list_num_dark if theme == "dark" else TextScale.list_num_light
             if is_selected:
-                num_color = QColor(255, 255, 255, 200)
+                num_color = TextScale.list_num_selected_dark
             painter.setPen(num_color)
-            num_rect = QRectF(option.rect.left() + sp(10), option.rect.top(), sp(24), option.rect.height())
+            num_rect = QRectF(option.rect.left() + sp(8), option.rect.top(), sp(24), option.rect.height())
             painter.drawText(num_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, num_str)
 
-            text_color = QColor(255, 255, 255, 230) if theme == "dark" else QColor(28, 28, 30, 230)
+            # 文本色：dark 主题走 TextScale token，light 主题保留字面量
+            text_color = QColor(TextScale.primary_dark) if theme == "dark" else QColor(28, 28, 30, 230)
             if is_selected:
-                text_color = QColor(255, 255, 255)
+                text_color = TextScale.on_accent
             painter.setPen(text_color)
             font.setBold(False)
             font.setPointSize(10)
             painter.setFont(font)
             text_rect = QRectF(
-                option.rect.left() + sp(38), option.rect.top(), option.rect.width() - sp(44), option.rect.height()
+                option.rect.left() + sp(40), option.rect.top(), option.rect.width() - sp(44), option.rect.height()
             )
             text = index.data(QtCompat.DisplayRole)
             if text and index.row() != self.editing_row:
@@ -153,7 +158,7 @@ class NumberedListDelegate(QStyledItemDelegate):
         self.editing_row = index.row()
         editor = QLineEdit(parent)
         editor.setFrame(False)
-        editor.setStyleSheet("background: transparent; border: none; padding: 0px; margin: 0px;")
+        editor.setStyleSheet("background: transparent; border: none; border-radius: 0; padding: 0px; margin: 0px;")
         return editor
 
     def destroyEditor(self, editor, index):
@@ -162,7 +167,7 @@ class NumberedListDelegate(QStyledItemDelegate):
 
     def updateEditorGeometry(self, editor, option, index):
         rect = option.rect
-        editor.setGeometry(int(rect.left() + sp(38)), int(rect.top()), int(rect.width() - sp(44)), int(rect.height()))
+        editor.setGeometry(int(rect.left() + sp(40)), int(rect.top()), int(rect.width() - sp(44)), int(rect.height()))
 
     def setEditorData(self, editor, index):
         text = index.data(QtCompat.DisplayRole)
@@ -193,12 +198,12 @@ class ProgressDialog(QDialog):
 
     def _detect_theme(self):
         if self.theme == "dark":
-            self.bg_color = QColor(28, 28, 30, 180)
-            self.border_color = QColor(190, 190, 197, 60)
+            self.bg_color = token_surface(self.theme, "bg_glass_dark_win10")
+            self.border_color = token_border(self.theme, "subtle_dark")
             self.text_color = "#dddddd"
         else:
-            self.bg_color = QColor(242, 242, 247, 160)
-            self.border_color = QColor(229, 229, 234, 150)
+            self.bg_color = token_surface(self.theme, "bg_glass_light_win10")
+            self.border_color = token_border(self.theme, "subtle_light")
             self.text_color = "#333333"
 
     def _setup_ui(self):
@@ -210,7 +215,9 @@ class ProgressDialog(QDialog):
         self.msg_label.setWordWrap(True)
         self.msg_label.setAlignment(QtCompat.AlignLeft | QtCompat.AlignVCenter)
         self.msg_label.setStyleSheet(
-            scale_qss(f"font-size: 13px; border: none; background: transparent; color: {self.text_color};")
+            scale_qss(
+                f"font-size: 13px; border: none; border-radius: 0; background: transparent; color: {self.text_color};"
+            )
         )
         main_layout.addWidget(self.msg_label, 1)
 
@@ -218,7 +225,7 @@ class ProgressDialog(QDialog):
         self.btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_layout.addStretch()
         self.ok_btn = QPushButton("确定")
-        self.ok_btn.setFixedSize(sp(60), sp(22))
+        self.ok_btn.setFixedSize(sp(60), sp(24))
         self.ok_btn.setStyleSheet(scale_qss("font-size: 13px; border-radius: 4px;"))
         self.ok_btn.clicked.connect(self.accept)
         self.ok_btn.setVisible(False)
@@ -229,7 +236,7 @@ class ProgressDialog(QDialog):
 
         self.setStyleSheet(get_dialog_stylesheet(self.theme))
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """背景绘制 - 完全按照ThemedMessageBox的逻辑"""
         painter = QPainter(self)
         try:
@@ -262,13 +269,10 @@ class ProgressDialog(QDialog):
                 tint_color.setAlpha(min(tint_color.alpha(), 100))
             painter.fillPath(path, tint_color)
 
-            # 边框
+            # 边框：使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()
@@ -332,7 +336,7 @@ class SwitchButton(QCheckBox):
 
         # Set a highly specific local stylesheet to disable standard QCheckBox indicator
         self.setStyleSheet(
-            "QCheckBox::indicator, SwitchButton::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
+            "QCheckBox::indicator, SwitchButton::indicator { width: 0px; height: 0px; border: none; border-radius: 0; background: transparent; image: none; }"
         )
 
         # Anim progress: 0.0 (off) to 1.0 (on)
@@ -382,21 +386,21 @@ class SwitchButton(QCheckBox):
         )
         text_height = font_metrics.height()
 
-        w = sp(29) + sp(8) + text_width + sp(4)
+        w = sp(28) + sp(8) + text_width + sp(4)
         h = max(sp(18), text_height) + sp(4)
         return QSize(int(w), int(h))
 
     def minimumSizeHint(self):
         return self.sizeHint()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             # Switch dimensions
-            sw_width = sp(29)
+            sw_width = sp(28)
             sw_height = sp(18)
             spacing = sp(8)
 
@@ -433,29 +437,29 @@ class SwitchButton(QCheckBox):
                 opacity = 1.0 - self._progress
                 border_color = QColor(bg_border_off)
                 border_color.setAlphaF(opacity)
-                pen = QPen(border_color, 1)
-                pen.setJoinStyle(QtCompat.RoundJoin)
-                pen.setCapStyle(QtCompat.RoundCap)
-                painter.setPen(pen)
+                # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+                painter.setPen(make_cosmetic_pen(border_color, 1))
                 painter.setBrush(QtCompat.NoBrush)
                 painter.drawRoundedRect(track_rect.adjusted(0.5, 0.5, -0.5, -0.5), sw_height / 2.0, sw_height / 2.0)
 
             # Draw white knob
             knob_size = sw_height - sp(4)
-            knob_min_x = sw_x + spf(2.0)
-            knob_max_x = sw_x + sw_width - sw_height + spf(2.0)
+            knob_margin = (sw_height - knob_size) / 2.0
+            knob_min_x = sw_x + knob_margin
+            knob_max_x = sw_x + sw_width - knob_size - knob_margin
             knob_current_x = knob_min_x + (knob_max_x - knob_min_x) * self._progress
+            knob_y = sw_y + knob_margin
 
             # Draw knob shadow
             shadow_pen = QPen(QColor(0, 0, 0, 30), 0.5)
             shadow_pen.setCosmetic(True)
             painter.setPen(shadow_pen)
             painter.setBrush(QBrush(QColor("#FFFFFF")))
-            shadow_rect = QRectF(knob_current_x, sw_y + spf(2.5), knob_size, knob_size)
+            shadow_rect = QRectF(knob_current_x, knob_y, knob_size, knob_size)
             painter.drawEllipse(shadow_rect)
 
             # Draw knob
-            knob_rect = QRectF(knob_current_x, sw_y + spf(2.0), knob_size, knob_size)
+            knob_rect = QRectF(knob_current_x, knob_y, knob_size, knob_size)
             painter.drawEllipse(knob_rect)
 
             # Draw text

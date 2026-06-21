@@ -1,4 +1,4 @@
-"""Update notification UI helpers."""
+"""Presentation adapter for update status, progress, and user decisions."""
 
 import html
 import logging
@@ -6,7 +6,10 @@ import re
 
 from core.i18n import tr
 from services.update.config import UpdateInfo
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.utils.pixel_snap import make_cosmetic_pen
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +63,7 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             code = html.escape(match.group(1), quote=False)
             return stash(
                 f'<code style="background:{code_bg};color:{code_color};padding:{sp(1)}px {sp(5)}px;'
-                f'border-radius:{sp(4)}px;font-size:{sp(11)}px;">{code}</code>'
+                f'border-radius:{sp(4)}px;font-size:{sp(12)}px;">{code}</code>'
             )
 
         def link_repl(match: re.Match) -> str:
@@ -96,8 +99,8 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             if in_code_block:
                 code_text = html.escape("\n".join(code_buf), quote=False)
                 html_parts.append(
-                    f'<pre style="background:{code_bg};padding:{sp(9)}px {sp(11)}px;border-radius:{sp(7)}px;'
-                    f'font-size:{sp(11)}px;line-height:1.55;overflow-x:auto;margin:{sp(8)}px 0;">'
+                    f'<pre style="background:{code_bg};padding:{sp(8)}px {sp(12)}px;border-radius:{sp(8)}px;'
+                    f'font-size:{sp(12)}px;line-height:1.55;overflow-x:auto;margin:{sp(8)}px 0;">'
                     f'<code style="color:{code_color};">{code_text}</code></pre>'
                 )
                 code_buf = []
@@ -122,7 +125,9 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
         # Horizontal rule
         if re.match(r"^(-{3,}|\*{3,}|_{3,})$", stripped):
             close_list()
-            html_parts.append(f'<hr style="border:none;border-top:1px solid {hr_color};margin:{sp(12)}px 0;">')
+            html_parts.append(
+                f'<hr style="border:none; border-radius: 0;border-top:1px solid {hr_color};margin:{sp(12)}px 0;">'
+            )
             continue
 
         # Headings
@@ -133,7 +138,7 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             text = inline_format(heading_match.group(2))
             sizes = {1: 17, 2: 15, 3: 14, 4: 13, 5: 12, 6: 12}
             weight = "500"
-            margin_top = f"{sp(13)}px" if level <= 2 else f"{sp(10)}px"
+            margin_top = f"{sp(12)}px" if level <= 2 else f"{sp(8)}px"
             html_parts.append(
                 f'<div style="font-size:{sp(sizes[level])}px;font-weight:{weight};color:{heading_color};'
                 f'line-height:1.35;margin-top:{margin_top};margin-bottom:{sp(6)}px;">{text}</div>'
@@ -146,13 +151,13 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
             if not in_list:
                 close_list()
                 in_list = True
-                html_parts.append(f'<table style="border-collapse:collapse;margin:{sp(5)}px 0 {sp(7)}px 0;">')
+                html_parts.append(f'<table style="border-collapse:collapse;margin:{sp(5)}px 0 {sp(8)}px 0;">')
             indent = sp(min(len(ul_match.group(1)) // 2, 3) * 14)
             text = inline_format(ul_match.group(2))
             html_parts.append(
-                f'<tr><td style="width:{sp(12) + indent}px;padding:{sp(2)}px {sp(4)}px {sp(2)}px {indent}px;'
-                f'color:{list_bullet};font-size:{sp(14)}px;line-height:1.5;vertical-align:top;">&#8226;</td>'
-                f'<td style="padding:{sp(2)}px 0;color:{list_text_color};font-size:{sp(12)}px;'
+                f'<tr><td style="width:{sp(12) + indent}px;padding:{sp(4)}px {sp(4)}px {sp(4)}px {indent}px;'
+                f'color:{list_bullet};font-size:{sp(16)}px;line-height:1.5;vertical-align:top;">&#8226;</td>'
+                f'<td style="padding:{sp(4)}px 0;color:{list_text_color};font-size:{sp(12)}px;'
                 f'line-height:1.55;vertical-align:top;">{text}</td></tr>'
             )
             continue
@@ -164,11 +169,11 @@ def _markdown_to_html(md: str, theme: str = "dark") -> str:
                 close_list()
                 in_ol = True
                 html_parts.append(
-                    f'<ol style="margin:{sp(5)}px 0 {sp(7)}px {sp(20)}px;'
+                    f'<ol style="margin:{sp(5)}px 0 {sp(8)}px {sp(20)}px;'
                     f'padding-left:{sp(12)}px;color:{list_text_color};">'
                 )
             text = inline_format(ol_match.group(2))
-            html_parts.append(f'<li style="margin:{sp(2)}px 0;font-size:{sp(12)}px;line-height:1.55;">{text}</li>')
+            html_parts.append(f'<li style="margin:{sp(4)}px 0;font-size:{sp(12)}px;line-height:1.55;">{text}</li>')
             continue
 
         # Regular paragraph
@@ -195,7 +200,6 @@ class UpdateDialog:
             QLabel,
             QPainter,
             QPainterPath,
-            QPen,
             QPoint,
             QPushButton,
             QtCompat,
@@ -229,11 +233,11 @@ class UpdateDialog:
 
         corner_radius = 8
         if theme == "dark":
-            bg_color = QColor(28, 28, 30, 180)
-            border_color = QColor(190, 190, 197, 60)
+            bg_color = token_surface(theme, "bg_glass_dark_win10")
+            border_color = token_border(theme, "subtle_dark")
         else:
-            bg_color = QColor(242, 242, 247, 160)
-            border_color = QColor(229, 229, 234, 150)
+            bg_color = token_surface(theme, "bg_glass_light_win10")
+            border_color = token_border(theme, "subtle_light")
 
         title_color = "#ffffff" if theme == "dark" else "#1c1c1e"
         text_color = "#d1d1d6" if theme == "dark" else "#3a3a3c"
@@ -245,7 +249,7 @@ class UpdateDialog:
         # Main layout
         layout = QVBoxLayout(dialog)
         layout.setSpacing(sp(8))
-        layout.setContentsMargins(sp(14), sp(12), sp(14), sp(12))
+        layout.setContentsMargins(sp(16), sp(12), sp(16), sp(12))
 
         # Title
         title_layout = QHBoxLayout()
@@ -269,17 +273,17 @@ class UpdateDialog:
         size_mb = update_info.file_size / 1024 / 1024
 
         version_html = (
-            f"<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: {sp(12)}px; "
+            f"<div style=\"font-family: 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI Variable Text', 'Segoe UI'; font-size: {sp(12)}px; "
             f'color: {secondary_color}; margin-bottom: {sp(4)}px;">'
             f'<span style="display:inline-block;background:{badge_bg};color:{badge_color};'
-            f'padding:{sp(2)}px {sp(8)}px;border-radius:{sp(4)}px;font-weight:400;border:1px solid {badge_border};">'
+            f'padding:{sp(4)}px {sp(8)}px;border-radius:{sp(4)}px;font-weight:400;border:1px solid {badge_border};">'
             f"v{update_info.version}</span>"
             f'<span style="margin-left:{sp(8)}px;color:{secondary_color};"> {size_mb:.1f} MB</span>'
         )
         if update_info.mandatory:
             version_html += (
                 f'<span style="margin-left:{sp(8)}px;display:inline-block;background:rgba(255,59,48,0.15);'
-                f"color:#ff3b30;padding:{sp(2)}px {sp(8)}px;border-radius:{sp(4)}px;font-size:{sp(11)}px;"
+                f"color:#ff3b30;padding:{sp(4)}px {sp(8)}px;border-radius:{sp(4)}px;font-size:{sp(12)}px;"
                 f'border:1px solid rgba(255,59,48,0.3);">{tr("强制更新")}</span>'
             )
         version_html += "</div>"
@@ -299,13 +303,15 @@ class UpdateDialog:
 
         html_content = _markdown_to_html(changelog, theme)
         full_html = (
-            "<div style=\"font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; "
+            "<div style=\"font-family: 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
             f'font-size: {sp(12)}px; color: {text_color}; line-height: 1.65; padding: {sp(6)}px {sp(8)}px;">'
             f"{html_content}</div>"
         )
         text_browser.setHtml(full_html)
 
-        text_browser.setStyleSheet(scale_qss("QTextBrowser { background: transparent; border: none; padding: 0px; }"))
+        text_browser.setStyleSheet(
+            scale_qss("QTextBrowser { background: transparent; border: none; border-radius: 0; padding: 0px; }")
+        )
         layout.addWidget(text_browser, 1)
 
         # Buttons
@@ -356,7 +362,7 @@ class UpdateDialog:
                 painter.fillPath(path, tint)
                 pen_c = QColor(border_color)
                 pen_c.setAlpha(min(pen_c.alpha(), 120))
-                painter.setPen(QPen(pen_c, 1))
+                painter.setPen(make_cosmetic_pen(pen_c, 1, 1))
                 painter.drawPath(path)
             finally:
                 painter.end()
@@ -478,3 +484,6 @@ class UpdateDialog:
 
 # Backward-compatible alias
 UpdateNotification = UpdateDialog
+
+
+# Lifecycle balance requirements: .stop() deleteLater()

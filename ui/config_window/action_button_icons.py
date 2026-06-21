@@ -1,11 +1,14 @@
 """Small unified icons for config action buttons."""
 
-from qt_compat import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QRectF, QtCompat
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
+from qt_compat import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QRectF, QtCompat
+from ui.utils.pixel_snap import create_pixmap
 
 
 def create_action_button_icon(kind: str, theme: str, size: int = 18) -> QIcon:
     """Create a muted line icon for footer action buttons."""
-    pixmap = QPixmap(size, size)
+    pixmap = create_pixmap(size, size)
     pixmap.fill(QtCompat.transparent)
 
     painter = QPainter(pixmap)

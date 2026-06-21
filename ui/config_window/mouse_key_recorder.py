@@ -56,19 +56,19 @@ class MouseKeyRecorderWidget(QWidget):
         self.display.setReadOnly(True)
         self.display.setPlaceholderText(tr("点击开始录制"))
         self.display.setMinimumWidth(sp(180))
-        self.display.setFixedHeight(sp(26))
+        self.display.setFixedHeight(sp(24))
         self.display.setContextMenuPolicy(Qt.NoContextMenu)  # 禁用右键菜单
         apply_recorder_display_style(self.display, False)
         layout.addWidget(self.display, 1)
 
         self.record_btn = QPushButton(tr("录制"))
         self.record_btn.setFixedWidth(sp(52))
-        self.record_btn.setFixedHeight(sp(26))
+        self.record_btn.setFixedHeight(sp(24))
         self.record_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_btn)
 
         self.clear_btn = QPushButton(tr("清空"))
-        self.clear_btn.setFixedHeight(sp(26))
+        self.clear_btn.setFixedHeight(sp(24))
         self.clear_btn.clicked.connect(self.clear)
         layout.addWidget(self.clear_btn)
 

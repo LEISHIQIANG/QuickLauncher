@@ -20,9 +20,11 @@ from core.module_registry import (
     MODULE_UNLICENSED,
     ModuleRecord,
     _host_version_compatible,
-    module_registry,
+    get_module_registry,
 )
 from core.shortcut_chain_exec import execute_shortcut_chain
+
+module_registry = get_module_registry()
 
 
 class _Data:

@@ -176,7 +176,7 @@ class PortItem(QGraphicsEllipseItem):
     def hoverEnterEvent(self, event):
         self.setBrush(QBrush(self.color.lighter(115)))
         self.setPen(QPen(QColor(255, 255, 255, 230), 1.8))
-        self.setRect(-spf(7.5), -spf(7.5), spf(15), spf(15))
+        self.setRect(-spf(8.0), -spf(8.0), spf(16.0), spf(16.0))
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
@@ -359,7 +359,7 @@ class NodeItem(QGraphicsRectItem):
         font = QFont("Microsoft YaHei UI", font_px(9))
         font.setBold(True)
         self.header_item.setFont(font)
-        self.header_item.setPos(sp(10), sp(7))
+        self.header_item.setPos(sp(8), sp(8))
         self.header_item.setAcceptedMouseButtons(Qt.NoButton)
 
         self.input_label_items = []
@@ -369,7 +369,7 @@ class NodeItem(QGraphicsRectItem):
             self.port_items[("input", port)].setToolTip(_node_port_tooltip(self.node, "input", port))
             label = QGraphicsSimpleTextItem(self.input_labels.get(port) or _port_label(port), self)
             label.setFont(QFont("Microsoft YaHei UI", font_px(8)))
-            label.setPos(sp(10), y - sp(8))
+            label.setPos(sp(8), y - sp(8))
             label.setAcceptedMouseButtons(Qt.NoButton)
             self.input_label_items.append(label)
 
@@ -381,7 +381,7 @@ class NodeItem(QGraphicsRectItem):
             label = QGraphicsSimpleTextItem(self.output_labels.get(port) or _port_label(port), self)
             label.setFont(QFont("Microsoft YaHei UI", font_px(8)))
             label_rect = label.boundingRect()
-            label.setPos(self.node_width - label_rect.width() - sp(10), y - sp(8))
+            label.setPos(self.node_width - label_rect.width() - sp(8), y - sp(8))
             label.setAcceptedMouseButtons(Qt.NoButton)
             self.output_label_items.append(label)
 
@@ -1238,8 +1238,8 @@ class ChainCanvasWidget(QWidget):
             return False
         self._push_history()
         columns = 8
-        x_gap = spf(230.0)
-        y_gap = spf(150.0)
+        x_gap = spf(232.0)
+        y_gap = spf(152.0)
         base_x = spf(40.0)
         base_y = spf(60.0)
         for index, node in enumerate(nodes):
@@ -1311,8 +1311,8 @@ class ChainCanvasWidget(QWidget):
             view_rect = self.view.viewport().rect()  # type: ignore[unused-ignore, union-attr]
             if view_rect.width() > 0 and view_rect.height() > 0:
                 scene_center = self.view.mapToScene(view_rect.center())
-                node_x = float(scene_center.x() - sp(178) / 2.0)
-                node_y = float(scene_center.y() - spf(50.0))
+                node_x = float(scene_center.x() - sp(176) / 2.0)
+                node_y = float(scene_center.y() - spf(48.0))
         except Exception as exc:
             logger.debug("计算新节点默认位置失败: %s", exc, exc_info=True)
 
@@ -1850,11 +1850,11 @@ class PythonCellSourceDialog(BaseDialog):
             + f"""
             QDialog {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }}
             QTextEdit {{
                 background-color: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 color: {editor_text};
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 11px;
@@ -1899,8 +1899,8 @@ class NodePropertyPanel(QWidget):
 
         # 表单布局放置在 GroupBox 内部
         self.form = QFormLayout()
-        self.form.setVerticalSpacing(sp(10))
-        self.form.setHorizontalSpacing(sp(10))
+        self.form.setVerticalSpacing(sp(8))
+        self.form.setHorizontalSpacing(sp(8))
         self.form.setContentsMargins(0, sp(4), 0, sp(4))
         self.group_layout.addLayout(self.form)
         self.layout.addWidget(self.group_box)
@@ -2084,7 +2084,7 @@ class NodePropertyPanel(QWidget):
                     )
 
                     clear = QPushButton("断开")
-                    clear.setFixedSize(sp(48), sp(22))
+                    clear.setFixedSize(sp(48), sp(24))
                     clear.setCursor(Qt.PointingHandCursor)  # type: ignore[unused-ignore, attr-defined]
                     clear.clicked.connect(
                         lambda _=False, p=port: self.disconnect_requested.emit(str(node.get("id") or ""), p)
@@ -2174,7 +2174,7 @@ class NodePropertyPanel(QWidget):
         elif kind in {"textarea", "json", "list"} or _is_multiline_port(node, port):
             edit = QTextEdit()
             edit.setPlainText(value)
-            edit.setMinimumHeight(sp(92) if kind in {"json", "list"} else sp(82))
+            edit.setMinimumHeight(sp(92) if kind in {"json", "list"} else sp(80))
             edit.textChanged.connect(self._emit_args)
         else:
             edit = QLineEdit()
@@ -2197,7 +2197,7 @@ class NodePropertyPanel(QWidget):
         edit.setMinimumHeight(sp(28))
         edit.textChanged.connect(self._emit_args)
         browse = QPushButton("...")
-        browse.setFixedSize(sp(34), sp(26))
+        browse.setFixedSize(sp(32), sp(24))
         browse.setCursor(Qt.PointingHandCursor)  # type: ignore[unused-ignore, attr-defined]
         browse.clicked.connect(lambda _=False, p=port, k=kind, e=edit: self._browse_path(p, k, e))
         row_layout.addWidget(edit, 1)

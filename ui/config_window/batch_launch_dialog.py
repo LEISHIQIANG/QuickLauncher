@@ -2,6 +2,8 @@
 批量启动对话框
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import copy
 import logging
 import os
@@ -37,8 +39,10 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
+from ui.styles.design_tokens import surface
 from ui.styles.style import Glassmorphism
 from ui.utils.interruptible_animation import stop_animation
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.smooth_scroll import SmoothScrollArea
 from ui.utils.ui_scale import scale_qss, sp
@@ -72,18 +76,29 @@ def _shortcut_search_text(shortcut: ShortcutItem) -> str:
 
 
 def _create_type_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
-    pixmap = QPixmap(size, size)
+    from .icon_grid_palette import (
+        BATCH_LAUNCH_BG,
+        CHAIN_BG,
+        COMMAND_BG,
+        DEFAULT_FALLBACK_BG,
+        DEFAULT_FALLBACK_TEXT,
+        FOLDER_BG,
+        HOTKEY_BG,
+        URL_BG,
+    )
+
+    pixmap = create_pixmap(size, size)
     pixmap.fill(QtCompat.transparent)
 
     palette = {
-        ShortcutType.FOLDER: (QColor(235, 175, 70), "F"),
-        ShortcutType.URL: (QColor(60, 160, 120), "W"),
-        ShortcutType.HOTKEY: (QColor(70, 130, 180), "K"),
-        ShortcutType.COMMAND: (QColor(50, 50, 50), ">"),
-        ShortcutType.CHAIN: (QColor(180, 100, 50), "C"),
-        ShortcutType.BATCH_LAUNCH: (QColor(130, 95, 200), "B"),
+        ShortcutType.FOLDER: (QColor(FOLDER_BG), "F"),
+        ShortcutType.URL: (QColor(URL_BG), "W"),
+        ShortcutType.HOTKEY: (QColor(HOTKEY_BG), "K"),
+        ShortcutType.COMMAND: (QColor(COMMAND_BG), ">"),
+        ShortcutType.CHAIN: (QColor(CHAIN_BG), "C"),
+        ShortcutType.BATCH_LAUNCH: (QColor(BATCH_LAUNCH_BG), "B"),
     }
-    bg, text = palette.get(shortcut.type, (QColor(135, 206, 250), (shortcut.name or "?")[:1]))
+    bg, text = palette.get(shortcut.type, (QColor(DEFAULT_FALLBACK_BG), (shortcut.name or "?")[:1]))
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QtCompat.Antialiasing)
@@ -94,7 +109,7 @@ def _create_type_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
     radius = max(4, size // 5)
     painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
 
-    painter.setPen(QColor(255, 255, 255))
+    painter.setPen(QColor(DEFAULT_FALLBACK_TEXT))
     font = QFont("Segoe UI", max(8, int(size * 0.42)))
     font.setBold(True)
     painter.setFont(font)
@@ -170,13 +185,15 @@ class BatchLaunchCard(QFrame):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(sp(self.ICON_LABEL_SIZE), sp(self.ICON_LABEL_SIZE))
         self.icon_label.setAlignment(QtCompat.AlignCenter)
-        self.icon_label.setStyleSheet("background: transparent; border: none;")
+        self.icon_label.setStyleSheet("background: transparent; border: none; border-radius: 0;")
         self.icon_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.icon_label)
 
         # 名称
         self.name_label = QLabel(self.shortcut.name or tr("未命名"))
-        self.name_label.setStyleSheet(scale_qss("font-size: 13px; background: transparent; border: none;"))
+        self.name_label.setStyleSheet(
+            scale_qss("font-size: 13px; background: transparent; border: none; border-radius: 0;")
+        )
         self.name_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.name_label, 1)
 
@@ -190,18 +207,20 @@ class BatchLaunchCard(QFrame):
         delay_layout = QHBoxLayout()
         delay_layout.setSpacing(sp(4))
         delay_label = QLabel(tr("延迟"))
-        delay_label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
+        delay_label.setStyleSheet(
+            scale_qss("font-size: 12px; background: transparent; border: none; border-radius: 0;")
+        )
         delay_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         delay_layout.addWidget(delay_label)
 
         self.delay_input = QLineEdit()
         self.delay_input.setText("0")
-        self.delay_input.setFixedWidth(sp(50))
+        self.delay_input.setFixedWidth(sp(48))
         self.delay_input.setPlaceholderText("0")
         delay_layout.addWidget(self.delay_input)
 
         delay_unit = QLabel("s")
-        delay_unit.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
+        delay_unit.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none; border-radius: 0;"))
         delay_unit.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         delay_layout.addWidget(delay_unit)
 
@@ -298,12 +317,12 @@ class CompactIconWidget(QFrame):
         self._apply_theme()
 
     def _setup_ui(self):
-        self.setFixedSize(sp(70), sp(70))
+        self.setFixedSize(sp(72), sp(72))
         self.setCursor(QtCompat.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
-        layout.setSpacing(sp(2))
+        layout.setSpacing(sp(4))
 
         # 复选框在左上角
         self.checkbox = QCheckBox()
@@ -315,12 +334,14 @@ class CompactIconWidget(QFrame):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(sp(24), sp(24))
         self.icon_label.setAlignment(QtCompat.AlignCenter)
-        self.icon_label.setStyleSheet("background: transparent; border: none;")
+        self.icon_label.setStyleSheet("background: transparent; border: none; border-radius: 0;")
 
         # 名称
         self.name_label = QLabel(self.shortcut.name[:8] if self.shortcut.name else tr("未命名"))
         self.name_label.setAlignment(QtCompat.AlignCenter)
-        self.name_label.setStyleSheet(scale_qss("font-size: 11px; background: transparent; border: none;"))
+        self.name_label.setStyleSheet(
+            scale_qss("font-size: 11px; background: transparent; border: none; border-radius: 0;")
+        )
         self.name_label.setWordWrap(True)
 
         layout.addWidget(self.checkbox, 0, QtCompat.AlignLeft | QtCompat.AlignTop)
@@ -336,18 +357,16 @@ class CompactIconWidget(QFrame):
 
     def _apply_theme(self):
         """Store theme colours for QPainter-based rendering (replaces QSS border-radius)."""
-        if self.theme == "dark":
-            self._bg_color = QColor(255, 255, 255, 8)
-            self._border_color = QColor(255, 255, 255, 15)
-        else:
-            self._bg_color = QColor(0, 0, 0, 5)
-            self._border_color = QColor(0, 0, 0, 10)
+        self._bg_color = QColor(surface(self.theme, "bg_hover_subtle"))
+        self._bg_color.setAlpha(8 if self.theme == "dark" else 5)
+        self._border_color = QColor(surface(self.theme, "bg_hover_subtle"))
+        self._border_color.setAlpha(15 if self.theme == "dark" else 10)
         self._radius = 6.0
         # Remove QSS border-radius — painting is handled by paintEvent now
-        self.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.setStyleSheet("QFrame { background: transparent; border: none; border-radius: 0; }")
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.Antialiasing, True)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
@@ -590,7 +609,9 @@ class BatchLaunchDialog(BaseDialog):
 
         # 标题
         title = QLabel(tr("批量启动配置"))
-        title.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400; background: transparent; border: none;"))
+        title.setStyleSheet(
+            scale_qss("font-size: 13px; font-weight: 400; background: transparent; border: none; border-radius: 0;")
+        )
         main_layout.addWidget(title)
 
         # 左右分栏
@@ -627,7 +648,7 @@ class BatchLaunchDialog(BaseDialog):
     def _create_batch_info_panel(self):
         """创建左上角名称与图标设置栏。"""
         panel = QFrame()
-        panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        panel.setStyleSheet("QFrame { background: transparent; border: none; border-radius: 0; }")
         layout = QHBoxLayout(panel)
         layout.setSpacing(sp(8))
         layout.setContentsMargins(0, 0, 0, 0)
@@ -654,7 +675,7 @@ class BatchLaunchDialog(BaseDialog):
         name_row = QHBoxLayout()
         name_row.setSpacing(sp(6))
         name_label = QLabel(tr("名称:"))
-        name_label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
+        name_label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none; border-radius: 0;"))
         self.batch_name_edit = QLineEdit()
         self.batch_name_edit.setMaxLength(6)
         self.batch_name_edit.setText((getattr(self.shortcut, "name", "") or tr("批量启动"))[:6])
@@ -701,7 +722,7 @@ class BatchLaunchDialog(BaseDialog):
     def _create_left_panel(self):
         """创建左侧面板 - 已选图标卡片列表"""
         panel = QFrame()
-        panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        panel.setStyleSheet("QFrame { background: transparent; border: none; border-radius: 0; }")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(sp(8))
@@ -709,7 +730,7 @@ class BatchLaunchDialog(BaseDialog):
         layout.addWidget(self._create_batch_info_panel())
 
         label = QLabel(tr("启动列表（从上到下执行）"))
-        label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
+        label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none; border-radius: 0;"))
         layout.addWidget(label)
 
         self.cards_scroll = SmoothScrollArea()
@@ -730,13 +751,13 @@ class BatchLaunchDialog(BaseDialog):
     def _create_right_panel(self):
         """创建右侧面板 - 图标候选栏"""
         panel = QFrame()
-        panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        panel.setStyleSheet("QFrame { background: transparent; border: none; border-radius: 0; }")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(sp(8))
 
         label = QLabel(tr("可选图标"))
-        label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none;"))
+        label.setStyleSheet(scale_qss("font-size: 12px; background: transparent; border: none; border-radius: 0;"))
         layout.addWidget(label)
 
         self.icon_selector = IconSelectorWidget(self.theme)

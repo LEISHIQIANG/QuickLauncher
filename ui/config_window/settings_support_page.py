@@ -1,5 +1,7 @@
 """支持页面。"""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import random
 
@@ -9,7 +11,6 @@ from qt_compat import (
     QColor,
     QEasingCurve,
     QFrame,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLinearGradient,
@@ -32,6 +33,7 @@ from qt_compat import (
     pyqtProperty,
 )
 from ui.config_window.support_dialog import _rounded_pixmap, _support_image_path
+from ui.styles.design_tokens import StatusScale
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_animation, stop_named_animations
@@ -67,14 +69,16 @@ class FloatingEmoji(QLabel):
 
         # 区分自动气泡与手动连击的物理参数
         if is_auto:
-            self.setStyleSheet(scale_qss("font-size: 16px; background: transparent; border: none;"))
+            self.setStyleSheet(scale_qss("font-size: 16px; background: transparent; border: none; border-radius: 0;"))
             initial_opacity = 0.70
             duration = 1800  # 升起得更慢、更轻
             max_dy = -120
             min_dy = -80
             max_dx = 20
         else:
-            self.setStyleSheet(scale_qss("font-size: 26px; background: transparent; border: none; font-weight: 400;"))
+            self.setStyleSheet(
+                scale_qss("font-size: 26px; background: transparent; border: none; border-radius: 0; font-weight: 400;")
+            )
             initial_opacity = 1.0
             duration = 1200  # 点击时爆发力强
             max_dy = -200
@@ -303,7 +307,7 @@ class WobblyCoffeeCup(QLabel):
 
         FloatingEmoji(emoji, global_screen_pos, None, is_auto=is_auto)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -319,13 +323,12 @@ class WobblyCoffeeCup(QLabel):
 
         alpha_val = int(255 * self._halo_opacity)
 
-        # 主题与高对比度可见度设计
+        # 主题与高对比度可见度设计 — 光晕基色走 StatusScale.qr_glow_* token
         if self.theme == "dark":
-            # 暗色主题：高级温润的金白蚀环光晕
-            glow_color = QColor(255, 235, 190, alpha_val)
+            glow_color = QColor(StatusScale.qr_glow_outer)
         else:
-            # 亮色主题：纯白背景下白色不可见，采用清新暖阳橙黄光圈，极度舒适优雅
-            glow_color = QColor(255, 180, 100, alpha_val)
+            glow_color = QColor(StatusScale.qr_glow_inner)
+        glow_color.setAlpha(alpha_val)
 
         halo_gradient.setColorAt(0.0, glow_color)
         halo_gradient.setColorAt(1.0, QColor(glow_color.red(), glow_color.green(), glow_color.blue(), 0))
@@ -465,7 +468,7 @@ class DrinkCard(QFrame):
         self.update()
 
     def _icon_rect(self, card_rect):
-        return QRectF(sp(23), sp(10), card_rect.width() - sp(46), sp(44))
+        return QRectF(sp(24), sp(8), card_rect.width() - sp(48), sp(44))
 
     def _paint_drink_icon(self, painter, icon_rect):
         painter.save()
@@ -604,7 +607,7 @@ class DrinkCard(QFrame):
 
         painter.restore()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -617,19 +620,19 @@ class DrinkCard(QFrame):
         painter.scale(self._scale, self._scale)
         painter.translate(-cx, -cy)
 
-        # 调配深浅色底色与极淡的描边基色
+        # 调配深浅色底色与极淡的描边基色 — 走 StatusScale.support_card_* token
         if self.theme == "dark":
-            base_bg = QColor(255, 255, 255, 10)  # rgba(255, 255, 255, 0.04)
-            base_border = QColor(255, 255, 255, 12)  # 极淡的暗红线
-            text_color = QColor(255, 255, 255, 240)
-            sub_color = QColor(255, 255, 255, 128)
-            hover_bg = QColor(255, 255, 255, 20)  # rgba(255, 255, 255, 0.08)
+            base_bg = QColor(StatusScale.support_card_bg_dark)
+            base_border = QColor(StatusScale.support_card_border_dark)
+            text_color = QColor(StatusScale.support_text_primary_dark)
+            sub_color = QColor(StatusScale.support_text_secondary_dark)
+            hover_bg = QColor(StatusScale.support_card_hover_dark)
         else:
-            base_bg = QColor(0, 0, 0, 5)  # rgba(0, 0, 0, 0.02)
-            base_border = QColor(0, 0, 0, 10)  # 极淡的淡灰描边
-            text_color = QColor(28, 28, 30, 230)
-            sub_color = QColor(28, 28, 30, 128)
-            hover_bg = QColor(255, 255, 255, 217)  # rgba(255, 255, 255, 0.85)
+            base_bg = QColor(StatusScale.support_card_bg_light)
+            base_border = QColor(StatusScale.support_card_border_light)
+            text_color = QColor(StatusScale.support_text_primary_light)
+            sub_color = QColor(StatusScale.support_text_secondary_light)
+            hover_bg = QColor(StatusScale.support_card_hover_light)
 
         p = self._hover_progress
 
@@ -708,18 +711,16 @@ class DrinkCard(QFrame):
         name_font.setBold(False)
         painter.setFont(name_font)
         painter.setPen(QPen(text_color))
-        painter.drawText(QRect(sp(5), sp(60), rect.width() - sp(10), sp(22)), QtCompat.AlignCenter, self.name)
+        painter.drawText(QRect(sp(5), sp(60), rect.width() - sp(8), sp(24)), QtCompat.AlignCenter, self.name)
 
         # 7. 绘制价格
         price_font = painter.font()
         price_font.setFamily("Microsoft YaHei UI")
-        price_font.setPixelSize(sp(11))
+        price_font.setPixelSize(sp(12))
         price_font.setBold(False)
         painter.setFont(price_font)
         painter.setPen(QPen(sub_color))
-        painter.drawText(
-            QRect(sp(5), sp(82), rect.width() - sp(10), sp(22)), QtCompat.AlignCenter, f"¥{self.price:.2f}"
-        )
+        painter.drawText(QRect(sp(5), sp(80), rect.width() - sp(8), sp(24)), QtCompat.AlignCenter, f"¥{self.price:.2f}")
 
         painter.end()
 
@@ -731,7 +732,7 @@ class SupportDrinkBar(QFrame):
         super().__init__(parent)
         self._scroll_area = scroll_area
         self._cards = []
-        self.setStyleSheet("background: transparent; border: none;")
+        self.setStyleSheet("background: transparent; border: none; border-radius: 0;")
 
         self.drink_layout = QHBoxLayout(self)
         self.drink_layout.setContentsMargins(0, 0, 0, 0)
@@ -808,15 +809,15 @@ class SettingsSupportPageMixin:
 
         container = QFrame(page)
         container.setObjectName("SupportPageContainer")
-        container.setStyleSheet("background: transparent; border: none;")
+        container.setStyleSheet("background: transparent; border: none; border-radius: 0;")
 
         v_layout = QVBoxLayout(container)
         v_layout.setContentsMargins(0, sp(5), 0, sp(5))
-        v_layout.setSpacing(sp(15))
+        v_layout.setSpacing(sp(16))
 
         # 头部说明区域
         header_widget = QFrame(container)
-        header_widget.setStyleSheet("background: transparent; border: none;")
+        header_widget.setStyleSheet("background: transparent; border: none; border-radius: 0;")
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(sp(8))
@@ -877,14 +878,14 @@ class SettingsSupportPageMixin:
 
         qr_layout = QVBoxLayout(self._qr_container)
         qr_layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
-        qr_layout.setSpacing(sp(10))
+        qr_layout.setSpacing(sp(8))
         qr_layout.setAlignment(QtCompat.AlignCenter)
 
         # 二维码图片标签 (130x130)
         self._qr_image_label = QLabel(self._qr_container)
-        self._qr_image_label.setFixedSize(sp(130), sp(130))
+        self._qr_image_label.setFixedSize(sp(128), sp(128))
         self._qr_image_label.setAlignment(QtCompat.AlignCenter)
-        self._qr_image_label.setStyleSheet("background: transparent; border: none;")
+        self._qr_image_label.setStyleSheet("background: transparent; border: none; border-radius: 0;")
 
         support_img_path = _support_image_path()
         pixmap = QPixmap(support_img_path)
@@ -921,9 +922,9 @@ class SettingsSupportPageMixin:
 
         # 4. 底部功能型胶囊按钮
         footer_widget = QFrame(container)
-        footer_widget.setStyleSheet("background: transparent; border: none;")
+        footer_widget.setStyleSheet("background: transparent; border: none; border-radius: 0;")
         footer_layout = QHBoxLayout(footer_widget)
-        footer_layout.setContentsMargins(0, sp(10), 0, 0)
+        footer_layout.setContentsMargins(0, sp(8), 0, 0)
         footer_layout.setSpacing(sp(12))
         footer_layout.setAlignment(QtCompat.AlignCenter)
 
@@ -996,18 +997,20 @@ class SettingsSupportPageMixin:
         if hasattr(self, "_support_title_lbl"):
             self._support_title_lbl.setStyleSheet(
                 scale_qss(
-                    f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none;"
+                    f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none; border-radius: 0;"
                 )
             )
         if hasattr(self, "_support_desc_lbl"):
             self._support_desc_lbl.setStyleSheet(
                 scale_qss(
-                    f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none;"
+                    f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none; border-radius: 0;"
                 )
             )
         if hasattr(self, "_reaction_label"):
             self._reaction_label.setStyleSheet(
-                scale_qss(f"font-size: 11px; color: {desc_color}; background: transparent; border: none;")
+                scale_qss(
+                    f"font-size: 11px; color: {desc_color}; background: transparent; border: none; border-radius: 0;"
+                )
             )
 
         if hasattr(self, "_qr_container"):
@@ -1147,59 +1150,70 @@ class SettingsSupportPageMixin:
         # 3. 平滑渐显主页面里的折叠式二维码卡片
         self._qr_anim_generation = int(getattr(self, "_qr_anim_generation", 0) or 0) + 1
         generation = self._qr_anim_generation
-        if hasattr(self, "_qr_anim") and self._qr_anim:
-            self._qr_anim.stop()
+        from ui.utils.interruptible_animation import stop_named_animations
+        from ui.utils.widget_opacity import animate_opacity
+
+        stop_named_animations(self, "_qr_anim")
+        if hasattr(self, "_qr_anim"):
             self._qr_anim = None
 
         if self._qr_container.isHidden():
             self._qr_container.show()
 
-        if not self._qr_container.graphicsEffect():
-            self.qr_effect = QGraphicsOpacityEffect(self._qr_container)
-            self._qr_container.setGraphicsEffect(self.qr_effect)
-        else:
-            self.qr_effect = self._qr_container.graphicsEffect()
+        # Use the centralized animation helper which handles the
+        # QGraphicsOpacityEffect lifecycle (attach for animation, remove
+        # on finish).  ``curr_opacity`` keeps mid-animation starts smooth.
+        curr_opacity = 1.0
+        effect = self._qr_container.graphicsEffect()
+        if effect is not None and hasattr(effect, "opacity"):
+            try:
+                curr_opacity = float(effect.opacity())
+            except (RuntimeError, TypeError):
+                curr_opacity = 1.0
 
-        curr_opacity = self.qr_effect.opacity()
-
-        anim = QtCompat.QPropertyAnimation(self.qr_effect, b"opacity")
-        anim.setDuration(350)
-        anim.setStartValue(curr_opacity)
-        anim.setEndValue(1.0)
-
-        def cleanup_effect():
+        def _cleanup() -> None:
             if generation != int(getattr(self, "_qr_anim_generation", -1) or -1):
                 return
-            if getattr(self, "_qr_anim", None) is not anim:
-                return
-            if self._qr_container.graphicsEffect():
-                self._qr_container.setGraphicsEffect(None)
+            self._qr_anim = None
 
-        anim.finished.connect(cleanup_effect)
-        anim.start()
+        anim = animate_opacity(
+            self._qr_container,
+            curr_opacity,
+            1.0,
+            duration_ms=350,
+            on_finished=_cleanup,
+            clear_on_finish=True,
+        )
         self._qr_anim = anim
 
     def _close_qr(self):
         """渐隐折叠隐藏二维码，并在淡出前重新挂载 graphicsEffect 以保证渐变顺滑，带状态打断支持。"""
+        from ui.utils.interruptible_animation import stop_named_animations
+        from ui.utils.widget_opacity import animate_opacity
+
         self._qr_anim_generation = int(getattr(self, "_qr_anim_generation", 0) or 0) + 1
         generation = self._qr_anim_generation
-        if hasattr(self, "_qr_anim") and self._qr_anim:
-            self._qr_anim.stop()
+        stop_named_animations(self, "_qr_anim")
+        if hasattr(self, "_qr_anim"):
             self._qr_anim = None
 
         if not self._qr_container.isHidden():
-            # 重新建立并挂载 graphicsEffect 用于关闭时的淡出淡化
-            self.qr_effect = QGraphicsOpacityEffect(self._qr_container)
-            self._qr_container.setGraphicsEffect(self.qr_effect)
+            curr_opacity = 1.0
+            effect = self._qr_container.graphicsEffect()
+            if effect is not None and hasattr(effect, "opacity"):
+                try:
+                    curr_opacity = float(effect.opacity())
+                except (RuntimeError, TypeError):
+                    curr_opacity = 1.0
 
-            curr_opacity = self.qr_effect.opacity()
-
-            anim = QtCompat.QPropertyAnimation(self.qr_effect, b"opacity")
-            anim.setDuration(250)
-            anim.setStartValue(curr_opacity)
-            anim.setEndValue(0.0)
-            anim.finished.connect(lambda generation=generation, anim=anim: self._finish_close_qr(generation, anim))
-            anim.start()
+            anim = animate_opacity(
+                self._qr_container,
+                curr_opacity,
+                0.0,
+                duration_ms=250,
+                on_finished=lambda: self._finish_close_qr(generation, anim),
+                clear_on_finish=True,
+            )
             self._qr_anim = anim
             self._reaction_label.setText(tr("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)"))
 

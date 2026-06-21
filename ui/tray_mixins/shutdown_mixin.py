@@ -36,6 +36,16 @@ class TrayAppShutdownMixin:
       :pyattr:`data_manager` / :pyattr:`_cleanup_icon_cache`
     """
 
+    def stop(self) -> None:
+        """Public shutdown entry point used by :class:`LifecycleManager`.
+
+        The composition root registers ``tray_app.stop`` as the lifecycle
+        handler for the tray app, so this method must exist and stay
+        idempotent.  Delegates to the private teardown helper which is
+        already guarded by ``_runtime_shutdown_started``.
+        """
+        self._shutdown_runtime_components()
+
     def _stop_timer_if_active(self, attr_name):
         try:
             timer = getattr(self, attr_name, None)
@@ -137,10 +147,9 @@ class TrayAppShutdownMixin:
             logger.debug(f"stop folder watcher failed: {e}")
 
         try:
-            import core
-
-            if core.plugin_manager is not None:
-                core.plugin_manager.shutdown()
+            plugin_manager = getattr(self, "plugin_manager", None)
+            if plugin_manager is not None:
+                plugin_manager.shutdown()
         except Exception as exc:
             logger.debug("关闭插件管理器失败: %s", exc, exc_info=True)
 

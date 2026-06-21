@@ -247,10 +247,10 @@ class ConfigWindow(QMainWindow):
 
         # 状态栏
         self.status_bar = QStatusBar()
-        self.status_bar.setFixedHeight(sp(22))
+        self.status_bar.setFixedHeight(sp(24))
         self.status_bar.setSizeGripEnabled(False)
         self.status_bar.setStyleSheet(
-            scale_qss("font-size: 11px; background: transparent; QStatusBar::item { border: none; }")
+            scale_qss("font-size: 11px; background: transparent; QStatusBar::item { border: none; border-radius: 0; }")
         )
         self.status_bar.setContentsMargins(sp(self.FOLDER_PANEL_WIDTH) + sp(4), 0, 0, 0)
 
@@ -303,7 +303,7 @@ class ConfigWindow(QMainWindow):
             if hasattr(self.folder_panel, "rescale_ui"):
                 self.folder_panel.rescale_ui()
         if hasattr(self, "status_bar"):
-            self.status_bar.setFixedHeight(sp(22))
+            self.status_bar.setFixedHeight(sp(24))
             self.status_bar.setContentsMargins(sp(self.FOLDER_PANEL_WIDTH) + sp(4), 0, 0, 0)
         if hasattr(self, "icon_grid") and hasattr(self.icon_grid, "rescale_ui"):
             self.icon_grid.rescale_ui()
@@ -398,7 +398,7 @@ class ConfigWindow(QMainWindow):
                 return
 
             from services.update.checker import UpdateChecker
-            from services.update.ui import UpdateNotification
+            from ui.update_dialog import UpdateNotification
 
             checker = UpdateChecker()
             info = checker.check_now()
@@ -597,7 +597,7 @@ class ConfigWindow(QMainWindow):
         status_color = "rgba(255, 255, 255, 0.5)" if theme == "dark" else "rgba(0, 0, 0, 0.5)"
         self.status_bar.setStyleSheet(
             scale_qss(
-                f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; }}"
+                f"font-size: 11px; background: transparent; color: {status_color}; QStatusBar::item {{ border: none; border-radius: 0; }}"
             )
         )
         self.version_label.setStyleSheet(

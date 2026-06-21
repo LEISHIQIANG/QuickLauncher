@@ -14,11 +14,12 @@ import os
 import re
 import socket
 import ssl
-import subprocess
 import time
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
+
+from infrastructure.process import runtime as process_runtime
 
 from .command_registry import CommandAction, CommandContext, CommandResult
 from .commands_text import _text_from_args_or_clipboard
@@ -439,7 +440,7 @@ def _run_cmd(args: list[str]) -> tuple[bool, str]:
 
     try:
         creationflags = 0x08000000 if os.name == "nt" else 0
-        proc = subprocess.run(
+        proc = process_runtime.run(
             args,
             capture_output=True,
             creationflags=creationflags,
@@ -653,10 +654,9 @@ def cmd_port(context: CommandContext) -> CommandResult:
                     logger.debug("强制终止进程PID=%s失败: %s", pid, exc, exc_info=True)
 
             if not success_term:
-                import subprocess
 
                 try:
-                    proc_kill = subprocess.run(
+                    proc_kill = process_runtime.run(
                         ["taskkill", "/F", "/PID", str(pid)],
                         capture_output=True,
                         creationflags=0x08000000,

@@ -8,6 +8,7 @@ import time
 
 from core import DataManager
 from core.i18n import tr
+from infrastructure.process import runtime as process_runtime
 from qt_compat import (
     QApplication,
     QColor,
@@ -16,13 +17,11 @@ from qt_compat import (
     QEasingCurve,
     QFrame,
     QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect,
     QIcon,
     QListWidgetItem,
     QMimeData,
     QPainter,
     QPen,
-    QPixmap,
     QPoint,
     QPropertyAnimation,
     QPushButton,
@@ -36,9 +35,12 @@ from qt_compat import (
     pyqtSignal,
 )
 from runtime_paths import app_root
+from ui.styles.design_tokens import StatusScale, elevation
 from ui.styles.style import PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import scale_qss, sp
+from ui.utils.window_effect import is_win10
 
 from .folder_panel_helpers import (
     decode_mime_text,
@@ -84,8 +86,8 @@ class FolderPanel(QWidget):
         self.list_frame = QFrame()
         self.list_frame.setObjectName("folderListFrame")
         list_frame_layout = QVBoxLayout(self.list_frame)
-        list_frame_layout.setContentsMargins(sp(7), sp(4), sp(7), sp(7))
-        list_frame_layout.setSpacing(sp(10))
+        list_frame_layout.setContentsMargins(sp(8), sp(4), sp(8), sp(8))
+        list_frame_layout.setSpacing(sp(8))
 
         self.folder_list = FolderListWidget(self)
         self.folder_list.setObjectName("folderList")
@@ -167,21 +169,21 @@ class FolderPanel(QWidget):
             QListWidget#folderList {
                 outline: none;
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }
             QListWidget#folderList::item {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 padding: 0px;
                 margin: 1px 0px;
             }
             QListWidget#folderList::item:selected {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }
             QListWidget#folderList::item:hover {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }
         """
             )
@@ -221,9 +223,10 @@ class FolderPanel(QWidget):
         )
 
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(10)
-        shadow.setOffset(0, 2)
-        shadow.setColor(QColor(0, 0, 0, 35 if theme == "dark" else 20))
+        offset_y, blur_r, shadow_color = elevation(1, is_win10=is_win10())
+        shadow.setBlurRadius(blur_r)
+        shadow.setOffset(0, offset_y)
+        shadow.setColor(shadow_color)
         self.add_btn.setGraphicsEffect(shadow)
 
     def rescale_ui(self):
@@ -233,8 +236,8 @@ class FolderPanel(QWidget):
             layout.setSpacing(sp(8))
         list_frame_layout = self.list_frame.layout()
         if list_frame_layout is not None:
-            list_frame_layout.setContentsMargins(sp(7), sp(4), sp(7), sp(7))
-            list_frame_layout.setSpacing(sp(10))
+            list_frame_layout.setContentsMargins(sp(8), sp(4), sp(8), sp(8))
+            list_frame_layout.setSpacing(sp(8))
         self.folder_list.setIconSize(QSize(sp(18), sp(18)))
         self.add_btn.setFixedHeight(sp(36))
         for row in range(self.folder_list.count()):
@@ -419,7 +422,8 @@ class FolderPanel(QWidget):
         w = pixmap.width()
         h = pixmap.height()
 
-        transparent_pixmap = QPixmap(w, h)
+        # 拖拽缩略图走 create_pixmap 自动适配 DPR
+        transparent_pixmap = create_pixmap(w, h, widget)
         transparent_pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(transparent_pixmap)
@@ -432,9 +436,9 @@ class FolderPanel(QWidget):
         painter.setOpacity(0.9)
         theme = self._get_current_theme()
         if theme == "dark":
-            border_color = QColor(168, 230, 207, 150)
+            border_color = QColor(StatusScale.drop_highlight_pen)
         else:
-            border_color = QColor(70, 180, 140, 220)
+            border_color = QColor(StatusScale.drop_highlight_pressed)
 
         painter.setPen(QPen(border_color, 1.5))
         painter.setBrush(QtCompat.NoBrush)
@@ -446,11 +450,11 @@ class FolderPanel(QWidget):
 
         # Dim the source widget in the list during drag for dynamic feedback
         try:
-            opacity_effect = QGraphicsOpacityEffect(widget)
-            opacity_effect.setOpacity(0.35)
-            widget.setGraphicsEffect(opacity_effect)
+            from ui.utils.widget_opacity import dim_for_drag
+
+            dim_for_drag(widget, 0.35)
         except Exception:
-            opacity_effect = None
+            logger.debug("设置拖动透明度效果失败", exc_info=True)
 
         try:
             drag.exec_(supported_actions)
@@ -1049,7 +1053,7 @@ class FolderPanel(QWidget):
         """打开绑定的文件夹"""
         folder = self.data_manager.data.get_folder_by_id(folder_id)
         if folder and folder.linked_path and os.path.exists(folder.linked_path):
-            os.startfile(folder.linked_path)
+            process_runtime.startfile(folder.linked_path)
 
     def _unlink_folder(self, folder_id: str):
         """解除文件夹绑定"""

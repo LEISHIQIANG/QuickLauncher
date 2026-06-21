@@ -26,6 +26,14 @@ from .capture import (
 from .cleanup import cleanup_file_later, terminate_process_tree
 from .launcher_mixin import CommandLauncherMixin
 from .output import decode_command_output, truncate_command_output
+from .platform_executors import (
+    execute_bash_command,
+    execute_cmd_command,
+    execute_powershell_command,
+    execute_python_command,
+    execute_silent_bash_command,
+    execute_visible_bash_command,
+)
 from .preflight import (
     DESTRUCTIVE_CONFIRMATION_ATTR,
     consume_confirmation,
@@ -66,6 +74,12 @@ __all__ = [
     "DESTRUCTIVE_CONFIRMATION_ATTR",
     "destructive_confirmation_result",
     "effective_command_type",
+    "execute_bash_command",
+    "execute_cmd_command",
+    "execute_powershell_command",
+    "execute_python_command",
+    "execute_silent_bash_command",
+    "execute_visible_bash_command",
     "KNOWN_SHELL_EXECUTION_ENTRIES",
     "mark_confirmed",
     "merge_runtime_env",

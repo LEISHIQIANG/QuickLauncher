@@ -75,6 +75,29 @@ def test_cmd_git_branch_table(monkeypatch, tmp_path):
     assert result.payload["rows"][0] == ["*", "main abc123"]
 
 
+def test_cmd_git_never_creates_a_console_window(monkeypatch, tmp_path):
+    launches = []
+
+    class Proc:
+        returncode = 0
+
+        def __init__(self, argv, cwd=None, **kwargs):
+            launches.append(kwargs)
+
+        def communicate(self, timeout=None):
+            return "true\n", ""
+
+    monkeypatch.setattr("subprocess.Popen", Proc)
+
+    result = cmd_git(CommandContext(args_text=f"status {tmp_path}"))
+
+    assert result.success is True
+    assert launches
+    assert all(kwargs["creationflags"] & subprocess.CREATE_NO_WINDOW for kwargs in launches)
+    assert all(kwargs["startupinfo"].dwFlags & subprocess.STARTF_USESHOWWINDOW for kwargs in launches)
+    assert all(kwargs["startupinfo"].wShowWindow == subprocess.SW_HIDE for kwargs in launches)
+
+
 def test_cmd_git_timeout_kills_process(monkeypatch, tmp_path):
     processes = []
 

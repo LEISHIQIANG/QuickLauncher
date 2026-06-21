@@ -109,7 +109,7 @@ class StepCardWidget(QFrame):
         delay_spin.setRange(0, 60000)
         delay_spin.setValue(max(0, int(step.get("delay_ms", 0) or 0)))
         delay_spin.setSuffix("ms")
-        delay_spin.setFixedWidth(sp(70))
+        delay_spin.setFixedWidth(sp(72))
         delay_spin.setToolTip(tr("执行前延迟"))
         delay_spin.setStyleSheet(
             scale_qss(

@@ -24,6 +24,8 @@ from qt_compat import (
     QTimer,
     QWidget,
 )
+from ui.styles.design_tokens import StatusScale
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import sp, spf
 
 
@@ -37,20 +39,22 @@ class CommandHistoryDropButton(QPushButton):
         self.setAutoDefault(False)
         self.setDefault(False)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.Antialiasing)
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
             if not self.isEnabled():
+                # 禁用态灰色 33% (alpha 85)
                 color = QColor(128, 128, 128, 85)
             else:
+                # 启用态灰色 65% (alpha 165)
                 color = QColor(128, 128, 128, 165)
-            pen = QPen(color, 1.6)
-            pen.setCapStyle(Qt.RoundCap)
-            pen.setJoinStyle(Qt.RoundJoin)
+            # 使用 make_cosmetic_pen 保证下拉箭头线在 125%+ DPI 下不发胖
+            pen = make_cosmetic_pen(color, 1)
+            pen.setWidthF(1.6)
             painter.setPen(pen)
-            cx = self.width() / 2 - spf(2)
+            cx = self.width() / 2 - spf(4.0)
             cy = self.height() / 2 + spf(1)
             half_w = spf(4.5)
             half_h = spf(3.0)
@@ -91,14 +95,15 @@ class CommandStatusIndicator(QWidget):
         self._phase = (self._phase + 0.18) % (math.pi * 2)
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         del event
+        # 状态色取自 StatusScale token — 与状态指示器 / 弹窗 / toast 统一
         colors = {
-            "running": QColor(10, 132, 255),
-            "success": QColor(48, 209, 88),
-            "failure": QColor(255, 69, 58),
-            "warning": QColor(255, 159, 10),
-            "neutral": QColor(142, 142, 147),
+            "running": QColor(StatusScale.info),  # 10, 132, 255
+            "success": QColor(StatusScale.success),  # 48, 209, 88
+            "failure": QColor(StatusScale.error),  # 255, 69, 58
+            "warning": QColor(StatusScale.warning),  # 255, 159, 10
+            "neutral": QColor(142, 142, 147),  # 中性灰，无精确 token
         }
         color = QColor(colors.get(self._kind, colors["neutral"]))
         if self._theme == "light":

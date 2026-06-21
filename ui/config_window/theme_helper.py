@@ -2,6 +2,8 @@
 主题助手 - 统一管理对话框主题
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 import tempfile
@@ -327,7 +329,7 @@ def get_radio_stylesheet(theme: str) -> str:
         QRadioButton::indicator {{
             width: 14px;
             height: 14px;
-            border: none;
+            border: none; border-radius: 0;
             background: transparent;
         }}
         QRadioButton::indicator:unchecked {{
@@ -355,7 +357,7 @@ def get_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator {{
             width: 14px;
             height: 14px;
-            border: none;
+            border: none; border-radius: 0;
             background: transparent;
         }}
         QCheckBox::indicator:unchecked {{
@@ -383,7 +385,7 @@ def get_small_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator {{
             width: 11px;
             height: 11px;
-            border: none;
+            border: none; border-radius: 0;
             background: transparent;
         }}
         QCheckBox::indicator:unchecked {{
@@ -411,7 +413,7 @@ def get_compact_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator {{
             width: 13px;
             height: 13px;
-            border: none;
+            border: none; border-radius: 0;
             background: transparent;
         }}
         QCheckBox::indicator:unchecked {{
@@ -434,7 +436,7 @@ def get_indicator_only_checkbox_stylesheet(theme: str) -> str:
         QCheckBox::indicator {{
             width: 11px;
             height: 11px;
-            border: none;
+            border: none; border-radius: 0;
         }}
         QCheckBox::indicator:unchecked {{
             image: url("{check_off}");
@@ -460,7 +462,7 @@ def get_switch_stylesheet(theme: str) -> str:
         QCheckBox::indicator {{
             width: 29px;
             height: 18px;
-            border: none;
+            border: none; border-radius: 0;
             background: transparent;
         }}
         QCheckBox::indicator:unchecked {{

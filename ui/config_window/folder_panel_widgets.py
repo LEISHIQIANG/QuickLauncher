@@ -40,6 +40,7 @@ from qt_compat import (
     QWidget,
     pyqtProperty,
 )
+from ui.styles.design_tokens import StatusScale, surface, text
 from ui.styles.style import get_dialog_stylesheet
 from ui.utils.ui_scale import scale_qss, sp
 
@@ -68,12 +69,12 @@ class FolderItemDelegate(QStyledItemDelegate):
 
             if theme == "dark":
                 # Dark theme: fresh mint green (minty pastel)
-                pen_color = QColor(168, 230, 207, 180)
-                brush_color = QColor(168, 230, 207, 45)
+                pen_color = QColor(StatusScale.drop_highlight_pen)
+                brush_color = QColor(StatusScale.drop_highlight_brush_soft)
             else:
                 # Light theme: gorgeous pastel mint green
-                pen_color = QColor(70, 180, 140, 200)
-                brush_color = QColor(168, 230, 207, 75)
+                pen_color = QColor(StatusScale.drop_highlight_pressed)
+                brush_color = QColor(StatusScale.drop_highlight_brush_strong)
 
             painter.setPen(QPen(pen_color, 1.5))
             painter.setBrush(QBrush(brush_color))
@@ -96,7 +97,7 @@ class FolderInputDialog(BaseDialog):
         self.setMinimumWidth(sp(200))
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(sp(10))
+        layout.setSpacing(sp(8))
         layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
 
         # 标签
@@ -149,7 +150,7 @@ class FolderImportDialog(BaseDialog):
         self.setMinimumWidth(sp(240))
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(sp(10))
+        layout.setSpacing(sp(8))
         layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
 
         # 标题
@@ -230,7 +231,7 @@ class FolderItemWidget(QWidget):
         self.update()
         super().enterEvent(event)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -243,13 +244,10 @@ class FolderItemWidget(QWidget):
 
         # Draw hover background
         if is_hovered and not is_selected:
-            if self.theme == "dark":
-                hover_bg = QColor(255, 255, 255, 15)  # rgba(255, 255, 255, 0.06)
-            else:
-                hover_bg = QColor(0, 0, 0, 10)  # rgba(0, 0, 0, 0.04)
+            hover_bg = surface(self.theme, "bg_hover_subtle")
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(QRectF(self.rect()).adjusted(sp(2), sp(1), sp(-2), sp(-1)), sp(8), sp(8))
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(sp(4), sp(1), sp(-2), sp(-1)), sp(8), sp(8))
 
         # Draw icon
         if self.icon:
@@ -260,15 +258,15 @@ class FolderItemWidget(QWidget):
         # Draw text
         if self.theme == "dark":
             text_color = (
-                QColor(255, 255, 255, 242)
+                text(self.theme, "primary")
                 if is_selected
-                else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 180))
+                else (text(self.theme, "secondary") if is_hovered else text(self.theme, "tertiary"))
             )
         else:
             text_color = (
-                QColor(28, 28, 30, 242)
+                text(self.theme, "primary")
                 if is_selected
-                else (QColor(28, 28, 30, 217) if is_hovered else QColor(28, 28, 30, 165))
+                else (text(self.theme, "secondary") if is_hovered else text(self.theme, "tertiary"))
             )
 
         painter.setPen(text_color)
@@ -276,7 +274,7 @@ class FolderItemWidget(QWidget):
 
         painter.setFont(get_qfont(12))
 
-        text_rect = QRectF(sp(32), 0, self.width() - sp(42), self.height())
+        text_rect = QRectF(sp(32), 0, self.width() - sp(40), self.height())
         painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
 
         painter.end()
@@ -319,7 +317,7 @@ class FolderListWidget(QListWidget):
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
             # 左右各内缩 2px，防止圆角抗锯齿像素被 viewport 右边界裁剪
-            target_rect = QRectF(visual_rect).adjusted(sp(2), sp(1), sp(-2), sp(-1))
+            target_rect = QRectF(visual_rect).adjusted(sp(4), sp(1), sp(-2), sp(-1))
 
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
@@ -374,10 +372,10 @@ class FolderListWidget(QListWidget):
         if curr_indexes and not self._pill_rect.isEmpty():
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
-            self._pill_rect = QRectF(visual_rect).adjusted(sp(2), sp(1), sp(-2), sp(-1))
+            self._pill_rect = QRectF(visual_rect).adjusted(sp(4), sp(1), sp(-2), sp(-1))
             self.viewport().update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)

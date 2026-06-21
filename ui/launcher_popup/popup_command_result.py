@@ -25,6 +25,7 @@ from qt_compat import (
     QTextEdit,
     QTextOption,
 )
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.style import PopupMenu
 from ui.utils.safe_file_dialog import get_save_file_name
 from ui.utils.ui_scale import font_px, scale_qss, sp
@@ -97,9 +98,9 @@ class CompactResultPopupMenu(PopupMenu):
     def __init__(self, theme: str = "dark", parent=None):
         super().__init__(theme=theme, radius=sp(8), parent=parent)
         self._layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
-        self._layout.setSpacing(sp(2))
+        self._layout.setSpacing(sp(4))
         self._btn_style_dark = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:5px 12px;margin:0px;"
+            "QPushButton{background:transparent;border:none; border-radius: 0;padding:5px 12px;margin:0px;"
             "border-radius:6px;color:rgba(255,255,255,0.86);font-size:10px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
             "QPushButton:hover{background:rgba(255,255,255,0.11);color:rgba(255,255,255,0.96);}"
@@ -107,7 +108,7 @@ class CompactResultPopupMenu(PopupMenu):
             "QPushButton:disabled{color:rgba(255,255,255,95);}"
         )
         self._btn_style_light = scale_qss(
-            "QPushButton{background:transparent;border:none;padding:5px 12px;margin:0px;"
+            "QPushButton{background:transparent;border:none; border-radius: 0;padding:5px 12px;margin:0px;"
             "border-radius:6px;color:rgba(28,28,30,0.86);font-size:10px;text-align:left;"
             "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
             "QPushButton:hover{background:rgba(0,0,0,0.07);color:rgba(28,28,30,0.96);}"
@@ -202,7 +203,7 @@ class PopupCommandResultMixin:
 
                 # Apply elegant stylesheet for seamless transparent look
                 self._result_text_edit.setStyleSheet(
-                    "QTextEdit {  background-color: transparent;  border: none;  padding: 0px;  margin: 0px;}"
+                    "QTextEdit {  background-color: transparent;  border: none; border-radius: 0;  padding: 0px;  margin: 0px;}"
                 )
             except Exception as e:
                 logger.warning("Failed to initialize result QTextEdit: %s", e)
@@ -236,14 +237,14 @@ class PopupCommandResultMixin:
         if result.display_type == "table":
             rows = result.payload.get("rows", [])
             if rows:
-                row_h = sp(22)
+                row_h = sp(24)
                 table_top += min(len(rows), 6) * row_h + sp(8)
 
         msg_y = table_top
         # Always reserve space for bottom button area (since Close button is always present)
         btn_h = sp(_ACTION_BTN_H) + sp(8)
         msg_max_h = card_h - (msg_y - card_y) - btn_h - sp(6)
-        if msg_max_h < sp(30):
+        if msg_max_h < sp(32):
             msg_max_h = sp(60)
 
         padding_left = sp(6)
@@ -269,7 +270,7 @@ class PopupCommandResultMixin:
             te.setStyleSheet(
                 f"QTextEdit {{"
                 f"  background-color: transparent;"
-                f"  border: none;"
+                f"  border: none; border-radius: 0;"
                 f"  color: {text_color_hex};"
                 f"  padding-left: 0px;"
                 f"  padding-right: 0px;"
@@ -294,7 +295,7 @@ class PopupCommandResultMixin:
             te.verticalScrollBar().setStyleSheet(
                 scale_qss(
                     f"QScrollBar:vertical {{"
-                    f"  border: none;"
+                    f"  border: none; border-radius: 0;"
                     f"  background: transparent;"
                     f"  width: 3px;"
                     f"  margin: 0px;"
@@ -305,7 +306,7 @@ class PopupCommandResultMixin:
                     f"  border-radius: 1px;"
                     f"}}"
                     f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{"
-                    f"  border: none;"
+                    f"  border: none; border-radius: 0;"
                     f"  background: none;"
                     f"  height: 0px;"
                     f"}}"
@@ -402,7 +403,7 @@ class PopupCommandResultMixin:
     # paintEvent — draw result card on top of everything
     # ------------------------------------------------------------------
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         super().paintEvent(event)
         if self._command_result is None:
             return
@@ -427,7 +428,7 @@ class PopupCommandResultMixin:
         if self._command_result is None:
             return QRect()
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
-        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
+        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(40)) + shadow_margin
         y_bottom = getattr(
             self, "dock_y", self.height() - shadow_margin - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))()
         )
@@ -669,7 +670,7 @@ class PopupCommandResultMixin:
 
         w = self.width()
         shadow_margin = int(self.__dict__.get("shadow_margin", 0) or 0)
-        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(38)) + shadow_margin
+        y_top = (self._body_y_offset() if hasattr(self, "_body_y_offset") else sp(40)) + shadow_margin
         y_bottom = getattr(
             self, "dock_y", self.height() - shadow_margin - getattr(self, "_dock_outer_bottom_gap", lambda: sp(6))()
         )
@@ -686,7 +687,8 @@ class PopupCommandResultMixin:
         is_dark = getattr(self.settings, "theme", "dark") == "dark"
 
         # Semi-transparent overlay covering the entire icon grid area, excluding the dock
-        overlay = QColor(20, 20, 22, 230) if is_dark else QColor(240, 240, 243, 240)
+        # 走 SurfaceScale.token 派生（dark 偏冷、light 偏暖的卡片覆盖色）
+        overlay = QColor(token_surface("dark", "bg_chrome")) if is_dark else QColor(token_surface("light", "bg_chrome"))
         painter.fillRect(QRect(0, y_top, w, panel_h), overlay)
 
         # Card background with elegant fine border
@@ -722,7 +724,7 @@ class PopupCommandResultMixin:
                 _tbl_font.setPixelSize(font_px(13))
                 painter.setFont(_tbl_font)
                 painter.setPen(text_color)
-                row_h = sp(22)
+                row_h = sp(24)
                 col_x = card_x + sp(56)
                 for ri, row in enumerate(rows[:6]):
                     cells = row if isinstance(row, list) else [str(row)]
@@ -741,7 +743,7 @@ class PopupCommandResultMixin:
 
         # Calculate dynamic maximum height inside our generous fixed container
         msg_max_h = card_h - (msg_y - card_y) - btn_h - sp(6)
-        if msg_max_h < sp(30):
+        if msg_max_h < sp(32):
             msg_max_h = sp(60)  # fallback to standard size if layout squeezed
 
         # Message text fallback (e.g. for mock tests where QTextEdit cannot be instantiated)
@@ -925,7 +927,7 @@ class PopupCommandResultMixin:
                     card_x + sp(8),
                     card_y + card_h - sp(36) if result.actions else card_y + card_h - sp(18),
                     card_w - sp(16),
-                    sp(14),
+                    sp(16),
                 ),
                 Qt.AlignLeft,
                 result.error,

@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from core.background_tasks import start_background_thread
+from runtime_paths import config_dir
 from services.api.base_client import ApiClient, ApiError
 from services.update.config import UpdateConfig, UpdateInfo
 
@@ -275,18 +276,10 @@ class UpdateChecker:
         return False
 
     def _get_state_file(self) -> str:
-        # Lazy: avoids circular import via core.__init__.
-        from core.data_manager import DataManager
-
-        dm = DataManager()
-        return os.path.join(dm.app_dir, ".update_state.json")
+        return str(config_dir() / ".update_state.json")
 
     def _get_legacy_state_file(self) -> str:
-        # Lazy: avoids circular import via core.__init__.
-        from core.data_manager import DataManager
-
-        dm = DataManager()
-        return os.path.join(dm.app_dir, "config", ".update_state.json")
+        return str(config_dir() / "config" / ".update_state.json")
 
     def _load_state(self) -> dict:
         state_file = self._get_state_file()

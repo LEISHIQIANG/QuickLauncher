@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 VALID_THEMES = frozenset({"dark", "light"})
 DEFAULT_THEME = "dark"
+_app_theme = DEFAULT_THEME
+_theme_provider: Callable[[], Any] | None = None
 
 
 def normalize_theme(theme: Any, default: str = DEFAULT_THEME) -> str:
@@ -21,15 +24,23 @@ def normalize_theme(theme: Any, default: str = DEFAULT_THEME) -> str:
 
 
 def get_app_theme(default: str = DEFAULT_THEME) -> str:
-    """Resolve the persisted application theme without exposing DataManager."""
-    try:
-        from core import get_data_manager
+    """Return the theme injected by the GUI composition root."""
+    return normalize_theme(_app_theme, default)
 
-        settings = get_data_manager().get_settings()
-        return normalize_theme(getattr(settings, "theme", ""), default)
-    except Exception as exc:
-        logger.debug("读取全局主题失败: %s", exc, exc_info=True)
-        return normalize_theme(default)
+
+def set_app_theme(theme: Any) -> None:
+    global _app_theme
+    _app_theme = normalize_theme(theme)
+
+
+def configure_theme_provider(provider: Callable[[], Any] | None) -> None:
+    """Inject the call-back that yields the current theme name."""
+    global _theme_provider
+    _theme_provider = provider
+
+
+def get_theme_provider() -> Callable[[], Any] | None:
+    return _theme_provider
 
 
 def resolve_theme(owner: Any = None, default: str = DEFAULT_THEME) -> str:

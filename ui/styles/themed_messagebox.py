@@ -3,6 +3,8 @@
 提供跟随主题的 QMessageBox 替代品
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 import sys
@@ -16,7 +18,6 @@ from qt_compat import (
     QLabel,
     QPainter,
     QPainterPath,
-    QPen,
     QPixmap,
     QPoint,
     QPushButton,
@@ -30,6 +31,7 @@ from runtime_paths import app_root
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, is_win10, is_win11, paint_win10_rounded_surface
 
@@ -125,7 +127,7 @@ class ThemedMessageBox(QDialog):
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(8))
-        layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
+        layout.setContentsMargins(sp(12), sp(8), sp(12), sp(8))
 
         # 标题栏（图标 + 标题）
         if title:
@@ -167,7 +169,7 @@ class ThemedMessageBox(QDialog):
 
         if buttons & self.Yes:
             yes_btn = QPushButton(tr("是"))
-            yes_btn.setFixedHeight(sp(22))
+            yes_btn.setFixedHeight(sp(24))
             yes_btn.setMinimumWidth(sp(52))
             yes_btn.clicked.connect(lambda: self._set_result(self.Yes))
             btn_layout.addWidget(yes_btn)
@@ -175,7 +177,7 @@ class ThemedMessageBox(QDialog):
 
         if buttons & self.No:
             no_btn = QPushButton(tr("否"))
-            no_btn.setFixedHeight(sp(22))
+            no_btn.setFixedHeight(sp(24))
             no_btn.setMinimumWidth(sp(52))
             no_btn.clicked.connect(lambda: self._set_result(self.No))
             btn_layout.addWidget(no_btn)
@@ -184,7 +186,7 @@ class ThemedMessageBox(QDialog):
         if buttons & self.Ok:
             ok_btn = QPushButton(tr("确定"))
             ok_btn.setDefault(True)
-            ok_btn.setFixedHeight(sp(22))
+            ok_btn.setFixedHeight(sp(24))
             ok_btn.setMinimumWidth(sp(52))
             ok_btn.clicked.connect(lambda: self._set_result(self.Ok))
             btn_layout.addWidget(ok_btn)
@@ -192,7 +194,7 @@ class ThemedMessageBox(QDialog):
 
         if buttons & self.Cancel:
             cancel_btn = QPushButton(tr("取消"))
-            cancel_btn.setFixedHeight(sp(22))
+            cancel_btn.setFixedHeight(sp(24))
             cancel_btn.setMinimumWidth(sp(52))
             cancel_btn.clicked.connect(lambda: self._set_result(self.Cancel))
             btn_layout.addWidget(cancel_btn)
@@ -281,30 +283,9 @@ class ThemedMessageBox(QDialog):
 
     def _detect_theme(self):
         """检测当前主题"""
-        theme = "dark"
-        if self.parent():
-            try:
-                parent = self.parent()
-                # 优先从 _theme 属性获取（如 LogWindow 等自定义窗口）
-                while parent:
-                    if hasattr(parent, "_theme"):
-                        theme = parent._theme
-                        break
-                    if hasattr(parent, "data_manager"):
-                        theme = parent.data_manager.get_settings().theme
-                        break
-                    parent = parent.parent() if hasattr(parent, "parent") else None
-            except Exception as exc:
-                logger.debug("从父窗口获取主题失败: %s", exc, exc_info=True)
-        if theme == "dark" and not self.parent():
-            try:
-                from core import DataManager
+        from ui.styles.theme_controller import resolve_theme
 
-                dm = DataManager()
-                theme = dm.get_settings().theme
-            except Exception as exc:
-                logger.debug("从DataManager获取主题失败: %s", exc, exc_info=True)
-        return theme
+        return resolve_theme(self.parent())
 
     def _apply_theme(self):
         """应用主题 - 与主配置窗口一致的 alpha 处理"""
@@ -325,7 +306,7 @@ class ThemedMessageBox(QDialog):
         if self._title_label is not None:
             self._title_label.setFont(get_qfont(13, 400))
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
         painter = QPainter(self)
         try:
@@ -356,13 +337,10 @@ class ThemedMessageBox(QDialog):
                 tint_color.setAlpha(min(tint_color.alpha(), 100))
             painter.fillPath(path, tint_color)
 
-            # 边框
+            # 边框：使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()
@@ -523,7 +501,7 @@ class ThemedInputDialog(QDialog):
         # 主布局 - 紧凑间距
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(8))
-        layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
+        layout.setContentsMargins(sp(12), sp(8), sp(12), sp(8))
 
         # 标题
         if title:
@@ -563,14 +541,14 @@ class ThemedInputDialog(QDialog):
         btn_layout.addStretch()
 
         cancel_btn = QPushButton(tr("取消"))
-        cancel_btn.setFixedHeight(sp(22))
+        cancel_btn.setFixedHeight(sp(24))
         cancel_btn.setMinimumWidth(sp(52))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
         ok_btn = QPushButton(tr("确定"))
         ok_btn.setDefault(True)
-        ok_btn.setFixedHeight(sp(22))
+        ok_btn.setFixedHeight(sp(24))
         ok_btn.setMinimumWidth(sp(52))
         ok_btn.clicked.connect(self._on_ok)
         btn_layout.addWidget(ok_btn)
@@ -602,7 +580,7 @@ class ThemedInputDialog(QDialog):
         if self._title_label is not None:
             self._title_label.setFont(get_qfont(13, 400))
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """背景绘制 - 完全按照RoundedWindow的逻辑"""
         painter = QPainter(self)
         try:
@@ -633,13 +611,10 @@ class ThemedInputDialog(QDialog):
                 tint_color.setAlpha(min(tint_color.alpha(), 100))
             painter.fillPath(path, tint_color)
 
-            # 边框
+            # 边框：使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1.0)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()

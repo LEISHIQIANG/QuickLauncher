@@ -1257,7 +1257,6 @@ def should_invert_icon(item, current_theme: str) -> bool:
 
 
 def get_icon_dir() -> str:
-    from .data_manager import DataManager
+    from runtime_paths import app_root
 
-    data_manager = DataManager()
-    return str(data_manager.icons_dir)
+    return str(app_root() / "icons")

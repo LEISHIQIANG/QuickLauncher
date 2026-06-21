@@ -84,7 +84,7 @@ def _compact_history_menu(panel: CommandPanelWindow, menu: PopupMenu) -> None:
         pressed = "rgba(0,0,0,0.10)"
         disabled = "rgba(60,60,67,120)"
     compact_style = scale_qss(
-        "QPushButton{background:transparent;border:none;padding:4px 10px;margin:0px;"
+        "QPushButton{background:transparent;border:none; border-radius: 0;padding:4px 10px;margin:0px;"
         f"border-radius:6px;color:{text};font-size:11px;text-align:left;"
         "font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-weight:400;}"
         f"QPushButton:hover{{background:{hover};color:{text};}}"
@@ -93,7 +93,7 @@ def _compact_history_menu(panel: CommandPanelWindow, menu: PopupMenu) -> None:
     )
     try:
         menu._layout.setContentsMargins(sp(6), sp(6), sp(6), sp(6))
-        menu._layout.setSpacing(sp(2))
+        menu._layout.setSpacing(sp(4))
         menu._btn_style_dark = compact_style
         menu._btn_style_light = compact_style
     except Exception as exc:

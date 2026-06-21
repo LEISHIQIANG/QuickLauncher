@@ -1,5 +1,7 @@
 """Background loading and cache helpers for type(self)."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 

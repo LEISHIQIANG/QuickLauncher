@@ -9,6 +9,7 @@ from core.search_engines import build_search_url, parse_search_action
 from core.slash_commands import find_matching_commands
 from qt_compat import QApplication, QColor, QFont, QFontMetrics, QPoint, QRect, QRectF, Qt, QTimer
 from ui.launcher_popup.popup_command_result import CompactResultPopupMenu
+from ui.styles.design_tokens import TextScale
 from ui.utils.interruptible_animation import set_precise_timer
 from ui.utils.ui_scale import font_px, sp
 
@@ -135,7 +136,7 @@ class PopupSearchMixin:
         base_pixel_size = base_font.pixelSize() if base_font is not None else -1
         if base_pixel_size <= 0:
             base_pixel_size = font_px(10)
-        target_pixel_size = max(font_px(10), base_pixel_size + sp(2))
+        target_pixel_size = max(font_px(10), base_pixel_size + sp(4))
         cache_key = (base_pixel_size, target_pixel_size)
         cached = self.__dict__.get("_search_font_cache")
         if cached is not None and cached[0] == cache_key:
@@ -168,7 +169,7 @@ class PopupSearchMixin:
     def _search_text_width(self, value: str) -> int:
         value = value or ""
         if QApplication.instance() is None:
-            return sum(sp(14) if ord(ch) > 127 else sp(7) for ch in value)
+            return sum(sp(16) if ord(ch) > 127 else sp(8) for ch in value)
         metrics = self._search_metrics()
         font_key = self.__dict__.get("_search_metrics_cache", (None,))[0]
         cache = self.__dict__.get("_search_text_width_cache")
@@ -197,7 +198,7 @@ class PopupSearchMixin:
         return QRectF(x, shadow_margin + sp(8), w, sp(24))
 
     def _search_text_rect(self) -> QRectF:
-        return self._search_bar_rect().adjusted(sp(32), 0, -sp(14), 0)
+        return self._search_bar_rect().adjusted(sp(32), 0, -sp(16), 0)
 
     def _search_bar_contains(self, pos: QPoint) -> bool:
         try:
@@ -914,7 +915,7 @@ class PopupSearchMixin:
 
     def _search_animation_update_rect(self) -> QRect:
         """返回用于重绘搜索栏区域的 QRect"""
-        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(2))  # type: ignore[attr-defined]
+        return QRect(0, 0, self.width(), self._current_search_bar_height() + self._get_paint_corner_radius() + sp(4))  # type: ignore[attr-defined]
 
     def _remember_search_body_anchor(self):
         """记录固定布局的位置，兼容刷新期间的旧状态字段。"""
@@ -1134,7 +1135,8 @@ class PopupSearchMixin:
             page_idx = page_queue[page_idx_cursor]
             self._preload_page_idx = page_idx_cursor + 1
             theme = getattr(self.settings, "theme", "dark")
-            text_color = QColor(255, 255, 255) if theme == "dark" else QColor(0, 0, 0)
+            # 文本色走 TextScale token；hover overlay 与基线一致 (8% white/black)
+            text_color = QColor(TextScale.primary_dark) if theme == "dark" else QColor(TextScale.primary_light)
             hover_color = QColor(255, 255, 255, 20) if theme == "dark" else QColor(0, 0, 0, 20)
             drop_highlight_color = QColor(0, 120, 215, 100)
             bg_mode = getattr(self.settings, "bg_mode", "acrylic")
@@ -1156,7 +1158,7 @@ class PopupSearchMixin:
     def _warm_page_pixmap_cache(self, pages):
         """预热指定页面的绘图缓存"""
         theme = getattr(self.settings, "theme", "dark")
-        text_color = QColor(255, 255, 255) if theme == "dark" else QColor(0, 0, 0)
+        text_color = QColor(TextScale.primary_dark) if theme == "dark" else QColor(TextScale.primary_light)
         hover_color = QColor(255, 255, 255, 20) if theme == "dark" else QColor(0, 0, 0, 20)
         drop_highlight_color = QColor(0, 120, 215, 100)
         bg_mode = getattr(self.settings, "bg_mode", "acrylic")

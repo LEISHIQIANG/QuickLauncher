@@ -325,7 +325,7 @@ class PopupLayoutMixin:
         return display_rows >= 2
 
     def _get_dock_row_stride(self, display_rows: int) -> int:
-        card_pad = sp(2)
+        card_pad = sp(4)
         card_size = self.icon_size + card_pad * 2  # type: ignore[attr-defined]
         if self._dock_shows_text(display_rows):
             if hasattr(self, "_label_font") and self._label_font:
@@ -341,7 +341,7 @@ class PopupLayoutMixin:
 
     def _dock_card_block_height(self, display_rows: int) -> int:
         rows = max(1, int(display_rows or 1))
-        card_pad = sp(2)
+        card_pad = sp(4)
         card_size = self.icon_size + card_pad * 2  # type: ignore[attr-defined]
 
         if self._dock_shows_text(rows):
@@ -360,7 +360,7 @@ class PopupLayoutMixin:
 
     def _dock_first_icon_y(self, display_rows: int | None = None) -> int:
         rows = self._dock_display_rows() if display_rows is None else max(1, int(display_rows or 1))
-        card_pad = sp(2)
+        card_pad = sp(4)
         bg_y = int(getattr(self, "dock_y", 0) or 0) + self._dock_background_top_gap()
         block_h = self._dock_card_block_height(rows)
         bg_h = self._dock_background_height()
@@ -395,7 +395,7 @@ class PopupLayoutMixin:
 
         shadow_size_px = sp(shadow_size if shadow_size > 0 else 14)
         shadow_distance_px = sp(shadow_distance if shadow_distance > 0 else 2)
-        margin = max(0, shadow_size_px + shadow_distance_px + sp(2))
+        margin = max(0, shadow_size_px + shadow_distance_px + sp(4))
         return shadow_size_px, shadow_distance_px, margin
 
     def _setup_window(self):
@@ -481,7 +481,7 @@ class PopupLayoutMixin:
         面积最大"三级降级重选，确保弹窗能完整落在某一块屏幕的 ``availableGeometry``
         内。
 
-        **最小边距**：边界裁剪使用 ``sp(2)``（仅 2px）作为最小安全距离，
+        **最小边距**：边界裁剪使用 ``sp(4)``（仅 2px）作为最小安全距离，
         不再使用过大的 ``sp(20)``——DWM 阴影溢出由 Windows 自身控制，
         用户期望弹窗紧贴屏幕边缘而非保持大间距。
 
@@ -498,9 +498,9 @@ class PopupLayoutMixin:
 
         from ui.utils.coordinate_utils import pick_best_screen_for_popup
 
-        # 最小边界安全距离：sp(2) ≈ 2px（@ 100% scale）
+        # 最小边界安全距离：sp(4) ≈ 2px（@ 100% scale）
         # 用户偏好弹窗紧贴屏幕边缘，不再使用 sp(20) 那种大间距
-        edge_inset = sp(2)
+        edge_inset = sp(4)
         screen = pick_best_screen_for_popup(
             int(x),
             int(y),
@@ -523,9 +523,9 @@ class PopupLayoutMixin:
             left = work_area.center().x() - window_width // 2
             top = work_area.center().y() - window_height // 2
         elif align_mode == "bottom_right":
-            # bottom_right 模式保留 sp(10) 的边距（用户明确设置的 corner inset）
-            left = work_area.right() - window_width - sp(10)
-            top = work_area.bottom() - window_height - sp(10)
+            # bottom_right 模式保留 sp(8) 的边距（用户明确设置的 corner inset）
+            left = work_area.right() - window_width - sp(8)
+            top = work_area.bottom() - window_height - sp(8)
         elif align_mode == "mouse_top_left":
             left = lx
             top = ly

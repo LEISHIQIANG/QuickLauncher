@@ -1,5 +1,4 @@
 import base64
-import sys
 import threading
 import types
 
@@ -342,27 +341,23 @@ def test_test_command_keeps_cmd_alias_as_shell_command(monkeypatch):
     assert captured["kwargs"]["shell"] is False
 
 
-def test_config_window_builtin_uses_direct_fallback_when_callback_missing(monkeypatch):
-    import core
+def test_config_window_builtin_dispatches_through_ui_actions_port(monkeypatch):
+    """W1 收尾后,show_config_window 走 UIActions 端口而非 IPC 直连回退。"""
+    from application.ports.ui_actions import UIAction
+    from core.shortcut_executor import ShortcutExecutor
 
     captured = {}
 
-    class FakeExecutor(command_exec.CommandExecutionMixin):
-        @staticmethod
-        def _send_ipc_command_deferred(command):
-            raise AssertionError("direct fallback should run before IPC")
+    class FakeActions:
+        def execute(self, action):
+            captured["action"] = action
+            return True
 
-    def direct_show():
-        captured["direct"] = True
-        return True
-
-    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
-    monkeypatch.setattr(core, "has_callback", lambda name: False)
-    monkeypatch.setattr(core, "call_callback", lambda name: None)
-    monkeypatch.setitem(sys.modules, "main", types.SimpleNamespace(show_config_window_direct=direct_show))
+    monkeypatch.setattr(ShortcutExecutor, "_ui_actions", FakeActions(), raising=False)
+    monkeypatch.setattr(ShortcutExecutor, "_is_qt_main_thread", classmethod(lambda cls: True), raising=False)
 
     assert command_exec.CommandExecutionMixin._execute_builtin_command("show_config_window")
-    assert captured["direct"] is True
+    assert captured["action"] == UIAction.SHOW_CONFIG_WINDOW
 
 
 def test_open_install_dir_builtin_works_without_ui_callback(monkeypatch, tmp_path):
@@ -397,20 +392,28 @@ def test_open_install_dir_builtin_uses_project_root_in_source_mode(monkeypatch):
 
 
 def test_ui_builtin_defers_callback_outside_qt_main_thread(monkeypatch):
-    import core
+    from application.ports.ui_actions import UIAction
+    from core.shortcut_executor import ShortcutExecutor
 
     called = {}
 
-    class FakeExecutor(command_exec.CommandExecutionMixin):
-        pass
+    class FakeActions:
+        def execute(self, action):
+            called.setdefault("action", action)
+            return True
 
-    monkeypatch.setattr(command_exec, "ShortcutExecutor", FakeExecutor)
-    monkeypatch.setattr(FakeExecutor, "_is_qt_main_thread", staticmethod(lambda: False))
-    monkeypatch.setattr(core, "has_callback", lambda name: name == "show_help")
-    monkeypatch.setattr(core, "call_callback", lambda name: called.setdefault("name", name))
+    class FakeInvoker:
+        execute_signal = type("S", (), {"emit": staticmethod(lambda fn: called.setdefault("emitted", fn))})()
+
+    monkeypatch.setattr(ShortcutExecutor, "_ui_actions", FakeActions(), raising=False)
+    monkeypatch.setattr(ShortcutExecutor, "_is_qt_main_thread", classmethod(lambda cls: False), raising=False)
+    monkeypatch.setattr(command_exec, "_main_thread_invoker", FakeInvoker())
 
     assert command_exec.CommandExecutionMixin._execute_builtin_command("show_help")
-    assert called == {}
+    assert callable(called.get("emitted"))
+    assert called.get("action") is None
+    called["emitted"]()
+    assert called.get("action") == UIAction.SHOW_HELP
 
 
 def test_builtin_command_can_suppress_result_panel(monkeypatch):
@@ -1427,15 +1430,13 @@ def test_preprocessing_settings_failure_blocks_direct_execution(monkeypatch):
 
     from types import SimpleNamespace
 
-    import core
-
     monkeypatch.setattr(
-        core,
-        "data_manager",
+        command_exec.ShortcutExecutor,
+        "_data_manager",
         SimpleNamespace(get_settings=lambda: (_ for _ in ()).throw(RuntimeError("settings broken"))),
     )
     launched = []
-    monkeypatch.setattr(command_exec.subprocess, "Popen", lambda *a, **kw: launched.append((a, kw)))
+    monkeypatch.setattr(command_exec.process_runtime, "popen", lambda *a, **kw: launched.append((a, kw)))
 
     item = ShortcutItem(type=ShortcutType.COMMAND)
     item.command_type = "cmd"

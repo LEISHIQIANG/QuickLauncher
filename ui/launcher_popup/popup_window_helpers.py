@@ -2,6 +2,8 @@
 弹窗辅助类：FolderSyncWorker 和 IconFlashOverlay。
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 
 from qt_compat import (
@@ -154,7 +156,7 @@ class IconFlashOverlay(QWidget):
     def _calculate_dirty_rect(self):
         dirty = QRect()
         for x, y, pixmap, _cover in self._items:
-            rect = QRect(int(x), int(y), pixmap.width(), pixmap.height()).adjusted(-sp(2), -sp(2), sp(2), sp(2))
+            rect = QRect(int(x), int(y), pixmap.width(), pixmap.height()).adjusted(-sp(4), -sp(4), sp(4), sp(4))
             dirty = rect if dirty.isNull() else dirty.united(rect)
         return dirty.intersected(self.rect())
 
@@ -193,7 +195,7 @@ class IconFlashOverlay(QWidget):
                 x = padding + col * cell_size
                 y = icons_bottom - (fixed_rows - row) * cell_h
                 if use_card:
-                    card_pad = sp(2)
+                    card_pad = sp(4)
                     card_size = icon_size + card_pad * 2
                     total_h = card_size + text_spacing + text_h
                     card_y = y + (cell_h - total_h) // 2
@@ -228,7 +230,7 @@ class IconFlashOverlay(QWidget):
                 first_icon_y = launcher._dock_first_icon_y(display_rows)
             except Exception:
                 dock_row_stride = icon_size + sp(6)
-                first_icon_y = dock_y + sp(11)
+                first_icon_y = dock_y + sp(12)
             for i in range(visible_count):
                 row = i // cols
                 if row >= dock_height_mode:
@@ -274,7 +276,7 @@ class IconFlashOverlay(QWidget):
         painter.end()
         return cover
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         if self._opacity <= 0.0:
             return
 

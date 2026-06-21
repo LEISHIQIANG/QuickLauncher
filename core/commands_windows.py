@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
+from infrastructure.process import runtime as process_runtime
 
 from .command_registry import CommandContext, CommandResult
 
 
 def cmd_env(context: CommandContext) -> CommandResult:
     try:
-        subprocess.Popen(["rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"])
+        process_runtime.popen(["rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"])
         return CommandResult(
             success=True,
             message="已成功启动 Windows 系统环境变量编辑器。",
@@ -23,7 +22,7 @@ def cmd_env(context: CommandContext) -> CommandResult:
 def cmd_god(context: CommandContext) -> CommandResult:
     god_mode_guid = "shell:::{ED7BA470-8E54-465E-825C-99712043E01C}"
     try:
-        os.startfile(god_mode_guid)
+        process_runtime.startfile(god_mode_guid)
         return CommandResult(
             success=True,
             message="已成功打开 Windows 上帝模式 (God Mode) 文件夹。",
@@ -31,7 +30,7 @@ def cmd_god(context: CommandContext) -> CommandResult:
         )
     except Exception:
         try:
-            subprocess.Popen(["explorer.exe", god_mode_guid])
+            process_runtime.popen(["explorer.exe", god_mode_guid])
             return CommandResult(
                 success=True,
                 message="已成功打开 Windows 上帝模式 (God Mode) 文件夹。",

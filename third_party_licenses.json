@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "python_dependencies": [
+    {"name": "PyQt5", "requirement": "PyQt5==5.15.11", "license": "GPL-3.0-only OR Commercial", "source": "https://pypi.org/project/PyQt5/"},
+    {"name": "PyQt5-Qt5", "requirement": "PyQt5-Qt5==5.15.2", "license": "LGPL-3.0-only OR GPL-2.0-only OR Commercial", "source": "https://pypi.org/project/PyQt5-Qt5/"},
+    {"name": "pywin32", "requirement": "pywin32>=305", "license": "PSF-2.0", "source": "https://pypi.org/project/pywin32/"},
+    {"name": "Pillow", "requirement": "Pillow>=9.0.0", "license": "HPND", "source": "https://pypi.org/project/Pillow/"},
+    {"name": "psutil", "requirement": "psutil>=5.9.0", "license": "BSD-3-Clause", "source": "https://pypi.org/project/psutil/"},
+    {"name": "pynput", "requirement": "pynput>=1.7.6", "license": "LGPL-3.0-only", "source": "https://pypi.org/project/pynput/"},
+    {"name": "watchdog", "requirement": "watchdog>=3.0.0", "license": "Apache-2.0", "source": "https://pypi.org/project/watchdog/"},
+    {"name": "qrcode", "requirement": "qrcode>=7.4", "license": "BSD-3-Clause", "source": "https://pypi.org/project/qrcode/"}
+  ],
+  "native_binaries": [
+    {"path": "hooks/hooks.dll", "owner": "windows-platform", "source": "hooks_dll/hooks.cpp", "build": "hooks_dll/build.bat", "hash_algorithm": "sha256"}
+  ],
+  "artifact_policy": {
+    "hash_algorithm": "sha256",
+    "signature_required_for_updates": true,
+    "signature_required_for_plugin_packages": true
+  }
+}

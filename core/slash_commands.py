@@ -18,6 +18,24 @@ from core.command_icon_catalog import builtin_command_icon_path
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Process-wide registry handle wired by ``bootstrap.registry_factory``.
+# Read lazily so that importing this module from inside ``core`` does not
+# create a circular dependency with ``core.command_registry``.
+# ---------------------------------------------------------------------------
+_command_registry = None
+
+
+def set_command_registry(registry) -> None:
+    """Inject the live CommandRegistry instance."""
+    global _command_registry
+    _command_registry = registry
+
+
+def get_command_registry():
+    return _command_registry
+
+
 @dataclass
 class SlashCommand:
     canonical: str

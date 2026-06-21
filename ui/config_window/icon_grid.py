@@ -2,6 +2,8 @@
 图标网格 - 设置窗口版本（四按钮横向排列）
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import copy
 import logging
 import os
@@ -25,7 +27,6 @@ from qt_compat import (
     QFont,
     QFrame,
     QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QImage,
     QLabel,
@@ -51,19 +52,52 @@ from qt_compat import (
     QWidget,
     pyqtSignal,
 )
+from ui.styles.design_tokens import (
+    StatusScale,
+    surface,
+)
+from ui.styles.design_tokens import (
+    border as token_border,
+)
+from ui.styles.design_tokens import elevation as token_elevation
 
 # 使用统一的风格组件
+from ui.styles.design_tokens import (
+    surface as token_surface,
+)
 from ui.styles.style import Glassmorphism, PopupMenu
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.pixel_snap import create_pixmap, make_cosmetic_pen
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.smooth_scroll import SmoothScrollArea
 from ui.utils.ui_scale import font_px, scale_qss, sp
+from ui.utils.window_effect import is_win10
 
 from .action_button_icons import create_action_button_icon
 from .base_dialog import BaseDialog
 from .batch_launch_dialog import BatchLaunchDialog
 from .icon_grid_ordering import move_drag_group_order
+from .icon_grid_palette import (
+    BADGE_BG,
+    BADGE_TEXT,
+    BATCH_LAUNCH_BG,
+    CELL_BG_DARK,
+    CELL_BG_LIGHT,
+    CELL_BORDER_DARK,
+    CELL_BORDER_LIGHT,
+    CELL_HOVER_DARK,
+    CELL_HOVER_LIGHT,
+    CHAIN_BG,
+    COMMAND_BG,
+    COMMAND_TEXT,
+    DEFAULT_FALLBACK_BG,
+    DROP_TARGET_BG_DARK,
+    DROP_TARGET_BG_LIGHT,
+    HOTKEY_BG,
+    ICON_TEXT,
+    URL_BG,
+)
 
 logger = logging.getLogger(__name__)
 _BATCH_FAVICON_MAX_WORKERS = 2
@@ -81,8 +115,9 @@ class SimpleStatusDialog(QDialog):
         self.setWindowOpacity(0)
 
         self.corner_radius = 8
-        self.bg_color = QColor(28, 28, 30, 180)
-        self.border_color = QColor(190, 190, 197, 60)
+        # 默认主题色取自 design token；通过 _apply_theme() 在切换主题时更新
+        self.bg_color = token_surface("dark", "bg_glass_dark_win10")
+        self.border_color = token_border("dark", "subtle_dark")
         self._acrylic_applied = False
         self._dialog_finished = False
 
@@ -100,11 +135,11 @@ class SimpleStatusDialog(QDialog):
     def _apply_theme(self):
         theme = self._detect_theme()
         if theme == "dark":
-            self.bg_color = QColor(28, 28, 30, 180)
-            self.border_color = QColor(190, 190, 197, 60)
+            self.bg_color = token_surface(theme, "bg_glass_dark_win10")
+            self.border_color = token_border(theme, "subtle_dark")
         else:
-            self.bg_color = QColor(242, 242, 247, 160)
-            self.border_color = QColor(229, 229, 234, 150)
+            self.bg_color = token_surface(theme, "bg_glass_light_win10")
+            self.border_color = token_border(theme, "subtle_light")
 
     def _detect_theme(self):
         theme = "dark"
@@ -120,7 +155,7 @@ class SimpleStatusDialog(QDialog):
                 logger.debug("检测图标网格对话框主题失败", exc_info=True)
         return theme
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
 
         painter = QPainter(self)
@@ -145,10 +180,8 @@ class SimpleStatusDialog(QDialog):
             painter.fillPath(path, tint_color)
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()
@@ -195,7 +228,7 @@ class MoveFolderDialog(BaseDialog):
         self.folders = folders
         self.selected_folder = None
         self.setWindowTitle(tr("移动所选到"))
-        self.setFixedSize(sp(300), sp(135))
+        self.setFixedSize(sp(300), sp(136))
         self._setup_ui()
         self._apply_theme_colors()
 
@@ -213,14 +246,14 @@ class MoveFolderDialog(BaseDialog):
 
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(sp(16), sp(16), sp(16), sp(16))
-        main_layout.setSpacing(sp(10))
+        main_layout.setSpacing(sp(8))
 
         label = QLabel(tr("目标位置:"))
         label.setStyleSheet(scale_qss("font-size: 11px;"))
         main_layout.addWidget(label)
 
         self.combo = QComboBox()
-        self.combo.setFixedHeight(sp(30))
+        self.combo.setFixedHeight(sp(32))
         for folder in self.folders:
             self.combo.addItem(self._folder_display_name(folder), folder)
         self.combo.showPopup = lambda: self._show_folder_popup()
@@ -266,7 +299,7 @@ class MoveFolderDialog(BaseDialog):
     def _apply_theme_colors(self):
         super()._apply_theme_colors()
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(self.theme)
-        self.setStyleSheet(base_style + "QDialog { background: transparent; border: none; }")
+        self.setStyleSheet(base_style + "QDialog { background: transparent; border: none; border-radius: 0; }")
 
         if not hasattr(self, "cancel_btn") or not hasattr(self, "ok_btn"):
             return
@@ -488,8 +521,8 @@ class RoundedFrame(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._bg_color = QColor(255, 255, 255, 22)
-        self._border_color = QColor(255, 255, 255, 35)
+        self._bg_color = QColor(CELL_BG_DARK)
+        self._border_color = QColor(CELL_BORDER_DARK)
         self._border_width = 1.0
         self._radius = 9.0
         self._is_dashed = False
@@ -504,7 +537,7 @@ class RoundedFrame(QFrame):
         self._is_dashed = bool(dashed)
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QtCompat.Antialiasing, True)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing, True)
@@ -569,9 +602,9 @@ class IconWidget(QFrame):
         self._hover_bg = self.DARK_HOVER_BG if theme == "dark" else self.LIGHT_HOVER_BG
         self._border = "1px solid rgba(255, 255, 255, 35)" if theme == "dark" else "1px solid rgba(0, 0, 0, 12)"
         # QColor values for RoundedFrame (high-quality antialiased painting)
-        self._border_qcolor = QColor(255, 255, 255, 35) if theme == "dark" else QColor(0, 0, 0, 12)
-        self._bg_qcolor = QColor(255, 255, 255, 22) if theme == "dark" else QColor(255, 255, 255, 100)
-        self._hover_qcolor = QColor(255, 255, 255, 45) if theme == "dark" else QColor(255, 255, 255, 160)
+        self._border_qcolor = QColor(CELL_BORDER_DARK) if theme == "dark" else QColor(CELL_BORDER_LIGHT)
+        self._bg_qcolor = QColor(CELL_BG_DARK) if theme == "dark" else QColor(CELL_BG_LIGHT)
+        self._hover_qcolor = QColor(CELL_HOVER_DARK) if theme == "dark" else QColor(CELL_HOVER_LIGHT)
 
         self._setup_ui()
         self.setAcceptDrops(False)
@@ -583,13 +616,13 @@ class IconWidget(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
-        layout.setSpacing(sp(2))
+        layout.setSpacing(sp(4))
         layout.setAlignment(QtCompat.AlignCenter)
 
         # 图标底框：图标四周各大7px — 使用 RoundedFrame 替代 QSS border-radius
         # 以消除深色模式下圆角边缘的锯齿和泛白
-        icon_frame_h = self.icon_size + sp(14)
-        icon_frame_w = self.icon_size + sp(14)
+        icon_frame_h = self.icon_size + sp(16)
+        icon_frame_w = self.icon_size + sp(16)
         self.icon_frame = RoundedFrame()
         self.icon_frame.setFixedSize(icon_frame_w, icon_frame_h)
         self._apply_icon_frame_style()
@@ -610,7 +643,9 @@ class IconWidget(QFrame):
 
         self.name_label = QLabel(self.shortcut.name[:6] if self.shortcut.name else tr("未命名"))
         self.name_label.setAlignment(QtCompat.AlignCenter)
-        self.name_label.setStyleSheet(scale_qss("font-size: 11px; background: transparent; border: none;"))
+        self.name_label.setStyleSheet(
+            scale_qss("font-size: 11px; background: transparent; border: none; border-radius: 0;")
+        )
         self.name_label.setWordWrap(True)
         self.name_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.name_label)
@@ -622,25 +657,28 @@ class IconWidget(QFrame):
         if not isinstance(self.icon_frame, RoundedFrame):
             return
         if self._is_selected:
+            selection_fill = QColor(token_surface(self.theme, "bg_selection"))
+            selection_border = QColor(StatusScale.info)
+            selection_border.setAlpha(170)
             self.icon_frame.set_colors(
-                QColor(100, 181, 246, 26),
-                QColor(100, 181, 246, 170),
+                selection_fill,
+                selection_border,
                 border_width=1.0,
                 radius=9.0,
             )
         elif drop:
             if self.theme == "dark":
                 self.icon_frame.set_colors(
-                    QColor(168, 230, 207, 45),
-                    QColor(168, 230, 207, 180),
+                    QColor(StatusScale.drop_highlight_brush_soft),
+                    QColor(StatusScale.drop_highlight_pen),
                     border_width=2.0,
                     radius=9.0,
                     dashed=True,
                 )
             else:
                 self.icon_frame.set_colors(
-                    QColor(168, 230, 207, 75),
-                    QColor(70, 180, 140, 200),
+                    QColor(StatusScale.drop_highlight_brush_strong),
+                    QColor(StatusScale.drop_highlight_pressed),
                     border_width=2.0,
                     radius=9.0,
                     dashed=True,
@@ -717,20 +755,20 @@ class IconWidget(QFrame):
 
     def _create_default_icon(self) -> QPixmap:
         size = self.icon_size
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-        painter.setBrush(QColor(135, 206, 250))
+        painter.setBrush(QColor(DEFAULT_FALLBACK_BG))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         radius = size // 6
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
 
         first_char = self.shortcut.name[0] if self.shortcut.name else "?"
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(ICON_TEXT))
         font = QFont("Segoe UI")
         font.setPixelSize(max(1, int(size * 0.4)))
         font.setBold(True)
@@ -742,19 +780,19 @@ class IconWidget(QFrame):
 
     def _create_hotkey_icon(self) -> QPixmap:
         size = self.icon_size
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        painter.setBrush(QColor(70, 130, 180))
+        painter.setBrush(QColor(HOTKEY_BG))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(ICON_TEXT))
         font = QFont("Segoe UI Symbol")
         font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
@@ -765,19 +803,19 @@ class IconWidget(QFrame):
 
     def _create_url_icon(self) -> QPixmap:
         size = self.icon_size
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        painter.setBrush(QColor(60, 160, 120))
+        painter.setBrush(QColor(URL_BG))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(ICON_TEXT))
         font = QFont("Segoe UI Symbol")
         font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
@@ -788,19 +826,19 @@ class IconWidget(QFrame):
 
     def _create_command_icon(self) -> QPixmap:
         size = self.icon_size
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        painter.setBrush(QColor(50, 50, 50))
+        painter.setBrush(QColor(COMMAND_BG))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
-        painter.setPen(QColor(0, 255, 0))
+        painter.setPen(QColor(COMMAND_TEXT))
         font = QFont("Consolas")
         font.setPixelSize(max(1, size // 3))
         font.setBold(True)
@@ -812,19 +850,19 @@ class IconWidget(QFrame):
 
     def _create_chain_icon(self) -> QPixmap:
         size = self.icon_size
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        painter.setBrush(QColor(180, 100, 50))
+        painter.setBrush(QColor(CHAIN_BG))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(ICON_TEXT))
         font = QFont("Segoe UI Symbol")
         font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
@@ -835,19 +873,19 @@ class IconWidget(QFrame):
 
     def _create_batch_launch_icon(self) -> QPixmap:
         size = self.icon_size
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
-        painter.setBrush(QColor(130, 95, 200))
+        painter.setBrush(QColor(BATCH_LAUNCH_BG))
         painter.setPen(QtCompat.NoPen)
         margin = size // 8
         painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(ICON_TEXT))
         font = QFont("Segoe UI Symbol")
         font.setPixelSize(max(1, size // 3))
         painter.setFont(font)
@@ -857,17 +895,17 @@ class IconWidget(QFrame):
         return pixmap
 
     def _set_normal_style(self):
-        self.setStyleSheet("IconWidget { background: transparent; border: none; }")
+        self.setStyleSheet("IconWidget { background: transparent; border: none; border-radius: 0; }")
         if hasattr(self, "icon_frame"):
             self._apply_icon_frame_style(hover=False)
 
     def _set_hover_style(self):
-        self.setStyleSheet("IconWidget { background: transparent; border: none; }")
+        self.setStyleSheet("IconWidget { background: transparent; border: none; border-radius: 0; }")
         if hasattr(self, "icon_frame"):
             self._apply_icon_frame_style(hover=True)
 
     def _set_drop_target_style(self):
-        self.setStyleSheet("IconWidget { background: transparent; border: none; }")
+        self.setStyleSheet("IconWidget { background: transparent; border: none; border-radius: 0; }")
         if hasattr(self, "icon_frame"):
             self._apply_icon_frame_style(drop=True)
 
@@ -919,7 +957,7 @@ class IconWidget(QFrame):
     def create_drag_preview_pixmap(self) -> QPixmap:
         # 尺寸与图标底框完全一致：icon_size + 14 像素
         size = self.icon_size + 14
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
@@ -929,14 +967,16 @@ class IconWidget(QFrame):
 
         # 浅雅清新的粉绿配色系统
         if self.theme == "dark":
-            bg_color = QColor(48, 79, 74, 190)
-            border_color = QColor(168, 230, 207, 120)
+            bg_color = QColor(DROP_TARGET_BG_DARK)
+            border_color = QColor(StatusScale.drop_highlight_pen)
+            border_color.setAlpha(120)
         else:
-            bg_color = QColor(225, 248, 243, 215)
-            border_color = QColor(168, 230, 207, 220)
+            bg_color = QColor(DROP_TARGET_BG_LIGHT)
+            border_color = QColor(StatusScale.drop_highlight_pressed)
+            border_color.setAlpha(220)
 
         # 模拟精致的悬浮阴影 — 使用 QRectF 半像素对齐
-        shadow_color = QColor(0, 0, 0, 15 if self.theme == "dark" else 10)
+        shadow_color = QColor(surface(self.theme, "bg_hover_subtle"))
         painter.setPen(QtCompat.NoPen)
         painter.setBrush(shadow_color)
         painter.drawRoundedRect(QRectF(2.5, 2.5, size - 5, size - 5), 9, 9)
@@ -1006,13 +1046,13 @@ class IconWidget(QFrame):
                 drag.setPixmap(self.icon_label.pixmap())
                 drag.setHotSpot(QPoint(self.icon_size // 2, self.icon_size // 2))
 
-            # 使用 QGraphicsOpacityEffect 在拖动过程中淡化源图标
+            # 使用 dim_for_drag 在拖动过程中淡化源图标
             if grid_parent and hasattr(grid_parent, "begin_drag_visuals"):
                 grid_parent.begin_drag_visuals(drag_ids)
             else:
-                self._drag_opacity = QGraphicsOpacityEffect(self)
-                self._drag_opacity.setOpacity(0.4)
-                self.setGraphicsEffect(self._drag_opacity)
+                from ui.utils.widget_opacity import dim_for_drag
+
+                dim_for_drag(self, 0.4)
 
             self.drag_started.emit(self.shortcut.id)
             result = drag.exec_(QtCompat.MoveAction)
@@ -1028,7 +1068,9 @@ class IconWidget(QFrame):
                 if grid_parent and hasattr(grid_parent, "end_drag_visuals"):
                     grid_parent.end_drag_visuals()
                 else:
-                    self.setGraphicsEffect(None)
+                    from ui.utils.widget_opacity import restore_from_drag
+
+                    restore_from_drag(self)
                 self._set_normal_style()
             except RuntimeError:
                 logger.debug("拖动结束后恢复图标视觉效果失败", exc_info=True)
@@ -1231,13 +1273,11 @@ class IconGrid(QWidget):
             btn_hover = "rgba(255,255,255,0.28)"
             btn_border = "rgba(255,255,255,0.22)"
             btn_text = "rgba(255,255,255,0.85)"
-            shadow_color = QColor(0, 0, 0, 35)
         else:
             btn_bg = "rgba(255,255,255,0.75)"
             btn_hover = "rgba(255,255,255,0.95)"
             btn_border = "rgba(255,255,255,0.35)"
             btn_text = "#1D1D1F"
-            shadow_color = QColor(0, 0, 0, 20)
 
         btn_style = scale_qss(
             f"""
@@ -1271,8 +1311,9 @@ class IconGrid(QWidget):
             btn.setIcon(create_action_button_icon(kind, theme, sp(18)))
             btn.setIconSize(QSize(sp(18), sp(18)))
             shadow = QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(10)
-            shadow.setOffset(0, 2)
+            offset_y, blur_r, shadow_color = token_elevation(1, is_win10=is_win10())
+            shadow.setBlurRadius(blur_r)
+            shadow.setOffset(0, offset_y)
             shadow.setColor(shadow_color)
             btn.setGraphicsEffect(shadow)
 
@@ -1397,8 +1438,8 @@ class IconGrid(QWidget):
         if len(live_widgets) != len(self.icon_widgets):
             self.icon_widgets = live_widgets
         cell = self._get_cell_size()
-        pad_x = sp(10)
-        pad_top = sp(14)
+        pad_x = sp(8)
+        pad_top = sp(16)
         for i, widget in enumerate(self.icon_widgets):
             col = i % 6
             row = i // 6
@@ -1477,7 +1518,7 @@ class IconGrid(QWidget):
         self.hint_container.hide()
 
         cell_size = self._get_cell_size()
-        icon_size = sp(26)
+        icon_size = sp(24)
         theme = "dark"
         try:
             theme = self.data_manager.get_settings().theme
@@ -1783,7 +1824,7 @@ class IconGrid(QWidget):
         try:
             from core.icon_extractor import IconExtractor
 
-            size = sp(26)
+            size = sp(24)
             for widget in self.icon_widgets:
                 if widget.shortcut.id == item.id:
                     size = widget.icon_size
@@ -2096,7 +2137,7 @@ class IconGrid(QWidget):
             return base
 
         visible_count = min(len(widgets), 4)
-        offset = sp(7)
+        offset = sp(8)
         badge_size = sp(18)
         width = base.width() + offset * (visible_count - 1) + badge_size // 2
         height = base.height() + offset * (visible_count - 1) + badge_size // 2
@@ -2114,9 +2155,9 @@ class IconGrid(QWidget):
         badge_x = width - badge_size - 1
         badge_y = 1
         painter.setPen(QtCompat.NoPen)
-        painter.setBrush(QColor(0, 122, 255, 230))
+        painter.setBrush(QColor(BADGE_BG))
         painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(BADGE_TEXT))
         font = QFont("Segoe UI")
         font.setPixelSize(font_px(9))
         font.setBold(True)
@@ -2126,6 +2167,8 @@ class IconGrid(QWidget):
         return pixmap
 
     def begin_drag_visuals(self, shortcut_ids: list[str]):
+        from ui.utils.widget_opacity import dim_for_drag
+
         self._active_drag_ids = list(shortcut_ids or [])
         self._drag_visual_widgets = []
         active_ids = set(self._active_drag_ids)
@@ -2133,18 +2176,18 @@ class IconGrid(QWidget):
             try:
                 if self._widget_shortcut_id(widget) not in active_ids:
                     continue
-                effect = QGraphicsOpacityEffect(widget)
-                effect.setOpacity(0.4)
-                widget.setGraphicsEffect(effect)
+                dim_for_drag(widget, 0.4)
                 self._drag_visual_widgets.append(widget)
             except RuntimeError:
                 logger.debug("设置拖动图标透明度效果失败", exc_info=True)
 
     def end_drag_visuals(self):
+        from ui.utils.widget_opacity import restore_from_drag
+
         for widget in vars(self).get("_drag_visual_widgets", []) or []:
             try:
                 widget.setVisible(True)
-                widget.setGraphicsEffect(None)
+                restore_from_drag(widget)
                 widget._set_normal_style()
             except RuntimeError:
                 logger.debug("恢复拖动图标视觉效果失败", exc_info=True)
@@ -2441,8 +2484,8 @@ class IconGrid(QWidget):
 
             # Calculate the closest grid slot
             cell = self._get_cell_size()
-            pad_x = sp(10)
-            pad_top = sp(14)
+            pad_x = sp(8)
+            pad_top = sp(16)
 
             col = max(0, min(5, (pos_in_container.x() - pad_x) // cell))
             row = max(0, (pos_in_container.y() - pad_top) // cell)

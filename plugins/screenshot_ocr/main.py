@@ -9,7 +9,7 @@ import sys
 import threading
 from pathlib import Path
 
-from core.command_registry import COMMAND_INTERACTION_DIRECT, CommandAction, CommandParam, CommandResult
+from extensions.sdk import COMMAND_INTERACTION_DIRECT, CommandAction, CommandParam, CommandResult
 
 SENTINEL = "QL_SCREENSHOT_OCR_RESULT="
 HELPER_TIMEOUT_SECONDS = 300

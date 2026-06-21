@@ -20,8 +20,12 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.styles.design_tokens import StatusScale
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp, spf
 
 logger = logging.getLogger(__name__)
@@ -49,16 +53,28 @@ class ToastNotification(QWidget):
 
         # 窗口属性：无边框、置顶、工具窗口、透明背景、不获取焦点
         apply_custom_window_chrome(self, kind="tool", topmost=True, translucent=True, delete_on_close=False)
-        # 不获取焦点
-        try:
-            self.setAttribute(Qt.WA_ShowWithoutActivating, True)
-        except Exception:
-            try:
-                self.setAttribute(Qt.WA_ShowWithoutActivating, True)
-            except Exception as exc:
-                logger.debug("设置窗口属性失败: %s", exc, exc_info=True)
-
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self._setup_ui()
+
+    def hideEvent(self, event):  # noqa: N802 - Qt API
+        """隐藏时停止计时器并释放当前实例引用。"""
+        try:
+            self._fade_timer.stop()
+            self._auto_hide_timer.stop()
+        except (RuntimeError, AttributeError) as exc:
+            logger.debug("toast 关闭时停止 timer 失败: %s", exc, exc_info=True)
+        self._fade_opacity = 1.0
+        try:
+            self.setWindowOpacity(1.0)
+        except RuntimeError as exc:
+            logger.debug("设置窗口不透明度失败: %s", exc, exc_info=True)
+        self._acrylic_applied = False
+        if ToastNotification._current_instance is self:
+            ToastNotification._current_instance = None
+        super().hideEvent(event)
+
+    def closeEvent(self, event):  # noqa: N802 - Qt API
+        super().closeEvent(event)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -72,7 +88,7 @@ class ToastNotification(QWidget):
         # 设置固定高度
         self.setFixedHeight(sp(40))
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """绘制圆角矩形背景 - 与主配置窗口完全一致"""
         from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
 
@@ -84,20 +100,23 @@ class ToastNotification(QWidget):
             radius = sp(8)
 
             if self._theme == "error":
-                bg_color = QColor(229, 57, 53, 210)
+                # 错误状态用 StatusScale.error 派生
+                bg_color = QColor(StatusScale.error)
+                bg_color.setAlpha(210)
+                # 错误状态边框色：浅粉红 + alpha 180，与基线完全一致
                 border_color = QColor(255, 205, 210, 180)
             elif self._theme == "dark":
-                bg_color = QColor(28, 28, 30, 180)
-                border_color = QColor(190, 190, 197, 60)
+                bg_color = token_surface(self._theme, "bg_glass_dark_win10")
+                border_color = token_border(self._theme, "subtle_dark")
             else:
-                bg_color = QColor(242, 242, 247, 160)
-                border_color = QColor(229, 229, 234, 150)
+                bg_color = token_surface(self._theme, "bg_glass_light_win10")
+                border_color = token_border(self._theme, "subtle_light")
 
             if is_win10():
                 paint_win10_rounded_surface(painter, self, bg_color, border_color, radius, max_border_alpha=80)
                 return
 
-            inset = spf(0.5)
+            inset = spf(4.0)
             path = QPainterPath()
             path.addRoundedRect(inset, inset, self.width() - inset * 2, self.height() - inset * 2, radius, radius)
 
@@ -107,12 +126,9 @@ class ToastNotification(QWidget):
 
             pen_color = QColor(border_color)
             pen_color.setAlpha(40)
-            from qt_compat import QPen
-
-            pen = QPen(pen_color, 0.3)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            pen.setCosmetic(True)
+            # 使用 make_cosmetic_pen 保证 0.3px 边框在 125%+ DPI 下不发胖
+            pen = make_cosmetic_pen(pen_color, 1)
+            pen.setWidthF(0.3)
             painter.setPen(pen)
             painter.drawPath(path)
         finally:
@@ -257,24 +273,3 @@ class ToastNotification(QWidget):
                 enable_acrylic_for_config_window(self, self._theme, blur_amount=8, radius=radius)
         except Exception as exc:
             logger.debug("应用窗口特效失败: %s", exc, exc_info=True)
-
-    def hideEvent(self, event):
-        """隐藏时停止计时器"""
-        try:
-            self._auto_hide_timer.stop()
-        except Exception as exc:
-            logger.debug("停止自动隐藏定时器失败: %s", exc, exc_info=True)
-        try:
-            self._fade_timer.stop()
-        except Exception as exc:
-            logger.debug("停止淡出定时器失败: %s", exc, exc_info=True)
-        self._fade_opacity = 1.0
-        try:
-            self.setWindowOpacity(1.0)
-        except Exception as exc:
-            logger.debug("设置窗口不透明度失败: %s", exc, exc_info=True)
-        self._acrylic_applied = False
-        # 清理单例引用，允许 GC 回收隐藏的 Toast 实例
-        if ToastNotification._current_instance is self:
-            ToastNotification._current_instance = None
-        super().hideEvent(event)

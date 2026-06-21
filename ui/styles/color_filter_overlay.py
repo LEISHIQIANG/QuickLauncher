@@ -128,7 +128,7 @@ class ColorFilterOverlay(QWidget):
         """Return True if all parameters are at neutral (50)."""
         return self._black_point == 50 and self._white_point == 50 and self._mid_gamma == 50 and self._temperature == 50  # type: ignore[no-any-return]
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)

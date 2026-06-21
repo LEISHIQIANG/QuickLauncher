@@ -262,13 +262,21 @@ def validate_app_data(data: AppData) -> list[str]:
 
 
 def load_valid_data_file(path: Path | str) -> tuple[AppData, list[str]]:
-    """Load, validate, and deserialize an AppData file."""
+    """Load, validate, migrate, and deserialize an AppData file."""
+    from application.config.schema import migrate_config
+
     file_path = Path(path)
     raw = json.loads(file_path.read_text(encoding="utf-8"))
     issues = validate_app_data_dict(raw)
     if "root_not_object" in issues or "folders_not_list" in issues:
         raise ValueError(f"fatal config schema issues: {issues}")
-    return AppData.from_dict(sanitize_app_data_dict(raw)), issues
+    migration = migrate_config(raw)
+    if migration.changed:
+        issues.append(f"config_schema_migrated:{migration.from_version}->{migration.to_version}")
+    sanitized = sanitize_app_data_dict(migration.data)
+    loaded = AppData.from_dict(sanitized)
+    loaded.config_schema_version = int(migration.data.get("config_schema_version", 0))
+    return loaded, issues
 
 
 def latest_valid_backup(backup_dir: Path | str) -> Path | None:

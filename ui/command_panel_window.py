@@ -150,6 +150,47 @@ class CommandPanelWindow(ThemedToolWindow):
         self.result_ready.connect(self._on_result_ready)
         self.result_update.connect(self._on_result_update)
 
+    def prepare_content_loading(self, *, command_id="", result_id=None, shortcut=None):
+        """Prepare the shell using size metadata without loading dynamic content."""
+        self._hide_command_suggestions()
+        self._clear_params()
+        self._set_running(False)
+        self._show_widget("text")
+        self.text.setPlainText("正在加载...")
+        self._rendered_text = "正在加载..."
+        self.set_subtitle("")
+        self.status_badge.setVisible(False)
+        self._apply_size_preset(self._initial_size_key(command_id=command_id, result_id=result_id, shortcut=shortcut))
+
+    def _initial_size_key(self, *, command_id="", result_id=None, shortcut=None) -> str:
+        if shortcut is not None:
+            key = str(getattr(shortcut, "command_panel_size", "medium") or "medium").lower().strip()
+            return key if key in COMMAND_PANEL_SIZE_PRESETS else "medium"
+        if result_id:
+            stored = self.result_store.get(result_id)
+            if stored is not None:
+                return self._resolve_size_key(stored.result, self._lookup_command(stored.command_id))
+        if command_id:
+            command_def = self._lookup_command(command_id)
+            return self._resolve_size_key(CommandResult(display_type="text"), command_def)
+        return "medium"
+
+    def load_content_after_window_animation(self, callback):
+        """Run dynamic content only after the shared show animation finishes."""
+        animation = getattr(self, "anim_group", None)
+        if animation is None or animation.state() != animation.Running:
+            QTimer.singleShot(0, callback)
+            return
+
+        def on_finished():
+            try:
+                animation.finished.disconnect(on_finished)
+            except (RuntimeError, TypeError):
+                logger.debug("Command panel animation callback was already disconnected", exc_info=True)
+            callback()
+
+        animation.finished.connect(on_finished)
+
     def _setup_ui(self):
         self.command_input = QLineEdit()
         self.command_input.setPlaceholderText("搜索命令或参数")
@@ -171,7 +212,7 @@ class CommandPanelWindow(ThemedToolWindow):
         input_group_layout.setSpacing(0)
         input_group_layout.addWidget(self.command_input, 1)
         self.history_toggle_btn = CommandHistoryDropButton()
-        self.history_toggle_btn.setFixedWidth(sp(26))
+        self.history_toggle_btn.setFixedWidth(sp(24))
         self.history_toggle_btn.setFixedHeight(sp(28))
         self.history_toggle_btn.setToolTip(tr("最近命令"))
         self.history_toggle_btn.setFocusPolicy(Qt.NoFocus)
@@ -188,7 +229,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.status_badge = QWidget()
         self.status_badge.setObjectName("CommandStatusBadge")
         badge_layout = QHBoxLayout(self.status_badge)
-        badge_layout.setContentsMargins(sp(7), sp(2), sp(9), sp(2))
+        badge_layout.setContentsMargins(sp(8), sp(4), sp(8), sp(4))
         badge_layout.setSpacing(sp(3))
         self.status_indicator = CommandStatusIndicator(self.status_badge)
         badge_layout.addWidget(self.status_indicator)
@@ -272,23 +313,34 @@ class CommandPanelWindow(ThemedToolWindow):
         self.footer_button_grid.setSpacing(sp(8))
         self.button_layout.addWidget(self.footer_button_container, 1)
 
-        self.copy_btn = QPushButton("复制")
+        # Windows first-show regression guard:
+        # Every footer button must have footer_button_container as its parent
+        # at construction time.  An unparented QPushButton is a top-level Qt
+        # window; calling show() before grid.addWidget() briefly creates a
+        # native HWND with a Windows title bar, then destroys it when the
+        # layout reparents the button.  That was the command-panel "small
+        # window flash" seen on the first captured result.  Do not change
+        # these constructors back to QPushButton(text) without a parent.
+        # Full incident record: docs/ui/20260621_命令面板首次捕获小窗闪烁故障复盘.md
+        self.copy_btn = QPushButton("复制", self.footer_button_container)
         self.copy_btn.clicked.connect(self.copy_result)
 
-        self.save_btn = QPushButton("保存")
+        self.save_btn = QPushButton("保存", self.footer_button_container)
         self.save_btn.clicked.connect(self.save_result)
 
-        self.rerun_btn = QPushButton("重新执行")
+        self.rerun_btn = QPushButton("重新执行", self.footer_button_container)
         self.rerun_btn.clicked.connect(self.rerun_current)
         self.rerun_btn.setEnabled(False)
 
         self.action_buttons = []
         for _ in range(3):
-            btn = QPushButton("")
+            # Keep hidden dynamic buttons parented even before they enter the
+            # grid; render_actions() may call show() before the next relayout.
+            btn = QPushButton("", self.footer_button_container)
             btn.hide()
             self.action_buttons.append(btn)
 
-        self.more_btn = QPushButton("更多")
+        self.more_btn = QPushButton("更多", self.footer_button_container)
         self.more_btn.clicked.connect(self._show_more_actions)
         self.more_btn.hide()
         self._relayout_footer_buttons()
@@ -375,9 +427,7 @@ class CommandPanelWindow(ThemedToolWindow):
             column = index % columns
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.setMinimumWidth(0)
-            button.setMinimumHeight(sp(30))
-            if button.text():
-                button.setToolTip(button.text())
+            button.setMinimumHeight(sp(32))
             grid.addWidget(button, row, column)
         for column in range(columns):
             grid.setColumnStretch(column, 1)
@@ -388,7 +438,7 @@ class CommandPanelWindow(ThemedToolWindow):
         try:
             return int(button.fontMetrics().horizontalAdvance(text) + sp(28))
         except Exception:
-            return max(sp(76), len(text) * sp(9) + sp(28))
+            return max(sp(76), len(text) * sp(8) + sp(28))
 
     @staticmethod
     def _neutralize_button_default(button):
@@ -457,7 +507,7 @@ class CommandPanelWindow(ThemedToolWindow):
             QLineEdit {{
                 min-height: 28px;
                 padding: 0 10px;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 8px;
                 background: transparent;
                 color: {text};
@@ -477,7 +527,7 @@ class CommandPanelWindow(ThemedToolWindow):
                 QPushButton {{
                     min-height: 28px;
                     padding: 0;
-                    border: none;
+                    border: none; border-radius: 0;
                     border-top-right-radius: 8px;
                     border-bottom-right-radius: 8px;
                     background: transparent;
@@ -579,7 +629,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.status_label.setStyleSheet(
             scale_qss(
                 f"QLabel {{ font-size: 11px; font-weight: 500; color: {color};"
-                " background: transparent; border: none; padding: 0; }"
+                " background: transparent; border: none; border-radius: 0; padding: 0; }"
             )
         )
         self.status_indicator.set_status(kind, self._theme)
@@ -618,7 +668,7 @@ class CommandPanelWindow(ThemedToolWindow):
             QHeaderView::section {{
                 background: {header};
                 color: {text};
-                border: none;
+                border: none; border-radius: 0;
                 border-right: 1px solid {grid};
                 padding: 5px;
             }}
@@ -643,7 +693,7 @@ class CommandPanelWindow(ThemedToolWindow):
             scale_qss(
                 f"""
             QProgressBar {{
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 4px;
                 background: {bg};
                 height: 8px;
@@ -1181,6 +1231,7 @@ class CommandPanelWindow(ThemedToolWindow):
         popup.setMinimumWidth(width)
         popup.setMaximumWidth(width)
         popup.setFixedWidth(width)
+        popup.destroyed.connect(lambda _obj=None, panel_popup=popup: self._on_suggestion_popup_destroyed(panel_popup))
         self._command_suggestion_ids = []
         for cmd in matches:
             command_id = str(cmd.id)
@@ -1252,6 +1303,11 @@ class CommandPanelWindow(ThemedToolWindow):
                 self.command_suggestion_popup.hide()
         except Exception as exc:
             logger.debug("隐藏命令建议弹窗: %s", exc, exc_info=True)
+
+    def _on_suggestion_popup_destroyed(self, popup):
+        """Drop the Python reference when Qt destroys a transient tooltip window."""
+        if self.command_suggestion_popup is popup:
+            self.command_suggestion_popup = None
 
     def _on_command_suggestion_clicked(self, item):
         command_id = str(item.data(Qt.UserRole) or item.text() or "").strip()
@@ -1636,7 +1692,7 @@ class CommandPanelWindow(ThemedToolWindow):
         text = self.text.toPlainText() if hasattr(self, "text") else ""
         line_count = max(1, len(text.splitlines()))
         longest = max([len(line) for line in text.splitlines()] or [0])
-        width = min(max_w, max(sp(small_w), min(sp(760), sp(300) + longest * sp(7))))
+        width = min(max_w, max(sp(small_w), min(sp(760), sp(300) + longest * sp(8))))
         height = min(max_h, max(sp(small_h), min(sp(820), sp(260) + line_count * sp(18))))
         self.setMinimumSize(sp(small_w), sp(small_h))
         self.setMaximumSize(max_w, max_h)

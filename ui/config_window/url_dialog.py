@@ -2,6 +2,8 @@
 URL编辑对话框
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 
@@ -26,6 +28,7 @@ from qt_compat import (
     QVBoxLayout,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.safe_file_dialog import get_open_file_name
 from ui.utils.ui_scale import font_px, scale_qss, sp
 
@@ -162,7 +165,7 @@ class UrlDialog(BaseDialog):
 
         custom_style = base_style + scale_qss(
             f"""
-            QDialog {{ background: transparent; border: none; }}
+            QDialog {{ background: transparent; border: none; border-radius: 0; }}
             QGroupBox {{
                 border: 1px solid {border_color};
                 border-radius: 6px;
@@ -210,7 +213,7 @@ class UrlDialog(BaseDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(6))
-        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))  # 特殊页边距：复杂编辑窗口保持 10px
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))  # 特殊页边距：复杂编辑窗口保持 10px
 
         # 顶部标题栏
         title_layout = QHBoxLayout()
@@ -241,7 +244,7 @@ class UrlDialog(BaseDialog):
         latency_layout = QHBoxLayout()
         latency_layout.setSpacing(sp(6))
         self._latency_btn = QPushButton("测试延迟")
-        self._latency_btn.setFixedHeight(sp(26))
+        self._latency_btn.setFixedHeight(sp(24))
         self._latency_btn.clicked.connect(self._test_url_latency)
         latency_layout.addWidget(self._latency_btn)
         self._latency_result_label = QLabel("未测试")
@@ -264,7 +267,7 @@ class UrlDialog(BaseDialog):
             ("多文件", "{{selected_files}}"),
         ):
             var_btn = QPushButton(text)
-            var_btn.setFixedHeight(sp(26))
+            var_btn.setFixedHeight(sp(24))
             var_btn.clicked.connect(lambda checked=False, value=token: self._insert_url_variable(value))
             var_layout.addWidget(var_btn)
             self._url_var_buttons.append(var_btn)
@@ -498,7 +501,9 @@ class UrlDialog(BaseDialog):
 
         self._latency_result_label.setText(display_text)
         self._latency_result_label.setStyleSheet(
-            scale_qss(f"font-size: 12px; color: {fg}; background-color: transparent; border: none; padding: 2px 4px;")
+            scale_qss(
+                f"font-size: 12px; color: {fg}; background-color: transparent; border: none; border-radius: 0; padding: 2px 4px;"
+            )
         )
 
     def _normalize_latency_target(self, raw_url: str) -> tuple[str, str]:
@@ -609,7 +614,7 @@ class UrlDialog(BaseDialog):
 
     def _create_url_icon(self, size: int) -> QPixmap:
         """创建URL图标"""
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)

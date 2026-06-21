@@ -27,3 +27,87 @@ repos:
         # NOTE: release gate enforces --max-untranslated-pct 40; this hook
         # only reports. Lower the gate manually in scripts/release_gate.py
         # as the untranslated rate drops.
+
+      # ----------------------------------------------------------------
+      # 1.7.0 UI 优化 lint — 见 UI_OPTIMIZATION_PLAN.md §四.11
+      # ----------------------------------------------------------------
+      # S8 之前为 advisory 模式（不阻断），S8 灰度前升级为 blocking。
+      # 通过 --max=N 设置当前允许的违规数；--strict 模式等价于 --max=0。
+      - id: audit-hardcoded-colors
+        name: "UI: hard-coded QColor in theme code (advisory)"
+        entry: python scripts/audit_hardcoded_colors.py --max=120
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-grid
+        name: "UI: non-4-multiple sp() values (advisory)"
+        entry: python scripts/audit_grid_violations.py --max=584
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-paint-snap
+        name: "UI: paintEvent missing snap/cosmetic (advisory)"
+        entry: python scripts/audit_paint_snap.py --max=32
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-qss-radius
+        name: "UI: border:none without border-radius:0 (advisory)"
+        entry: python scripts/audit_qss_radius.py --max=0
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+        # 0 = 100% clean (S4 已完成)
+      - id: audit-font-consistency
+        name: "UI: inline font-size: N px (advisory)"
+        entry: python scripts/audit_font_consistency.py --max=220
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-graphics-effect
+        name: "UI: QGraphicsEffect usage (advisory)"
+        entry: python scripts/audit_graphics_effect.py --max-opacity=17 --max-shadow-untokenized=0
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-motion-consistency
+        name: "UI: QTimer.singleShot animation chains (advisory)"
+        entry: python scripts/audit_motion_consistency.py --max=200
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-paint-perf
+        name: "UI: paintEvent perf anti-patterns (advisory)"
+        entry: python scripts/audit_paint_perf.py --max=0
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-animation-lifecycle
+        name: "UI: QPropertyAnimation lifecycle (advisory)"
+        entry: python scripts/audit_animation_lifecycle.py --max=200
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-timer-leak
+        name: "UI: QTimer.singleShot animation leaks (advisory)"
+        entry: python scripts/audit_timer_leak.py --max=200
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-pixmap-no-dpi
+        name: "UI: QPixmap without setDevicePixelRatio (advisory)"
+        entry: python scripts/audit_pixmap_no_dpi.py --max=25
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false

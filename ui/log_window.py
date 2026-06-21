@@ -2,6 +2,8 @@
 日志查看窗口 - 与主配置窗口风格统一
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 import re
@@ -26,12 +28,15 @@ from qt_compat import (
     QVBoxLayout,
 )
 from runtime_paths import app_root
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.style import Glassmorphism, PopupMenu, StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.pixel_snap import build_rounded_mask
 from ui.utils.ui_scale import font_px, scale_qss, sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -131,7 +136,7 @@ class LogWindow(QDialog):
 
         # 右侧：Win风格关闭按钮
         self.close_btn_top = QPushButton("✕")
-        self.close_btn_top.setFixedSize(sp(46), sp(32))
+        self.close_btn_top.setFixedSize(sp(48), sp(32))
         self.close_btn_top.setCursor(QtCompat.PointingHandCursor)
         self.close_btn_top.clicked.connect(self.close)
         title_bar.addWidget(self.close_btn_top)
@@ -158,14 +163,14 @@ class LogWindow(QDialog):
         btn_layout.setSpacing(sp(8))
 
         self.refresh_btn = QPushButton("刷新")
-        self.refresh_btn.setFixedHeight(sp(30))
-        self.refresh_btn.setMinimumWidth(sp(70))
+        self.refresh_btn.setFixedHeight(sp(32))
+        self.refresh_btn.setMinimumWidth(sp(72))
         self.refresh_btn.setCursor(QtCompat.PointingHandCursor)
         self.refresh_btn.clicked.connect(self.load_log)
         btn_layout.addWidget(self.refresh_btn)
 
         self.clear_btn = QPushButton("清空日志")
-        self.clear_btn.setFixedHeight(sp(30))
+        self.clear_btn.setFixedHeight(sp(32))
         self.clear_btn.setMinimumWidth(sp(80))
         self.clear_btn.setCursor(QtCompat.PointingHandCursor)
         self.clear_btn.clicked.connect(self.clear_log)
@@ -174,8 +179,8 @@ class LogWindow(QDialog):
         btn_layout.addStretch()
 
         self.info_filter_btn = QPushButton("INFO (0)")
-        self.info_filter_btn.setFixedHeight(sp(30))
-        self.info_filter_btn.setMinimumWidth(sp(105))
+        self.info_filter_btn.setFixedHeight(sp(32))
+        self.info_filter_btn.setMinimumWidth(sp(104))
         self.info_filter_btn.setCursor(QtCompat.PointingHandCursor)
         self.info_filter_btn.setCheckable(True)
         self.info_filter_btn.setChecked(True)
@@ -183,8 +188,8 @@ class LogWindow(QDialog):
         btn_layout.addWidget(self.info_filter_btn)
 
         self.debug_filter_btn = QPushButton("DEBUG (0)")
-        self.debug_filter_btn.setFixedHeight(sp(30))
-        self.debug_filter_btn.setMinimumWidth(sp(105))
+        self.debug_filter_btn.setFixedHeight(sp(32))
+        self.debug_filter_btn.setMinimumWidth(sp(104))
         self.debug_filter_btn.setCursor(QtCompat.PointingHandCursor)
         self.debug_filter_btn.setCheckable(True)
         self.debug_filter_btn.setChecked(True)
@@ -192,8 +197,8 @@ class LogWindow(QDialog):
         btn_layout.addWidget(self.debug_filter_btn)
 
         self.error_filter_btn = QPushButton("ERROR (0)")
-        self.error_filter_btn.setFixedHeight(sp(30))
-        self.error_filter_btn.setMinimumWidth(sp(105))
+        self.error_filter_btn.setFixedHeight(sp(32))
+        self.error_filter_btn.setMinimumWidth(sp(104))
         self.error_filter_btn.setCursor(QtCompat.PointingHandCursor)
         self.error_filter_btn.setCheckable(True)
         self.error_filter_btn.setChecked(True)
@@ -254,7 +259,7 @@ class LogWindow(QDialog):
             f"""
             QPushButton {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 4px;
                 color: {text_primary};
                 font-size: 13px;
@@ -299,7 +304,7 @@ class LogWindow(QDialog):
             f"""
             QPlainTextEdit {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 color: {text_primary};
             }}
         """
@@ -367,7 +372,7 @@ class LogWindow(QDialog):
         except Exception as exc:
             logger.debug("应用模糊效果失败: %s", exc, exc_info=True)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """绘制圆角半透明背景 - 与主配置窗口一致"""
         painter = QPainter(self)
         try:
@@ -381,14 +386,14 @@ class LogWindow(QDialog):
                 painter.setRenderHint(QtCompat.SmoothPixmapTransform, True)
 
             radius = sp(8)
-            inset = spf(1.0) if is_win10() else spf(0.5)
+            inset = spf(1.0) if is_win10() else spf(4.0)
 
             if self._theme == "dark":
-                bg = QColor(28, 28, 30, 180)
-                border = QColor(190, 190, 197, 60)
+                bg = token_surface(self._theme, "bg_glass_dark_win10")
+                border = token_border(self._theme, "subtle_dark")
             else:
-                bg = QColor(242, 242, 247, 160)
-                border = QColor(229, 229, 234, 150)
+                bg = token_surface(self._theme, "bg_glass_light_win10")
+                border = token_border(self._theme, "subtle_light")
 
             if is_win10():
                 paint_win10_rounded_surface(painter, self, bg, border, radius)
@@ -417,6 +422,7 @@ class LogWindow(QDialog):
     def resizeEvent(self, event):
         """窗口大小变化时更新圆角区域（仅 Win10 需要）"""
         super().resizeEvent(event)
+        self._apply_window_mask()
         try:
             if not is_win11() and self._blur_applied:
                 hwnd = int(self.winId())
@@ -431,9 +437,21 @@ class LogWindow(QDialog):
         except Exception as exc:
             logger.debug("更新窗口区域失败: %s", exc, exc_info=True)
 
+    def _apply_window_mask(self):
+        try:
+            width = self.width()
+            height = self.height()
+            if width <= 0 or height <= 0:
+                return
+            radius = sp(8)
+            self.setMask(build_rounded_mask(width, height, radius))
+        except Exception as exc:
+            logger.debug("应用窗口遮罩失败: %s", exc, exc_info=True)
+
     def showEvent(self, event):
         """显示时应用模糊效果和启动动画"""
         super().showEvent(event)
+        self._apply_window_mask()
         # 每次显示都重新应用模糊效果，确保重启后正常
         from qt_compat import QTimer
 
@@ -449,6 +467,7 @@ class LogWindow(QDialog):
         self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
+        self.opacity_anim.finished.connect(self.opacity_anim.deleteLater)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
@@ -457,10 +476,12 @@ class LogWindow(QDialog):
         self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
+        self.pos_anim.finished.connect(self.pos_anim.deleteLater)
 
         self.anim_group = QtCompat.QParallelAnimationGroup()
         self.anim_group.addAnimation(self.opacity_anim)
         self.anim_group.addAnimation(self.pos_anim)
+        self.anim_group.finished.connect(self.anim_group.deleteLater)
         self.anim_group.start()
 
     # --- 拖动支持 ---

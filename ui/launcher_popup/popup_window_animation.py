@@ -12,6 +12,7 @@ import logging
 from typing import Any, cast
 
 from qt_compat import QtCompat
+from ui.styles.l3_features import L3Features, window_animations
 from ui.utils.interruptible_animation import is_animation_running, stop_named_animations
 
 logger = logging.getLogger(__name__)
@@ -45,21 +46,41 @@ class PopupWindowAnimationMixin:
     def _start_show_animation(self):
         """窗口出现动画 - 从中心向外扩散"""
         host = cast(Any, self)
+        # L3 §5.6 — 如果 window_animations 关闭，则直接设到 1.0，跳过动画
+        if not window_animations(getattr(host, "settings", None)):
+            try:
+                host.setWindowOpacity(1.0)
+            except Exception:
+                logger.debug("Failed to set popup opacity without animation", exc_info=True)
+            try:
+                host._reveal_progress = 1.0
+            except Exception:
+                logger.debug("Failed to set popup reveal progress without animation", exc_info=True)
+            try:
+                host.update()
+            except Exception:
+                logger.debug("Failed to update popup without animation", exc_info=True)
+            return
         stop_named_animations(host, "anim_group", "hide_anim_group")
         generation = host._next_visibility_animation_generation()
         start_opacity = max(0.0, min(1.0, float(host.windowOpacity())))
         start_reveal = max(0.0, min(1.0, float(getattr(host, "_reveal_progress", 0.0))))
 
+        # L3 §5.6 — 应用 motion_scale 到所有动画时长
+        show_ms = int(L3Features.effective_animation_duration("DIALOG_OPEN", getattr(host, "settings", None)))
+        if show_ms <= 0:
+            show_ms = 100
+
         # 透明度动画
         host.opacity_anim = QtCompat.QPropertyAnimation(host, b"windowOpacity")
-        host.opacity_anim.setDuration(100)
+        host.opacity_anim.setDuration(show_ms)
         host.opacity_anim.setStartValue(start_opacity)
         host.opacity_anim.setEndValue(1.0)
         host.opacity_anim.setEasingCurve(QtCompat.OutCubic)
 
         # 扩散进度动画
         host.reveal_anim = QtCompat.QPropertyAnimation(host, b"revealProgress")
-        host.reveal_anim.setDuration(100)
+        host.reveal_anim.setDuration(show_ms)
         host.reveal_anim.setStartValue(start_reveal)
         host.reveal_anim.setEndValue(1.0)
         host.reveal_anim.setEasingCurve(QtCompat.OutCubic)

@@ -7,6 +7,7 @@ import os
 
 from core.i18n import tr
 from core.plugin_manager import PLUGIN_PACKAGE_EXTENSION, is_plugin_package_path
+from infrastructure.process import runtime as process_runtime
 from qt_compat import (
     QEvent,
     QGridLayout,
@@ -201,7 +202,7 @@ class SettingsPluginsPageMixin:
                     w.deleteLater()
             self._plugin_cards = {}
 
-            from core import plugin_manager
+            plugin_manager = self.plugin_manager
 
             if plugin_manager is None:
                 label = QLabel("插件管理器未初始化")
@@ -271,14 +272,14 @@ class SettingsPluginsPageMixin:
         )
 
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
+        card_layout.setContentsMargins(sp(12), sp(8), sp(12), sp(8))
         card_layout.setSpacing(sp(6))
 
         # ── Top Row Layout (Status + Name + Buttons) ──
         top_layout = QGridLayout()
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setHorizontalSpacing(sp(8))
-        top_layout.setVerticalSpacing(sp(2))
+        top_layout.setVerticalSpacing(sp(4))
 
         # Status badge / indicator
         is_quarantined = getattr(plugin_info, "quarantined", False)
@@ -522,7 +523,7 @@ class SettingsPluginsPageMixin:
             action_btn.clicked.connect(lambda checked, pid=plugin_id: self._on_enable_plugin(plugin_id))
 
     def _refresh_plugin_card_state(self, plugin_id):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -538,7 +539,7 @@ class SettingsPluginsPageMixin:
             card.setUpdatesEnabled(True)
 
     def _on_enable_plugin(self, plugin_id):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -552,7 +553,7 @@ class SettingsPluginsPageMixin:
             )
 
     def _on_disable_plugin(self, plugin_id):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -560,7 +561,7 @@ class SettingsPluginsPageMixin:
         self._refresh_plugin_card_state(plugin_id)
 
     def _on_clear_quarantine(self, plugin_id):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -648,7 +649,7 @@ class SettingsPluginsPageMixin:
             ThemedMessageBox.critical(self, tr("读取失败"), tr("无法读取错误记录: {error}", error=exc))
 
     def _on_reload_plugin(self, plugin_id):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -662,14 +663,14 @@ class SettingsPluginsPageMixin:
             )
 
     def _on_open_plugin_dir(self, plugin_id):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
         p = plugin_manager.get_plugin(plugin_id)
         if p and p.directory:
             try:
-                os.startfile(p.directory)
+                process_runtime.startfile(p.directory)
             except Exception as e:
                 logger.error("无法打开插件目录: %s", e)
                 ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开插件目录:\n{error}", error=e))
@@ -684,7 +685,7 @@ class SettingsPluginsPageMixin:
         if reply != ThemedMessageBox.Yes:
             return
 
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -699,7 +700,7 @@ class SettingsPluginsPageMixin:
 
     def _on_refresh_plugins(self):
         """Re-scan the plugins directory and rebuild the list."""
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
@@ -713,12 +714,12 @@ class SettingsPluginsPageMixin:
 
     def _on_open_plugins_dir(self):
         """Open the plugins directory in Explorer."""
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             return
         try:
-            os.startfile(plugin_manager.plugins_dir)
+            process_runtime.startfile(plugin_manager.plugins_dir)
         except Exception as e:
             logger.error("无法打开插件目录: %s", e)
 
@@ -726,7 +727,7 @@ class SettingsPluginsPageMixin:
         if getattr(self, "_plugin_create_dialog_active", False):
             return
         self._plugin_create_dialog_active = True
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             self._plugin_create_dialog_active = False
@@ -776,7 +777,7 @@ class SettingsPluginsPageMixin:
 
             # Open directory
             try:
-                os.startfile(plugin_dir)
+                process_runtime.startfile(plugin_dir)
             except Exception as exc:
                 logger.debug("打开插件目录失败: %s", exc, exc_info=True)
 
@@ -785,7 +786,7 @@ class SettingsPluginsPageMixin:
             ThemedMessageBox.critical(self, tr("错误"), tr("新建开发插件失败:\n{error}", error=e))
 
     def _on_install_plugin_clicked(self):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             ThemedMessageBox.warning(self, tr("错误"), tr("插件管理器未初始化！"))
@@ -803,7 +804,7 @@ class SettingsPluginsPageMixin:
         self._install_plugin_package(file_path)
 
     def _install_plugin_package(self, file_path):
-        from core import plugin_manager
+        plugin_manager = self.plugin_manager
 
         if plugin_manager is None:
             ThemedMessageBox.warning(self, tr("错误"), tr("插件管理器未初始化！"))
@@ -887,7 +888,7 @@ class PluginCreateDialog(BaseDialog):
         self.setStyleSheet(get_dialog_stylesheet(theme))
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(sp(14), sp(12), sp(14), sp(12))
+        layout.setContentsMargins(sp(16), sp(12), sp(16), sp(12))
         layout.setSpacing(sp(8))
 
         title_lbl = QLabel("创建新的插件开发模板")
@@ -898,28 +899,28 @@ class PluginCreateDialog(BaseDialog):
         layout.addWidget(QLabel("插件ID (仅限小写字母、数字、下划线和减号):"))
         self.id_edit = QLineEdit()
         self.id_edit.setPlaceholderText("例如: my_plugin")
-        self.id_edit.setFixedHeight(sp(26))
+        self.id_edit.setFixedHeight(sp(24))
         layout.addWidget(self.id_edit)
 
         # Name
         layout.addWidget(QLabel("插件显示名称:"))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("例如: 我的自定义插件")
-        self.name_edit.setFixedHeight(sp(26))
+        self.name_edit.setFixedHeight(sp(24))
         layout.addWidget(self.name_edit)
 
         # Author
         layout.addWidget(QLabel("作者名称 (可选):"))
         self.author_edit = QLineEdit()
         self.author_edit.setPlaceholderText("例如: 开发者名字")
-        self.author_edit.setFixedHeight(sp(26))
+        self.author_edit.setFixedHeight(sp(24))
         layout.addWidget(self.author_edit)
 
         # Description
         layout.addWidget(QLabel("插件描述 (可选):"))
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("一句话描述插件功能...")
-        self.desc_edit.setFixedHeight(sp(26))
+        self.desc_edit.setFixedHeight(sp(24))
         layout.addWidget(self.desc_edit)
 
         btn_layout = QHBoxLayout()

@@ -38,6 +38,7 @@ from ui.launcher_popup.popup_window_effect import PopupLayoutMixin, PopupWindowE
 from ui.launcher_popup.popup_window_helpers import IconFlashOverlay
 from ui.launcher_popup.popup_window_hwnd import PopupWindowHwndMixin
 from ui.launcher_popup.popup_window_lifecycle import PopupWindowLifecycleMixin
+from ui.utils.animations import DisposableWidget
 from ui.utils.interruptible_animation import set_precise_timer, stop_named_animations
 from ui.utils.ui_scale import sp
 from ui.utils.window_effect import WindowEffect, is_glass_background_supported
@@ -66,10 +67,24 @@ class LauncherPopup(
     PopupSearchMixin,
     PopupWindowEffectMixin,
     PopupLayoutMixin,
+    DisposableWidget,
     PopupItemExecutionMixin,
     QWidget,
 ):
     """弹出启动器窗口"""
+
+    # Owner-Disposable: 列出本 widget 持有的 QPropertyAnimation 属性名，
+    # DisposableWidget 会在 hide/close 事件中通过 interruptible_animation
+    # 统一停止。命名必须与 popup_window_animation.py / popup_command_result.py
+    # 等模块的 setattr 一致。
+    _animation_names: tuple = (
+        "anim_group",
+        "hide_anim_group",
+        "reveal_anim",
+        "opacity_anim",
+        "hide_opacity_anim",
+        "hide_reveal_anim",
+    )
 
     # 启动错误信号 (name, error_msg)
     execution_error = pyqtSignal(str, str)
@@ -265,7 +280,7 @@ class LauncherPopup(
         self.cell_size = sp(self.settings.cell_size)
         self.icon_size = sp(self.settings.icon_size)
         # Font and row height are finalized together in _calculate_fixed_size().
-        self.row_spacing = sp(2)
+        self.row_spacing = sp(4)
         self._update_grid_text_metrics()
 
         self.dock_height = self._calculate_dock_height()

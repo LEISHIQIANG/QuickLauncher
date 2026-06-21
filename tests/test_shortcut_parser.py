@@ -30,7 +30,7 @@ def test_shortcut_parser_lnk_falls_back_without_win32com(monkeypatch, tmp_path):
             ),
         )
 
-    monkeypatch.setattr(shortcut_parser.subprocess, "run", fake_run)
+    monkeypatch.setattr(shortcut_parser.process_runtime, "run", fake_run)
 
     result = ShortcutParser.parse(str(lnk))
 

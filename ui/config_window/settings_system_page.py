@@ -2,22 +2,20 @@
 
 import logging
 import os
-import subprocess
 import sys
 import tempfile
 
 from core.i18n import tr
+from infrastructure.process import runtime as process_runtime
 from qt_compat import (
     QButtonGroup,
     QCheckBox,
     QEasingCurve,
-    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QParallelAnimationGroup,
-    QPropertyAnimation,
     QPushButton,
     QRadioButton,
     QSlider,
@@ -98,7 +96,7 @@ class SettingsSystemPageMixin:
         scale_layout.addWidget(self.ui_scale_slider, 1)
 
         self.ui_scale_edit = QLineEdit()
-        self.ui_scale_edit.setFixedWidth(sp(54))
+        self.ui_scale_edit.setFixedWidth(sp(56))
         self.ui_scale_edit.setMaxLength(3)
         self.ui_scale_edit.setAlignment(QtCompat.AlignCenter)
         self.ui_scale_edit.setPlaceholderText("100")
@@ -107,12 +105,12 @@ class SettingsSystemPageMixin:
         scale_layout.addWidget(self.ui_scale_edit)
 
         scale_suffix = QLabel("%")
-        scale_suffix.setStyleSheet(scale_qss("background: transparent; border: none;"))
+        scale_suffix.setStyleSheet(scale_qss("background: transparent; border: none; border-radius: 0;"))
         scale_layout.addWidget(scale_suffix)
 
         self.ui_scale_apply_btn = QPushButton(tr("应用"))
-        self.ui_scale_apply_btn.setFixedHeight(sp(26))
-        self.ui_scale_apply_btn.setMinimumWidth(sp(62))
+        self.ui_scale_apply_btn.setFixedHeight(sp(24))
+        self.ui_scale_apply_btn.setMinimumWidth(sp(64))
         self.ui_scale_apply_btn.clicked.connect(self._on_ui_scale_apply_clicked)
         scale_layout.addWidget(self.ui_scale_apply_btn)
 
@@ -600,7 +598,7 @@ fso.DeleteFile WScript.ScriptFullName
                 with open(vbs_file, "w", encoding="utf-8") as f:
                     f.write(vbs_content)
 
-                subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
+                process_runtime.popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
             else:
                 cwd = str(app_root())
                 main_py = os.path.join(cwd, "main.py")
@@ -615,7 +613,7 @@ fso.DeleteFile WScript.ScriptFullName
                 with open(vbs_file, "w", encoding="utf-8") as f:
                     f.write(vbs_content)
 
-                subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
+                process_runtime.popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
 
             from qt_compat import QApplication
 
@@ -703,7 +701,7 @@ fso.DeleteFile WScript.ScriptFullName
 
         group_widget = QWidget()
         layout = QGridLayout(group_widget)
-        layout.setContentsMargins(sp(4), sp(2), sp(4), sp(2))
+        layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
         layout.setVerticalSpacing(sp(4))
         layout.setHorizontalSpacing(sp(6))
 
@@ -918,42 +916,52 @@ fso.DeleteFile WScript.ScriptFullName
         return (self.nav_container, self.content_container)
 
     def _set_language_fade_opacity(self, opacity: float):
+        from ui.utils.widget_opacity import set_opacity
+
         for widget in self._language_fade_targets():
-            effect = widget.graphicsEffect()
-            if not isinstance(effect, QGraphicsOpacityEffect):
-                effect = QGraphicsOpacityEffect(widget)
-                widget.setGraphicsEffect(effect)
-            effect.setOpacity(opacity)
+            set_opacity(widget, opacity)
 
     def _current_language_fade_opacity(self) -> float:
-        values = []
+
+        values: list[float] = []
         for widget in self._language_fade_targets():
-            effect = widget.graphicsEffect()
-            if isinstance(effect, QGraphicsOpacityEffect):
-                values.append(float(effect.opacity()))
+            ss = widget.styleSheet() or ""
+            idx = ss.rfind("opacity:")
+            if idx < 0:
+                continue
+            start = max(ss.rfind(";", 0, idx), ss.rfind("{", 0, idx)) + 1
+            fragment = ss[start:].lstrip()
+            if not fragment.startswith("opacity:"):
+                continue
+            try:
+                values.append(float(fragment[len("opacity:") :].split(";", 1)[0].strip()))
+            except ValueError:
+                continue
         if not values:
             return 1.0
         return max(0.0, min(1.0, sum(values) / len(values)))
 
     def _clear_language_fade_effects(self):
+        from ui.utils.widget_opacity import set_opacity
+
         for widget in self._language_fade_targets():
             try:
-                widget.setGraphicsEffect(None)
+                set_opacity(widget, 1.0)
             except Exception as exc:
                 logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
     def _build_language_fade_group(self, start: float, end: float, duration: int, easing):
+        from ui.utils.widget_opacity import animate_opacity
+
         group = QParallelAnimationGroup(self)  # type: ignore[unused-ignore, arg-type]
         for widget in self._language_fade_targets():
-            effect = widget.graphicsEffect()
-            if not isinstance(effect, QGraphicsOpacityEffect):
-                effect = QGraphicsOpacityEffect(widget)
-                widget.setGraphicsEffect(effect)
-            effect.setOpacity(start)
-            anim = QPropertyAnimation(effect, b"opacity", group)
-            anim.setDuration(duration)
-            anim.setStartValue(start)
-            anim.setEndValue(end)
+            anim = animate_opacity(
+                widget,
+                start,
+                end,
+                duration_ms=int(duration),
+                clear_on_finish=False,
+            )
             anim.setEasingCurve(easing)
             group.addAnimation(anim)
         return group

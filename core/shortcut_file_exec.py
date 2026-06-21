@@ -10,6 +10,8 @@ import time
 
 import win32process
 
+from infrastructure.process import runtime as process_runtime
+
 from .background_tasks import start_background_thread
 from .command_variables import CommandVariableError, resolve_command_variables
 from .data_models import ShortcutItem
@@ -146,7 +148,7 @@ class FileExecutionMixin:
                 if launch_error:
                     logger.warning("%s: %s", folder, launch_error)
                     return False
-            os.startfile(folder)
+            process_runtime.startfile(folder)
             logger.debug(f"打开文件夹: {folder}")
 
             # TODO: 可以扩展为将文件复制到该文件夹
@@ -294,7 +296,7 @@ class FileExecutionMixin:
                 try:
                     if run_as_admin:
                         return False
-                    os.startfile(file_path)
+                    process_runtime.startfile(file_path)
                     logger.debug(f"os.startfile 打开: {file_path}")
                     success = True
                 except Exception:

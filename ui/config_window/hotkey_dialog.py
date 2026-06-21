@@ -1,5 +1,7 @@
 """Hotkey edit dialog."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import ctypes
 import logging
 import os
@@ -34,6 +36,7 @@ from qt_compat import (
 )
 from ui.styles.style import Glassmorphism
 from ui.tooltip_helper import install_tooltip
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .base_dialog import BaseDialog
@@ -103,18 +106,18 @@ class HotkeyRecorderWidget(QWidget):
         self.display.setReadOnly(True)
         self.display.setPlaceholderText("点击后直接按下快捷键")
         self.display.setFocusPolicy(QtCompat.StrongFocus)
-        self.display.setFixedHeight(sp(26))
+        self.display.setFixedHeight(sp(24))
         apply_recorder_display_style(self.display, False)
         layout.addWidget(self.display, 1)
 
         self.record_btn = QPushButton("录制")
         self.record_btn.setFixedWidth(sp(52))
-        self.record_btn.setFixedHeight(sp(26))
+        self.record_btn.setFixedHeight(sp(24))
         self.record_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_btn)
 
         self.clear_btn = QPushButton("清空")
-        self.clear_btn.setFixedHeight(sp(26))
+        self.clear_btn.setFixedHeight(sp(24))
         self.clear_btn.clicked.connect(self.clear_hotkey)
         layout.addWidget(self.clear_btn)
 
@@ -536,7 +539,7 @@ class HotkeyDialog(BaseDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(6))
-        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
 
         title_label = QLabel("编辑快捷键" if self.shortcut.name else "添加快捷键")
         title_label.setStyleSheet(scale_qss("font-size: 12px; font-weight: 400; color: gray;"))
@@ -659,7 +662,7 @@ class HotkeyDialog(BaseDialog):
             base_style
             + scale_qss(
                 f"""
-            QDialog {{ background: transparent; border: none; }}
+            QDialog {{ background: transparent; border: none; border-radius: 0; }}
             QGroupBox {{
                 border: 1px solid {border_color};
                 border-radius: 6px;
@@ -825,7 +828,7 @@ class HotkeyDialog(BaseDialog):
         self.icon_preview.setPixmap(pixmap)
 
     def _create_hotkey_icon(self, size: int) -> QPixmap:
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
         painter = QPainter(pixmap)
         try:

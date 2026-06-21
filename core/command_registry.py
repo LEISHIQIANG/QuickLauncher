@@ -383,15 +383,29 @@ class _CallbackHandler:
         self._callback_name = callback_name
 
     def __call__(self, context: CommandContext) -> CommandResult:
-        from core import call_callback
+        from application.ports.ui_actions import UIAction
+        from core.shortcut_executor import ShortcutExecutor
 
+        ui_actions = ShortcutExecutor.resolve_ui_actions()
+        if ui_actions is None:
+            return CommandResult(
+                success=False,
+                message=f"命令执行失败: {self._callback_name}",
+                error="UIActions port 未注入",
+            )
+        action = UIAction.parse(self._callback_name)
+        if action is None:
+            return CommandResult(
+                success=False,
+                message=f"命令执行失败: {self._callback_name}",
+                error="未知的 UI 动作",
+            )
         try:
-            result = call_callback(self._callback_name)
-            if not result:
+            if not ui_actions.execute(action):
                 return CommandResult(
                     success=False,
                     message=f"命令执行失败: {self._callback_name}",
-                    error="回调返回 False",
+                    error="UI 动作返回 False",
                 )
             return CommandResult(success=True, message="执行成功")
         except Exception as e:

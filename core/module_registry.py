@@ -6,6 +6,7 @@ import importlib
 import json
 import logging
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,23 @@ class ModuleRegistry:
         self._records: dict[str, ModuleRecord] = {}
         self._disabled: set[str] = set()
         self._external_manifests: dict[str, Path] = {}
+        self._action_chain_editor: Callable[..., Any] | None = None
+        self._shortcut_executor: Callable[..., Any] | None = None
+
+    def set_action_chain_editor(self, editor: Callable[..., Any] | None) -> None:
+        self._action_chain_editor = editor
+        self._records.pop(ACTION_CHAIN_MODULE_ID, None)
+
+    def set_shortcut_executor(self, executor: Callable[..., Any] | None) -> None:
+        self._shortcut_executor = executor
+        self._records.pop(ACTION_CHAIN_MODULE_ID, None)
+
+    def _host_api(self, data_manager: Any) -> DefaultActionChainHostAPI:
+        return DefaultActionChainHostAPI(
+            data_manager,
+            editor=self._action_chain_editor,
+            shortcut_executor=self._shortcut_executor,
+        )
 
     def set_disabled(self, module_id: str, disabled: bool = True) -> None:
         module_id = str(module_id or "")
@@ -109,7 +127,7 @@ class ModuleRegistry:
             module_name, class_name = entry.split(":", 1)
             module = _import_module_from_manifest(module_name, manifest_path)
             module_cls = getattr(module, class_name)
-            api = module_cls(DefaultActionChainHostAPI(data_manager), manifest)
+            api = module_cls(self._host_api(data_manager), manifest)
             return ModuleRecord(module_id, MODULE_AVAILABLE, manifest, api, "", str(manifest_path), "plugin")
         except Exception as exc:
             logger.exception("failed to load module %s", module_id)
@@ -200,7 +218,7 @@ class ModuleRegistry:
             module_name, class_name = entry.split(":", 1)
             module = _import_module_from_manifest(module_name, manifest_path)
             module_cls = getattr(module, class_name)
-            api = module_cls(DefaultActionChainHostAPI(data_manager), manifest)
+            api = module_cls(self._host_api(data_manager), manifest)
             return ModuleRecord(module_id, MODULE_AVAILABLE, manifest, api, "", str(manifest_path), provider)
         except Exception as exc:
             logger.exception("failed to load action-chain module")
@@ -241,4 +259,11 @@ def _import_module_from_manifest(module_name: str, manifest_path: Path):
             logger.debug("临时模块路径已不存在: %s", exc, exc_info=True)
 
 
-module_registry = ModuleRegistry()
+_module_registry: ModuleRegistry | None = None
+
+
+def get_module_registry() -> ModuleRegistry:
+    global _module_registry
+    if _module_registry is None:
+        _module_registry = ModuleRegistry()
+    return _module_registry

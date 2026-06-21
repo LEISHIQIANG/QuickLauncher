@@ -3,6 +3,9 @@
 import logging
 import os
 
+from PyQt5.QtCore import (
+    QAbstractAnimation as QAbstractAnimation,
+)
 from PyQt5.QtCore import (  # type: ignore[attr-defined]
     QAbstractListModel,
     QBuffer,
@@ -30,6 +33,9 @@ from PyQt5.QtCore import (  # type: ignore[attr-defined]
     pyqtProperty,
     pyqtSignal,
 )
+from PyQt5.QtCore import (
+    QSequentialAnimationGroup as QSequentialAnimationGroup,
+)
 from PyQt5.QtGui import (
     QBitmap,
     QBrush,
@@ -56,6 +62,12 @@ from PyQt5.QtGui import (
     QSyntaxHighlighter,
     QTextCharFormat,
     QTextCursor,
+)
+from PyQt5.QtGui import (
+    QCloseEvent as QCloseEvent,
+)
+from PyQt5.QtGui import (
+    QHideEvent as QHideEvent,
 )
 from PyQt5.QtGui import (
     QTextOption as QTextOption,
@@ -384,6 +396,7 @@ class QtCompat:
     WA_ShowWithoutActivating = Qt.WA_ShowWithoutActivating  # type: ignore[attr-defined]
     WA_NoSystemBackground = Qt.WA_NoSystemBackground  # type: ignore[attr-defined]
     WA_DeleteOnClose = Qt.WA_DeleteOnClose  # type: ignore[attr-defined]
+    WA_StyledBackground = Qt.WA_StyledBackground  # type: ignore[attr-defined]
 
     LeftButton = Qt.LeftButton  # type: ignore[attr-defined]
     RightButton = Qt.RightButton  # type: ignore[attr-defined]

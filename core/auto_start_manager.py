@@ -16,6 +16,7 @@ import sys
 import winreg
 from ctypes import wintypes
 
+from infrastructure.process import runtime as process_runtime
 from runtime_paths import app_executable, app_root, is_packaged_runtime
 
 logger = logging.getLogger(__name__)
@@ -695,7 +696,7 @@ def _build_process_command_line(target: str, arguments: str = "") -> str:
 
 def _launch_with_current_token(target: str, arguments: str = "", working_dir: str = "") -> bool:
     try:
-        subprocess.Popen(_build_process_command_line(target, arguments), cwd=working_dir or None, shell=False)
+        process_runtime.popen(_build_process_command_line(target, arguments), cwd=working_dir or None, shell=False)
         logger.info("自启动中转已用当前令牌启动: %s %s", target, arguments or "")
         return True
     except Exception as exc:

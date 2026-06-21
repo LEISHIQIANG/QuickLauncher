@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from infrastructure.process import runtime as process_runtime
 from runtime_paths import app_root
 
 from .background_tasks import start_background_thread
@@ -364,9 +365,9 @@ class PluginAPI:
         if not module_manifest.is_file():
             return False
         try:
-            from core.module_registry import module_registry
+            from core.module_registry import get_module_registry
 
-            ok = module_registry.register_external_manifest(module_id, module_manifest)
+            ok = get_module_registry().register_external_manifest(module_id, module_manifest)
         except Exception:
             logger.debug("插件模块注册失败: %s -> %s", module_id, module_manifest, exc_info=True)
             return False
@@ -1040,7 +1041,7 @@ class PluginAPI:
         timed_out = False
         returncode = -1
         try:
-            completed = subprocess.run(argv, timeout=timeout_value, **kwargs)
+            completed = process_runtime.run(argv, timeout=timeout_value, **kwargs)
             stdout_bytes = completed.stdout or b""
             stderr_bytes = completed.stderr or b""
             timed_out = False
@@ -1433,6 +1434,9 @@ class PluginManager:
         self._plugins: dict[str, PluginInfo] = {}
         self._loaded_modules: dict[str, object] = {}
         self._active_apis: dict[str, PluginAPI] = {}
+        from core.plugin.isolated_runtime import IsolatedPluginRuntime
+
+        self._isolated_runtime = IsolatedPluginRuntime()
         self._plugin_active_executors: dict[str, list[threading.Thread]] = {}
         self._save_callback = save_callback
         self._confirm_high_risk_callback: Callable[[PluginInfo], bool] | None = None
@@ -1750,6 +1754,20 @@ class PluginManager:
         if not os.path.isfile(entry_path):
             raise FileNotFoundError(f"插件入口文件不存在: {entry_path}")
 
+        api = PluginAPI(
+            plugin_id=m.id,
+            plugin_dir=info.directory,
+            permissions=m.permissions,
+            registry=self._registry,
+            manifest=m,
+            failure_callback=self._record_plugin_failure,
+            active_executors=self._plugin_active_executors,
+        )
+        if m.trust_level != "builtin":
+            self._isolated_runtime.load(info, api)
+            self._active_apis[m.id] = api
+            return
+
         module_name = f"_plugin_{m.id}"
         if module_name in sys.modules:
             loader = sys.modules[module_name]
@@ -1773,15 +1791,6 @@ class PluginManager:
         if not hasattr(loader, "register"):
             raise AttributeError(f"插件 {m.id} 缺少 register(api) 函数")
 
-        api = PluginAPI(
-            plugin_id=m.id,
-            plugin_dir=info.directory,
-            permissions=m.permissions,
-            registry=self._registry,
-            manifest=m,
-            failure_callback=self._record_plugin_failure,
-            active_executors=self._plugin_active_executors,
-        )
         loader.register(api)
         # Transactional commit — rollback on any registration failure.
         # Save pending info BEFORE commit because commit clears staging lists.
@@ -1828,6 +1837,7 @@ class PluginManager:
         except Exception as exc:
             logger.debug("取消插件搜索任务失败 %s: %s", plugin_id, exc, exc_info=True)
 
+        self._isolated_runtime.unload(plugin_id)
         # Clean up modules and invoke optional unregister/dispose lifecycle hooks
         loader = self._loaded_modules.pop(plugin_id, None)
         api = self._active_apis.pop(plugin_id, None)
@@ -1857,9 +1867,9 @@ class PluginManager:
         info.registered_commands.clear()
         for module_id, manifest_path in dict(getattr(info, "registered_modules", {}) or {}).items():
             try:
-                from core.module_registry import module_registry
+                from core.module_registry import get_module_registry
 
-                module_registry.unregister_external_manifest(module_id, manifest_path)
+                get_module_registry().unregister_external_manifest(module_id, manifest_path)
             except Exception:
                 logger.debug("插件模块反注册失败: %s", module_id, exc_info=True)
         info.registered_modules.clear()
@@ -1962,6 +1972,11 @@ class PluginManager:
                 self.disable_plugin(plugin_id, persist=False)
             except Exception:
                 logger.debug("关闭插件失败: %s", plugin_id, exc_info=True)
+        self._isolated_runtime.close()
+
+    def worker_snapshot(self) -> dict[str, dict[str, Any]]:
+        """Return process-isolated plugin worker state for diagnostics."""
+        return self._isolated_runtime.snapshot()
 
     # ---- installation ----
 

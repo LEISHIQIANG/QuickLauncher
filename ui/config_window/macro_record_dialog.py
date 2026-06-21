@@ -9,6 +9,8 @@
 - 保存时：解析文本回到 events 列表
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 import re
@@ -58,6 +60,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .base_dialog import BaseDialog
@@ -290,18 +293,18 @@ class MacroRecorderWidget(QWidget):
 
         self.start_btn = QPushButton("开始录制")
         self.start_btn.setFixedWidth(sp(72))
-        self.start_btn.setFixedHeight(sp(26))
+        self.start_btn.setFixedHeight(sp(24))
         self.start_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.start_btn)
 
         self.continue_btn = QPushButton("继续录制")
         self.continue_btn.setFixedWidth(sp(72))
-        self.continue_btn.setFixedHeight(sp(26))
+        self.continue_btn.setFixedHeight(sp(24))
         self.continue_btn.clicked.connect(self._request_continue_recording)
         layout.addWidget(self.continue_btn)
 
         self.clear_btn = QPushButton("清空")
-        self.clear_btn.setFixedHeight(sp(26))
+        self.clear_btn.setFixedHeight(sp(24))
         self.clear_btn.clicked.connect(self.clear)
         layout.addWidget(self.clear_btn)
 
@@ -675,7 +678,7 @@ class MacroRecordDialog(BaseDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(6))
-        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
 
         title_label = QLabel("编辑宏" if self.shortcut.name else "添加宏录制")
         title_label.setStyleSheet(scale_qss("font-size: 12px; font-weight: 400; color: gray;"))
@@ -729,7 +732,7 @@ class MacroRecordDialog(BaseDialog):
         tools_row = QHBoxLayout()
         tools_row.setSpacing(sp(6))
         self.reparse_btn = QPushButton("重新解析")
-        self.reparse_btn.setFixedHeight(sp(26))
+        self.reparse_btn.setFixedHeight(sp(24))
         self.reparse_btn.clicked.connect(self._validate_edited_text)
         tools_row.addWidget(self.reparse_btn)
         self.parse_status_label = QLabel("事件格式：[时间s] 动作 键    间隔时间s")
@@ -829,7 +832,7 @@ class MacroRecordDialog(BaseDialog):
             base_style
             + scale_qss(
                 f"""
-            QDialog {{ background: transparent; border: none; }}
+            QDialog {{ background: transparent; border: none; border-radius: 0; }}
             QGroupBox {{
                 border: 1px solid {border_color};
                 border-radius: 6px;
@@ -1111,7 +1114,7 @@ class MacroRecordDialog(BaseDialog):
         self.icon_preview.setPixmap(pixmap)
 
     def _create_macro_icon(self, size: int) -> QPixmap:
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
         painter = QPainter(pixmap)
         try:

@@ -33,7 +33,7 @@ def test_drink_card_self_painted_icons_are_horizontally_centered(qapp):
 
 
 def test_popup_menu_uses_trigger_screen_for_bounds(monkeypatch, qapp):
-    import ui.styles.style as style_mod
+    import ui.styles.popup_menu as popup_menu_mod
     from ui.styles.style import PopupMenu
 
     class FakeScreen:
@@ -66,7 +66,7 @@ def test_popup_menu_uses_trigger_screen_for_bounds(monkeypatch, qapp):
         def primaryScreen():  # noqa: N802 - Qt API
             return primary
 
-    monkeypatch.setattr(style_mod, "QApplication", FakeApplication)
+    monkeypatch.setattr(popup_menu_mod, "QApplication", FakeApplication)
 
     menu = PopupMenu(theme="dark")
     menu.setFixedSize(160, 180)
@@ -254,7 +254,7 @@ def test_popup_menu_leave_delay_is_cancelled_when_pointer_returns(qapp):
 
 
 def test_popup_menu_hides_when_pointer_stays_outside(monkeypatch, qapp):
-    import ui.styles.style as style_mod
+    import ui.styles.popup_menu as popup_menu_mod
     from ui.styles.style import PopupMenu
 
     class OutsideCursor:
@@ -262,7 +262,7 @@ def test_popup_menu_hides_when_pointer_stays_outside(monkeypatch, qapp):
         def pos():
             return QPoint(-10000, -10000)
 
-    monkeypatch.setattr(style_mod, "QCursor", OutsideCursor)
+    monkeypatch.setattr(popup_menu_mod, "QCursor", OutsideCursor)
     menu = PopupMenu(theme="dark", native_effects=False)
     menu.add_action("one", lambda: None)
     menu.show()
@@ -347,7 +347,7 @@ def test_popup_menu_uses_event_filter_for_submenu_hover(qapp):
 
 
 def test_popup_menu_reclamps_after_inline_submenu_expands(monkeypatch, qapp):
-    import ui.styles.style as style_mod
+    import ui.styles.popup_menu as popup_menu_mod
     from ui.styles.style import PopupMenu
 
     class FakeScreen:
@@ -370,7 +370,7 @@ def test_popup_menu_reclamps_after_inline_submenu_expands(monkeypatch, qapp):
         def primaryScreen():  # noqa: N802 - Qt API
             return FakeScreen()
 
-    monkeypatch.setattr(style_mod, "QApplication", FakeApplication)
+    monkeypatch.setattr(popup_menu_mod, "QApplication", FakeApplication)
     monkeypatch.setattr(PopupMenu, "_apply_blur_effect", lambda self: None)
 
     menu = PopupMenu(theme="dark")

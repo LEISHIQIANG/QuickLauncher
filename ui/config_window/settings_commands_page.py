@@ -1,5 +1,7 @@
 """Command settings page — favorites and builtin command management."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import logging
@@ -8,7 +10,6 @@ from core.i18n import tr
 from qt_compat import (
     QColor,
     QDrag,
-    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -54,13 +55,13 @@ class DragDropListWidget(QListWidget):
                 """
             QListWidget {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 outline: none;
                 padding: 0px;
             }
             QListWidget::item {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 padding: 0px;
                 margin-bottom: 6px;
             }
@@ -126,18 +127,20 @@ class DragDropListWidget(QListWidget):
 
         # Dim the source widget in the list during drag for dynamic feedback
         try:
-            opacity_effect = QGraphicsOpacityEffect(widget)
-            opacity_effect.setOpacity(0.35)
-            widget.setGraphicsEffect(opacity_effect)
+            from ui.utils.widget_opacity import dim_for_drag
+
+            dim_for_drag(widget, 0.35)
         except Exception:
-            opacity_effect = None
+            logger.debug("设置拖动透明度效果失败", exc_info=True)
 
         try:
             drag.exec_(supported_actions)
         finally:
             # If the drag was cancelled or finished, restore full opacity
             try:
-                widget.setGraphicsEffect(None)
+                from ui.utils.widget_opacity import restore_from_drag as _restore
+
+                _restore(widget)
             except Exception as exc:
                 logger.debug("清除图形效果失败: %s", exc, exc_info=True)
 
@@ -438,7 +441,7 @@ class SettingsCommandsPageMixin:
         self.builtin_filter_edit = QLineEdit()
         self.builtin_filter_edit.setPlaceholderText(tr("搜索内置命令 (支持名称、快捷键、描述)..."))
         self.builtin_filter_edit.setClearButtonEnabled(True)
-        self.builtin_filter_edit.setFixedHeight(sp(26))
+        self.builtin_filter_edit.setFixedHeight(sp(24))
         # Debounce search: don't rebuild 28+ widgets on every keystroke
         self._builtin_filter_timer = QTimer(self)
         self._builtin_filter_timer.setSingleShot(True)
@@ -523,12 +526,12 @@ class SettingsCommandsPageMixin:
                     )
 
                     item_layout = QGridLayout(item_widget)
-                    item_layout.setContentsMargins(sp(10), sp(6), sp(10), sp(6))
+                    item_layout.setContentsMargins(sp(8), sp(6), sp(8), sp(6))
                     item_layout.setHorizontalSpacing(sp(8))
-                    item_layout.setVerticalSpacing(sp(2))
+                    item_layout.setVerticalSpacing(sp(4))
 
                     icon_lbl = QLabel()
-                    icon_pixmap = render_builtin_command_icon(fid, sp(22), self.current_theme)
+                    icon_pixmap = render_builtin_command_icon(fid, sp(24), self.current_theme)
                     if icon_pixmap is not None:
                         icon_lbl.setPixmap(icon_pixmap)
                     else:
@@ -607,9 +610,9 @@ class SettingsCommandsPageMixin:
                         item_widget.setObjectName("BuiltinItem")
 
                         item_layout = QGridLayout(item_widget)
-                        item_layout.setContentsMargins(sp(10), sp(8), sp(10), sp(8))
+                        item_layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
                         item_layout.setHorizontalSpacing(sp(8))
-                        item_layout.setVerticalSpacing(sp(2))
+                        item_layout.setVerticalSpacing(sp(4))
 
                         dot_lbl = QLabel("●")
                         item_layout.addWidget(dot_lbl, 0, 0, 1, 1, QtCompat.AlignTop)
@@ -776,7 +779,7 @@ class SettingsCommandsPageMixin:
                 )
                 entry["title_lbl"].setStyleSheet(scale_qss(f"font-weight: 400; color: {text_color}; font-size: 12px;"))
                 entry["key_lbl"].setStyleSheet(scale_qss("color: rgba(10,132,255,0.85); font-size: 11px;"))
-                icon_pixmap = render_builtin_command_icon(cmd.id, sp(22), self.current_theme)
+                icon_pixmap = render_builtin_command_icon(cmd.id, sp(24), self.current_theme)
                 entry["icon_lbl"].setVisible(icon_pixmap is not None)
                 if icon_pixmap is not None:
                     entry["icon_lbl"].setPixmap(icon_pixmap)

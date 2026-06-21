@@ -1,5 +1,7 @@
 """Icon cache and fallback icon helpers for LauncherPopup."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 

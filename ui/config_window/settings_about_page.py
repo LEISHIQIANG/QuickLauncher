@@ -33,7 +33,7 @@ class AboutCardFrame(QFrame):
             """
             #AboutCardFrame {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }
         """
         )
@@ -52,7 +52,7 @@ class AboutQuoteFrame(QFrame):
             """
             #AboutQuoteFrame {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }
         """
         )
@@ -202,9 +202,9 @@ def _generate_html_content(items, theme):
         html += f'<span style="color: {bullet_color}; margin-right: 6px;">✦</span>{title}</div>'
 
         # 点描述
-        html += f'<div style="font-size: {font_px(12)}px; color: {desc_color}; line-height: 1.6; padding-left: {sp(14)}px;">'
+        html += f'<div style="font-size: {font_px(12)}px; color: {desc_color}; line-height: 1.6; padding-left: {sp(16)}px;">'
         for pt in points:
-            html += f'<div style="margin-bottom: {sp(2)}px;">• {pt}</div>'
+            html += f'<div style="margin-bottom: {sp(4)}px;">• {pt}</div>'
         html += "</div></div>"
 
     html += "</div>"
@@ -297,7 +297,7 @@ class SettingsAboutPageMixin:
         intro_card = AboutQuoteFrame(self.theme, group)
         intro_layout = QVBoxLayout(intro_card)
         # 用 Qt 原生 layout margin 来控制左右上下的安全呼吸间距，绝对防止 PyQt RichText 对 HTML padding 属性的裁剪缺陷
-        intro_layout.setContentsMargins(sp(18), sp(14), sp(18), sp(14))
+        intro_layout.setContentsMargins(sp(18), sp(16), sp(18), sp(16))
 
         intro_lbl = QLabel(intro_card)
         intro_lbl.setTextFormat(Qt.RichText)
@@ -339,7 +339,7 @@ class SettingsAboutPageMixin:
         layout.setContentsMargins(0, 0, 0, 0)
         footer_card = AboutCardFrame(self.theme, group)
         footer_layout = QHBoxLayout(footer_card)
-        footer_layout.setContentsMargins(sp(16), sp(10), sp(16), sp(10))
+        footer_layout.setContentsMargins(sp(16), sp(8), sp(16), sp(8))
         # 左侧：开发者
         left_lbl = QLabel(footer_card)
         left_lbl.setTextFormat(Qt.RichText)
@@ -451,7 +451,7 @@ class SettingsAboutPageMixin:
         if hasattr(page, "_developer_lbl") and page._developer_lbl:
             dev_html = f"""
             <div style="font-family: 'Segoe UI', 'Microsoft YaHei UI'; font-size: {font_px(11)}px; line-height: 1.3;">
-                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: {sp(2)}px {sp(6)}px; border-radius: {sp(4)}px; font-weight: 400; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ {tr("开发者: NAYTON")}</span><br/>
+                <span style="display: inline-block; background-color: {dev_badge_bg}; color: {dev_badge_color}; padding: {sp(4)}px {sp(6)}px; border-radius: {sp(4)}px; font-weight: 400; border: 1.0px solid rgba(255, 149, 0, 0.3);">⚡ {tr("开发者: NAYTON")}</span><br/>
                 <a href="https://github.com/LEISHIQIANG/QuickLauncher"
                    style="color: {dev_badge_color}; font-size: {font_px(11)}px; text-decoration: none;"
                 >GitHub.com/LEISHIQIANG/QuickLauncher</a>

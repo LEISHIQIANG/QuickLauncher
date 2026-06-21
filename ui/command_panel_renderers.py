@@ -10,6 +10,8 @@ Public API on :class:`CommandPanelWindow` is unchanged: callers continue to
 invoke ``panel._render_result(result)`` and friends.
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import json
@@ -44,7 +46,10 @@ def render_result(panel: CommandPanelWindow, result: CommandResult) -> None:
     """Dispatch a :class:`CommandResult` to the right renderer."""
     from core.command_result_actions import enrich_result_actions
 
-    result = enrich_result_actions(result)
+    payload = result.payload if isinstance(result.payload, dict) else {}
+    live_update = bool(payload.get("running"))
+    if not live_update:
+        result = enrich_result_actions(result)
     panel._current_result = result
     message = result.message or result.error or ("完成" if result.success else "执行失败")
     display_type = (result.display_type or "text").lower()
@@ -66,7 +71,14 @@ def render_result(panel: CommandPanelWindow, result: CommandResult) -> None:
         render_confirm(panel, result, message)
     else:
         render_text_like(panel, result, message, "text")
-    render_actions(panel, result)
+    # A streaming update changes only result content.  Rebinding and relaying
+    # out action buttons for every chunk is unnecessary and can destabilize
+    # the translucent Win11 window.  Actions are enriched and rendered once,
+    # when the final result arrives.  The buttons themselves must also remain
+    # parented from construction; see the first-show flash incident record in
+    # docs/ui/20260621_命令面板首次捕获小窗闪烁故障复盘.md.
+    if not live_update:
+        render_actions(panel, result)
     panel._apply_size_for_result(result, panel._current_definition)
 
 
@@ -104,7 +116,8 @@ def render_text_like(
     payload = result.payload if isinstance(result.payload, dict) else {}
     font_family = "Consolas" if display_type == "log" or payload.get("monospace") else "Microsoft YaHei UI"
     font = QFont(font_family, font_px(9))
-    if not font.exactMatch() and font_family == "Consolas":
+    exact_match = font.exactMatch()
+    if not exact_match and font_family == "Consolas":
         font = QFont("Courier New", font_px(9))
     panel.text.setFont(font)
     panel.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
@@ -189,7 +202,7 @@ def render_list(
     panel.list_widget.clear()
     fm = panel.list_widget.fontMetrics()
     line_height = fm.height()
-    vertical_padding = sp(17)  # 8px padding top + 8px padding bottom + 1px border
+    vertical_padding = sp(16)  # 8px padding top + 8px padding bottom + 1px border
     for item in items:
         if isinstance(item, dict):
             title = str(item.get("title") or item.get("name") or "")

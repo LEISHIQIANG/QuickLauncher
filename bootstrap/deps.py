@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 
+from infrastructure.process import runtime as process_runtime
 from runtime_paths import is_packaged_runtime
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ def bootstrap_requirements(root_dir: str, logger: logging.Logger, native_error_b
         if not missing:
             return
         logger.warning(f"检测到缺少依赖: {missing}，尝试自动安装")
-        p = subprocess.run(
+        p = process_runtime.run(
             [sys.executable, "-m", "pip", "install", "-r", req],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

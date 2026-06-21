@@ -50,7 +50,7 @@ def test_popup_caches_command_execution_service(monkeypatch):
     popup = _FakePopup()
     created: list[CommandExecutionService] = []
 
-    def fake_ctor(_store):
+    def fake_ctor(_store, **_kwargs):
         service = CommandExecutionService(CommandResultStore())
         created.append(service)
         return service
@@ -74,7 +74,7 @@ def test_popup_close_shuts_down_cached_service(monkeypatch):
     popup = _FakePopup()
     monkeypatch.setattr(
         "core.command_execution_service.CommandExecutionService",
-        lambda _store: popup._exec_service,
+        lambda _store, **_kwargs: popup._exec_service,
     )
 
     service = popup._get_popup_execution_service()
@@ -97,7 +97,7 @@ def test_popup_execution_service_uses_tray_app_result_store(monkeypatch):
     popup = _FakePopup(tray_app=tray_app)
     captured: list[CommandResultStore | None] = []
 
-    def fake_ctor(store):
+    def fake_ctor(store, **_kwargs):
         captured.append(store)
         return CommandExecutionService(store)
 
@@ -118,7 +118,7 @@ def test_popup_creates_result_store_when_tray_app_missing(monkeypatch):
     popup = _FakePopup(tray_app=tray_app)
     captured: list[CommandResultStore | None] = []
 
-    def fake_ctor(store):
+    def fake_ctor(store, **_kwargs):
         captured.append(store)
         return CommandExecutionService(store)
 

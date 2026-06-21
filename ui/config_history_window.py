@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 
 from core.i18n import tr
+from infrastructure.process import runtime as process_runtime
 from qt_compat import (
     QEvent,
     QFont,
@@ -195,7 +196,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
         recovery_dir = getattr(self.data_manager, "recovery_dir", None)
         if recovery_dir and os.path.isdir(str(recovery_dir)):
             try:
-                os.startfile(str(recovery_dir))
+                process_runtime.startfile(str(recovery_dir))
             except OSError as exc:
                 ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开目录: {error}", error=str(exc)))
         else:
@@ -205,7 +206,7 @@ class ConfigHistoryWindow(ThemedToolWindow):
         backup_dir = getattr(self.data_manager, "auto_backup_dir", None)
         if backup_dir and os.path.isdir(str(backup_dir)):
             try:
-                os.startfile(str(backup_dir))
+                process_runtime.startfile(str(backup_dir))
             except OSError as exc:
                 ThemedMessageBox.warning(self, tr("打开失败"), tr("无法打开目录: {error}", error=str(exc)))
         else:

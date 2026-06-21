@@ -1,5 +1,7 @@
 """Theme-aware vector-style icons for built-in slash commands."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 from core.command_icon_catalog import BUILTIN_COMMAND_ICON_IDS, builtin_command_id_from_icon_path

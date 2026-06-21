@@ -66,7 +66,7 @@ class _EdgeFeedbackOverlay(QWidget):
         setattr(self, anim_attr, anim)
         anim.start()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)

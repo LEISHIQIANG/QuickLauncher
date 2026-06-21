@@ -33,6 +33,8 @@ import zlib
 from datetime import datetime, timedelta
 from typing import Any
 
+from infrastructure.process import runtime as process_runtime
+
 __all__ = [
     # Date/Time processors
     "datetime_now",
@@ -451,11 +453,11 @@ def net_ping(host: str, timeout: float = 3.0) -> bool:
     """Ping a host."""
     try:
         if sys.platform == "win32":
-            result = subprocess.run(
+            result = process_runtime.run(
                 ["ping", "-n", "1", "-w", str(int(timeout * 1000)), host], capture_output=True, timeout=timeout + 1
             )
         else:
-            result = subprocess.run(
+            result = process_runtime.run(
                 ["ping", "-c", "1", "-W", str(int(timeout)), host], capture_output=True, timeout=timeout + 1
             )
         return result.returncode == 0

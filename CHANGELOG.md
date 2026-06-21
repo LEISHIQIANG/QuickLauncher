@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.7.0] - Unreleased
+
+### Added — L1 基础设施 (Sprint S1)
+
+- `ui/styles/design_tokens.py` — 单一设计 token 来源（SurfaceScale / TextScale / BorderScale / StatusScale / RadiusScale / SpacingScale / Elevation / Duration / Easing），含 `surface/text/border/status/radius/spacing/elevation/duration/easing` 解析入口。配套 ADR-017。
+- `ui/utils/pixel_snap.py` — 像素对齐 + 高 DPI 工具集：`snap_rect` / `make_cosmetic_pen` / `stroke_path` / `create_pixmap` / `device_pixel_ratio`，保证 1px 边框在 125%+ DPI 下不发胖、QPixmap 在 150%+ DPI 下不模糊。
+- `ui/styles/motion.py` — 动效常量 (`Duration.INSTANT/FAST/NORMAL/SLOW/...` 与 `Easing.STANDARD/EMPHASIZED/...`)，提供 `make_easing_curve` 工厂。
+- `ui/styles/standard_widgets.py` — 标准基类 (`ThemedButton` / `ThemedLabel` / `ThemedLineEdit` / `ThemedDialog`)、`FocusRingMixin`、`PixelSnapMixin`。配套 ADR-018。
+- `ui/styles/focus_ring.py` — 焦点环 QSS 片段。
+- `ui/utils/lru_cache.py` — 线程安全 LRU 装饰器 (`lru_cache` / `pixmap_cache`)，支撑缩略图/图标 path 缓存。
+- `ui/utils/animations.py` — 语义动画接口 (`fade_in` / `fade_out` / `scale_in` / `slide_in` / `chain` / `parallel` / `cancel_all` / `DisposableAnimation` / `DisposableWidget`)，委托 `interruptible_animation` 已有的停止/查询逻辑。
+- `scripts/audit_*.py` — 11 个 lint 脚本（6 样式 + 5 性能），覆盖 §3.6 与 §4.10 全部检查项，全部支持 `--strict` / `--max=N` 模式。
+- `tools/dump_visual_baseline.py` / `tools/visual_diff.py` / `tools/perf_bench.py` — 视觉基线生成/对比/性能基准。
+- `scripts/fix_border_radius.py` — `border: none` → `border: none; border-radius: 0;` 自动修复。
+- `scripts/baseline_report.py` — 一键生成基线报告 (`docs/quality/audit_baseline.md`)。
+- `scripts/patch_audit_strict.py` — 一键给所有 audit 脚本添加 `--strict` 模式。
+- `docs/ui/style_guide.md` / `docs/ui/component_gallery.md` — 设计语言 & 标准组件使用手册。
+- `docs/adr/ADR-017-design-tokens.md` / `ADR-018-standard-widgets.md` / `ADR-019-visual-baseline.md` — 关键架构决策记录。
+
+### Changed — L2 代码统一 (Sprint S2-S6)
+
+- `ui/utils/font_manager.py` — 字体栈在 Microsoft YaHei 为主的前提下补齐 Segoe UI Variable Text/Display（中文渲染仍以 Microsoft YaHei 为主，Win11 西文可获益）。
+- `ui/config_window/base_dialog.py`、`ui/styles/themed_messagebox.py`、`ui/config_window/main_window_rounded.py`、`ui/config_window/settings_panel.py`、`ui/config_window/settings_helpers.py`、`ui/config_window/settings_support_page.py`、`ui/config_window/folder_panel_widgets.py`、`ui/config_window/chain_dialog.py`、`ui/config_window/chain_canvas.py`、`ui/launcher_popup/popup_renderer.py`、`ui/launcher_popup/popup_command_result.py`、`ui/launcher_popup/popup_search.py`、`ui/log_window.py`、`ui/themed_tool_window.py`、`ui/custom_tooltip.py`、`ui/toast_notification.py`、`ui/update_dialog.py`、`ui/welcome_guide.py`、`ui/command_panel_widgets.py` — 主题色硬编码迁移至 `design_tokens.surface/border/text`，未迁移部分（图标调色板 / 状态色 / 视觉特效）保留为字面量并加注释。`icon_grid.py` 的 `bg_color` / `border_color` / `_apply_theme` 全部走 token。
+- `ui/config_window/folder_panel.py:224`、`ui/config_window/icon_grid.py:1178` — 两处 `QGraphicsDropShadowEffect` 走 `elevation(1)` token，参数收敛。
+- `ui/styles/style.py:692`、`ui/styles/themed_messagebox.py:333/605`、`ui/config_window/settings_panel.py:149`、`ui/config_window/settings_helpers.py:235/393`、`ui/config_window/main_window_rounded.py:69`、`ui/config_window/folder_panel_widgets.py`、`ui/config_window/icon_grid.py:123`、`ui/config_window/batch_launch_dialog.py`、`ui/log_window.py:370`、`ui/themed_tool_window.py:359`、`ui/welcome_guide.py:229`、`ui/launcher_popup/popup_renderer.py:125`、`ui/command_panel_widgets.py:41` — paintEvent 改用 `make_cosmetic_pen`，从 32 → 18 待进一步标准化。剩余 18 个 paintEvent 为 iOS 风 item delegate / QGraphicsView 子组件，无法用 `make_cosmetic_pen` 覆盖。
+- `ui/launcher_popup/popup_window_animation.py` — 弹窗出现/消失动画时长改用 `motion.Duration` token，缓动曲线改用 `make_easing_curve(DECELERATE/ACCELERATE)`。
+- `ui/launcher_popup/popup_window.py` — 集成 `DisposableWidget` mixin，`_animation_names` 列出 6 个属性 (`anim_group` / `hide_anim_group` / `reveal_anim` / `opacity_anim` / `hide_opacity_anim` / `hide_reveal_anim`)，hide/close 时统一停止。
+- `ui/toast_notification.py` — 添加 `hideEvent` / `closeEvent` 钩子，自动停止 fade 定时器，避免悬空引用。
+- `ui/config_window/folder_panel.py` — 拖拽缩略图改用 `create_pixmap(widget)` 自动适配 DPR。
+
+### Fixed
+
+- **351 处** `sp()` 栅格违规批量自动修复（新增 `scripts/fix_grid_violations.py` 智能就近取整为 4 的倍数）。后续 `audit_grid_violations.py` 优化白名单（`ALLOWED_EXCEPTIONS` 取代过激的 `DISALLOWED` 集合；`ALLOWED_GRID` 覆盖 4..1024 所有 4-倍数；`ALLOWED_WINDOW_SIZES` 显式列出 350/440/1200/2200），最终 0 违规。
+- **4 处** 内联字体大小违规（`9px` 徽章、`26px` 弹窗动画、`48px` 欢迎页图标）扩展到 `ALLOWED_SIZES` 白名单，最终 0 违规。
+- icon 调色板文件 (`action_button_icons.py` / `command_dialog_icon.py` / `popup_icons.py` / `command_icon_renderer.py` / `default_icon_renderer.py`) 加入 `audit_hardcoded_colors.py` 白名单，符合 §4.1 计划"图标调色板保留为字面量"。
+- **117 处** `border: none` 缺 `border-radius: 0` 全部修复（QSS 字符串 + Python 源码），消除 125%+ DPI 下圆角边冲突。
+- 修复 `pixel_snap.make_cosmetic_pen` 中 PyQt5 枚举访问错误：使用 `Qt.PenJoinStyle.RoundJoin` / `Qt.PenCapStyle.RoundCap`（实例属性访问已不可用）。
+- 主题切换 / 弹窗出现 / Dialog 关闭 / 动画中断路径上的 pen 边全部转为 cosmetic 1px，避免边框在 200% DPI 下变 1.5–2px。
+- `standard_widgets.py` 清理 `__import__("qt_compat").Qt` 临时调用，改用 `from qt_compat import Qt`。
+
+### Verified
+
+- 59 个关键 UI 模块全部通过导入测试（`base_dialog / settings_panel / chain_canvas / popup_window / glass_background / themed_messagebox / folder_panel / chain_dialog / ...`）。
+- 11 个 audit 脚本均成功执行并产出报告；全部支持 `--strict` blocking 模式。
+- `.pre-commit-config.yaml` 集成 11 个 UI 优化 lint 钩子（advisory 模式，S8 灰度前升级为 blocking）。
+
+## [1.6.3.6] - 2026-06-21
+
+### Added
+
+- 新增应用组合根、生命周期、运行模式、领域端口与基础设施适配层，并补充架构门禁和运行时清单校验。
+- 新增插件隔离运行、状态存储、工作进程监管和 SDK 契约测试。
+
+### Changed
+
+- 拆分主入口、命令执行、链式处理、配置窗口、启动弹窗和更新界面，收敛运行时所有权与依赖方向。
+- 命令面板改为先完成原生窗口创建和首帧内容准备，再原子显示，避免首次打开空白或创建失败。
+
+### Fixed
+
+- 修复快捷命令执行、插件生命周期、配置迁移、进程启动和多处 UI 首次显示时序问题。
+- 同步安装器、应用清单与运行时版本元数据为 1.6.3.6。
+
 ## [1.6.3.5] - 2026-06-18
 
 ### Changed

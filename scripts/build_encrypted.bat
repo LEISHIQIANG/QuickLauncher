@@ -203,6 +203,14 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-data-dir=assets=assets ^
     --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
+    --include-data-files=third_party_licenses.json=third_party_licenses.json ^
+    --include-package=application ^
+    --include-package=bootstrap ^
+    --include-package=domain ^
+    --include-package=extensions ^
+    --include-package=infrastructure ^
+    --include-package=modules ^
+    --include-package=services ^
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^
@@ -221,6 +229,7 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-module=win32com.shell.shell ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
+    --include-module=PIL.ImageFilter ^
     --include-module=PIL.ImageDraw ^
     --include-module=PIL.ImageFont ^
     --include-module=PIL.BmpImagePlugin ^

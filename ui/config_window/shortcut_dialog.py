@@ -2,6 +2,8 @@
 快捷方式编辑对话框
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 import os
 
@@ -32,6 +34,7 @@ from qt_compat import (
     pyqtSignal,
 )
 from ui.styles.style import Glassmorphism
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.safe_file_dialog import get_existing_directory, get_open_file_name
 from ui.utils.ui_scale import font_px, scale_qss, sp
@@ -148,7 +151,7 @@ class ShortcutDialog(BaseDialog):
 
         custom_style = base_style + scale_qss(
             f"""
-            QDialog {{ background: transparent; border: none; }}
+            QDialog {{ background: transparent; border: none; border-radius: 0; }}
             QGroupBox {{
                 border: 1px solid {border_color};
                 border-radius: 6px;
@@ -191,7 +194,7 @@ class ShortcutDialog(BaseDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(6))
-        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))  # 特殊页边距：复杂编辑窗口保持 10px
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))  # 特殊页边距：复杂编辑窗口保持 10px
 
         # 顶部标题栏
         title_layout = QHBoxLayout()
@@ -410,7 +413,7 @@ class ShortcutDialog(BaseDialog):
 
     def _create_file_icon(self, size: int) -> QPixmap:
         """创建文件默认图标"""
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)

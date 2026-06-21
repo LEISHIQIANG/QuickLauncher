@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from logging.handlers import RotatingFileHandler
@@ -24,14 +25,13 @@ def setup_logging(log_dir: str) -> tuple:
     log_level = logging.INFO
     disable_logging = False
     try:
-        from core import DataManager
-
-        dm = DataManager()
-        settings = dm.get_settings()
-        if getattr(settings, "enable_debug_log", False):
+        data_path = config_dir() / "data.json"
+        raw = json.loads(data_path.read_text(encoding="utf-8")) if data_path.is_file() else {}
+        settings = raw.get("settings", {}) if isinstance(raw, dict) else {}
+        if settings.get("enable_debug_log", False) is True:
             log_level = logging.DEBUG
-        disable_logging = getattr(settings, "disable_logging", False)
-    except Exception as exc:
+        disable_logging = settings.get("disable_logging", False) is True
+    except (OSError, UnicodeError, json.JSONDecodeError, AttributeError) as exc:
         logger.debug("获取日志设置失败: %s", exc, exc_info=True)
 
     import sys

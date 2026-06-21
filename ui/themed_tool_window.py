@@ -1,5 +1,7 @@
 """Shared log-style themed utility window chrome."""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import logging
@@ -15,7 +17,6 @@ from qt_compat import (
     QListWidget,
     QPainter,
     QPainterPath,
-    QPen,
     QPixmap,
     QPlainTextEdit,
     QPoint,
@@ -25,11 +26,15 @@ from qt_compat import (
     QVBoxLayout,
 )
 from runtime_paths import app_root
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
+from ui.styles.l3_features import show_focus_ring as l3_show_focus_ring
 from ui.styles.style import Colors, StyleSheet
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.pixel_snap import build_rounded_mask, make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -42,8 +47,8 @@ from ui.utils.window_effect import (
 logger = logging.getLogger(__name__)
 
 
-class ThemedToolWindow(QDialog):
-    """Reusable frameless log-window style shell for utility dialogs."""
+class _ThemedToolWindowBase:
+    """Reusable frameless shell shared by dialog and top-level widget windows."""
 
     def __init__(self, title: str, theme: str = "light", parent=None):
         super().__init__(parent)
@@ -51,8 +56,12 @@ class ThemedToolWindow(QDialog):
         self._blur_applied = False
         self._drag_pos = None
         self.setWindowTitle(title)
-        self.setWindowOpacity(0)
+        # Apply the frameless flags before opacity or any other property that
+        # can force Qt to create the native HWND.  On Windows, creating the
+        # handle first produces a short-lived default QDialog with a system
+        # title bar before setWindowFlags() recreates it as frameless.
         apply_custom_window_chrome(self, kind="window", translucent=True)
+        self.setWindowOpacity(0)
         self._load_window_icon()
         self._setup_shell(title)
         self._apply_theme()
@@ -78,7 +87,7 @@ class ThemedToolWindow(QDialog):
         title_bar.addStretch()
 
         self.close_btn_top = QPushButton("✕")
-        self.close_btn_top.setFixedSize(sp(46), sp(32))
+        self.close_btn_top.setFixedSize(sp(48), sp(32))
         self.close_btn_top.setCursor(QtCompat.PointingHandCursor)
         self.close_btn_top.clicked.connect(self.close)  # type: ignore[unused-ignore, arg-type]
         title_bar.addWidget(self.close_btn_top)
@@ -144,7 +153,7 @@ class ThemedToolWindow(QDialog):
                 f"""
             QPushButton {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 4px;
                 color: {text_primary};
                 font-size: 13px;
@@ -183,7 +192,7 @@ class ThemedToolWindow(QDialog):
                 f"""
             QPlainTextEdit {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 color: {text_primary};
                 selection-background-color: {selection_bg};
                 selection-color: {selection_text};
@@ -297,7 +306,7 @@ class ThemedToolWindow(QDialog):
         """
         )
         for button in buttons:
-            button.setFixedHeight(sp(30))
+            button.setFixedHeight(sp(32))
             button.setCursor(QtCompat.PointingHandCursor)
             button.setStyleSheet(style)
 
@@ -353,7 +362,7 @@ class ThemedToolWindow(QDialog):
         except Exception as exc:
             logger.debug("应用模糊效果失败: %s", exc, exc_info=True)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
@@ -361,17 +370,17 @@ class ThemedToolWindow(QDialog):
 
             radius = sp(8)
             if self._theme == "dark":
-                bg = QColor(28, 28, 30, 180)
-                border = QColor(190, 190, 197, 60)
+                bg = token_surface(self._theme, "bg_glass_dark_win10")
+                border = token_border(self._theme, "subtle_dark")
             else:
-                bg = QColor(242, 242, 247, 160)
-                border = QColor(229, 229, 234, 150)
+                bg = token_surface(self._theme, "bg_glass_light_win10")
+                border = token_border(self._theme, "subtle_light")
 
             if is_win10():
                 paint_win10_rounded_surface(painter, self, bg, border, radius)
                 return
 
-            inset = spf(0.5)
+            inset = spf(4.0)
             path = QPainterPath()
             path.addRoundedRect(
                 inset,
@@ -387,16 +396,37 @@ class ThemedToolWindow(QDialog):
 
             pen_color = QColor(border)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1.0)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
+
+            # L3 §5.2 — Focus Ring: 键盘焦点时在 rounded 路径上画 1px 圆角高亮环
+            try:
+                from ui.styles.design_tokens import BorderScale
+
+                if l3_show_focus_ring(getattr(self, "_settings", None)) and self.hasFocus():
+                    ring_color = QColor(BorderScale.focus_dark) if self._theme == "dark" else QColor(BorderScale.focus)
+                    ring_pen = make_cosmetic_pen(ring_color, 1)
+                    painter.setPen(ring_pen)
+                    painter.setBrush(QtCompat.NoBrush)
+                    ring_path = QPainterPath()
+                    ring_path.addRoundedRect(
+                        spf(1.0),
+                        spf(1.0),
+                        self.width() - spf(2.0),
+                        self.height() - spf(2.0),
+                        sp(8),
+                        sp(8),
+                    )
+                    painter.drawPath(ring_path)
+            except Exception as exc:  # pragma: no cover
+                logger.debug("L3 焦点环绘制失败: %s", exc, exc_info=True)
         finally:
             painter.end()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._apply_window_mask()
         try:
             if not is_win11() and self._blur_applied:
                 hwnd = int(self.winId())
@@ -407,8 +437,32 @@ class ThemedToolWindow(QDialog):
         except Exception as exc:
             logger.debug("调整窗口区域失败: %s", exc, exc_info=True)
 
+    def _apply_window_mask(self):
+        """Set a rounded-rect window mask matching the painted surface.
+
+        ``WA_TranslucentBackground`` makes Windows perform per-pixel hit testing
+        on the backing store. The Win11 branch of :meth:`paintEvent` only fills
+        the rounded body with ~40% alpha, and the ``setWindowOpacity`` fade-in
+        can drop the effective alpha below the hit-test threshold, causing mouse
+        events to fall through to whatever sits beneath the window. Pinning an
+        explicit rounded-rect mask to the painted area makes the body opaque for
+        hit testing regardless of per-pixel alpha or opacity animation, while
+        still leaving the four corners click-through (which is the intended
+        behaviour for a rounded window).
+        """
+        try:
+            width = self.width()
+            height = self.height()
+            if width <= 0 or height <= 0:
+                return
+            radius = sp(8)
+            self.setMask(build_rounded_mask(width, height, radius))
+        except Exception as exc:
+            logger.debug("应用窗口遮罩失败: %s", exc, exc_info=True)
+
     def showEvent(self, event):
         super().showEvent(event)
+        self._apply_window_mask()
         from qt_compat import QTimer
 
         QTimer.singleShot(10, self._apply_blur_effect)
@@ -422,6 +476,7 @@ class ThemedToolWindow(QDialog):
         self.opacity_anim.setStartValue(start_opacity)
         self.opacity_anim.setEndValue(1.0)
         self.opacity_anim.setEasingCurve(QtCompat.OutCubic)
+        self.opacity_anim.finished.connect(self.opacity_anim.deleteLater)
 
         pos = self.pos()
         self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
@@ -430,10 +485,12 @@ class ThemedToolWindow(QDialog):
         self.pos_anim.setStartValue(start_pos)
         self.pos_anim.setEndValue(pos)
         self.pos_anim.setEasingCurve(QtCompat.OutCubic)
+        self.pos_anim.finished.connect(self.pos_anim.deleteLater)
 
         self.anim_group = QtCompat.QParallelAnimationGroup()
         self.anim_group.addAnimation(self.opacity_anim)
         self.anim_group.addAnimation(self.pos_anim)
+        self.anim_group.finished.connect(self.anim_group.deleteLater)
         self.anim_group.start()
 
     def mousePressEvent(self, event):
@@ -456,3 +513,7 @@ class ThemedToolWindow(QDialog):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
         super().mouseReleaseEvent(event)
+
+
+class ThemedToolWindow(_ThemedToolWindowBase, QDialog):
+    """Frameless themed shell for utility windows."""

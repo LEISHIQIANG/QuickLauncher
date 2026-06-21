@@ -4,6 +4,7 @@ import logging
 import os
 
 from core import ShortcutItem, ShortcutType
+from infrastructure.process import runtime as process_runtime
 from qt_compat import QTimer
 from ui.utils.ui_scale import sp
 
@@ -61,7 +62,7 @@ class PopupDragDropMixin:
             if start_x <= pos.x() < start_x + line_width:
                 dock_col = (pos.x() - start_x) // self.cell_size
                 first_icon_y = self._dock_first_icon_y(display_rows)
-                card_pad = sp(2)
+                card_pad = sp(4)
                 card_y = first_icon_y - card_pad
                 dock_row = (pos.y() - card_y) // dock_row_stride
                 if 0 <= dock_col < max_cols and 0 <= dock_row < dock_height_mode:
@@ -242,7 +243,7 @@ class PopupDragDropMixin:
                                     if not launched:
                                         raise RuntimeError(launch_error or "ShellExecuteW failed")
                             elif target.lower().endswith(".exe"):
-                                subprocess.Popen(
+                                process_runtime.popen(
                                     [target, file_path],
                                     creationflags=DETACHED_PROCESS
                                     | CREATE_NEW_PROCESS_GROUP
@@ -253,7 +254,7 @@ class PopupDragDropMixin:
                                     stderr=subprocess.DEVNULL,
                                 )
                             else:
-                                subprocess.Popen(
+                                process_runtime.popen(
                                     ["cmd", "/c", "start", "", target, file_path],
                                     shell=False,
                                     creationflags=subprocess.CREATE_NO_WINDOW

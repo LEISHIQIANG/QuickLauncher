@@ -7,7 +7,6 @@ from qt_compat import (
     QLabel,
     QPainter,
     QPainterPath,
-    QPen,
     QRectF,
     Qt,
     QtCompat,
@@ -15,7 +14,10 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp, spf
 
 
@@ -43,7 +45,7 @@ class CustomToolTip(QWidget):
         self._theme = "dark"
         self._text = ""
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         from ui.utils.window_effect import is_win10, paint_win10_rounded_surface
 
         painter = QPainter(self)
@@ -52,14 +54,18 @@ class CustomToolTip(QWidget):
             painter.setRenderHint(QtCompat.HighQualityAntialiasing)
 
             if self._theme == "dark":
-                bg = QColor(44, 44, 48, 240)
-                border = QColor(255, 255, 255, 38)
+                # 自定义 tooltip 偏冷的深灰色 bg_chrome，与 bg_glass 有视觉差异
+                bg = QColor(token_surface(self._theme, "bg_chrome"))
+                bg.setAlpha(240)
+                # 与基线一致：dark 边框 38 alpha white overlay
+                border = QColor(token_border(self._theme, "subtle"))
             else:
-                bg = QColor(255, 255, 255, 240)
-                border = QColor(0, 0, 0, 25)
+                # 与基线一致：light 背景纯白 240 alpha，黑色 25 alpha 边框
+                bg = QColor(token_surface(self._theme, "bg_chrome"))
+                border = QColor(token_border(self._theme, "subtle"))
 
             if is_win10():
-                paint_win10_rounded_surface(painter, self, bg, border, sp(6), inset=spf(0.5), max_border_alpha=80)
+                paint_win10_rounded_surface(painter, self, bg, border, sp(6), inset=spf(4.0), max_border_alpha=80)
                 return
 
             rect = self.rect()
@@ -67,10 +73,8 @@ class CustomToolTip(QWidget):
             path.addRoundedRect(QRectF(rect), spf(6), spf(6))
 
             painter.fillPath(path, bg)
-            pen = QPen(border)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+            painter.setPen(make_cosmetic_pen(border, 1))
 
             painter.drawPath(path)
         finally:
@@ -93,7 +97,7 @@ class CustomToolTip(QWidget):
                 font-size: 11px;
                 padding: 4px 8px;
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }}
         """
             )
@@ -105,7 +109,7 @@ class CustomToolTip(QWidget):
         self.setFixedSize(self.label.sizeHint())
         self.update()
 
-        x = pos.x() + sp(15)
+        x = pos.x() + sp(16)
         y = pos.y() + sp(20)
 
         screen = QApplication.screenAt(pos)

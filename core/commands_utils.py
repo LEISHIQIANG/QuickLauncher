@@ -19,6 +19,8 @@ import tempfile
 import threading
 import urllib.parse
 
+from infrastructure.process import runtime as process_runtime
+
 try:
     import qrcode
 
@@ -177,13 +179,12 @@ def cmd_qr(context: CommandContext) -> CommandResult:
 
 
 def cmd_explorer(context: CommandContext) -> CommandResult:
-    import subprocess
     import time
 
     import psutil
 
     try:
-        subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], creationflags=0x08000000, timeout=5)
+        process_runtime.run(["taskkill", "/f", "/im", "explorer.exe"], creationflags=0x08000000, timeout=5)
     except Exception:
         for proc in psutil.process_iter(["name"]):
             if proc.info["name"] and proc.info["name"].lower() == "explorer.exe":
@@ -215,7 +216,7 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
         explorer_path = "explorer.exe"
 
     try:
-        subprocess.Popen([explorer_path], creationflags=0x00000008)  # DETACHED_PROCESS
+        process_runtime.popen([explorer_path], creationflags=0x00000008)  # DETACHED_PROCESS
         return CommandResult(
             success=True,
             message="Windows 资源管理器已安全重启！",
@@ -224,7 +225,7 @@ def cmd_explorer(context: CommandContext) -> CommandResult:
     except Exception:
         logger.debug("Explorer restart with DETACHED_PROCESS failed, retrying without flags", exc_info=True)
         try:
-            subprocess.Popen([explorer_path])
+            process_runtime.popen([explorer_path])
             return CommandResult(
                 success=True,
                 message="Windows 资源管理器已安全重启！",

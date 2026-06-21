@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 from core.chain_canvas_adapter import runtime_steps
@@ -40,10 +41,10 @@ def execute_shortcut_chain(
 ) -> CommandResult:
     """Execute an action chain through the module boundary."""
 
-    from core.module_registry import ACTION_CHAIN_MODULE_ID, module_registry
+    from core.module_registry import ACTION_CHAIN_MODULE_ID, get_module_registry
     from modules.action_chain.entry import unavailable_result
 
-    record = module_registry.get(ACTION_CHAIN_MODULE_ID, data_manager=data_manager)
+    record = get_module_registry().get(ACTION_CHAIN_MODULE_ID, data_manager=data_manager)
     api = record.api
     if api is None or not record.is_available():
         status = record.status
@@ -367,6 +368,14 @@ def _execute_step(target: ShortcutItem, cancel_event=None) -> tuple[bool, str, s
 
     ok, error = ShortcutExecutor.execute(target, False)
     return bool(ok), "已完成。" if ok else str(error or "执行失败。"), str(error or ""), None
+
+
+def execute_runtime_shortcut(
+    target: ShortcutItem,
+    cancel_event=None,
+) -> tuple[bool, str, str, CommandResult | None]:
+    """Public host-port entry for one prepared action-chain shortcut."""
+    return _execute_step(target, cancel_event)
 
 
 def _prepare_runtime_step_shortcut(
@@ -890,3 +899,40 @@ def _sleep_with_cancel(seconds: float, cancel_event) -> bool:
             return False
         time.sleep(min(COMMAND_CAPTURE_POLL_SECONDS, max(0.0, end - time.perf_counter())))
     return not _is_cancelled(cancel_event)
+
+
+# ---------------------------------------------------------------------------
+# Service providers wired by ``bootstrap.composition_root.build_app_context``.
+# The action-chain runtime (and other call sites) read these lazily so
+# that circular imports between ``core.shortcut_chain_exec`` and the
+# ``bootstrap`` package stay one-way.
+# ---------------------------------------------------------------------------
+
+_module_registry_provider: Callable[[], Any] | None = None
+_shortcut_executor_provider: Callable[[], Any] | None = None
+
+
+def configure_module_registry(provider: Callable[[], Any]) -> None:
+    """Inject the call-back that yields the process-wide ModuleRegistry."""
+    global _module_registry_provider
+    _module_registry_provider = provider
+
+
+def get_module_registry() -> Any:
+    """Return the registered ModuleRegistry, or None if not configured."""
+    if _module_registry_provider is None:
+        return None
+    return _module_registry_provider()
+
+
+def configure_shortcut_executor_provider(provider: Callable[[], Any]) -> None:
+    """Inject the call-back that yields the ShortcutExecutor class."""
+    global _shortcut_executor_provider
+    _shortcut_executor_provider = provider
+
+
+def get_shortcut_executor_class() -> Any:
+    """Return the registered ShortcutExecutor class, or None if not configured."""
+    if _shortcut_executor_provider is None:
+        return None
+    return _shortcut_executor_provider()

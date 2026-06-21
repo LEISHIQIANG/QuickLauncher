@@ -8,12 +8,12 @@ import os
 import queue
 import shutil  # noqa: F401 — kept for test monkeypatch access
 import subprocess
-import sys
+import sys  # noqa: F401 -- compatibility surface used by tests and integrations
 import threading
 import time
 
+from infrastructure.process import runtime as process_runtime  # noqa: F401 -- compatibility surface
 from qt_compat import QObject, pyqtSignal
-from runtime_paths import is_packaged_runtime
 
 from .background_tasks import start_background_thread
 from .command_exec import (
@@ -675,7 +675,6 @@ class CommandExecutionMixin(CommandLauncherMixin):
             kwargs["creationflags"] = creationflags  # type: ignore[assignment]
         return kwargs
 
-    @staticmethod
     def _execute_command(shortcut: ShortcutItem) -> tuple[bool, str]:
         """执行命令类型快捷方式"""
         command = shortcut.command
@@ -1386,6 +1385,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
             popen_args, stdin_data, shell = launch_spec
             try:
                 env = ShortcutExecutor._runtime_env(shortcut)  # type: ignore[attr-defined]
+                platform_kwargs = ShortcutExecutor._capture_popen_platform_kwargs()  # type: ignore[attr-defined]
                 process = subprocess.Popen(
                     popen_args,
                     cwd=cwd,
@@ -1395,11 +1395,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     stderr=subprocess.PIPE,
                     text=False,
                     shell=shell,
-                    **ShortcutExecutor._capture_popen_platform_kwargs(),  # type: ignore[attr-defined]
+                    **platform_kwargs,
                 )
             except OSError as exc:
                 if command_type == "bash" and ShortcutExecutor._bash_direct_capture_denied(str(exc)):  # type: ignore[attr-defined]
-                    fallback = ShortcutExecutor._bash_capture_via_script(  # type: ignore[attr-defined]
+                    fallback = ShortcutExecutor._bash_capture_via_script(  # type: ignore[attr-defined, no-any-return]
                         command,
                         cwd,
                         env,
@@ -1455,6 +1455,11 @@ class CommandExecutionMixin(CommandLauncherMixin):
                 popen_args=popen_args,
             )
         except Exception as e:
+            logger.info(
+                "[cmd-capture] run_command_capture 异常 argv=%r err=%r",
+                popen_args,
+                e,
+            )
             return CommandResult(
                 success=False,
                 message=f"命令捕获执行失败: {e}",
@@ -1696,6 +1701,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         cancel_event: threading.Event | None,
         popen_args: list[str],
     ) -> CommandResult:
+        timed_out = False
         try:
             if cancel_event is None:
                 if stdin_data is None:
@@ -1720,7 +1726,6 @@ class CommandExecutionMixin(CommandLauncherMixin):
                     return cancel_result
                 stdout_bytes, stderr_bytes = cancel_result
             returncode = process.returncode
-            timed_out = False
         except subprocess.TimeoutExpired:
             ShortcutExecutor._terminate_process_tree(process)  # type: ignore[attr-defined]
             stdout_bytes, stderr_bytes = process.communicate()
@@ -1999,38 +2004,29 @@ class CommandExecutionMixin(CommandLauncherMixin):
         filesystem_builtin_commands = {"open_data_dir", "open_install_dir"} | INTERNAL_PATH_BUILTIN_COMMANDS
         if canonical in UI_CALLBACK_BUILTIN_COMMANDS:
             try:
-                from core import call_callback, has_callback
+                from application.ports.ui_actions import UIAction
 
-                if has_callback(canonical):
-                    global _main_thread_invoker
-                    if _main_thread_invoker is not None and not ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
-                        _main_thread_invoker.execute_signal.emit(lambda: call_callback(canonical))
-                        logger.info(f"UI内置命令(通过主线程): {canonical}")
-                    elif ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
-                        result = call_callback(canonical)
-                        if not result:
-                            logger.error("UI内置命令回调返回失败: %s", canonical)
-                            return False
-                    else:
-                        logger.warning("MainThreadInvoker未初始化，已跳过跨线程直接执行: %s", canonical)
-                    return True
-                else:
-                    if canonical == "show_config_window":
-                        direct = getattr(sys.modules.get("main"), "show_config_window_direct", None)
-                        if callable(direct):
-                            try:
-                                if direct():
-                                    return True
-                            except Exception as e:
-                                logger.debug("配置窗口直接回退失败: %s", e)
-                        logger.debug("配置窗口: 回退到 IPC 方式")
-                        return ShortcutExecutor._send_ipc_command_deferred("show_config")  # type: ignore[attr-defined, no-any-return]
+                action = UIAction.parse(canonical)
+                ui_actions = getattr(ShortcutExecutor, "resolve_ui_actions", lambda: None)()  # type: ignore[attr-defined,no-any-return]
+                if action is None or ui_actions is None:
                     if canonical in filesystem_builtin_commands:
                         return ShortcutExecutor._open_builtin_filesystem_target(canonical)  # type: ignore[attr-defined, no-any-return]
-                    logger.warning(f"内置命令: 回调未注册: {canonical}")
+                    logger.warning("内置命令: UIActions 不可用或未知动作: %s", canonical)
                     return False
+                global _main_thread_invoker
+                if _main_thread_invoker is not None and not ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
+                    _main_thread_invoker.execute_signal.emit(lambda: ui_actions.execute(action))
+                    logger.info("UI内置命令(通过主线程): %s", canonical)
+                elif ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
+                    if not ui_actions.execute(action):
+                        logger.error("UI内置命令执行失败: %s", canonical)
+                        return False
+                else:
+                    logger.warning("MainThreadInvoker未初始化，已跳过跨线程直接执行: %s", canonical)
+                    return False
+                return True
             except Exception as e:
-                logger.error(f"内置命令执行失败 ({canonical}): {e}")
+                logger.error("内置命令执行失败 (%s): %s", canonical, e)
                 return False
 
         if command_name == "toggle_topmost":
@@ -2057,157 +2053,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
 
         return False
 
-    @staticmethod
-    def _send_ipc_command_deferred(command: str) -> bool:
-        """延迟发送IPC命令，避免主线程阻塞导致的死锁
-
-        当从弹窗点击内置命令时，主线程正在处理执行流程，
-        如果直接同步发送 IPC，会因为 waitForConnected() 阻塞事件循环，
-        而 QLocalServer 的 newConnection 信号也需要事件循环来触发，
-        导致连接永远无法建立（死锁）。
-
-        解决方案：使用注册后台任务在短暂延迟后发送命令，
-        让当前事件处理完成后再发送。
-        """
-
-        def do_send():
-            try:
-                # 延迟让 UI 事件处理完成
-                # 打包版本首次调用需要更长延迟，Qt网络模块初始化较慢
-                import time
-
-                is_frozen = is_packaged_runtime()
-
-                # 打包版本使用更长的初始延迟
-                initial_delay = 0.35 if is_frozen else 0.15
-                time.sleep(initial_delay)
-
-                # 执行实际的 IPC 发送
-                logger.debug(f"开始发送延迟IPC命令: {command} (frozen={is_frozen})")
-                result = ShortcutExecutor._send_ipc_command(command)  # type: ignore[attr-defined]
-                if result:
-                    logger.debug(f"延迟IPC命令发送成功: {command}")
-                else:
-                    logger.warning(f"延迟IPC命令发送失败: {command}")
-            except Exception:
-                logger.exception("延迟IPC命令发送失败")
-
-        try:
-            # 使用 Python 线程而不是 QTimer，避免线程亲和性问题
-            start_background_thread(
-                name="IPCCommandSender",
-                target=do_send,
-                owner="shortcut-command-exec",
-            )
-            logger.debug(f"IPC命令已排队到后台线程: {command}")
-            return True  # 返回 True 表示命令已排队（不是已执行）
-
-        except Exception as e:
-            logger.error(f"排队IPC命令失败: {e}, 尝试直接发送")
-            # 回退到直接发送
-            return ShortcutExecutor._send_ipc_command(command)  # type: ignore[attr-defined, no-any-return]
-
-    @staticmethod
-    def _send_ipc_command(command: str) -> bool:
-        """发送IPC命令
-
-        修复：增加首次连接的等待时间和递增重试延迟，
-        解决打包后exe第一次调用时连接失败的问题。
-
-        关键改进：
-        1. 首次调用前添加较长延迟，让Qt网络模块和IPC服务器有时间完成初始化
-        2. 增加连接等待时间和总超时时间
-        3. 添加更详细的状态日志
-        4. 优化重试策略，前几次重试更激进
-        """
-        try:
-            # 延迟导入以避免循环引用
-            from qt_compat import QLocalSocket
-
-            is_frozen = is_packaged_runtime()
-
-            # 首次调用时给Qt网络模块和IPC服务器更多初始化时间
-            # 这对于打包后的exe在首次使用QLocalSocket尤为重要
-            if not hasattr(ShortcutExecutor, "_ipc_initialized"):
-                ShortcutExecutor._ipc_initialized = True  # type: ignore[attr-defined]
-                # 打包版本需要更长的首次初始化延迟
-                # 因为Qt网络模块的DLL加载和初始化需要时间
-                init_delay = 0.35 if is_frozen else 0.15
-                time.sleep(init_delay)
-                logger.debug(f"IPC客户端首次初始化延迟完成 (frozen={is_frozen}, delay={init_delay}s)")
-
-            server_name = "QuickLauncherInstance_v3"
-            deadline = time.monotonic() + 4.0  # 增加总超时时间到 4 秒
-            last_socket = None
-            attempt = 0
-            last_error = ""
-
-            while time.monotonic() < deadline:
-                socket = QLocalSocket()
-                last_socket = socket
-                attempt += 1
-
-                try:
-                    socket.connectToServer(server_name)
-                    # 首次尝试使用更长的等待时间（打包后首次加载可能较慢）
-                    # 第一次 1200ms，第二次 800ms，之后 400ms
-                    if attempt == 1:
-                        wait_time = 1200
-                    elif attempt == 2:
-                        wait_time = 800
-                    else:
-                        wait_time = 400
-
-                    if socket.waitForConnected(wait_time):
-                        # 连接成功，发送数据
-                        data = command.encode("utf-8")
-                        bytes_written = socket.write(data)
-                        socket.flush()
-
-                        # 等待数据写入完成
-                        write_ok = bytes_written == len(data)
-                        if not write_ok:
-                            write_ok = socket.waitForBytesWritten(800)
-
-                        if write_ok or bytes_written > 0:
-                            socket.disconnectFromServer()
-                            logger.debug(f"IPC命令发送成功: {command} (尝试 {attempt} 次)")
-                            return True
-
-                        # 即使 waitForBytesWritten 返回 False，数据可能已发送
-                        socket.disconnectFromServer()
-                        logger.debug(f"IPC命令可能已发送: {command} (尝试 {attempt} 次, bytes={bytes_written})")
-                        return True
-                    else:
-                        # 连接失败，记录错误
-                        last_error = socket.errorString() or "未知错误"
-                        logger.debug(f"IPC连接尝试 {attempt} 失败: {last_error}")
-
-                except Exception as e:
-                    last_error = str(e)
-                    logger.debug(f"IPC连接尝试 {attempt} 异常: {e}")
-
-                try:
-                    socket.disconnectFromServer()
-                except Exception as exc:
-                    logger.debug("断开IPC套接字连接失败: %s", exc, exc_info=True)
-
-                # 优化重试延迟策略：
-                # 前3次快速重试（50-100ms），之后逐渐增加到最大200ms
-                if attempt <= 3:
-                    retry_delay = 0.05 + attempt * 0.02  # 70ms, 90ms, 110ms
-                else:
-                    retry_delay = min(0.1 + (attempt - 3) * 0.03, 0.2)
-                time.sleep(retry_delay)
-
-            try:
-                if last_socket:
-                    last_socket.disconnectFromServer()
-            except Exception as exc:
-                logger.debug("断开最后的IPC套接字连接失败: %s", exc, exc_info=True)
-
-            logger.warning(f"IPC命令发送失败（超时）: {command}, 共尝试 {attempt} 次, 最后错误: {last_error}")
-            return False
-        except Exception:
-            logger.exception("IPC命令发送异常")
-            return False
+    # ---- legacy IPC send helpers removed (W1 wrap-up, 2026-06-19) ----
+    # UI 内置命令已迁移到 application/ports/ui_actions.UIActions 端口,不再需要
+    # _send_ipc_command / _send_ipc_command_deferred。
+    # 单实例唤起依然由 bootstrap.ipc.try_connect_existing 走标准 IPC 通道。

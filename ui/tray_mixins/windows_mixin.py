@@ -8,8 +8,6 @@ import time
 
 logger = logging.getLogger(__name__)
 
-_COMMAND_PANEL_FIRST_SHOW_DELAY_MS = 100
-
 
 class WindowsMixin:
     """各窗口的 show 方法。"""
@@ -330,11 +328,10 @@ class WindowsMixin:
     def show_command_panel(
         self, command_id="", args_text="", raw_input="", result_id=None, context_meta=None, shortcut=None
     ):
-        """显示独立命令面板。"""
+        """Show the stable window shell first, then load dynamic content."""
         self._wake_from_sleep("command_panel")
         try:
             theme = self.data_manager.get_settings().theme
-            created_window = False
             if getattr(self, "command_result_store", None) is None:
                 from core.command_results import CommandResultStore
 
@@ -343,36 +340,27 @@ class WindowsMixin:
                 from ui.command_panel_window import CommandPanelWindow
 
                 self.command_panel_window = CommandPanelWindow(self.data_manager, self.command_result_store)
-                created_window = True
             else:
                 self.command_panel_window.set_theme(theme)
 
-            if result_id:
-                self.command_panel_window.show_result(result_id)
-            elif shortcut is not None:
-                self.command_panel_window.run_shortcut(
-                    shortcut,
-                    raw_input=raw_input or getattr(shortcut, "command", "") or getattr(shortcut, "name", ""),
-                    context_meta=context_meta or {},
-                )
-            elif command_id:
-                self.command_panel_window.run_command(
+            window = self.command_panel_window
+            window.prepare_content_loading(command_id=command_id, result_id=result_id, shortcut=shortcut)
+            self._present_command_panel_window(window)
+
+            generation = int(getattr(self, "_command_panel_load_generation", 0)) + 1
+            self._command_panel_load_generation = generation
+            window.load_content_after_window_animation(
+                lambda: self._load_command_panel_content(
+                    window,
+                    generation,
                     command_id=command_id,
                     args_text=args_text,
                     raw_input=raw_input,
-                    context_meta=context_meta or {},
+                    result_id=result_id,
+                    context_meta=context_meta,
+                    shortcut=shortcut,
                 )
-
-            window = self.command_panel_window
-            if created_window and not result_id and bool(getattr(window, "_running", False)):
-                from qt_compat import QTimer
-
-                QTimer.singleShot(
-                    _COMMAND_PANEL_FIRST_SHOW_DELAY_MS,
-                    lambda panel=window: self._present_command_panel_window(panel),
-                )
-            else:
-                self._present_command_panel_window(window)
+            )
             return True
         except RuntimeError:
             from ui.command_panel_window import CommandPanelWindow
@@ -383,6 +371,44 @@ class WindowsMixin:
         except Exception as e:
             logger.error("显示命令面板失败: %s", e, exc_info=True)
             return False
+
+    def _load_command_panel_content(
+        self,
+        window,
+        generation: int,
+        *,
+        command_id="",
+        args_text="",
+        raw_input="",
+        result_id=None,
+        context_meta=None,
+        shortcut=None,
+    ):
+        """Populate the visible command-panel shell on the next event-loop turn."""
+        if window is not getattr(self, "command_panel_window", None):
+            return
+        if generation != getattr(self, "_command_panel_load_generation", 0):
+            return
+        try:
+            if result_id:
+                window.show_result(result_id)
+            elif shortcut is not None:
+                window.run_shortcut(
+                    shortcut,
+                    raw_input=raw_input or getattr(shortcut, "command", "") or getattr(shortcut, "name", ""),
+                    context_meta=context_meta or {},
+                )
+            elif command_id:
+                window.run_command(
+                    command_id=command_id,
+                    args_text=args_text,
+                    raw_input=raw_input,
+                    context_meta=context_meta or {},
+                )
+        except RuntimeError:
+            logger.debug("命令面板动态内容加载时窗口已销毁", exc_info=True)
+        except Exception as exc:
+            logger.error("加载命令面板动态内容失败: %s", exc, exc_info=True)
 
     def _present_command_panel_window(self, window):
         """Show the current command panel only after its first layout is ready."""

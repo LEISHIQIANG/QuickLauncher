@@ -259,6 +259,12 @@ REM Management list ends up empty in the packaged build.
     --include-data-dir=assets=assets ^
     --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
+    --include-data-files=third_party_licenses.json=third_party_licenses.json ^
+    --include-package=application ^
+    --include-package=domain ^
+    --include-package=extensions ^
+    --include-package=infrastructure ^
+    --include-package=modules ^
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^

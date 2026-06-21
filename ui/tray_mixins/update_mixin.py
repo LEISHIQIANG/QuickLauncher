@@ -42,7 +42,7 @@ class UpdateMixin:
             logger.debug("Update system initialization failed: %s", e)
 
     def _check_update_now(self, parent=None):
-        from services.update.ui import UpdateNotification
+        from ui.update_dialog import UpdateNotification
 
         self._update_dialog_parent = parent
         if self._update_checker is None:
@@ -75,7 +75,7 @@ class UpdateMixin:
         )
 
     def _on_update_event(self, event: str, data=None):
-        from services.update.ui import UpdateNotification
+        from ui.update_dialog import UpdateNotification
 
         parent = getattr(self, "_update_dialog_parent", None)
 
@@ -138,7 +138,7 @@ class UpdateMixin:
         )
 
     def _on_download_event(self, event: str, data=None):
-        from services.update.ui import UpdateNotification
+        from ui.update_dialog import UpdateNotification
 
         parent = getattr(self, "_update_dialog_parent", None)
 
@@ -180,7 +180,7 @@ class UpdateMixin:
 
     def _on_install_event(self, event: str, data=None):
         if event == "failed":
-            from services.update.ui import UpdateNotification
+            from ui.update_dialog import UpdateNotification
 
             UpdateNotification.show_download_failed(data, parent=getattr(self, "_update_dialog_parent", None))
 

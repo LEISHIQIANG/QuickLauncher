@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from core.path_security import UnsafePathError, resolve_under
+from infrastructure.process import runtime as process_runtime
 from runtime_paths import app_root, is_packaged_runtime
 from services.update.session import find_session_for_installer, update_session_state, utc_now_text
 
@@ -127,7 +128,7 @@ def _launch_independent_installer(command: list[str]) -> None:
     create_breakaway_from_job = 0x01000000
     creationflags = create_new_process_group | detached_process | create_breakaway_from_job
     try:
-        subprocess.Popen(
+        process_runtime.popen(
             command,
             creationflags=creationflags,
             close_fds=True,
@@ -137,7 +138,7 @@ def _launch_independent_installer(command: list[str]) -> None:
         )
     except OSError:
         logger.debug("Installer breakaway flag unavailable; retrying detached launch", exc_info=True)
-        subprocess.Popen(
+        process_runtime.popen(
             command,
             creationflags=creationflags & ~create_breakaway_from_job,
             close_fds=True,

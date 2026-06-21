@@ -15,10 +15,10 @@ from qt_compat import (
     QColor,
     QPainter,
     QPainterPath,
-    QPen,
     QtCompat,
     QWidget,
 )
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.window_effect import (
     paint_win10_rounded_surface,
 )
@@ -65,7 +65,7 @@ class RoundedWindow(QWidget):
         # 回退到标准 QColor 解析
         return QColor(color_str)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         try:
             painter.setRenderHint(QtCompat.Antialiasing)
@@ -117,10 +117,8 @@ class RoundedWindow(QWidget):
 
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
 
             try:
@@ -129,10 +127,9 @@ class RoundedWindow(QWidget):
                 if is_win10():
                     soften_color_inner = QColor(self.bg_color)
                     soften_color_inner.setAlpha(int(soften_color_inner.alpha() * 0.6))
-                    pen_inner = QPen(soften_color_inner, 0.5)
-                    pen_inner.setJoinStyle(QtCompat.RoundJoin)
-                    pen_inner.setCapStyle(QtCompat.RoundCap)
-                    pen_inner.setCosmetic(True)
+                    # 使用 make_cosmetic_pen 保证 0.5px 边框在 125%+ DPI 下不发胖
+                    pen_inner = make_cosmetic_pen(soften_color_inner, 1)
+                    pen_inner.setWidthF(0.5)
                     painter.setPen(pen_inner)
                     inner_path = QPainterPath()
                     inner_path.addRoundedRect(
@@ -142,10 +139,8 @@ class RoundedWindow(QWidget):
 
                     soften_color_outer = QColor(self.bg_color)
                     soften_color_outer.setAlpha(int(soften_color_outer.alpha() * 0.3))
-                    pen_outer = QPen(soften_color_outer, 0.5)
-                    pen_outer.setJoinStyle(QtCompat.RoundJoin)
-                    pen_outer.setCapStyle(QtCompat.RoundCap)
-                    pen_outer.setCosmetic(True)
+                    pen_outer = make_cosmetic_pen(soften_color_outer, 1)
+                    pen_outer.setWidthF(0.5)
                     painter.setPen(pen_outer)
                     outer_path = QPainterPath()
                     outer_path.addRoundedRect(

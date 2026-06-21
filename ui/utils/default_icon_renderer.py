@@ -6,6 +6,8 @@ the same refined look (per-name accent colour, vertical gradient,
 subtle top highlight, CJK-friendly typography).
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import hashlib
@@ -25,6 +27,7 @@ from qt_compat import (
     QRectF,
     QtCompat,
 )
+from ui.utils.lru_cache import pixmap_cache
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +246,10 @@ def _draw_glyph(painter: QPainter, rect: QRectF, text: str, is_cjk: bool) -> Non
     painter.drawText(rect, QtCompat.AlignCenter, text)
 
 
+@pixmap_cache(
+    maxsize=200,
+    key=lambda name, size, theme="dark", dpr=1.0: (name, int(size), str(theme or "dark"), float(dpr)),
+)
 def render_default_icon(
     name: str,
     size: int,
@@ -250,6 +257,11 @@ def render_default_icon(
     dpr: float = 1.0,
 ) -> QPixmap:
     """Return a polished fallback icon for an item without a real icon.
+
+    Cached via LRU (maxsize=200) keyed on (name, size, theme, dpr). The
+    cache is shared across the launcher popup, the settings icon grid,
+    and any other consumer; the underlying ``QPixmap`` is rendered once
+    per unique key.
 
     Args:
         name: Display name of the item.  Used to pick a deterministic accent

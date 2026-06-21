@@ -54,7 +54,7 @@ class IconPickerDialog(BaseDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(sp(18), sp(18), sp(18), sp(16))
-        layout.setSpacing(sp(10))
+        layout.setSpacing(sp(8))
 
         self.info_label = QLabel("正在读取图标...")
         layout.addWidget(self.info_label)
@@ -68,7 +68,7 @@ class IconPickerDialog(BaseDialog):
             self.list_widget.setViewMode(QListWidget.IconMode)
             self.list_widget.setResizeMode(QListWidget.Adjust)
             self.list_widget.setMovement(QListWidget.Static)
-        self.list_widget.setSpacing(sp(10))
+        self.list_widget.setSpacing(sp(8))
         self.list_widget.setIconSize(sqsize(48, 48))
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.list_widget)

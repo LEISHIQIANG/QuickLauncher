@@ -1,8 +1,6 @@
 """Data import/export and reset actions for SettingsPanel."""
 
 import logging
-import os
-import sys
 
 from core.i18n import tr
 from qt_compat import (
@@ -11,7 +9,7 @@ from qt_compat import (
     QThread,
     pyqtSignal,
 )
-from runtime_paths import app_executable, is_packaged_runtime
+from runtime_paths import is_packaged_runtime
 from ui.config_window.settings_helpers import ExportThread, ImportThread, ProgressDialog
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.utils.safe_file_dialog import get_open_file_name, get_save_file_name
@@ -412,36 +410,10 @@ class SettingsDataActionsMixin:
         Args:
             theme: 用于错误消息框的主题，默认为 "light"
         """
-        import subprocess
-
         try:
-            # 关闭 IPC 服务器，避免新进程单实例检查误判
-            import main as _main_mod
-
-            _srv = getattr(_main_mod, "_server", None)
-            if _srv:
-                _srv.close()
-                _main_mod._server = None
-
-            if is_packaged_runtime():
-                # 打包后的exe：直接启动 exe
-                exe_path = str(app_executable())
-                # 使用 CREATE_NEW_PROCESS_GROUP 和 DETACHED_PROCESS
-                # CREATE_BREAKAWAY_FROM_JOB (0x01000000) 确保新进程不受当前作业对象限制
-                creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | 0x01000000
-                subprocess.Popen([exe_path], creationflags=creationflags)
-            else:
-                # 开发模式：重启 Python 脚本
-                exe_path = sys.executable
-                script_path = os.path.abspath(sys.argv[0])
-                subprocess.Popen(
-                    [exe_path, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
-                )
-
-            # 退出当前进程
-            from qt_compat import QApplication
-
-            QApplication.instance().quit()  # type: ignore[unused-ignore, union-attr]
-
+            restart = getattr(getattr(self, "tray_app", None), "_restart", None)
+            if not callable(restart):
+                raise RuntimeError("restart action is unavailable")
+            restart()
         except Exception as e:
             ThemedMessageBox.warning(self, tr("警告"), tr("自动重启失败，请手动重启应用。\n错误: {error}", error=e))

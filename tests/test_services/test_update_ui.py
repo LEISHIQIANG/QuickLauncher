@@ -1,5 +1,5 @@
 from services.update.config import UpdateInfo
-from services.update.ui import UpdateDialog, _markdown_to_html
+from ui.update_dialog import UpdateDialog, _markdown_to_html
 
 
 def test_markdown_to_html_escapes_and_formats_basic_blocks():
@@ -30,7 +30,7 @@ def test_download_progress_text_handles_unknown_total():
 def test_show_download_failed_uses_critical_message(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "services.update.ui.ThemedMessageBox.critical",
+        "ui.update_dialog.ThemedMessageBox.critical",
         lambda parent, title, text: calls.append((parent, title, text)),
     )
 
@@ -44,7 +44,7 @@ def test_show_download_failed_uses_critical_message(monkeypatch):
 def test_show_check_failed_uses_warning_message(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "services.update.ui.ThemedMessageBox.warning",
+        "ui.update_dialog.ThemedMessageBox.warning",
         lambda parent, title, text: calls.append((parent, title, text)),
     )
 
@@ -57,7 +57,7 @@ def test_show_check_failed_uses_warning_message(monkeypatch):
 def test_show_up_to_date_uses_information_message(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "services.update.ui.ThemedMessageBox.information",
+        "ui.update_dialog.ThemedMessageBox.information",
         lambda parent, title, text: calls.append((parent, title, text)),
     )
 
@@ -69,10 +69,10 @@ def test_show_up_to_date_uses_information_message(monkeypatch):
 
 def test_show_download_finished_runs_install_callback_on_yes(monkeypatch):
     called = {"install": False}
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.Yes", 1)
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.No", 2)
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.Download", 4)
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.question", lambda *args, **kwargs: 1)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.Yes", 1)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.No", 2)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.Download", 4)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.question", lambda *args, **kwargs: 1)
 
     UpdateDialog.show_download_finished(on_install=lambda: called.__setitem__("install", True))
 
@@ -81,10 +81,10 @@ def test_show_download_finished_runs_install_callback_on_yes(monkeypatch):
 
 def test_show_download_finished_ignores_install_callback_on_no(monkeypatch):
     called = {"install": False}
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.Yes", 1)
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.No", 2)
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.Download", 4)
-    monkeypatch.setattr("services.update.ui.ThemedMessageBox.question", lambda *args, **kwargs: 2)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.Yes", 1)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.No", 2)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.Download", 4)
+    monkeypatch.setattr("ui.update_dialog.ThemedMessageBox.question", lambda *args, **kwargs: 2)
 
     UpdateDialog.show_download_finished(on_install=lambda: called.__setitem__("install", True))
 

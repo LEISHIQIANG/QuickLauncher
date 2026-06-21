@@ -9,6 +9,8 @@ the rounded configuration window:
   update buttons and drag-to-move support.
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import logging
@@ -37,11 +39,11 @@ logger = logging.getLogger(__name__)
 class DotWidget(QWidget):
     def __init__(self, color: str, tooltip: str, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(sp(14))
+        self.setFixedWidth(sp(16))
         self._color = QColor(color)
         self.setToolTip(tooltip)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         p = QPainter(self)
         p.setRenderHint(QtCompat.Antialiasing)
         p.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -85,7 +87,7 @@ class TitleBar(QWidget):
                 """
             QPushButton {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 6px;
                 font-size: 24px;
                 font-weight: normal;
@@ -107,7 +109,7 @@ class TitleBar(QWidget):
         layout.addWidget(self.back_btn)
 
         # 图标 (默认显示)
-        icon_size = sp(25)
+        icon_size = sp(24)
         base_dir = str(app_root())
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(icon_size, icon_size)
@@ -175,7 +177,7 @@ class TitleBar(QWidget):
                 """
             QPushButton {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 4px;
                 font-size: 16px;
                 color: #aaaaaa;
@@ -203,7 +205,7 @@ class TitleBar(QWidget):
                 """
             QPushButton {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 6px;
                 font-size: 18px;
                 color: #aaaaaa;
@@ -242,7 +244,7 @@ class TitleBar(QWidget):
             f"""
             QPushButton {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 6px;
                 color: {subtext_color};
                 padding: 0px;
@@ -268,7 +270,7 @@ class TitleBar(QWidget):
                 f"""
             QPushButton {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 border-radius: 6px;
                 font-size: 18px;
                 color: {subtext_color};
@@ -342,12 +344,12 @@ class TitleBar(QWidget):
             layout.setSpacing(sp(4))
 
         self.back_btn.setFixedSize(sp(32), sp(32))
-        self.icon_label.setFixedSize(sp(25), sp(25))
+        self.icon_label.setFixedSize(sp(24), sp(24))
         if self._app_icon_path and os.path.exists(self._app_icon_path):
-            pixmap = QIcon(self._app_icon_path).pixmap(sp(25), sp(25))
+            pixmap = QIcon(self._app_icon_path).pixmap(sp(24), sp(24))
             if pixmap and not pixmap.isNull():
                 self.icon_label.setPixmap(
-                    pixmap.scaled(sp(25), sp(25), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+                    pixmap.scaled(sp(24), sp(24), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
                 )
 
         self.settings_btn.setFixedSize(sp(32), sp(32))

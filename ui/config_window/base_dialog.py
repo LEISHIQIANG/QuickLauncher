@@ -6,12 +6,15 @@ import logging
 import os
 from datetime import datetime
 
-from qt_compat import QColor, QDialog, QPainter, QPainterPath, QPen, QtCompat, QTimer
+from qt_compat import QColor, QDialog, QPainter, QPainterPath, QtCompat, QTimer
 from runtime_paths import config_dir, is_packaged_runtime
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.theme_controller import resolve_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.interruptible_animation import set_precise_timer
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import sp, spf
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -45,6 +48,11 @@ def _trace_to_crash_log(msg: str):
 class BaseDialog(QDialog):
     """统一的对话框基类"""
 
+    # BaseDialog 通常自身不持有 QPropertyAnimation（动画由 setWindowOpacity
+    # 在 showEvent 中临时启动，动画结束后已自动清理）。子类的 _animation_names
+    # 留作可扩展点。
+    _animation_names: tuple = ()
+
     @staticmethod
     def _is_compiled():
         """检测是否为 Nuitka 编译版本 — 跳过不可靠的 Qt 回调操作"""
@@ -63,22 +71,22 @@ class BaseDialog(QDialog):
         self._drag_pos = None
         self._dialog_animation_generation = 0
 
-        # 使用 QColor 对象存储颜色（与主配置窗口一致）
-        self.bg_color = QColor(28, 28, 30, 180)
-        self.border_color = QColor(190, 190, 197, 60)
+        # 使用 QColor 对象存储颜色（与主配置窗口一致）— 取自 design token
+        self.bg_color = token_surface("dark", "bg_glass_dark_win10")
+        self.border_color = token_border("dark", "subtle_dark")
         self._apply_theme_colors()
 
     def _apply_theme_colors(self):
-        """应用主题颜色 - 与主配置窗口保持一致"""
+        """应用主题颜色 - 与主配置窗口保持一致（走 design token）"""
         theme = self._get_theme_from_parent()
         self.theme = theme
 
         if theme == "dark":
-            self.bg_color = QColor(28, 28, 30, 180)
-            self.border_color = QColor(190, 190, 197, 60)
+            self.bg_color = token_surface(theme, "bg_glass_dark_win10")
+            self.border_color = token_border(theme, "subtle_dark")
         else:
-            self.bg_color = QColor(242, 242, 247, 160)
-            self.border_color = QColor(229, 229, 234, 150)
+            self.bg_color = token_surface(theme, "bg_glass_light_win10")
+            self.border_color = token_border(theme, "subtle_light")
 
     def _get_theme_from_parent(self) -> str:
         """从父级链或统一主题控制器解析主题。"""
@@ -110,7 +118,7 @@ class BaseDialog(QDialog):
         except Exception as exc:
             logger.debug("停止对话框动画定时器失败: %s", exc, exc_info=True)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         _trace_to_crash_log(f"paintEvent.0: {type(self).__name__}")
         painter = QPainter(self)
         try:
@@ -121,7 +129,7 @@ class BaseDialog(QDialog):
                 paint_win10_rounded_surface(painter, self, self.bg_color, self.border_color, self.corner_radius)
                 return
 
-            inset = spf(1.0) if is_win10() else spf(0.5)
+            inset = spf(1.0) if is_win10() else spf(4.0)
 
             path = QPainterPath()
             path.addRoundedRect(
@@ -142,10 +150,8 @@ class BaseDialog(QDialog):
 
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            # 使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()
@@ -279,7 +285,7 @@ class BaseDialog(QDialog):
         """鼠标按下 - 支持拖动"""
         if event.button() == QtCompat.LeftButton:
             pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
-            if pos.y() <= sp(50):
+            if pos.y() <= sp(48):
                 self._next_dialog_animation_generation()
                 self._stop_dialog_animation_timer()
                 self._drag_pos = (

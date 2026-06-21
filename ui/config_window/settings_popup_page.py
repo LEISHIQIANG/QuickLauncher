@@ -66,7 +66,7 @@ class SettingsPopupPageMixin:
         self.auto_close_group.buttonClicked.connect(self._on_auto_close_changed)
         auto_close_row.addWidget(self.auto_close_yes)
         auto_close_row.addWidget(self.auto_close_no)
-        auto_close_row.addSpacing(sp(22))
+        auto_close_row.addSpacing(sp(24))
         auto_close_row.addWidget(self._create_label("固定时多开"))
         self.multi_open_pinned_group = QButtonGroup(self)
         self.multi_open_pinned_yes = QRadioButton(tr("是"))
@@ -184,7 +184,7 @@ class SettingsPopupPageMixin:
         self.special_apps_list.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.special_apps_list.setItemDelegate(NumberedListDelegate(self.special_apps_list))
         self.special_apps_list.setStyleSheet(
-            f"QListWidget {{ background: transparent; outline: none; border: none; }} QListWidget::item {{ border: none; background: transparent; min-height: {sp(24)}px; margin: {sp(1)}px 0px; padding: {sp(2)}px {sp(6)}px; }}"
+            f"QListWidget {{ background: transparent; outline: none; border: none; border-radius: 0; }} QListWidget::item {{ border: none; background: transparent; min-height: {sp(24)}px; margin: {sp(1)}px 0px; padding: {sp(4)}px {sp(6)}px; }}"
         )
         self.special_apps_list.itemDoubleClicked.connect(self._edit_special_app_item)
 

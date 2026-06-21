@@ -143,20 +143,27 @@ class ExecutorManager:
             return self._shutdown_started
 
 
-_manager = ExecutorManager()
+_manager: ExecutorManager | None = None
+
+
+def _get_manager() -> ExecutorManager:
+    global _manager
+    if _manager is None:
+        _manager = ExecutorManager()
+    return _manager
 
 
 def get_executor(name: str) -> ManagedExecutor:
-    return _manager.get(name)
+    return _get_manager().get(name)
 
 
 def shutdown_executor(name: str, timeout: float = 3.0) -> int:
-    return _manager.shutdown_one(name, timeout)
+    return _get_manager().shutdown_one(name, timeout)
 
 
 def shutdown_all_executors(timeout: float = 5.0) -> dict[str, int]:
-    return _manager.shutdown_all(timeout)
+    return _get_manager().shutdown_all(timeout)
 
 
 def executor_shutdown_started() -> bool:
-    return _manager.shutdown_started
+    return _get_manager().shutdown_started

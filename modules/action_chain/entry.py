@@ -59,17 +59,11 @@ class ActionChainModule:
         if self.host_api is not None and not self.host_api.check_permission("chain.editor"):
             return None
 
-        try:
-            from ui.config_window.chain_dialog import ChainDialog
-
-            dialog = ChainDialog(parent, chain_data=chain_data, host_api=self.host_api)  # type: ignore[call-arg]
-            result = dialog.exec_()
-            if result == dialog.Accepted:
-                return dialog.get_shortcut()  # type: ignore[return-value]
-            return None
-        except Exception as exc:
-            logger.error("Failed to open action-chain editor: %s", exc, exc_info=True)
+        if self.host_api is None:
+            logger.error("Failed to open action-chain editor: host API unavailable")
             return chain_data
+        result = self.host_api.open_chain_editor(parent, chain_data)
+        return result if result is None or isinstance(result, dict) else chain_data
 
     def execute_chain(self, chain_data: Any, context: dict[str, Any], cancel_event=None) -> CommandResult:
         if not self.is_available():

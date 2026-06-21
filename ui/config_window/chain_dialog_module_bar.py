@@ -30,8 +30,8 @@ class GrasshopperGroupWidget(QWidget):
 
         # 布局：垂直紧凑
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(sp(6), sp(4), sp(6), sp(2))
-        layout.setSpacing(sp(2))
+        layout.setContentsMargins(sp(6), sp(4), sp(6), sp(4))
+        layout.setSpacing(sp(4))
 
         # 2行格栅布局放置电池按钮
         self.grid_layout = QGridLayout()
@@ -83,7 +83,7 @@ class GrasshopperGroupWidget(QWidget):
         """
             )
         )
-        self.setFixedHeight(sp(102))
+        self.setFixedHeight(sp(104))
 
         self._button_count = 0
 

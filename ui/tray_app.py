@@ -9,6 +9,7 @@ import sys
 import time
 
 from core.i18n import tr
+from infrastructure.process import runtime as process_runtime
 from qt_compat import (
     QApplication,
     QObject,
@@ -84,16 +85,14 @@ class TrayApp(
     _install_event_signal = pyqtSignal(str, object)
     _process_check_done_signal = pyqtSignal(object)
 
-    def __init__(self):
+    def __init__(self, data_manager, command_registry=None, plugin_manager=None, module_registry=None):
         init_start = time.perf_counter()
         super().__init__()
         logger.info("TrayApp 初始化...")
 
         # 初始化数据管理器
         logger.info("初始化数据管理器...")
-        from core import DataManager
-
-        self.data_manager = DataManager()
+        self.data_manager = data_manager
         logger.info("数据管理器初始化成功")
 
         # 初始化 UI 缩放（从配置中读取，在创建任何 UI 之前设置）
@@ -101,6 +100,12 @@ class TrayApp(
 
         _init_scale = getattr(self.data_manager.get_settings(), "ui_scale_percent", 100)
         _set_ui_scale(_init_scale)
+        from ui.styles.theme_controller import set_app_theme
+        from ui.tooltip_helper import update_tooltip_theme
+
+        _initial_theme = getattr(self.data_manager.get_settings(), "theme", "dark")
+        set_app_theme(_initial_theme)
+        update_tooltip_theme(_initial_theme)
         try:
             from ui.utils.font_manager import apply_app_font
 
@@ -108,15 +113,13 @@ class TrayApp(
         except Exception as exc:
             logger.debug("应用启动 UI 缩放字体失败: %s", exc, exc_info=True)
 
-        # 注册 data_manager 引用到 core 模块
-        from core import set_data_manager
-
-        set_data_manager(self.data_manager)
-
-        # 初始化命令注册中心
+        # 兼容旧入口；标准 GUI 入口由 composition root 显式注入依赖。
         import core
 
-        core.ensure_registry_initialized()
+        if command_registry is None:
+            core.ensure_registry_initialized()
+            command_registry = core.registry
+        self.command_registry = command_registry
 
         # Check plugin degrade switch before initializing plugin manager
         _safe_mode = bool(os.environ.get("QL_SAFE_MODE"))
@@ -129,12 +132,11 @@ class TrayApp(
             logger.debug("获取设置: %s", exc, exc_info=True)
         if _safe_mode:
             logger.info("安全模式：插件系统已禁用")
-        elif _plugins_enabled:
-            core.ensure_plugin_manager_initialized()
-        else:
+        elif not _plugins_enabled:
             logger.info("插件系统已通过功能开关禁用")
 
-        plugin_manager = core.plugin_manager
+        self.plugin_manager = plugin_manager
+        self.module_registry = module_registry
         self._pending_startup_plugin_ids = []
         if plugin_manager is not None:
 
@@ -588,7 +590,6 @@ class TrayApp(
 
         # 执行重新启动
         try:
-            import subprocess
             import tempfile
 
             packaged = is_packaged_runtime()
@@ -620,7 +621,7 @@ fso.DeleteFile WScript.ScriptFullName
                 logger.info(f"打包模式重启: exe={exe}, vbs={vbs_file}")
 
                 # 启动 VBScript（无窗口）
-                subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
+                process_runtime.popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
 
             else:
                 # 开发模式：使用 VBScript 无窗口延迟启动
@@ -644,7 +645,7 @@ fso.DeleteFile WScript.ScriptFullName
                 logger.info(f"开发模式重启: exe={exe}, main_py={main_py}, vbs={vbs_file}")
 
                 # 启动 VBScript（无窗口）
-                subprocess.Popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
+                process_runtime.popen(["wscript.exe", vbs_file], cwd=cwd, creationflags=0x08000000, shell=False)
 
             # 立即退出当前进程
             logger.info("准备退出当前进程...")
@@ -696,7 +697,7 @@ fso.DeleteFile WScript.ScriptFullName
         try:
             path = os.path.abspath(str(self.data_manager.app_dir))
             os.makedirs(path, exist_ok=True)
-            os.startfile(path)
+            process_runtime.startfile(path)
             logger.info("已打开配置数据目录: %s", path)
             return True
         except Exception as e:
@@ -709,7 +710,7 @@ fso.DeleteFile WScript.ScriptFullName
         try:
             path = _get_shortcut_executor()._app_install_dir()
             os.makedirs(path, exist_ok=True)
-            os.startfile(path)
+            process_runtime.startfile(path)
             logger.info("已打开软件安装目录: %s", path)
             return True
         except Exception as e:

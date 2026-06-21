@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
 from typing import Any
+
+from infrastructure.process import runtime as process_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class ShortcutParser:
         )
 
         try:
-            completed = subprocess.run(
+            completed = process_runtime.run(
                 [
                     "powershell",
                     "-NoLogo",

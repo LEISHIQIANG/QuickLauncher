@@ -16,6 +16,8 @@ import win32event
 import win32service
 import win32serviceutil
 
+from infrastructure.process import runtime as process_runtime
+
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "QuickLauncherService"
@@ -122,7 +124,7 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
             if not self.is_running:
                 return
             try:
-                result = subprocess.run(
+                result = process_runtime.run(
                     ["tasklist", "/FI", "IMAGENAME eq explorer.exe"], capture_output=True, text=True, timeout=1
                 )
                 if "explorer.exe" in result.stdout:
@@ -134,7 +136,7 @@ class QuickLauncherService(win32serviceutil.ServiceFramework):
 
         # 启动主程序（以当前登录用户身份）
         try:
-            subprocess.Popen([exe_path], creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS)
+            process_runtime.popen([exe_path], creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS)
             servicemanager.LogInfoMsg(f"主程序已启动: {exe_path}")
         except Exception as e:
             servicemanager.LogErrorMsg(f"启动失败: {e}")

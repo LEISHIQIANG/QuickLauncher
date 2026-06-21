@@ -1701,7 +1701,7 @@ def test_direct_slash_command_does_not_close_when_pinned(monkeypatch):
 
     class FakeExecutor:
         @staticmethod
-        def execute(shortcut, force_new=False):
+        def execute(shortcut, force_new=False, *, services=None):
             calls.append((shortcut.command, force_new))
             return True, ""
 
@@ -1767,7 +1767,7 @@ def test_topmost_target_is_captured_before_popup_hide_and_worker_dispatch(monkey
             return 321, 42
 
         @staticmethod
-        def execute(shortcut, force_new=False):
+        def execute(shortcut, force_new=False, *, services=None):
             events.append("execute")
             assert shortcut._topmost_target_captured is True
             assert shortcut._topmost_target == (321, 42)
@@ -1871,7 +1871,8 @@ def test_captured_command_hides_pinned_popup_and_runs_in_command_panel(monkeypat
     popup.is_pinned = True
     popup.search_query = ""
     hidden = []
-    popup.hide = lambda: hidden.append(True)
+    order = []
+    popup.hide = lambda: (hidden.append(True), order.append("hide"))
     popup.execution_error = SimpleNamespace(emit=lambda *args, **kwargs: None)
     popup.command_panel_result_ready = SimpleNamespace(
         emit=lambda result, command_id, command_title: popup._on_command_panel_result_ready(
@@ -1887,6 +1888,7 @@ def test_captured_command_hides_pinned_popup_and_runs_in_command_panel(monkeypat
 
         def show_command_panel(self, **kwargs):
             shown.update(kwargs)
+            order.append("show_panel")
             return True
 
     import ui.launcher_popup.popup_item_execution as popup_exec_mod
@@ -1910,6 +1912,7 @@ def test_captured_command_hides_pinned_popup_and_runs_in_command_panel(monkeypat
     popup._execute_item(item)
 
     assert hidden == [True]
+    assert order == ["show_panel", "hide"]
     assert shown["shortcut"] is item
     assert shown["raw_input"] == "echo ok"
     assert take_pending_command_result() is None

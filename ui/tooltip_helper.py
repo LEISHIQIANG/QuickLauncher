@@ -19,13 +19,9 @@ def _get_tooltip_theme() -> str:
     global _cached_theme, _theme_initialized
     if _theme_initialized:
         return _cached_theme
-    try:
-        from core import DataManager
+    from ui.styles.theme_controller import get_app_theme
 
-        _cached_theme = getattr(DataManager().get_settings(), "theme", "dark") or "dark"
-    except Exception as exc:
-        logger.debug("读取 tooltip 主题失败: %s", exc, exc_info=True)
-        _cached_theme = "dark"
+    _cached_theme = get_app_theme()
     _theme_initialized = True
     return _cached_theme
 

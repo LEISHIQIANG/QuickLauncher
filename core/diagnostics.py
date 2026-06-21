@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from infrastructure.process import runtime as process_runtime
 from runtime_paths import is_packaged_runtime
 
 from .config_validation import validate_app_data
@@ -260,7 +261,7 @@ def _probe_command_runtime(argv: list[str], command_name: str, timeout: float = 
     if not path:
         return _missing_runtime(command_name)
     try:
-        completed = subprocess.run(
+        completed = process_runtime.run(
             argv,
             capture_output=True,
             text=True,

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +12,7 @@ from typing import Any
 
 from core.command_action_safety import normalize_command_action
 from core.command_registry import CommandAction
+from infrastructure.process import runtime as process_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def _open_path(path: str) -> None:
     if os.name == "nt":
         _open_shell_target(path)
         return
-    subprocess.Popen(["explorer", path])
+    process_runtime.popen(["explorer", path])
 
 
 def _open_shell_target(target: str) -> None:

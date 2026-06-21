@@ -1,5 +1,7 @@
 """支持一下弹窗 — 全屏悬浮半透明遮罩，打破窗口限制，玻璃拟态卡片，点击外部关闭。"""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import os
 import sys
 
@@ -177,7 +179,7 @@ class SupportDialog(QDialog):
             return
         super().accept()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -242,7 +244,7 @@ class SupportDialog(QDialog):
             text_color = QColor(28, 28, 30, 140)
         painter.setPen(QPen(text_color))
         # 居中绘制在海报正下方 20px 处
-        painter.drawText(QRect(0, cy + ph + sp(20), self.width(), sp(25)), Qt.AlignCenter, tr("✕ 点击空白处关闭"))
+        painter.drawText(QRect(0, cy + ph + sp(20), self.width(), sp(24)), Qt.AlignCenter, tr("✕ 点击空白处关闭"))
 
         painter.restore()
         painter.end()

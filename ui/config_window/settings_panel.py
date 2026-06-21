@@ -2,6 +2,8 @@
 设置面板 - 分类导航版本
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 
 from core import DataManager
@@ -35,10 +37,14 @@ from qt_compat import (
     pyqtProperty,
     pyqtSignal,
 )
+from ui.styles.design_tokens import GroupIconScale, SurfaceScale, TextScale
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.style import StyleSheet
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.font_manager import get_font_css_with_size, get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_named_animations
+from ui.utils.pixel_snap import create_pixmap, make_cosmetic_pen
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
@@ -67,7 +73,7 @@ class CompactProgressDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(sp(240))
         self.setMaximumWidth(sp(400))
-        self.setMinimumHeight(sp(90))
+        self.setMinimumHeight(sp(88))
         apply_custom_window_chrome(self, kind="dialog", translucent=True)
         self.setWindowOpacity(0)
 
@@ -79,17 +85,17 @@ class CompactProgressDialog(QDialog):
 
     def _detect_theme(self):
         if self.theme == "dark":
-            self.bg_color = QColor(28, 28, 30, 180)
-            self.border_color = QColor(190, 190, 197, 60)
+            self.bg_color = token_surface(self.theme, "bg_glass_dark_win10")
+            self.border_color = token_border(self.theme, "subtle_dark")
             self.text_color = "#dddddd"
         else:
-            self.bg_color = QColor(242, 242, 247, 160)
-            self.border_color = QColor(229, 229, 234, 150)
+            self.bg_color = token_surface(self.theme, "bg_glass_light_win10")
+            self.border_color = token_border(self.theme, "subtle_light")
             self.text_color = "#333333"
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(sp(12), sp(10), sp(12), sp(10))
+        main_layout.setContentsMargins(sp(12), sp(8), sp(12), sp(8))
         main_layout.setSpacing(sp(8))
 
         # 标题栏（图标 + 标题）
@@ -132,7 +138,7 @@ class CompactProgressDialog(QDialog):
         self.btn_layout.addStretch()
         self.ok_btn = QPushButton(tr("确定"))
         self.ok_btn.setDefault(True)
-        self.ok_btn.setFixedHeight(sp(22))
+        self.ok_btn.setFixedHeight(sp(24))
         self.ok_btn.setMinimumWidth(sp(52))
         self.ok_btn.clicked.connect(self.accept)
         self.ok_btn.setVisible(False)
@@ -145,7 +151,7 @@ class CompactProgressDialog(QDialog):
         tune_font_rendering(self, recursive=True)
         self.title_label.setFont(get_qfont(13, 400))
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """背景绘制 - 完全按照ThemedMessageBox的逻辑"""
         painter = QPainter(self)
         try:
@@ -178,13 +184,10 @@ class CompactProgressDialog(QDialog):
                 tint_color.setAlpha(min(tint_color.alpha(), 100))
             painter.fillPath(path, tint_color)
 
-            # 边框
+            # 边框：使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()
@@ -303,7 +306,7 @@ class NavigationItemWidget(QWidget):
 
     def sizeHint(self) -> QSize:
         fm = self.fontMetrics()
-        h = max(sp(19), fm.height()) + sp(22)  # 22px padding total (11px top/bottom), scales perfectly with high-DPI
+        h = max(sp(20), fm.height()) + sp(24)  # 22px padding total (11px top/bottom), scales perfectly with high-DPI
         return QSize(sp(100), h)
 
     def update_icon(self, new_icon):
@@ -318,7 +321,7 @@ class NavigationItemWidget(QWidget):
         self.update()
         super().enterEvent(event)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QtCompat.HighQualityAntialiasing)
@@ -332,29 +335,39 @@ class NavigationItemWidget(QWidget):
         # Draw hover background
         if is_hovered and not is_selected:
             if self.theme == "dark":
-                hover_bg = QColor(255, 255, 255, 12)  # rgba(255, 255, 255, 0.05)
+                # dark 4% white overlay — 与基线一致 (alpha 12)
+                hover_bg = QColor(SurfaceScale.bg_hover_subtle_dark)
             else:
-                hover_bg = QColor(0, 0, 0, 8)  # rgba(0, 0, 0, 0.03)
+                # light 3% black overlay — 与基线一致 (alpha 8)
+                hover_bg = QColor(SurfaceScale.bg_hover_subtle_light)
             painter.setBrush(hover_bg)
             painter.setPen(QtCompat.NoPen)
-            painter.drawRoundedRect(QRectF(self.rect()).adjusted(sp(8), sp(2), sp(-8), sp(-2)), sp(6), sp(6))
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(sp(8), sp(4), sp(-8), sp(-2)), sp(6), sp(6))
 
         # Draw icon
         if self.icon:
-            pixmap = self.icon.pixmap(sp(19), sp(19))
+            pixmap = self.icon.pixmap(sp(20), sp(20))
             y = (self.height() - pixmap.height()) // 2
-            painter.drawPixmap(sp(14), y, pixmap)
+            painter.drawPixmap(sp(16), y, pixmap)
 
-        # Draw text
+        # Draw text — dark 主题走 TextScale token，light 主题保留字面量（alpha 序列不同）
         if self.theme == "dark":
             text_color = (
-                QColor(255, 255, 255, 242)
+                QColor(TextScale.primary_dark)
                 if is_selected
-                else (QColor(255, 255, 255, 217) if is_hovered else QColor(255, 255, 255, 150))
+                else (
+                    QColor(TextScale.secondary_dark) if is_hovered else QColor(GroupIconScale.list_text_tertiary_dark)
+                )
             )
         else:
             text_color = (
-                QColor(0, 0, 0, 242) if is_selected else (QColor(0, 0, 0, 200) if is_hovered else QColor(0, 0, 0, 150))
+                QColor(GroupIconScale.list_text_selected_light)
+                if is_selected
+                else (
+                    QColor(GroupIconScale.list_text_hovered_light)
+                    if is_hovered
+                    else QColor(GroupIconScale.list_text_normal_light)
+                )
             )
 
         painter.setPen(text_color)
@@ -362,7 +375,7 @@ class NavigationItemWidget(QWidget):
 
         painter.setFont(get_qfont(12))
 
-        text_rect = QRectF(sp(38), 0, self.width() - sp(48), self.height())
+        text_rect = QRectF(sp(40), 0, self.width() - sp(48), self.height())
         painter.drawText(text_rect, QtCompat.AlignLeft | QtCompat.AlignVCenter, self.text)
 
         painter.end()
@@ -376,7 +389,7 @@ class NavigationWidget(QListWidget):
         self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.setSpacing(sp(4))
-        self.setIconSize(QSize(sp(19), sp(19)))
+        self.setIconSize(QSize(sp(20), sp(20)))
         from ui.utils.font_manager import get_qfont
 
         self.setFont(get_qfont(13))
@@ -392,7 +405,7 @@ class NavigationWidget(QListWidget):
     def rescale_ui(self):
         self.setFixedWidth(sp(140))
         self.setSpacing(sp(4))
-        self.setIconSize(QSize(sp(19), sp(19)))
+        self.setIconSize(QSize(sp(20), sp(20)))
         for row in range(self.count()):
             item = self.item(row)
             if item is None:
@@ -427,7 +440,7 @@ class NavigationWidget(QListWidget):
         if curr_indexes:
             index = curr_indexes[0]
             visual_rect = self.visualRect(index)
-            target_rect = QRectF(visual_rect).adjusted(sp(8), sp(2), sp(-8), sp(-2))
+            target_rect = QRectF(visual_rect).adjusted(sp(8), sp(4), sp(-8), sp(-2))
 
             if self._pill_rect_anim is not None:
                 self._pill_rect_anim.stop()
@@ -468,23 +481,23 @@ class NavigationWidget(QListWidget):
             f"""
             QListWidget {{
                 background-color: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 outline: none;
-                padding-top: {sp(10)}px;
+                padding-top: {sp(8)}px;
             }}
             QListWidget::item {{
                 background-color: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 padding: 0px;
-                margin: {sp(2)}px {sp(8)}px;
+                margin: {sp(4)}px {sp(8)}px;
             }}
             QListWidget::item:selected {{
                 background-color: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }}
             QListWidget::item:hover {{
                 background-color: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }}
         """
         )
@@ -499,11 +512,11 @@ class NavigationWidget(QListWidget):
                 widget.theme = theme
                 icon_name = getattr(item, "icon_name", "")
                 if icon_name:
-                    new_icon = create_action_button_icon(icon_name, theme, sp(19))
+                    new_icon = create_action_button_icon(icon_name, theme, sp(20))
                     widget.update_icon(new_icon)
                 widget.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         if self._pill_opacity > 0 and not self._pill_rect.isEmpty():
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.Antialiasing)
@@ -530,15 +543,15 @@ class BaseSettingPage(SmoothScrollArea):
         self.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(QtCompat.ScrollBarAsNeeded)
         # 让 ScrollArea 透明
-        self.setStyleSheet("QScrollArea, QWidget#Content { background: transparent; border: none; }")
+        self.setStyleSheet("QScrollArea, QWidget#Content { background: transparent; border: none; border-radius: 0; }")
 
         self.content_widget = QWidget()
         self.content_widget.setObjectName("Content")
         self.setWidget(self.content_widget)
 
         self.layout = QVBoxLayout(self.content_widget)
-        self.layout.setContentsMargins(sp(10), sp(5), sp(10), sp(5))
-        self.layout.setSpacing(sp(10))
+        self.layout.setContentsMargins(sp(8), sp(5), sp(8), sp(5))
+        self.layout.setSpacing(sp(8))
 
     def add_group(self, title):
         from ui.utils.font_manager import get_qfont
@@ -551,7 +564,7 @@ class BaseSettingPage(SmoothScrollArea):
             scale_qss(
                 """
             QGroupBox {
-                border: none;
+                border: none; border-radius: 0;
                 padding-top: 5px;
             }
             QGroupBox::title {
@@ -570,14 +583,14 @@ class BaseSettingPage(SmoothScrollArea):
         icon_label.setObjectName("SettingsGroupIcon")
         icon_label.setProperty("settingsGroupIconTitle", title)
         icon_label.setParent(group)
-        icon_label.setFixedSize(sp(14), sp(14))
+        icon_label.setFixedSize(sp(16), sp(16))
         icon_label.setAlignment(QtCompat.AlignCenter)
-        icon_label.setStyleSheet("background: transparent; border: none;")
-        icon_label.setPixmap(self._create_group_icon(title, "dark", sp(14)))
+        icon_label.setStyleSheet("background: transparent; border: none; border-radius: 0;")
+        icon_label.setPixmap(self._create_group_icon(title, "dark", sp(16)))
         icon_label.raise_()
 
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
         layout.setSpacing(sp(8))
         self.layout.addWidget(group)
         self._position_group_icon(group)
@@ -637,29 +650,29 @@ class BaseSettingPage(SmoothScrollArea):
 
     def _group_icon_accent(self, title: str, theme: str) -> QColor:
         if "危险" in title:
-            return QColor(255, 99, 99)
+            return QColor(GroupIconScale.danger)
         if "插件" in title:
-            return QColor(44, 190, 155)
+            return QColor(GroupIconScale.plugin)
         if "收藏命令" in title:
-            return QColor(255, 184, 77)
+            return QColor(GroupIconScale.bookmark)
         if "命令" in title:
-            return QColor(82, 145, 255)
+            return QColor(GroupIconScale.command)
         if "支持一下" in title:
-            return QColor(255, 122, 86)
+            return QColor(GroupIconScale.support)
         if "日志" in title or "配置" in title or "管理" in title:
-            return QColor(54, 176, 116)
+            return QColor(GroupIconScale.log)
         if "主题" in title or "背景" in title or "外观" in title or "视觉" in title:
-            return QColor(112, 101, 242)
+            return QColor(GroupIconScale.theme)
         if "语言" in title:
-            return QColor(28, 150, 130)
+            return QColor(GroupIconScale.language)
         if "弹窗" in title or "位置" in title or "触发" in title or "交互" in title:
-            return QColor(45, 126, 235)
+            return QColor(GroupIconScale.popup)
         if "关于" in title or "简介" in title or "作者" in title:
-            return QColor(28, 150, 130)
-        return QColor(45, 126, 235) if theme == "light" else QColor(96, 166, 255)
+            return QColor(GroupIconScale.about)
+        return QColor(GroupIconScale.about_light) if theme == "light" else QColor(GroupIconScale.about_dark)
 
     def _create_group_icon(self, title: str, theme: str, size: int = 14) -> QPixmap:
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
 
         painter = QPainter(pixmap)
@@ -670,7 +683,7 @@ class BaseSettingPage(SmoothScrollArea):
 
         accent = self._group_icon_accent(title, theme)
         accent.setAlpha(145 if theme == "light" else 165)
-        ink = QColor(38, 49, 64, 150) if theme == "light" else QColor(235, 241, 250, 165)
+        ink = QColor(GroupIconScale.ink_light) if theme == "light" else QColor(GroupIconScale.ink_dark)
         bg = QColor(accent)
         bg.setAlpha(12 if theme == "light" else 18)
         border = QColor(accent)
@@ -902,7 +915,10 @@ class BaseSettingPage(SmoothScrollArea):
         """应用主题到所有分组标题和按钮"""
         title_color = "rgba(28,28,30,0.9)" if theme == "light" else "rgba(255,255,255,0.9)"
         scrollbar_style = StyleSheet.get_scrollbar_style(theme)
-        self.setStyleSheet("QScrollArea, QWidget#Content { background: transparent; border: none; }" + scrollbar_style)
+        self.setStyleSheet(
+            "QScrollArea, QWidget#Content { background: transparent; border: none; border-radius: 0; }"
+            + scrollbar_style
+        )
         try:
             self.verticalScrollBar().setStyleSheet(scrollbar_style)
             self.horizontalScrollBar().setStyleSheet(scrollbar_style)
@@ -911,7 +927,7 @@ class BaseSettingPage(SmoothScrollArea):
 
         style = f"""
             QGroupBox {{
-                border: none;
+                border: none; border-radius: 0;
                 padding-top: 5px;
             }}
             QGroupBox::title {{
@@ -930,7 +946,7 @@ class BaseSettingPage(SmoothScrollArea):
 
         for label in self.findChildren(QLabel, "SettingsGroupIcon"):
             title = label.property("settingsGroupIconTitle") or ""
-            label.setPixmap(self._create_group_icon(str(title), theme, sp(14)))
+            label.setPixmap(self._create_group_icon(str(title), theme, sp(16)))
             parent = label.parent()
             if parent:
                 self._position_group_icon(parent)
@@ -975,10 +991,13 @@ class SettingsPanel(
     special_apps_changed = pyqtSignal()
     trigger_config_changed = pyqtSignal()
 
-    def __init__(self, data_manager: DataManager, tray_app=None):
+    def __init__(self, data_manager: DataManager, tray_app=None, plugin_manager=None):
         super().__init__()
         self.data_manager = data_manager
         self.tray_app = tray_app
+        self.plugin_manager = (
+            plugin_manager if plugin_manager is not None else getattr(tray_app, "plugin_manager", None)
+        )
         self._updating = False
         self.current_theme = "dark"
 
@@ -1101,7 +1120,7 @@ class SettingsPanel(
                 desc_label = card.findChild(QLabel, f"desc_{menu_id}")
                 if desc_label:
                     desc_label.setStyleSheet(
-                        f"{get_font_css_with_size(11, 400)} color: {desc_color}; background: transparent; border: none;"
+                        f"{get_font_css_with_size(11, 400)} color: {desc_color}; background: transparent; border: none; border-radius: 0;"
                     )
 
         # 触发插件与命令列表的主题重绘刷新
@@ -1314,7 +1333,7 @@ class SettingsPanel(
             # Create Custom NavigationItemWidget
             from .action_button_icons import create_action_button_icon
 
-            icon = create_action_button_icon(icon_name, self.current_theme, sp(19))
+            icon = create_action_button_icon(icon_name, self.current_theme, sp(20))
 
             widget = NavigationItemWidget(tr(text), icon, self.current_theme, self.nav_widget)
             widget.item = item

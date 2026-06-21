@@ -1,5 +1,7 @@
 """动作链编辑对话框 — 左右两栏布局，卡片式步骤，风险分析，测试运行。"""
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import copy
@@ -33,7 +35,9 @@ from qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ui.styles.design_tokens import surface
 from ui.styles.style import Colors, Glassmorphism, PopupMenu
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import scale_qss, sp
 
 from .base_dialog import BaseDialog
@@ -202,7 +206,7 @@ class ChainDialog(
 
     def _build_module_bar(self) -> QTabWidget:
         tabs = QTabWidget()
-        tabs.setFixedHeight(sp(138))
+        tabs.setFixedHeight(sp(136))
         self._module_buttons = []  # type: ignore[var-annotated]
 
         theme = "dark"
@@ -323,7 +327,7 @@ class ChainDialog(
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
-        bar.setFixedHeight(sp(102))
+        bar.setFixedHeight(sp(104))
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(sp(12), 0, sp(12), 0)
         layout.setSpacing(sp(18))  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
@@ -341,13 +345,13 @@ class ChainDialog(
             if theme == "dark":
                 sep.setStyleSheet(
                     scale_qss(
-                        "QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                        "QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; border-radius: 0; }"
                     )
                 )
             else:
                 sep.setStyleSheet(
                     scale_qss(
-                        "QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                        "QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; border-radius: 0; }"
                     )
                 )
             return sep
@@ -406,7 +410,7 @@ class ChainDialog(
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
-        bar.setFixedHeight(sp(102))
+        bar.setFixedHeight(sp(104))
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(sp(12), 0, sp(12), 0)
         layout.setSpacing(sp(18))  # 组团之间采用 18px 优雅间距区分，实现另起一列的清晰视效
@@ -445,7 +449,7 @@ class ChainDialog(
         scroll.setFrameShape(QFrame.NoFrame)
 
         bar = QWidget()
-        bar.setFixedHeight(sp(102))
+        bar.setFixedHeight(sp(104))
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(sp(12), 0, sp(12), 0)
         layout.setSpacing(sp(18))
@@ -456,13 +460,13 @@ class ChainDialog(
             if theme == "dark":
                 sep.setStyleSheet(
                     scale_qss(
-                        "QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                        "QFrame { background-color: rgba(255, 255, 255, 0.08); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; border-radius: 0; }"
                     )
                 )
             else:
                 sep.setStyleSheet(
                     scale_qss(
-                        "QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; }"
+                        "QFrame { background-color: rgba(0, 0, 0, 0.06); min-width: 1px; max-width: 1px; margin: 6px 0px; border: none; border-radius: 0; }"
                     )
                 )
             return sep
@@ -746,7 +750,7 @@ class ChainDialog(
 
         custom = base_style + scale_qss(
             f"""
-            QDialog {{ background: transparent; border: none; }}
+            QDialog {{ background: transparent; border: none; border-radius: 0; }}
             QLabel, QCheckBox, QGroupBox, QLineEdit, QSpinBox, QPushButton, QTabWidget {{
                 font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
                 font-weight: 400;
@@ -788,7 +792,7 @@ class ChainDialog(
             }}
             QScrollArea {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }}
             QSpinBox {{
                 background-color: {input_bg};
@@ -877,7 +881,7 @@ class ChainDialog(
         # result_view 透明背景，文字直接显示在分栏框里
         self.result_view.setStyleSheet(
             scale_qss(
-                f"QPlainTextEdit {{ background: transparent; border: none; "
+                f"QPlainTextEdit {{ background: transparent; border: none; border-radius: 0; "
                 f"color: {text_primary}; font-size: 12px; padding: 8px; "
                 f"font-family: 'Cascadia Code', 'Consolas', monospace; }}"
             )
@@ -887,7 +891,8 @@ class ChainDialog(
 
         vp = self.result_view.viewport()
         pal = self.result_view.palette()
-        bg_color = QColor(28, 28, 30) if theme == "dark" else QColor(242, 242, 247)
+        # viewport 底色取自 design token — 与 base_dialog / settings_panel 完全一致
+        bg_color = surface(theme, "bg_chrome")
         bg_color.setAlpha(120)
         pal.setColor(QPalette.Base, bg_color)
         self.result_view.setPalette(pal)
@@ -975,7 +980,7 @@ class ChainDialog(
         self.icon_preview.setPixmap(pixmap)
 
     def _create_chain_icon(self, size: int) -> QPixmap:
-        pixmap = QPixmap(size, size)
+        pixmap = create_pixmap(size, size)
         pixmap.fill(QtCompat.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QtCompat.Antialiasing)

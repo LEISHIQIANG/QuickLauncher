@@ -2,6 +2,8 @@
 命令编辑对话框
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 import logging
 
 from core import ShortcutItem, ShortcutType
@@ -272,7 +274,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
 
         custom_style = base_style + scale_qss(
             f"""
-            QDialog {{ background: transparent; border: none; }}
+            QDialog {{ background: transparent; border: none; border-radius: 0; }}
             QGroupBox {{
                 border: 1px solid {border_color};
                 border-radius: 6px;
@@ -380,7 +382,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         editor_style = f"""
             QPlainTextEdit {{
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
                 color: {text_primary};
                 font-size: 13px;
                 selection-background-color: {selection_bg};
@@ -428,7 +430,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
                     border: 1px solid {"#0A84FF" if theme == "dark" else "#007AFF"};
                 }}
                 QComboBox::drop-down {{
-                    border: none;
+                    border: none; border-radius: 0;
                     width: 24px;
                 }}
                 QComboBox::down-arrow {{
@@ -475,7 +477,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
             """
             QFrame#CommandProfileFrame {
                 background: transparent;
-                border: none;
+                border: none; border-radius: 0;
             }
         """
         )
@@ -538,7 +540,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(sp(8))
-        layout.setContentsMargins(sp(10), sp(10), sp(10), sp(10))  # 特殊页边距：复杂编辑窗口保持 10px
+        layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))  # 特殊页边距：复杂编辑窗口保持 10px
 
         # 顶部标题栏
         title_layout = QHBoxLayout()
@@ -640,12 +642,12 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         top_row.addWidget(self.hint_label, 1)
 
         self.insert_var_btn = QPushButton("插入")
-        self.insert_var_btn.setFixedSize(sp(54), sp(24))
+        self.insert_var_btn.setFixedSize(sp(56), sp(24))
         self.insert_var_btn.clicked.connect(self._show_insert_popup)
         top_row.addWidget(self.insert_var_btn, 0, QtCompat.AlignRight)
 
         self._test_btn = QPushButton("测试")
-        self._test_btn.setFixedSize(sp(54), sp(24))
+        self._test_btn.setFixedSize(sp(56), sp(24))
         self._test_btn.clicked.connect(self._test_command)
         top_row.addWidget(self._test_btn, 0, QtCompat.AlignRight)
 
@@ -659,7 +661,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         self.command_container = QFrame()
         self.command_container.setObjectName("CommandContainer")
         container_layout = QVBoxLayout(self.command_container)
-        container_layout.setContentsMargins(sp(4), sp(2), sp(4), sp(4))  # 内部留白，防止文字贴边
+        container_layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))  # 内部留白，防止文字贴边
         container_layout.setSpacing(0)
 
         # 内层编辑器：完全透明，只负责显示文字
@@ -725,18 +727,18 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         self.advanced_profile_toggle.setObjectName("CommandProfileToggle")
         self.advanced_profile_toggle.setCheckable(True)
         self.advanced_profile_toggle.setChecked(False)
-        self.advanced_profile_toggle.setFixedSize(sp(42), sp(12))
+        self.advanced_profile_toggle.setFixedSize(sp(40), sp(12))
         self.advanced_profile_toggle.setToolTip(tr("高级设置"))
         self.advanced_profile_toggle.setCursor(QtCompat.PointingHandCursor)
         self.advanced_profile_toggle.clicked.connect(self._toggle_command_profile_panel)
         self.show_window_cb = QCheckBox("显示执行窗口")
-        self.show_window_cb.setFixedHeight(sp(26))
+        self.show_window_cb.setFixedHeight(sp(24))
         self.show_window_cb.stateChanged.connect(self._update_capture_controls)
         self.run_as_admin_cb = QCheckBox("以管理员身份运行")
-        self.run_as_admin_cb.setFixedHeight(sp(26))
+        self.run_as_admin_cb.setFixedHeight(sp(24))
         self.run_as_admin_cb.stateChanged.connect(self._update_capture_controls)
         self.variable_expansion_cb = QCheckBox("解析变量")
-        self.variable_expansion_cb.setFixedHeight(sp(26))
+        self.variable_expansion_cb.setFixedHeight(sp(24))
         install_tooltip(self.variable_expansion_cb, "替换 {{clipboard}}、{{input}}、{{date}} 等占位符；Python 默认关闭")
         option_row.addWidget(self.show_window_cb)
         option_row.addWidget(self.run_as_admin_cb)
@@ -747,7 +749,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         capture_row = QHBoxLayout()
         capture_row.setSpacing(sp(8))
         self.capture_output_cb = QCheckBox("捕获输出并显示在命令面板")
-        self.capture_output_cb.setFixedHeight(sp(26))
+        self.capture_output_cb.setFixedHeight(sp(24))
         self.capture_output_cb.stateChanged.connect(self._update_capture_controls)
         capture_row.addWidget(self.capture_output_cb)
         self.command_panel_size_label = QLabel("面板大小")
@@ -760,7 +762,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
             button = QCheckBox(text)
             button.setObjectName("CommandPanelSizeCheck")
             button.setProperty("panel_size", value)
-            button.setFixedHeight(sp(26))
+            button.setFixedHeight(sp(24))
             self.command_panel_size_group.addButton(button)
             self.command_panel_size_buttons.append(button)
             capture_row.addWidget(button)
@@ -773,7 +775,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         self.capture_timeout_spin.setButtonSymbols(QSpinBox.NoButtons)
         self.capture_timeout_spin.setRange(1, 3600)
         self.capture_timeout_spin.setSuffix(" 秒")
-        self.capture_timeout_spin.setFixedSize(sp(72), sp(26))
+        self.capture_timeout_spin.setFixedSize(sp(72), sp(24))
         capture_row.addWidget(self.capture_timeout_spin)
         capture_row.addStretch()
         capture_toggle_widget = QFrame()
@@ -789,7 +791,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
         self.advanced_profile_frame.setVisible(False)
         profile_layout = QFormLayout(self.advanced_profile_frame)
         profile_layout.setSpacing(sp(6))
-        profile_layout.setContentsMargins(0, sp(2), 0, 0)
+        profile_layout.setContentsMargins(0, sp(4), 0, 0)
 
         self.command_encoding_combo = QComboBox()
         self.command_encoding_combo.setFixedHeight(sp(32))

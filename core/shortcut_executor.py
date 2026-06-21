@@ -106,6 +106,21 @@ class ShortcutExecutor(
     # pynput 特殊键映射（懒加载，避免模块级 pynput 导入阻塞）
     PYNPUT_SPECIAL_KEYS = {}  # type: ignore[var-annotated]
     _PYNPUT_KEYS_LOADED = False
+    _ui_actions = None
+
+    @classmethod
+    def configure_services(cls, *, data_manager=None, ui_actions=None) -> None:
+        """Inject process-owned execution dependencies from the composition root."""
+        if data_manager is not None:
+            from core import set_data_manager
+
+            set_data_manager(data_manager)
+        cls._ui_actions = ui_actions
+
+    @classmethod
+    def resolve_ui_actions(cls):
+        """Return the injected UIActions port, or None if not yet wired."""
+        return cls._ui_actions
 
     @classmethod
     def _ensure_pynput_keys(cls):

@@ -14,19 +14,21 @@ from qt_compat import (
     QLabel,
     QPainter,
     QPainterPath,
-    QPen,
     QPoint,
     QPushButton,
     QtCompat,
     QTimer,
     QVBoxLayout,
 )
+from ui.styles.design_tokens import border as token_border
+from ui.styles.design_tokens import surface as token_surface
 from ui.styles.style import Glassmorphism
 from ui.styles.theme_controller import normalize_theme
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.dialog_helper import center_dialog_on_main_window
 from ui.utils.font_manager import get_qfont, tune_font_rendering
 from ui.utils.interruptible_animation import stop_animation
+from ui.utils.pixel_snap import make_cosmetic_pen
 from ui.utils.ui_scale import scale_qss, sp
 from ui.utils.window_effect import (
     enable_acrylic_for_config_window,
@@ -122,7 +124,7 @@ class WelcomeGuide(QDialog):
         self.content_label.setWordWrap(True)
         self.content_label.setFont(get_qfont(13, 400))
         self.content_label.setStyleSheet(scale_qss("font-size: 13px; line-height: 1.5;"))
-        self.content_label.setMinimumHeight(sp(150))
+        self.content_label.setMinimumHeight(sp(152))
         layout.addWidget(self.content_label, 1)
 
         # 进度指示
@@ -154,7 +156,7 @@ class WelcomeGuide(QDialog):
         btn_layout.addWidget(self.prev_btn)
 
         self.next_btn = QPushButton(tr("下一步"))
-        self.next_btn.setFixedSize(sp(90), sp(32))
+        self.next_btn.setFixedSize(sp(88), sp(32))
         self.next_btn.setDefault(True)
         self.next_btn.clicked.connect(lambda: logger.info("next_btn clicked") or self._next_step())
         btn_layout.addWidget(self.next_btn)
@@ -164,11 +166,11 @@ class WelcomeGuide(QDialog):
     def _apply_theme(self, theme: str):
         self.theme = theme
         if theme == "dark":
-            self.bg_color = QColor(28, 28, 30, 180)
-            self.border_color = QColor(190, 190, 197, 60)
+            self.bg_color = token_surface(theme, "bg_glass_dark_win10")
+            self.border_color = token_border(theme, "subtle_dark")
         else:
-            self.bg_color = QColor(242, 242, 247, 160)
-            self.border_color = QColor(229, 229, 234, 150)
+            self.bg_color = token_surface(theme, "bg_glass_light_win10")
+            self.border_color = token_border(theme, "subtle_light")
 
         # 使用 Glassmorphism 样式
         base_style = Glassmorphism.get_full_glassmorphism_stylesheet(theme)
@@ -226,7 +228,7 @@ class WelcomeGuide(QDialog):
         logger.info(f"WelcomeGuide mousePressEvent at ({pos.x()}, {pos.y()})")
         super().mousePressEvent(event)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: paint_perf
         """背景绘制 - 与主配置窗口一致的 alpha 处理"""
         painter = QPainter(self)
         try:
@@ -257,13 +259,10 @@ class WelcomeGuide(QDialog):
                 tint_color.setAlpha(min(tint_color.alpha(), 100))
             painter.fillPath(path, tint_color)
 
-            # 边框
+            # 边框：使用 make_cosmetic_pen 保证 1px 边框在 125%+ DPI 下不发胖
             pen_color = QColor(self.border_color)
             pen_color.setAlpha(min(pen_color.alpha(), 120))
-            pen = QPen(pen_color, 1)
-            pen.setJoinStyle(QtCompat.RoundJoin)
-            pen.setCapStyle(QtCompat.RoundCap)
-            painter.setPen(pen)
+            painter.setPen(make_cosmetic_pen(pen_color, 1))
             painter.drawPath(path)
         finally:
             painter.end()

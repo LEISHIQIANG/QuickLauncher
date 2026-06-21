@@ -172,13 +172,49 @@ class TestCommandResult:
 
 
 class TestCallbackHandler:
-    def test_wraps_callback_name(self):
+    def test_wraps_callback_name(self, monkeypatch):
+        from core.shortcut_executor import ShortcutExecutor
+
         h = _CallbackHandler("show_config_window")
         assert h._callback_name == "show_config_window"
-        # call_callback returns None for unregistered callbacks,
-        # which _CallbackHandler treats as failure (falsy result)
+
+        # W1 收尾后,_CallbackHandler 通过 UIActions 端口分派;
+        # 端口未注入时返回命令执行失败。
+        monkeypatch.setattr(ShortcutExecutor, "_ui_actions", None, raising=False)
         result = h(CommandContext())
-        assert result.message == "命令执行失败: show_config_window"
+        assert result.success is False
+        assert "UIActions port 未注入" in (result.error or "")
+        assert "命令执行失败: show_config_window" == result.message
+
+    def test_dispatches_to_ui_actions_when_injected(self, monkeypatch):
+        from application.ports.ui_actions import UIAction
+        from core.shortcut_executor import ShortcutExecutor
+
+        captured = {}
+
+        class FakeActions:
+            def execute(self, action):
+                captured["action"] = action
+                return True
+
+        monkeypatch.setattr(ShortcutExecutor, "_ui_actions", FakeActions(), raising=False)
+        h = _CallbackHandler("show_config_window")
+        result = h(CommandContext())
+        assert result.success is True
+        assert captured["action"] is UIAction.SHOW_CONFIG_WINDOW
+
+    def test_unknown_action_returns_failure(self, monkeypatch):
+        from core.shortcut_executor import ShortcutExecutor
+
+        class FakeActions:
+            def execute(self, action):
+                return True
+
+        monkeypatch.setattr(ShortcutExecutor, "_ui_actions", FakeActions(), raising=False)
+        h = _CallbackHandler("not_a_real_ui_action")
+        result = h(CommandContext())
+        assert result.success is False
+        assert "未知的 UI 动作" in (result.error or "")
 
 
 # ============================================================

@@ -6,12 +6,15 @@ preview update, the auto-generated command icon painter and the
 browse/clear handlers.
 """
 
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
 from __future__ import annotations
 
 import logging
 import os
 
 from qt_compat import QColor, QFont, QPainter, QPixmap, QRectF, QtCompat
+from ui.utils.pixel_snap import create_pixmap
 from ui.utils.ui_scale import sp
 
 from .icon_browse_helper import choose_custom_icon
@@ -86,7 +89,7 @@ class CommandDialogIconMixin:
     def _create_command_icon(self, size: int) -> QPixmap:
         """创建命令图标"""
         try:
-            pixmap = QPixmap(size, size)
+            pixmap = create_pixmap(size, size)
             pixmap.fill(QtCompat.transparent)
 
             painter = QPainter(pixmap)
@@ -127,7 +130,7 @@ class CommandDialogIconMixin:
         except Exception as e:  # noqa: BLE001
             logger.error("创建命令图标失败: %s", e, exc_info=True)
             # 返回一个空的透明图片防止后续崩溃
-            empty = QPixmap(size, size)
+            empty = create_pixmap(size, size)
             empty.fill(QtCompat.transparent)
             return empty
 

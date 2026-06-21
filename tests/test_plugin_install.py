@@ -661,14 +661,10 @@ def _make_mixin_instance(plugin_manager, monkeypatch):
     mixin = SimpleNamespace()
     mixin.current_theme = "dark"
     mixin._plugin_cards = {}
+    mixin.plugin_manager = plugin_manager
 
     # The mixin needs _rebuild_plugin_list
     mixin._rebuild_plugin_list = MagicMock()
-
-    # Replace core.plugin_manager with our instance
-    import core
-
-    monkeypatch.setattr(core, "plugin_manager", plugin_manager)
 
     from ui.config_window.settings_plugins_page import SettingsPluginsPageMixin
 

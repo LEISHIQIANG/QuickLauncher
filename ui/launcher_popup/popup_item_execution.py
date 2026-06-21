@@ -1,13 +1,13 @@
 """Item execution logic for LauncherPopup."""
 
 import logging
-import os
 import time
 from copy import copy
 
 from core.background_tasks import start_background_thread
 from core.data_models import ShortcutItem, ShortcutType
 from core.i18n import tr
+from infrastructure.process import runtime as process_runtime
 from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
@@ -336,7 +336,8 @@ class PopupItemExecutionMixin:
             or not self.is_pinned  # type: ignore[attr-defined]
         )
 
-        if should_close:
+        panel_handoff_command = force_close_param_command or force_close_capture_command
+        if should_close and not panel_handoff_command:
             self.hide()  # type: ignore[attr-defined]
 
         if force_close_param_command or force_close_capture_command:
@@ -351,6 +352,11 @@ class PopupItemExecutionMixin:
                     if tray_app.show_command_panel(
                         shortcut=item, raw_input=item.command or "", context_meta=context_meta
                     ):
+                        # Reveal the destination shell before hiding this
+                        # translucent popup.  Hiding first leaves Win11 DWM a
+                        # compositor gap where the popup's native transition
+                        # frame can flash as a small system-looking window.
+                        self.hide()  # type: ignore[attr-defined]
                         self._executing = False
                         return
                 except Exception:
@@ -490,7 +496,7 @@ class PopupItemExecutionMixin:
                 else:
                     if item.target_path:
                         try:
-                            os.startfile(item.target_path)
+                            process_runtime.startfile(item.target_path)
                         except Exception as e:
                             self.execution_error.emit(item.name, str(e))
             except Exception as e:
