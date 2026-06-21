@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from qt_compat import QColor, QImage
 from tools import visual_diff
+from qt_compat import QColor, QImage
 
 pytestmark = pytest.mark.ui
 
