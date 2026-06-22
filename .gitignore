@@ -72,7 +72,14 @@ bandit-report.json
 # 不需要上传的文件
 /config/
 /dist/
-/docs/
+/docs/*
+!/docs/quality/
+/docs/quality/*
+!/docs/quality/architecture_baseline.json
+!/docs/quality/performance_baseline.json
+!/docs/visual_baseline/
+/docs/visual_baseline/*
+!/docs/visual_baseline/*.png
 /docs/_drafts/
 temp_icons/
 icons/

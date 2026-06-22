@@ -94,7 +94,7 @@ class PluginAPI:
 
     @property
     def data_dir(self) -> Path:
-        d = self._plugin_dir / "data"
+        d = (self._plugin_dir / "data").resolve(strict=False)
         d.mkdir(parents=True, exist_ok=True)
         return d
 

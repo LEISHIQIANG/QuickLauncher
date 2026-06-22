@@ -19,6 +19,7 @@ Threshold is the percentage of differing pixels (default 0.5 %).
 from __future__ import annotations
 
 import argparse
+import importlib
 import logging
 import sys
 from pathlib import Path
@@ -103,12 +104,13 @@ def _capture_live_candidates(baseline_dir: Path) -> Path:
     candidate_dir.mkdir(parents=True, exist_ok=True)
 
     from qt_compat import QApplication
-    from tools.dump_visual_baseline import COMPONENTS, dump_component
+
+    dumper = importlib.import_module("tools.dump_visual_baseline")
 
     QApplication.instance() or QApplication(sys.argv)
     dpis = [100, 125, 150, 200]
-    for entry in COMPONENTS:
-        dump_component(entry, candidate_dir, dpis)
+    for entry in dumper.COMPONENTS:
+        dumper.dump_component(entry, candidate_dir, dpis)
     return candidate_dir
 
 

@@ -53,8 +53,11 @@ def test_exe_targets_use_path_scoped_cache_keys(qapp):
 
 
 def test_exe_target_icon_is_not_default_placeholder(qapp):
-    from core.icon_extractor import IconExtractor
+    from core.icon_extractor import HAS_WIN32, IconExtractor
     from qt_compat import QImage
+
+    if not HAS_WIN32:
+        pytest.skip("real pywin32 icon backend is not available")
 
     target = r"C:\Windows\notepad.exe"
     if not os.path.exists(target):
@@ -82,8 +85,11 @@ def test_exe_target_icon_is_not_default_placeholder(qapp):
 
 
 def test_exe_custom_icon_uses_default_resource(qapp):
-    from core.icon_extractor import IconExtractor
+    from core.icon_extractor import HAS_WIN32, IconExtractor
     from qt_compat import QImage
+
+    if not HAS_WIN32:
+        pytest.skip("real pywin32 icon backend is not available")
 
     target = r"C:\Windows\notepad.exe"
     if not os.path.exists(target):
@@ -119,8 +125,11 @@ def test_extract_without_default_does_not_cache_placeholder(qapp):
 
 
 def test_exe_target_prefers_resource_icon(monkeypatch, qapp):
-    from core.icon_extractor import IconExtractor
+    from core.icon_extractor import HAS_WIN32, IconExtractor
     from qt_compat import QColor, QPixmap
+
+    if not HAS_WIN32:
+        pytest.skip("real pywin32 icon backend is not available")
 
     target = r"C:\Windows\notepad.exe"
     if not os.path.exists(target):

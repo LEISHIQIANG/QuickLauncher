@@ -45,7 +45,9 @@ try:
     import win32gui
     import win32ui
 
-    HAS_WIN32 = True
+    HAS_WIN32 = not (
+        type(win32gui).__module__.startswith("unittest.mock") or type(win32ui).__module__.startswith("unittest.mock")
+    )
 except ImportError:
     logger.debug("win32gui is not installed; icon extraction will use ctypes/Qt fallbacks")
 

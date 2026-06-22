@@ -5,6 +5,7 @@ The UI layer may enhance this by checking active LauncherPopup widgets first.
 """
 
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def _selected_item_paths(selected_items) -> list[str]:
     for i in range(count):
         try:
             path = selected_items.Item(i).Path
-            if path:
+            if isinstance(path, str) and path:
                 paths.append(path)
         except Exception:
             logger.debug("Failed to get path for item %s", i, exc_info=True)
@@ -68,7 +69,8 @@ def get_selected_files_for_process() -> list[str]:
             if target_kind not in {"explorer", "desktop"}:
                 return []
 
-            shell = win32com.client.Dispatch("Shell.Application")
+            win32com_client = sys.modules.get("win32com.client", win32com.client)
+            shell = win32com_client.Dispatch("Shell.Application")
             windows = shell.Windows()
             for i in range(windows.Count):
                 try:
