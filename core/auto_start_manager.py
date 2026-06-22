@@ -19,6 +19,11 @@ from ctypes import wintypes
 from infrastructure.process import runtime as process_runtime
 from runtime_paths import app_executable, app_root, is_packaged_runtime
 
+try:
+    import pywintypes
+except ImportError:
+    pywintypes = None
+
 logger = logging.getLogger(__name__)
 
 APP_NAME = "QuickLauncher"
@@ -201,6 +206,11 @@ if os.name == "nt":
     userenv.DestroyEnvironmentBlock.restype = wintypes.BOOL
 
 
+# pywintypes.com_error 不是 OSError 的子类，需要单独捕获。
+# 若 pywintypes 不可用则回退到 Exception（不应在 Windows 打包环境发生）。
+_COM_ERRORS: tuple = (pywintypes.com_error,) if pywintypes is not None else (Exception,)
+
+
 def _is_frozen() -> bool:
     """Return whether the current runtime is a packaged executable."""
     return bool(globals().get("__compiled__", False)) or is_packaged_runtime()
@@ -380,7 +390,7 @@ def _build_task_definition(
     if set_trigger_user and user_id:
         try:
             trigger.UserId = user_id
-        except (OSError, AttributeError) as e:
+        except (OSError, AttributeError, *_COM_ERRORS) as e:
             logger.debug("设置任务触发器 UserId 失败: %s", e)
 
     action = task_def.Actions.Create(0)  # TASK_ACTION_EXEC
@@ -395,12 +405,12 @@ def _build_task_definition(
     if set_principal_user and user_id:
         try:
             task_def.Principal.UserId = user_id
-        except (OSError, AttributeError) as e:
+        except (OSError, AttributeError, *_COM_ERRORS) as e:
             logger.debug("设置任务主体 UserId 失败: %s", e)
     try:
         # Best-effort scheduler hint; admin accounts are actually lowered by the launcher path.
         task_def.Principal.ProcessTokenSidType = 2
-    except (OSError, AttributeError) as e:
+    except (OSError, AttributeError, *_COM_ERRORS) as e:
         logger.debug("设置 ProcessTokenSidType 失败 (可忽略): %s", e)
 
     return task_def
@@ -1118,9 +1128,9 @@ def _cleanup_legacy_task_scheduler_tasks() -> list[str]:
             try:
                 root_folder.DeleteTask(legacy_name, 0)
                 removed.append(legacy_name)
-            except (OSError, AttributeError) as e:
+            except (OSError, AttributeError, *_COM_ERRORS) as e:
                 logger.debug("删除旧版任务 %s 失败 (可能不存在): %s", legacy_name, e)
-    except (OSError, ImportError, AttributeError) as exc:
+    except (OSError, ImportError, AttributeError, *_COM_ERRORS) as exc:
         logger.debug("清理旧版计划任务失败: %s", exc)
 
     if removed:
@@ -1147,7 +1157,7 @@ def enable_task_scheduler(exe_path: str | None = None, arguments: str = "", work
 
             try:
                 root_folder.DeleteTask(TASK_NAME, 0)
-            except (OSError, AttributeError) as e:
+            except (OSError, AttributeError, *_COM_ERRORS) as e:
                 logger.debug("删除旧任务失败 (首次注册属正常): %s", e)
 
             user_id = _get_current_user_identity()
@@ -1182,7 +1192,7 @@ def enable_task_scheduler(exe_path: str | None = None, arguments: str = "", work
                 return True
 
             logger.warning("Task Scheduler 任务创建后验证失败: %s", task_reason)
-        except (OSError, AttributeError, RuntimeError) as exc:
+        except (OSError, AttributeError, RuntimeError, *_COM_ERRORS) as exc:
             logger.warning("Task Scheduler 创建失败 (attempt %s): %s", attempt + 1, exc)
 
         if attempt == 0:
@@ -1206,7 +1216,7 @@ def disable_task_scheduler() -> bool:
         try:
             root_folder.DeleteTask(TASK_NAME, 0)
             removed = True
-        except (OSError, AttributeError) as e:
+        except (OSError, AttributeError, *_COM_ERRORS) as e:
             logger.debug("删除自启动任务失败 (可能不存在): %s", e)
 
         if _cleanup_legacy_task_scheduler_tasks():
@@ -1215,7 +1225,7 @@ def disable_task_scheduler() -> bool:
         if removed:
             logger.info("Task Scheduler 自启动任务已删除")
         return removed
-    except (OSError, ImportError, AttributeError) as exc:
+    except (OSError, ImportError, AttributeError, *_COM_ERRORS) as exc:
         logger.debug("删除 Task Scheduler 任务失败: %s", exc)
         return False
 
@@ -1234,7 +1244,7 @@ def get_task_scheduler_check_result(
         root_folder = scheduler.GetFolder("\\")
         task = root_folder.GetTask(TASK_NAME)
         return _validate_task_launch_spec(task, exe_path, arguments, working_dir)
-    except (OSError, ImportError, AttributeError) as exc:
+    except (OSError, ImportError, AttributeError, *_COM_ERRORS) as exc:
         logger.debug("任务调度器检查失败: %s", exc, exc_info=True)
         return False, f"task_missing_or_inaccessible: {exc}"
 
@@ -1381,9 +1391,9 @@ def _has_legacy_tasks() -> bool:
             try:
                 root_folder.GetTask(name)
                 return True
-            except (OSError, AttributeError):
+            except (OSError, AttributeError, *_COM_ERRORS):
                 logger.debug("旧版任务 %s 不存在", name)
-    except (OSError, ImportError, AttributeError) as e:
+    except (OSError, ImportError, AttributeError, *_COM_ERRORS) as e:
         logger.debug("检查旧版任务失败: %s", e)
     return False
 
