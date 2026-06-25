@@ -14,16 +14,11 @@ Usage:
 
 from __future__ import annotations
 
-import ctypes
 import logging
-import os
-import queue
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-
-from .background_tasks import start_background_thread
 
 logger = logging.getLogger(__name__)
 
@@ -186,188 +181,47 @@ def _get_format_name(format_id: int) -> str:
 
 
 class Win32ClipboardImpl:
-    """Clipboard implementation using win32clipboard — thread-safe with STA COM."""
+    """Clipboard implementation using native QLclipboard.dll — thread-safe with STA COM."""
 
-    _com_local = threading.local()
-    _use_worker_thread: bool = False
-    _sta_thread: threading.Thread | None = None
-    _sta_queue: queue.Queue | None = None
+    _engine = None
 
-    @staticmethod
-    def _ensure_sta():
-        """Ensure STA COM on current thread before clipboard operations."""
-        if getattr(Win32ClipboardImpl._com_local, "_com_initialized", False):
-            return
-        try:
-            import pythoncom
+    @classmethod
+    def _get_engine(cls):
+        if cls._engine is None:
+            from .native_services import _QLClipboardEngine
 
-            try:
-                pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
-            except pythoncom.CO_E_ALREADYINITIALIZED as exc:
-                logger.debug("COM 已初始化，继续直接使用剪贴板: %s", exc, exc_info=True)
-            except Exception as exc:
-                logger.debug("STA COM 初始化失败，改用工作线程: %s", exc, exc_info=True)
-                Win32ClipboardImpl._use_worker_thread = True
-        except ImportError as exc:
-            logger.debug("pythoncom 不可用，直接尝试 win32clipboard: %s", exc, exc_info=True)
-        Win32ClipboardImpl._com_local._com_initialized = True
-
-    @staticmethod
-    def _open_clipboard(timeout_ms: int = 200) -> None:
-        """Open clipboard with retry, bounded by timeout_ms."""
-        import win32clipboard
-
-        Win32ClipboardImpl._ensure_sta()
-
-        if Win32ClipboardImpl._use_worker_thread:
-            Win32ClipboardImpl._run_on_sta_thread(win32clipboard.OpenClipboard)
-            return
-
-        deadline = time.monotonic() + max(10.0, float(timeout_ms or 200)) / 1000.0
-        last_error = None
-        for attempt, delay_ms in enumerate(_OPEN_RETRY_DELAYS_MS):
-            try:
-                win32clipboard.OpenClipboard()
-                return
-            except Exception as e:
-                last_error = e
-                if attempt == 0:
-                    # Diagnostic: log which window holds the clipboard
-                    try:
-                        holder = ctypes.windll.user32.GetOpenClipboardWindow()
-                        if holder:
-                            logger.debug("Clipboard held by hwnd=%d", holder)
-                    except Exception as exc:
-                        logger.debug("获取剪贴板持有窗口句柄失败: %s", exc, exc_info=True)
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                actual_delay = min(delay_ms / 1000.0, remaining)
-                if actual_delay > 0:
-                    time.sleep(actual_delay)
-
-        raise ClipboardOpenError(
-            message=f"OpenClipboard failed within {timeout_ms}ms after {attempt + 1} attempts",
-            detail={"last_error": str(last_error)},
-        )
-
-    @staticmethod
-    def _run_on_sta_thread(func, *args, **kwargs):
-        """Run clipboard operation on a dedicated STA thread."""
-        import queue as _queue
-
-        if Win32ClipboardImpl._sta_thread is None:
-
-            def _sta_worker():
-                try:
-                    import pythoncom
-
-                    pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
-                except Exception as exc:
-                    logger.debug("STA线程COM初始化失败: %s", exc, exc_info=True)
-                q = Win32ClipboardImpl._sta_queue
-                while True:
-                    try:
-                        cmd, a, kw, rq = q.get()  # type: ignore[union-attr]
-                        try:
-                            rq.put(cmd(*a, **kw))
-                        except Exception as e:
-                            logger.debug("STA command failed: %s", e, exc_info=True)
-                            rq.put(e)
-                    except Exception as exc:
-                        logger.debug("STA线程队列操作失败: %s", exc, exc_info=True)
-
-            Win32ClipboardImpl._sta_queue = _queue.Queue()
-            t = start_background_thread(name="ClipboardSTA", target=_sta_worker, owner="clipboard")
-            Win32ClipboardImpl._sta_thread = t
-
-        result_queue = _queue.Queue()  # type: ignore[var-annotated]
-        Win32ClipboardImpl._sta_queue.put((func, args, kwargs, result_queue))  # type: ignore[union-attr]
-        result = result_queue.get(timeout=10)
-        if isinstance(result, Exception):
-            raise result
-        return result
-
-    # ---- read ----
+            cls._engine = _QLClipboardEngine.get()
+        return cls._engine
 
     @staticmethod
     def read_text(timeout_ms: int = 200) -> str:
-        """Read clipboard text. Returns empty string on failure (never raises)."""
-        try:
-            import win32clipboard
-            import win32con
-
-            Win32ClipboardImpl._open_clipboard(timeout_ms)
-            try:
-                if win32clipboard.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT):
-                    data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
-                    return data or ""
-                if win32clipboard.IsClipboardFormatAvailable(win32con.CF_TEXT):
-                    data = win32clipboard.GetClipboardData(win32con.CF_TEXT)
-                    if isinstance(data, bytes | bytearray):
-                        try:
-                            return data.decode("mbcs", errors="replace")
-                        except (ValueError, UnicodeDecodeError):
-                            logger.debug("MBCS decode failed, using utf-8 replace", exc_info=True)
-                            return data.decode(errors="replace")
-                    return data or ""
-            finally:
-                win32clipboard.CloseClipboard()
-        except ClipboardOpenError:
-            raise
-        except Exception as exc:
-            logger.debug("读取剪贴板文本失败: %s", exc, exc_info=True)
-        return ""
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        result = engine.read_text()
+        return result if result is not None else ""
 
     @staticmethod
     def write_text(text: str, timeout_ms: int = 500) -> bool:
-        """Write text to clipboard."""
-        try:
-            import win32clipboard
-            import win32con
-
-            Win32ClipboardImpl._open_clipboard(timeout_ms)
-            try:
-                win32clipboard.EmptyClipboard()
-                win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text or "")
-                return True
-            finally:
-                win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.debug("write_text failed: %s", e, exc_info=True)
-            return False
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        return engine.write_text(text)  # type: ignore[no-any-return]
 
     @staticmethod
     def get_sequence_number() -> int:
-        if os.name != "nt":
-            return 0
-        try:
-            return int(ctypes.windll.user32.GetClipboardSequenceNumber())
-        except Exception:
-            logger.debug("GetClipboardSequenceNumber failed", exc_info=True)
-            return 0
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        return engine.get_sequence_number()  # type: ignore[no-any-return]
 
     @staticmethod
     def get_available_formats() -> list[ClipboardFormatInfo]:
-        """Enumerate available clipboard formats."""
-        formats: list[ClipboardFormatInfo] = []
-        try:
-            import win32clipboard
-
-            Win32ClipboardImpl._open_clipboard()
-            try:
-                fmt = 0
-                while True:
-                    fmt = win32clipboard.EnumClipboardFormats(fmt)
-                    if not fmt:
-                        break
-                    name = _get_format_name(fmt)
-                    formats.append(ClipboardFormatInfo(format_id=fmt, name=name, readable=True))
-            finally:
-                win32clipboard.CloseClipboard()
-        except Exception as exc:
-            logger.debug("枚举剪贴板格式失败: %s", exc, exc_info=True)
-        return formats
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        native_formats = engine.enum_formats()
+        return [ClipboardFormatInfo(format_id=f["formatId"], name=f["name"], readable=True) for f in native_formats]
 
     @staticmethod
     def is_format_available(format_id: int) -> bool:
@@ -375,232 +229,108 @@ class Win32ClipboardImpl:
             import win32clipboard
 
             return win32clipboard.IsClipboardFormatAvailable(format_id)  # type: ignore[no-any-return]
-        except ImportError as exc:
-            logger.debug("win32clipboard不可用，无法检测剪贴板格式: %s", exc, exc_info=True)
-            return False
-        except win32clipboard.error as exc:
-            logger.debug("检测剪贴板格式可用性失败: %s", exc, exc_info=True)
+        except Exception:
             return False
 
     @staticmethod
     def read_snapshot() -> ClipboardSnapshot:
-        """Read full clipboard snapshot."""
-        import win32clipboard
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        return Win32ClipboardImpl._read_snapshot_native(engine)
+
+    @staticmethod
+    def _read_snapshot_native(engine) -> ClipboardSnapshot:
         import win32con
 
         sequence = Win32ClipboardImpl.get_sequence_number()
         captured_at = time.time()
+        snapshot = ClipboardSnapshot(sequence=sequence, captured_at=captured_at)
 
-        snapshot = ClipboardSnapshot(
-            sequence=sequence,
-            captured_at=captured_at,
-        )
-
-        Win32ClipboardImpl._open_clipboard()
         try:
-            fmt = 0
-            while True:
-                fmt = win32clipboard.EnumClipboardFormats(fmt)
-                if not fmt:
-                    break
+            sid, count = engine.create_snapshot()
+        except Exception as exc:
+            snapshot.error = str(exc)
+            return snapshot
 
-                # Detect-only formats: record metadata but don't store binary
-                if fmt in _DETECT_ONLY_FORMATS:
-                    if fmt == CF_DIB or fmt == CF_BITMAP or fmt == CF_DIBV5:
-                        try:
-                            data = win32clipboard.GetClipboardData(fmt)
-                            if data:
-                                import struct
-
-                                if fmt == CF_DIB:
-                                    # BITMAPINFOHEADER starts at offset 0
-                                    if isinstance(data, bytes) and len(data) >= 40:
-                                        w = struct.unpack_from("<i", data, 4)[0]
-                                        h = struct.unpack_from("<i", data, 8)[0]
-                                        snapshot.image_info = {
-                                            "width": abs(w),
-                                            "height": abs(h),
-                                            "format": "DIB",
-                                            "size_hint": len(data),
-                                        }
-                                elif fmt == CF_DIBV5:
-                                    if isinstance(data, bytes) and len(data) >= 124:
-                                        w = struct.unpack_from("<i", data, 4)[0]
-                                        h = struct.unpack_from("<i", data, 8)[0]
-                                        snapshot.image_info = {
-                                            "width": abs(w),
-                                            "height": abs(h),
-                                            "format": "DIBV5",
-                                            "size_hint": len(data),
-                                        }
-                        except Exception as exc:
-                            logger.debug("解析DIB图片信息失败: %s", exc, exc_info=True)
-                    continue
-
+        try:
+            for i in range(count):
                 try:
-                    data = win32clipboard.GetClipboardData(fmt)
+                    fmt_id, data = engine.get_snapshot_entry(sid, i)
                 except Exception:
-                    logger.debug("GetClipboardData failed for format %d", fmt, exc_info=True)
+                    continue
+                if fmt_id < 0:
                     continue
 
-                # Check size limit for large data
-                size_hint = 0
-                if isinstance(data, bytes):
-                    size_hint = len(data)
-                    if size_hint > _MAX_SNAPSHOT_TEXT_BYTES * 10:
-                        snapshot.truncated = True
-                        continue
-                elif isinstance(data, str):
-                    size_hint = len(data.encode("utf-8"))
-
-                # Store text formats
-                if fmt == win32con.CF_UNICODETEXT:
-                    snapshot.text = data or ""
-                    if isinstance(snapshot.text, str) and len(snapshot.text.encode("utf-8")) > _MAX_SNAPSHOT_TEXT_BYTES:
-                        snapshot.text = snapshot.text[:_MAX_SNAPSHOT_TEXT_BYTES]
-                        snapshot.truncated = True
-                elif fmt == win32con.CF_TEXT:
-                    if not snapshot.text:
-                        if isinstance(data, bytes | bytearray):
-                            try:
-                                snapshot.text = data.decode("mbcs", errors="replace")
-                            except (ValueError, UnicodeDecodeError):
-                                logger.debug("Snapshot MBCS decode failed, using utf-8 replace", exc_info=True)
-                                snapshot.text = data.decode(errors="replace")
-                        else:
-                            snapshot.text = str(data or "")
-                elif fmt == CF_HDROP:
-                    if isinstance(data, tuple | list):
-                        snapshot.file_paths = list(data)
-                    elif isinstance(data, str):
-                        snapshot.file_paths = [data]
-                elif fmt == CF_HTML:
-                    if isinstance(data, bytes | bytearray):
+                if fmt_id == win32con.CF_UNICODETEXT:
+                    if data:
+                        text = data.decode("utf-16-le", errors="replace").rstrip("\x00")
+                        snapshot.text = text
+                elif fmt_id == win32con.CF_TEXT:
+                    if data and not snapshot.text:
                         try:
-                            snapshot.html = data.decode("utf-8", errors="replace")
-                        except (ValueError, UnicodeDecodeError):
-                            logger.debug("Snapshot HTML decode failed, using str()", exc_info=True)
-                            snapshot.html = str(data)
-                    elif isinstance(data, str):
-                        snapshot.html = data
-                    if len(snapshot.html.encode("utf-8")) > _MAX_SNAPSHOT_TEXT_BYTES:
-                        snapshot.html = snapshot.html[:_MAX_SNAPSHOT_TEXT_BYTES]
-                        snapshot.truncated = True
-
-                # Store structured formats selectively
-                if fmt in {win32con.CF_UNICODETEXT, win32con.CF_TEXT, CF_HDROP}:
-                    snapshot.formats[fmt] = data
-
-        except Exception as e:
-            logger.debug("读取剪贴板快照失败: %s", e, exc_info=True)
-            snapshot.error = str(e)
-        finally:
-            try:
-                win32clipboard.CloseClipboard()
-            except Exception as exc:
-                logger.debug("关闭剪贴板句柄失败: %s", exc, exc_info=True)
-
+                            snapshot.text = data.decode("mbcs", errors="replace")
+                        except Exception:
+                            snapshot.text = data.decode(errors="replace")
+                elif fmt_id == CF_HDROP and data:
+                    snapshot.file_paths = [data.decode("utf-16-le", errors="replace").rstrip("\x00")]
+                elif fmt_id == CF_HTML and data:
+                    try:
+                        snapshot.html = data.decode("utf-8", errors="replace")
+                    except Exception:
+                        snapshot.html = str(data)
+            engine.free_snapshot(sid)
+        except Exception as exc:
+            engine.free_snapshot(sid)
+            snapshot.error = str(exc)
         return snapshot
 
     @staticmethod
     def restore_snapshot(snapshot: ClipboardSnapshot) -> bool:
-        """Restore clipboard from a snapshot."""
         if snapshot is None:
             return False
-        try:
-            import win32clipboard
-            import win32con
-
-            Win32ClipboardImpl._open_clipboard(timeout_ms=300)
-            try:
-                win32clipboard.EmptyClipboard()
-                ok = True
-
-                # Restore text
-                if snapshot.text:
-                    try:
-                        win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, snapshot.text)
-                    except Exception as e:
-                        ok = False
-                        logger.debug("restore CF_UNICODETEXT failed: %s", e, exc_info=True)
-
-                # Restore file paths
-                if snapshot.file_paths:
-                    try:
-                        win32clipboard.SetClipboardData(CF_HDROP, snapshot.file_paths)
-                    except Exception as e:
-                        ok = False
-                        logger.debug("restore CF_HDROP failed: %s", e, exc_info=True)
-
-                # Restore other formats from stored binary
-                for fmt, data in snapshot.formats.items():
-                    if fmt in (win32con.CF_UNICODETEXT, CF_TEXT, CF_HDROP):
-                        continue  # Already restored above
-                    try:
-                        win32clipboard.SetClipboardData(fmt, data)
-                    except Exception:
-                        logger.debug("SetClipboardData failed for format %d", fmt, exc_info=True)
-                        ok = False
-
-                return ok
-            finally:
-                win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.debug("restore_snapshot failed: %s", e, exc_info=True)
-            return False
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        if snapshot.text:
+            return engine.write_text(snapshot.text)  # type: ignore[no-any-return]
+        return False
 
     @staticmethod
     def write_html(html: str, plain_text: str) -> bool:
-        """Write HTML + plain text fallback to clipboard."""
         if not html:
             return Win32ClipboardImpl.write_text(plain_text)
+        engine = Win32ClipboardImpl._get_engine()
+        if engine is None:
+            raise ClipboardComError("QLclipboard.dll not available")
+        engine.write_text(plain_text or "")
+        html_bytes = engine.build_html_format(html)
         try:
+
             import win32clipboard
 
-            Win32ClipboardImpl._open_clipboard()
-            try:
-                win32clipboard.EmptyClipboard()
-
-                import win32con
-
-                win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, plain_text or "")
-
-                # Build HTML Format with required header
-                header = (
-                    "Version:0.9\r\n"
-                    "StartHTML:{start:09d}\r\n"
-                    "EndHTML:{end:09d}\r\n"
-                    "StartFragment:{frag_start:09d}\r\n"
-                    "EndFragment:{frag_end:09d}\r\n"
-                )
-                fragment = html
-                full_html = f"<!DOCTYPE html><html><body>{fragment}</body></html>"
-                header_offset = len(header.format(start=0, end=0, frag_start=0, frag_end=0))
-                frag_start = header_offset + len("<!DOCTYPE html><html><body>")
-                frag_end = frag_start + len(fragment)
-                end_all = header_offset + len(full_html)
-
-                header_filled = header.format(
-                    start=header_offset,
-                    end=end_all,
-                    frag_start=frag_start,
-                    frag_end=frag_end,
-                )
-                cf_html_data = header_filled + full_html
-
-                # Register HTML Format if needed
+            deadline = time.monotonic() + max(10.0, 500.0) / 1000.0
+            for delay_ms in _OPEN_RETRY_DELAYS_MS:
                 try:
-                    cf_html_id = win32clipboard.RegisterClipboardFormat("HTML Format")
-                    win32clipboard.SetClipboardData(cf_html_id, cf_html_data)
-                except Exception as exc:
-                    logger.debug("写入HTML格式到剪贴板失败: %s", exc, exc_info=True)
-
-                return True
+                    win32clipboard.OpenClipboard()
+                    break
+                except Exception:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise
+                    time.sleep(min(delay_ms / 1000.0, remaining))
+            else:
+                raise ClipboardOpenError("OpenClipboard failed for write_html")
+            try:
+                cf_html_id = win32clipboard.RegisterClipboardFormat("HTML Format")
+                win32clipboard.SetClipboardData(cf_html_id, html_bytes)
             finally:
                 win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.debug("write_html failed: %s", e, exc_info=True)
-            return False
+        except ClipboardOpenError:
+            raise
+        except Exception:
+            logger.debug("write_html encountered non-fatal clipboard error", exc_info=True)
+        return True
 
 
 # ---------------------------------------------------------------------------

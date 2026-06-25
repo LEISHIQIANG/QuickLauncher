@@ -1,6 +1,5 @@
 from core import ShortcutItem, ShortcutType
 from core.command_exec.profiles import (
-    chain_values,
     command_panel_size,
     command_param_defs,
     command_param_values,
@@ -28,18 +27,6 @@ def test_command_param_defs_and_values_normalize_runtime_overrides():
     ]
     assert defs[0]["remember"] is True
     assert command_param_values(shortcut) == {"host": "prod", "count": "5", "extra": "True"}
-
-
-def test_chain_values_returns_copy_only_for_dicts():
-    shortcut = ShortcutItem(type=ShortcutType.COMMAND)
-    shortcut._chain_values = {"one": "1"}
-
-    values = chain_values(shortcut)
-    values["one"] = "changed"
-
-    assert shortcut._chain_values == {"one": "1"}
-    shortcut._chain_values = ["bad"]
-    assert chain_values(shortcut) == {}
 
 
 def test_merge_runtime_env_accepts_dict_and_text_env():
@@ -109,19 +96,6 @@ def test_command_param_values_empty():
     shortcut = ShortcutItem(type=ShortcutType.COMMAND)
     shortcut.command_params = []
     assert command_param_values(shortcut) == {}
-
-
-def test_chain_values_missing_attr():
-    shortcut = ShortcutItem(type=ShortcutType.COMMAND)
-    if hasattr(shortcut, "_chain_values"):
-        del shortcut._chain_values
-    assert chain_values(shortcut) == {}
-
-
-def test_chain_values_none():
-    shortcut = ShortcutItem(type=ShortcutType.COMMAND)
-    shortcut._chain_values = None
-    assert chain_values(shortcut) == {}
 
 
 def test_merge_runtime_env_empty_base():

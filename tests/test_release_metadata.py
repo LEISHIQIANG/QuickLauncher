@@ -50,7 +50,6 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert "plugin-bundled wxPython is cp312" in script
     assert "--include-data-dir=plugins=plugins" not in script
     assert "--include-data-files=plugins\\PLUGIN_DEV.md=PLUGIN_DEV.md" not in script
-    assert "--include-data-files=modules\\action_chain\\module.json=modules\\action_chain\\module.json" in script
     assert "wxPython==" not in script
     assert "--include-module=wx" not in script
     assert "--include-package=wx" not in script
@@ -70,8 +69,8 @@ def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     assert 'if not defined QL_UPX_EXE set "QL_UPX_EXE=0"' in script
     assert script.count('if not defined QL_UPX_EXE set "QL_UPX_EXE=0"') >= 2
     assert 'if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=1"' in script
-    assert "pillow watchdog qrcode" in script
-    assert "--include-package=watchdog" in script
+    assert "pillow qrcode numpy" in script
+    assert "--include-package=watchdog" not in script
     assert "--include-package=PIL" not in script
     assert "--include-module=PIL.ImageDraw" in script
     assert "--include-module=PIL.ImageFont" in script
@@ -139,11 +138,9 @@ def test_release_artifact_checker_validates_dist_tree(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -166,11 +163,9 @@ def test_release_artifact_checker_hashes_final_portable_zip(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
     portable_zip = tmp_path / f"QuickLauncher_Portable_{APP_VERSION}.zip"
@@ -197,7 +192,6 @@ def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_pa
     (root / "scripts").mkdir()
     (root / "assets").mkdir()
     (root / "hooks").mkdir()
-    (root / "modules" / "action_chain").mkdir(parents=True)
     (root / "plugins" / "screenshot_ocr").mkdir(parents=True)
     (root / ".plugins").mkdir()
 
@@ -221,7 +215,6 @@ def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_pa
     )
     (root / "assets" / "app.ico").write_bytes(b"ico")
     (root / "hooks" / "hooks.dll").write_bytes(b"dll")
-    (root / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     (root / "plugins" / "PLUGIN_DEV.md").write_text("plugin docs\n", encoding="utf-8")
     (root / "plugins" / "screenshot_ocr" / "plugin.json").write_text(
         '{"id": "screenshot_ocr"}\n',
@@ -245,11 +238,9 @@ def test_release_artifact_checker_can_ignore_local_source_runtime_plugins(tmp_pa
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -276,11 +267,9 @@ def test_release_artifact_checker_runs_post_package_smoke(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
     fake_smoke = tmp_path / "fake_smoke.py"
@@ -371,12 +360,10 @@ def test_release_artifact_checker_rejects_unused_avif_runtime(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "PIL").mkdir()
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     (dist / "PIL" / "_avif.pyd").write_bytes(b"unused")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
@@ -399,10 +386,8 @@ def test_release_artifact_checker_fails_missing_hooks(tmp_path):
     dist.mkdir()
     (dist / "assets").mkdir()
     (dist / "plugins").mkdir()
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     installer = tmp_path / f"QuickLauncher_Setup_{APP_VERSION}.exe"
     installer.write_bytes(b"setup")
 
@@ -424,11 +409,9 @@ def test_release_artifact_checker_rejects_pycache(tmp_path):
     (dist / "hooks").mkdir(parents=True)
     (dist / "assets").mkdir()
     (dist / "plugins" / "sample").mkdir(parents=True)
-    (dist / "modules" / "action_chain").mkdir(parents=True)
     (dist / "QuickLauncher.exe").write_bytes(b"x" * 32)
     (dist / "hooks" / "hooks.dll").write_bytes(b"dll")
     (dist / "assets" / "app.ico").write_bytes(b"ico")
-    (dist / "modules" / "action_chain" / "module.json").write_text("{}", encoding="utf-8")
     # Simulate __pycache__ debris that should be caught
     pycache = dist / "plugins" / "sample" / "__pycache__"
     pycache.mkdir()

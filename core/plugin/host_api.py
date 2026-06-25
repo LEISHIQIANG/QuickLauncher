@@ -79,7 +79,6 @@ class PluginAPI:
         self._staged_search_sources: list[str] = []
         self._staged_search_handlers: dict[str, Callable[[str], list[dict]] | None] = {}
         self._registered_modules: dict[str, str] = {}
-        self._registered_chain_processors: list[str] = []
         self._persistent_helpers: dict[str, Any] = {}
         self._persistent_helpers_lock = threading.Lock()
         self._committed = False
@@ -131,8 +130,7 @@ class PluginAPI:
     def register_module(self, module_id: str, manifest_path: str = "module.json") -> bool:
         """Register a host module manifest from this plugin package.
 
-        This is the bridge for future standalone module plugins such as
-        ``quicklauncher.action_chain``. The manifest path is relative to the
+        This is the bridge for standalone module plugins. The manifest path is relative to the
         plugin directory and is validated before the host registry sees it.
         """
 
@@ -156,33 +154,6 @@ class PluginAPI:
         if ok:
             self._registered_modules[str(module_id or "")] = str(module_manifest)
         return bool(ok)
-
-    def register_chain_processor(self, definition: dict, handler: Callable[[dict], CommandResult | dict | str]) -> bool:
-        """Register an action-chain processor supplied by this plugin.
-
-        The processor uses the same schema as built-in action-chain batteries.
-        IDs are automatically namespaced with the plugin id when no dotted id is
-        provided, so ``{"id": "slug"}`` becomes ``my_plugin_slug``.
-        """
-
-        try:
-            from core.chain_processors import register_external_processor
-
-            ok = register_external_processor(
-                definition, handler, owner=self._plugin_id, permissions=frozenset(self._permissions)
-            )
-        except Exception:
-            logger.debug("插件动作链电池注册失败: %s", definition, exc_info=True)
-            return False
-        if ok:
-            processor_id = str(definition.get("id") or "")
-            if "." not in processor_id:
-                safe_owner = re.sub(r"[^a-zA-Z0-9_]+", "_", self._plugin_id).strip("_")
-                safe_id = re.sub(r"[^a-zA-Z0-9_\\.]+", "_", processor_id).strip("_")
-                if safe_owner and safe_id and not safe_id.startswith(f"{safe_owner}_"):
-                    processor_id = f"{safe_owner}_{safe_id}"
-            self._registered_chain_processors.append(processor_id)
-        return ok
 
     def register_command(
         self,
@@ -360,20 +331,28 @@ class PluginAPI:
         if self._committed:
             return True
 
-        def rollback_chain_processors():
+        def rollback_modules():
             try:
-                from core.chain_processors import unregister_external_processors
+                for module_id, manifest_path in self._registered_modules.items():
+                    try:
+                        if self._module_registry is None:
+                            from core.module_registry import get_module_registry
 
-                unregister_external_processors(self._plugin_id)
+                            module_registry = get_module_registry()
+                        else:
+                            module_registry = self._module_registry
+                        module_registry.unregister_external_manifest(module_id, manifest_path)
+                    except Exception:
+                        logger.debug("插件模块回滚失败: %s -> %s", module_id, manifest_path, exc_info=True)
             except Exception:
-                logger.debug("插件动作链电池回滚失败: %s", self._plugin_id, exc_info=True)
-            self._registered_chain_processors.clear()
+                logger.debug("插件模块回滚失败: %s", self._plugin_id, exc_info=True)
+            self._registered_modules.clear()
 
         staged_source_ids: set[str] = set()
         for sid in self._staged_search_sources:
             if sid in staged_source_ids:
                 logger.error("插件 %s 重复注册搜索源: %s", self._plugin_id, sid)
-                rollback_chain_processors()
+                rollback_modules()
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
                 self._staged_search_handlers.clear()
@@ -394,7 +373,7 @@ class PluginAPI:
             if not ok:
                 for written_sid in written_sources:
                     remove_search_source(written_sid, plugin_id=self._plugin_id)
-                rollback_chain_processors()
+                rollback_modules()
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
                 self._staged_search_handlers.clear()
@@ -423,7 +402,7 @@ class PluginAPI:
                     cmd.id,
                     available_ids,
                 )
-                rollback_chain_processors()
+                rollback_modules()
                 self._staged_commands.clear()
                 self._staged_search_sources.clear()
                 self._staged_search_handlers.clear()

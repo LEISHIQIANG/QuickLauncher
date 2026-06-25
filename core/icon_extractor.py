@@ -743,46 +743,36 @@ class IconExtractor:
         if not QT_AVAILABLE or sys.platform != "win32":
             return None
 
-        try:
-            cls._diag(
-                "win32 start path=%s size=%s return_image=%s file_attributes=%s",
-                path,
-                size,
-                return_image,
-                use_file_attributes,
-            )
-            shfi = SHFILEINFO()
-            flags = SHGFI_ICON | SHGFI_LARGEICON
-            attrs = 0
-            if use_file_attributes:
-                flags |= SHGFI_USEFILEATTRIBUTES
-                attrs = FILE_ATTRIBUTE_NORMAL
+        from .native_services import _QLIconEngine
 
-            sh_get_file_info = _SHGETFILEINFO_PROTO(("SHGetFileInfoW", ctypes.windll.shell32))
-            result = sh_get_file_info(
-                path,
-                attrs,
-                ctypes.byref(shfi),
-                ctypes.sizeof(shfi),
-                flags,
-            )
-            if result and shfi.hIcon:
-                hicon = shfi.hIcon
-                try:
-                    icon = cls._hicon_to_pixmap(hicon, size, return_image)
-                    cls._diag(
-                        "win32 result path=%s hicon=%s icon_valid=%s empty=%s",
-                        path,
-                        bool(hicon),
-                        cls._is_valid_icon(icon),
-                        cls._is_visually_empty_icon(icon),
-                    )
-                    if icon and not cls._is_visually_empty_icon(icon):
-                        return icon
-                finally:
-                    cls._destroy_icon(hicon)
-        except (OSError, AttributeError) as e:
-            logger.debug("SHGetFileInfo failed: %s", e)
+        engine = _QLIconEngine.get()
+        native_result = engine.extract_from_file(path, size=size, flags=0x05)
+        if native_result and native_result["pixel_count"] > 0:
+            raw = native_result["rgba"]
+            w, h = native_result["width"], native_result["height"]
+            if not engine.is_empty(raw, w, h):
+                from qt_compat import QImage, Qt
+
+                if return_image:
+                    img = QImage(raw, w, h, w * 4, QImage.Format_ARGB32)
+                    img = img.copy()
+                    if (img.width(), img.height()) != (size, size):
+                        img = img.scaled(
+                            size, size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation  # type: ignore[attr-defined]
+                        )
+                    return img
+                else:
+                    from qt_compat import QPixmap
+
+                    img = QImage(raw, w, h, w * 4, QImage.Format_ARGB32)
+                    pm = QPixmap.fromImage(img)
+                    if (pm.width(), pm.height()) != (size, size):
+                        pm = pm.scaled(
+                            size, size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation  # type: ignore[attr-defined]
+                        )
+                    if not cls._is_valid_icon(pm):
+                        return None
+                    return pm
 
         if not use_file_attributes:
             resource_icon = cls._extract_from_resource(

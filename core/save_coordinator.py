@@ -24,6 +24,7 @@ import copy
 import json
 import logging
 import os
+import sys
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -41,6 +42,32 @@ logger = logging.getLogger(__name__)
 
 _HISTORY_DEFAULT = "\u914d\u7f6e\u53d8\u66f4"
 _MAX_DELAYED_SAVE_RETRIES = 3
+
+
+def _sync_directory(path: Path) -> None:
+    """Flush the directory entry metadata to disk (Windows only)."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.CreateFileW(
+        str(path),
+        0x40000000,  # GENERIC_WRITE
+        0x00000003,  # FILE_SHARE_READ | FILE_SHARE_WRITE
+        None,
+        0x00000004,  # OPEN_ALWAYS
+        0x02000000,  # FILE_FLAG_BACKUP_SEMANTICS
+        None,
+    )
+    if handle and handle != wintypes.HANDLE(-1).value:
+        try:
+            kernel32.FlushFileBuffers(handle)
+        except Exception:
+            logger.debug("FlushFileBuffers on data file handle failed (non-fatal)", exc_info=True)
+        finally:
+            kernel32.CloseHandle(handle)
 
 
 class SaveCoordinator:
@@ -297,8 +324,11 @@ class SaveCoordinator:
 
                 with open(temp_file, "w", encoding="utf-8") as f:
                     f.write(payload)
+                    f.flush()
+                    os.fsync(f.fileno())
 
                 dm._replace_data_file(temp_file)
+                _sync_directory(dm.data_file.parent)
                 write_success = True
 
             except OSError as e:

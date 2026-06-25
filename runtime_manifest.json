@@ -8,8 +8,7 @@
   "versions": {
     "config_schema": 1,
     "plugin_sdk": "1.0",
-    "plugin_protocol": "1.0",
-    "action_chain_schema": 1
+    "plugin_protocol": "1.0"
   },
   "entry_modes": {
     "gui": "main.py",
@@ -33,11 +32,13 @@
     "services",
     "ui"
   ],
-  "external_packages": ["numpy", "watchdog"],
+  "external_packages": ["numpy"],
   "hidden_imports": [
     "_hashlib",
     "_ssl",
     "ctypes.wintypes",
+    "encodings.idna",
+    "stringprep",
     "PIL.BmpImagePlugin",
     "PIL.GifImagePlugin",
     "PIL.IcoImagePlugin",
@@ -48,10 +49,10 @@
     "PIL.JpegImagePlugin",
     "PIL.PngImagePlugin",
     "PIL.WebPImagePlugin",
-    "PyQt5.QtSvg",
-    "psutil",
     "pynput.keyboard._win32",
     "pynput.mouse._win32",
+    "PyQt5.QtSvg",
+    "psutil",
     "pythoncom",
     "qrcode",
     "ssl",
@@ -68,8 +69,17 @@
   "data_files": [
     {"source": "assets", "target": "assets", "owner": "ui"},
     {"source": "third_party_licenses.json", "target": "third_party_licenses.json", "owner": "release-engineering"},
-    {"source": "modules/action_chain/module.json", "target": "modules/action_chain/module.json", "owner": "action-chain"},
-    {"source": "hooks/hooks.dll", "target": "hooks/hooks.dll", "owner": "windows-platform"}
+    {"source": "hooks/hooks.dll", "target": "hooks/hooks.dll", "owner": "windows-platform"},
+    {"source": "native/QLcrypto/QLcrypto.dll", "target": "native/QLcrypto.dll", "owner": "crypto-platform"},
+    {"source": "native/QLsearch/QLsearch.dll", "target": "native/QLsearch.dll", "owner": "search-platform"},
+    {"source": "native/QLwindow/QLwindow.dll", "target": "native/QLwindow.dll", "owner": "windows-platform"},
+    {"source": "native/QLwatch/QLwatch.dll", "target": "native/QLwatch.dll", "owner": "windows-platform"},
+    {"source": "native/QLvalidate/QLvalidate.dll", "target": "native/QLvalidate.dll", "owner": "network-security"},
+    {"source": "native/QLautostart/QLautostart.dll", "target": "native/QLautostart.dll", "owner": "windows-platform"},
+    {"source": "native/QLupdate/QLupdate.dll", "target": "native/QLupdate.dll", "owner": "update-system"},
+    {"source": "native/QLclipboard/QLclipboard.dll", "target": "native/QLclipboard.dll", "owner": "windows-platform"},
+    {"source": "native/QLicon/QLicon.dll", "target": "native/QLicon.dll", "owner": "ui-platform"},
+    {"source": "native/QLshell/QLshell.dll", "target": "native/QLshell.dll", "owner": "windows-platform"}
   ],
   "qt_plugins": ["platforms"],
   "plugin_storage": {

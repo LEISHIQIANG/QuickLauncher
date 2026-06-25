@@ -78,7 +78,6 @@ def _shortcut_search_text(shortcut: ShortcutItem) -> str:
 def _create_type_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
     from .icon_grid_palette import (
         BATCH_LAUNCH_BG,
-        CHAIN_BG,
         COMMAND_BG,
         DEFAULT_FALLBACK_BG,
         DEFAULT_FALLBACK_TEXT,
@@ -95,7 +94,6 @@ def _create_type_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
         ShortcutType.URL: (QColor(URL_BG), "W"),
         ShortcutType.HOTKEY: (QColor(HOTKEY_BG), "K"),
         ShortcutType.COMMAND: (QColor(COMMAND_BG), ">"),
-        ShortcutType.CHAIN: (QColor(CHAIN_BG), "C"),
         ShortcutType.BATCH_LAUNCH: (QColor(BATCH_LAUNCH_BG), "B"),
     }
     bg, text = palette.get(shortcut.type, (QColor(DEFAULT_FALLBACK_BG), (shortcut.name or "?")[:1]))
@@ -1149,12 +1147,8 @@ class BatchLaunchDialog(BaseDialog):
         shortcut.type = ShortcutType.BATCH_LAUNCH
         shortcut.name = (self.batch_name_edit.text().strip() or tr("批量启动"))[:6]
         shortcut.batch_launch_steps = self._build_batch_launch_steps()
-        shortcut.chain_steps = []
-        shortcut.chain_canvas = {}
-        shortcut.chain_result_window = "none"
         shortcut.module_id = BATCH_LAUNCH_MODULE_ID
         shortcut.module_version = BATCH_LAUNCH_MODULE_VERSION
-        shortcut.chain_data = {}
         shortcut.icon_path = self._custom_icon_path
         shortcut.icon_invert_light = self.batch_invert_light_cb.isChecked()
         shortcut.icon_invert_dark = self.batch_invert_dark_cb.isChecked()

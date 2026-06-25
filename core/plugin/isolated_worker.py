@@ -55,8 +55,6 @@ class RemotePluginAPI:
         self.command_handlers: dict[str, Any] = {}
         self.search_sources: list[dict[str, Any]] = []
         self.search_handlers: dict[str, Any] = {}
-        self.chain_processors: list[dict[str, Any]] = []
-        self.chain_handlers: dict[str, Any] = {}
         self.modules: list[dict[str, str]] = []
 
     @property
@@ -83,14 +81,6 @@ class RemotePluginAPI:
     def register_search_source(self, source_id: str, handler=None, **kwargs) -> bool:
         self.search_handlers[source_id] = handler
         self.search_sources.append({"id": source_id, **_json_value(kwargs)})
-        return True
-
-    def register_chain_processor(self, definition: dict[str, Any], handler) -> bool:
-        processor_id = str(definition.get("id") or "")
-        if not processor_id:
-            return False
-        self.chain_handlers[processor_id] = handler
-        self.chain_processors.append(_json_value(definition))
         return True
 
     def register_module(self, module_id: str, manifest_path: str = "module.json") -> bool:
@@ -201,12 +191,6 @@ class IsolatedPluginWorker:
             source_id = str(payload.get("source_id") or "")
             handler = self.api.search_handlers.get(source_id)
             return {"results": _json_value(handler(str(payload.get("query") or ""))) if callable(handler) else []}
-        if operation == "execute_processor":
-            processor_id = str(payload.get("processor_id") or "")
-            handler = self.api.chain_handlers.get(processor_id)
-            if not callable(handler):
-                raise KeyError(processor_id)
-            return {"result": _json_value(handler(dict(payload.get("args") or {})))}
         raise ValueError(f"unsupported operation: {operation}")
 
     def _load(self, request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -235,7 +219,6 @@ class IsolatedPluginWorker:
         return {
             "commands": self.api.commands,
             "search_sources": self.api.search_sources,
-            "chain_processors": self.api.chain_processors,
             "modules": self.api.modules,
         }
 

@@ -20,9 +20,6 @@ hiddenimports = [
     'ui.config_window.folder_panel',
     'ui.config_window.icon_grid',
     'ui.config_window.theme_helper',
-    'modules.action_chain.entry',
-    'modules.action_chain.api',
-    'modules.action_chain.host_contracts',
     # core.commands 在 1.6.3.2 拆分为 10 个子模块，shim 经相对导入
     # 触发，PyInstaller 静态分析在 optimize=2 下容易漏包，补充到这里
     # 防止 "内置命令管理" 列表为空。
@@ -75,7 +72,6 @@ a = Analysis(
     datas=datas + [
         ('../assets', 'assets'),
         ('../plugins', 'plugins'),
-        ('../modules/action_chain/module.json', 'modules/action_chain'),
         ('../qt_compat.py', '.')
     ],
     hiddenimports=hiddenimports,

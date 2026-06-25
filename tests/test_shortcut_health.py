@@ -255,25 +255,3 @@ def test_health_reports_missing_lnk_target(tmp_path, monkeypatch):
     issue_types = {issue.issue_type for issue in check_shortcuts(data)}
 
     assert "lnk_target_missing" in issue_types
-
-
-def test_health_reports_chain_reference_problems():
-    normal = ShortcutItem(id="normal", name="Normal", type=ShortcutType.FILE)
-    nested = ShortcutItem(id="nested", name="Nested", type=ShortcutType.CHAIN)
-    chain = ShortcutItem(id="chain", name="Chain", type=ShortcutType.CHAIN)
-    chain.chain_steps = [
-        {"shortcut_id": ""},
-        {"shortcut_id": "missing"},
-        {"shortcut_id": "chain"},
-        {"shortcut_id": "nested"},
-        {"shortcut_id": "normal"},
-    ]
-    data = AppData(folders=[Folder(id="f", name="Folder", items=[normal, nested, chain])])
-
-    issue_types = {issue.issue_type for issue in check_shortcuts(data)}
-
-    assert "chain_step_missing_id" in issue_types
-    assert "chain_missing_reference" in issue_types
-    assert "chain_self_reference" in issue_types
-    assert "chain_nested" in issue_types
-    assert "chain_empty" in issue_types

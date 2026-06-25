@@ -135,6 +135,7 @@ def create_param_widget(
                 combo.setCurrentIndex(idx)
         if getattr(param, "help", ""):
             combo.setToolTip(str(param.help))
+        panel._style_param_combobox(combo)
         return combo
     if param_type == "bool":
         checkbox = QCheckBox("")
@@ -165,6 +166,7 @@ def create_param_widget(
             row.setToolTip(str(param.help))
         button = QPushButton("选择")
         panel._neutralize_button_default(button)
+        panel._style_param_file_button(button)
 
         def _choose():
             if param_type == "folder":

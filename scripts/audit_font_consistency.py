@@ -31,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TARGETS = ("ui",)
 
 # Whitelisted size ladder (§1.4: 10/11/12/13/14/15/16/18/20/24/28/32/40).
-# 9 px is allowed for tiny badge / status-pill labels (chain module
+# 9 px is allowed for tiny badge / status-pill labels (icon-grid folder
 # badges, command profile toggles) where the standard ladder's 10 px
 # minimum would crowd the surrounding layout. 26 px and 48 px are
 # used for the support page "click burst" animation and the welcome

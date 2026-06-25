@@ -629,7 +629,6 @@ class PluginManager:
         info.registered_commands = list(api._registered_ids)
         info.registered_search_sources = pending_search_sources
         info.registered_modules = dict(getattr(api, "_registered_modules", {}) or {})
-        info.registered_chain_processors = list(getattr(api, "_registered_chain_processors", []) or [])
         self._loaded_modules[m.id] = loader
         self._active_apis[m.id] = api
 
@@ -702,14 +701,6 @@ class PluginManager:
             except (ImportError, AttributeError):
                 logger.debug("插件模块反注册失败: %s", module_id, exc_info=True)
         info.registered_modules.clear()
-        try:
-            from core.chain_processors import unregister_external_processors
-
-            unregister_external_processors(plugin_id)
-        except (ImportError, AttributeError):
-            logger.debug("插件动作链电池反注册失败: %s", plugin_id, exc_info=True)
-        info.registered_chain_processors.clear()
-        # Clean up search sources
         for sid in info.registered_search_sources:
             remove_search_source(sid, plugin_id=plugin_id)
         info.registered_search_sources.clear()
@@ -763,7 +754,6 @@ class PluginManager:
                 )
                 failed_info.registered_commands.clear()
                 failed_info.registered_search_sources.clear()
-                failed_info.registered_chain_processors.clear()
             self._save_enabled()
             logger.info("Plugin reload failed and plugin was left in error state: %s", plugin_id)
         return ok

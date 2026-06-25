@@ -11,6 +11,7 @@ from core.data_models import ShortcutItem
 from core.i18n import tr
 from qt_compat import (
     QApplication,
+    QComboBox,
     QEvent,
     QFont,
     QFormLayout,
@@ -243,6 +244,7 @@ class CommandPanelWindow(ThemedToolWindow):
         self.param_layout = QFormLayout(self.param_container)
         self.param_layout.setContentsMargins(0, 0, sp(4), 0)
         self.param_layout.setSpacing(sp(6))
+        self.param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.param_container.setVisible(False)
         self.content_layout.addWidget(self.param_container)
 
@@ -671,14 +673,152 @@ class CommandPanelWindow(ThemedToolWindow):
             )
         )
 
+    def _style_param_combobox(self, combo):
+        text, _, focus_border, bg = self._command_input_colors()
+
+        if self._theme == "dark":
+            border = "rgba(255, 255, 255, 0.15)"
+            hover_border = "#0A84FF"
+            arrow = (
+                "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'"
+                " width='10' height='10' viewBox='0 0 10 10'>"
+                "<path d='M2.5 3.5L5 6L7.5 3.5' fill='none' stroke='white'"
+                " stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+            )
+        else:
+            border = "rgba(0, 0, 0, 0.12)"
+            hover_border = "#007AFF"
+            arrow = (
+                "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'"
+                " width='10' height='10' viewBox='0 0 10 10'>"
+                "<path d='M2.5 3.5L5 6L7.5 3.5' fill='none' stroke='black'"
+                " stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+            )
+
+        combo.setStyleSheet(
+            scale_qss(
+                f"""
+            QComboBox {{
+                background-color: {bg};
+                border: 1px solid {border};
+                border-radius: 8px;
+                padding: 0 8px;
+                padding-right: 25px;
+                color: {text};
+                min-height: 28px;
+                font-size: 12px;
+            }}
+            QComboBox:hover {{
+                border: 1px solid {hover_border};
+            }}
+            QComboBox:focus {{
+                border: 1px solid {focus_border};
+            }}
+            QComboBox::drop-down {{
+                border: none; border-radius: 0;
+                width: 20px;
+                subcontrol-position: center right;
+                subcontrol-origin: padding;
+                right: 5px;
+            }}
+            QComboBox::down-arrow {{
+                image: url("{arrow}");
+                width: 10px;
+                height: 10px;
+            }}
+        """
+            )
+        )
+
+        if not getattr(combo, "_popup_override_set", False):
+            selection_bg = selection_bg_qss(self._theme)
+            selection_text = selection_text_qss(self._theme)
+            selected_border = "rgba(10, 132, 255, 0.42)" if self._theme == "dark" else "rgba(0, 122, 255, 0.22)"
+
+            def _show_popup():
+                menu = PopupMenu(theme=self._theme, radius=12, parent=combo)
+                current = combo.currentText()
+                for i in range(combo.count()):
+                    item_text = combo.itemText(i)
+
+                    def _make_cb(idx):
+                        def cb():
+                            combo.setCurrentIndex(idx)
+
+                        return cb
+
+                    btn = menu.add_action(item_text, _make_cb(i))
+                    extra = "QPushButton{ padding:3px 12px; min-height:16px; }"
+                    if item_text == current:
+                        extra += (
+                            f"QPushButton{{ background:{selection_bg}; color:{selection_text};"
+                            f" border:1px solid {selected_border}; }}"
+                        )
+                    btn.setStyleSheet(btn.styleSheet() + extra)
+                pos = combo.mapToGlobal(combo.rect().bottomLeft())
+                menu.setMinimumWidth(combo.width())
+                menu.popup(pos)
+
+            combo.showPopup = _show_popup
+            combo._popup_override_set = True
+
+    def _style_param_file_button(self, button):
+        if self._theme == "dark":
+            btn_bg = "rgba(255, 255, 255, 0.12)"
+            btn_border = "rgba(255, 255, 255, 0.18)"
+            btn_hover = "rgba(10, 132, 255, 0.82)"
+            btn_text = "rgba(255, 255, 255, 0.85)"
+            disabled = "rgba(255, 255, 255, 0.28)"
+        else:
+            btn_bg = "rgba(0, 0, 0, 0.03)"
+            btn_border = "rgba(0, 0, 0, 0.06)"
+            btn_hover = "rgba(0, 122, 255, 0.82)"
+            btn_text = "rgba(28, 28, 30, 0.85)"
+            disabled = "rgba(60, 60, 67, 0.35)"
+
+        button.setStyleSheet(
+            scale_qss(
+                f"""
+            QPushButton {{
+                font-size: 11px;
+                padding: 0 10px;
+                background: {btn_bg};
+                border: 1px solid {btn_border};
+                border-radius: 6px;
+                color: {btn_text};
+                min-height: 28px;
+            }}
+            QPushButton:hover {{
+                background-color: {btn_hover};
+                color: white;
+                border: 1px solid {btn_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(0, 90, 200, 0.92);
+                color: white;
+            }}
+            QPushButton:disabled {{
+                color: {disabled};
+                background: transparent;
+                border: 1px solid {btn_border};
+            }}
+        """
+            )
+        )
+
     def _style_param_inputs(self):
         for _param, widget in self._param_widgets.values():
             if isinstance(widget, QLineEdit):
                 self._style_param_input(widget)
                 continue
+            if isinstance(widget, QComboBox):
+                self._style_param_combobox(widget)
+                continue
             edit = widget.findChild(QLineEdit) if hasattr(widget, "findChild") else None
             if edit is not None:
                 self._style_param_input(edit)
+            for btn in widget.findChildren(QPushButton) if hasattr(widget, "findChildren") else []:
+                self._style_param_file_button(btn)
 
     def _style_status_label(self):
         kind = str(self.status_indicator._kind)

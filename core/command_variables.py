@@ -84,8 +84,6 @@ def _is_known_variable_spec(spec: str, *, include_url: bool = False) -> bool:
         return True
     if base_key.startswith("param:") and base[6:].strip():
         return True
-    if base_key.startswith("chain:") and base[6:].strip():
-        return True
     return include_url and base_key == "url"
 
 
@@ -275,9 +273,7 @@ def find_unquoted_external_command_variables(text: str) -> list[str]:
         base, should_quote = _split_spec(spec)
         base_key = base.lower()
         root = base_key.split(":", 1)[0]
-        is_external = (
-            root in _EXTERNAL_INPUT_VARIABLES or base_key.startswith("param:") or base_key.startswith("chain:")
-        )
+        is_external = root in _EXTERNAL_INPUT_VARIABLES or base_key.startswith("param:")
         if is_external and not should_quote and spec not in seen:
             seen.add(spec)
             unsafe.append(spec)
@@ -296,12 +292,7 @@ def is_value_only_variable_command(text: str) -> bool:
         return False
     base, _ = _split_spec(match.group(1).strip())
     base_key = base.lower()
-    return (
-        base_key in _VALUE_ONLY_VARIABLES
-        or base_key.startswith("input:")
-        or base_key.startswith("param:")
-        or base_key.startswith("chain:")
-    )
+    return base_key in _VALUE_ONLY_VARIABLES or base_key.startswith("input:") or base_key.startswith("param:")
 
 
 def resolve_command_variables(
@@ -309,7 +300,6 @@ def resolve_command_variables(
     *,
     input_values: dict[str, str] | None = None,
     param_values: dict[str, str] | None = None,
-    chain_values: dict[str, str] | None = None,
     selected_files: list[str] | None = None,
     selected_text_provider: Callable[[], str] | None = None,
     clipboard_provider: Callable[[], str] | None = None,
@@ -335,7 +325,6 @@ def resolve_command_variables(
     now = datetime.now()
     inputs = input_values or {}
     params = param_values or {}
-    chain = chain_values or {}
     files = [_sanitize_external_input(str(path or "")) for path in (selected_files or []) if str(path or "")]
     clipboard_reader = clipboard_provider or read_clipboard_text
 
@@ -383,11 +372,6 @@ def resolve_command_variables(
             if not name:
                 raise CommandVariableError("变量名称无效: {{" + spec + "}}")
             value = _sanitize_external_input(_lookup_named_value(params, name, "参数"))
-        elif base_key.startswith("chain:"):
-            name = base[6:].strip()
-            if not name:
-                raise CommandVariableError("变量名称无效: {{" + spec + "}}")
-            value = _sanitize_external_input(_lookup_named_value(chain, name, "动作链变量"))
         else:
             if not strict_unknown:
                 return match.group(0)  # type: ignore[no-any-return]

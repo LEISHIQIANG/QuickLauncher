@@ -1,5 +1,6 @@
 """Background update checker."""
 
+import encodings.idna  # noqa: F401 — force codec registration for Nuitka
 import json
 import logging
 import os

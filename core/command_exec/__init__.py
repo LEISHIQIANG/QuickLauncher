@@ -43,7 +43,6 @@ from .preflight import (
     requires_confirmation,
 )
 from .profiles import (
-    chain_values,
     command_panel_size,
     command_param_defs,
     command_param_values,
@@ -60,7 +59,6 @@ __all__ = [
     "build_capture_error_result",
     "build_capture_payload",
     "build_capture_success_result",
-    "chain_values",
     "cleanup_file_later",
     "command_panel_size",
     "command_param_defs",

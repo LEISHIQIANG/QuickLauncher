@@ -53,21 +53,19 @@ def test_batch_launch_reports_missing_reference():
     assert result.payload["items"][0]["shortcut_id"] == "missing"
 
 
-def test_batch_launch_rejects_nested_batch_or_chain():
+def test_batch_launch_rejects_nested_batch():
     nested = ShortcutItem(id="nested", name="Nested", type=ShortcutType.BATCH_LAUNCH)
-    chain = ShortcutItem(id="chain", name="Chain", type=ShortcutType.CHAIN)
     batch = ShortcutItem(
         id="batch",
         name="Batch",
         type=ShortcutType.BATCH_LAUNCH,
         batch_launch_steps=[
             {"shortcut_id": "nested", "stop_on_error": False},
-            {"shortcut_id": "chain", "stop_on_error": False},
         ],
     )
 
-    result = execute_batch_launch(batch, _Data([nested, chain, batch]))
+    result = execute_batch_launch(batch, _Data([nested, batch]))
 
     assert result.success is False
-    assert [item["status"] for item in result.payload["items"]] == ["failed", "failed"]
+    assert [item["status"] for item in result.payload["items"]] == ["failed"]
     assert all("嵌套" in item["detail"] for item in result.payload["items"])

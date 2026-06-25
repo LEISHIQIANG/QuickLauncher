@@ -22,11 +22,11 @@ def resolve_existing(path: str | os.PathLike[str]) -> Path:
 
 
 def assert_safe_user_path(path: str | os.PathLike[str], *, operation: str = "file operation") -> Path:
-    """Reject paths that should never be modified by user-authored chains.
+    """Reject paths that should never be modified by user-authored commands.
 
-    The action-chain file processors accept values from variables and plugin
-    outputs, so destructive/write operations need a host-side boundary even
-    when the UI has already shown risk metadata.
+    File processors accept values from variables and plugin outputs, so
+    destructive/write operations need a host-side boundary even when the UI
+    has already shown risk metadata.
     """
     raw = str(path or "").strip().strip('"')
     if not raw:

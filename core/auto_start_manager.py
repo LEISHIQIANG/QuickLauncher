@@ -1317,18 +1317,20 @@ def enable_auto_start(
     arguments: str = "",
     working_dir: str = "",
 ) -> tuple[bool, str]:
-    """Enable auto-start using the account-appropriate path."""
+    """Enable auto-start using the native QLautostart.dll."""
     if exe_path:
         target_path, target_args, target_cwd = _normalize_launch_spec(exe_path, arguments, working_dir)
     else:
         target_path, target_args, target_cwd = _get_app_launch_spec()
 
-    if not _is_current_account_admin():
-        logger.info("非管理员账号启用自启动：直接创建当前用户任务")
-        return _enable_auto_start_direct(target_path, target_args, target_cwd)
+    from .native_services import _QLAutostartEngine
 
-    logger.info("管理员账号启用自启动：通过 helper 创建中转降权任务")
-    return _run_elevated_helper(HELPER_ACTION_ENABLE, target_path, target_args, target_cwd)
+    engine = _QLAutostartEngine.get()
+    is_admin = _is_current_account_admin()
+    rc, label = engine.enable(target_path, target_args, target_cwd, is_admin)
+    if rc == 0:
+        return True, "task_scheduler"
+    return False, label
 
 
 def _disable_auto_start_direct() -> tuple[bool, str]:
@@ -1352,13 +1354,15 @@ def _disable_auto_start_direct() -> tuple[bool, str]:
 
 
 def disable_auto_start() -> tuple[bool, str]:
-    """Disable auto-start using the account-appropriate path."""
-    if not _is_current_account_admin():
-        logger.info("非管理员账号禁用自启动：直接删除当前用户任务")
-        return _disable_auto_start_direct()
+    """Disable auto-start using the native QLautostart.dll."""
+    from .native_services import _QLAutostartEngine
 
-    logger.info("管理员账号禁用自启动：通过 helper 清理任务")
-    return _run_elevated_helper(HELPER_ACTION_DISABLE)
+    engine = _QLAutostartEngine.get()
+    is_admin = _is_current_account_admin()
+    rc, label = engine.disable(is_admin)
+    if rc == 0:
+        return True, "task_scheduler"
+    return False, label
 
 
 def is_auto_start_enabled() -> bool:

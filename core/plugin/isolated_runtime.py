@@ -102,7 +102,6 @@ class IsolatedPluginRuntime:
             info.registered_commands = list(host_api._registered_ids)
             info.registered_search_sources = staged_search_sources
             info.registered_modules = dict(host_api._registered_modules)
-            info.registered_chain_processors = list(host_api._registered_chain_processors)
             self._workers[manifest.id] = worker
         except Exception:
             worker.close()
@@ -153,22 +152,6 @@ class IsolatedPluginRuntime:
             host_api.register_search_source(source_id, search)
             if len(host_api._staged_search_sources) == before:
                 raise RuntimeError(f"isolated plugin search registration rejected: {source_id}")
-
-        for definition in list(response.get("chain_processors") or []):
-            if not isinstance(definition, dict):
-                continue
-            processor_id = str(definition.get("id") or "")
-
-            def processor(args: dict[str, Any], processor_id: str = processor_id):
-                result = worker.request(
-                    {"operation": "execute_processor", "processor_id": processor_id, "args": dict(args or {})},
-                    timeout=30.0,
-                )
-                self._raise_for_error(result)
-                return result.get("result")
-
-            if not host_api.register_chain_processor(definition, processor):
-                raise RuntimeError(f"isolated plugin processor registration rejected: {processor_id}")
 
         for descriptor in list(response.get("modules") or []):
             if isinstance(descriptor, dict):

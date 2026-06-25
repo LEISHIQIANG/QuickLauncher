@@ -467,20 +467,5 @@ def test_command_dialog_line_edits_do_not_double_scale_fonts(qapp):
         qapp.processEvents()
         set_scale(100)
 
-
-def test_chain_node_property_panel_styles_do_not_double_scale(qapp):
-    from ui.config_window.chain_canvas import NodePropertyPanel
-    from ui.utils.ui_scale import set_scale
-
-    set_scale(150)
-    panel = NodePropertyPanel()
-    try:
-        panel._apply_theme()
-
-        assert "font-size: 20px" in panel.group_box.styleSheet()
-        assert "font-size: 30px" not in panel.group_box.styleSheet()
-        assert "font-size: 24px" not in panel.source_btn.styleSheet()
-    finally:
-        panel.deleteLater()
         qapp.processEvents()
         set_scale(100)

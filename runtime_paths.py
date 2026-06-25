@@ -75,3 +75,16 @@ def config_dir() -> Path:
 
 def resource_path(*parts: str) -> Path:
     return app_root().joinpath(*parts)
+
+
+def native_dir() -> Path:
+    """Return the directory holding native acceleration DLLs.
+
+    In packaged runs DLLs are co-located under ``<app_root>/native/``.
+    During development the source ``native/`` tree is used so freshly built
+    DLLs are picked up without copying.
+    """
+    source_native = Path(__file__).resolve(strict=False).parent / "native"
+    if source_native.is_dir():
+        return source_native
+    return app_root() / "native"

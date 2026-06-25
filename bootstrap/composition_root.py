@@ -16,12 +16,7 @@ from core.data_manager import DataManager
 from core.executor_manager import shutdown_all_executors
 from core.module_registry import ModuleRegistry
 from core.plugin_manager import PluginManager
-from core.shortcut_chain_exec import (
-    configure_module_registry,
-    configure_shortcut_executor_provider,
-)
 from core.shortcut_executor import ShortcutExecutor
-from ui.adapters.action_chain_editor import open_action_chain_editor
 from ui.adapters.tray_ui_actions import TrayUIActions
 from ui.runtime_settings import configure_settings_provider
 from ui.styles.theme_controller import configure_theme_provider
@@ -59,17 +54,12 @@ def build_app_context(tray_app: Any, server: Any, instance_mutex: Any) -> AppCon
     ui_actions = TrayUIActions(tray_app)
     tray_app.ui_actions = ui_actions
     registry = tray_app.command_registry
-    module_registry = tray_app.module_registry
-    configure_module_registry(module_registry)
-    configure_shortcut_executor_provider(lambda: ShortcutExecutor)
     configure_theme_provider(lambda: getattr(tray_app.data_manager.get_settings(), "theme", "dark"))
     configure_settings_provider(tray_app.data_manager.get_settings)
     ShortcutExecutor.configure_services(
         data_manager=tray_app.data_manager,
         ui_actions=ui_actions,
     )
-    module_registry.set_action_chain_editor(open_action_chain_editor)
-
     lifecycle = LifecycleManager()
     lifecycle.register("executors", shutdown_all_executors)
     lifecycle.register("instance-mutex", lambda: release_instance_mutex(instance_mutex))

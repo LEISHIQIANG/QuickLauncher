@@ -53,8 +53,6 @@ CI 会在 push 和 pull request 上运行：
      tests/test_pinyin_search.py `
      tests/test_exception_logging_policy.py `
      tests/test_popup_search_ui.py `
-     tests/test_chain_registry_processors.py `
-     tests/test_processor_loader.py `
      tests/test_path_security.py `
      tests/test_update_trust.py
    ```
@@ -196,6 +194,6 @@ git push origin main
 - `core/version.py`：版本。
 - `core/data_models.py`：快捷方式类型和设置字段。
 - `core/builtin_command_catalog.py`：内置命令。
-- `core/chain/registry.py`：动作链处理器。
+- `core/batch_launch_exec.py`：批量启动运行时。
 - `.plugins/*.qlzip`：官方插件包。
 - `scripts/release_gate.py` 和 `.github/workflows/ci.yml`：验证门禁。

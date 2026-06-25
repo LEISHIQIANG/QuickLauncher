@@ -46,7 +46,6 @@ WHITELIST_FILES = {
     "ui/command_icon_renderer.py",
     "ui/utils/default_icon_renderer.py",
     "ui/launcher_popup/popup_renderer.py",
-    "ui/config_window/chain_canvas.py",
     "ui/utils/lru_cache.py",
     "ui/utils/pixel_snap.py",
     "ui/utils/animations.py",
@@ -58,7 +57,6 @@ WHITELIST_FILES = {
     # glass-pipeline palette tables stay as literals. Token derivation
     # is not appropriate for these.
     "ui/config_window/action_button_icons.py",
-    "ui/config_window/chain_canvas_palette.py",
     "ui/config_window/command_dialog_icon.py",
     "ui/config_window/icon_grid_palette.py",
     "ui/config_window/macro_palette.py",

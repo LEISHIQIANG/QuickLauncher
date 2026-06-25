@@ -17,43 +17,6 @@ from .shortcut_types import (
     user32,
 )
 
-_pynput_Key = None
-_pynput_KeyboardController = None
-_keyboard_instance = None
-HAS_PYNPUT = False
-
-
-def _import_pynput():
-    """Lazy pynput import — avoids blocking module-level init on headless CI."""
-    global HAS_PYNPUT, _pynput_Key, _pynput_KeyboardController
-    if HAS_PYNPUT or _pynput_Key is not None:
-        return
-    try:
-        from pynput.keyboard import Controller as KC
-        from pynput.keyboard import Key as K
-
-        _pynput_Key = K
-        _pynput_KeyboardController = KC
-        HAS_PYNPUT = True
-    except (ImportError, AttributeError):
-        HAS_PYNPUT = False
-
-
-def Key():
-    _import_pynput()
-    return _pynput_Key
-
-
-def keyboard():
-    global _keyboard_instance
-    _import_pynput()
-    if _pynput_KeyboardController is None:
-        return None
-    if _keyboard_instance is None:
-        _keyboard_instance = _pynput_KeyboardController()
-    return _keyboard_instance
-
-
 logger = logging.getLogger(__name__)
 ShortcutExecutor = None
 
@@ -612,20 +575,3 @@ class HotkeyExecutionMixin:
         finally:
             if acquired:
                 ShortcutExecutor._hotkey_lock.release()  # type: ignore[attr-defined]
-
-    @staticmethod
-    def _get_pynput_key(key_str: str):
-        """将字符串转换为 pynput 键"""
-        key_lower = key_str.lower().strip()
-
-        ShortcutExecutor._ensure_pynput_keys()  # type: ignore[attr-defined]
-        # 检查特殊键
-        if key_lower in ShortcutExecutor.PYNPUT_SPECIAL_KEYS:  # type: ignore[attr-defined]
-            return ShortcutExecutor.PYNPUT_SPECIAL_KEYS[key_lower]  # type: ignore[attr-defined]
-
-        # 单个字符
-        if len(key_str) == 1:
-            return key_str.lower()
-
-        logger.warning(f"未知键: {key_str}")
-        return None

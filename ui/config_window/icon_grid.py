@@ -87,7 +87,6 @@ from .icon_grid_palette import (
     CELL_BORDER_LIGHT,
     CELL_HOVER_DARK,
     CELL_HOVER_LIGHT,
-    CHAIN_BG,
     COMMAND_BG,
     COMMAND_TEXT,
     DEFAULT_FALLBACK_BG,
@@ -729,8 +728,6 @@ class IconWidget(QFrame):
             pixmap = self._create_command_icon()
         elif self.shortcut.type == ShortcutType.BATCH_LAUNCH:
             pixmap = self._create_batch_launch_icon()
-        elif self.shortcut.type == ShortcutType.CHAIN:
-            pixmap = self._create_chain_icon()
         else:
             pixmap = None
 
@@ -751,7 +748,6 @@ class IconWidget(QFrame):
             ShortcutType.URL,
             ShortcutType.COMMAND,
             ShortcutType.BATCH_LAUNCH,
-            ShortcutType.CHAIN,
         }:
             first_char = ""
         return (item_type, int(self.icon_size), first_char)
@@ -847,29 +843,6 @@ class IconWidget(QFrame):
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, ">_")
-
-        painter.end()
-        return pixmap
-
-    def _create_chain_icon(self) -> QPixmap:
-        size = self.icon_size
-        pixmap = create_pixmap(size, size)
-        pixmap.fill(QtCompat.transparent)
-
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-
-        painter.setBrush(QColor(CHAIN_BG))
-        painter.setPen(QtCompat.NoPen)
-        margin = size // 8
-        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-
-        painter.setPen(QColor(ICON_TEXT))
-        font = QFont("Segoe UI Symbol")
-        font.setPixelSize(max(1, size // 3))
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⛓")
 
         painter.end()
         return pixmap
@@ -1109,7 +1082,6 @@ class IconGrid(QWidget):
     add_hotkey_requested = pyqtSignal()
     add_url_requested = pyqtSignal()
     add_command_requested = pyqtSignal()
-    add_chain_requested = pyqtSignal()
     add_macro_requested = pyqtSignal()
 
     def __init__(self, data_manager: DataManager):
@@ -2075,7 +2047,6 @@ class IconGrid(QWidget):
         menu.add_action(tr("运行命令"), lambda: self.add_command_requested.emit(), enabled=True)
         menu.add_separator()
         menu.add_action(tr("批量启动"), lambda: self._show_batch_launch_dialog(), enabled=True)
-        menu.add_action(tr("新建动作链"), lambda: self.add_chain_requested.emit(), enabled=True)
         menu.add_action(tr("宏录制"), lambda: self.add_macro_requested.emit(), enabled=True)
         if self._batch_undo_snapshot:
             menu.add_separator()

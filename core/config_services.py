@@ -61,6 +61,11 @@ class ConfigDataStore:
             if had_original:
                 shutil.copy2(self.data_file, fallback_backup)
             shutil.copyfile(temp_path, self.data_file)
+            try:
+                with open(self.data_file, "rb") as f:
+                    os.fsync(f.fileno())
+            except OSError:
+                logger.debug("fsync on data file failed (non-fatal)", exc_info=True)
             data_file_intact = True
             try:
                 os.remove(temp_path)

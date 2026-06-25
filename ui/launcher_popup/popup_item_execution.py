@@ -79,7 +79,7 @@ class PopupItemExecutionMixin:
             return
 
         selected_files_for_item = []
-        if item.type in (ShortcutType.COMMAND, ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH, ShortcutType.URL):
+        if item.type in (ShortcutType.COMMAND, ShortcutType.BATCH_LAUNCH, ShortcutType.URL):
             selected_files_for_item = self._take_valid_selected_files_for_click()  # type: ignore[attr-defined]
 
         # 检查是否有选中文件需要打开
@@ -328,13 +328,11 @@ class PopupItemExecutionMixin:
             and getattr(item, "command_type", "cmd") in ("cmd", "python", "powershell", "bash")
             and bool(getattr(item, "command_params", []))
         )
-        force_close_chain = item.type == ShortcutType.CHAIN
         force_close_batch = item.type == ShortcutType.BATCH_LAUNCH
         should_close = (
             force_close_builtin_direct
             or force_close_capture_command
             or force_close_param_command
-            or force_close_chain
             or force_close_batch
             or not self.is_pinned  # type: ignore[attr-defined]
         )
@@ -399,31 +397,6 @@ class PopupItemExecutionMixin:
         def do_execute_thread():
             try:
                 if HAS_EXECUTOR and ShortcutExecutor:
-                    if force_close_chain:
-                        try:
-                            from core.command_execution_service import CommandExecutionRequest
-
-                            service = self._get_popup_execution_service()
-                            request = CommandExecutionRequest(
-                                command_id=item.id,
-                                raw_input=item.name or item.id,
-                                source="shortcut_chain",
-                                shortcut=item,
-                                context_meta={
-                                    "data_manager": getattr(self, "data_manager", None),
-                                    "selected_files": list(selected_files_for_item or []),
-                                },
-                            )
-                            pending, _duration, result_id = service.execute_shortcut_chain_sync(request)
-                            if isinstance(getattr(pending, "payload", None), dict):
-                                pending.payload["_stored_result_id"] = result_id
-                            # chain_result_window="none" 时不显示结果面板
-                            crw = getattr(item, "chain_result_window", "medium")
-                            if crw != "none" and hasattr(self, "command_panel_result_ready"):
-                                self.command_panel_result_ready.emit(pending, item.id, item.name)
-                            return
-                        except Exception:
-                            logger.exception("Action chain service execution failed")
                     if force_close_batch:
                         try:
                             from core.batch_launch_exec import execute_batch_launch
@@ -533,8 +506,6 @@ class PopupItemExecutionMixin:
 
             url_text = f"{getattr(item, 'url', '') or ''} {getattr(item, 'preferred_browser_args', '') or ''}"
             selection_sensitive = uses_selected_file_variables(url_text)
-        elif item.type == ShortcutType.CHAIN:
-            selection_sensitive = True
         elif item.type == ShortcutType.BATCH_LAUNCH:
             selection_sensitive = True
 

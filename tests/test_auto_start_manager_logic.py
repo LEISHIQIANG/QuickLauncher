@@ -632,39 +632,59 @@ class TestLaunchWithCurrentToken:
 class TestAutoStartDispatch:
     def test_enable_non_admin_calls_direct(self):
         import core.auto_start_manager as mod
+        from core import native_services
 
         with patch.object(mod, "_is_current_account_admin", return_value=False):
-            with patch.object(mod, "_enable_auto_start_direct", return_value=(True, "task_scheduler")) as mock_en:
+            with patch.object(
+                native_services._QLAutostartEngine,
+                "get",
+                return_value=MagicMock(enable=MagicMock(return_value=(0, "task_scheduler"))),
+            ):
                 success, reason = mod.enable_auto_start(r"C:\app.exe")
                 assert success is True
-                mock_en.assert_called_once()
+                assert reason == "task_scheduler"
 
     def test_enable_admin_calls_helper(self):
         import core.auto_start_manager as mod
+        from core import native_services
 
         with patch.object(mod, "_is_current_account_admin", return_value=True):
-            with patch.object(mod, "_run_elevated_helper", return_value=(True, "task_scheduler_helper")) as mock_h:
+            with patch.object(
+                native_services._QLAutostartEngine,
+                "get",
+                return_value=MagicMock(enable=MagicMock(return_value=(0, "task_scheduler"))),
+            ):
                 success, reason = mod.enable_auto_start(r"C:\app.exe")
                 assert success is True
-                mock_h.assert_called_once()
+                assert reason == "task_scheduler"
 
     def test_disable_non_admin_calls_direct(self):
         import core.auto_start_manager as mod
+        from core import native_services
 
         with patch.object(mod, "_is_current_account_admin", return_value=False):
-            with patch.object(mod, "_disable_auto_start_direct", return_value=(True, "task_scheduler")) as mock_dis:
+            with patch.object(
+                native_services._QLAutostartEngine,
+                "get",
+                return_value=MagicMock(disable=MagicMock(return_value=(0, "task_scheduler"))),
+            ):
                 success, reason = mod.disable_auto_start()
                 assert success is True
-                mock_dis.assert_called_once()
+                assert reason == "task_scheduler"
 
     def test_disable_admin_calls_helper(self):
         import core.auto_start_manager as mod
+        from core import native_services
 
         with patch.object(mod, "_is_current_account_admin", return_value=True):
-            with patch.object(mod, "_run_elevated_helper", return_value=(True, "task_scheduler_helper")) as mock_h:
+            with patch.object(
+                native_services._QLAutostartEngine,
+                "get",
+                return_value=MagicMock(disable=MagicMock(return_value=(0, "task_scheduler"))),
+            ):
                 success, reason = mod.disable_auto_start()
                 assert success is True
-                mock_h.assert_called_once()
+                assert reason == "task_scheduler"
 
 
 # ---------------------------------------------------------------------------

@@ -28,32 +28,6 @@ STANDARD_USER_LAUNCH_FAILED_MESSAGE = (
     "请先以普通权限启动 QuickLauncher，或为该项目显式勾选“以管理员身份运行”。"
 )
 
-# 尝试导入 pynput 键盘控制 — 懒加载避免模块级阻塞
-_pynput_Key = None
-HAS_PYNPUT = False
-_pynput_import_attempted = False
-
-
-def _import_pynput():
-    global HAS_PYNPUT, _pynput_Key, _pynput_import_attempted
-    if _pynput_import_attempted:
-        return
-    _pynput_import_attempted = True
-    try:
-        from pynput.keyboard import Key as K
-
-        _pynput_Key = K
-        HAS_PYNPUT = True
-    except Exception as exc:
-        logger.debug("pynput import failed: %s", exc)
-        HAS_PYNPUT = False
-
-
-def Key():
-    _import_pynput()
-    return _pynput_Key
-
-
 # ===== 配置 user32 函数签名（仅限本模块特有的函数） =====
 user32.SetWindowPos.argtypes = [
     wintypes.HWND,  # hWnd
@@ -103,9 +77,6 @@ class ShortcutExecutor(
     # 被错误地排除在"恢复目标"之外。
     _popup_hwnds: set[int] = set()
 
-    # pynput 特殊键映射（懒加载，避免模块级 pynput 导入阻塞）
-    PYNPUT_SPECIAL_KEYS = {}  # type: ignore[var-annotated]
-    _PYNPUT_KEYS_LOADED = False
     _ui_actions = None
 
     @classmethod
@@ -121,65 +92,6 @@ class ShortcutExecutor(
     def resolve_ui_actions(cls):
         """Return the injected UIActions port, or None if not yet wired."""
         return cls._ui_actions
-
-    @classmethod
-    def _ensure_pynput_keys(cls):
-        if cls._PYNPUT_KEYS_LOADED:
-            return
-        k = Key()
-        if k is None:
-            cls._PYNPUT_KEYS_LOADED = True
-            return
-        cls.PYNPUT_SPECIAL_KEYS = {
-            "ctrl": k.ctrl,
-            "control": k.ctrl,
-            "alt": k.alt,
-            "menu": k.alt,
-            "shift": k.shift,
-            "win": k.cmd,
-            "lwin": k.cmd,
-            "rwin": k.cmd_r,
-            "tab": k.tab,
-            "enter": k.enter,
-            "return": k.enter,
-            "escape": k.esc,
-            "esc": k.esc,
-            "space": k.space,
-            "backspace": k.backspace,
-            "back": k.backspace,
-            "delete": k.delete,
-            "del": k.delete,
-            "insert": k.insert,
-            "ins": k.insert,
-            "home": k.home,
-            "end": k.end,
-            "pageup": k.page_up,
-            "pgup": k.page_up,
-            "pagedown": k.page_down,
-            "pgdn": k.page_down,
-            "up": k.up,
-            "down": k.down,
-            "left": k.left,
-            "right": k.right,
-            "f1": k.f1,
-            "f2": k.f2,
-            "f3": k.f3,
-            "f4": k.f4,
-            "f5": k.f5,
-            "f6": k.f6,
-            "f7": k.f7,
-            "f8": k.f8,
-            "f9": k.f9,
-            "f10": k.f10,
-            "f11": k.f11,
-            "f12": k.f12,
-            "capslock": k.caps_lock,
-            "numlock": k.num_lock,
-            "scrolllock": k.scroll_lock,
-            "printscreen": k.print_screen,
-            "pause": k.pause,
-        }
-        cls._PYNPUT_KEYS_LOADED = True
 
     # ===== POINT 结构体（用于获取鼠标位置）=====
     class POINT(ctypes.Structure):
@@ -214,19 +126,6 @@ class ShortcutExecutor(
             elif shortcut.type == ShortcutType.COMMAND:
                 # 命令执行：有些是内置命令，有些是系统命令
                 return ShortcutExecutor._execute_command(shortcut)
-
-            elif shortcut.type == ShortcutType.CHAIN:
-                from core.shortcut_chain_exec import execute_shortcut_chain
-
-                try:
-                    from core import data_manager as global_data_manager
-                except Exception:
-                    global_data_manager = None
-                try:
-                    result = execute_shortcut_chain(shortcut, global_data_manager)
-                except TypeError:
-                    result = execute_shortcut_chain(shortcut)
-                return bool(result.success), result.error or ""
 
             elif shortcut.type == ShortcutType.BATCH_LAUNCH:
                 from core.batch_launch_exec import execute_batch_launch

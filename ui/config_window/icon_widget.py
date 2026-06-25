@@ -39,7 +39,6 @@ from .icon_grid_palette import (
     CELL_HOVER_LIGHT,
     CELL_SELECTION_DARK,
     CELL_SELECTION_LIGHT,
-    CHAIN_BG,
     COMMAND_BG,
     COMMAND_TEXT,
     DEFAULT_FALLBACK_BG,
@@ -217,8 +216,6 @@ class IconWidget(QFrame):
             pixmap = self._create_command_icon()
         elif self.shortcut.type == ShortcutType.BATCH_LAUNCH:
             pixmap = self._create_batch_launch_icon()
-        elif self.shortcut.type == ShortcutType.CHAIN:
-            pixmap = self._create_chain_icon()
         else:
             pixmap = None
 
@@ -239,7 +236,6 @@ class IconWidget(QFrame):
             ShortcutType.URL,
             ShortcutType.COMMAND,
             ShortcutType.BATCH_LAUNCH,
-            ShortcutType.CHAIN,
         }:
             first_char = ""
         return (item_type, int(self.icon_size), first_char)
@@ -335,29 +331,6 @@ class IconWidget(QFrame):
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), QtCompat.AlignCenter, ">_")
-
-        painter.end()
-        return pixmap
-
-    def _create_chain_icon(self) -> QPixmap:
-        size = self.icon_size
-        pixmap = create_pixmap(size, size)
-        pixmap.fill(QtCompat.transparent)
-
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QtCompat.Antialiasing)
-        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
-
-        painter.setBrush(QColor(CHAIN_BG))
-        painter.setPen(QtCompat.NoPen)
-        margin = size // 8
-        painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
-
-        painter.setPen(QColor(ICON_TEXT))
-        font = QFont("Segoe UI Symbol")
-        font.setPixelSize(max(1, size // 3))
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⛓")
 
         painter.end()
         return pixmap

@@ -130,7 +130,14 @@ def cmd_color(context: CommandContext) -> CommandResult:
 # ---------------------------------------------------------------------------
 
 
+_NATIVE_HASH_ALGOS = frozenset({"md5", "sha1", "sha256"})
+
+
 def _hash_file(filepath: str, algo: str) -> str:
+    if algo in _NATIVE_HASH_ALGOS:
+        from core.native_services import hash_file as _native_hash_file
+
+        return _native_hash_file(filepath, algo)
     h = hashlib.new(algo)
     with open(filepath, "rb") as f:
         while True:

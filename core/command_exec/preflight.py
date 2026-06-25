@@ -136,7 +136,7 @@ def prepare_command_for_execution(
 
     raw_mode = bool(getattr(shortcut, "raw_mode", False))
     # The original ``_should_expand_command_variables`` understands the
-    # ``raw_mode`` override and treats param/chain-defined variables as
+    # ``raw_mode`` override and treats param-defined variables as
     # implicit-expansion triggers.  We delegate to it to keep behaviour
     # identical to the legacy class method.
     try:
@@ -164,9 +164,9 @@ def prepare_command_for_execution(
             return _invalid(message)
     if expand_variables:
         # Variable resolution depends on the broader shortcut state
-        # (chain values, runtime inputs, …) and is still owned by the
-        # legacy mixin to avoid duplicating that logic here.  Callers
-        # can opt into the new module for the validation pieces.
+        # (runtime inputs, …) and is still owned by the legacy mixin
+        # to avoid duplicating that logic here.  Callers can opt into
+        # the new module for the validation pieces.
         try:
             from core.shortcut_command_exec import CommandExecutionMixin
 

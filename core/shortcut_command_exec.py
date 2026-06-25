@@ -18,7 +18,6 @@ from qt_compat import QObject, pyqtSignal
 from .background_tasks import start_background_thread
 from .command_exec import (
     SUPPORTED_COMMAND_TYPES,
-    chain_values,
     command_panel_size,
     command_param_defs,
     command_param_values,
@@ -361,10 +360,6 @@ class CommandExecutionMixin(CommandLauncherMixin):
     @staticmethod
     def _command_param_values(shortcut: ShortcutItem) -> dict[str, str]:
         return command_param_values(shortcut)
-
-    @staticmethod
-    def _chain_values(shortcut: ShortcutItem) -> dict[str, str]:
-        return chain_values(shortcut)
 
     @staticmethod
     def _runtime_env(shortcut: ShortcutItem) -> dict:
@@ -1129,7 +1124,6 @@ class CommandExecutionMixin(CommandLauncherMixin):
             command,
             input_values=input_values,
             param_values=ShortcutExecutor._command_param_values(shortcut),  # type: ignore[attr-defined]
-            chain_values=ShortcutExecutor._chain_values(shortcut),  # type: ignore[attr-defined]
             selected_files=getattr(shortcut, "_runtime_selected_files", None),
             clipboard_provider=read_clipboard_text,
             selected_text_provider=selected_provider,
@@ -1144,7 +1138,7 @@ class CommandExecutionMixin(CommandLauncherMixin):
         if bool(getattr(shortcut, "raw_mode", False)):
             return False
         enabled = getattr(shortcut, "command_variables_enabled", None)
-        if ShortcutExecutor._command_param_defs(shortcut) or ShortcutExecutor._chain_values(shortcut):  # type: ignore[attr-defined]
+        if ShortcutExecutor._command_param_defs(shortcut):  # type: ignore[attr-defined]
             return command_type != "builtin"  # type: ignore[no-any-return]
         return should_expand_command_variables(command_type, enabled)
 

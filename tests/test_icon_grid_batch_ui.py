@@ -243,8 +243,6 @@ def test_batch_launch_save_creates_batch_launch_shortcut(qapp, monkeypatch):
         assert shortcut.icon_path == "C:/icons/batch.png"
         assert shortcut.icon_invert_light is True
         assert shortcut.icon_invert_dark is True
-        assert shortcut.chain_result_window == "none"
-        assert shortcut.chain_steps == []
         assert [step["shortcut_id"] for step in shortcut.batch_launch_steps] == ["one", "two"]
         assert shortcut.batch_launch_steps[0]["delay_ms"] == 1250
         assert shortcut.batch_launch_steps[0]["stop_on_error"] is True

@@ -211,7 +211,7 @@ class ToastNotification(QWidget):
                 else:
                     target_window = target_widget.window()
                     geo = target_window.geometry()
-                    # 动作链窗口右下角弹窗提示，保留一些边距（24px）
+                    # 右下角弹窗提示，保留一些边距（24px）
                     x = geo.right() - self.width() - sp(24)
                     y = geo.bottom() - self.height() - sp(24)
                 self.move(x, y)

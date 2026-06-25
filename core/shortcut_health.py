@@ -275,9 +275,7 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
                             "refresh_favicon",
                         )
 
-            if shortcut_type == ShortcutType.CHAIN:
-                _check_chain(shortcut, folder, shortcut_map, add)
-            elif shortcut_type == ShortcutType.BATCH_LAUNCH:
+            if shortcut_type == ShortcutType.BATCH_LAUNCH:
                 _check_batch_launch(shortcut, folder, shortcut_map, add)
 
             if shortcut_type == ShortcutType.COMMAND:
@@ -307,57 +305,6 @@ def check_shortcuts(data: AppData) -> list[HealthIssue]:
                         )
 
     return issues
-
-
-def _check_chain(shortcut: ShortcutItem, folder, shortcut_map: dict[str, ShortcutItem], add) -> None:
-    steps = list(getattr(shortcut, "chain_steps", []) or [])
-    if not steps:
-        add("chain_empty", "warn", "Chain has no steps", "CHAIN shortcut has no steps.", folder, shortcut)
-        return
-
-    if len(steps) > MAX_CHAIN_STEPS:
-        add(
-            "chain_too_long",
-            "warn",
-            "Chain has too many steps",
-            f"CHAIN shortcut has more than {MAX_CHAIN_STEPS} steps.",
-            folder,
-            shortcut,
-        )
-
-    for step in steps:
-        if isinstance(step, dict) and str(step.get("node_type") or "shortcut").strip().lower() == "processor":
-            if not str(step.get("processor_id") or "").strip():
-                add(
-                    "chain_processor_missing_id",
-                    "error",
-                    "Chain processor is missing",
-                    "CHAIN processor step is missing an id.",
-                    folder,
-                    shortcut,
-                )
-            continue
-        step_id = str(step.get("shortcut_id") or "").strip() if isinstance(step, dict) else ""
-        if not step_id:
-            add(
-                "chain_step_missing_id",
-                "error",
-                "Chain step has no shortcut",
-                "CHAIN step is missing a shortcut id.",
-                folder,
-                shortcut,
-            )
-            continue
-        target = shortcut_map.get(step_id)
-        if target is None:
-            add("chain_missing_reference", "error", "Chain step target is missing", step_id, folder, shortcut)
-            continue
-        if getattr(target, "id", "") == getattr(shortcut, "id", ""):
-            add("chain_self_reference", "error", "Chain references itself", step_id, folder, shortcut)
-        elif _shortcut_type(target) == ShortcutType.CHAIN:
-            add("chain_nested", "error", "Nested chains are not supported", step_id, folder, shortcut)
-        elif _shortcut_type(target) == ShortcutType.BATCH_LAUNCH:
-            add("chain_nested", "error", "Nested batch launches are not supported", step_id, folder, shortcut)
 
 
 def _check_batch_launch(shortcut: ShortcutItem, folder, shortcut_map: dict[str, ShortcutItem], add) -> None:
@@ -408,7 +355,7 @@ def _check_batch_launch(shortcut: ShortcutItem, folder, shortcut_map: dict[str, 
             continue
         if getattr(target, "id", "") == getattr(shortcut, "id", ""):
             add("batch_launch_self_reference", "error", "Batch launch references itself", step_id, folder, shortcut)
-        elif _shortcut_type(target) in (ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH):
+        elif _shortcut_type(target) == ShortcutType.BATCH_LAUNCH:
             add(
                 "batch_launch_nested",
                 "error",

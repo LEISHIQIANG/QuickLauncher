@@ -103,7 +103,7 @@ def execute_batch_launch(
                 index,
                 shortcut_id,
             )
-        elif target.id == batch.id or target.type in (ShortcutType.CHAIN, ShortcutType.BATCH_LAUNCH):
+        elif target.id == batch.id or target.type == ShortcutType.BATCH_LAUNCH:
             ok = False
             detail = "暂不支持嵌套或循环引用批量启动。"
             logger.warning(

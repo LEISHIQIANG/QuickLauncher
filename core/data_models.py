@@ -35,9 +35,6 @@ def _binding_value_items(value) -> list[str]:
     return [normalized] if normalized else []
 
 
-ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
-ACTION_CHAIN_MODULE_VERSION = "0.1.0"
-ACTION_CHAIN_SCHEMA_VERSION = 1
 BATCH_LAUNCH_MODULE_ID = "quicklauncher.batch_launch"
 BATCH_LAUNCH_MODULE_VERSION = "0.1.0"
 
@@ -84,14 +81,8 @@ class ShortcutItem:
     command_params: list[dict] = field(default_factory=list)
     command_env: dict = field(default_factory=dict)
     command_encoding: str = "auto"
-    chain_steps: list[dict] = field(default_factory=list)
-    chain_canvas: dict = field(default_factory=dict)
-    chain_result_window: str = "medium"
     module_id: str = ""
     module_version: str = ""
-    chain_schema_version: int = ACTION_CHAIN_SCHEMA_VERSION
-    chain_ref: str = ""
-    chain_data: dict = field(default_factory=dict)
     batch_launch_steps: list[dict] = field(default_factory=list)
     raw_mode: bool = False
 
@@ -160,14 +151,8 @@ class ShortcutItem:
             "command_params": list(self.command_params or []),
             "command_env": dict(self.command_env or {}),
             "command_encoding": self.command_encoding,
-            "chain_steps": list(self.chain_steps or []),
-            "chain_canvas": dict(self.chain_canvas or {}),
-            "chain_result_window": self.chain_result_window,
             "module_id": self.module_id,
             "module_version": self.module_version,
-            "chain_schema_version": self.chain_schema_version,
-            "chain_ref": self.chain_ref,
-            "chain_data": dict(self.chain_data or {}),
             "batch_launch_steps": list(self.batch_launch_steps or []),
             "raw_mode": self.raw_mode,
             "macro_events": [dict(event) for event in (self.macro_events or []) if isinstance(event, dict)],
@@ -184,8 +169,6 @@ class ShortcutItem:
             item.type = ShortcutType(data.get("type", "file"))
         except ValueError:
             item.type = ShortcutType.FILE
-        chain_data = data.get("chain_data", {})
-        chain_data = dict(chain_data) if isinstance(chain_data, dict) else {}
         item.order = data.get("order", 0)
         item.enabled = data.get("enabled", True)
         item.tags = cls._normalize_tags(data.get("tags", []))
@@ -244,27 +227,12 @@ class ShortcutItem:
         item.command_env = cls._normalize_command_env(data.get("command_env", {}))
         encoding = str(data.get("command_encoding", "auto") or "auto").lower().strip()
         item.command_encoding = encoding if encoding in ("auto", "utf-8", "gbk", "mbcs") else "auto"
-        item.chain_steps = cls._normalize_chain_steps(data.get("chain_steps", []))
-        item.chain_canvas = cls._normalize_chain_canvas(data.get("chain_canvas", {}), item.chain_steps)
-        crw = str(data.get("chain_result_window", "medium") or "medium").lower()
-        item.chain_result_window = crw if crw in ("none", "small", "medium", "large") else "medium"
-        item.module_id = str(data.get("module_id") or "")
-        item.module_version = str(data.get("module_version") or "")
-        if item.type == ShortcutType.CHAIN:
-            item.module_id = item.module_id or ACTION_CHAIN_MODULE_ID
-            item.module_version = item.module_version or ACTION_CHAIN_MODULE_VERSION
-        elif item.type == ShortcutType.BATCH_LAUNCH:
+        if item.type == ShortcutType.BATCH_LAUNCH:
             item.module_id = item.module_id or BATCH_LAUNCH_MODULE_ID
             item.module_version = item.module_version or BATCH_LAUNCH_MODULE_VERSION
-        try:
-            schema_version = int(
-                data.get("chain_schema_version", data.get("schema_version", ACTION_CHAIN_SCHEMA_VERSION))
-            )
-        except (TypeError, ValueError):
-            schema_version = ACTION_CHAIN_SCHEMA_VERSION
-        item.chain_schema_version = max(1, schema_version)
-        item.chain_ref = str(data.get("chain_ref") or "")
-        item.chain_data = chain_data
+        else:
+            item.module_id = str(data.get("module_id") or "")
+            item.module_version = str(data.get("module_version") or "")
         item.batch_launch_steps = cls._normalize_chain_steps(data.get("batch_launch_steps", []))
         item.raw_mode = bool(data.get("raw_mode", False))
         raw_events = data.get("macro_events", [])
@@ -386,200 +354,20 @@ class ShortcutItem:
         for step in steps:
             if not isinstance(step, dict):
                 continue
-            node_type = str(step.get("node_type") or "shortcut").strip().lower()
-            if node_type not in ("shortcut", "processor"):
-                node_type = "shortcut"
             shortcut_id = str(step.get("shortcut_id") or "").strip()
-            processor_id = str(step.get("processor_id") or "").strip()
-            if node_type == "shortcut" and not shortcut_id:
-                continue
-            if node_type == "processor" and not processor_id:
+            if not shortcut_id:
                 continue
             delay_ms = normalize_chain_step_delay_ms(step.get("delay_ms", 0))
-            args = step.get("args", {})
-            if not isinstance(args, dict):
-                args = {}
-            param_bindings = step.get("param_bindings", {})
-            if not isinstance(param_bindings, dict):
-                param_bindings = {}
-            input_binding_raw = step.get("input_binding", "")
-            input_binding = _normalize_binding_value(input_binding_raw)
-            normalized_args = {str(k).strip(): str(v) for k, v in args.items() if str(k).strip()}
-            normalized_bindings = {
-                str(k).strip(): _normalize_binding_value(v)
-                for k, v in param_bindings.items()
-                if str(k).strip() and _normalize_binding_value(v)
-            }
             normalized.append(
                 {
                     "id": str(step.get("id") or uuid.uuid4()),
-                    "node_type": node_type,
                     "shortcut_id": shortcut_id,
-                    "processor_id": processor_id,
-                    "source": str(step.get("source") or ""),
                     "enabled": bool(step.get("enabled", True)),
                     "stop_on_error": bool(step.get("stop_on_error", True)),
                     "delay_ms": delay_ms,
-                    "use_previous_output": bool(step.get("use_previous_output", False)),
-                    "input_binding": input_binding,
-                    "param_bindings": normalized_bindings,
-                    "args": normalized_args,
                 }
             )
         return normalized
-
-    @staticmethod
-    def _normalize_chain_canvas(canvas, steps: list[dict] | None = None) -> dict:
-        if not isinstance(canvas, dict) or not canvas.get("nodes"):
-            return ShortcutItem._chain_canvas_from_steps(steps or [])
-        nodes = []
-        node_ids = set()
-        for index, raw in enumerate(list(canvas.get("nodes") or [])):
-            if not isinstance(raw, dict):
-                continue
-            node_id = str(raw.get("id") or uuid.uuid4())
-            node_ids.add(node_id)
-            node_type = str(raw.get("node_type") or "shortcut").strip().lower()
-            if node_type not in ("shortcut", "processor"):
-                node_type = "shortcut"
-            try:
-                x = float(raw.get("x", index * 240))
-            except (TypeError, ValueError):
-                x = float(index * 240)
-            try:
-                y = float(raw.get("y", 80))
-            except (TypeError, ValueError):
-                y = 80.0
-            try:
-                order = int(raw.get("order", index + 1))
-            except (TypeError, ValueError):
-                order = index + 1
-            args = raw.get("args", {})
-            if not isinstance(args, dict):
-                args = {}
-            source = str(raw.get("source") or "")
-            nodes.append(
-                {
-                    "id": node_id,
-                    "node_type": node_type,
-                    "shortcut_id": str(raw.get("shortcut_id") or "").strip(),
-                    "processor_id": str(raw.get("processor_id") or "").strip(),
-                    "source": source,
-                    "title": str(raw.get("title") or "").strip(),
-                    "x": x,
-                    "y": y,
-                    "order": max(1, order),
-                    "enabled": bool(raw.get("enabled", True)),
-                    "stop_on_error": bool(raw.get("stop_on_error", True)),
-                    "delay_ms": normalize_chain_step_delay_ms(raw.get("delay_ms", 0)),
-                    "args": {str(k).strip(): str(v) for k, v in args.items() if str(k).strip()},
-                }
-            )
-        connections = []
-        for raw in list(canvas.get("connections") or []):
-            if not isinstance(raw, dict):
-                continue
-            source_node = str(raw.get("source_node") or "").strip()
-            target_node = str(raw.get("target_node") or "").strip()
-            source_port = str(raw.get("source_port") or "").strip()
-            target_port = str(raw.get("target_port") or "").strip()
-            if source_node in node_ids and target_node in node_ids and source_port and target_port:
-                connections.append(
-                    {
-                        "id": str(raw.get("id") or uuid.uuid4()),
-                        "source_node": source_node,
-                        "source_port": source_port,
-                        "target_node": target_node,
-                        "target_port": target_port,
-                    }
-                )
-        return {"version": 1, "nodes": nodes, "connections": connections}
-
-    @staticmethod
-    def _chain_canvas_from_steps(steps: list[dict]) -> dict:
-        normalized_steps = ShortcutItem._normalize_chain_steps(steps)
-        nodes = []
-        connections = []
-        step_id_by_index: dict[int, str] = {}
-        for index, step in enumerate(normalized_steps, start=1):
-            node_id = str(step.get("id") or uuid.uuid4())
-            step_id_by_index[index] = node_id
-            nodes.append(
-                {
-                    "id": node_id,
-                    "node_type": str(step.get("node_type") or "shortcut"),
-                    "shortcut_id": str(step.get("shortcut_id") or ""),
-                    "processor_id": str(step.get("processor_id") or ""),
-                    "source": str(step.get("source") or ""),
-                    "title": "",
-                    "x": float((index - 1) * 240),
-                    "y": 80.0,
-                    "order": index,
-                    "enabled": bool(step.get("enabled", True)),
-                    "stop_on_error": bool(step.get("stop_on_error", True)),
-                    "delay_ms": normalize_chain_step_delay_ms(step.get("delay_ms", 0)),
-                    "args": dict(step.get("args") or {}),
-                }
-            )
-        for index, step in enumerate(normalized_steps, start=1):
-            target_node = step_id_by_index.get(index)
-            if not target_node:
-                continue
-            input_binding = step.get("input_binding", "")
-            if input_binding:
-                for binding in _binding_value_items(input_binding):
-                    source = ShortcutItem._chain_binding_to_canvas_source(binding, index, step_id_by_index)
-                    if source:
-                        connections.append(
-                            {
-                                "id": str(uuid.uuid4()),
-                                "source_node": source[0],
-                                "source_port": source[1],
-                                "target_node": target_node,
-                                "target_port": "input",
-                            }
-                        )
-            for target_port, binding in dict(step.get("param_bindings") or {}).items():
-                for binding_item in _binding_value_items(binding):
-                    source = ShortcutItem._chain_binding_to_canvas_source(str(binding_item), index, step_id_by_index)
-                    if source:
-                        connections.append(
-                            {
-                                "id": str(uuid.uuid4()),
-                                "source_node": source[0],
-                                "source_port": source[1],
-                                "target_node": target_node,
-                                "target_port": str(target_port),
-                            }
-                        )
-        return {"version": 1, "nodes": nodes, "connections": connections}
-
-    @staticmethod
-    def _chain_binding_to_canvas_source(
-        binding: str, current_index: int, step_id_by_index: dict[int, str]
-    ) -> tuple[str, str] | None:
-        binding = str(binding or "").strip()
-        if not binding:
-            return None
-        if binding.startswith("prev."):
-            source_index = current_index - 1
-            port = binding[5:]
-        elif "." in binding:
-            raw_index, port = binding.split(".", 1)
-            try:
-                source_index = int(raw_index)
-            except (TypeError, ValueError):
-                return None
-        else:
-            return None
-        if source_index < 1:
-            return None
-        source_node = step_id_by_index.get(source_index)
-        if not source_node:
-            return None
-        if port.startswith("outputs."):
-            port = port[8:]
-        return source_node, port
 
     def mark_used(self, timestamp: float | None = None):
         try:

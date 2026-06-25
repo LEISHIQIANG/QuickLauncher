@@ -177,14 +177,6 @@ class StatusScale:
     info = QColor(100, 210, 255, 255)
     info_dark = QColor(10, 132, 255, 220)
 
-    # Node states used in chain_canvas
-    node_success = QColor(212, 237, 218, 255)
-    node_success_strong = QColor(46, 125, 50, 255)
-    node_error = QColor(255, 205, 210, 255)
-    node_error_strong = QColor(211, 47, 47, 255)
-    node_warning = QColor(255, 243, 205, 255)
-    node_warning_strong = QColor(245, 124, 0, 255)
-
     # Drop-target / drag-over highlight (used by folder_panel, icon_grid)
     drop_highlight_pen = QColor(168, 230, 207, 180)
     drop_highlight_brush_soft = QColor(168, 230, 207, 45)

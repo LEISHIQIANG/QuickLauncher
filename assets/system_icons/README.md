@@ -69,7 +69,6 @@ assets/system_icons/
 | `url` | 网址 |
 | `hotkey` | 快捷键 |
 | `command` | 命令或内置命令 |
-| `chain` | 动作链 |
 | `batch_launch` | 批量启动 |
 
 ### URL 条目

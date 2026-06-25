@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | [English](README_EN.md) | [完整文档](README_FULL.md)
 
-QuickLauncher is a Windows 10 / 11 desktop quick launcher and lightweight automation tool. It centers on a global popup and brings app launch, files, folders, URLs, hotkeys, commands, action chains, batch launch groups, and local plugins into one searchable surface.
+QuickLauncher is a Windows 10 / 11 desktop quick launcher and lightweight automation tool. It centers on a global popup and brings app launch, files, folders, URLs, hotkeys, commands, batch launch groups, and local plugins into one searchable surface.
 
 The current source version is defined in [core/version.py](core/version.py): `1.6.3.3`, release status `stable`. Installer and portable builds ship the runtime. Source runs and builds require 64-bit CPython 3.12.
 
@@ -13,15 +13,14 @@ The current source version is defined in [core/version.py](core/version.py): `1.
 - [3. Popup Trigger And Search](#3-popup-trigger-and-search)
 - [4. Shortcut Model](#4-shortcut-model)
 - [5. Command System](#5-command-system)
-- [6. Action Chains](#6-action-chains)
-- [7. Batch Launch](#7-batch-launch)
-- [8. Plugins](#8-plugins)
-- [9. Settings, Themes, And UI](#9-settings-themes-and-ui)
-- [10. Global Hooks And Input Recording](#10-global-hooks-and-input-recording)
-- [11. Data, Safety, And Updates](#11-data-safety-and-updates)
-- [12. Build, Tests, And CI](#12-build-tests-and-ci)
-- [13. Project Structure](#13-project-structure)
-- [14. Maintenance Rules](#14-maintenance-rules)
+- [6. Batch Launch](#6-batch-launch)
+- [7. Plugins](#7-plugins)
+- [8. Settings, Themes, And UI](#8-settings-themes-and-ui)
+- [9. Global Hooks And Input Recording](#9-global-hooks-and-input-recording)
+- [10. Data, Safety, And Updates](#10-data-safety-and-updates)
+- [11. Build, Tests, And CI](#11-build-tests-and-ci)
+- [12. Project Structure](#12-project-structure)
+- [13. Maintenance Rules](#13-maintenance-rules)
 
 ## 1. Capability Overview
 
@@ -29,11 +28,10 @@ The current source version is defined in [core/version.py](core/version.py): `1.
 |---|---|
 | Popup entry | Middle mouse by default; configurable keyboard, mouse, or hybrid trigger; separate special-app trigger profile |
 | Search | Fuzzy matching, Chinese Pinyin full/initial search, aliases, tags, web search prefixes, plugin search sources |
-| Shortcuts | 7 types: FILE, FOLDER, URL, HOTKEY, COMMAND, CHAIN, BATCH_LAUNCH |
+| Shortcuts | 7 types: FILE, FOLDER, URL, HOTKEY, COMMAND, BATCH_LAUNCH, MACRO |
 | Commands | CMD, PowerShell, Python, Git Bash, built-in commands; templates, parameter forms, captured output, result actions |
 | Built-in commands | 33 commands for developer tools, network diagnostics, system tools, plugin management, and maintenance |
-| Action chains | Visual canvas, node links, parameter binding, node snapshots, cancel support, 189 built-in processors |
-| Plugins | `.qlzip` installation, hot loading, enable/disable, failure quarantine, permissions, built-in commands, search sources, chain processors, persistent workers |
+| Plugins | `.qlzip` installation, hot loading, enable/disable, failure quarantine, permissions, built-in commands, search sources, persistent workers |
 | Hooks | Native `hooks.dll` for low-level mouse/keyboard hooks, Raw Input fallback, RegisterHotKey, macro recording/playback |
 | Data safety | Atomic saves, config backups, history snapshots, import sanitization, path traversal defense, controlled URL access |
 | Release safety | GitHub Releases, SHA-256 verification, trusted installer path checks |
@@ -126,8 +124,8 @@ QuickLauncher currently supports 7 shortcut types. The data model lives in [core
 | `url` | Open URL | `url`, `preferred_browser_path`, `preferred_browser_args` |
 | `hotkey` | Send keyboard shortcut | `hotkey_modifiers`, `hotkey_key`, `hotkey_keys` |
 | `command` | Run shell or built-in command | `command`, `command_type`, `command_params`, `capture_output` |
-| `chain` | Run action chain | `chain_steps`, `chain_canvas`, `chain_data`, `module_id` |
 | `batch_launch` | Launch a group in order | `batch_launch_steps`, `module_id` |
+| `macro` | Record and replay key/mouse events | `macro_events`, `macro_speed`, `macro_hide_while_recording` |
 
 Common fields include `name`, `enabled`, `tags`, `alias`, `icon_path`, `order`, `use_count`, `smart_order`, and `trigger_mode`.
 
@@ -244,50 +242,23 @@ The preprocessing pipeline covers:
 
 Settings control preprocessing, strict mode, audit logging, rate limiting, dangerous pattern blocking, and variable quoting requirements.
 
-## 6. Action Chains
+## 6. Batch Launch
 
-Action chains are the `chain` shortcut type provided by built-in module `quicklauncher.action_chain`. The module manifest is [modules/action_chain/module.json](modules/action_chain/module.json).
-
-### 6.1 Capabilities
-
-- Visual canvas with compatibility for legacy step data.
-- Nodes can reference shortcuts or processors.
-- Parameter binding, input binding, per-step enable/disable, stop-on-error, delays.
-- Node-level snapshots during execution.
-- Cancel support and configurable result window size.
-- Recursive chain and batch launch references are blocked.
-
-### 6.2 Processors
-
-There are currently 189 built-in processors. Main categories:
-
-- Text, formatting, regex.
-- Math, advanced math, lists, sets, dictionaries.
-- JSON, HTTP, URL, network tools.
-- Files and paths.
-- Date and time.
-- Encoding/decoding, hash, compression.
-- Validation.
-- System info and environment variables.
-- Image operations.
-- Input/debug and logic control.
-
-Dangerous processors declare safety metadata. File writes, downloads, and Python cell execution require confirmation or explicit capability.
-
-## 7. Batch Launch
-
-Batch launch is a dedicated `batch_launch` shortcut type. It is no longer modeled as an action chain. It launches multiple existing targets in order and fits work-start setups, project tool groups, and repeatable troubleshooting bundles.
+Batch launch is a dedicated `batch_launch` shortcut type. It launches multiple existing targets in order and fits work-start setups, project tool groups, and repeatable troubleshooting bundles.
 
 The runtime:
 
 - Skips disabled items.
-- Blocks references to itself, action chains, and other batch launch entries when they would recurse.
+- Blocks references to itself or other batch launch entries that would recurse.
 - Reuses normal shortcut execution paths.
 - Respects per-step delay limits.
+- Reports per-step execution results and supports cancellation.
 
-## 8. Plugins
+> The `chain` shortcut type (action chain) has been removed from the host. Use `batch_launch` when you need to start multiple targets in order.
 
-### 8.1 Distribution Model
+## 7. Plugins
+
+### 7.1 Distribution Model
 
 QuickLauncher no longer preinstalls official plugin source folders into the runtime. The current model is:
 
@@ -296,7 +267,7 @@ QuickLauncher no longer preinstalls official plugin source folders into the runt
 - Release builds include an empty `plugins/` directory and `PLUGIN_DEV.md`, not source plugin folders.
 - Installing a `.qlzip` package unpacks it into `plugins/<plugin_id>/`.
 
-### 8.2 Official Plugin Packages
+### 7.2 Official Plugin Packages
 
 | Package | Description | Permission highlights |
 |---|---|---|
@@ -311,15 +282,13 @@ QuickLauncher no longer preinstalls official plugin source folders into the runt
 | `startup_tools.qlzip` | Startup audit and PATH health check | `file.read` |
 | `text_tools.qlzip` | Text reverse/count/case conversion | `clipboard.read`, `clipboard.write` |
 
-### 8.3 Plugin API
+### 7.3 Plugin API
 
 Plugin entry files expose `register(api)` from `main.py`. Common APIs:
 
 - `register_command(...)`
 - `register_builtin_command(...)`
 - `register_search_source(...)`
-- `register_module(...)`
-- `register_chain_processor(...)`
 - `read_clipboard()` / `write_clipboard(...)`
 - `get_selected_files()`
 - `open_url(...)` / `open_file(...)` / `open_folder(...)`
@@ -334,7 +303,7 @@ Plugin entry files expose `register(api)` from `main.py`. Common APIs:
 
 Plugin handlers run on the shared thread pool. The soft timeout is 30 seconds. Repeated failures can place a plugin into quarantine.
 
-### 8.4 Package Limits
+### 7.4 Package Limits
 
 `.qlzip` installation validates:
 
@@ -347,7 +316,7 @@ Plugin handlers run on the shared thread pool. The soft timeout is 30 seconds. R
 
 Plugins currently run in compatible in-process mode. Permission declarations are risk notices and controlled API boundaries, not full process isolation. Install only trusted plugins.
 
-## 9. Settings, Themes, And UI
+## 8. Settings, Themes, And UI
 
 Settings come from `AppSettings`:
 
@@ -363,11 +332,11 @@ Settings come from `AppSettings`:
 - Data: import/export, share-safe export, backups, config history.
 - Support/about: version, diagnostics, help.
 
-## 10. Global Hooks And Input Recording
+## 9. Global Hooks And Input Recording
 
 Global input is provided by [hooks/hooks.dll](hooks/hooks.dll). C++ sources live in [hooks_dll/](hooks_dll/).
 
-### 10.1 Runtime Path
+### 9.1 Runtime Path
 
 - Low-level mouse hook handles middle mouse and five-button mouse input.
 - Low-level keyboard hook handles combinations, Alt double-tap, hotkey capture.
@@ -375,7 +344,7 @@ Global input is provided by [hooks/hooks.dll](hooks/hooks.dll). C++ sources live
 - Single-key keyboard triggers prefer `RegisterHotKey`.
 - The Python layer loads the DLL via `ctypes`, owns diagnostics, lifecycle, and Qt main-thread bridging.
 
-### 10.2 Reliability Rules
+### 9.2 Reliability Rules
 
 - Low-level callbacks return quickly; Python callbacks run through an async queue.
 - Callback queues are bounded to avoid blocking hook threads.
@@ -383,7 +352,7 @@ Global input is provided by [hooks/hooks.dll](hooks/hooks.dll). C++ sources live
 - Hotkey capture, protected chord capture, and macro capture share session ownership; only one capture session can run at a time.
 - Before DLL release, Python checks that hooks, playback, and capture are quiescent. On timeout, DLL and callback references are kept until process exit to avoid native crashes.
 
-### 10.3 Macro Support
+### 9.3 Macro Support
 
 The hook DLL supports:
 
@@ -395,9 +364,9 @@ The hook DLL supports:
 - Async mixed macro playback, cancel, wait, status.
 - Releasing still-pressed inputs after playback end or cancel.
 
-## 11. Data, Safety, And Updates
+## 10. Data, Safety, And Updates
 
-### 11.1 Data Locations
+### 10.1 Data Locations
 
 Source runs usually store data under repository `config/`. Installer/portable runs use the app directory root:
 
@@ -410,7 +379,7 @@ Source runs usually store data under repository `config/`. Installer/portable ru
 
 User icon repository and system icons are separate. System icons come from [assets/system_icons/config.json](assets/system_icons/config.json).
 
-### 11.2 Configuration Safety
+### 10.2 Configuration Safety
 
 - Config saves are atomic.
 - Imports sanitize types, ranges, colors, string lengths, list lengths, and trigger settings.
@@ -418,14 +387,14 @@ User icon repository and system icons are separate. System icons come from [asse
 - Config history keeps recoverable snapshots.
 - Diagnostics can scan missing icons, invalid paths, duplicates, URLs, and command risks.
 
-### 11.3 Path And Network Safety
+### 10.3 Path And Network Safety
 
 - Plugin installation uses `resolve_under` and safe relative path checks.
 - `.qlzip` rejects path traversal, duplicate paths, encrypted files, and oversized packages.
 - HTTP processors and plugin HTTP API use controlled URL access and block localhost, private, link-local, and reserved addresses.
 - Favicon and URL latency probes use bounded reads.
 
-### 11.4 Auto Update
+### 10.4 Auto Update
 
 The default update source is GitHub Releases:
 
@@ -443,9 +412,9 @@ Update flow:
 
 The trust chain is based on SHA-256 verification. Missing hash or validation failures fail closed.
 
-## 12. Build, Tests, And CI
+## 11. Build, Tests, And CI
 
-### 12.1 Local Gate
+### 11.1 Local Gate
 
 ```powershell
 py -3.12 -m pip install -r requirements.txt -r requirements-dev.txt
@@ -463,7 +432,7 @@ py -3.12 scripts/release_gate.py --skip-smoke
 
 CI runs on Windows with Python 3.12. It executes `release_gate.py --skip-tests --skip-smoke`, a focused pytest subset, and `mypy --follow-imports=skip services/update`.
 
-### 12.2 Build Release Artifacts
+### 11.2 Build Release Artifacts
 
 ```powershell
 scripts\build_win11_setup.bat
@@ -488,7 +457,7 @@ Outputs:
 
 Release artifact verification checks the EXE, hook DLL, plugin directory policy, installer, portable ZIP, and smoke test.
 
-### 12.3 Hook DLL Build
+### 11.3 Hook DLL Build
 
 ```powershell
 cd hooks_dll
@@ -497,24 +466,21 @@ build.bat
 
 The script compiles `hooks.cpp` through Visual Studio / Build Tools MSVC and the Windows SDK, writing `hooks/hooks.dll`.
 
-## 13. Project Structure
+## 12. Project Structure
 
 ```text
 QuickLauncher/
 ├── main.py                         # app entry, single instance, safe-mode, plugin-helper, smoke-test
-├── core/                           # data, execution, commands, plugins, action chain, safety, update logic
+├── core/                           # data, execution, commands, plugins, safety, update logic
 │   ├── builtin_command_catalog.py   # 33 built-in command definitions
 │   ├── command_registry.py          # command registry and CommandResult
 │   ├── data_models.py               # ShortcutItem, AppSettings, AppData
 │   ├── plugin_manager.py            # plugin scan, install, load, quarantine, PluginAPI
 │   ├── shortcut_command_exec.py     # command execution and output capture
-│   ├── shortcut_executor.py         # file/folder/URL/hotkey/chain/batch dispatch
-│   ├── shortcut_chain_exec.py       # action-chain runtime
+│   ├── shortcut_executor.py         # file/folder/URL/hotkey/command/batch dispatch
 │   ├── batch_launch_exec.py         # batch-launch runtime
-│   ├── chain/                       # chain processor definitions and execution
 │   └── plugin/                      # plugin package install, paths, constants
-├── modules/
-│   └── action_chain/                # action-chain module entry and manifest
+├── modules/                        # built-in module entry points (currently empty, reserved for extension)
 ├── ui/                              # PyQt5 UI, popup, settings, command panel, themed components
 ├── hooks/                           # hooks.dll Python wrapper and compatibility layers
 ├── hooks_dll/                       # native hook DLL source and build script
@@ -528,7 +494,7 @@ QuickLauncher/
 └── .github/                         # CI and GitHub templates
 ```
 
-## 14. Maintenance Rules
+## 13. Maintenance Rules
 
 - Version metadata comes from [core/version.py](core/version.py). Installer script, manifest, and release metadata must match it.
 - Before release, run `py -3.12 scripts/release_gate.py --skip-smoke`.
@@ -536,7 +502,7 @@ QuickLauncher/
 - After plugin API or official package changes, update [plugins/PLUGIN_DEV.md](plugins/PLUGIN_DEV.md) and `.plugins/README.md`.
 - After hook DLL changes, update [hooks_dll/README.md](hooks_dll/README.md) and verify DLL version/capabilities match the Python wrapper.
 - After system icon schema changes, update [assets/system_icons/README.md](assets/system_icons/README.md).
-- Documentation counts should come from code or package manifests: 7 shortcut types, 33 built-ins, 189 action-chain processors, 10 official plugin packages.
+- Documentation counts should come from code or package manifests: 7 shortcut types, 33 built-ins, 10 official plugin packages.
 
 ---
 

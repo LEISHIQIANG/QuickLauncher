@@ -23,11 +23,6 @@ def command_param_values(shortcut: ShortcutItem) -> dict[str, str]:
     return values
 
 
-def chain_values(shortcut: ShortcutItem) -> dict[str, str]:
-    values = getattr(shortcut, "_chain_values", None)
-    return dict(values or {}) if isinstance(values, dict) else {}
-
-
 def merge_runtime_env(shortcut: ShortcutItem, base_env: dict | None) -> dict:
     env = dict(base_env or {})
     command_env = getattr(shortcut, "command_env", {}) or {}

@@ -148,7 +148,6 @@ def check_source_metadata(
     required_source_files = [
         root / "assets" / "app.ico",
         root / "hooks" / "hooks.dll",
-        root / "modules" / "action_chain" / "module.json",
         root / "QuickLauncher.manifest",
         root / "plugins" / "PLUGIN_DEV.md",
         root / "scripts" / "installer.iss",
@@ -266,7 +265,6 @@ def check_release_artifacts(
     required_artifacts = [
         (dist_dir / "QuickLauncher.exe", min_exe_bytes),
         (dist_dir / "hooks" / "hooks.dll", 1),
-        (dist_dir / "modules" / "action_chain" / "module.json", 1),
         (dist_dir / "assets" / "app.ico", 1),
         (dist_dir / "plugins", 0),
         (installer, min_exe_bytes),

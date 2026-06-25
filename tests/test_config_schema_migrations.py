@@ -22,7 +22,7 @@ from core.data_loader import DataLoader
 FIXTURES = Path(__file__).parent / "fixtures" / "config"
 
 
-@pytest.mark.parametrize("name", ["1.6-normal.json", "1.6-missing-fields.json", "1.6-action-chain.json"])
+@pytest.mark.parametrize("name", ["1.6-normal.json", "1.6-missing-fields.json"])
 def test_legacy_golden_corpus_migrates_idempotently(name: str):
     raw = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
@@ -38,12 +38,11 @@ def test_legacy_golden_corpus_migrates_idempotently(name: str):
 
 def test_loader_applies_schema_before_deserialization(tmp_path: Path):
     path = tmp_path / "data.json"
-    path.write_text((FIXTURES / "1.6-action-chain.json").read_text(encoding="utf-8"), encoding="utf-8")
+    path.write_text((FIXTURES / "1.6-normal.json").read_text(encoding="utf-8"), encoding="utf-8")
 
     loaded, issues = load_valid_data_file(path)
 
     assert loaded.config_schema_version == CURRENT_CONFIG_SCHEMA_VERSION
-    assert loaded.folders[0].items[0].chain_steps[0]["shortcut_id"] == "target"
     assert "config_schema_migrated:0->1" in issues
 
 

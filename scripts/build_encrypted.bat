@@ -110,7 +110,7 @@ echo.
 echo [3/5] Installing dependencies...
 !PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 !PYTHON_CMD! -m pip install nuitka ordered-set zstandard python-minifier -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
-!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 echo   Done
 
 REM ============================================
@@ -183,17 +183,19 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-qt-plugins=platforms ^
     --noinclude-qt-translations ^
     --noinclude-dlls=opengl32.dll,d3dcompiler_*.dll ^
-    --noinclude-dlls=qt5quick.dll,qt5qml*.dll,qt5multimedia.dll,qt5webengine*.dll ^
-    --noinclude-dlls=qt5dbus.dll,qt53d*.dll,qt5designer*.dll,qt5help.dll ^
-    --noinclude-dlls=qt5location.dll,qt5positioning.dll,qt5sensors.dll ^
-    --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml.dll ^
+    --noinclude-dlls=qt5quick.dll,qt5qml*.dll,qt5multimedia.dll,qt5webengine*.dll,qt5webchannel*.dll ^
+    --noinclude-dlls=qt5dbus.dll,qt53d*.dll,qt5designer*.dll,qt5help.dll,qt5bluetooth.dll,qt5nfc.dll ^
+    --noinclude-dlls=qt5location.dll,qt5positioning.dll,qt5sensors.dll,qt5texttospeech.dll,qt5websockets.dll ^
+    --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml*.dll,qt5networkauth.dll,qt5purchasing.dll ^
+    --noinclude-dlls=qt5remoteobjects.dll,qt5script*.dll,qt5scxml.dll,qt5virtualkeyboard.dll,qt5charts.dll,qt5datavisualization.dll ^
     --noinclude-dlls=qt5printsupport.dll ^
+    --noinclude-dlls=qt5pdf.dll,qt6pdf.dll,libeay32.dll,ssleay32.dll ^
+    --noinclude-dlls=_sqlite3.pyd,_decimal.pyd,_lzma.pyd,_bz2.pyd,atl140.dll ^
     --noinclude-dlls=mfc140u.dll,mfc140*.dll ^
     --noinclude-dlls=msvcp140.dll,msvcp140_1.dll,msvcp140_2.dll ^
     --noinclude-dlls=vcruntime140.dll,vcruntime140_1.dll ^
     --noinclude-dlls=concrt140.dll,vcomp140.dll ^
     --noinclude-dlls=api-ms-win-crt-*.dll,ucrtbase.dll ^
-    --noinclude-dlls=qt6pdf.dll ^
     --company-name="%APP_PUBLISHER%" ^
     --product-name="QuickLauncher" ^
     --file-version="%APP_VERSION%" ^
@@ -201,8 +203,17 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
-    --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
+    --include-data-files=native\QLcrypto\QLcrypto.dll=native\QLcrypto.dll ^
+    --include-data-files=native\QLsearch\QLsearch.dll=native\QLsearch.dll ^
+    --include-data-files=native\QLwindow\QLwindow.dll=native\QLwindow.dll ^
+    --include-data-files=native\QLvalidate\QLvalidate.dll=native\QLvalidate.dll ^
+    --include-data-files=native\QLwatch\QLwatch.dll=native\QLwatch.dll ^
+    --include-data-files=native\QLautostart\QLautostart.dll=native\QLautostart.dll ^
+    --include-data-files=native\QLupdate\QLupdate.dll=native\QLupdate.dll ^
+    --include-data-files=native\QLclipboard\QLclipboard.dll=native\QLclipboard.dll ^
+    --include-data-files=native\QLicon\QLicon.dll=native\QLicon.dll ^
+    --include-data-files=native\QLshell\QLshell.dll=native\QLshell.dll ^
     --include-data-files=third_party_licenses.json=third_party_licenses.json ^
     --include-package=application ^
     --include-package=bootstrap ^
@@ -214,7 +225,6 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-package=ui ^
     --include-package=core ^
     --include-package=hooks ^
-    --include-package=watchdog ^
     --include-package=numpy ^
     --include-module=pynput.mouse._win32 ^
     --include-module=pynput.keyboard._win32 ^
@@ -244,7 +254,9 @@ if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
     --include-module=ssl ^
     --include-module=_ssl ^
     --include-module=_hashlib ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,xml,html,csv,pypinyin ^
+    --include-module=encodings.idna ^
+    --include-module=stringprep ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,xml,html,csv,pypinyin,difflib ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --assume-yes-for-downloads ^
     --output-filename=QuickLauncher.exe ^

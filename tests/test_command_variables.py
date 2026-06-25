@@ -193,15 +193,13 @@ def test_find_unquoted_external_command_variables():
     assert unsafe == ["clipboard", "input:Name"]
 
 
-def test_resolve_param_and_chain_variables():
+def test_resolve_param_variables():
     text = resolve_command_variables(
-        "ping {{param:host:q}} && echo {{chain:prev.stdout:q}}",
+        "ping {{param:host:q}}",
         param_values={"host": "example.com"},
-        chain_values={"prev.stdout": "hello world"},
     )
 
     assert "example.com" in text
-    assert "hello world" in text
 
 
 def test_resolve_selected_file_variables():
@@ -240,10 +238,10 @@ def test_missing_selected_file_variables_resolve_empty():
     assert text == 'tool "" "" "" '
 
 
-def test_param_and_chain_variables_require_quoting_in_cmd():
-    unsafe = find_unquoted_external_command_variables("echo {{param:host}} {{chain:prev.stdout}} {{selected_file}}")
+def test_param_variables_require_quoting_in_cmd():
+    unsafe = find_unquoted_external_command_variables("echo {{param:host}} {{selected_file}}")
 
-    assert unsafe == ["param:host", "chain:prev.stdout", "selected_file"]
+    assert unsafe == ["param:host", "selected_file"]
 
 
 def test_value_only_variable_commands_are_detected():
@@ -251,7 +249,6 @@ def test_value_only_variable_commands_are_detected():
     assert is_value_only_variable_command("{{clipboard:q}}")
     assert is_value_only_variable_command('"{{input:Keyword}}"')
     assert is_value_only_variable_command("{{param:tool:q}}")
-    assert is_value_only_variable_command("{{chain:prev.stdout:q}}")
     assert not is_value_only_variable_command("echo {{date}}")
     assert not is_value_only_variable_command("{{unknown}}")
 

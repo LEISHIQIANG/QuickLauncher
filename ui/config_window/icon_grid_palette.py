@@ -24,7 +24,6 @@ __all__ = [
     "URL_LINK_BLUE",
     "COMMAND_BG",
     "COMMAND_TEXT",
-    "CHAIN_BG",
     "BATCH_LAUNCH_BG",
     "ICON_TEXT",
     "LIGHTNING_BOLT",
@@ -67,7 +66,6 @@ URL_BG = QColor(60, 160, 120)  # sea green
 URL_LINK_BLUE = QColor(100, 149, 237)  # URL link accent
 COMMAND_BG = QColor(50, 50, 50)  # near-black
 COMMAND_TEXT = QColor(0, 255, 0)  # terminal green
-CHAIN_BG = QColor(180, 100, 50)  # orange-brown
 BATCH_LAUNCH_BG = QColor(130, 95, 200)  # purple
 
 ICON_TEXT = QColor(255, 255, 255)  # glyph colour

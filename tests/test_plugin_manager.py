@@ -434,28 +434,6 @@ def register(api):
     api.register_search_source("search_plugin_search", search)
 """
 
-_SAMPLE_MAIN_CHAIN_PROCESSOR = """\
-def reverse_text(args):
-    text = str(args.get("text", ""))
-    return {"outputs": {"output": text[::-1], "length": str(len(text))}}
-
-def register(api):
-    assert api.register_chain_processor(
-        {
-            "id": "reverse_text",
-            "title": "反转文本",
-            "category": "插件电池",
-            "description": "反转输入文本。",
-            "inputs": [{"id": "text", "kind": "text", "required": True}],
-            "outputs": [{"id": "output", "kind": "text"}, {"id": "length", "kind": "number"}],
-            "params": [{"id": "text", "kind": "text", "required": True}],
-            "safety": {"level": "safe", "capability": "chain.processor.chain_tools_reverse_text"},
-            "examples": [{"title": "反转文本示例", "args": {"text": "abc"}}],
-        },
-        reverse_text,
-    )
-"""
-
 
 class TestPluginManagerLoad:
     def test_load_and_enable_plugin(self):
@@ -509,32 +487,6 @@ def register(api):
             assert pm.disable_plugin("screenshot_ocr") is True
             assert reg.get("screenshot-ocr") is None
             assert reg.get_canonical("截图ocr") == ""
-
-    def test_plugin_can_register_and_cleanup_chain_processor(self):
-        from core.chain_processors import execute_chain_processor, processor_definition
-
-        with tempfile.TemporaryDirectory() as tmp:
-            _create_plugin_dir(tmp, "chain_tools", main_py=_SAMPLE_MAIN_CHAIN_PROCESSOR)
-            reg = CommandRegistry()
-            pm = PluginManager(reg, plugins_dir=tmp)
-            pm.scan_plugins()
-
-            assert pm.enable_plugin("chain_tools")
-            info = pm.get_plugin("chain_tools")
-            assert "chain_tools_reverse_text" in info.registered_chain_processors
-            definition = processor_definition("chain_tools_reverse_text")
-            assert definition is not None
-            assert definition.title == "反转文本"
-            result = execute_chain_processor("chain_tools_reverse_text", {"text": "abc"})
-            assert result.success is True
-            assert result.message == "cba"
-            assert result.payload["outputs"]["length"] == "3"
-
-            assert pm.disable_plugin("chain_tools")
-            assert processor_definition("chain_tools_reverse_text") is None
-            result = execute_chain_processor("chain_tools_reverse_text", {"text": "abc"})
-            assert result.success is False
-            assert result.error == "Unknown processor"
 
     def test_load_error_plugin(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -890,89 +842,6 @@ class TestPluginAPI:
         assert cmd is not None
         assert cmd.source == "plugin-builtin:my_plugin"
         assert reg.get_canonical("builtin-test") == "my-builtin"
-
-    def test_register_chain_processor_api(self):
-        from core.chain_processors import (
-            execute_chain_processor,
-            processor_definition,
-            unregister_external_processors,
-        )
-
-        unregister_external_processors("my_plugin")
-        reg = CommandRegistry()
-        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
-        ok = api.register_chain_processor(
-            {
-                "id": "slugify",
-                "title": "Slugify",
-                "category": "插件电池",
-                "inputs": [{"id": "text", "kind": "text"}],
-                "outputs": [{"id": "output", "kind": "text"}],
-                "params": [{"id": "text", "kind": "text"}],
-                "safety": {"level": "safe", "capability": "chain.processor.my_plugin_slugify"},
-                "examples": [{"title": "Slugify 示例", "args": {"text": "Hello World"}}],
-            },
-            lambda args: {"outputs": {"output": str(args.get("text", "")).lower().replace(" ", "-")}},
-        )
-
-        assert ok is True
-        assert processor_definition("my_plugin_slugify") is not None
-        result = execute_chain_processor("my_plugin_slugify", {"text": "Hello World"})
-        assert result.success is True
-        assert result.message == "hello-world"
-        assert result.payload["outputs"]["output"] == "hello-world"
-        unregister_external_processors("my_plugin")
-        assert processor_definition("my_plugin_slugify") is None
-
-    def test_register_chain_processor_rejects_invalid_schema(self):
-        from core.chain_processors import processor_definition, unregister_external_processors
-
-        unregister_external_processors("my_plugin")
-        reg = CommandRegistry()
-        api = PluginAPI("my_plugin", os.getcwd(), [], reg)
-
-        invalid_definitions = [
-            {
-                "id": "bad_port",
-                "title": "Bad Port",
-                "inputs": [{"id": "text", "kind": "mystery"}],
-                "outputs": [{"id": "output", "kind": "text"}],
-                "params": [{"id": "text", "kind": "text"}],
-                "safety": {"level": "safe", "capability": "chain.processor.bad_port"},
-            },
-            {
-                "id": "bad_safety",
-                "title": "Bad Safety",
-                "inputs": [{"id": "text", "kind": "text"}],
-                "outputs": [{"id": "output", "kind": "text"}],
-                "params": [{"id": "text", "kind": "text"}],
-                "safety": {"level": "unknown", "capability": "chain.processor.bad_safety"},
-            },
-            {
-                "id": "bad_param",
-                "title": "Bad Param",
-                "inputs": [{"id": "text", "kind": "text"}],
-                "outputs": [{"id": "output", "kind": "text"}],
-                "params": [{"id": "missing", "kind": "text"}],
-                "safety": {"level": "safe", "capability": "chain.processor.bad_param"},
-            },
-            {
-                "id": "bad_role",
-                "title": "Bad Role",
-                "inputs": [{"id": "text", "kind": "text", "role": "weird"}],
-                "outputs": [{"id": "output", "kind": "text"}],
-                "params": [{"id": "text", "kind": "text"}],
-                "safety": {"level": "safe", "capability": "chain.processor.bad_role"},
-            },
-        ]
-
-        for definition in invalid_definitions:
-            assert api.register_chain_processor(definition, lambda args: "ok") is False
-
-        assert processor_definition("my_plugin_bad_port") is None
-        assert processor_definition("my_plugin_bad_safety") is None
-        assert processor_definition("my_plugin_bad_param") is None
-        assert processor_definition("my_plugin_bad_role") is None
 
     def test_permission_check(self):
         api = PluginAPI("test", os.getcwd(), ["clipboard.read"], CommandRegistry())

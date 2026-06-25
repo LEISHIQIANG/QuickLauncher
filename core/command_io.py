@@ -22,7 +22,6 @@ RUNTIME_ATTRS = (
     "_runtime_param_values",
     "_runtime_input_values",
     "_runtime_selected_files",
-    "_chain_values",
     "_destructive_command_confirmed",
 )
 
@@ -44,7 +43,6 @@ class CommandInvocationSnapshot:
     selected_text: str = ""
     selected_text_method: str = ""
     selected_files: list[str] = field(default_factory=list)
-    chain_values: dict[str, str] = field(default_factory=dict)
     context_meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -157,8 +155,6 @@ def build_invocation_snapshot(
     args = {str(k): str(v) for k, v in dict(getattr(request, "args", {}) or {}).items()}
     input_values = _string_dict(context_meta.get("input_values"))
     input_values.update(_string_dict(getattr(request, "input_values", None)))
-    chain_values = _string_dict(context_meta.get("chain_values"))
-    chain_values.update(_string_dict(getattr(request, "chain_values", None)))
     selected_files = [str(path) for path in list(context_meta.get("selected_files") or [])]
     clipboard_files = [str(path) for path in list(context_meta.get("clipboard_files") or [])]
     return CommandInvocationSnapshot(
@@ -177,7 +173,6 @@ def build_invocation_snapshot(
         selected_text=str(context_meta.get("selected_text") or ""),
         selected_text_method=str(context_meta.get("selected_text_method") or ""),
         selected_files=selected_files,
-        chain_values=chain_values,
         context_meta=_safe_context_meta(context_meta),
     )
 
@@ -190,7 +185,6 @@ def prepare_runtime_shortcut(shortcut: ShortcutItem, snapshot: CommandInvocation
     runtime._runtime_param_values = dict(snapshot.args)  # type: ignore[attr-defined]
     runtime._runtime_input_values = dict(snapshot.input_values)  # type: ignore[attr-defined]
     runtime._runtime_selected_files = list(snapshot.selected_files)  # type: ignore[attr-defined]
-    runtime._chain_values = dict(snapshot.chain_values)  # type: ignore[attr-defined]
     if bool(snapshot.context_meta.get("destructive_confirmed", False)):
         runtime._destructive_command_confirmed = True  # type: ignore[attr-defined]
     return runtime
@@ -301,28 +295,6 @@ def normalize_outputs(outputs: dict[str, Any]) -> dict[str, str]:
     return normalized
 
 
-def chain_values_from_artifact(index: int, artifact: CommandOutputArtifact) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for prefix in (f"{index}", "prev"):
-        values[f"{prefix}.success"] = "true" if artifact.success else "false"
-        values[f"{prefix}.exit_code"] = artifact.exit_code
-        values[f"{prefix}.stdout"] = artifact.stdout
-        values[f"{prefix}.stderr"] = artifact.stderr
-        values[f"{prefix}.output"] = artifact.output
-        values[f"{prefix}.text"] = artifact.text
-        values[f"{prefix}.error"] = artifact.error
-        if artifact.json_text:
-            values[f"{prefix}.json"] = artifact.json_text
-        if artifact.table_tsv:
-            values[f"{prefix}.table.tsv"] = artifact.table_tsv
-        for name, value in artifact.outputs.items():
-            values[f"{prefix}.outputs.{name}"] = value
-        _expand_list(values, prefix, "files", artifact.files)
-        _expand_list(values, prefix, "folders", artifact.folders)
-        _expand_list(values, prefix, "urls", artifact.urls)
-    return values
-
-
 def _safe_context_meta(context_meta: dict[str, Any]) -> dict[str, Any]:
     safe = {}
     skip = {
@@ -330,7 +302,6 @@ def _safe_context_meta(context_meta: dict[str, Any]) -> dict[str, Any]:
         "clipboard_html",
         "selected_text",
         "input_values",
-        "chain_values",
         "destructive_confirmed",
     }
     for key, value in dict(context_meta or {}).items():
@@ -430,9 +401,3 @@ def _stable_json(value: Any, *, indent: int | None = None) -> str:
         )
     except Exception:
         return str(value)
-
-
-def _expand_list(values: dict[str, str], prefix: str, name: str, items: list[str]) -> None:
-    values[f"{prefix}.{name}.count"] = str(len(items))
-    for idx, item in enumerate(items):
-        values[f"{prefix}.{name}.{idx}"] = str(item)

@@ -8,7 +8,7 @@
 
 **Press the middle mouse button, or any keyboard / mouse trigger you configure, to open your launcher anywhere.**
 
-QuickLauncher is a Windows 10 / 11 desktop quick launcher and lightweight automation tool. It launches apps, folders, URLs, hotkeys, commands, action chains, and batch launch groups, and it can be extended with local plugins.
+QuickLauncher is a Windows 10 / 11 desktop quick launcher and lightweight automation tool. It launches apps, folders, URLs, hotkeys, commands, and batch launch groups, and it can be extended with local plugins.
 
 The current source version is defined in [core/version.py](core/version.py): `1.6.3.3` stable. Installer and portable builds ship their own runtime, so end users do not need Python installed. Python is required only for source runs and builds.
 
@@ -17,13 +17,12 @@ The current source version is defined in [core/version.py](core/version.py): `1.
 | Capability | Current implementation |
 |---|---|
 | Global trigger | Middle mouse by default; configurable keyboard, mouse, or hybrid triggers; special apps can use a separate trigger such as Ctrl+middle |
-| Shortcuts | 7 types: file/app, folder, URL, hotkey, command, action chain, batch launch |
+| Shortcuts | 7 types: file/app, folder, URL, hotkey, command, batch launch, macro |
 | Search | Fuzzy matching, Chinese Pinyin full/initial search, aliases, tags, web search prefixes, plugin search sources |
 | Command system | CMD, PowerShell, Python, Git Bash, built-in commands; parameter forms, variable templates, environment variables, live output, result actions |
 | Built-in commands | 33 built-in commands for JSON/JWT/Base64/Hash/TLS/CIDR/Git/process/port/Wi-Fi/Hosts/plugin management and more |
-| Action chains | Visual canvas with 189 built-in processors for text, math, lists, JSON, HTTP, files, system info, images, validation, and more |
 | Batch launch | Dedicated `batch_launch` shortcut type for ordered multi-target launch without recursive references |
-| Plugins | `.qlzip` packages, hot loading, enable/disable, failure quarantine, permission declarations, built-in command registration, search sources, chain processors, persistent workers |
+| Plugins | `.qlzip` packages, hot loading, enable/disable, failure quarantine, permission declarations, built-in command registration, search sources, persistent workers |
 | UI | Dark/light/follow-system themes, Acrylic/image/solid backgrounds, Windows 10 shadows, global UI scaling, Dock, pinned and draggable popups |
 | Safety | Atomic saves, config history, automatic backups, import sanitization, path traversal defense, safe URL fetching, SHA-256 verification |
 
@@ -51,7 +50,7 @@ Source runs require Windows 10 / 11 and 64-bit CPython 3.12.
 1. Launch the app; it stays in the system tray.
 2. Press the middle mouse button and type to search.
 3. Type `/` to browse built-in commands, or type a command alias directly.
-4. Add files, folders, URLs, hotkeys, commands, action chains, or batch launch items in Settings.
+4. Add files, folders, URLs, hotkeys, commands, or batch launch items in Settings.
 5. Double-tap Alt to pause / resume triggers. CAD and 3D apps can use a separate special trigger profile.
 
 ## Built-In Command Examples

@@ -10,13 +10,11 @@ from core.runtime_constants import (
     normalize_command_output_max_chars,
     normalize_command_timeout_seconds,
 )
-from core.shortcut_chain_exec import MAX_CHAIN_STEPS as EXEC_CHAIN_MAX_STEPS
 from core.shortcut_health import MAX_CHAIN_STEPS as HEALTH_CHAIN_MAX_STEPS
 
 
 def test_command_and_chain_limits_are_shared():
     assert ShortcutItem.MAX_CHAIN_STEPS == COMMAND_CHAIN_MAX_STEPS
-    assert EXEC_CHAIN_MAX_STEPS == COMMAND_CHAIN_MAX_STEPS
     assert HEALTH_CHAIN_MAX_STEPS == COMMAND_CHAIN_MAX_STEPS
     assert ShortcutItem().command_timeout_seconds == DEFAULT_COMMAND_TIMEOUT_SECONDS
     assert ShortcutItem().command_output_max_chars == DEFAULT_COMMAND_OUTPUT_MAX_CHARS

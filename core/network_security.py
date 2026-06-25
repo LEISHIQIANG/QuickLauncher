@@ -229,5 +229,8 @@ def read_limited_response(response, limit_bytes: int) -> bytes:
 
 
 def _validate_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, label: str) -> None:
-    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+    from .native_services import _QLValidateEngine
+
+    engine = _QLValidateEngine.get()
+    if not engine.is_public_ip_string(str(ip)):
         raise UnsafeUrlError(f"blocked private address: {label}")

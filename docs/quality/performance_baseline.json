@@ -4,14 +4,12 @@
   "reference_root": "G:\\LEI-PLUG\\QuickLauncher\\QuickLauncher_V1.6.3.5",
   "measurement": "median of 5 isolated process probes; operation metrics report p95",
   "reference": {
-    "action_chain_compile_p95_ms": 0.005,
     "cold_import_ms": 122.831,
     "command_dispatch_p95_ms": 0.037,
     "resident_memory_mb": 41.258,
     "search_1000_p95_ms": 656.022
   },
   "current_at_capture": {
-    "action_chain_compile_p95_ms": 0.005,
     "cold_import_ms": 11.617,
     "command_dispatch_p95_ms": 0.042,
     "resident_memory_mb": 35.215,

@@ -23,7 +23,6 @@ class RuntimeLoadResult:
     registered_commands: tuple[str, ...]
     registered_search_sources: tuple[str, ...]
     registered_modules: dict[str, str]
-    registered_chain_processors: tuple[str, ...]
 
 
 class PluginRuntime:
@@ -79,7 +78,6 @@ class PluginRuntime:
             registered_commands=tuple(api._registered_ids),
             registered_search_sources=pending_search_sources,
             registered_modules=dict(getattr(api, "_registered_modules", {}) or {}),
-            registered_chain_processors=tuple(getattr(api, "_registered_chain_processors", []) or []),
         )
 
     @staticmethod

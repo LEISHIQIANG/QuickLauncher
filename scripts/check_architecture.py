@@ -73,7 +73,6 @@ DYNAMIC_IMPORT_ADAPTERS = frozenset(
     {
         "bootstrap.deps",
         "core",  # __getattr__ is the lazy-export adapter for the package
-        "core.chain.processor_loader",
         "core.module_registry",
         "core.plugin.runtime",
         "ui.config_window",

@@ -167,7 +167,7 @@ REM set "HTTP_PROXY="
 REM set "HTTPS_PROXY="
 
 echo   Installing/updating PyQt5, Nuitka and other dependencies...
-!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow watchdog qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+!PYTHON_CMD! -m pip install --upgrade pip nuitka ordered-set zstandard PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pywin32 psutil pillow qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 echo.
@@ -257,8 +257,17 @@ REM Management list ends up empty in the packaged build.
     --copyright="Copyright (C) %APP_PUBLISHER%" ^
     --output-dir=dist ^
     --include-data-dir=assets=assets ^
-    --include-data-files=modules\action_chain\module.json=modules\action_chain\module.json ^
     --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
+    --include-data-files=native\QLcrypto\QLcrypto.dll=native\QLcrypto.dll ^
+    --include-data-files=native\QLsearch\QLsearch.dll=native\QLsearch.dll ^
+    --include-data-files=native\QLwindow\QLwindow.dll=native\QLwindow.dll ^
+    --include-data-files=native\QLvalidate\QLvalidate.dll=native\QLvalidate.dll ^
+    --include-data-files=native\QLwatch\QLwatch.dll=native\QLwatch.dll ^
+    --include-data-files=native\QLautostart\QLautostart.dll=native\QLautostart.dll ^
+    --include-data-files=native\QLupdate\QLupdate.dll=native\QLupdate.dll ^
+    --include-data-files=native\QLclipboard\QLclipboard.dll=native\QLclipboard.dll ^
+    --include-data-files=native\QLicon\QLicon.dll=native\QLicon.dll ^
+    --include-data-files=native\QLshell\QLshell.dll=native\QLshell.dll ^
     --include-data-files=third_party_licenses.json=third_party_licenses.json ^
     --include-package=application ^
     --include-package=domain ^
@@ -270,9 +279,6 @@ REM Management list ends up empty in the packaged build.
     --include-package=hooks ^
     --include-package=bootstrap ^
     --include-package=services ^
-    --include-package=watchdog ^
-    --include-module=pynput.mouse._win32 ^
-    --include-module=pynput.keyboard._win32 ^
     --include-module=win32gui ^
     --include-module=win32ui ^
     --include-module=win32con ^
@@ -282,6 +288,8 @@ REM Management list ends up empty in the packaged build.
     --include-module=pythoncom ^
     --include-module=win32com.client ^
     --include-module=win32com.shell.shell ^
+    --include-module=pynput.keyboard._win32 ^
+    --include-module=pynput.mouse._win32 ^
     --include-module=psutil ^
     --include-module=PIL.Image ^
     --include-module=PIL.ImageFilter ^
@@ -299,7 +307,9 @@ REM Management list ends up empty in the packaged build.
     --include-module=ssl ^
     --include-module=_ssl ^
     --include-module=_hashlib ^
-    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm,yaml ^
+    --include-module=encodings.idna ^
+    --include-module=stringprep ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,pypinyin,smtplib,imaplib,poplib,ftplib,telnetlib,xmlrpc,doctest,pdb,profile,cProfile,pstats,trace,pydoc,wave,audioop,chunk,sunau,aifc,sndhdr,colorsys,imghdr,shelve,dbm,gdbm,yaml,difflib ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --output-filename=QuickLauncher.exe ^
     main.py

@@ -81,8 +81,6 @@ class ConfigWindow(QMainWindow):
         self._active_hotkey_dialog = None
         self._active_url_dialog = None
         self._active_command_dialog = None
-        self._active_chain_dialog = None
-        # 对话框历史强引用，防止因 Python 垃圾回收机制过早销毁窗口包装对象导致的 C++ 崩溃
         self._dialog_history = []  # type: ignore[var-annotated]
 
         # 无边框 + 透明背景
@@ -233,7 +231,6 @@ class ConfigWindow(QMainWindow):
         self.icon_grid.add_hotkey_requested.connect(self._on_add_hotkey)
         self.icon_grid.add_url_requested.connect(self._on_add_url)
         self.icon_grid.add_command_requested.connect(self._on_add_command)
-        self.icon_grid.add_chain_requested.connect(self._on_add_chain)
         self.icon_grid.add_macro_requested.connect(self._on_add_macro)
         launcher_layout.addWidget(self.icon_grid, 1)
 
@@ -766,10 +763,6 @@ class ConfigWindow(QMainWindow):
             from .batch_launch_dialog import BatchLaunchDialog
 
             dialog = BatchLaunchDialog(self.data_manager, folder_id, self, shortcut)
-        elif shortcut.type == ShortcutType.CHAIN:
-            from .chain_dialog import ChainDialog
-
-            dialog = ChainDialog(self, shortcut)
         elif shortcut.type == ShortcutType.MACRO:
             from .macro_record_dialog import MacroRecordDialog
 
@@ -978,40 +971,6 @@ class ConfigWindow(QMainWindow):
 
             logging.getLogger(__name__).error(f"创建命令对话框失败: {e}")
             self._clear_active_dialog_if_current("_active_command_dialog", locals().get("dialog"))
-            self._end_shortcut_dialog_action()
-
-    def _on_add_chain(self):
-        """Create an action chain."""
-        if self._activate_existing_dialog("_active_chain_dialog"):
-            return
-
-        if not self._begin_shortcut_dialog_action("chain"):
-            return
-        folder_id = self.icon_grid.current_folder_id
-        if not folder_id:
-            self._end_shortcut_dialog_action()
-            return
-
-        try:
-            from .chain_dialog import ChainDialog
-
-            dialog = ChainDialog(self)
-            self._active_chain_dialog = dialog
-            dialog.finished.connect(
-                lambda dialog=dialog: self._clear_active_dialog_if_current("_active_chain_dialog", dialog)
-            )
-
-            def _apply_add(shortcut):
-                self.data_manager.add_shortcut(folder_id, shortcut)
-                self.icon_grid.load_folder(folder_id)
-                self.settings_changed.emit()
-
-            self._run_shortcut_dialog(dialog, _apply_add, "_active_chain_dialog")
-        except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).error(f"Create chain dialog failed: {e}", exc_info=True)
-            self._clear_active_dialog_if_current("_active_chain_dialog", locals().get("dialog"))
             self._end_shortcut_dialog_action()
 
     def _on_add_macro(self):

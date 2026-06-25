@@ -32,7 +32,7 @@ OFFICIAL_PLUGIN_PACKAGE_SHA256 = {
     "api_tester": "611da699b6d434243a9c466e4f911c48b844c9f0e97fda1561e91a6f8e718dbb",
     "disk_cleaner": "e5066468d06869fafe6c38b3f16ad1c9cba87e882a18d2c8fde5df934d0bd627",
     "event_inspector": "3137bc9ebd2f51d4021f849f871093e3b3aa229b21b3e0a254f9a6cfc136b0c2",
-    "file_tools": "8fde01d8ef1089dbb05292c2561eca38f23a1f185f096b493f7fc7eb168817d7",
+    "file_tools": "06d4eae4663baf998a588a7a7b09e6851f831e54a53adc2ea91b52f5427d6d3b",
     "network_tools": "10037cdaffd524e01271c24709851d3c73b849b0e8e5b7448fbb8a52dbad8998",
     "process_tools": "a69f2e03bd08914b70d878bd8b78cb88c34e75f90646a9f234c52534592e3e86",
     "qr_code_scanner": "3bb074a7d47319dce7c8578995c6667b7446cf6a752bf4215e78c76b3da911a0",

@@ -248,44 +248,6 @@ class _CommandExecutionServiceIntegrationTest(unittest.TestCase):
         self.assertRegex(output, r"[0-9a-f]{32}")
 
 
-class _ActionChainIntegrationTest(unittest.TestCase):
-    """W8.2 — ``execute_shortcut_chain`` carries component=action_chain.
-
-    The contract: the operation_context block installed at the top
-    of ``execute_shortcut_chain`` populates ``component=action_chain``
-    and ``action=<chain_id>`` for every log line emitted inside it.
-    We verify the contract by emitting a log inside the same block
-    shape used in production; the action-chain executor itself only
-    logs on the error path, which is harder to exercise without a
-    real chain module.
-    """
-
-    def test_action_chain_context_appears_in_log_output(self) -> None:
-        from io import StringIO
-
-        from application.logging_context import operation_context
-        from application.structured_formatter import StructuredFormatter
-
-        stream = StringIO()
-        handler = logging.StreamHandler(stream)
-        handler.setFormatter(StructuredFormatter())
-        chain_logger = logging.getLogger("core.shortcut_chain_exec")
-        chain_logger.handlers.clear()
-        chain_logger.addHandler(handler)
-        chain_logger.setLevel(logging.INFO)
-        chain_logger.propagate = False
-
-        with operation_context("action_chain", "test-chain-1") as ctx:
-            ctx.with_error_code("chain_module_unavailable")
-            chain_logger.warning("action chain module unavailable")
-
-        output = stream.getvalue()
-        self.assertIn("action chain module unavailable", output)
-        self.assertIn("action_chain", output)
-        self.assertIn("chain_module_unavailable", output)
-        self.assertRegex(output, r"[0-9a-f]{32}")
-
-
 class _ShortcutCaptureIntegrationTest(unittest.TestCase):
     """W8.2 — ``CommandExecutionService.run_shortcut_capture`` carries component=shortcut_capture.
 

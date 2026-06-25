@@ -191,8 +191,7 @@ def handle_hello(context):
 | `register_command(...)` | 注册命令；支持 `icon_path`、`search_terms` | 无 |
 | `register_builtin_command(...)` | 注册到“内置命令”下拉；仅适合主程序级入口 | `builtin.command` |
 | `register_search_source(id, handler=None)` | 注册插件搜索源；主程序会自动加插件 ID 命名空间，避免跨插件冲突 | 无 |
-| `register_module(module_id, manifest_path="module.json")` | 注册插件内的主程序模块 manifest，用于动作链这类可独立化模块 | 无 |
-| `register_chain_processor(definition, handler)` | 注册动作链电池，使用与内置电池一致的 schema | 无 |
+| `register_module(module_id, manifest_path="module.json")` | 注册插件内的主程序模块 manifest，用于可独立化的可选模块 | 无 |
 | `read_clipboard()` | 读取剪贴板文本 | `clipboard.read` |
 | `write_clipboard(text)` | 写入剪贴板 | `clipboard.write` |
 | `get_selected_files()` | 获取资源管理器选中文件 | `file.read` |
@@ -251,72 +250,46 @@ CommandResult(
 
 ## 模块型插件
 
-普通插件注册命令；模块型插件注册一个主程序可调用的模块 API。动作链未来独立发布时就走这条路径。
+普通插件注册命令；模块型插件注册一个主程序可调用的模块 manifest，供后续独立化或可选模块使用。
 
 模块型插件最小结构：
 
 ```text
-plugins/action_chain/
+plugins/<plugin_id>/
   plugin.json
   main.py
   module.json
-  action_chain_entry.py
+  <entry_module>.py
 ```
 
 `main.py` 只负责把模块 manifest 交给主程序：
 
 ```python
 def register(api):
-    api.register_module("quicklauncher.action_chain", "module.json")
+    api.register_module("<plugin_id>.<module_id>", "module.json")
 ```
 
 `module.json` 使用模块契约字段：
 
 ```json
 {
-  "id": "quicklauncher.action_chain",
-  "name": "Action Chain",
-  "display_name": "动作链",
+  "id": "<plugin_id>.<module_id>",
+  "name": "Module Name",
+  "display_name": "模块名",
   "module_version": "0.2.0",
   "schema_version": 1,
   "api_version": "1.0",
   "min_host_version": "1.6.3.0",
   "max_host_version": "",
-  "entry": "action_chain_entry:ActionChainModule",
+  "entry": "<entry_module>:EntryClass",
   "license_mode": "plugin",
-  "capabilities": ["chain.editor", "chain.runtime", "chain.processors"]
+  "capabilities": []
 }
 ```
 
-启用插件后，主程序通过 `core.module_registry` 加载 `module.json` 的 `entry`。禁用插件时，模块 manifest 会被反注册；主程序会回退到内置动作链模块，或在没有内置模块时返回清晰的“模块不可用”结果。
+启用插件后，主程序通过 `core.module_registry` 加载 `module.json` 的 `entry`。禁用插件时，模块 manifest 会被反注册；主程序在没有可用模块时会返回清晰的"模块不可用"结果。
 
-## 动作链电池插件
-
-插件也可以只注册一个或多个动作链电池，不必注册命令。电池会出现在动作链节点库中，执行时走 `core.chain_processors.execute_chain_processor()`，禁用插件后自动从节点库和执行入口移除。
-
-```python
-def reverse_text(args):
-    text = str(args.get("text", ""))
-    return {"outputs": {"output": text[::-1], "length": str(len(text))}}
-
-def register(api):
-    api.register_chain_processor(
-        {
-            "id": "reverse_text",
-            "title": "反转文本",
-            "category": "插件电池",
-            "description": "反转输入文本。",
-            "inputs": [{"id": "text", "kind": "text", "required": True}],
-            "outputs": [{"id": "output", "kind": "text"}, {"id": "length", "kind": "number"}],
-            "params": [{"id": "text", "kind": "text", "required": True}],
-            "safety": {"level": "safe", "capability": "chain.processor.reverse_text"},
-            "examples": [{"title": "反转文本示例", "args": {"text": "abc"}}],
-        },
-        reverse_text,
-    )
-```
-
-如果 `id` 没有点号，主程序会自动按插件 ID 命名空间化，例如插件 `chain_tools` 的 `reverse_text` 会注册为 `chain_tools_reverse_text`，避免和内置电池或其他插件冲突。handler 可以返回 `CommandResult`、字符串，或包含 `outputs`/`payload` 的 dict。
+> 当前主程序只内置 `quicklauncher.batch_launch` 模块；其他可独立化模块尚未启用 `register_module` 路径。
 
 ### 提权 / 降权启动
 
@@ -431,7 +404,7 @@ CommandResult(
 | `log` | stdout/stderr、HTTP 响应、长日志 | `{"wrap": false, "window_size": "large"}` |
 | `table` | 进程、端口、列表型数据 | `{"columns": [...], "rows": [...]}`，复制用 TSV |
 | `kv` | 系统信息、网络摘要 | `{"items": [[key, value], ...]}` |
-| `list` | 检查报告、动作链步骤 | `{"items": [{"title": ..., "status": ..., "detail": ...}]}` |
+| `list` | 检查报告、批量启动步骤 | `{"items": [{"title": ..., "status": ..., "detail": ...}]}` |
 | `progress` | 长任务阶段进度 | `{"current": ..., "total": ..., "detail": ...}` |
 | `qr` | 二维码结果 | `{"image_path": ...}` |
 | `json` | JSON 对象或格式化 JSON | `{"data": {...}, "formatted": "...", "compact": "..."}` |
@@ -454,7 +427,7 @@ CommandResult(
 )
 ```
 
-`outputs` 会被命令面板历史和动作链使用，并归一化为 `dict[str, str]`。不要把 token、密码、私钥、cookie 等敏感值放入 `outputs`。
+`outputs` 会被命令面板历史归一化为 `dict[str, str]`。不要把 token、密码、私钥、cookie 等敏感值放入 `outputs`。
 
 ### 结果按钮
 

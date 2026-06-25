@@ -6,7 +6,6 @@ from core.command_io import (
     CommandInvocationSnapshot,
     build_invocation_snapshot,
     build_output_artifact,
-    chain_values_from_artifact,
     discover_input_variables,
     prepare_runtime_shortcut,
     remembered_args,
@@ -84,7 +83,6 @@ def test_prepare_runtime_shortcut_clears_old_runtime_values():
         args={"new": "value"},
         input_values={"input": "fresh"},
         selected_files=["C:/tmp/new.txt"],
-        chain_values={"prev.output": "ok"},
     )
 
     runtime = prepare_runtime_shortcut(shortcut, snapshot)
@@ -93,7 +91,6 @@ def test_prepare_runtime_shortcut_clears_old_runtime_values():
     assert runtime._runtime_param_values == {"new": "value"}
     assert runtime._runtime_input_values == {"input": "fresh"}
     assert runtime._runtime_selected_files == ["C:/tmp/new.txt"]
-    assert runtime._chain_values == {"prev.output": "ok"}
     assert not hasattr(runtime, "_destructive_command_confirmed")
     assert shortcut._runtime_param_values == {"old": "value"}
 
@@ -116,23 +113,6 @@ def test_build_output_artifact_normalizes_outputs_and_table_values():
     assert artifact.outputs["nested"] == '{"a":1,"b":2}'
     assert artifact.outputs["table.tsv"] == 'name\tvalue\nhost\texample.com\nquoted\ta,b "c"'
     assert artifact.outputs["table.csv"] == 'name,value\r\nhost,example.com\r\nquoted,"a,b ""c"""\r\n'
-
-
-def test_chain_values_include_named_outputs_and_arrays():
-    artifact = build_output_artifact(
-        CommandResult(
-            success=False,
-            message="failed",
-            error="boom",
-            payload={"outputs": {"host": "example.com"}, "files": ["C:/a.txt"], "urls": ["https://example.com"]},
-        )
-    )
-    values = chain_values_from_artifact(2, artifact)
-    assert values["2.success"] == "false"
-    assert values["prev.outputs.host"] == "example.com"
-    assert values["prev.files.count"] == "1"
-    assert values["prev.files.0"] == "C:/a.txt"
-    assert values["prev.urls.0"] == "https://example.com"
 
 
 def test_param_defaults_and_input_discovery():

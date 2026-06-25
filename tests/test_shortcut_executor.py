@@ -6,10 +6,8 @@ import core.shortcut_executor as se
 from core.data_models import ShortcutItem, ShortcutType
 from core.shortcut_executor import (
     STANDARD_USER_LAUNCH_FAILED_MESSAGE,
-    Key,
     ShortcutExecutor,
     _bind_shortcut_executor_mixins,
-    _import_pynput,
 )
 
 
@@ -18,77 +16,10 @@ def test_module_constant():
     assert isinstance(STANDARD_USER_LAUNCH_FAILED_MESSAGE, str)
 
 
-def test_import_pynput_success(monkeypatch):
-    monkeypatch.setattr(se, "HAS_PYNPUT", False)
-    monkeypatch.setattr(se, "_pynput_Key", None)
-    monkeypatch.setattr(se, "_pynput_import_attempted", False)
-    _import_pynput()
-    assert se.HAS_PYNPUT is True
-    assert se._pynput_Key is not None
-
-
-def test_import_pynput_idempotent(monkeypatch):
-    sentinel = MagicMock()
-    monkeypatch.setattr(se, "_pynput_Key", sentinel)
-    monkeypatch.setattr(se, "HAS_PYNPUT", True)
-    monkeypatch.setattr(se, "_pynput_import_attempted", True)
-    _import_pynput()
-    assert se._pynput_Key is sentinel
-
-
-def test_import_pynput_failure_graceful(monkeypatch):
-    monkeypatch.setattr(se, "HAS_PYNPUT", False)
-    monkeypatch.setattr(se, "_pynput_Key", None)
-    monkeypatch.setattr(se, "_pynput_import_attempted", False)
-    import sys
-
-    monkeypatch.setitem(sys.modules, "pynput.keyboard", None)
-    monkeypatch.setitem(sys.modules, "pynput", None)
-    _import_pynput()
-    assert se.HAS_PYNPUT is False
-    assert se._pynput_Key is None
-
-
-def test_key_function(monkeypatch):
-    monkeypatch.setattr(se, "HAS_PYNPUT", False)
-    monkeypatch.setattr(se, "_pynput_Key", None)
-    monkeypatch.setattr(se, "_pynput_import_attempted", False)
-    result = Key()
-    assert se.HAS_PYNPUT is True
-    assert result is se._pynput_Key
-
-
 def test_shortcut_executor_class_attrs():
     assert ShortcutExecutor._previous_hwnd is None
     assert hasattr(ShortcutExecutor, "_hotkey_lock")
     assert ShortcutExecutor._hotkey_lock_timeout == 2.0
-    assert ShortcutExecutor.PYNPUT_SPECIAL_KEYS == {}
-    assert ShortcutExecutor._PYNPUT_KEYS_LOADED is False
-
-
-def test_ensure_pynput_keys(monkeypatch):
-    monkeypatch.setattr(ShortcutExecutor, "_PYNPUT_KEYS_LOADED", False)
-    monkeypatch.setattr(ShortcutExecutor, "PYNPUT_SPECIAL_KEYS", {})
-    ShortcutExecutor._ensure_pynput_keys()
-    assert ShortcutExecutor._PYNPUT_KEYS_LOADED is True
-    assert "ctrl" in ShortcutExecutor.PYNPUT_SPECIAL_KEYS
-    assert ShortcutExecutor.PYNPUT_SPECIAL_KEYS["ctrl"] is not None
-
-
-def test_ensure_pynput_keys_idempotent(monkeypatch):
-    monkeypatch.setattr(ShortcutExecutor, "_PYNPUT_KEYS_LOADED", True)
-    monkeypatch.setattr(ShortcutExecutor, "PYNPUT_SPECIAL_KEYS", {"ctrl": "fake"})
-    ShortcutExecutor._ensure_pynput_keys()
-    assert ShortcutExecutor.PYNPUT_SPECIAL_KEYS == {"ctrl": "fake"}
-
-
-def test_ensure_pynput_keys_graceful_when_pynput_none(monkeypatch):
-    monkeypatch.setattr(ShortcutExecutor, "_PYNPUT_KEYS_LOADED", False)
-    monkeypatch.setattr(ShortcutExecutor, "PYNPUT_SPECIAL_KEYS", {})
-    monkeypatch.setattr(se, "Key", lambda: None)
-    ShortcutExecutor._ensure_pynput_keys()
-    assert ShortcutExecutor._PYNPUT_KEYS_LOADED is True
-    assert ShortcutExecutor.PYNPUT_SPECIAL_KEYS == {}
 
 
 def test_point_structure():
@@ -111,21 +42,6 @@ def test_execute_exception_handling(monkeypatch):
     success, error = ShortcutExecutor.execute(shortcut)
     assert success is False
     assert "boom" in error
-
-
-def test_execute_chain_type(monkeypatch):
-    mock_result = MagicMock()
-    mock_result.success = True
-    mock_result.error = None
-    import core.shortcut_chain_exec
-
-    monkeypatch.setattr(core.shortcut_chain_exec, "execute_shortcut_chain", lambda s: mock_result)
-    shortcut = MagicMock(spec=ShortcutItem)
-    shortcut.type = ShortcutType.CHAIN
-    shortcut.run_as_admin = False
-    success, error = ShortcutExecutor.execute(shortcut)
-    assert success is True
-    assert error == ""
 
 
 def test_execute_batch_launch_type(monkeypatch):

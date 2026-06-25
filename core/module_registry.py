@@ -11,9 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.action_chain_host import DefaultActionChainHostAPI
 from core.version import APP_VERSION
-from runtime_paths import resource_path
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +29,6 @@ MODULE_STATUSES = {
     MODULE_INCOMPATIBLE,
     MODULE_BROKEN,
 }
-
-ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
-ACTION_CHAIN_MANIFEST = resource_path("modules", "action_chain", "module.json")
 
 
 @dataclass
@@ -62,23 +57,10 @@ class ModuleRegistry:
         self._records: dict[str, ModuleRecord] = {}
         self._disabled: set[str] = set()
         self._external_manifests: dict[str, Path] = {}
-        self._action_chain_editor: Callable[..., Any] | None = None
         self._shortcut_executor: Callable[..., Any] | None = None
-
-    def set_action_chain_editor(self, editor: Callable[..., Any] | None) -> None:
-        self._action_chain_editor = editor
-        self._records.pop(ACTION_CHAIN_MODULE_ID, None)
 
     def set_shortcut_executor(self, executor: Callable[..., Any] | None) -> None:
         self._shortcut_executor = executor
-        self._records.pop(ACTION_CHAIN_MODULE_ID, None)
-
-    def _host_api(self, data_manager: Any) -> DefaultActionChainHostAPI:
-        return DefaultActionChainHostAPI(
-            data_manager,
-            editor=self._action_chain_editor,
-            shortcut_executor=self._shortcut_executor,
-        )
 
     def set_disabled(self, module_id: str, disabled: bool = True) -> None:
         module_id = str(module_id or "")
@@ -90,9 +72,6 @@ class ModuleRegistry:
 
     def get(self, module_id: str, *, data_manager: Any = None) -> ModuleRecord:
         module_id = str(module_id or "")
-        if module_id == ACTION_CHAIN_MODULE_ID:
-            return self.load_action_chain(data_manager=data_manager)
-        # 查询已注册的外部 manifest
         if module_id in self._external_manifests:
             cached = self._records.get(module_id)
             if cached is not None:
@@ -127,7 +106,7 @@ class ModuleRegistry:
             module_name, class_name = entry.split(":", 1)
             module = _import_module_from_manifest(module_name, manifest_path)
             module_cls = getattr(module, class_name)
-            api = module_cls(self._host_api(data_manager), manifest)
+            api = module_cls(manifest)
             return ModuleRecord(module_id, MODULE_AVAILABLE, manifest, api, "", str(manifest_path), "plugin")
         except Exception as exc:
             logger.exception("failed to load module %s", module_id)
@@ -165,64 +144,6 @@ class ModuleRegistry:
             return
         self._external_manifests.pop(module_id, None)
         self._records.pop(module_id, None)
-
-    def load_action_chain(self, *, data_manager: Any = None) -> ModuleRecord:
-        cached = self._records.get(ACTION_CHAIN_MODULE_ID)
-        if cached is not None and data_manager is None:
-            return cached
-        record = self._load_action_chain(data_manager=data_manager)
-        if data_manager is None:
-            self._records[ACTION_CHAIN_MODULE_ID] = record
-        return record
-
-    def _load_action_chain(self, *, data_manager: Any = None) -> ModuleRecord:
-        if ACTION_CHAIN_MODULE_ID in self._disabled:
-            return ModuleRecord(ACTION_CHAIN_MODULE_ID, MODULE_DISABLED, {}, None, "module_disabled")
-        manifest_path = self._external_manifests.get(ACTION_CHAIN_MODULE_ID, ACTION_CHAIN_MANIFEST)
-        provider = "plugin" if manifest_path != ACTION_CHAIN_MANIFEST else "builtin"
-        try:
-            if not manifest_path.exists():
-                return ModuleRecord(
-                    ACTION_CHAIN_MODULE_ID,
-                    MODULE_MISSING,
-                    {},
-                    None,
-                    "manifest_missing",
-                    str(manifest_path),
-                    provider,
-                )
-            with manifest_path.open("r", encoding="utf-8") as fh:
-                manifest = json.load(fh)
-            module_id = str(manifest.get("id") or "")
-            if module_id != ACTION_CHAIN_MODULE_ID:
-                return ModuleRecord(
-                    ACTION_CHAIN_MODULE_ID,
-                    MODULE_BROKEN,
-                    manifest,
-                    None,
-                    "manifest_id_mismatch",
-                    str(manifest_path),
-                    provider,
-                )
-            if not _host_version_compatible(APP_VERSION, manifest):
-                return ModuleRecord(
-                    module_id,
-                    MODULE_INCOMPATIBLE,
-                    manifest,
-                    None,
-                    "host_version_incompatible",
-                    str(manifest_path),
-                    provider,
-                )
-            entry = str(manifest.get("entry") or "")
-            module_name, class_name = entry.split(":", 1)
-            module = _import_module_from_manifest(module_name, manifest_path)
-            module_cls = getattr(module, class_name)
-            api = module_cls(self._host_api(data_manager), manifest)
-            return ModuleRecord(module_id, MODULE_AVAILABLE, manifest, api, "", str(manifest_path), provider)
-        except Exception as exc:
-            logger.exception("failed to load action-chain module")
-            return ModuleRecord(ACTION_CHAIN_MODULE_ID, MODULE_BROKEN, {}, None, str(exc), str(manifest_path), provider)
 
 
 def _host_version_compatible(host_version: str, manifest: dict[str, Any]) -> bool:

@@ -55,10 +55,6 @@ def normalize_command_output_max_chars(value: int) -> int:
     return max(100, min(100000, int(value or _DEFAULT_COMMAND_OUTPUT_MAX_CHARS)))
 
 
-def normalize_chain_step_delay_ms(value: float) -> float:
-    return max(0.0, min(60000.0, float(value or 0)))
-
-
 def normalize_trigger_settings(settings: Any) -> Any:
     return settings or {}
 
@@ -71,14 +67,10 @@ class ShortcutType(Enum):
     URL = "url"
     HOTKEY = "hotkey"
     COMMAND = "command"
-    CHAIN = "chain"
     BATCH_LAUNCH = "batch_launch"
     MACRO = "macro"
 
 
-ACTION_CHAIN_MODULE_ID = "quicklauncher.action_chain"
-ACTION_CHAIN_MODULE_VERSION = "0.1.0"
-ACTION_CHAIN_SCHEMA_VERSION = 1
 BATCH_LAUNCH_MODULE_ID = "quicklauncher.batch_launch"
 BATCH_LAUNCH_MODULE_VERSION = "0.1.0"
 
@@ -125,14 +117,6 @@ class ShortcutItem:
     command_params: list[dict] = field(default_factory=list)
     command_env: dict = field(default_factory=dict)
     command_encoding: str = "auto"
-    chain_steps: list[dict] = field(default_factory=list)
-    chain_canvas: dict = field(default_factory=dict)
-    chain_result_window: str = "medium"  # none, small, medium, large
-    module_id: str = ""
-    module_version: str = ""
-    chain_schema_version: int = ACTION_CHAIN_SCHEMA_VERSION
-    chain_ref: str = ""
-    chain_data: dict = field(default_factory=dict)
     batch_launch_steps: list[dict] = field(default_factory=list)
     raw_mode: bool = False  # 原始模式，跳过变量预处理
 

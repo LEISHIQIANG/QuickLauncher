@@ -13,10 +13,11 @@ The three public classes are:
   :pyattr:`state_changed` signal plus an :func:`emit_state` helper.
 * :class:`ListViewModel` — adds ``items_changed`` and the
   ``item_inserted`` / ``item_removed`` / ``item_updated`` signals used
-  by lists in the chain canvas, icon grid and folder panel.
+  by lists in the icon grid, folder panel, and batch-launch result
+  dialog.
 * :class:`DialogViewModel` — adds ``accepted`` / ``rejected`` /
   ``dirty_changed`` signals and ``commit`` / ``revert`` semantics
-  used by every editor dialog (command / chain / macro / shortcut).
+  used by every editor dialog (command / macro / shortcut).
 """
 
 from __future__ import annotations

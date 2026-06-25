@@ -56,7 +56,6 @@ class PluginInfo:
     registered_commands: list[str] = field(default_factory=list)
     registered_search_sources: list[str] = field(default_factory=list)
     registered_modules: dict[str, str] = field(default_factory=dict)
-    registered_chain_processors: list[str] = field(default_factory=list)
     enabled_at: float = 0.0
     last_error_at: float = 0.0
     last_run_at: float = 0.0

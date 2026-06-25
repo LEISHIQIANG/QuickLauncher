@@ -1,9 +1,9 @@
 """Cooperative cancellation token for long-running operations.
 
 This module provides a lightweight ``CancellationToken`` that can be passed
-into plugin handlers, chain processors, and other potentially long-running
-operations.  The token is a thin wrapper around ``threading.Event`` so that
-callers can signal cancellation and workers can poll it at natural checkpoints.
+into plugin handlers and other potentially long-running operations.  The token
+is a thin wrapper around ``threading.Event`` so that callers can signal
+cancellation and workers can poll it at natural checkpoints.
 """
 
 from __future__ import annotations

@@ -89,7 +89,7 @@ class CommandExecutionHandle:
 
 
 class CommandExecutionService:
-    """Run registry, captured shortcut, and chain commands; persist final results.
+    """Run registry and captured shortcut commands; persist final results.
 
     All asynchronous executions are submitted to a bounded ``ThreadPoolExecutor``
     instead of creating ad-hoc daemon threads.  This gives the application a
@@ -264,28 +264,6 @@ class CommandExecutionService:
         handle._bind_future(future)
         return handle
 
-    def run_shortcut_chain(
-        self,
-        request: CommandExecutionRequest,
-        *,
-        on_finished: Callable[[str, CommandResult, CommandDefinition | None, float, str], None] | None = None,
-    ) -> CommandExecutionHandle:
-        handle = CommandExecutionHandle()
-
-        def _worker() -> None:
-            result, duration, result_id = self.execute_shortcut_chain_sync(request, handle)
-            if handle.cancelled and not self._is_cancel_result(result):
-                return
-            if on_finished is not None:
-                try:
-                    on_finished(handle.request_id, result, None, duration, result_id)
-                except Exception:
-                    logger.debug("run_shortcut_chain on_finished callback failed", exc_info=True)
-
-        future = self._submit_worker(_worker, "ShortcutChain", handle.request_id, handle)
-        handle._bind_future(future)
-        return handle
-
     def run_shortcut_command(
         self,
         request: CommandExecutionRequest,
@@ -382,35 +360,6 @@ class CommandExecutionService:
         except Exception as e:
             logger.exception("Shortcut command execution failed: %s", e)
             result = CommandResult(success=False, message=f"Command failed: {e}", display_type="log", error=str(e))
-        duration = time.perf_counter() - started
-        result_id = self._store_result(request, result, None, duration)
-        return result, duration, result_id
-
-    def execute_shortcut_chain_sync(
-        self,
-        request: CommandExecutionRequest,
-        handle: CommandExecutionHandle | None = None,
-    ) -> tuple[CommandResult, float, str]:
-        """Run an action chain in the caller's thread and store the result."""
-        handle = handle or CommandExecutionHandle()
-        started = time.perf_counter()
-        invocation = build_invocation_snapshot(request, None, request.shortcut)
-        runtime_shortcut = (
-            prepare_runtime_shortcut(request.shortcut, invocation) if request.shortcut is not None else None
-        )
-        try:
-            from core.shortcut_chain_exec import execute_shortcut_chain
-
-            result = execute_shortcut_chain(
-                runtime_shortcut,  # type: ignore[arg-type]
-                request.context_meta.get("data_manager"),
-                cancel_event=handle.cancel_event,
-            )
-        except Exception as e:
-            logger.exception("Shortcut chain execution failed: %s", e)
-            result = CommandResult(
-                success=False, message=f"Action chain failed: {e}", display_type="list", error=str(e)
-            )
         duration = time.perf_counter() - started
         result_id = self._store_result(request, result, None, duration)
         return result, duration, result_id

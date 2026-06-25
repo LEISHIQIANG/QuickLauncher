@@ -78,18 +78,6 @@ def _probe(source_root: Path) -> dict[str, Any]:
     }
 
     try:
-        from core.chain.graph_executor import LegacyAdapter
-
-        chain_samples = _timed_samples(
-            lambda: LegacyAdapter.steps_to_graph([{"id": "step-1", "shortcut_id": "target"}]),
-            warmups=10,
-            iterations=100,
-        )
-        metrics["action_chain_compile_p95_ms"] = _p95(chain_samples)
-    except (ImportError, AttributeError, TypeError, ValueError):
-        logger.debug("action-chain performance probe unavailable", exc_info=True)
-
-    try:
         from core.command_execution_service import CommandExecutionService
 
         service = CommandExecutionService()

@@ -295,7 +295,6 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
         required = [
             root_dir / "assets" / "app.ico",
             root_dir / "hooks" / "hooks.dll",
-            root_dir / "modules" / "action_chain" / "module.json",
             root_dir / "plugins",
         ]
         missing = [str(path) for path in required if not path.exists()]
@@ -440,10 +439,9 @@ def _run_smoke_test_from_argv(argv: list[str]) -> int:
         return {"formats": checked, "decoder_plugins": len(decoder_plugins)}
 
     def check_folder_watch_runtime():
-        from core.folder_watcher import WATCHDOG_AVAILABLE
+        from core.folder_watcher import FolderWatcherManager
 
-        if not WATCHDOG_AVAILABLE:
-            raise RuntimeError("watchdog is unavailable")
+        FolderWatcherManager()
         return {"watchdog": True}
 
     for name, callback in (
