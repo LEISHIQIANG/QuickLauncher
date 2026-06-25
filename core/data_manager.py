@@ -329,6 +329,7 @@ class DataManager:
         self.icons_dir.mkdir(parents=True, exist_ok=True)
         self.history_dir.mkdir(parents=True, exist_ok=True)
         self.recovery_dir.mkdir(parents=True, exist_ok=True)
+        self.auto_backup_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_config_store(self) -> ConfigDataStore:
         service = getattr(self, "config_store", None)

@@ -88,31 +88,35 @@ class CommandDialogTestRunnerMixin:
         host._command_test_thread.start()
 
     def _show_test_result(self, result: dict):
-        host = cast(Any, self)
-        if host._dialog_finished or not hasattr(host, "test_output") or not hasattr(host, "_test_btn"):
+        try:
+            host = cast(Any, self)
+            if host._dialog_finished or not hasattr(host, "test_output") or not hasattr(host, "_test_btn"):
+                return
+            lines = [
+                f"状态: {'成功' if result.get('success') else '失败'}",
+                f"退出码: {result.get('exit_code')}",
+                f"耗时: {result.get('duration', 0):.2f}s",
+            ]
+            if result.get("resolved_command"):
+                lines.extend(["", "最终命令:", str(result.get("resolved_command"))])
+            if result.get("error"):
+                lines.extend(["", "错误:", str(result.get("error"))])
+            if result.get("stdout"):
+                lines.extend(["", "stdout:", str(result.get("stdout"))])
+            if result.get("stderr"):
+                lines.extend(["", "stderr:", str(result.get("stderr"))])
+            host.test_output.setPlainText("\n".join(lines))
+            host._test_btn.setEnabled(host.type_combo.currentIndex() != 4)
+            task = host._command_test_thread
+            host._command_test_thread = None
+            if task is not None:
+                try:
+                    task.deleteLater()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("删除命令测试任务失败: %s", exc, exc_info=True)
+        except (RuntimeError, AttributeError, TypeError) as exc:  # noqa: BLE001
+            logger.debug("命令测试结果回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        lines = [
-            f"状态: {'成功' if result.get('success') else '失败'}",
-            f"退出码: {result.get('exit_code')}",
-            f"耗时: {result.get('duration', 0):.2f}s",
-        ]
-        if result.get("resolved_command"):
-            lines.extend(["", "最终命令:", str(result.get("resolved_command"))])
-        if result.get("error"):
-            lines.extend(["", "错误:", str(result.get("error"))])
-        if result.get("stdout"):
-            lines.extend(["", "stdout:", str(result.get("stdout"))])
-        if result.get("stderr"):
-            lines.extend(["", "stderr:", str(result.get("stderr"))])
-        host.test_output.setPlainText("\n".join(lines))
-        host._test_btn.setEnabled(host.type_combo.currentIndex() != 4)
-        task = host._command_test_thread
-        host._command_test_thread = None
-        if task is not None:
-            try:
-                task.deleteLater()
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("删除命令测试任务失败: %s", exc, exc_info=True)
 
     def done(self, result):
         self._cleanup_command_test_thread()

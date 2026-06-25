@@ -60,15 +60,21 @@ class SettingsDataActionsMixin:
             progress.show()
 
             self.export_thread = ExportThread(self.data_manager, file_path)
-            self.export_thread.finished.connect(self.export_thread.deleteLater)
+            # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+            # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+            # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
             self.export_thread.finished.connect(
                 lambda thread=self.export_thread: self._clear_thread_if_current("export_thread", thread)
             )
 
             def on_finished(success, msg):
-                if not self._is_progress_dialog_alive(progress):
+                try:
+                    if not self._is_progress_dialog_alive(progress):
+                        return
+                    progress.show_success(msg) if success else progress.show_failure(msg)
+                except (RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("导出回调命中已销毁 widget: %s", exc, exc_info=True)
                     return
-                progress.show_success(msg) if success else progress.show_failure(msg)
 
             self.export_thread.finished_signal.connect(on_finished)
             self.export_thread.start()
@@ -88,28 +94,34 @@ class SettingsDataActionsMixin:
             progress.show()
 
             self.import_thread = ImportThread(self.data_manager, file_path)
-            self.import_thread.finished.connect(self.import_thread.deleteLater)
+            # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+            # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+            # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
             self.import_thread.finished.connect(
                 lambda thread=self.import_thread: self._clear_thread_if_current("import_thread", thread)
             )
 
             def on_finished(success, count, msg):
-                if not self._is_progress_dialog_alive(progress):
+                try:
+                    if not self._is_progress_dialog_alive(progress):
+                        return
+                    if success:
+                        progress.show_success(msg if count <= 0 else f"成功导入 {count} 项配置")
+                        self.import_completed.emit(count)
+                        try:
+                            # Refresh settings
+                            self._load_settings()
+                            # Apply theme again to ensure styles
+                            theme = self.data_manager.get_settings().theme
+                            self.apply_theme(theme)
+                            self.settings_changed.emit()
+                        except Exception as e:
+                            logger.debug("Failed to refresh settings after import: %s", e)
+                    else:
+                        progress.show_failure(msg)
+                except (RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("导入回调命中已销毁 widget: %s", exc, exc_info=True)
                     return
-                if success:
-                    progress.show_success(msg if count <= 0 else f"成功导入 {count} 项配置")
-                    self.import_completed.emit(count)
-                    try:
-                        # Refresh settings
-                        self._load_settings()
-                        # Apply theme again to ensure styles
-                        theme = self.data_manager.get_settings().theme
-                        self.apply_theme(theme)
-                        self.settings_changed.emit()
-                    except Exception as e:
-                        logger.debug("Failed to refresh settings after import: %s", e)
-                else:
-                    progress.show_failure(msg)
 
             self.import_thread.finished_signal.connect(on_finished)
             self.import_thread.start()
@@ -147,12 +159,16 @@ class SettingsDataActionsMixin:
             backup_thread = self._backup_thread
 
             def on_backup_done(success):
-                QApplication.restoreOverrideCursor()
-                self._clear_thread_if_current("_backup_thread", backup_thread)
-                if success:
-                    ThemedMessageBox.information(self, tr("备份成功"), tr("全量备份已保存至:\n{path}", path=path))
-                else:
-                    ThemedMessageBox.warning(self, tr("备份失败"), tr("无法创建备份文件，请检查日志。"))
+                try:
+                    QApplication.restoreOverrideCursor()
+                    self._clear_thread_if_current("_backup_thread", backup_thread)
+                    if success:
+                        ThemedMessageBox.information(self, tr("备份成功"), tr("全量备份已保存至:\n{path}", path=path))
+                    else:
+                        ThemedMessageBox.warning(self, tr("备份失败"), tr("无法创建备份文件，请检查日志。"))
+                except (RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("备份回调命中已销毁 widget: %s", exc, exc_info=True)
+                    return
 
             self._backup_thread.finished_signal.connect(on_backup_done)
             self._backup_thread.finished.connect(
@@ -204,18 +220,22 @@ class SettingsDataActionsMixin:
             restore_thread = self._restore_thread
 
             def on_restore_done(success):
-                QApplication.restoreOverrideCursor()
-                self._clear_thread_if_current("_restore_thread", restore_thread)
-                if success:
-                    report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
-                    if report.get("has_warnings"):
-                        ThemedMessageBox.warning(
-                            self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。")
-                        )
-                    ThemedMessageBox.information(self, tr("恢复成功"), tr("配置已恢复，程序即将重启。"))
-                    self._restart_application()
-                else:
-                    ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复备份，文件可能已损坏或格式不正确。"))
+                try:
+                    QApplication.restoreOverrideCursor()
+                    self._clear_thread_if_current("_restore_thread", restore_thread)
+                    if success:
+                        report = getattr(self.data_manager, "get_last_import_report", lambda: {})()
+                        if report.get("has_warnings"):
+                            ThemedMessageBox.warning(
+                                self, tr("导入提示"), tr("部分不安全内容已跳过，请查看日志或诊断信息。")
+                            )
+                        ThemedMessageBox.information(self, tr("恢复成功"), tr("配置已恢复，程序即将重启。"))
+                        self._restart_application()
+                    else:
+                        ThemedMessageBox.warning(self, tr("恢复失败"), tr("无法恢复备份，文件可能已损坏或格式不正确。"))
+                except (RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("恢复回调命中已销毁 widget: %s", exc, exc_info=True)
+                    return
 
             self._restore_thread.finished_signal.connect(on_restore_done)
             self._restore_thread.finished.connect(
@@ -398,7 +418,9 @@ class SettingsDataActionsMixin:
         thread = _FactoryResetThread(self.data_manager)
         thread.progress_signal.connect(on_progress_update)
         thread.finished_signal.connect(on_reset_finished)
-        thread.finished.connect(thread.deleteLater)
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+        # factory_reset 线程的生命周期由 _lifecycle / 进程退出统一管理。
         thread.start()
 
         # 保存线程引用防止被回收

@@ -149,27 +149,33 @@ class DiagnosticsWindow(ThemedToolWindow):
         self.export_btn.setEnabled(False)
         self._collect_thread = DiagnosticsCollectThread(self.data_manager, self.tray_app)
         self._collect_thread.finished_signal.connect(self._on_collect_finished)
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+        # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
         self._collect_thread.finished.connect(
             lambda thread=self._collect_thread: (
                 setattr(self, "_collect_thread", None) if getattr(self, "_collect_thread", None) is thread else None
             )
         )
-        self._collect_thread.finished.connect(self._collect_thread.deleteLater)
         self._collect_thread.start()
 
     def _on_collect_finished(self, items, error: str):
-        self.refresh_btn.setEnabled(True)
-        self.export_btn.setEnabled(True)
-        if error:
-            self.items = []
-            self.shortcut_issues = []
-            self.fix_btn.setEnabled(False)
-            self.text.setHtml(tr("诊断收集失败: {error}", error=error))
+        try:
+            self.refresh_btn.setEnabled(True)
+            self.export_btn.setEnabled(True)
+            if error:
+                self.items = []
+                self.shortcut_issues = []
+                self.fix_btn.setEnabled(False)
+                self.text.setHtml(tr("诊断收集失败: {error}", error=error))
+                return
+            self.items = list(items or [])
+            self.shortcut_issues = self._scan_shortcut_issues()
+            self.fix_btn.setEnabled(any(issue.fix_action for issue in self.shortcut_issues))
+            self.text.setHtml(self._format_items())
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("诊断收集回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        self.items = list(items or [])
-        self.shortcut_issues = self._scan_shortcut_issues()
-        self.fix_btn.setEnabled(any(issue.fix_action for issue in self.shortcut_issues))
-        self.text.setHtml(self._format_items())
 
     def copy_summary(self):
         QApplication.clipboard().setText(self.text.toPlainText())
@@ -214,12 +220,14 @@ class DiagnosticsWindow(ThemedToolWindow):
         self._set_fix_running(True)
         self._fix_thread = DiagnosticsFixThread(self.data_manager, fix_ids)
         self._fix_thread.finished_signal.connect(self._on_fix_finished)
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+        # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
         self._fix_thread.finished.connect(
             lambda thread=self._fix_thread: (
                 setattr(self, "_fix_thread", None) if getattr(self, "_fix_thread", None) is thread else None
             )
         )
-        self._fix_thread.finished.connect(self._fix_thread.deleteLater)
         self._fix_thread.start()
 
     def _set_fix_running(self, running: bool):
@@ -231,21 +239,25 @@ class DiagnosticsWindow(ThemedToolWindow):
             self.text.setPlainText(tr("正在后台修复，网站图标会并发重新自动获取，请稍候..."))
 
     def _on_fix_finished(self, repair_result: dict, error: str):
-        self._set_fix_running(False)
-        if error:
+        try:
+            self._set_fix_running(False)
+            if error:
+                self.refresh()
+                ThemedMessageBox.warning(self, tr("修复失败"), tr("修复过程中发生错误:\n{error}", error=error))
+                return
+            self._last_repair_result = repair_result
             self.refresh()
-            ThemedMessageBox.warning(self, tr("修复失败"), tr("修复过程中发生错误:\n{error}", error=error))
+            skipped = repair_result.get("skipped", 0)
+            failed = repair_result.get("failed", 0)
+            detail = tr("已应用 {count} 项修复。", count=repair_result.get("applied", 0))
+            if skipped:
+                detail += tr("\n已跳过 {skipped} 项被删除图标覆盖的重复修复。", skipped=skipped)
+            if failed:
+                detail += tr("\n有 {failed} 项修复失败，请重新扫描后查看报告。", failed=failed)
+            ThemedMessageBox.information(self, tr("修复完成"), detail)
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("诊断修复回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        self._last_repair_result = repair_result
-        self.refresh()
-        skipped = repair_result.get("skipped", 0)
-        failed = repair_result.get("failed", 0)
-        detail = tr("已应用 {count} 项修复。", count=repair_result.get("applied", 0))
-        if skipped:
-            detail += tr("\n已跳过 {skipped} 项被删除图标覆盖的重复修复。", skipped=skipped)
-        if failed:
-            detail += tr("\n有 {failed} 项修复失败，请重新扫描后查看报告。", failed=failed)
-        ThemedMessageBox.information(self, tr("修复完成"), detail)
 
     def _format_items(self) -> str:
         """格式化诊断项为HTML，带颜色支持"""

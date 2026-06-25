@@ -317,6 +317,7 @@ class SaveCoordinator:
                 return False
 
         write_success = False
+        save_error: Exception | None = None
         with dm._write_lock:
             temp_file = dm.data_file.with_name(f"{dm.data_file.stem}.{uuid.uuid4().hex}.tmp")
             try:
@@ -332,6 +333,11 @@ class SaveCoordinator:
                 write_success = True
 
             except OSError as e:
+                # Preserve historical swallow-OSError contract: callers
+                # (SaveCoordinator.save, delayed-save retry loop) inspect
+                # the boolean result to decide whether to reschedule the
+                # save.  The ``finally`` block below guarantees the temp
+                # file is cleaned up regardless of which branch fires.
                 logger.error("save data failed: %s", e)
                 with dm._save_lock:
                     dm._config_status = {
@@ -339,11 +345,30 @@ class SaveCoordinator:
                         "source": str(dm.data_file),
                         "issues": [f"save data failed: {e}"],
                     }
+            except Exception as e:
+                # Any non-OSError exception (PermissionError from os.fsync,
+                # shutil.Error, custom exceptions from extension code, …)
+                # was previously swallowed-and-leaked: the temp file was
+                # never removed and the background save thread died
+                # silently.  Log, mark the config status, clean up the
+                # temp file in the ``finally`` block, and re-raise so the
+                # caller knows the save failed.
+                save_error = e
+                logger.error("save data failed: %s", e)
+                with dm._save_lock:
+                    dm._config_status = {
+                        "status": "error",
+                        "source": str(dm.data_file),
+                        "issues": [f"save data failed: {e}"],
+                    }
+            finally:
                 if os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)
                     except OSError as cleanup_error:
                         logger.debug("cleanup temp file failed: %s", cleanup_error)
+                if save_error is not None:
+                    raise save_error
 
         if write_success:
             with dm._save_lock:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -22,7 +21,7 @@ class BackgroundTaskInfo:
     alive: bool
 
 
-_TASKS: dict[int, tuple[weakref.ReferenceType[threading.Thread], str, str, float, bool]] = {}
+_TASKS: dict[int, tuple[threading.Thread, str, str, float, bool]] = {}
 _TASKS_LOCK = threading.Lock()
 
 
@@ -43,6 +42,23 @@ def start_background_thread(
     def _run() -> None:
         try:
             target(*args, **dict(kwargs or {}))
+        except BaseException as _exc:
+            try:
+                from core.thread_errors import record_thread_error as _record
+
+                _record(
+                    thread_name=thread.name or name,
+                    exc=_exc,
+                    owner=owner_name,
+                )
+            except Exception:
+                logger.debug("record_thread_error failed for background task %r", name)
+            logger.exception(
+                "Background thread %r owned by %s raised an uncaught exception",
+                name,
+                owner_name,
+            )
+            raise  # let threading.excepthook also fire for wider visibility
         finally:
             unregister_background_thread(thread)
 
@@ -60,7 +76,7 @@ def register_background_thread(thread: threading.Thread, *, owner: str | None = 
     task_id = id(thread)
     with _TASKS_LOCK:
         _TASKS[task_id] = (
-            weakref.ref(thread),
+            thread,
             str(owner or "unknown"),
             str(thread.name or f"Thread-{task_id}"),
             time.monotonic(),
@@ -79,11 +95,7 @@ def list_background_tasks() -> list[BackgroundTaskInfo]:
     stale: list[int] = []
     result: list[BackgroundTaskInfo] = []
     with _TASKS_LOCK:
-        for task_id, (thread_ref, owner, name, started_at, daemon) in list(_TASKS.items()):
-            thread = thread_ref()
-            if thread is None:
-                stale.append(task_id)
-                continue
+        for task_id, (thread, owner, name, started_at, daemon) in list(_TASKS.items()):
             alive = thread.is_alive()
             if not alive:
                 stale.append(task_id)
@@ -108,12 +120,10 @@ def join_background_tasks(owner: Any = None, *, timeout: float = 5.0) -> list[Ba
     deadline = time.monotonic() + max(0.0, float(timeout or 0.0))
     threads: list[threading.Thread] = []
     with _TASKS_LOCK:
-        for thread_ref, task_owner, _name, _started_at, _daemon in _TASKS.values():
+        for thread, task_owner, _name, _started_at, _daemon in _TASKS.values():
             if owner_name is not None and task_owner != owner_name:
                 continue
-            thread = thread_ref()
-            if thread is not None:
-                threads.append(thread)
+            threads.append(thread)
     current = threading.current_thread()
     for thread in threads:
         if thread is current:

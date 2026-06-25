@@ -75,12 +75,50 @@ class MainThreadInvoker(QObject):
 
 
 _main_thread_invoker = None
+_INVOKER_LOCK = threading.Lock()
+
+
+def _ensure_main_thread_invoker():
+    """Lazily create the MainThreadInvoker singleton.
+
+    Thread-safe; ensures the invoker is parented to the QApplication so it
+    survives until the Qt event loop shuts down.
+    """
+    global _main_thread_invoker
+    if _main_thread_invoker is not None:
+        return _main_thread_invoker
+    with _INVOKER_LOCK:
+        if _main_thread_invoker is not None:
+            return _main_thread_invoker
+        invoker = MainThreadInvoker()
+        try:
+            from qt_compat import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                invoker.setParent(app)
+        except Exception:
+            logger.debug("Could not parent MainThreadInvoker under QApplication")
+        _main_thread_invoker = invoker
+    return invoker
 
 
 def init_main_thread_invoker():
+    """Explicit initialization hook called during bootstrap."""
+    _ensure_main_thread_invoker()
+
+
+def shutdown_main_thread_invoker():
+    """Release the invoker for orderly teardown (call from aboutToQuit)."""
     global _main_thread_invoker
-    if _main_thread_invoker is None:
-        _main_thread_invoker = MainThreadInvoker()
+    with _INVOKER_LOCK:
+        invoker = _main_thread_invoker
+        _main_thread_invoker = None
+    if invoker is not None:
+        try:
+            invoker.deleteLater()
+        except RuntimeError:
+            logger.debug("MainThreadInvoker already deleted during shutdown")
 
 
 class CommandExecutionMixin(CommandLauncherMixin):
@@ -2013,9 +2051,9 @@ class CommandExecutionMixin(CommandLauncherMixin):
                         return ShortcutExecutor._open_builtin_filesystem_target(canonical)  # type: ignore[attr-defined, no-any-return]
                     logger.warning("内置命令: UIActions 不可用或未知动作: %s", canonical)
                     return False
-                global _main_thread_invoker
-                if _main_thread_invoker is not None and not ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
-                    _main_thread_invoker.execute_signal.emit(lambda: ui_actions.execute(action))
+                if not ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
+                    invoker = _ensure_main_thread_invoker()
+                    invoker.execute_signal.emit(lambda: ui_actions.execute(action))
                     logger.info("UI内置命令(通过主线程): %s", canonical)
                 elif ShortcutExecutor._is_qt_main_thread():  # type: ignore[attr-defined]
                     if not ui_actions.execute(action):

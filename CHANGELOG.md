@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.6.3.7] - 2026-06-25
+
+### Fixed
+- `core/save_coordinator._do_save` now cleans up the `data.<uuid>.tmp` file on
+  any exception (not just `OSError`) and re-raises non-`OSError` errors so the
+  background save thread can no longer silently die and leak temp files.
+- `core/data_loader.factory_reset` now uses the same atomic write path as
+  `SaveCoordinator` (temp file + `os.replace` via `_replace_data_file`) and
+  re-creates the `history/`, `recovery/` and `auto_backups/` sub-directories
+  via `_ensure_dirs()` after the cleanup pass. Resets no longer destroy the
+  directories the next `save()` depends on.
+- `ui/launcher_popup/popup_icons._default_icon_cache` is now an
+  `OrderedDict` with a 256-entry LRU bound (`_trim_default_icon_cache`),
+  preventing unbounded memory growth from theme toggles, DPI changes and
+  unique shortcut names.
+- `QuickLauncher.manifest` assembly identity updated to 1.6.3.7 so the
+  `check_source_metadata` gate passes.
+- `scripts/installer.iss` `MyAppVersion` / `MyAppFileVersion` updated to 1.6.3.7
+  so the Inno Setup installer's `AppVersion` and `VersionInfoVersion` match the
+  current source tree.
+
+### Tests
+- `tests/test_save_coordinator.py` (new) — covers non-`OSError` exception
+  cleanup, status error reporting, and the existing `OSError` swallow contract.
+- `tests/test_data_manager.py::test_factory_reset_preserves_history_recovery_and_backup_subdirs`
+  — asserts the three sub-directories survive `factory_reset` and the new
+  `data.json` is atomically written.
+- `tests/test_popup_icons.py::test_popup_default_icon_cache_is_bounded_with_lru_eviction`
+  and `test_popup_default_icon_cache_migrates_plain_dict_to_ordered` — cover
+  the LRU bound and the dict→`OrderedDict` migration path.
+
 ## [1.7.0] - Unreleased
 
 ### Added — L1 基础设施 (Sprint S1)

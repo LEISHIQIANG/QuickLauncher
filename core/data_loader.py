@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
+import uuid
 import winreg  # noqa: F401  # used inside factory_reset, imported lazily in caller paths
 from datetime import datetime
 from pathlib import Path
@@ -417,13 +419,36 @@ class DataLoader:
                 logger.debug("内存配置重置失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset step failed: {e}")
 
-            # Persist the clean state to disk directly
+            # Persist the clean state to disk directly via the same atomic
+            # write path used by SaveCoordinator so a crash mid-write cannot
+            # leave a half-written data.json. Also recreate history/,
+            # recovery/ and auto_backups/ sub-directories that the cleanup
+            # above removed — otherwise the next save() would fail to record
+            # a history snapshot and recovery reports would lose their home.
+            try:
+                dm._ensure_dirs()
+            except Exception as e:
+                logger.debug("恢复出厂设置重建子目录失败: %s", e, exc_info=True)
+                stats["errors"].append(f"Factory reset recreate subdirs failed: {e}")
+
             data_file = dm.app_dir / "data.json"
             try:
                 data_file.parent.mkdir(parents=True, exist_ok=True)
                 default_data = AppData().to_dict()
-                with open(data_file, "w", encoding="utf-8") as f:
-                    json.dump(default_data, f, ensure_ascii=False, indent=2)
+                payload = json.dumps(default_data, ensure_ascii=False, indent=2)
+                temp_file = data_file.with_name(f"{data_file.stem}.{uuid.uuid4().hex}.tmp")
+                try:
+                    with open(temp_file, "w", encoding="utf-8") as f:
+                        f.write(payload)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    dm._replace_data_file(temp_file)
+                finally:
+                    if os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except OSError as cleanup_error:
+                            logger.debug("恢复出厂设置清理临时文件失败: %s", cleanup_error)
             except Exception as e:
                 logger.debug("恢复出厂设置持久化失败: %s", e, exc_info=True)
                 stats["errors"].append(f"Factory reset persist failed: {e}")

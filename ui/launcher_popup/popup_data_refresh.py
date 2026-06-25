@@ -335,8 +335,10 @@ class PopupDataRefreshMixin:
             context,
         )
         thread.files_found.connect(self._on_files_found)
+        # 先清空 self 上的引用，再 schedule deleteLater。
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
         thread.finished.connect(lambda current=thread: self._on_file_check_thread_finished(current))
-        thread.finished.connect(thread.deleteLater)
         thread.start()
         # 保存引用防止被 GC
         self._file_thread = thread
@@ -458,38 +460,42 @@ class PopupDataRefreshMixin:
 
     def _on_files_found(self, files):
         """文件检测回调"""
-        thread = self.sender()
-        request_id = int(getattr(thread, "request_id", 0) or 0)
-        if request_id and request_id != self._file_check_seq:
-            logger.info(
-                "selection_request ignore id=%s reason=stale_request current=%s",
-                request_id,
-                self._file_check_seq,
-            )
-            return
+        try:
+            thread = self.sender()
+            request_id = int(getattr(thread, "request_id", 0) or 0)
+            if request_id and request_id != self._file_check_seq:
+                logger.info(
+                    "selection_request ignore id=%s reason=stale_request current=%s",
+                    request_id,
+                    self._file_check_seq,
+                )
+                return
 
-        self._selected_files = list(files or [])
-        self._selected_files_source_hwnd = int(getattr(thread, "matched_root_hwnd", 0) or 0)
-        self._selected_files_request_hwnd = int(getattr(thread, "requested_root_hwnd", 0) or 0)
-        self._selected_files_request_started_at = float(getattr(thread, "request_started_at", 0.0) or 0.0)
-        self._selected_files_captured_at = float(getattr(thread, "captured_at", 0.0) or 0.0)
-        self._selected_files_context = getattr(thread, "context", None)
-        self._selected_files_status = "ready" if self._selected_files else "empty"
-        ignore_reason = getattr(thread, "ignore_reason", "") or (
-            "no_selected_items" if not self._selected_files else ""
-        )
-        logger.info(
-            "selection_request done id=%s status=%s count=%s target=%s source=%s%s",
-            request_id,
-            self._selected_files_status,
-            len(self._selected_files),
-            self._selected_files_request_hwnd,
-            self._selected_files_source_hwnd,
-            f" reason={ignore_reason}" if ignore_reason else "",
-        )
-        if self._selected_files_status == "ready":
-            self._schedule_selected_files_expiry_refresh()
-        self._refresh_selected_files_indicator()
+            self._selected_files = list(files or [])
+            self._selected_files_source_hwnd = int(getattr(thread, "matched_root_hwnd", 0) or 0)
+            self._selected_files_request_hwnd = int(getattr(thread, "requested_root_hwnd", 0) or 0)
+            self._selected_files_request_started_at = float(getattr(thread, "request_started_at", 0.0) or 0.0)
+            self._selected_files_captured_at = float(getattr(thread, "captured_at", 0.0) or 0.0)
+            self._selected_files_context = getattr(thread, "context", None)
+            self._selected_files_status = "ready" if self._selected_files else "empty"
+            ignore_reason = getattr(thread, "ignore_reason", "") or (
+                "no_selected_items" if not self._selected_files else ""
+            )
+            logger.info(
+                "selection_request done id=%s status=%s count=%s target=%s source=%s%s",
+                request_id,
+                self._selected_files_status,
+                len(self._selected_files),
+                self._selected_files_request_hwnd,
+                self._selected_files_source_hwnd,
+                f" reason={ignore_reason}" if ignore_reason else "",
+            )
+            if self._selected_files_status == "ready":
+                self._schedule_selected_files_expiry_refresh()
+            self._refresh_selected_files_indicator()
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("文件检测回调命中已销毁 widget: %s", exc, exc_info=True)
+            return
 
     def _sync_all_folders(self):
         """同步所有文件夹 - 等同于配置窗口的手动同步功能"""
@@ -726,7 +732,9 @@ class PopupDataRefreshMixin:
 
             self._sync_worker = FolderSyncWorker(self.data_manager)
             self._sync_worker.finished.connect(self.folder_sync_finished.emit)
-            self._sync_worker.finished.connect(self._sync_worker.deleteLater)
+            # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+            # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+            # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
             self._sync_worker.finished.connect(
                 lambda worker=self._sync_worker: (
                     setattr(self, "_sync_worker", None) if getattr(self, "_sync_worker", None) is worker else None

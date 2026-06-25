@@ -154,8 +154,25 @@ class PersistentOcrWorker:
         if not temp_path:
             self._finish_request({"status": "cancelled", "message": "已取消截图 OCR"})
             return
+
+        def _recognize_wrapper(path: str) -> None:
+            try:
+                self._recognize(path)
+            except BaseException as _exc:
+                logger.exception("OcrRecognition thread crashed: %s", _exc)
+                try:
+                    from core.thread_errors import record_thread_error
+
+                    record_thread_error(
+                        thread_name="OcrRecognition",
+                        exc=_exc,
+                        owner="PersistentOcrWorker",
+                    )
+                except Exception:
+                    pass
+
         threading.Thread(
-            target=self._recognize,
+            target=_recognize_wrapper,
             args=(str(temp_path),),
             name="OcrRecognition",
             daemon=True,

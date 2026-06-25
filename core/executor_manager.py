@@ -59,8 +59,25 @@ class ManagedExecutor(concurrent.futures.Executor):
         with self._lock:
             return [future for future in self._futures if not future.done()]
 
+    def running_futures(self) -> list[concurrent.futures.Future[Any]]:
+        """Return futures that are currently executing (not queued, not done).
+
+        Unlike ``pending_futures()`` which includes both queued and running
+        work, this method only returns futures that have already started
+        executing and cannot be cancelled.
+        """
+        with self._lock:
+            return [future for future in self._futures if future.running()]
+
     def drain(self, timeout: float) -> list[concurrent.futures.Future[Any]]:
-        """Reject new work, cancel queued work, and wait up to *timeout*."""
+        """Reject new work, cancel queued work, and wait up to *timeout*.
+
+        NOTE: Already-running futures cannot be cancelled — they must complete
+        naturally.  ``concurrent.futures.Future.cancel()`` returns ``False``
+        for running futures and has no effect.  If *timeout* expires before
+        they finish, this method returns the remaining futures and the caller
+        should treat them as abandoned (logging is the caller's responsibility).
+        """
         should_shutdown = False
         with self._lock:
             if not self._closed:

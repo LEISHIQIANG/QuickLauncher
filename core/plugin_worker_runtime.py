@@ -283,6 +283,8 @@ class PersistentPluginWorker:
                 healthy = False
             if not healthy:
                 self.quarantined = True
+            else:
+                self.quarantined = False
             return healthy
 
     def close(self, timeout: float = 3.0) -> None:

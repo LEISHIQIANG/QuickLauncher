@@ -42,6 +42,63 @@ def test_shortcut_parser_lnk_falls_back_without_win32com(monkeypatch, tmp_path):
     assert captured["cmd"][0] == "powershell"
 
 
+def test_shortcut_parser_escapes_powershell_expansion_chars(monkeypatch, tmp_path):
+    """Regression: the .lnk path is interpolated into a PowerShell command.
+
+    A path that contains ``$`` (PowerShell's subexpression/variable expansion
+    character) must be wrapped in single quotes so that an attacker cannot
+    inject arbitrary PowerShell via a maliciously named ``.lnk`` file.
+    """
+    monkeypatch.setattr(shortcut_parser, "HAS_WIN32COM", False)
+    monkeypatch.setattr(ShortcutParser, "_parse_lnk_with_win32com", staticmethod(lambda file_path: None))
+
+    captured = {}
+
+    def fake_run(cmd, capture_output, text, check, encoding, errors):
+        captured["cmd"] = cmd
+        return types.SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(shortcut_parser.process_runtime, "run", fake_run)
+
+    malicious = "$(Start-Process calc.exe).lnk"
+    lnk = tmp_path / malicious
+    lnk.write_text("stub", encoding="utf-8")
+
+    ShortcutParser.parse(str(lnk))
+
+    script_arg = captured["cmd"][captured["cmd"].index("-Command") + 1]
+    assert "CreateShortcut('" in script_arg
+    assert "$(Start-Process calc.exe)" in script_arg
+    # The malicious expansion must NOT appear unquoted/in a double-quoted PS string
+    assert 'CreateShortcut("' not in script_arg
+    # Single quotes must be properly doubled if present in the path
+    assert "CreateShortcut(''" not in script_arg
+
+
+def test_shortcut_parser_escapes_single_quotes_in_path(monkeypatch, tmp_path):
+    """A path that contains a single quote must double it to avoid breaking out
+    of the PowerShell single-quoted string literal."""
+    monkeypatch.setattr(shortcut_parser, "HAS_WIN32COM", False)
+    monkeypatch.setattr(ShortcutParser, "_parse_lnk_with_win32com", staticmethod(lambda file_path: None))
+
+    captured = {}
+
+    def fake_run(cmd, capture_output, text, check, encoding, errors):
+        captured["cmd"] = cmd
+        return types.SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(shortcut_parser.process_runtime, "run", fake_run)
+
+    awkward = "evil'name.lnk"
+    lnk = tmp_path / awkward
+    lnk.write_text("stub", encoding="utf-8")
+
+    ShortcutParser.parse(str(lnk))
+
+    script_arg = captured["cmd"][captured["cmd"].index("-Command") + 1]
+    assert "evil''name.lnk" in script_arg
+
+
 def test_shortcut_parser_import_without_win32com_does_not_warn(monkeypatch, caplog):
     module_name = "core.shortcut_parser"
     saved_module = sys.modules.pop(module_name, None)

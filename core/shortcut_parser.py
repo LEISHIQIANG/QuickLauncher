@@ -96,17 +96,20 @@ class ShortcutParser:
 
     @staticmethod
     def _parse_lnk_with_powershell(file_path: str) -> dict[str, Any] | None:
-        escaped = file_path.replace("`", "``").replace('"', '`"')
+        # Use a single-quoted PowerShell literal so that `$` and other
+        # expansion characters inside the file path are treated as plain
+        # text. Only single quotes need to be escaped (by doubling them).
+        escaped = file_path.replace("'", "''")
         script = (
-            f"$shell = New-Object -ComObject WScript.Shell; "
-            f'$shortcut = $shell.CreateShortcut("{escaped}"); '
-            f"Write-Output $shortcut.TargetPath; "
-            f'Write-Output "___QL_SPLIT___"; '
-            f"Write-Output $shortcut.Arguments; "
-            f'Write-Output "___QL_SPLIT___"; '
-            f"Write-Output $shortcut.WorkingDirectory; "
-            f'Write-Output "___QL_SPLIT___"; '
-            f"Write-Output $shortcut.IconLocation"
+            "$shell = New-Object -ComObject WScript.Shell; "
+            f"$shortcut = $shell.CreateShortcut('{escaped}'); "
+            "Write-Output $shortcut.TargetPath; "
+            "Write-Output '___QL_SPLIT___'; "
+            "Write-Output $shortcut.Arguments; "
+            "Write-Output '___QL_SPLIT___'; "
+            "Write-Output $shortcut.WorkingDirectory; "
+            "Write-Output '___QL_SPLIT___'; "
+            "Write-Output $shortcut.IconLocation"
         )
 
         try:

@@ -1287,6 +1287,39 @@ class TestStopQrFileServer:
         # Should not raise
         stop_qr_file_server(99999)
 
+    def test_stop_releases_thread_and_socket(self, tmp_path):
+        """Regression: stop_qr_file_server must call server_close() and join
+        the background thread so we don't leak a thread + listening socket
+        for every QR share action."""
+        from core.commands_utils import _qr_file_servers, _start_qr_file_server
+
+        file_path = tmp_path / "share.bin"
+        file_path.write_bytes(b"hello")
+
+        port = _start_qr_file_server(str(tmp_path), str(file_path))
+        entry = _qr_file_servers.get(port)
+        assert entry is not None
+        httpd, _path, thread = entry
+        assert thread.is_alive()
+
+        stop_qr_file_server(port)
+
+        # The entry must be removed from the registry.
+        assert port not in _qr_file_servers
+        # The thread should have finished within the join timeout.
+        thread.join(timeout=2.0)
+        assert not thread.is_alive()
+        # The listening socket must be closed — rebinding the same port
+        # should now succeed.
+        import socket as _socket
+
+        probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        try:
+            probe.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+            probe.bind(("0.0.0.0", port))
+        finally:
+            probe.close()
+
 
 # ===========================================================================
 # ── _get_primary_local_ip ──────────────────────────────────────────────────

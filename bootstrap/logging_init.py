@@ -201,5 +201,76 @@ def setup_faulthandler(log_dir: str):
             cf.write(f"[BOOT] {now}  exe={exe}\n")
         _install_native_crash_handler(crash_path)
 
+        # 安装 Python 级未捕获异常钩子 (sys.excepthook + threading.excepthook)
+        _install_excepthooks(crash_path)
+
     except Exception as exc:
         logger.debug("初始化崩溃日志失败: %s", exc, exc_info=True)
+
+
+def _write_to_crash_log(crash_log_path: str, message: str) -> None:
+    """Append a text line to crash.log (plain Python, not VEH)."""
+    import builtins as _b
+
+    try:
+        with _b.open(crash_log_path, "a", encoding="utf-8") as _f:
+            _f.write(message)
+    except OSError:
+        return
+
+
+def _install_excepthooks(crash_log_path: str) -> None:
+    """Install sys.excepthook and threading.excepthook.
+
+    Uses lazy imports from core.thread_errors to avoid circular imports
+    during early bootstrap.
+    """
+    import sys as _sys
+    import threading as _threading
+    import traceback as _traceback
+
+    _original_sys_excepthook = getattr(_sys, "excepthook", None)
+
+    def _sys_hook(exc_type, exc_value, exc_tb) -> None:
+        try:
+            from core.thread_errors import record_thread_error as _record
+
+            thread = _threading.current_thread()
+            _record(
+                thread_name=thread.name or "",
+                exc=exc_value,
+                owner="sys.excepthook",
+                trace="".join(_traceback.format_exception(exc_type, exc_value, exc_tb)),
+            )
+        except Exception:
+            logger.debug("sys.excepthook record_thread_error failed")
+        _write_to_crash_log(
+            crash_log_path,
+            f"[UNCAUGHT] type={exc_type.__qualname__} value={exc_value}\n",
+        )
+        if _original_sys_excepthook is not None and _original_sys_excepthook is not _sys_hook:
+            try:
+                _original_sys_excepthook(exc_type, exc_value, exc_tb)
+            except Exception:
+                return
+
+    def _thread_hook(args) -> None:
+        try:
+            from core.thread_errors import record_thread_error as _record
+
+            _record(
+                thread_name=args.thread.name if args.thread else "",
+                exc=args.exc_value,
+                owner="threading.excepthook",
+                trace="".join(_traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb)),
+            )
+        except Exception:
+            logger.debug("threading.excepthook record_thread_error failed")
+        _write_to_crash_log(
+            crash_log_path,
+            f"[UNCAUGHT_THREAD] name={args.thread.name if args.thread else '?'} "
+            f"type={args.exc_type.__qualname__} value={args.exc_value}\n",
+        )
+
+    _sys.excepthook = _sys_hook
+    _threading.excepthook = _thread_hook

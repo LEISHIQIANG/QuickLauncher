@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 
 from core.i18n import tr
-from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
+from ui.utils.qt_thread_cleanup import drain_deferred_qthreads, stop_qthread_nonblocking
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,12 @@ class TrayAppShutdownMixin:
         if bool(self.__dict__.get("_runtime_shutdown_started", False)):
             return
         self._runtime_shutdown_started = True
+
+        # Drain any late-finishing QThreads deferred by stop_qthread_nonblocking
+        try:
+            drain_deferred_qthreads(timeout=2.0)
+        except Exception as exc:
+            logger.debug("延迟线程 drain 失败: %s", exc, exc_info=True)
 
         # 停止后台线程
         try:
@@ -201,6 +207,13 @@ class TrayAppShutdownMixin:
         except Exception as exc:
             logger.error("关闭应用线程池失败: %s", exc, exc_info=True)
 
+        try:
+            from core.shortcut_command_exec import shutdown_main_thread_invoker
+
+            shutdown_main_thread_invoker()
+        except Exception as exc:
+            logger.debug("关闭 MainThreadInvoker 失败: %s", exc, exc_info=True)
+
     def _clean_icon_cache_now(self):
         """立即执行图标缓存维护。"""
         self._wake_from_sleep("clean_icon_cache")
@@ -232,6 +245,9 @@ class TrayAppShutdownMixin:
 
             self._icon_cache_clean_thread = IconCacheCleanThread(self.data_manager)
             self._icon_cache_clean_thread.finished_signal.connect(self._on_icon_cache_clean_finished)
+            # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+            # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+            # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
             self._icon_cache_clean_thread.finished.connect(
                 lambda thread=self._icon_cache_clean_thread: (
                     setattr(self, "_icon_cache_clean_thread", None)
@@ -239,7 +255,6 @@ class TrayAppShutdownMixin:
                     else None
                 )
             )
-            self._icon_cache_clean_thread.finished.connect(self._icon_cache_clean_thread.deleteLater)
             self._icon_cache_clean_thread.start()
             return True
         except Exception as e:
@@ -247,17 +262,21 @@ class TrayAppShutdownMixin:
             return False
 
     def _on_icon_cache_clean_finished(self, stats: dict, error: str):
-        theme = self.data_manager.get_settings().theme  # type: ignore[attr-defined]
-        if error:
-            logger.error("手动图标缓存清理失败: %s", error)
-            self._show_toast(tr("图标缓存清理失败，请查看日志"), theme)  # type: ignore[attr-defined]
+        try:
+            theme = self.data_manager.get_settings().theme  # type: ignore[attr-defined]
+            if error:
+                logger.error("手动图标缓存清理失败: %s", error)
+                self._show_toast(tr("图标缓存清理失败，请查看日志"), theme)  # type: ignore[attr-defined]
+                return
+            removed = int(stats.get("total_removed", 0) or 0)
+            freed = float(stats.get("total_size_freed_mb", 0) or 0)
+            logger.info("手动图标缓存清理完成: removed=%s freed=%.2fMB", removed, freed)
+            self._show_toast(  # type: ignore[attr-defined]
+                tr("图标缓存已清理：{removed} 个文件，释放 {freed:.1f} MB", removed=removed, freed=freed), theme
+            )
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("图标缓存清理回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        removed = int(stats.get("total_removed", 0) or 0)
-        freed = float(stats.get("total_size_freed_mb", 0) or 0)
-        logger.info("手动图标缓存清理完成: removed=%s freed=%.2fMB", removed, freed)
-        self._show_toast(  # type: ignore[attr-defined]
-            tr("图标缓存已清理：{removed} 个文件，释放 {freed:.1f} MB", removed=removed, freed=freed), theme
-        )
 
 
 __all__ = ["TrayAppShutdownMixin"]

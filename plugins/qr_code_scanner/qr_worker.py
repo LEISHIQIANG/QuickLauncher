@@ -122,8 +122,25 @@ class PersistentQrWorker:
         if not image_path:
             self._finish_request({"status": "cancelled", "message": "已取消二维码截图"})
             return
+
+        def _decode_wrapper(path: Path) -> None:
+            try:
+                self._decode(path)
+            except BaseException as _exc:
+                logger.exception("QrDecode thread crashed: %s", _exc)
+                try:
+                    from core.thread_errors import record_thread_error
+
+                    record_thread_error(
+                        thread_name="QrDecode",
+                        exc=_exc,
+                        owner="PersistentQrWorker",
+                    )
+                except Exception:
+                    logger.debug("record_thread_error failed for QrDecode thread")
+
         threading.Thread(
-            target=self._decode,
+            target=_decode_wrapper,
             args=(Path(image_path),),
             name="QrDecode",
             daemon=True,

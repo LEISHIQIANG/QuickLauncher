@@ -868,33 +868,39 @@ class BatchLaunchDialog(BaseDialog):
                 lambda sid, image, gen=generation: self._on_async_icon_loaded(gen, sid, image)
             )
             self._icon_worker.completed.connect(self._icon_thread.quit)
-            self._icon_thread.finished.connect(self._icon_worker.deleteLater)
-            self._icon_thread.finished.connect(self._icon_thread.deleteLater)
+            # 先清空 self 上的引用，再 schedule worker deleteLater。
+            # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+            # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
             self._icon_thread.finished.connect(
                 lambda gen=generation, thread=self._icon_thread, worker=self._icon_worker: self._on_async_icon_thread_finished(
                     gen, thread, worker
                 )
             )
+            self._icon_thread.finished.connect(self._icon_worker.deleteLater)
             self._icon_thread.started.connect(self._icon_worker.run)
             self._icon_thread.start()
         except Exception as exc:
             logger.debug("启动批量启动图标后台加载失败: %s", exc, exc_info=True)
 
     def _on_async_icon_loaded(self, generation: int, shortcut_id: str, image: QImage):
-        if generation != self._icon_load_generation or getattr(self, "_dialog_finished", False):
+        try:
+            if generation != self._icon_load_generation or getattr(self, "_dialog_finished", False):
+                return
+            if not image or image.isNull():
+                shortcut = self._shortcut_by_id.get(shortcut_id)
+                pixmap = self._load_icon_on_main_thread(shortcut) if shortcut else None
+            else:
+                pixmap = QPixmap.fromImage(image)
+            if not pixmap or pixmap.isNull():
+                return
+            self._icon_pixmap_cache[shortcut_id] = pixmap
+            self.icon_selector.set_icon_pixmap(shortcut_id, pixmap)
+            card = self._launch_card_by_id.get(shortcut_id)
+            if card:
+                card.set_icon(pixmap)
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("批量启动图标回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        if not image or image.isNull():
-            shortcut = self._shortcut_by_id.get(shortcut_id)
-            pixmap = self._load_icon_on_main_thread(shortcut) if shortcut else None
-        else:
-            pixmap = QPixmap.fromImage(image)
-        if not pixmap or pixmap.isNull():
-            return
-        self._icon_pixmap_cache[shortcut_id] = pixmap
-        self.icon_selector.set_icon_pixmap(shortcut_id, pixmap)
-        card = self._launch_card_by_id.get(shortcut_id)
-        if card:
-            card.set_icon(pixmap)
 
     def _load_icon_on_main_thread(self, shortcut: ShortcutItem | None) -> QPixmap | None:
         if shortcut is None:

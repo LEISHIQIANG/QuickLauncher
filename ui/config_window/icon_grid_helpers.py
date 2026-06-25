@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 
 from core.i18n import tr
+from core.qt_worker import BaseLoggedWorker
 from qt_compat import (
     QDialog,
     QHBoxLayout,
     QLabel,
-    QObject,
     QPainter,
     QPoint,
     QPushButton,
@@ -215,23 +215,27 @@ class IconContainer(QWidget):
         super().mousePressEvent(event)
 
 
-class _IconLoadWorker(QObject):
+class _IconLoadWorker(BaseLoggedWorker):
     """Background worker for loading icons in icon_grid."""
 
-    finished = pyqtSignal(str, object)
-    completed = pyqtSignal()
+    finished = pyqtSignal(str, object)  # (shortcut_id, QImage | None)
 
     def __init__(self, tasks):
-        super().__init__()
+        super().__init__(name="_IconLoadWorker")
         self._tasks = tasks
 
     def run(self):
         try:
             from core.icon_extractor import IconExtractor
         except Exception:
+            self.completed.emit()
             return
+
+        com_ok = self.com_initialize()
         try:
             for shortcut_id, icon_path, target_path, size, _shortcut_type in self._tasks:
+                if self._cancel_requested:
+                    break
                 image = None
                 if icon_path:
                     if not IconExtractor._is_pixmap_preferred_resource(icon_path):
@@ -240,20 +244,27 @@ class _IconLoadWorker(QObject):
                     image = IconExtractor.extract(
                         target_path, target_path, size, return_image=True, fallback_to_default=False
                     )
+                if self._cancel_requested:
+                    break
                 self.finished.emit(shortcut_id, image)
+        except Exception as exc:
+            logger.exception("[_IconLoadWorker] fatal error: %s", exc)
+            self.error_occurred.emit(str(exc))
         finally:
+            if com_ok:
+                self.com_uninitialize()
             self.completed.emit()
 
 
-class _BatchFaviconFetchWorker(QObject):
+class _BatchFaviconFetchWorker(BaseLoggedWorker):
     """Background worker for batch favicon fetching."""
 
-    result = pyqtSignal(str, str, str)
-    progress = pyqtSignal(int, int)
-    completed = pyqtSignal(int, int)
+    completed = pyqtSignal(int, int)  # (success, total) — shadows BaseLoggedWorker.completed
+    result = pyqtSignal(str, str, str)  # (shortcut_id, icon_path, error)
+    progress = pyqtSignal(int, int)  # (completed, total)
 
     def __init__(self, tasks):
-        super().__init__()
+        super().__init__(name="_BatchFaviconFetchWorker")
         self._tasks = tasks
 
     def run(self):
@@ -265,26 +276,34 @@ class _BatchFaviconFetchWorker(QObject):
         completed_count = 0
         success_count = 0
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {}
-            for sid, name, url in self._tasks:
-                futures[executor.submit(fetch_favicon, url)] = (sid, name, url)
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {}
+                for sid, name, url in self._tasks:
+                    if self._cancel_requested:
+                        break
+                    futures[executor.submit(fetch_favicon, url)] = (sid, name, url)
 
-            for future in as_completed(futures):
-                sid, name, url = futures[future]
-                try:
-                    result = future.result()
-                    if result:
-                        self.result.emit(sid, result, "")
-                        success_count += 1
-                    else:
-                        self.result.emit(sid, "", "未获取到图标")
-                except Exception as e:
-                    self.result.emit(sid, "", str(e))
-                completed_count += 1
-                self.progress.emit(completed_count, total)
-
-        self.completed.emit(success_count, total)
+                for future in as_completed(futures):
+                    if self._cancel_requested:
+                        break
+                    sid, name, url = futures[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            self.result.emit(sid, result, "")
+                            success_count += 1
+                        else:
+                            self.result.emit(sid, "", "未获取到图标")
+                    except Exception as e:
+                        self.result.emit(sid, "", str(e))
+                    completed_count += 1
+                    self.progress.emit(completed_count, total)
+        except Exception as exc:
+            logger.exception("[_BatchFaviconFetchWorker] fatal error: %s", exc)
+            self.error_occurred.emit(str(exc))
+        finally:
+            self.completed.emit(success_count, total)
 
 
 __all__ = [

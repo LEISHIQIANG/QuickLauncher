@@ -86,12 +86,24 @@ def _drain_plugin_executors(
     plugin_id: str,
     timeout: float = 5.0,
 ) -> None:
-    """Wait briefly for tracked plugin command workers during quarantine."""
+    """Wait briefly for tracked plugin command workers during quarantine.
+
+    Sends a cooperative cancel signal (via worker._cancel_event if present)
+    before joining, then logs abandoned threads to thread_errors.jsonl.
+    """
     with _PLUGIN_EXECUTOR_REGISTRY_LOCK:
         workers = registry.pop(plugin_id, [])
     if not workers:
         return
     deadline = time.monotonic() + max(0.0, float(timeout or 0.0))
+    # Signal cooperative cancellation before joining
+    for worker in workers:
+        cancel_event = getattr(worker, "_cancel_event", None)
+        if cancel_event is not None:
+            try:
+                cancel_event.set()
+            except Exception:
+                logger.debug("cancel_event.set() failed for plugin %s worker", plugin_id)
     for worker in workers:
         remaining = max(0.0, deadline - time.monotonic())
         if remaining <= 0:
@@ -100,6 +112,17 @@ def _drain_plugin_executors(
     still_alive = [worker for worker in workers if worker.is_alive()]
     if still_alive:
         logger.warning("插件 %s 隔离时仍有 %d 个命令工作线程在运行", plugin_id, len(still_alive))
+        try:
+            from .thread_errors import record_thread_error
+
+            for w in still_alive:
+                record_thread_error(
+                    thread_name=w.name or f"plugin-{plugin_id}",
+                    exc=TimeoutError(f"abandoned after {timeout}s drain"),
+                    owner=f"plugin:{plugin_id}",
+                )
+        except Exception:
+            logger.debug("record_thread_error failed during plugin %s drain", plugin_id)
 
 
 # ---------------------------------------------------------------------------

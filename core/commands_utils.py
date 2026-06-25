@@ -61,11 +61,20 @@ def stop_qr_file_server(port: int):
     with _qr_server_lock:
         entry = _qr_file_servers.pop(port, None)
     if entry:
-        httpd = entry[0]
+        httpd, _file_path, thread = entry
         try:
             httpd.shutdown()
         except Exception as exc:
             logger.debug("关闭二维码文件服务器失败: %s", exc, exc_info=True)
+        try:
+            httpd.server_close()
+        except Exception as exc:
+            logger.debug("关闭二维码文件服务器套接字失败: %s", exc, exc_info=True)
+        if thread is not None and thread.is_alive():
+            try:
+                thread.join(timeout=2.0)
+            except Exception as exc:
+                logger.debug("等待二维码文件服务器线程退出失败: %s", exc, exc_info=True)
 
 
 def _stop_all_qr_file_servers():
@@ -91,11 +100,16 @@ atexit.register(_cleanup_qr_temp_files)
 
 def _start_qr_file_server(dir_path: str, file_path: str):
 
-    with socketserver.TCPServer(("0.0.0.0", 0), http.server.SimpleHTTPRequestHandler) as s:
+    # Enable SO_REUSEADDR on the class so we can rebind a port that we just
+    # allocated, even while it is in TIME_WAIT.
+    class _ReuseAddrTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    with _ReuseAddrTCPServer(("0.0.0.0", 0), http.server.SimpleHTTPRequestHandler) as s:
         port = s.server_address[1]
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=dir_path)
-    httpd = socketserver.TCPServer(("0.0.0.0", port), handler)
+    httpd = _ReuseAddrTCPServer(("0.0.0.0", port), handler)
     httpd.timeout = 0.5
     t = start_background_thread(
         name=f"QRFileServer-{port}",

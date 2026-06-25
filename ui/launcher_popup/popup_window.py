@@ -201,7 +201,7 @@ class LauncherPopup(
         self._is_hiding = False
 
         self._icon_pixmap_cache = OrderedDict()
-        self._default_icon_cache = {}
+        self._default_icon_cache = OrderedDict()
         self._visible_icons_preloaded = False
         self._all_page_icons_preloaded = False
         self._first_show_ready = False

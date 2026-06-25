@@ -721,6 +721,32 @@ def collect_diagnostics(data_manager, tray_app=None) -> list[DiagnosticItem]:
     except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         items.append(DiagnosticItem("更新系统", "unknown", "无法读取更新状态", str(exc)))
 
+    try:
+        from .thread_errors import get_thread_error_log
+
+        thread_errors = get_thread_error_log(limit=20)
+        if thread_errors:
+            error_count = len(thread_errors)
+            recent_str = f"最近有 {error_count} 条线程未捕获异常"
+            details = "\n".join(
+                f"[{e.get('time','?')[-19:]}] {e.get('thread_name','?')} "
+                f"{e.get('exc_type','?')}: {e.get('exc_message','?')[:80]}"
+                for e in thread_errors[:10]
+            )
+            items.append(
+                DiagnosticItem(
+                    "线程错误日志",
+                    "warn",
+                    recent_str,
+                    details,
+                    "请检查 config/thread_errors.jsonl 获取完整信息。",
+                )
+            )
+        else:
+            items.append(DiagnosticItem("线程错误日志", "ok", "无线程未捕获异常记录"))
+    except (ImportError, OSError, TypeError, ValueError) as exc:
+        items.append(DiagnosticItem("线程错误日志", "unknown", "无法读取线程错误日志", str(exc)))
+
     return items
 
 

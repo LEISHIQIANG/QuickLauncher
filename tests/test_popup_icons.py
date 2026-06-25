@@ -124,6 +124,45 @@ def test_popup_default_icon_cache_differentiates_names_with_same_initial():
     assert harness.created_for == ["Alpha", "Atom"]
 
 
+def test_popup_default_icon_cache_is_bounded_with_lru_eviction():
+    """Regression test for Bug #3 (1.6.3.7 audit): the default icon cache
+    was an unbounded ``dict``. Theme toggles, DPI changes and unique item
+    names all produce distinct cache keys, so the cache grew without
+    limit (each 96x96 QPixmap is ~36KB; theme + DPI permutations can
+    leak tens of MB over a long session). The fix converts the cache to
+    an ``OrderedDict`` and trims it to ``_DEFAULT_ICON_CACHE_CAPACITY``
+    on every insert.
+    """
+    from collections import OrderedDict
+
+    harness = _IconHarness()
+    capacity = PopupIconMixin._DEFAULT_ICON_CACHE_CAPACITY
+
+    for index in range(capacity + 50):
+        shortcut = ShortcutItem(id=f"id-{index}", name=f"Name{index}", type=ShortcutType.COMMAND)
+        harness._get_icon(shortcut)
+
+    assert isinstance(harness._default_icon_cache, OrderedDict)
+    assert len(harness._default_icon_cache) <= capacity
+
+
+def test_popup_default_icon_cache_migrates_plain_dict_to_ordered():
+    """A plain ``dict`` set in ``__init__`` or tests must be transparently
+    promoted to ``OrderedDict`` on first use so LRU eviction works.
+    """
+    from collections import OrderedDict
+
+    harness = _IconHarness()
+    harness._default_icon_cache = {"legacy": "old"}  # plain dict, not OrderedDict
+
+    shortcut = ShortcutItem(id="fresh", name="Fresh", type=ShortcutType.COMMAND)
+    harness._get_icon(shortcut)
+
+    assert isinstance(harness._default_icon_cache, OrderedDict)
+    assert "legacy" in harness._default_icon_cache
+    assert harness._get_icon(shortcut) == "default:Fresh"
+
+
 def test_popup_icon_for_paint_uses_cache_only(monkeypatch):
     import ui.launcher_popup.popup_icons as icons_mod
 

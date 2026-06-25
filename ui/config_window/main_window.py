@@ -820,7 +820,12 @@ class ConfigWindow(QMainWindow):
                 deleted,
             )
             if self.icon_grid.current_folder_id == folder_id:
-                self.icon_grid.load_folder(folder_id)
+                # 延迟一帧再 reload，等右键 popup 的 deleteLater 先走完，
+                # 避免 popup 持有的 shortcut 引用还活着时被 reload 覆盖。
+                QTimer.singleShot(
+                    0,
+                    lambda fid=folder_id: self._safe_reload_folder(fid),
+                )
             self.settings_changed.emit()  # 通知弹窗刷新数据
         except Exception as exc:
             logger.exception("删除快捷方式失败: folder_id=%s shortcut_id=%s", folder_id, shortcut_id)
@@ -832,6 +837,13 @@ class ConfigWindow(QMainWindow):
                 )
             except Exception:
                 logger.debug("显示删除失败提示失败", exc_info=True)
+
+    def _safe_reload_folder(self, folder_id: str) -> None:
+        try:
+            if self.icon_grid.current_folder_id == folder_id:
+                self.icon_grid.load_folder(folder_id)
+        except RuntimeError as exc:
+            logger.debug("延迟 reload 图标网格失败: %s", exc, exc_info=True)
 
     def _on_add_file(self):
         """添加文件快捷方式"""

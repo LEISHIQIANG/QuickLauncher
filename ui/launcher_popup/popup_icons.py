@@ -4,6 +4,7 @@
 #            honours devicePixelRatio at the paint-time context.
 import logging
 import os
+from collections import OrderedDict
 
 from core import ShortcutItem, ShortcutType
 from core.command_icon_catalog import builtin_command_id_from_icon_path
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class PopupIconMixin:
     _MIN_ICON_PIXMAP_CACHE_CAPACITY = 200
+    _DEFAULT_ICON_CACHE_CAPACITY = 256
 
     def _icon_pixmap_cache_capacity(self) -> int:
         return max(
@@ -42,6 +44,22 @@ class PopupIconMixin:
     def _trim_icon_pixmap_cache(self, cache=None) -> None:
         cache = self._icon_pixmap_cache if cache is None else cache
         limit = self._icon_pixmap_cache_capacity()
+        while len(cache) > limit:
+            try:
+                cache.popitem(last=False)
+            except TypeError:
+                cache.pop(next(iter(cache)))
+            except Exception:
+                break
+
+    def _trim_default_icon_cache(self, cache) -> None:
+        """Bound :pyattr:`_default_icon_cache` so it cannot grow without limit.
+
+        Theme toggles, DPI changes and unique item names all produce distinct
+        cache keys, so without eviction the cache grew unbounded — see Bug #3
+        in the 1.6.3.7 audit.  Mirrors :py:meth:`_trim_icon_pixmap_cache`.
+        """
+        limit = self._DEFAULT_ICON_CACHE_CAPACITY
         while len(cache) > limit:
             try:
                 cache.popitem(last=False)
@@ -177,14 +195,22 @@ class PopupIconMixin:
     def _get_default_icon_cached(self, item: ShortcutItem) -> QPixmap:
         default_cache = getattr(self, "_default_icon_cache", None)
         if default_cache is None:
-            default_cache = {}
+            default_cache = OrderedDict()
+            self._default_icon_cache = default_cache
+        elif not isinstance(default_cache, OrderedDict):
+            # Migrate from a plain ``dict`` (e.g. set in tests or older
+            # ``__init__`` paths) so LRU semantics work going forward.
+            default_cache = OrderedDict(default_cache.items())
             self._default_icon_cache = default_cache
         default_key = self._default_icon_cache_key(item)
         cached_default = default_cache.get(default_key)
         if cached_default is not None:
+            default_cache.move_to_end(default_key)
             return cached_default  # type: ignore[no-any-return]
         pixmap = self._create_default_icon(item)
         default_cache[default_key] = pixmap
+        default_cache.move_to_end(default_key)
+        self._trim_default_icon_cache(default_cache)
         return pixmap
 
     def _get_icon_for_paint(self, item: ShortcutItem) -> QPixmap:

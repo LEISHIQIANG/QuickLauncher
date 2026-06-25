@@ -113,6 +113,7 @@ def test_factory_reset_returns_cleanup_stats(monkeypatch, tmp_path):
     manager._write_lock = threading.Lock()
     manager.app_dir = app_dir
     manager.icons_dir = icons_dir
+    manager.data_file = app_dir / "data.json"
 
     stats = manager.factory_reset()
 
@@ -121,6 +122,62 @@ def test_factory_reset_returns_cleanup_stats(monkeypatch, tmp_path):
     assert stats["registry_keys_removed"] == 0
     assert isinstance(stats["errors"], list)
     assert isinstance(manager.data, AppData)
+
+
+def test_factory_reset_preserves_history_recovery_and_backup_subdirs(monkeypatch, tmp_path):
+    """Regression test for Bug #2 (1.6.3.7 audit): ``factory_reset`` must
+    not destroy the ``history/``, ``recovery/`` and ``auto_backups/`` sub-
+    directories. The cleanup pass deletes every child of ``app_dir``,
+    including these critical sub-directories; without the post-cleanup
+    ``_ensure_dirs()`` call the next save() would fail to record history
+    snapshots and recovery reports would lose their home directory.
+    """
+    fake_winreg = types.SimpleNamespace(
+        HKEY_CURRENT_USER=object(),
+        KEY_ALL_ACCESS=0,
+        OpenKey=lambda *args, **kwargs: (_ for _ in ()).throw(OSError("missing")),
+        DeleteValue=lambda *args, **kwargs: None,
+        CloseKey=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
+
+    app_dir = tmp_path / "config"
+    icons_dir = tmp_path / "icons"
+    app_dir.mkdir()
+    icons_dir.mkdir()
+    (app_dir / "data.json").write_text("{}", encoding="utf-8")
+
+    # Pre-populate the three protected sub-directories with sentinel files
+    # so we can prove the reset removes their *contents* but keeps the dirs.
+    for sub in ("history", "recovery", "auto_backups"):
+        sub_dir = app_dir / sub
+        sub_dir.mkdir()
+        (sub_dir / "sentinel.json").write_text("keep", encoding="utf-8")
+
+    manager = object.__new__(DataManager)
+    manager._save_lock = threading.RLock()
+    manager._write_lock = threading.Lock()
+    manager.app_dir = app_dir
+    manager.icons_dir = icons_dir
+    manager.history_dir = app_dir / "history"
+    manager.recovery_dir = app_dir / "recovery"
+    manager.auto_backup_dir = app_dir / "auto_backups"
+    manager.data_file = app_dir / "data.json"
+
+    manager.factory_reset()
+
+    # Sub-directories themselves must still exist after reset.
+    assert (app_dir / "history").is_dir()
+    assert (app_dir / "recovery").is_dir()
+    assert (app_dir / "auto_backups").is_dir()
+
+    # And data.json must be re-created with a valid default payload.
+    assert manager.data_file.is_file()
+    assert json.loads(manager.data_file.read_text(encoding="utf-8")) == AppData().to_dict()
+
+    # No lingering temp files leaked into app_dir from the atomic write.
+    leftover_temps = [p for p in app_dir.iterdir() if p.suffix == ".tmp" or p.name.endswith(".tmp")]
+    assert leftover_temps == [], f"temp files leaked: {leftover_temps}"
 
 
 def test_record_shortcut_used_updates_matching_item(monkeypatch):

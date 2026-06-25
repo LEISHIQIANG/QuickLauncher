@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from core.i18n import tr
 from core.shortcut_health import apply_health_fixes, check_shortcuts, preview_health_fixes, save_health_state
 from qt_compat import (
@@ -18,6 +20,8 @@ from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.themed_tool_window import ThemedToolWindow
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.ui_scale import font_px, sp
+
+logger = logging.getLogger(__name__)
 
 
 class ShortcutHealthScanThread(QThread):
@@ -137,26 +141,32 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self.clean_cache_btn.setEnabled(False)
         self._scan_thread = ShortcutHealthScanThread(self.data_manager.data, state_dir=self.data_manager.config_dir)
         self._scan_thread.finished_signal.connect(self._on_scan_finished)
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+        # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
         self._scan_thread.finished.connect(
             lambda thread=self._scan_thread: (
                 setattr(self, "_scan_thread", None) if getattr(self, "_scan_thread", None) is thread else None
             )
         )
-        self._scan_thread.finished.connect(self._scan_thread.deleteLater)
         self._scan_thread.start()
 
     def _on_scan_finished(self, issues, error: str):
-        self.refresh_btn.setEnabled(True)
-        if error:
-            self.issues = []
-            self.fix_btn.setEnabled(False)
+        try:
+            self.refresh_btn.setEnabled(True)
+            if error:
+                self.issues = []
+                self.fix_btn.setEnabled(False)
+                self.clean_cache_btn.setEnabled(True)
+                self.text.setHtml(tr("扫描失败: {error}", error=error))
+                return
+            self.issues = self._sorted_issues(list(issues or []))
+            self.fix_btn.setEnabled(any(issue.fix_action for issue in self.issues))
             self.clean_cache_btn.setEnabled(True)
-            self.text.setHtml(tr("扫描失败: {error}", error=error))
+            self.text.setHtml(self._format_issues())
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("快捷方式健康扫描回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        self.issues = self._sorted_issues(list(issues or []))
-        self.fix_btn.setEnabled(any(issue.fix_action for issue in self.issues))
-        self.clean_cache_btn.setEnabled(True)
-        self.text.setHtml(self._format_issues())
 
     def apply_safe_fixes(self):
         if self._fix_thread and self._fix_thread.isRunning():
@@ -206,12 +216,14 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self._set_fix_running(True)
         self._fix_thread = ShortcutHealthFixThread(self.data_manager, fix_ids)
         self._fix_thread.finished_signal.connect(self._on_fix_finished)
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+        # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
         self._fix_thread.finished.connect(
             lambda thread=self._fix_thread: (
                 setattr(self, "_fix_thread", None) if getattr(self, "_fix_thread", None) is thread else None
             )
         )
-        self._fix_thread.finished.connect(self._fix_thread.deleteLater)
         self._fix_thread.start()
 
     def _set_fix_running(self, running: bool):
@@ -223,24 +235,28 @@ class ShortcutHealthWindow(ThemedToolWindow):
             self.text.setPlainText(tr("正在后台修复，网站图标会并发重新自动获取，请稍候..."))
 
     def _on_fix_finished(self, result: dict, error: str):
-        self._set_fix_running(False)
-        if error:
+        try:
+            self._set_fix_running(False)
+            if error:
+                self.refresh()
+                ThemedMessageBox.warning(self, tr("修复失败"), tr("修复过程中发生错误:\n{error}", error=error))
+                return
             self.refresh()
-            ThemedMessageBox.warning(self, tr("修复失败"), tr("修复过程中发生错误:\n{error}", error=error))
+            skipped = result.get("skipped", 0)
+            failed = result.get("failed", 0)
+            detail = tr("已应用 {count} 项修复。", count=result.get("applied", 0))
+            if skipped:
+                detail += tr("\n已跳过 {skipped} 项被删除图标覆盖的重复修复。", skipped=skipped)
+            if failed:
+                detail += tr("\n有 {failed} 项修复失败，请重新扫描后查看报告。", failed=failed)
+            ThemedMessageBox.information(
+                self,
+                tr("修复完成"),
+                detail,
+            )
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("快捷方式健康修复回调命中已销毁 widget: %s", exc, exc_info=True)
             return
-        self.refresh()
-        skipped = result.get("skipped", 0)
-        failed = result.get("failed", 0)
-        detail = tr("已应用 {count} 项修复。", count=result.get("applied", 0))
-        if skipped:
-            detail += tr("\n已跳过 {skipped} 项被删除图标覆盖的重复修复。", skipped=skipped)
-        if failed:
-            detail += tr("\n有 {failed} 项修复失败，请重新扫描后查看报告。", failed=failed)
-        ThemedMessageBox.information(
-            self,
-            tr("修复完成"),
-            detail,
-        )
 
     def clean_unused_favicon_cache(self):
         if self._cache_clean_thread and self._cache_clean_thread.isRunning():
@@ -249,6 +265,9 @@ class ShortcutHealthWindow(ThemedToolWindow):
         self.clean_cache_btn.setText(tr("清理中..."))
         self._cache_clean_thread = FaviconCacheCleanThread(self.data_manager)
         self._cache_clean_thread.finished_signal.connect(self._on_cache_clean_finished)
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 icon_grid 同源问题，详见 test_icon_grid_file_shortcut_delete.py。
+        # 线程本身由 stop_qthread_nonblocking / 进程退出统一回收。
         self._cache_clean_thread.finished.connect(
             lambda thread=self._cache_clean_thread: (
                 setattr(self, "_cache_clean_thread", None)
@@ -256,24 +275,27 @@ class ShortcutHealthWindow(ThemedToolWindow):
                 else None
             )
         )
-        self._cache_clean_thread.finished.connect(self._cache_clean_thread.deleteLater)
         self._cache_clean_thread.start()
 
     def _on_cache_clean_finished(self, stats: dict, error: str):
-        self.clean_cache_btn.setText(tr("清理缓存"))
-        self.clean_cache_btn.setEnabled(True)
-        if error:
-            ThemedMessageBox.warning(self, tr("清理失败"), tr("无法清理未使用图标缓存:\n{error}", error=error))
-            return
+        try:
+            self.clean_cache_btn.setText(tr("清理缓存"))
+            self.clean_cache_btn.setEnabled(True)
+            if error:
+                ThemedMessageBox.warning(self, tr("清理失败"), tr("无法清理未使用图标缓存:\n{error}", error=error))
+                return
 
-        removed = int(stats.get("files_removed", stats.get("total_removed", 0)) or 0)
-        freed = float(stats.get("size_freed_mb", stats.get("total_size_freed_mb", 0)) or 0)
-        self.refresh()
-        ThemedMessageBox.information(
-            self,
-            tr("清理完成"),
-            tr("已清理 {removed} 个未使用的网页图标缓存，释放 {freed:.1f} MB。", removed=removed, freed=freed),
-        )
+            removed = int(stats.get("files_removed", stats.get("total_removed", 0)) or 0)
+            freed = float(stats.get("size_freed_mb", stats.get("total_size_freed_mb", 0)) or 0)
+            self.refresh()
+            ThemedMessageBox.information(
+                self,
+                tr("清理完成"),
+                tr("已清理 {removed} 个未使用的网页图标缓存，释放 {freed:.1f} MB。", removed=removed, freed=freed),
+            )
+        except (RuntimeError, AttributeError, TypeError) as exc:
+            logger.debug("图标缓存清理回调命中已销毁 widget: %s", exc, exc_info=True)
+            return
 
     def _format_issues(self) -> str:
         """格式化问题列表为HTML，带颜色支持"""

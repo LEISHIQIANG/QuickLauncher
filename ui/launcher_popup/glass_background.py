@@ -523,7 +523,6 @@ class GlassBackgroundRenderer:
         self._geometry: tuple[int, int, int, int] = (0, 0, 0, 0)
 
         self._running = False
-        self._stop_requested = False
         self._first_frame_ready = False
         self._first_frame_event = threading.Event()
         self._affinity_changed = False
@@ -532,6 +531,10 @@ class GlassBackgroundRenderer:
         self._last_error: str | None = None
         self._last_error_code = 0
         self._worker: threading.Thread | None = None
+        # 用 threading.Event 而非 bool：让主线程能在 worker 进入 sleep 时
+        # 立刻把它叫醒，避免 join(timeout=1.0) 在 stop() 路径上被迫等到
+        # 下一个 50ms tick 才退出。
+        self._stop_requested = threading.Event()
         self._fatal_reported = False
 
         # Cache for size-dependent static layers.  The rounded mask, radial
@@ -688,7 +691,7 @@ class GlassBackgroundRenderer:
         self._affinity_changed = True
         self._previous_affinity = int(previous)
         self._affinity_hwnd = hwnd
-        self._stop_requested = False
+        self._stop_requested.clear()
         self._first_frame_ready = False
         self._first_frame_event.clear()
         self._last_error_code = 0
@@ -783,7 +786,7 @@ class GlassBackgroundRenderer:
             interval = 1.0 / max(1, TARGET_FPS)
             next_frame = time.perf_counter()
             last_geometry_generation = -1
-            while not self._stop_requested:
+            while not self._stop_requested.is_set():
                 # Honor a geometry-change wake-up immediately so the worker
                 # doesn't sit on its sleep while the user is dragging the
                 # popup around; otherwise the new position would not be
@@ -830,7 +833,9 @@ class GlassBackgroundRenderer:
                 next_frame += interval
                 now = time.perf_counter()
                 if next_frame > now:
-                    time.sleep(min(0.05, next_frame - now))
+                    # 用 Event.wait 代替 time.sleep：stop() 触发 set() 后
+                    # 立刻返回，worker 不用等满 50ms 即可退出。
+                    self._stop_requested.wait(min(0.05, next_frame - now))
                 else:
                     next_frame = now
         except Exception as exc:
@@ -985,7 +990,7 @@ class GlassBackgroundRenderer:
                     self._buffers[index].readers -= 1
 
     def stop(self, *, destroy: bool = False) -> None:
-        self._stop_requested = True
+        self._stop_requested.set()
         # Stop the repaint timer before joining the worker so a pending
         # ``_on_repaint_tick`` can't observe the worker mid-shutdown and
         # report a normal stop as a glass failure.

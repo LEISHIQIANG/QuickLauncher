@@ -375,10 +375,12 @@ class _IconLoadWorker(QObject):
     def run(self):
         from core.icon_extractor import IconExtractor
 
+        _com_initialized = False
         try:
-            import ctypes
+            import pythoncom
 
-            ctypes.windll.ole32.CoInitialize(None)
+            pythoncom.CoInitialize()
+            _com_initialized = True
         except Exception as exc:
             logger.debug("COM初始化: %s", exc, exc_info=True)
 
@@ -409,12 +411,13 @@ class _IconLoadWorker(QObject):
                     break
                 self.finished.emit(sid, image if image else QImage())
         finally:
-            try:
-                import ctypes
+            if _com_initialized:
+                try:
+                    import pythoncom
 
-                ctypes.windll.ole32.CoUninitialize()
-            except Exception as exc:
-                logger.debug("COM反初始化: %s", exc, exc_info=True)
+                    pythoncom.CoUninitialize()
+                except Exception as exc:
+                    logger.debug("COM反初始化: %s", exc, exc_info=True)
             self.completed.emit()
 
     @staticmethod
@@ -1607,13 +1610,16 @@ class IconGrid(QWidget):
         self._icon_worker.moveToThread(self._icon_thread)
         self._icon_worker.finished.connect(lambda sid, image, gen=generation: self._on_icon_loaded(gen, sid, image))
         self._icon_worker.completed.connect(self._icon_thread.quit)
-        self._icon_thread.finished.connect(self._icon_worker.deleteLater)
-        self._icon_thread.finished.connect(self._icon_thread.deleteLater)
+        # 先清空 self 上的引用，再 schedule deleteLater。
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 在 FILE/FOLDER 慢路径（SHGetFileInfo）下，连续 delete 容易让
+        # sender 处于"已 delete 但信号已 enqueue"中间态，引发卡死/闪退。
         self._icon_thread.finished.connect(
             lambda gen=generation, thread=self._icon_thread, worker=self._icon_worker: self._on_icon_thread_finished(
                 gen, thread, worker
             )
         )
+        self._icon_thread.finished.connect(self._icon_worker.deleteLater)
         self._icon_thread.started.connect(self._icon_worker.run)
         self._icon_thread.start()
 
@@ -1676,13 +1682,15 @@ class IconGrid(QWidget):
             lambda success, total, gen=generation: self._on_favicon_fetch_completed(gen, success, total)
         )
         worker.completed.connect(thread.quit)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
+        # 先清空 self 上的引用，再 schedule worker deleteLater。
+        # 不要把 QThread 自身的 deleteLater 挂到自己的 finished 信号上 —
+        # 跟 _start_async_icon_load 同源问题。
         thread.finished.connect(
             lambda gen=generation, qthread=thread, qworker=worker: self._on_favicon_fetch_thread_finished(
                 gen, qthread, qworker
             )
         )
+        thread.finished.connect(worker.deleteLater)
         thread.started.connect(worker.run)
         self._favicon_fetch_worker = worker
         self._favicon_fetch_thread = thread
@@ -1740,62 +1748,75 @@ class IconGrid(QWidget):
         self._favicon_fetch_success_count = 0
 
     def _on_icon_loaded(self, *args):
-        if len(args) == 3:
-            generation, shortcut_id, image = args
-            if generation != getattr(self, "_icon_load_generation", generation):
+        try:
+            if len(args) == 3:
+                generation, shortcut_id, image = args
+                if generation != getattr(self, "_icon_load_generation", generation):
+                    return
+            elif len(args) == 2:
+                shortcut_id, image = args
+            else:
                 return
-        elif len(args) == 2:
-            shortcut_id, image = args
-        else:
-            return
 
-        shortcut_map = getattr(self, "_shortcut_map", {})
-        item = shortcut_map.get(shortcut_id)
-        if image.isNull() and item:
-            logger.debug(
-                "[IconDiag] grid worker returned null, retrying on main thread sid=%s name=%r icon_path=%r target_path=%r",
-                shortcut_id,
-                getattr(item, "name", ""),
-                getattr(item, "icon_path", ""),
-                getattr(item, "target_path", ""),
-            )
-            image = self._load_icon_on_main_thread(item)
-        if image.isNull():
-            if item:
+            shortcut_map = getattr(self, "_shortcut_map", {})
+            item = shortcut_map.get(shortcut_id)
+            if image.isNull() and item:
                 logger.debug(
-                    "[IconDiag] grid icon still null sid=%s name=%r icon_path=%r target_path=%r",
+                    "[IconDiag] grid worker returned null, retrying on main thread sid=%s name=%r icon_path=%r target_path=%r",
                     shortcut_id,
                     getattr(item, "name", ""),
                     getattr(item, "icon_path", ""),
                     getattr(item, "target_path", ""),
                 )
-            return
+                image = self._load_icon_on_main_thread(item)
+            if image.isNull():
+                if item:
+                    logger.debug(
+                        "[IconDiag] grid icon still null sid=%s name=%r icon_path=%r target_path=%r",
+                        shortcut_id,
+                        getattr(item, "name", ""),
+                        getattr(item, "icon_path", ""),
+                        getattr(item, "target_path", ""),
+                    )
+                return
 
-        # 检查是否需要反转
-        shortcut_map = getattr(self, "_shortcut_map", {})
-        item = shortcut_map.get(shortcut_id)
-        if item:
-            try:
-                from core.icon_extractor import IconExtractor, should_invert_icon
-
-                theme = "dark"
+            # 检查是否需要反转
+            shortcut_map = getattr(self, "_shortcut_map", {})
+            item = shortcut_map.get(shortcut_id)
+            if item:
                 try:
-                    theme = self.data_manager.get_settings().theme
+                    from core.icon_extractor import IconExtractor, should_invert_icon
+
+                    theme = "dark"
+                    try:
+                        theme = self.data_manager.get_settings().theme
+                    except Exception as exc:
+                        logger.debug("获取主题设置: %s", exc, exc_info=True)
+                    if should_invert_icon(item, theme):
+                        image = IconExtractor.invert_image(image)
                 except Exception as exc:
                     logger.debug("获取主题设置: %s", exc, exc_info=True)
-                if should_invert_icon(item, theme):
-                    image = IconExtractor.invert_image(image)
-            except Exception as exc:
-                logger.debug("获取主题设置: %s", exc, exc_info=True)
 
-        pixmap = QPixmap.fromImage(image)
-        for w in list(self.icon_widgets):
+            pixmap = QPixmap.fromImage(image)
+            for w in list(self.icon_widgets):
+                try:
+                    if w.shortcut.id == shortcut_id:
+                        w.icon_label.setPixmap(pixmap)
+                        break
+                except RuntimeError:
+                    continue
+        except (RuntimeError, ValueError, TypeError, AttributeError) as exc:
             try:
-                if w.shortcut.id == shortcut_id:
-                    w.icon_label.setPixmap(pixmap)
-                    break
-            except RuntimeError:
-                continue
+                sid_repr = args[1] if len(args) >= 2 else "?"
+            except Exception:
+                sid_repr = "?"
+            logger.warning(
+                "[IconDiag] grid icon loaded handler exception gen=%s sid=%s err=%s",
+                getattr(self, "_icon_load_generation", -1),
+                sid_repr,
+                exc,
+            )
+            return
 
     def _load_icon_on_main_thread(self, item: ShortcutItem):
         try:
