@@ -297,7 +297,22 @@ class SaveCoordinator:
             timer.cancel()
 
     def _do_save(self) -> bool:
-        """Save data to disk atomically with lock splitting."""
+        """Save data to disk atomically.
+
+        Lock ordering: _save_lock → _write_lock, and both are released
+        together.  This guarantees no thread can interleave a data mutation
+        (holding _save_lock) while the write is in progress (holding
+        _write_lock), eliminating the classic AB-BA deadlock where:
+
+        * Thread A holds _write_lock in _do_save and waits for _save_lock
+          at the history-update block.
+        * Thread B holds _save_lock in ShortcutService and calls
+          dm.save(immediate=True) → _do_save() → waits for _write_lock.
+
+        Keeping _save_lock across the entire _do_save scope makes
+        acquisition order deterministic: _save_lock always before
+        _write_lock.
+        """
         dm = self._dm
         with dm._save_lock:
             try:
@@ -316,62 +331,47 @@ class SaveCoordinator:
                 }
                 return False
 
-        write_success = False
-        save_error: Exception | None = None
-        with dm._write_lock:
-            temp_file = dm.data_file.with_name(f"{dm.data_file.stem}.{uuid.uuid4().hex}.tmp")
-            try:
-                self._create_auto_backup()
+            write_success = False
+            save_error: Exception | None = None
+            with dm._write_lock:
+                temp_file = dm.data_file.with_name(f"{dm.data_file.stem}.{uuid.uuid4().hex}.tmp")
+                try:
+                    self._create_auto_backup()
 
-                with open(temp_file, "w", encoding="utf-8") as f:
-                    f.write(payload)
-                    f.flush()
-                    os.fsync(f.fileno())
+                    with open(temp_file, "w", encoding="utf-8") as f:
+                        f.write(payload)
+                        f.flush()
+                        os.fsync(f.fileno())
 
-                dm._replace_data_file(temp_file)
-                _sync_directory(dm.data_file.parent)
-                write_success = True
+                    dm._replace_data_file(temp_file)
+                    _sync_directory(dm.data_file.parent)
+                    write_success = True
 
-            except OSError as e:
-                # Preserve historical swallow-OSError contract: callers
-                # (SaveCoordinator.save, delayed-save retry loop) inspect
-                # the boolean result to decide whether to reschedule the
-                # save.  The ``finally`` block below guarantees the temp
-                # file is cleaned up regardless of which branch fires.
-                logger.error("save data failed: %s", e)
-                with dm._save_lock:
+                except OSError as e:
+                    logger.error("save data failed: %s", e)
                     dm._config_status = {
                         "status": "error",
                         "source": str(dm.data_file),
                         "issues": [f"save data failed: {e}"],
                     }
-            except Exception as e:
-                # Any non-OSError exception (PermissionError from os.fsync,
-                # shutil.Error, custom exceptions from extension code, …)
-                # was previously swallowed-and-leaked: the temp file was
-                # never removed and the background save thread died
-                # silently.  Log, mark the config status, clean up the
-                # temp file in the ``finally`` block, and re-raise so the
-                # caller knows the save failed.
-                save_error = e
-                logger.error("save data failed: %s", e)
-                with dm._save_lock:
+                except Exception as e:
+                    save_error = e
+                    logger.error("save data failed: %s", e)
                     dm._config_status = {
                         "status": "error",
                         "source": str(dm.data_file),
                         "issues": [f"save data failed: {e}"],
                     }
-            finally:
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except OSError as cleanup_error:
-                        logger.debug("cleanup temp file failed: %s", cleanup_error)
-                if save_error is not None:
-                    raise save_error
+                finally:
+                    if os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except OSError as cleanup_error:
+                            logger.debug("cleanup temp file failed: %s", cleanup_error)
+                    if save_error is not None:
+                        raise save_error
 
-        if write_success:
-            with dm._save_lock:
+            if write_success:
                 if suppress_history:
                     dm._suppress_next_history = False
                 elif previous_data_dict and previous_data_dict != next_data_dict:
@@ -386,7 +386,6 @@ class SaveCoordinator:
                     dm._pending_history_summary = ""
                 dm._last_saved_data_dict = next_data_dict
                 dm._config_status = {"status": "ok", "source": str(dm.data_file), "issues": []}
-                # Publish event for downstream consumers (port adapters, UI, plugins).
                 try:
                     from application.events import ConfigSaved as ConfigSavedEvent
                     from application.events import event_bus
@@ -400,7 +399,7 @@ class SaveCoordinator:
                 except Exception as exc:
                     logger.debug("ConfigSaved event publish failed: %s", exc, exc_info=True)
 
-        return write_success
+            return write_success
 
     def _replace_data_file(self, temp_file: Path) -> None:
         # Forward via dm so tests can patch ``dm._replace_data_file``.

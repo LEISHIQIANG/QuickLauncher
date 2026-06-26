@@ -1198,7 +1198,7 @@ def _AddMergeFromStringMethod(message_descriptor, cls):
         # pylint: disable=protected-access
         unknown_field_set = self._unknown_field_set
         while pos != end:
-            tag_bytes, new_pos = local_ReadTag(buffer, pos)
+            (tag_bytes, new_pos) = local_ReadTag(buffer, pos)
             field_decoder, field_desc = decoders_by_tag.get(tag_bytes, (None, None))
             if field_decoder is None:
                 if not self._unknown_fields:  # pylint: disable=protected-access
@@ -1209,13 +1209,13 @@ def _AddMergeFromStringMethod(message_descriptor, cls):
                     # pylint: disable=protected-access
                     unknown_field_set = self._unknown_field_set
                 # pylint: disable=protected-access
-                tag, _ = decoder._DecodeVarint(tag_bytes, 0)
+                (tag, _) = decoder._DecodeVarint(tag_bytes, 0)
                 field_number, wire_type = wire_format.UnpackTag(tag)
                 if field_number == 0:
                     raise message_mod.DecodeError("Field number 0 is illegal.")
                 # TODO(jieluo): remove old_pos.
                 old_pos = new_pos
-                data, new_pos = decoder._DecodeUnknownField(
+                (data, new_pos) = decoder._DecodeUnknownField(
                     buffer, new_pos, wire_type
                 )  # pylint: disable=protected-access
                 if new_pos == -1:

@@ -45,7 +45,7 @@ def test_manifest_version_matches_core_version():
 def test_win11_build_defaults_to_performance_profile_and_externalizes_plugins():
     script = (ROOT / "scripts" / "build_win11_setup.bat").read_text(encoding="utf-8")
 
-    assert 'if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=smooth"' in script
+    assert 'if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=small"' in script
     assert '--min 3.12 --max 3.12 --prefer "3.12"' in script
     assert "plugin-bundled wxPython is cp312" in script
     assert "--include-data-dir=plugins=plugins" not in script

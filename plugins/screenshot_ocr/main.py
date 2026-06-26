@@ -219,6 +219,23 @@ def _payload_to_result(payload: dict) -> CommandResult:
     )
 
 
+def _find_dist_exe() -> Path | None:
+    """Search project dist directories for QuickLauncher.exe (--plugin-helper fallback)."""
+    try:
+        project_root = Path(__file__).resolve().parents[2]
+        candidates = [
+            project_root / "dist" / "main.dist" / "QuickLauncher.exe",
+            project_root / "dist" / "QuickLauncher" / "QuickLauncher.exe",
+            project_root / "dist" / "QuickLauncher_Portable_1.6.3.7" / "QuickLauncher.exe",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+    except Exception:
+        pass
+    return None
+
+
 def _find_helper_command(helper: Path) -> list[str]:
     global _CACHED_HELPER_CMD
     with _HELPER_CMD_LOCK:
@@ -241,6 +258,18 @@ def _find_helper_command(helper: Path) -> list[str]:
 
         if current.exists() and not current.name.lower().startswith("python"):
             cmd = [str(current), "--plugin-helper", str(helper)]
+            if site_packages.is_dir():
+                cmd.extend(["--plugin-site", str(site_packages)])
+            cmd.append("--")
+            _CACHED_HELPER_CMD = cmd
+            return _CACHED_HELPER_CMD
+
+        # Fallback: use packaged QuickLauncher.exe from dist with --plugin-helper.
+        # This is needed when running from dev Python 3.13 while bundled wxPython
+        # .pyd files are cp312 (Python 3.12 only).
+        dist_exe = _find_dist_exe()
+        if dist_exe is not None:
+            cmd = [str(dist_exe), "--plugin-helper", str(helper)]
             if site_packages.is_dir():
                 cmd.extend(["--plugin-site", str(site_packages)])
             cmd.append("--")

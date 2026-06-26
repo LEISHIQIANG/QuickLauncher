@@ -24,6 +24,32 @@ logger = logging.getLogger(__name__)
 _MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 
 
+def _find_dist_quicklauncher_exe() -> Path | None:
+    """Find a packaged QuickLauncher.exe in project dist directories.
+
+    In dev mode, the project's wxPython/.pyd files may be compiled for
+    a different CPython version (e.g. cp312) than the dev interpreter
+    (e.g. 3.13).  Workers that import wxPython (ocr_worker.py,
+    qr_worker.py) must run under the packaged interpreter.
+    """
+    try:
+        root = Path(__file__).resolve().parents[1]
+        candidates = [
+            root / "dist" / "main.dist" / "QuickLauncher.exe",
+            root / "dist" / "QuickLauncher" / "QuickLauncher.exe",
+        ]
+        for entry in (
+            (root / "dist").glob("QuickLauncher_Portable_*/QuickLauncher.exe") if (root / "dist").is_dir() else []
+        ):
+            candidates.append(entry)
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+    except Exception:
+        logger.debug("No worker runtime candidate found", exc_info=True)
+    return None
+
+
 class PluginWorkerError(RuntimeError, DomainError):
     pass
 
@@ -103,6 +129,9 @@ class PersistentPluginWorker:
         self._request_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._request_seq = 0
+        self._active_requests = 0
+        self._active_requests_done = threading.Event()
+        self._active_requests_done.set()  # start as done (no requests)
 
     @property
     def running(self) -> bool:
@@ -217,6 +246,10 @@ class PersistentPluginWorker:
                 "payload": dict(payload or {}),
                 "deadline_ms": int((time.time() + max(0.05, timeout)) * 1000),
             }
+            self._active_requests += 1
+            if self._active_requests == 1:
+                self._active_requests_done.clear()
+        try:
             try:
                 channel.send(message)
                 response = self._receive_response(channel, request_id, timeout)
@@ -230,6 +263,11 @@ class PersistentPluginWorker:
                     self._close_unlocked(force=True)
                 raise
             return result
+        finally:
+            with self._state_lock:
+                self._active_requests = max(0, self._active_requests - 1)
+                if self._active_requests == 0:
+                    self._active_requests_done.set()
 
     def _receive_response(
         self,
@@ -288,6 +326,13 @@ class PersistentPluginWorker:
             return healthy
 
     def close(self, timeout: float = 3.0) -> None:
+        """Shut down the worker subprocess gracefully.
+
+        Waits for any in-flight ``request()`` calls to complete before
+        force-killing the subprocess.  This prevents the subprocess from
+        being terminated mid-operation, which could leave plugin state
+        inconsistent.
+        """
         with self._state_lock:
             channel = self._channel
             process = self._process
@@ -297,6 +342,14 @@ class PersistentPluginWorker:
                     process.wait(timeout=max(0.1, float(timeout)))
                 except Exception as exc:
                     logger.debug("plugin worker graceful shutdown failed: %s", exc)
+
+            # Wait for in-flight requests to complete before closing the
+            # channel and force-killing the process.  This avoids the
+            # race where _close_unlocked(force=True) kills the subprocess
+            # while a request() thread is blocked in _receive_response().
+            if self._active_requests > 0:
+                self._active_requests_done.wait(timeout=max(0.5, float(timeout)))
+
             self._close_unlocked(force=True)
 
     def _close_unlocked(self, *, force: bool) -> None:
@@ -307,6 +360,11 @@ class PersistentPluginWorker:
         process = self._process
         self._process = None
         self.negotiated_capabilities = frozenset()
+        # Reset the active-requests tracker so that any subsequent start()
+        # begins with a clean state (the old requests are dead anyway
+        # because we just closed the channel).
+        self._active_requests = 0
+        self._active_requests_done.set()
         if process is None or process.poll() is not None:
             return
         if force:
@@ -323,7 +381,14 @@ class PersistentPluginWorker:
         if is_packaged_runtime():
             command = [str(app_executable()), "--plugin-worker", str(self.script_path)]
         else:
-            command = [str(sys.executable), str(app_root() / "main.py"), "--plugin-worker", str(self.script_path)]
+            # Dev mode: prefer packaged QuickLauncher.exe when available so that
+            # workers importing wxPython (ocr_worker.py, qr_worker.py) can load
+            # the bundled cp312 .pyd files even when the dev interpreter is 3.13.
+            fallback_exe = _find_dist_quicklauncher_exe()
+            if fallback_exe is not None:
+                command = [str(fallback_exe), "--plugin-worker", str(self.script_path)]
+            else:
+                command = [str(sys.executable), str(app_root() / "main.py"), "--plugin-worker", str(self.script_path)]
         for site_path in self.site_paths:
             command.extend(["--plugin-site", str(site_path)])
         command.extend(["--plugin-port", str(port), "--plugin-token", token])

@@ -77,6 +77,12 @@ class PersistentOcrWorker:
         self.app = wx.App(False)
         self.app.SetExitOnFrameDelete(False)
         self.ocr_service.initialize_ocr_manager()
+        # wx.MainLoop exits immediately when there are no frames at all
+        # (SetExitOnFrameDelete only prevents exit when the *last* frame
+        # closes, not when there are zero frames).  A hidden keepalive
+        # frame keeps the loop alive until _shutdown() is called.
+        self._keepalive = wx.Frame(None, size=(1, 1))
+        self._keepalive.Hide()
         self.channel.send({"type": "ready", "token": self.token})
         threading.Thread(target=self._read_requests, name="OcrWorkerIPC", daemon=True).start()
         self.app.MainLoop()
@@ -154,25 +160,8 @@ class PersistentOcrWorker:
         if not temp_path:
             self._finish_request({"status": "cancelled", "message": "已取消截图 OCR"})
             return
-
-        def _recognize_wrapper(path: str) -> None:
-            try:
-                self._recognize(path)
-            except BaseException as _exc:
-                logger.exception("OcrRecognition thread crashed: %s", _exc)
-                try:
-                    from core.thread_errors import record_thread_error
-
-                    record_thread_error(
-                        thread_name="OcrRecognition",
-                        exc=_exc,
-                        owner="PersistentOcrWorker",
-                    )
-                except Exception:
-                    pass
-
         threading.Thread(
-            target=_recognize_wrapper,
+            target=self._recognize,
             args=(str(temp_path),),
             name="OcrRecognition",
             daemon=True,
@@ -218,6 +207,10 @@ class PersistentOcrWorker:
             return
         self._stopping = True
         self._destroy_frames()
+        try:
+            self._keepalive.Destroy()
+        except Exception:
+            pass
         if self.app is not None:
             self.app.ExitMainLoop()
 

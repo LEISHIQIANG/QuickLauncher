@@ -177,6 +177,24 @@ class TrayApp(
             plugin_manager.set_confirm_high_risk_callback(_confirm_high_risk)
             self._pending_startup_plugin_ids = list(self.data_manager.get_settings().enabled_plugins)
 
+            # Auto-discover builtin plugins from .plugins/ repository that were
+            # installed after the last session.  Skip plugins the user explicitly
+            # disabled (status "disabled" or "error" in plugin_state.json).
+            _state = getattr(plugin_manager, "_plugin_state", {})
+            _plugins_section = _state.get("plugins", {}) if isinstance(_state, dict) else {}
+            for _info in plugin_manager.list_plugins():
+                _pid = _info.manifest.id
+                if _pid in self._pending_startup_plugin_ids:
+                    continue
+                if _info.manifest.trust_level != "builtin":
+                    continue
+                _persisted = _plugins_section.get(_pid, {})
+                _ps = str(_persisted.get("status", "") or "")
+                if _ps in ("disabled", "error"):
+                    continue  # user explicitly disabled or previously failed
+                self._pending_startup_plugin_ids.append(_pid)
+                logger.info("发现新的内置插件，将自动启用: %s", _pid)
+
         self.config_window = None
         self.popup_window = None
         self._extra_popup_windows = []

@@ -16,12 +16,7 @@
       "ui.tray_app|ui.tray_mixins|ui.tray_mixins.popup_mixin|ui.tray_mixins.shutdown_mixin"
     ],
     "import_time_side_effects": [],
-    "plugin_internal_imports": [
-      "plugins/qr_code_scanner/qr_worker.py->core.thread_errors",
-      "plugins/qr_code_scanner/qr_worker.py->core.thread_errors.record_thread_error",
-      "plugins/screenshot_ocr/ocr_worker.py->core.thread_errors",
-      "plugins/screenshot_ocr/ocr_worker.py->core.thread_errors.record_thread_error"
-    ],
+    "plugin_internal_imports": [],
     "sensitive_calls": [
       "core/command_exec/cleanup.py:47:process:subprocess.run",
       "core/command_exec/launcher_mixin.py:127:process:subprocess.run",
@@ -29,8 +24,8 @@
       "core/shortcut_command_exec.py:1020:process:subprocess.Popen",
       "core/shortcut_command_exec.py:1085:process:subprocess.Popen",
       "core/shortcut_command_exec.py:1122:process:subprocess.Popen",
-      "core/shortcut_command_exec.py:1248:process:os.startfile",
-      "core/shortcut_command_exec.py:1427:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:1259:process:os.startfile",
+      "core/shortcut_command_exec.py:1438:process:subprocess.Popen",
       "core/shortcut_command_exec.py:582:process:subprocess.Popen",
       "core/shortcut_command_exec.py:673:process:subprocess.Popen",
       "core/shortcut_command_exec.py:789:process:subprocess.Popen",

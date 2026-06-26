@@ -1075,6 +1075,7 @@ class PopupSearchMixin:
         self._preload_icon_idx = 0
         self._preload_page_queue = list(priority_order)
         self._preload_page_idx = 0
+        self._bg_icon_warmup_started = False
 
         if timer is None:
             timer = QTimer(self)
@@ -1083,6 +1084,13 @@ class PopupSearchMixin:
             timer.timeout.connect(self._preload_next_batch)
             self._preload_batch_timer = timer
         timer.start()
+
+        # Kick off background icon extraction so cache fills without
+        # blocking the main thread (IconExtractor can take 50-500 ms).
+        try:
+            self._schedule_background_icon_warmup(items_list)
+        except Exception as exc:
+            logger.debug("启动后台图标预热失败: %s", exc, exc_info=True)
 
     def _preload_next_batch(self):
         """每次只处理极少量预热任务，避免一次 shell 图标提取拖住 UI。"""
@@ -1119,7 +1127,12 @@ class PopupSearchMixin:
             processed = 0
             while idx < len(items) and processed < max_icons_per_tick and time.perf_counter() < deadline:
                 try:
-                    self._get_icon(items[idx])
+                    # Use _get_icon_for_paint to avoid blocking main thread on
+                    # IconExtractor (50-500ms per cache miss).  The paint path
+                    # already uses _get_icon_for_paint; icon extraction is
+                    # offloaded to a background executor via
+                    # _schedule_background_icon_warmup.
+                    self._get_icon_for_paint(items[idx])
                 except Exception as exc:
                     logger.debug("预加载图标: %s", exc, exc_info=True)
                 idx += 1

@@ -8,10 +8,9 @@ import pytest
 import core.window_detection as window_detection
 import ui.launcher_popup.file_selection as file_selection
 import ui.launcher_popup.popup_data_refresh as popup_data_refresh
-import ui.launcher_popup.popup_item_execution as popup_item_execution
 import ui.launcher_popup.popup_window as popup_window
 from core.data_models import ShortcutItem, ShortcutType
-from qt_compat import QColor
+from qt_compat import QColor, QTimer
 from ui.launcher_popup.popup_renderer import PopupRendererMixin
 
 pytestmark = pytest.mark.ui
@@ -302,8 +301,9 @@ def test_popup_pending_selection_does_not_wait_and_invalidates_request():
 def test_selection_sensitive_command_defers_while_probe_is_pending(monkeypatch):
     popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
     popup._selected_files_status = "pending"
+    popup._lifecycle_generation = 0
     scheduled = []
-    monkeypatch.setattr(popup_item_execution.QTimer, "singleShot", lambda ms, cb: scheduled.append((ms, cb)))
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: scheduled.append((ms, cb)))
 
     item = ShortcutItem(type=ShortcutType.COMMAND, command_type="cmd", command="echo {{selected_file:q}}")
 
@@ -314,8 +314,9 @@ def test_selection_sensitive_command_defers_while_probe_is_pending(monkeypatch):
 def test_multi_file_variable_defers_while_probe_is_pending(monkeypatch):
     popup = popup_window.LauncherPopup.__new__(popup_window.LauncherPopup)
     popup._selected_files_status = "pending"
+    popup._lifecycle_generation = 0
     scheduled = []
-    monkeypatch.setattr(popup_item_execution.QTimer, "singleShot", lambda ms, cb: scheduled.append((ms, cb)))
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: scheduled.append((ms, cb)))
 
     item = ShortcutItem(type=ShortcutType.COMMAND, command_type="cmd", command="tool {{SELECTED_FILES:q}}")
 

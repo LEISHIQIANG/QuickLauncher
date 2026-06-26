@@ -1183,9 +1183,8 @@ class IconGrid(QWidget):
         main_layout.addWidget(stacked_widget, 1)
 
         # 下方按钮区域 - 1U=16px，胶囊圆角
-        btn_container = QWidget()
-        btn_layout = QHBoxLayout(btn_container)
-        btn_layout.setContentsMargins(0, sp(5), 0, 0)
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, sp(5), 0, sp(1) + 1)
         btn_layout.setSpacing(sp(12))
         btn_layout.setAlignment(QtCompat.AlignHCenter)
 
@@ -1209,7 +1208,7 @@ class IconGrid(QWidget):
         self.add_command_btn.clicked.connect(self.add_command_requested.emit)
         btn_layout.addWidget(self.add_command_btn, 1)
 
-        main_layout.addWidget(btn_container)
+        main_layout.addLayout(btn_layout)
 
         # 初始应用主题
         try:

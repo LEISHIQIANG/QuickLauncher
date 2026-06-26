@@ -33,6 +33,12 @@ class ApplicationServices:
 def build_application_services() -> ApplicationServices:
     data_manager = DataManager()
     command_registry = create_command_registry()
+    # Wire the singleton so that ``from core import registry`` returns the
+    # *same* CommandRegistry used by PluginManager.  Without this, plugin-
+    # registered builtin commands are invisible to settings_commands_page.
+    from core import set_command_registry
+
+    set_command_registry(command_registry)
     module_registry = ModuleRegistry()
     plugin_manager: PluginManager | None = None
     safe_mode = bool(os.environ.get("QL_SAFE_MODE"))

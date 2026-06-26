@@ -383,7 +383,7 @@ class PopupDataRefreshMixin:
         if not request_id or started_at <= 0.0:
             return
         delay_ms = int(float(self.SELECTED_FILES_CACHE_TTL_SECONDS) * 1000) + 50
-        QTimer.singleShot(delay_ms, lambda: self._expire_selected_files_if_current(request_id, started_at))
+        self._defer_lifecycle_callback(delay_ms, self._expire_selected_files_if_current, request_id, started_at)
 
     def _expire_selected_files_if_current(self, request_id: int, started_at: float):
         context = getattr(self, "_selected_files_context", None)
@@ -574,7 +574,7 @@ class PopupDataRefreshMixin:
         seq = int(state.get("_blank_refresh_generation", 0) or 0) + 1
         self._blank_refresh_generation = seq
         delay = _BLANK_REFRESH_INITIAL_DELAY_MS if delay_ms is None else max(0, int(delay_ms))
-        QTimer.singleShot(delay, lambda seq=seq: self._maybe_start_folder_sync_worker(seq))
+        self._defer_lifecycle_callback(delay, self._maybe_start_folder_sync_worker, seq)  # type: ignore[attr-defined]
 
     def _maybe_start_folder_sync_worker(self, seq: int):
         state = self.__dict__
@@ -641,7 +641,7 @@ class PopupDataRefreshMixin:
         self._folder_sync_refresh_seq = seq
         delay = self._folder_sync_refresh_delay_ms()
         logger.debug("同步线程结束，延迟 %s ms 执行弹窗刷新", delay)
-        QTimer.singleShot(delay, lambda seq=seq: self._finish_folder_sync_refresh(seq))
+        self._defer_lifecycle_callback(delay, self._finish_folder_sync_refresh, seq)
 
     def _finish_folder_sync_refresh(self, seq: int):
         if seq != int(getattr(self, "_folder_sync_refresh_seq", -1) or -1):
@@ -662,7 +662,7 @@ class PopupDataRefreshMixin:
                 return
 
             if bool(getattr(self, "_is_hiding", False)):
-                QTimer.singleShot(140, lambda seq=seq: self._finish_folder_sync_refresh(seq))
+                self._defer_lifecycle_callback(140, self._finish_folder_sync_refresh, seq)  # type: ignore[attr-defined]
                 return
 
             if self._blank_refresh_should_wait_for_ui():

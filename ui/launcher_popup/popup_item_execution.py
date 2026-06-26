@@ -8,7 +8,6 @@ from core.background_tasks import start_background_thread
 from core.data_models import ShortcutItem, ShortcutType
 from core.i18n import tr
 from infrastructure.process import runtime as process_runtime
-from qt_compat import QTimer
 
 logger = logging.getLogger(__name__)
 
@@ -532,7 +531,7 @@ class PopupItemExecutionMixin:
                 generation=generation,
             )
         else:
-            QTimer.singleShot(35, lambda: self._execute_item_after_selection_probe(item, force_new))
+            self._defer_lifecycle_callback(35, self._execute_item_after_selection_probe, item, force_new)  # type: ignore[attr-defined]
         return True
 
     def _execute_item_after_selection_probe(self, item: ShortcutItem, force_new: bool = False):

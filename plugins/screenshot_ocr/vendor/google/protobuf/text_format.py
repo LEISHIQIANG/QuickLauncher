@@ -509,7 +509,7 @@ class _Printer:
                     # If this field is parseable as a Message, it is probably
                     # an embedded message.
                     # pylint: disable=protected-access
-                    embedded_unknown_message, pos = decoder._DecodeUnknownFieldSet(
+                    (embedded_unknown_message, pos) = decoder._DecodeUnknownFieldSet(
                         memoryview(field.data), 0, len(field.data)
                     )
                 except Exception:  # pylint: disable=broad-except

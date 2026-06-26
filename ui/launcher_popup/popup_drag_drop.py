@@ -5,7 +5,6 @@ import os
 
 from core import ShortcutItem, ShortcutType
 from infrastructure.process import runtime as process_runtime
-from qt_compat import QTimer
 from ui.utils.ui_scale import sp
 
 try:
@@ -201,7 +200,7 @@ class PopupDragDropMixin:
         if should_close:
             self.hide()  # type: ignore[attr-defined]
 
-        QTimer.singleShot(100, lambda: self._do_execute_drop(item, files, should_close))
+        self._defer_lifecycle_callback(100, self._do_execute_drop, item, files, should_close)  # type: ignore[attr-defined]
 
     def _do_execute_drop(self, item: ShortcutItem, files: list, should_close: bool):
         """实际执行拖放打开"""

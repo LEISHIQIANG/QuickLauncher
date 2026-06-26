@@ -444,7 +444,7 @@ class CommandRegistry:
         self._commands[cmd.id] = cmd
         self._category_index.setdefault(cmd.category, []).append(cmd.id)
         self._merge_aliases(cmd, cmd.aliases)
-        if cmd.source and cmd.source.startswith("plugin:"):
+        if cmd.source and (cmd.source.startswith("plugin:") or cmd.source.startswith("plugin-builtin:")):
             owner = cmd.source
             self._owner_index.setdefault(owner, []).append(cmd.id)
         logger.debug("命令已注册: %s (类别: %s, 来源: %s)", cmd.id, cmd.category, cmd.source)

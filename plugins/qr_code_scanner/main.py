@@ -186,6 +186,23 @@ def _normalize_url(text: str) -> str:
     return ""
 
 
+def _find_dist_exe() -> Path | None:
+    """Search project dist directories for QuickLauncher.exe (--plugin-helper fallback)."""
+    try:
+        project_root = Path(__file__).resolve().parents[2]
+        candidates = [
+            project_root / "dist" / "main.dist" / "QuickLauncher.exe",
+            project_root / "dist" / "QuickLauncher" / "QuickLauncher.exe",
+            project_root / "dist" / "QuickLauncher_Portable_1.6.3.7" / "QuickLauncher.exe",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+    except Exception:
+        logger.debug("dist exe detection failed", exc_info=True)
+    return None
+
+
 def _find_helper_command(helper: Path) -> list[str]:
     global _CACHED_HELPER_CMD
     if _CACHED_HELPER_CMD is not None:
@@ -197,6 +214,18 @@ def _find_helper_command(helper: Path) -> list[str]:
     host_helper = _host_helper_command(current, helper, site_packages)
     if host_helper:
         _CACHED_HELPER_CMD = host_helper
+        return _CACHED_HELPER_CMD
+
+    # Fallback: use packaged QuickLauncher.exe from dist with --plugin-helper.
+    # When running from dev Python 3.13, PyQt5/PIL are only available in the
+    # packaged dist which embeds Python 3.12 with all dependencies.
+    dist_exe = _find_dist_exe()
+    if dist_exe is not None:
+        cmd = [str(dist_exe), "--plugin-helper", str(helper)]
+        if site_packages.is_dir():
+            cmd.extend(["--plugin-site", str(site_packages)])
+        cmd.append("--")
+        _CACHED_HELPER_CMD = cmd
         return _CACHED_HELPER_CMD
 
     if (
@@ -222,6 +251,16 @@ def _host_helper_command(current: Path, helper: Path, site_packages: Path) -> li
         candidates.append(current)
     if current.parent:
         candidates.append(current.parent / "QuickLauncher.exe")
+
+    # Also search project dist directories when running from dev Python.
+    try:
+        project_root = Path(__file__).resolve().parents[2]
+        for sub in ("main.dist", "QuickLauncher", "QuickLauncher_Portable_1.6.3.7"):
+            candidate = project_root / "dist" / sub / "QuickLauncher.exe"
+            if candidate not in candidates:
+                candidates.append(candidate)
+    except Exception:
+        logger.debug("dist exe candidate scan failed", exc_info=True)
 
     seen: set[str] = set()
     for candidate in candidates:
@@ -278,14 +317,26 @@ def _python_has_qr_runtime(command: list[str], site_packages: Path) -> bool:
         app_root = str(Path(command[0]).resolve().parent) if command else ""
     except OSError:
         app_root = ""
+    # Also search project dist directory for PyQt5/PIL when running from dev Python.
+    dist_root = ""
+    try:
+        project_root = Path(__file__).resolve().parents[2]
+        for sub in ("main.dist", "QuickLauncher", "QuickLauncher_Portable_1.6.3.7"):
+            candidate = project_root / "dist" / sub
+            if candidate.is_dir():
+                dist_root = str(candidate)
+                break
+    except Exception:
+        logger.debug("dist root detection failed", exc_info=True)
     code = (
         "import os, sys\n"
         f"site = {str(site_packages)!r}\n"
         f"app_root = {app_root!r}\n"
-        "for p in (site, app_root):\n"
+        f"dist_root = {dist_root!r}\n"
+        "for p in (site, app_root, dist_root):\n"
         "    if p and os.path.isdir(p) and p not in sys.path:\n"
         "        sys.path.insert(0, p)\n"
-        "for p in (site, app_root, os.path.join(app_root, 'PyQt5')):\n"
+        "for p in (site, app_root, dist_root, os.path.join(app_root, 'PyQt5'), os.path.join(dist_root, 'PyQt5')):\n"
         "    if p and os.path.isdir(p):\n"
         "        os.environ['PATH'] = p + os.pathsep + os.environ.get('PATH', '')\n"
         "        add = getattr(os, 'add_dll_directory', None)\n"

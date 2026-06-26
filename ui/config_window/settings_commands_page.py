@@ -598,7 +598,9 @@ class SettingsCommandsPageMixin:
 
             if registry:
                 all_cmds = registry.list()
-                builtin_cmds = [cmd for cmd in all_cmds if cmd.source == "builtin"]
+                builtin_cmds = [
+                    cmd for cmd in all_cmds if cmd.source == "builtin" or cmd.source.startswith("plugin-builtin:")
+                ]
                 builtin_cmds.sort(key=lambda c: c.id)
 
                 query = self.builtin_filter_edit.text().strip().lower() if hasattr(self, "builtin_filter_edit") else ""
@@ -730,7 +732,7 @@ class SettingsCommandsPageMixin:
             if not registry:
                 return []
             return sorted(
-                [cmd for cmd in registry.list() if cmd.source == "builtin"],
+                [cmd for cmd in registry.list() if cmd.source == "builtin" or cmd.source.startswith("plugin-builtin:")],
                 key=lambda c: c.id,
             )
         except Exception:

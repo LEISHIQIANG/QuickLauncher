@@ -48,7 +48,7 @@ echo [Build Info]
 echo   Publisher: %APP_PUBLISHER%
 echo   Version: %APP_VERSION%
 
-if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=smooth"
+if not defined QL_BUILD_PROFILE set "QL_BUILD_PROFILE=small"
 
 REM Build profiles:
 REM   smooth (default):   performance-first Win10/11 runtime, keep graphics runtime DLLs and qdirect2d plugin.
@@ -56,7 +56,7 @@ REM   balanced:           remove unused modules, skip UPX, exclude extra graphic
 REM   small:              balanced + UPX executable compression.
 if /I "%QL_BUILD_PROFILE%"=="small" (
     if not defined QL_UPX_EXE set "QL_UPX_EXE=1"
-    if not defined QL_UPX_RUNTIME set "QL_UPX_RUNTIME=0"
+    if not defined QL_UPX_RUNTIME set "QL_UPX_RUNTIME=1"
     if not defined QL_KEEP_GRAPHICS_RUNTIME set "QL_KEEP_GRAPHICS_RUNTIME=0"
     if not defined QL_KEEP_DIRECT2D set "QL_KEEP_DIRECT2D=0"
 ) else if /I "%QL_BUILD_PROFILE%"=="smooth" (
@@ -133,6 +133,27 @@ echo       Build command: !PYTHON_CMD!
 REM Write version back to source so Nuitka embeds the correct value into the compiled binary
 !PYTHON_CMD! -c "import re,pathlib; p=pathlib.Path('core/version.py'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"%APP_VERSION%\"', t), encoding='utf-8')" 2>nul
 echo   [OK] core/version.py updated to %APP_VERSION%
+
+REM Locate UPX before PATH cleanup (PATH will be restricted for compiler isolation)
+set "UPX_EXE="
+for /f "delims=" %%u in ('where upx.exe 2^>nul') do (
+    if not defined UPX_EXE set "UPX_EXE=%%u"
+)
+if not defined UPX_EXE (
+    for /r "%LocalAppData%\Microsoft\WinGet\Packages" %%f in (upx.exe) do (
+        if not defined UPX_EXE if exist "%%f" set "UPX_EXE=%%f"
+    )
+)
+if not defined UPX_EXE (
+    for /r "%ProgramFiles%" %%f in (upx.exe) do (
+        if not defined UPX_EXE if exist "%%f" set "UPX_EXE=%%f"
+    )
+)
+if not defined UPX_EXE (
+    for /r "%ProgramFiles(x86)%" %%f in (upx.exe) do (
+        if not defined UPX_EXE if exist "%%f" set "UPX_EXE=%%f"
+    )
+)
 
 REM Clean PATH to avoid conflicting C compilers (e.g. 32-bit TDM-GCC or mismatched MinGW)
 set "PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"
@@ -557,33 +578,8 @@ if not defined QL_STAGE_OK (
     exit /b 1
 )
 
-REM UPX compression. Disabled by default because UPX decompression can make the
-REM first visible Qt/DWM frame noticeably worse in the packaged build.
-if not "%QL_UPX_EXE%"=="1" (
-    echo   [Info] UPX skipped for smoother popup first-frame rendering. Set QL_UPX_EXE=1 to enable.
-    goto :after_upx
-)
-
-echo   UPX compressing executable...
-if not exist "upx.exe" (
-    echo   [Warning] upx.exe not found, skipping compression
-    goto :after_upx
-)
-
-upx.exe --best --lzma dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
-if "%QL_UPX_RUNTIME%"=="1" (
-        upx.exe --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
-        upx.exe --best --lzma dist\QuickLauncher\qt5*.dll >nul 2>&1
-        upx.exe --best --lzma dist\QuickLauncher\*.pyd >nul 2>&1
-        if exist "dist\QuickLauncher\PyQt5" upx.exe --best --lzma dist\QuickLauncher\PyQt5\*.pyd >nul 2>&1
-        if exist "dist\QuickLauncher\PIL" upx.exe --best --lzma dist\QuickLauncher\PIL\*.pyd >nul 2>&1
-        if exist "dist\QuickLauncher\psutil" upx.exe --best --lzma dist\QuickLauncher\psutil\*.pyd >nul 2>&1
-        if exist "dist\QuickLauncher\win32com\shell" upx.exe --best --lzma dist\QuickLauncher\win32com\shell\*.pyd >nul 2>&1
-    echo   [OK] UPX compression completed (executable + runtime binaries)
-) else (
-    echo   [OK] UPX compression completed (executable only)
-    echo   [Info] Runtime DLL/PYD UPX skipped for smoother first-use animations. Set QL_UPX_RUNTIME=1 to enable.
-)
+REM UPX compression is deferred to after installer creation (see below),
+REM so Inno Setup's LZMA compresses the original exe for best installer size.
 :after_upx
 
 REM Copy required resources
@@ -656,6 +652,29 @@ if !ERRORLEVEL! NEQ 0 (
 )
 
 if exist "%SETUP_STAGE_DIR%" rmdir /s /q "%SETUP_STAGE_DIR%" >nul 2>&1
+
+REM UPX compress for portable package (after installer, so Inno Setup gets original exe)
+if "%QL_UPX_EXE%"=="1" (
+    echo   UPX compressing portable binaries...
+    if not defined UPX_EXE (
+        echo   [Warning] upx.exe not found, skipping compression
+    ) else (
+        echo   [OK] Found UPX: !UPX_EXE!
+        "!UPX_EXE!" --best --lzma dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
+        if "%QL_UPX_RUNTIME%"=="1" (
+            "!UPX_EXE!" --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
+            "!UPX_EXE!" --best --lzma dist\QuickLauncher\qt5*.dll >nul 2>&1
+            "!UPX_EXE!" --best --lzma dist\QuickLauncher\*.pyd >nul 2>&1
+            if exist "dist\QuickLauncher\PyQt5" "!UPX_EXE!" --best --lzma dist\QuickLauncher\PyQt5\*.pyd >nul 2>&1
+            if exist "dist\QuickLauncher\PIL" "!UPX_EXE!" --best --lzma dist\QuickLauncher\PIL\*.pyd >nul 2>&1
+            if exist "dist\QuickLauncher\psutil" "!UPX_EXE!" --best --lzma dist\QuickLauncher\psutil\*.pyd >nul 2>&1
+            if exist "dist\QuickLauncher\win32com\shell" "!UPX_EXE!" --best --lzma dist\QuickLauncher\win32com\shell\*.pyd >nul 2>&1
+            echo   [OK] UPX compression completed (executable + runtime binaries)
+        ) else (
+            echo   [OK] UPX compression completed (executable only)
+        )
+    )
+)
 
 REM Create portable zip package
 echo.

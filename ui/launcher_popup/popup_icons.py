@@ -434,3 +434,109 @@ class PopupIconMixin:
         size = self.icon_size  # type: ignore[attr-defined]
         dpr = getattr(self, "devicePixelRatioF", getattr(self, "devicePixelRatio", lambda: 1.0))()
         return render_default_icon(name, size, theme, dpr=dpr)
+
+    # ── 后台图标预热（避免 IconExtractor 阻塞主线程）───────────────────
+
+    def _schedule_background_icon_warmup(self, items: list) -> None:
+        """Submit icon extraction to a single background thread.
+
+        IconExtractor.from_file() can block for 50‑500 ms per cache miss
+        (shell‑API calls, network‑located .exe files, …).  Instead of
+        running it inside the per‑frame preload timer (which holds the Qt
+        event loop), we process all uncached items sequentially on a
+        dedicated daemon thread.  Results are written directly into
+        ``_icon_pixmap_cache`` — dict insertion is GIL‑safe for a single
+        key and the preload / paint paths only read cached entries.
+
+        Each item that is already cached or has previously failed
+        (tracked in ``_icon_miss_cache``) is skipped.
+        """
+        if not HAS_ICON_EXTRACTOR or not IconExtractor:
+            return
+        if getattr(self, "_bg_icon_warmup_started", False):
+            return
+        self._bg_icon_warmup_started = True
+
+        from core.background_tasks import start_background_thread
+
+        # Capture values needed on the worker thread (avoid touching Qt
+        # objects or mutable self state from the worker).
+        source_size = self._get_icon_source_size()
+        icon_size = getattr(self, "icon_size", 48)
+
+        def _warmup_worker() -> None:
+            # COM may be required by the native icon extraction DLL.
+            try:
+                import pythoncom
+
+                pythoncom.CoInitialize()
+            except ImportError:
+                logger.debug("pythoncom not available for icon loading")
+
+            miss_cache = self._get_icon_miss_cache()
+            pixmap_cache = getattr(self, "_icon_pixmap_cache", None)
+
+            for item in items:
+                icon_path = getattr(item, "icon_path", None) or ""
+                target_path = getattr(item, "target_path", None) or ""
+                need_invert = self._icon_should_invert(item)
+
+                if "," in icon_path:
+                    cache_key = ("from_file", icon_path, icon_size, source_size, need_invert)
+                elif target_path:
+                    cache_id = IconExtractor.get_target_cache_id(target_path, target_path, source_size)
+                    cache_key = ("extract", cache_id, icon_size, source_size, need_invert)
+                else:
+                    continue
+
+                if cache_key in miss_cache:
+                    continue
+                if pixmap_cache is not None and cache_key in pixmap_cache:
+                    continue
+
+                try:
+                    if icon_path and "," in icon_path:
+                        pixmap = IconExtractor.from_file(icon_path, source_size, return_image=False)
+                    elif target_path:
+                        pixmap = IconExtractor.extract(
+                            target_path,
+                            target_path,
+                            source_size,
+                            return_image=False,
+                            fallback_to_default=False,
+                        )
+                    else:
+                        pixmap = None
+
+                    if pixmap and not pixmap.isNull():
+                        if need_invert:
+                            pixmap = IconExtractor.invert_pixmap(pixmap)
+                        if pixmap.width() != icon_size or pixmap.height() != icon_size:
+                            pixmap = pixmap.scaled(
+                                icon_size,
+                                icon_size,
+                                Qt.KeepAspectRatio,
+                                Qt.SmoothTransformation,  # type: ignore[attr-defined]
+                            )
+                        if pixmap_cache is not None:
+                            pixmap_cache[cache_key] = pixmap
+                    else:
+                        miss_cache.add(cache_key)
+                except Exception as exc:
+                    logger.debug("后台图标提取失败: %s", exc, exc_info=True)
+                    miss_cache.add(cache_key)
+
+            # Request a repaint on the main thread so newly cached icons
+            # appear immediately.
+            try:
+                from qt_compat import QTimer
+
+                QTimer.singleShot(0, self.update)  # type: ignore[attr-defined]
+            except Exception:
+                logger.debug("QTimer singleShot for update failed", exc_info=True)
+
+        start_background_thread(
+            name="PopupIconWarmup",
+            target=_warmup_worker,
+            owner="PopupIconMixin.warmup",
+        )

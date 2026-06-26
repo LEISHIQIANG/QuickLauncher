@@ -85,10 +85,102 @@ class TrayAppShutdownMixin:
         self._extra_popup_windows = []
 
     def _shutdown_runtime_components(self):
+        """Teardown all background timers, threads, hooks, and widgets.
+
+        Idempotent -- the ``_runtime_shutdown_started`` guard prevents
+        double execution from the ``aboutToQuit`` + ``atexit`` pair.
+
+        P0 FIX (2026-06-26):  Data save MUST happen before any Qt-dependent
+        cleanup.  When the process exits abnormally (Qt crash, signal), the
+        ``atexit`` handler fires *after* Qt has already destroyed its C++
+        objects.  Accessing QThread / QTimer / QWidget wrappers at that point
+        raises ``RuntimeError`` (``wrapped C/C++ object has been deleted``),
+        and the save at the bottom of the old ordering was never reached,
+        silently discarding unsaved configuration.
+        """
         if bool(self.__dict__.get("_runtime_shutdown_started", False)):
             return
         self._runtime_shutdown_started = True
 
+        # ══ Phase 0: save data FIRST -- zero Qt dependency ═══════════
+        try:
+            self.data_manager.shutdown()
+        except Exception as exc:
+            logger.error("退出时刷新配置失败: %s", exc, exc_info=True)
+
+        # ══ Phase 1: stop executors (no Qt dependency) ═══════════════
+        try:
+            from core.executor_manager import shutdown_all_executors
+
+            pending = shutdown_all_executors(timeout=5.0)
+            if pending:
+                logger.warning("退出时仍有线程池任务未完成: %s", pending)
+        except Exception as exc:
+            logger.error("关闭应用线程池失败: %s", exc, exc_info=True)
+
+        try:
+            from core.shortcut_command_exec import shutdown_main_thread_invoker
+
+            shutdown_main_thread_invoker()
+        except Exception as exc:
+            logger.debug("关闭 MainThreadInvoker 失败: %s", exc, exc_info=True)
+
+        # ══ Phase 2: non-Qt cleanup (hooks, watchers, plugins) ═══════
+        try:
+            self._win32_hotkey.unregister_all()
+            self._win32_hotkey.remove_filter()
+        except Exception as exc:
+            logger.debug("清理 Win32 全局快捷键失败: %s", exc, exc_info=True)
+
+        try:
+            from core.folder_watcher import shutdown_watcher_manager
+
+            shutdown_watcher_manager()
+        except Exception as e:
+            logger.debug(f"stop folder watcher failed: {e}")
+
+        try:
+            plugin_manager = getattr(self, "plugin_manager", None)
+            if plugin_manager is not None:
+                plugin_manager.shutdown()
+        except Exception as exc:
+            logger.debug("关闭插件管理器失败: %s", exc, exc_info=True)
+
+        mouse_hook = self.mouse_hook
+        self.mouse_hook = None
+        if mouse_hook:
+            try:
+                mouse_hook.uninstall()
+            except Exception as exc:
+                logger.debug("卸载鼠标钩子: %s", exc, exc_info=True)
+
+        keyboard_hook = self.keyboard_hook
+        self.keyboard_hook = None
+        if keyboard_hook:
+            try:
+                keyboard_hook.uninstall()
+            except Exception as exc:
+                logger.debug("卸载键盘钩子: %s", exc, exc_info=True)
+
+        # ══ Phase 3: Qt-dependent cleanup (guarded -- may run after Qt teardown) ══
+        _qt_destroyed = False
+        try:
+            self._shutdown_qt_components()
+        except RuntimeError as exc:
+            # P0 FIX: When the atexit handler runs after Qt has destroyed its
+            # C++ objects, accessing QThread/QTimer/QWidget wrappers raises
+            # "wrapped C/C++ object has been deleted".  Catch this gracefully
+            # -- data has already been saved in Phase 0.
+            _qt_destroyed = True
+            logger.debug("Qt C++ 对象已被销毁，跳过 Qt 组件清理: %s", exc)
+        except Exception as exc:
+            logger.debug("Qt 组件清理异常: %s", exc, exc_info=True)
+
+        if _qt_destroyed:
+            logger.info("QuickLauncher 已退出 (非正常路径，Qt 组件已由系统回收)")
+
+    def _shutdown_qt_components(self):
+        """Qt-dependent teardown.  Extracted so the atexit path can guard it."""
         # Drain any late-finishing QThreads deferred by stop_qthread_nonblocking
         try:
             drain_deferred_qthreads(timeout=2.0)
@@ -138,43 +230,6 @@ class TrayAppShutdownMixin:
         except Exception as e:
             logger.debug(f"stop update checker failed: {e}")
 
-        # 清理 Win32 全局快捷键
-        try:
-            self._win32_hotkey.unregister_all()
-            self._win32_hotkey.remove_filter()
-        except Exception as exc:
-            logger.debug("清理 Win32 全局快捷键失败: %s", exc, exc_info=True)
-
-        try:
-            from core.folder_watcher import shutdown_watcher_manager
-
-            shutdown_watcher_manager()
-        except Exception as e:
-            logger.debug(f"stop folder watcher failed: {e}")
-
-        try:
-            plugin_manager = getattr(self, "plugin_manager", None)
-            if plugin_manager is not None:
-                plugin_manager.shutdown()
-        except Exception as exc:
-            logger.debug("关闭插件管理器失败: %s", exc, exc_info=True)
-
-        mouse_hook = self.mouse_hook
-        self.mouse_hook = None
-        if mouse_hook:
-            try:
-                mouse_hook.uninstall()
-            except Exception as exc:
-                logger.debug("卸载鼠标钩子: %s", exc, exc_info=True)
-
-        keyboard_hook = self.keyboard_hook
-        self.keyboard_hook = None
-        if keyboard_hook:
-            try:
-                keyboard_hook.uninstall()
-            except Exception as exc:
-                logger.debug("卸载键盘钩子: %s", exc, exc_info=True)
-
         try:
             self.tray_icon.hide()
         except Exception as exc:
@@ -193,26 +248,6 @@ class TrayAppShutdownMixin:
         ):
             self._close_widget_if_present(attr_name)
         self._close_extra_popup_windows()
-        try:
-            self.data_manager.shutdown()
-        except Exception as exc:
-            logger.error("退出时刷新配置失败: %s", exc, exc_info=True)
-
-        try:
-            from core.executor_manager import shutdown_all_executors
-
-            pending = shutdown_all_executors(timeout=5.0)
-            if pending:
-                logger.warning("退出时仍有线程池任务未完成: %s", pending)
-        except Exception as exc:
-            logger.error("关闭应用线程池失败: %s", exc, exc_info=True)
-
-        try:
-            from core.shortcut_command_exec import shutdown_main_thread_invoker
-
-            shutdown_main_thread_invoker()
-        except Exception as exc:
-            logger.debug("关闭 MainThreadInvoker 失败: %s", exc, exc_info=True)
 
     def _clean_icon_cache_now(self):
         """立即执行图标缓存维护。"""

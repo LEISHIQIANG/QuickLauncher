@@ -37,14 +37,11 @@ def __getattr__(name: str):
     if name not in _LAZY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     # Lazy registry: deferred construction to avoid import-time side effect.
+    # IMPORTANT: the singleton registry may be replaced via set_command_registry()
+    # by the composition root.  If plugin_manager already owns a registry, prefer it
+    # so that plugin-registered commands are visible to settings pages.
     if name == "registry":
-        global _registry
-        if _registry is None:
-            from .command_registry import CommandRegistry
-
-            _registry = CommandRegistry()
-        globals()["registry"] = _registry
-        return _registry
+        return _get_registry()
     module_name, attr_name = _LAZY_EXPORTS[name]
     try:
         module = importlib.import_module(f".{module_name}", __name__)
@@ -73,11 +70,29 @@ logger = logging.getLogger(__name__)
 _registry = None
 
 
+def set_command_registry(reg: CommandRegistry) -> None:
+    """Replace the singleton registry.  Called by the composition root so
+    that plugin-registered commands become visible to all consumers of
+    ``from core import registry``.
+
+    Also marks the registry as initialized so that
+    ``ensure_registry_initialized()`` does not re-register the same
+    builtin commands a second time.
+    """
+    global _registry, _registry_ready
+    _registry = reg
+    _registry_ready = True
+
+
 def _get_registry():
-    """Internal accessor: returns the lazily-initialized CommandRegistry."""
+    """Internal accessor: returns the lazily-initialized CommandRegistry.
+    If plugin_manager has already been injected with its own registry,
+    that instance takes priority."""
     global _registry
-    if _registry is None:
-        _registry = CommandRegistry()
+    if _registry is not None:
+        return _registry
+    # Fallback: create a standalone instance (used before composition root wires up)
+    _registry = CommandRegistry()
     return _registry
 
 

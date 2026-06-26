@@ -8,8 +8,7 @@ from core.data_models import Folder, ShortcutItem, ShortcutType
 logger = logging.getLogger(__name__)
 import pytest
 
-import ui.launcher_popup.popup_data_refresh as popup_refresh_mod
-from qt_compat import QColor, QFont, QPoint, QRect, Qt, QtCompat
+from qt_compat import QColor, QFont, QPoint, QRect, Qt, QtCompat, QTimer
 from ui.launcher_popup.popup_window import LauncherPopup
 from ui.utils.ui_scale import sp
 
@@ -627,6 +626,7 @@ def test_blank_area_refresh_waits_for_page_animation_before_worker(monkeypatch):
     popup._blank_refresh_generation = 8
     popup._blank_refresh_not_before = 0.0
     popup._closing = False
+    popup._lifecycle_generation = 0
     popup._sync_worker = None
     starts = []
     scheduled = []
@@ -638,9 +638,9 @@ def test_blank_area_refresh_waits_for_page_animation_before_worker(monkeypatch):
 
     popup._indicator_timer = _IndicatorTimer()
     monkeypatch.setattr(
-        popup_refresh_mod,
-        "QTimer",
-        SimpleNamespace(singleShot=lambda delay, callback: scheduled.append((delay, callback))),
+        QTimer,
+        "singleShot",
+        lambda delay, callback: scheduled.append((delay, callback)),
     )
 
     LauncherPopup._maybe_start_folder_sync_worker(popup, 8)

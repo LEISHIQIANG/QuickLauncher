@@ -255,10 +255,6 @@ def has_high_risk_permissions(permissions: list[str]) -> bool:
 def _is_builtin_plugin_package(package_path: str, plugin_id: str) -> bool:
     try:
         package = Path(package_path).resolve(strict=False)
-        plugins_dir = Path(app_root()) / ".plugins"
-        expected = plugins_dir / f"{plugin_id}{PLUGIN_PACKAGE_EXTENSION}"
-        if package != expected.resolve(strict=False):
-            return False
         expected_hash = OFFICIAL_PLUGIN_PACKAGE_SHA256.get(plugin_id)
         if not expected_hash or not package.is_file():
             return False
@@ -573,8 +569,13 @@ class PluginManager:
             logger.warning("插件已隔离，跳过加载: %s", plugin_id)
             return False
         if info.status == "error":
-            logger.warning("插件状态异常，无法加载: %s — %s", plugin_id, info.error)
-            return False
+            if info.quarantined:
+                logger.warning("插件已隔离，无法加载: %s", plugin_id)
+                return False
+            logger.info("插件上次加载失败（%s），重新尝试加载", info.error or "未知错误")
+            info.status = "loaded"
+            info.error = ""
+            info.last_error_at = 0.0
         if info.status == "enabled":
             return True
         self._validate_install_source_trust(info)

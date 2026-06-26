@@ -212,6 +212,14 @@ class ShortcutExecutor(
         """执行宏录制：将已录制的事件回放到系统。
 
         使用统一的 InputMacroBackend，确保与诊断、测试播放使用同一套回放通道。
+
+        P0 FIX (2026-06-26):  The previous implementation always returned
+        ``(True, "")`` regardless of the macro outcome.  The background
+        thread's return value was silently discarded by
+        ``start_background_thread()``.  We now capture the result via a
+        shared container + ``threading.Event`` and join the thread with a
+        generous timeout, so the caller receives the real success/failure
+        status and error message.
         """
         events = list(getattr(shortcut, "macro_events", []) or [])
         if not events:
@@ -228,6 +236,9 @@ class ShortcutExecutor(
             speed = 1.0
 
         trigger_mode = getattr(shortcut, "trigger_mode", "immediate")
+
+        result_container: list[tuple[bool, str]] = []
+        done_event = threading.Event()
 
         def _do():
             try:
@@ -249,10 +260,12 @@ class ShortcutExecutor(
                     time.sleep(0.250)
                 backend = InputMacroBackend()
                 ok = backend.play(events=events, speed=speed)
-                return bool(ok), "" if ok else "宏播放失败"
+                result_container.append((bool(ok), "" if ok else "宏播放失败"))
             except Exception as exc:
                 logger.exception("宏播放异常")
-                return False, str(exc)
+                result_container.append((False, str(exc)))
+            finally:
+                done_event.set()
 
         from .background_tasks import start_background_thread
 
@@ -261,7 +274,22 @@ class ShortcutExecutor(
             target=_do,
             owner="ShortcutExecutor.macro",
         )
-        return True, ""
+
+        # Calculate a reasonable timeout: base 5s + 1s per 100 events
+        timeout = max(5.0, 5.0 + len(events) / 100.0 * speed)
+        if not done_event.wait(timeout=timeout):
+            logger.error(
+                "宏播放超时: shortcut=%s events=%d speed=%.1f timeout=%.1fs",
+                getattr(shortcut, "id", shortcut.name),
+                len(events),
+                speed,
+                timeout,
+            )
+            return False, "宏播放超时"
+
+        if not result_container:
+            return False, "宏播放未返回结果"
+        return result_container[0]
 
     # ===== 窗口置顶功能（已修复）=====
 

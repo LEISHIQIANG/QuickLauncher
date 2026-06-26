@@ -64,6 +64,7 @@ def test_failed_helper_probe_is_cached(monkeypatch, tmp_path):
         "_find_system_python_command",
         lambda: calls.append(True) or [],
     )
+    monkeypatch.setattr(screenshot_ocr, "_find_dist_exe", lambda: None)
 
     helper = Path(tmp_path / "ocr_runner.py")
     assert screenshot_ocr._find_helper_command(helper) == []

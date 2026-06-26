@@ -66,6 +66,22 @@ def normalize_command_action(action: Any) -> CommandAction | None:
             primary=bool(action.get("primary", False)),
             payload=dict(action.get("payload") or {}) if isinstance(action.get("payload"), dict) else {},
         )
+    elif hasattr(action, "type") and hasattr(action, "label"):
+        # SDK CommandAction (extensions.sdk.CommandAction) — same fields,
+        # different class; convert via attribute access.
+        candidate = CommandAction(
+            type=str(getattr(action, "type", "") or ""),
+            label=str(getattr(action, "label", "") or ""),
+            value=str(getattr(action, "value", "") or ""),
+            enabled=bool(getattr(action, "enabled", True)),
+            danger=bool(getattr(action, "danger", False)),
+            primary=bool(getattr(action, "primary", False)),
+            payload=(
+                dict(getattr(action, "payload", None) or {})
+                if isinstance(getattr(action, "payload", None), dict)
+                else {}
+            ),
+        )
     else:
         return None
 

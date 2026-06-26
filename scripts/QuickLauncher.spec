@@ -72,6 +72,7 @@ a = Analysis(
     datas=datas + [
         ('../assets', 'assets'),
         ('../plugins', 'plugins'),
+        ('../core/plugin/isolated_worker.py', 'core/plugin'),
         ('../qt_compat.py', '.')
     ],
     hiddenimports=hiddenimports,

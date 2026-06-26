@@ -324,7 +324,7 @@ def test_hooks_wrapper_rejects_custom_path_hash_mismatch(monkeypatch, tmp_path):
     load_calls = []
     monkeypatch.setattr(ctypes, "CDLL", lambda path: load_calls.append(path) or _FakeDLL())
 
-    dll = hooks_wrapper.HooksDLL(str(dll_path))
+    dll = hooks_wrapper.HooksDLL(str(dll_path), verify_integrity=True)
 
     assert dll.loaded is False
     assert "SHA-256 mismatch" in dll.load_error
@@ -349,7 +349,7 @@ def test_hooks_wrapper_exposes_repeatable_integrity_check(monkeypatch, tmp_path)
     expected = hashlib.sha256(content).hexdigest()
     monkeypatch.setattr(ctypes, "CDLL", lambda path: _FakeDLL())
 
-    dll = hooks_wrapper.HooksDLL(str(dll_path), expected_sha256=expected)
+    dll = hooks_wrapper.HooksDLL(str(dll_path), expected_sha256=expected, verify_integrity=True)
 
     assert dll.expected_sha256 == expected
     assert dll.verify_integrity() is True

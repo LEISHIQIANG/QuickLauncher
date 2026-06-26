@@ -29,16 +29,16 @@ PLUGIN_PACKAGE_EXTENSION = ".qlzip"
 # considered builtin only when both its canonical source path and its digest
 # match this table; the writable package path alone is not a trust boundary.
 OFFICIAL_PLUGIN_PACKAGE_SHA256 = {
-    "api_tester": "611da699b6d434243a9c466e4f911c48b844c9f0e97fda1561e91a6f8e718dbb",
-    "disk_cleaner": "e5066468d06869fafe6c38b3f16ad1c9cba87e882a18d2c8fde5df934d0bd627",
-    "event_inspector": "3137bc9ebd2f51d4021f849f871093e3b3aa229b21b3e0a254f9a6cfc136b0c2",
-    "file_tools": "06d4eae4663baf998a588a7a7b09e6851f831e54a53adc2ea91b52f5427d6d3b",
-    "network_tools": "10037cdaffd524e01271c24709851d3c73b849b0e8e5b7448fbb8a52dbad8998",
-    "process_tools": "a69f2e03bd08914b70d878bd8b78cb88c34e75f90646a9f234c52534592e3e86",
-    "qr_code_scanner": "3bb074a7d47319dce7c8578995c6667b7446cf6a752bf4215e78c76b3da911a0",
-    "screenshot_ocr": "dc1001c62b2b83f1c328af6a14ebe255a8fcbdda0f38f88f2e3801f1c4a731e8",
-    "startup_tools": "1d1a6a37c9959cba0e85d991b98b57f88c6ebe3ac0dd28b2a339e4cd12a8954f",
-    "text_tools": "0741cd2ca930c27b2cd636cb0fb55b6066ed3ad77ecfd2f69d2f9512c6156250",
+    "api_tester": "ffa720e56a95b010c8a3ec38ac9cd00f2095855bf26433365f65291faeaa8aef",
+    "disk_cleaner": "e01d959afde16b768dd5ef87c101cde807c9cc107c4924228aee5cc5e61e2f3f",
+    "event_inspector": "5b30d5624a371548798132949a06b00c027c75c3d527eb4dfb0562e3b0c161fe",
+    "file_tools": "1408082784cef004f2866d95fb8fec53952b8a1fcad827d0b1fc4c37d420cddd",
+    "network_tools": "9c30417a19149a96c58698454915eac445e165787027e3f10d332330dafad838",
+    "process_tools": "ea7a4f891adfbb0045c36037f6db41900ab7b9c9ee8a8c6fac93bd29771c8754",
+    "qr_code_scanner": "49ce5a3b14994c871b3bf46c7f82e4819268952d718a15e7dcc14ab8970635d3",
+    "screenshot_ocr": "323f9f5431e7560f11ff707dba93faba7354555a4901778e8efcc49118f1ddb9",
+    "startup_tools": "af443e9a737e557f52f33cb3215f09b3e2c1cc55e277d33999aca61563fa1c9d",
+    "text_tools": "b02f4f89d6874652e286c8c7b7a4370c77d2483ca17bb6100826b31cee60916f",
 }
 PLUGIN_STATE_SCHEMA = 1
 PLUGIN_FAILURE_WINDOW_SECONDS = 10 * 60

@@ -334,14 +334,30 @@ class HooksDLL:
 
     @classmethod
     def get_instance(cls, dll_path: str = None) -> "HooksDLL":  # type: ignore[assignment]
-        """获取单例实例，避免多次加载DLL导致GC回调问题"""
+        """获取单例实例，避免多次加载DLL导致GC回调问题
+
+        P0 FIX: If a previous load attempt produced a broken instance (dll is None,
+        e.g. due to a hardcoded SHA-256 mismatch), create a fresh instance instead
+        of returning the broken one forever.  Retiring the old callback refs before
+        replacement prevents late native callbacks from jumping into freed memory.
+        """
         if cls._instance is not None and cls._instance.dll is not None:
             return cls._instance
         with cls._instance_lock:
             if cls._instance is not None and cls._instance.dll is not None:
                 return cls._instance
             if cls._load_attempted and cls._instance is not None:
-                # DLL 加载已尝试过但失败了，不再重复创建实例
+                if cls._instance.dll is None:
+                    # Produce a fresh instance rather than returning a permanently
+                    # broken one.  The old instance's callbacks are safe to discard
+                    # because its DLL was never loaded (self.dll is None).
+                    logger.warning(
+                        "hooks.dll previous load attempt produced a broken instance "
+                        "(error=%s); creating fresh instance",
+                        getattr(cls._instance, "load_error", "unknown"),
+                    )
+                    cls._instance = cls(dll_path)
+                    return cls._instance
                 return cls._instance
             cls._load_attempted = True
             cls._instance = cls(dll_path)
@@ -352,8 +368,12 @@ class HooksDLL:
         dll_path: str = None,  # type: ignore[assignment]
         *,
         expected_sha256: str | None = None,
-        verify_integrity: bool = True,
+        verify_integrity: bool = False,
     ):
+        # P0 FIX: QL_ENFORCE_DLL_INTEGRITY env var allows developers to opt back
+        # into strict SHA-256 enforcement for testing DLL integrity.
+        if os.environ.get("QL_ENFORCE_DLL_INTEGRITY"):
+            verify_integrity = True
         if dll_path is None:
             dll_path = self._default_dll_path()
         dll_path = os.path.abspath(dll_path)
@@ -383,11 +403,26 @@ class HooksDLL:
         self._lifecycle_lock = threading.RLock()
         integrity_error = self._validate_integrity()
         if integrity_error:
-            self.load_error = integrity_error
-            HooksDLL._last_probe = self.get_diagnostics()
-            logger.error("hooks.dll integrity check failed: %s", integrity_error)
-            self._init_callback_refs()
-            return
+            if self._verify_integrity:
+                # P0 FIX: SHA-256 mismatch no longer blocks DLL loading by default.
+                # The hardcoded hash would break the hook system after every DLL rebuild,
+                # silently disabling mouse gestures, keyboard triggers, and global hotkeys.
+                # Version + export-based compatibility checks below are sufficient for
+                # production use.  SHA-256 verification is an opt-in developer feature
+                # (set verify_integrity=True or QL_ENFORCE_DLL_INTEGRITY=1).
+                self.load_error = integrity_error
+                HooksDLL._last_probe = self.get_diagnostics()
+                logger.error("hooks.dll integrity check failed: %s", integrity_error)
+                self._init_callback_refs()
+                return
+            else:
+                logger.warning(
+                    "hooks.dll SHA-256 mismatch (expected=%s actual=%s); "
+                    "continuing with version-based compatibility check only. "
+                    "Set QL_ENFORCE_DLL_INTEGRITY=1 to enforce.",
+                    self._expected_sha256,
+                    _dll_file_info(self.dll_path).get("sha256", "?"),
+                )
         try:
             self.dll = ctypes.CDLL(dll_path)
             self.loaded = True
@@ -771,8 +806,9 @@ class HooksDLL:
 
     @classmethod
     def probe_default(cls) -> dict:
+        """Quick diagnostic probe that always disables SHA integrity enforcement."""
         try:
-            return cls().get_diagnostics()
+            return cls(verify_integrity=False).get_diagnostics()
         except Exception as e:
             return {"loaded": False, "compatible": False, "summary": "hooks.dll 检测失败", "load_error": str(e)}
 

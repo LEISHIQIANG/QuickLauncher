@@ -276,9 +276,26 @@ class PluginAPI:
         plugin_terms = self._plugin_search_terms()
         normalized_params = []
         for param in params or []:
-            if isinstance(param, CommandParam):
+            if isinstance(param, dict):
+                # Already handled below — keep first for clarity
+                pass
+            elif isinstance(param, CommandParam):
                 normalized_params.append(param)
-            elif isinstance(param, dict):
+                continue
+            elif hasattr(param, "to_dict") and callable(param.to_dict):
+                # SDK CommandParam (extensions.sdk.CommandParam) — convert to core type
+                try:
+                    d = param.to_dict()
+                except Exception:
+                    d = {}
+                if isinstance(d, dict):
+                    param = d  # fall through to dict handler below
+                else:
+                    self.logger.warning(
+                        "SDK CommandParam.to_dict() 返回非 dict 类型，已忽略参数: %s", type(param).__name__
+                    )
+                    continue
+            if isinstance(param, dict):
                 valid_param_keys = {
                     "name",
                     "type",
@@ -503,10 +520,59 @@ class PluginAPI:
                 result = dict(result)
                 result["actions"] = _normalize_actions(result.get("actions"))
                 return limit_command_result_actions(CommandResult(**result))
-            if not isinstance(result, CommandResult):
-                return CommandResult(success=False, message="插件返回类型错误", error="类型错误")
-            result.actions = _normalize_actions(result.actions)
-            return limit_command_result_actions(result)
+            if isinstance(result, CommandResult):
+                result.actions = _normalize_actions(result.actions)
+                return limit_command_result_actions(result)
+            # SDK CommandResult (extensions.sdk.CommandResult) — same fields,
+            # different class; convert via to_dict/attribute fallback.
+            if hasattr(result, "to_dict") and callable(result.to_dict):
+                try:
+                    d = result.to_dict()
+                except Exception:
+                    d = {}
+                if isinstance(d, dict):
+                    result = d
+            elif hasattr(result, "success") and hasattr(result, "message"):
+                d = {}
+                for k in (
+                    "success",
+                    "message",
+                    "display_type",
+                    "payload",
+                    "actions",
+                    "error",
+                    "is_async",
+                    "progress",
+                    "cancellable",
+                ):
+                    try:
+                        d[k] = getattr(result, k, None)
+                    except Exception:
+                        d[k] = None
+                result = d
+            if isinstance(result, dict):
+                valid_keys = {
+                    "success",
+                    "message",
+                    "display_type",
+                    "payload",
+                    "actions",
+                    "error",
+                    "is_async",
+                    "progress",
+                    "cancellable",
+                }
+                extra = set(result.keys()) - valid_keys
+                if extra:
+                    return CommandResult(
+                        success=False,
+                        message="插件返回数据无效",
+                        error=f"未知字段: {', '.join(sorted(extra))}",
+                    )
+                result = dict(result)
+                result["actions"] = _normalize_actions(result.get("actions"))
+                return limit_command_result_actions(CommandResult(**result))
+            return CommandResult(success=False, message="插件返回类型错误", error="类型错误")
 
         def _safe(context: CommandContext) -> CommandResult:
             done_event = threading.Event()
