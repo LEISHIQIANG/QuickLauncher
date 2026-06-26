@@ -694,7 +694,6 @@ class SettingsPluginsPageMixin:
         try:
             plugin_manager.delete_plugin_files(m.id)
             self._rebuild_plugin_list(preserve_scroll=True)
-            ThemedMessageBox.information(self, tr("删除成功"), tr('插件 "{name}" 已被成功删除。', name=m.name))
         except Exception as e:
             logger.error("删除插件目录失败: %s", e)
             ThemedMessageBox.critical(self, tr("删除失败"), tr("删除插件文件失败:\n{error}", error=e))
