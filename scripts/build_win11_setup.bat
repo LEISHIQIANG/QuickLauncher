@@ -34,12 +34,12 @@ if not defined QL_LOGGING (
     if errorlevel 1 (
         echo.
         echo   [!] Build failed. Please check the log above.
-        if "%QL_NO_PAUSE%"=="" pause
-        exit /b 1
+        timeout /t 5 /nobreak >nul
     )
     if exist "dist\QuickLauncher_Setup_%APP_VERSION%.exe" (
         start "" "dist\QuickLauncher_Setup_%APP_VERSION%.exe"
     )
+    timeout /t 2 /nobreak >nul
     exit
 )
 
