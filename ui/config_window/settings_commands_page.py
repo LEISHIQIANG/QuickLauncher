@@ -584,7 +584,7 @@ class SettingsCommandsPageMixin:
                 total_height = 0
                 for i in range(self.fav_list_widget.count()):
                     total_height += self.fav_list_widget.sizeHintForRow(i)
-                self.fav_list_widget.setFixedHeight(total_height + 4)
+                self.fav_list_widget.setFixedHeight(total_height + sp(4))
 
                 self.fav_list_widget.show()
                 self.fav_placeholder_lbl.hide()

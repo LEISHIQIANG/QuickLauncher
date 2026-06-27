@@ -381,7 +381,41 @@ class PopupLayoutMixin:
             return 0
         return self._dock_card_block_height(display_rows) + sp(12)
 
+    def _shadow_dpi_scale(self) -> float:
+        """Return the per-monitor DPI scale for shadow metrics.
+
+        Mirrors :meth:`_Win10ShadowWindow._shadow_metrics` so the
+        internal content padding matches the actual companion shadow
+        window, avoiding double-scaling when the global UI scale
+        (:func:`sp`) differs from the monitor's logical DPI.
+        """
+        try:
+            handle = self.windowHandle()  # type: ignore[attr-defined]
+            if handle is not None:
+                screen = handle.screen()
+                if screen is not None:
+                    return max(1.0, float(screen.logicalDotsPerInchX()) / 96.0)
+        except Exception:
+            logger.debug("windowHandle/screen DPI query failed", exc_info=True)
+        try:
+            from qt_compat import QApplication
+
+            screens = QApplication.screens() or []
+            if screens:
+                return max(1.0, float(screens[0].logicalDotsPerInchX()) / 96.0)
+        except Exception:
+            logger.debug("QApplication.screens DPI query failed", exc_info=True)
+        return 1.0
+
     def _win10_internal_shadow_metrics(self) -> tuple[int, int, int]:
+        """Shadow metrics for internal layout, matching the companion shadow window.
+
+        Uses the same per-monitor DPI scaling as
+        :class:`_Win10ShadowWindow` instead of the global ``sp()`` scale.
+        This prevents the left/right content margins from growing
+        disproportionately at higher UI zoom levels (the companion
+        shadow already handles DPI scaling independently).
+        """
         if not self._uses_win10_internal_popup_shadow():  # type: ignore[attr-defined]
             return 0, 0, 0
         settings = getattr(self, "settings", None)
@@ -396,9 +430,11 @@ class PopupLayoutMixin:
         except (TypeError, ValueError):
             shadow_distance = 0
 
-        shadow_size_px = sp(shadow_size if shadow_size > 0 else 14)
-        shadow_distance_px = sp(shadow_distance if shadow_distance > 0 else 2)
-        margin = max(0, shadow_size_px + shadow_distance_px + sp(4))
+        dpi_scale = self._shadow_dpi_scale()
+
+        shadow_size_px = max(0, int(round((shadow_size if shadow_size > 0 else 14) * dpi_scale)))
+        shadow_distance_px = max(0, int(round((shadow_distance if shadow_distance > 0 else 2) * dpi_scale)))
+        margin = max(0, shadow_size_px + max(1, int(round(2 * dpi_scale))))
         return shadow_size_px, shadow_distance_px, margin
 
     def _setup_window(self):
@@ -536,21 +572,17 @@ class PopupLayoutMixin:
             left = lx - window_width // 2
             top = ly - window_height // 2
 
-        # 严格约束到单块屏幕：edge_inset 仅为防御性最小值（避免负坐标或溢出）
-        left = max(
-            work_area.left() + edge_inset,
-            min(left, work_area.right() - window_width - edge_inset),
-        )
-        top = max(
-            work_area.top() + edge_inset,
-            min(top, work_area.bottom() - window_height - edge_inset),
-        )
+        # 严格约束到单块屏幕：使用统一工具函数防止窗口溢出
+        from ui.utils.coordinate_utils import clamp_window_to_screen
 
-        # 兜底：popup 完全放不进 work_area 时，强制推到左上角
-        if window_width > work_area.width() - 2 * edge_inset:
-            left = work_area.left() + edge_inset
-        if window_height > work_area.height() - 2 * edge_inset:
-            top = work_area.top() + edge_inset
+        left, top = clamp_window_to_screen(
+            left,
+            top,
+            window_width,
+            window_height,
+            work_area,
+            margin=edge_inset,
+        )
 
         self.move(left, top)  # type: ignore[attr-defined]
         return (int(left), int(top))

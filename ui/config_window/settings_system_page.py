@@ -418,6 +418,20 @@ class SettingsSystemPageMixin:
         self.data_manager.update_settings(ui_scale_percent=percent)
         tray_app = getattr(self, "tray_app", None)
         if tray_app and hasattr(tray_app, "apply_ui_scale_and_reopen_config"):
+            # Confirm with the user before closing and reopening the window
+            reply = ThemedMessageBox.question(
+                self,
+                tr("应用缩放"),
+                tr("更改 UI 缩放需要重新打开设置窗口，是否继续？\n\n" "当前缩放: {current}% → 新缩放: {new}%").format(
+                    current=current, new=percent
+                ),
+                ThemedMessageBox.Yes | ThemedMessageBox.No,
+            )
+            if reply != ThemedMessageBox.Yes:
+                # Restore previous value in data model
+                self.data_manager.update_settings(ui_scale_percent=current)
+                self._sync_ui_scale_controls(current)
+                return
             tray_app.apply_ui_scale_and_reopen_config(percent)
             return
 

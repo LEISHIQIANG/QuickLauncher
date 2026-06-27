@@ -34,7 +34,7 @@ from ui.launcher_popup.glass_types import (
     _FrameBuffer,
     _Rect,
 )
-from ui.utils.ui_scale import sp
+from ui.utils.ui_scale import MDT_EFFECTIVE_DPI, sp
 
 logger = logging.getLogger(__name__)
 
@@ -600,7 +600,6 @@ class GlassBackgroundRenderer:
                 hwnd = int(self.popup.winId() or 0)
                 if hwnd:
                     MONITOR_DEFAULTTONEAREST = 0x00000002
-                    MDT_EFFECTIVE_DPI = 0x00000000
                     hmonitor = self._user32_dpi.MonitorFromWindow(wintypes.HWND(hwnd), MONITOR_DEFAULTTONEAREST)
                     if hmonitor:
                         dpi_x = ctypes.c_uint32(0)

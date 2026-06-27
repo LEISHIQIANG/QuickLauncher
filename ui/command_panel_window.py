@@ -748,9 +748,9 @@ class CommandPanelWindow(ThemedToolWindow):
                         return cb
 
                     btn = menu.add_action(item_text, _make_cb(i))
-                    extra = "QPushButton{ padding:3px 12px; min-height:16px; }"
+                    extra = scale_qss("QPushButton{ padding:3px 12px; min-height:16px; }")
                     if item_text == current:
-                        extra += (
+                        extra += scale_qss(
                             f"QPushButton{{ background:{selection_bg}; color:{selection_text};"
                             f" border:1px solid {selected_border}; }}"
                         )

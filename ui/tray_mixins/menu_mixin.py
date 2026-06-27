@@ -21,6 +21,7 @@ from qt_compat import (
 )
 from runtime_paths import app_executable, app_root
 from ui.styles.style import PopupMenu
+from ui.utils.ui_scale import sp
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ class TrayAppMenuMixin:
             # 右键显示自定义磨砂菜单
             pos = QCursor.pos()
             # 稍微偏移一点，避免遮住托盘图标
-            offset_pos = QPoint(pos.x(), pos.y() - 5)
+            offset_pos = QPoint(pos.x(), pos.y() - sp(5))
             self.tray_menu.popup(offset_pos)
 
 

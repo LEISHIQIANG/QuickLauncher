@@ -5,6 +5,8 @@ from ctypes import POINTER, Structure, byref, c_bool, c_int, c_void_p, sizeof, w
 from ctypes.wintypes import DWORD, HWND, ULONG, WCHAR
 from weakref import ref
 
+from ui.utils.ui_scale import MDT_EFFECTIVE_DPI
+
 logger = logging.getLogger(__name__)
 
 BOOL = c_int
@@ -1084,8 +1086,7 @@ class WindowEffect:
                     try:
                         dpi_x = ctypes.c_uint()
                         dpi_y = ctypes.c_uint()
-                        # PROCESS_DPI_AWARE = 0
-                        windll.shcore.GetDpiForMonitor(h_monitor, 0, byref(dpi_x), byref(dpi_y))
+                        windll.shcore.GetDpiForMonitor(h_monitor, MDT_EFFECTIVE_DPI, byref(dpi_x), byref(dpi_y))
                         if dpi_x.value > 0:
                             dpi = dpi_x.value
                     except _WINDOW_EFFECT_ERRORS as exc:

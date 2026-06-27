@@ -37,7 +37,7 @@ from ui.styles.design_tokens import StatusScale, TextScale
 from ui.styles.themed_messagebox import ThemedMessageBox
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.interruptible_animation import stop_animation, stop_named_animations
-from ui.utils.ui_scale import scale_qss, sp
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +342,7 @@ class WobblyCoffeeCup(QLabel):
         painter.rotate(self._angle)
 
         font = painter.font()
-        font.setPointSize(36)
+        font.setPixelSize(font_px(48))  # was setPointSize(36) — 36pt≈48px@96DPI
         painter.setFont(font)
         painter.drawText(QRect(-30, -30, 60, 60), QtCompat.AlignCenter, self.text())
         painter.end()
@@ -890,7 +890,7 @@ class SettingsSupportPageMixin:
         support_img_path = _support_image_path()
         pixmap = QPixmap(support_img_path)
         if pixmap.isNull():
-            pixmap = QPixmap(130, 130)
+            pixmap = QPixmap(sp(128), sp(128))
             pixmap.fill(QColor(TextScale.tertiary_dark))
         else:
             pixmap = pixmap.scaled(sp(120), sp(120), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)

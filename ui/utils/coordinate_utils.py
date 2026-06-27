@@ -32,6 +32,8 @@ import re
 from ctypes import wintypes
 from typing import Any
 
+from ui.utils.ui_scale import MDT_EFFECTIVE_DPI
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,8 +75,8 @@ def normalize_device_name(name: str) -> str:
 # Windows API 直接调用
 # ---------------------------------------------------------------------------
 
+
 _MONITOR_DEFAULTTONEAREST = 0x00000002
-_MDT_EFFECTIVE_DPI = 0
 
 
 class _Point(ctypes.Structure):
@@ -135,7 +137,7 @@ def _query_monitor_at(phys_x: int, phys_y: int) -> tuple | None:
             shcore = ctypes.windll.shcore
             dpi_x_c = ctypes.c_uint()
             dpi_y_c = ctypes.c_uint()
-            shcore.GetDpiForMonitor(hmon, _MDT_EFFECTIVE_DPI, ctypes.byref(dpi_x_c), ctypes.byref(dpi_y_c))
+            shcore.GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, ctypes.byref(dpi_x_c), ctypes.byref(dpi_y_c))
             if dpi_x_c.value > 0:
                 dpi_x = int(dpi_x_c.value)
             if dpi_y_c.value > 0:
@@ -522,7 +524,60 @@ def pick_best_screen_for_popup(
         return screens[0] if screens else None
 
 
+# ---------------------------------------------------------------------------
+# 窗口溢出保护
+# ---------------------------------------------------------------------------
+
+
+def clamp_window_to_screen(
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    screen_geometry,
+    margin: int = 0,
+) -> tuple[int, int]:
+    """Ensure a window fits within the screen's available geometry.
+
+    If the window is larger than the screen in either dimension, the
+    position is clamped to keep as much of the window visible as
+    possible (preferring the top-left corner).
+
+    Args:
+        margin: Optional pixel inset from screen edges (default 0).
+
+    Returns:
+        ``(clamped_left, clamped_top)`` — safe position for ``move()``
+        or ``SetWindowPos``.
+
+    Example::
+
+        screen = QApplication.primaryScreen()
+        left, top = clamp_window_to_screen(left, top, w, h,
+                                           screen.availableGeometry(),
+                                           margin=sp(2))
+        popup.move(left, top)
+    """
+    avail = screen_geometry
+    m = int(margin)
+
+    # Clamp left: if window is wider than screen, pin to left edge
+    if width + 2 * m >= avail.width():
+        clamped_left = avail.left() + m
+    else:
+        clamped_left = max(avail.left() + m, min(left, avail.right() - width - m))
+
+    # Clamp top: if window is taller than screen, pin to top edge
+    if height + 2 * m >= avail.height():
+        clamped_top = avail.top() + m
+    else:
+        clamped_top = max(avail.top() + m, min(top, avail.bottom() - height - m))
+
+    return clamped_left, clamped_top
+
+
 __all__ = [
+    "clamp_window_to_screen",
     "normalize_device_name",
     "get_monitor_physical_dpi",
     "get_monitor_device_name",

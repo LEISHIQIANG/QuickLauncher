@@ -58,7 +58,7 @@ class CommandDialogFormMixin:
             return
         try:
             # 使用简单的几何图形绘制图标，避免依赖系统字体
-            pixmap = QPixmap(64, 64)
+            pixmap = QPixmap(sp(64), sp(64))
             pixmap.fill(QtCompat.transparent)
 
             painter = QPainter(pixmap)

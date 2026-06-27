@@ -620,14 +620,14 @@ class IconWidget(QFrame):
         self.setCursor(QtCompat.PointingHandCursor)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(sp(4), sp(4), sp(4), sp(4))
-        layout.setSpacing(sp(4))
+        layout.setContentsMargins(sp(3), sp(2), sp(3), sp(2))
+        layout.setSpacing(sp(2))
         layout.setAlignment(QtCompat.AlignCenter)
 
-        # 图标底框：图标四周各大7px — 使用 RoundedFrame 替代 QSS border-radius
-        # 以消除深色模式下圆角边缘的锯齿和泛白
-        icon_frame_h = self.icon_size + sp(16)
-        icon_frame_w = self.icon_size + sp(16)
+        # 图标底框：图标四周各留 6px（sp(12) 在 100% 时为 12px，给 24px 图标左右各 6px） — 使用 RoundedFrame 替代 QSS
+        # border-radius 以消除深色模式下圆角边缘的锯齿和泛白
+        icon_frame_h = self.icon_size + sp(12)
+        icon_frame_w = self.icon_size + sp(12)
         self.icon_frame = RoundedFrame()
         self.icon_frame.setFixedSize(icon_frame_w, icon_frame_h)
         self._apply_icon_frame_style()
@@ -1184,7 +1184,7 @@ class IconGrid(QWidget):
 
         # 下方按钮区域 - 1U=16px，胶囊圆角
         btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, sp(5), 0, sp(1) + 1)
+        btn_layout.setContentsMargins(0, sp(5), 0, sp(2))
         btn_layout.setSpacing(sp(12))
         btn_layout.setAlignment(QtCompat.AlignHCenter)
 
@@ -1402,11 +1402,12 @@ class IconGrid(QWidget):
             )
 
     def _get_cell_size(self):
-        # 分栏框宽度减去左右各10px边距，除以6列
+        # 分栏框宽度减去左右各 10px 边距，除以 6 列
+        # 使用 sp(20) 确保边距随 UI 缩放同步增长
         w = self.grid_area.width()
         if w <= 0:
             w = 400
-        return (w - 20) // 6
+        return max(sp(64), (w - sp(20)) // 6)
 
     def _place_icons(self, animate=False):
         """手动定位所有图标 widget，支持平滑动画过渡"""

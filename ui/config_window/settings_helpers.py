@@ -32,7 +32,7 @@ from ui.styles.design_tokens import border as token_border
 from ui.styles.managers import StyleManager
 from ui.styles.window_chrome import apply_custom_window_chrome
 from ui.utils.pixel_snap import make_cosmetic_pen
-from ui.utils.ui_scale import scale_qss, sp
+from ui.utils.ui_scale import font_px, scale_qss, sp
 from ui.utils.window_effect import get_window_effect, paint_win10_rounded_surface
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ class NumberedListDelegate(QStyledItemDelegate):
             row = index.row() + 1
             num_str = f"{row:02d}"
             font = option.font
-            font.setPointSize(9)
+            font.setPixelSize(font_px(12))
             painter.setFont(font)
             num_color = TextScale.list_num_dark if theme == "dark" else TextScale.list_num_light
             if is_selected:
@@ -139,7 +139,7 @@ class NumberedListDelegate(QStyledItemDelegate):
                 text_color = TextScale.on_accent
             painter.setPen(text_color)
             font.setBold(False)
-            font.setPointSize(10)
+            font.setPixelSize(font_px(13))
             painter.setFont(font)
             text_rect = QRectF(
                 option.rect.left() + sp(40), option.rect.top(), option.rect.width() - sp(44), option.rect.height()

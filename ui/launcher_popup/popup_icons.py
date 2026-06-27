@@ -515,7 +515,7 @@ class PopupIconMixin:
                             pixmap = pixmap.scaled(
                                 icon_size,
                                 icon_size,
-                                Qt.KeepAspectRatio,
+                                Qt.KeepAspectRatio,  # type: ignore[attr-defined]
                                 Qt.SmoothTransformation,  # type: ignore[attr-defined]
                             )
                         if pixmap_cache is not None:

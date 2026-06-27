@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-import plugins.screenshot_ocr.main as screenshot_ocr
+import pytest
+
+pytest.importorskip("plugins.screenshot_ocr.main", reason="screenshot_ocr plugin not bundled")
+
+import plugins.screenshot_ocr.main as screenshot_ocr  # noqa: E402
 
 
 class _FakeTimer:

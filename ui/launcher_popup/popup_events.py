@@ -176,7 +176,7 @@ class PopupEventsMixin:
 
         if self.padding <= pos.x() and self.padding <= pos.y() < self.content_height:  # type: ignore[attr-defined]
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = self._dock_outer_bottom_gap()  # type: ignore[attr-defined]
+            bottom_margin = sp(6)
             indicator_height = sp(16) if len(self.pages) > 1 else 0  # type: ignore[attr-defined]
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0  # type: ignore[attr-defined]
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0  # type: ignore[attr-defined]
@@ -419,7 +419,7 @@ class PopupEventsMixin:
             if hasattr(self, "clear_result_button_feedback"):
                 self.clear_result_button_feedback()
             # 从窗口底部算起，与图标绘制逻辑一致
-            bottom_margin = self._dock_outer_bottom_gap()
+            bottom_margin = sp(6)
             indicator_height = sp(16) if len(self.pages) > 1 else 0
             indicator_spacing = sp(4) if len(self.pages) > 1 else 0
             dock_height = self.dock_height if (self.dock_items and self.dock_height > 0) else 0

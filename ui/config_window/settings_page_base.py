@@ -70,8 +70,8 @@ class BaseSettingPage(SmoothScrollArea):
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 left: 0px;
-                top: -4px;
-                padding-left: 18px;
+                top: -2px;
+                padding-left: 20px;
                 color: white;
             }
         """
@@ -404,7 +404,8 @@ class BaseSettingPage(SmoothScrollArea):
         except Exception as exc:
             logger.debug("设置滚动条样式失败: %s", exc, exc_info=True)
 
-        style = f"""
+        style = scale_qss(
+            f"""
             QGroupBox {{
                 border-radius: 0; border: none;
                 padding-top: 5px;
@@ -413,12 +414,13 @@ class BaseSettingPage(SmoothScrollArea):
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 left: 0px;
-                top: -4px;
-                padding-left: 18px;
+                top: -2px;
+                padding-left: 20px;
                 color: {title_color};
                 font-weight: 400;
             }}
         """
+        )
 
         for group in self.findChildren(QGroupBox):
             group.setStyleSheet(style)

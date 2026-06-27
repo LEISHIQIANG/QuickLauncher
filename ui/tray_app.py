@@ -96,9 +96,25 @@ class TrayApp(
         logger.info("数据管理器初始化成功")
 
         # 初始化 UI 缩放（从配置中读取，在创建任何 UI 之前设置）
-        from ui.utils.ui_scale import set_scale as _set_ui_scale
+        from ui.utils.ui_scale import (
+            DEFAULT_SCALE_PERCENT,
+            detect_system_ui_scale,
+        )
+        from ui.utils.ui_scale import (
+            set_scale as _set_ui_scale,
+        )
 
-        _init_scale = getattr(self.data_manager.get_settings(), "ui_scale_percent", 100)
+        _init_scale = getattr(self.data_manager.get_settings(), "ui_scale_percent", DEFAULT_SCALE_PERCENT)
+
+        # 首次运行自动检测：配置值仍为默认 100 时，根据主显示器 DPI 自动设置
+        if _init_scale == DEFAULT_SCALE_PERCENT:
+            detected = detect_system_ui_scale()
+            if detected != DEFAULT_SCALE_PERCENT:
+                logger.info("首次运行 → 自动检测系统 DPI: %d%%", detected)
+                _init_scale = detected
+                # 持久化自动检测值，后续运行沿用此值
+                self.data_manager.update_settings(ui_scale_percent=detected)
+
         _set_ui_scale(_init_scale)
         from ui.styles.theme_controller import set_app_theme
         from ui.tooltip_helper import update_tooltip_theme
@@ -112,6 +128,17 @@ class TrayApp(
             apply_app_font(13)
         except Exception as exc:
             logger.debug("应用启动 UI 缩放字体失败: %s", exc, exc_info=True)
+
+        # 安装 WM_DPICHANGED 事件过滤器（PerMonitorV2 模式下跨 DPI 显示器自适应）
+        try:
+            from ui.utils.dpi_event_filter import install_dpi_filter
+
+            self._dpi_filter = install_dpi_filter(self._on_system_dpi_changed)
+            self._last_auto_detected: int | None = _init_scale if _init_scale != DEFAULT_SCALE_PERCENT else None
+        except Exception as exc:
+            logger.debug("安装 DPI 事件过滤器失败: %s", exc, exc_info=True)
+            self._dpi_filter = None
+            self._last_auto_detected = None
 
         # 兼容旧入口；标准 GUI 入口由 composition root 显式注入依赖。
         import core
@@ -368,6 +395,49 @@ class TrayApp(
             logger.info("安全模式：自动更新检查已禁用")
 
         self._mark_activity("startup")
+
+    # ------------------------------------------------------------------
+    # DPI change handler (WM_DPICHANGED / PerMonitorV2)
+    # ------------------------------------------------------------------
+
+    def _on_system_dpi_changed(self, new_scale_percent: int):
+        """Handle system DPI change when a window moves to a different monitor.
+
+        Only auto-adjusts when the user has *not* manually set a custom
+        UI scale (i.e. the saved value is still the default or matches
+        the previously auto-detected value).  If the user has explicitly
+        chosen a scale, we respect that choice.
+        """
+        from ui.utils.ui_scale import DEFAULT_SCALE_PERCENT
+
+        try:
+            current = getattr(
+                self.data_manager.get_settings(),
+                "ui_scale_percent",
+                DEFAULT_SCALE_PERCENT,
+            )
+        except Exception:
+            current = DEFAULT_SCALE_PERCENT
+
+        # Only auto-adjust if the user hasn't manually set scale
+        if current == DEFAULT_SCALE_PERCENT or (
+            self._last_auto_detected is not None and current == self._last_auto_detected
+        ):
+            logger.info(
+                "Auto-adjusting UI scale to %d%% (was %d%%)",
+                new_scale_percent,
+                current,
+            )
+            self._last_auto_detected = new_scale_percent
+            self.data_manager.update_settings(ui_scale_percent=new_scale_percent)
+            if hasattr(self, "apply_ui_scale_and_reopen_config"):
+                self.apply_ui_scale_and_reopen_config(new_scale_percent)
+        else:
+            logger.debug(
+                "System DPI changed to %d%% but user has manually set %d%% — respecting user choice",
+                new_scale_percent,
+                current,
+            )
 
     def _make_settings_snapshot(self) -> dict:
         settings = self.data_manager.get_settings()

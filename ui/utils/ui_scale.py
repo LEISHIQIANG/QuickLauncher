@@ -24,8 +24,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 MIN_SCALE_PERCENT = 90
-MAX_SCALE_PERCENT = 150
+MAX_SCALE_PERCENT = 250
 DEFAULT_SCALE_PERCENT = 100
+
+# Win32 GetDpiForMonitor: MDT_EFFECTIVE_DPI (0) requests the effective
+# (scaled) DPI rather than the raw DPI of the monitor.
+MDT_EFFECTIVE_DPI = 0
 
 # Minimum font pixel size after scaling – prevents unreadably small text.
 _MIN_FONT_PX = 9
@@ -229,3 +233,59 @@ def no_scale_scope():
 def is_default_scale() -> bool:
     """Return True when the scale is 100%."""
     return _scale_factor == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Public API – system DPI auto-detection
+# ---------------------------------------------------------------------------
+
+
+def detect_system_ui_scale() -> int:
+    """Auto-detect the primary monitor's effective DPI and return a
+    recommended UI scale percentage (snapped to nearest 5%, clamped to
+    [MIN_SCALE_PERCENT, MAX_SCALE_PERCENT]).
+
+    Uses ``GetDpiForMonitor`` (Win32) to read the true hardware DPI,
+    then maps it to an equivalent UI scale percentage.
+
+    Falls back to ``DEFAULT_SCALE_PERCENT`` if detection fails (e.g.
+    running on a non-Windows platform or Win32 API unavailable).
+
+    Intended call site: :func:`ui.tray_app.TrayApp.__init__` – only on
+    the *first* launch when ``ui_scale_percent`` is still at its
+    default.  After auto-detection the result is persisted to the
+    user config so subsequent launches respect the saved value.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        # MonitorFromPoint(0,0) + MONITOR_DEFAULTTOPRIMARY  → 主显示器
+        MONITOR_DEFAULTTOPRIMARY = 1
+
+        hmon = ctypes.windll.user32.MonitorFromPoint(
+            wintypes.POINT(0, 0),
+            MONITOR_DEFAULTTOPRIMARY,
+        )
+        if not hmon:
+            return DEFAULT_SCALE_PERCENT
+
+        dpi_x = ctypes.c_uint()
+        dpi_y = ctypes.c_uint()
+        hr = ctypes.windll.shcore.GetDpiForMonitor(
+            hmon,
+            MDT_EFFECTIVE_DPI,
+            ctypes.byref(dpi_x),
+            ctypes.byref(dpi_y),
+        )
+        if hr != 0 or dpi_x.value <= 0:
+            return DEFAULT_SCALE_PERCENT
+
+        # 96 DPI = 100% → 144 DPI = 150% → 192 DPI = 200%
+        raw = round(dpi_x.value / 96.0 * 100)
+        # Snap to nearest 5% for cleaner display
+        snapped = round(raw / 5) * 5
+        return max(MIN_SCALE_PERCENT, min(MAX_SCALE_PERCENT, snapped))
+    except Exception:
+        logger.debug("detect_system_ui_scale 失败，回退到默认值", exc_info=True)
+        return DEFAULT_SCALE_PERCENT

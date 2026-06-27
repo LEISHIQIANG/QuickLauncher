@@ -91,23 +91,23 @@ class CompactProgressDialog(QDialog):
 
         # 标题栏（图标 + 标题）
         self.title_layout = QHBoxLayout()
-        self.title_layout.setSpacing(sp(8))
+        self.title_layout.setSpacing(sp(12))
         self.title_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 图标
+        # 图标 — 容器略大于字体以容纳 ✓/✗ 在高缩放时的完整字形
         self.icon_label = QLabel()
-        self.icon_label.setStyleSheet(scale_qss("font-size: 20px; margin-top: -3px;"))
-        self.icon_label.setFixedSize(sp(24), sp(24))
+        self.icon_label.setStyleSheet(scale_qss("font-size: 20px;"))
+        self.icon_label.setFixedSize(sp(28), sp(28))
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setVisible(False)
-        self.title_layout.addWidget(self.icon_label)
+        self.title_layout.addWidget(self.icon_label, alignment=Qt.AlignVCenter)
 
         # 标题
         self.title_label = QLabel()
         self.title_label.setFont(get_qfont(13, 400))
         self.title_label.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400;"))
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.title_layout.addWidget(self.title_label, 1)
+        self.title_layout.addWidget(self.title_label, 1, alignment=Qt.AlignVCenter)
 
         main_layout.addLayout(self.title_layout)
 

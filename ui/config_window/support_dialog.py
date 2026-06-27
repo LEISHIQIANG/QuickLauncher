@@ -128,7 +128,7 @@ class SupportDialog(QDialog):
         support_img_path = _support_image_path()
         pixmap = QPixmap(support_img_path)
         if pixmap.isNull():
-            pixmap = QPixmap(280, 360)
+            pixmap = QPixmap(sp(280), sp(360))
             pixmap.fill(Qt.gray)
         else:
             # 动态计算收款图黄金比例，保持 100% 原图比例的同时，控制卡片精致小巧，不显得“傻大粗”

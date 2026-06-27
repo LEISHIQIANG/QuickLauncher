@@ -15,7 +15,7 @@ import os
 
 from qt_compat import QColor, QFont, QPainter, QPixmap, QRectF, QtCompat
 from ui.utils.pixel_snap import create_pixmap
-from ui.utils.ui_scale import sp
+from ui.utils.ui_scale import font_px, sp
 
 from .icon_browse_helper import choose_custom_icon
 
@@ -103,7 +103,8 @@ class CommandDialogIconMixin:
                 painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
 
                 painter.setPen(QColor(0, 255, 0))
-                font = QFont("Consolas", size // 3)
+                font = QFont("Consolas")
+                font.setPixelSize(font_px(max(9, size // 3)))
                 font.setBold(True)
                 painter.setFont(font)
 

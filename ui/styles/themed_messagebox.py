@@ -145,13 +145,13 @@ class ThemedMessageBox(QDialog):
         # 标题栏（图标 + 标题）
         if title:
             title_layout = QHBoxLayout()
-            title_layout.setSpacing(sp(8))
+            title_layout.setSpacing(sp(12))
             title_layout.setContentsMargins(0, 0, 0, 0)
 
             icon_label = QLabel()
             self.configure_icon_label(icon_label, icon_type)
             icon_label.raise_()
-            title_layout.addWidget(icon_label)
+            title_layout.addWidget(icon_label, alignment=Qt.AlignVCenter)
 
             # 标题
             title_label = QLabel(title)
@@ -160,7 +160,7 @@ class ThemedMessageBox(QDialog):
             title_label.setStyleSheet(scale_qss("font-size: 13px; font-weight: 400; margin-bottom: 4px;"))
             title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self._title_label = title_label
-            title_layout.addWidget(title_label, 1)
+            title_layout.addWidget(title_label, 1, alignment=Qt.AlignVCenter)
 
             layout.addLayout(title_layout)
 
@@ -227,7 +227,8 @@ class ThemedMessageBox(QDialog):
     @classmethod
     def configure_icon_label(cls, icon_label, icon_type, size=24):
         """Apply the themed PNG icon while preserving the original label size."""
-        icon_label.setFixedSize(sp(size), sp(size))
+        container = sp(size + 4)  # 给文字图标留出 margin，防止高缩放时字形溢出
+        icon_label.setFixedSize(container, container)
         icon_label.setAlignment(Qt.AlignCenter)
         icon_label.setStyleSheet(scale_qss("background: transparent;"))
 
@@ -237,7 +238,7 @@ class ThemedMessageBox(QDialog):
             return
 
         icon_label.setText(cls._get_icon_text(icon_type))
-        icon_label.setStyleSheet(scale_qss("font-size: 20px; margin-top: -3px;"))
+        icon_label.setStyleSheet(scale_qss("font-size: 20px;"))
 
     @classmethod
     def _get_icon_pixmap(cls, icon_type, size=24):

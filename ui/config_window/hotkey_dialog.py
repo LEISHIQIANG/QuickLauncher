@@ -841,7 +841,9 @@ class HotkeyDialog(BaseDialog):
             margin = size // 8
             painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), 6, 6)
             painter.setPen(QColor(QtCompat.white))
-            painter.setFont(QFont("Segoe UI Symbol", size // 3))
+            font = QFont("Segoe UI Symbol")
+            font.setPixelSize(font_px(max(9, size // 3)))
+            painter.setFont(font)
             painter.drawText(pixmap.rect(), QtCompat.AlignCenter, "⌘")
         finally:
             painter.end()

@@ -39,6 +39,7 @@ Example
 from __future__ import annotations
 
 import logging
+import time
 
 from qt_compat import (
     QBitmap,
@@ -54,6 +55,7 @@ from qt_compat import (
     Qt,
     QWidget,
 )
+from ui.utils.ui_scale import MDT_EFFECTIVE_DPI
 
 __all__ = [
     "snap_rect",
@@ -68,7 +70,30 @@ logger = logging.getLogger(__name__)
 
 
 def _is_pixel_snap_enabled() -> bool:
-    return False
+    """Return ``True`` so cosmetic pens stay 1 physical pixel wide on all DPIs.
+
+    When cosmetic painting is disabled, 1-px hairline strokes are
+    multiplied by the device pixel ratio and appear fat / blurry on
+    high-DPI displays.
+
+    If cosmetic pens introduce rendering artifacts in extreme edge cases
+    (e.g. >300% scaling), the feature can be gated via an environment
+    variable ``QL_PIXEL_SNAP`` set to ``0``.
+
+    Result is cached to avoid repeated ``os.environ`` lookups on every
+    paint event.
+    """
+    global _PIXEL_SNAP_CACHED, _PIXEL_SNAP_ENABLED
+    if not _PIXEL_SNAP_CACHED:
+        import os
+
+        _PIXEL_SNAP_ENABLED = os.environ.get("QL_PIXEL_SNAP", "1") != "0"
+        _PIXEL_SNAP_CACHED = True
+    return _PIXEL_SNAP_ENABLED
+
+
+_PIXEL_SNAP_CACHED = False
+_PIXEL_SNAP_ENABLED = True
 
 
 def _to_rectf(rect: QRect | QRectF) -> QRectF:
@@ -138,31 +163,110 @@ def stroke_path(
     painter.restore()
 
 
+def _win32_device_pixel_ratio(hwnd: int | None = None) -> float | None:
+    """Read the true hardware DPR via ``GetDpiForMonitor`` (Win32).
+
+    Returns ``None`` when the Win32 API is unavailable or the call fails.
+
+    Results are cached per monitor handle for 5 seconds to avoid
+    redundant Win32 syscalls during rapid paint events.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        if hwnd:
+            hmon = ctypes.windll.user32.MonitorFromWindow(
+                wintypes.HWND(hwnd),
+                2,  # MONITOR_DEFAULTTONEAREST
+            )
+        else:
+            hmon = ctypes.windll.user32.MonitorFromPoint(
+                wintypes.POINT(0, 0),
+                1,  # MONITOR_DEFAULTTOPRIMARY
+            )
+        if not hmon:
+            return None
+
+        # --- per-monitor cache with 5-second TTL ---
+        _now = time.monotonic()
+        if hmon in _DPI_CACHE and _now - _DPI_CACHE[hmon][0] < 5.0:
+            return _DPI_CACHE[hmon][1]
+
+        dpi_x = ctypes.c_uint()
+        dpi_y = ctypes.c_uint()
+        hr = ctypes.windll.shcore.GetDpiForMonitor(
+            hmon,
+            MDT_EFFECTIVE_DPI,
+            ctypes.byref(dpi_x),
+            ctypes.byref(dpi_y),
+        )
+        if hr == 0 and dpi_x.value > 0:
+            result = float(dpi_x.value) / 96.0
+            _DPI_CACHE[hmon] = (_now, result)
+            # Limit cache size to avoid leaking stale entries
+            if len(_DPI_CACHE) > 16:
+                _DPI_CACHE.pop(next(iter(_DPI_CACHE)), None)
+            return result
+    except Exception:
+        logger.debug("Win32 DPI detection failed in device_pixel_ratio", exc_info=True)
+    return None
+
+
+# Per-monitor DPR cache: {hmon: (timestamp, ratio)}
+_DPI_CACHE: dict[int, tuple[float, float]] = {}
+
+
 def device_pixel_ratio(widget: object | None = None) -> float:
     """Return the device pixel ratio for the given widget (or app default).
 
-    Falls back to ``1.0`` if the QApplication instance is not available
-    (e.g. in tests that build widgets before instantiating QApplication).
+    Since ``QT_AUTO_SCREEN_SCALE_FACTOR=0`` pins Qt's DPR to 1.0,
+    this function falls back to ``GetDpiForMonitor`` (Win32) to obtain
+    the true hardware pixel ratio.  This ensures pixmaps, icons and
+    thumbnails are rendered at the correct resolution on 150% / 200% /
+    250% DPI displays.
+
+    Falls back to ``1.0`` when neither Qt nor Win32 can provide a DPR
+    (e.g. in headless tests before QApplication is created).
     """
 
+    # --- Qt DPR query (pinned to 1.0 due to QT_AUTO_SCREEN_SCALE_FACTOR=0) ---
+    qt_dpr: float | None = None
     if widget is not None and isinstance(widget, QWidget):
         try:
-            return float(widget.devicePixelRatio())
+            qt_dpr = float(widget.devicePixelRatio())
         except (AttributeError, RuntimeError, TypeError):
             logger.debug("widget device pixel ratio unavailable", exc_info=True)
-    try:
-        from typing import Any, cast
+    if qt_dpr is None or qt_dpr == 1.0:
+        try:
+            from typing import Any, cast
 
-        from qt_compat import QApplication
+            from qt_compat import QApplication
 
-        app = QApplication.instance()
-        if app is not None:
-            try:
-                return float(cast(Any, app).devicePixelRatio())
-            except (AttributeError, RuntimeError, TypeError):
-                return 1.0
-    except (ImportError, AttributeError, RuntimeError, TypeError):
-        logger.debug("application device pixel ratio unavailable", exc_info=True)
+            app = QApplication.instance()
+            if app is not None:
+                try:
+                    qt_dpr = float(cast(Any, app).devicePixelRatio())
+                except (AttributeError, RuntimeError, TypeError):
+                    logger.debug("app devicePixelRatio unavailable", exc_info=True)
+        except (ImportError, AttributeError, RuntimeError, TypeError):
+            logger.debug("application device pixel ratio unavailable", exc_info=True)
+
+    # --- If Qt DPR is 1.0, fall back to Win32 hardware DPR ---
+    if qt_dpr is not None and qt_dpr != 1.0:
+        return qt_dpr
+
+    hwnd = 0
+    if widget is not None and isinstance(widget, QWidget):
+        try:
+            hwnd = int(widget.winId() or 0)
+        except Exception:
+            hwnd = 0
+
+    win32_dpr = _win32_device_pixel_ratio(hwnd)
+    if win32_dpr is not None:
+        return win32_dpr
+
     return 1.0
 
 

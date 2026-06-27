@@ -167,7 +167,9 @@ def main():
             try:
                 from qt_compat import QFont
 
-                app.setFont(QFont("Microsoft YaHei", 9))
+                font = QFont("Microsoft YaHei")
+                font.setPixelSize(13)
+                app.setFont(font)
             except (ImportError, RuntimeError) as e:
                 logger.debug("ignored startup exception %s: %s", 4, e)
 

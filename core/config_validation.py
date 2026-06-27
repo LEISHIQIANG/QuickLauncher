@@ -54,7 +54,7 @@ _INT_RANGES = {
     "light_temperature": (0, 100),
     "light_acrylic": (1, 255),
     "light_bg_alpha_filter": (1, 255),
-    "ui_scale_percent": (90, 150),
+    "ui_scale_percent": (90, 250),
 }
 _FLOAT_RANGES = {
     "icon_alpha": (0.0, 1.0),

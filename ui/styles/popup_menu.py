@@ -103,40 +103,10 @@ class PopupMenu(QWidget):
         self._sub_items_widgets = []  # type: ignore[var-annotated]
         self._submenu_expanded = False
 
-        # 按钮样式
-        self._btn_style_dark = scale_qss(
-            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px;margin:0px;min-height:20px;"
-            "border-radius:6px;color:rgba(255,255,255,0.88);font-size:12px;text-align:left;"
-            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.98);}"
-            "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
-            "QPushButton:disabled{color:rgba(255,255,255,0.42);}"
-        )
-        self._btn_style_light = scale_qss(
-            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px;margin:0px;min-height:20px;"
-            "border-radius:6px;color:rgba(28,28,30,0.88);font-size:12px;text-align:left;"
-            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.96);}"
-            "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
-            "QPushButton:disabled{color:rgba(60,60,67,0.42);}"
-        )
-        # 子菜单项缩进样式
-        self._sub_btn_style_dark = scale_qss(
-            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px 6px 30px;margin:0px;min-height:20px;"
-            "border-radius:6px;color:rgba(255,255,255,0.74);font-size:12px;text-align:left;"
-            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.96);}"
-            "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
-        )
-        self._sub_btn_style_light = scale_qss(
-            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px 6px 30px;margin:0px;min-height:20px;"
-            "border-radius:6px;color:rgba(28,28,30,0.68);font-size:12px;text-align:left;"
-            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
-            "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.95);}"
-            "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
-        )
         self._sep_style_dark = "background-color: rgba(255, 255, 255, 16);"
         self._sep_style_light = "background-color: rgba(60, 60, 67, 18);"
+
+        self._refresh_styles()
 
     def add_action(self, text: str, callback, enabled: bool = True):
         """添加菜单项"""
@@ -224,7 +194,7 @@ class PopupMenu(QWidget):
     def add_separator(self):
         """添加分隔线"""
         sep = QWidget(self)
-        sep.setFixedHeight(1)
+        sep.setFixedHeight(sp(1))
         sep.setStyleSheet(self._sep_style_dark if self._theme == "dark" else self._sep_style_light)
         self._layout.addWidget(sep)
         return sep
@@ -257,8 +227,62 @@ class PopupMenu(QWidget):
             except RuntimeError:
                 logger.debug("延迟删除菜单失败", exc_info=True)
 
+    def _refresh_styles(self):
+        """Recompute QSS styles with the current UI scale factor.
+
+        Called before each :meth:`popup` so the menu reflects the
+        latest global scale setting.
+        """
+        # ── recompute scaled QSS ──
+        self._btn_style_dark = scale_qss(
+            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(255,255,255,0.88);font-size:12px;text-align:left;"
+            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.98);}"
+            "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
+            "QPushButton:disabled{color:rgba(255,255,255,0.42);}"
+        )
+        self._btn_style_light = scale_qss(
+            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(28,28,30,0.88);font-size:12px;text-align:left;"
+            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.96);}"
+            "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
+            "QPushButton:disabled{color:rgba(60,60,67,0.42);}"
+        )
+        self._sub_btn_style_dark = scale_qss(
+            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px 6px 30px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(255,255,255,0.74);font-size:12px;text-align:left;"
+            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.96);}"
+            "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
+        )
+        self._sub_btn_style_light = scale_qss(
+            "QPushButton{background:transparent;border:none; border-radius: 0;padding:6px 14px 6px 30px;margin:0px;min-height:20px;"
+            "border-radius:6px;color:rgba(28,28,30,0.68);font-size:12px;text-align:left;"
+            "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI Variable Text','Segoe UI',sans-serif;font-weight:400;}"
+            "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.95);}"
+            "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
+        )
+
+        # ── reapply to existing children ──
+        is_dark = self._theme == "dark"
+        for child in self.children():
+            role = child.property("popup_menu_role")
+            if role is None:
+                continue
+            if role in ("action", "submenu"):
+                child.setStyleSheet(self._btn_style_dark if is_dark else self._btn_style_light)
+            elif role == "sub_action":
+                child.setStyleSheet(self._sub_btn_style_dark if is_dark else self._sub_btn_style_light)
+
+        # ── update layout spacing ──
+        self._layout.setContentsMargins(sp(8), sp(8), sp(8), sp(8))
+        self._layout.setSpacing(sp(4))
+
     def popup(self, global_pos):
         """在指定位置显示菜单"""
+        self._refresh_styles()
         self.adjustSize()
         self._move_into_screen(global_pos)
         self._retain_until_hidden()

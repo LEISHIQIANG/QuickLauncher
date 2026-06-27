@@ -22,7 +22,7 @@ from qt_compat import (
     QtCompat,
 )
 from ui.utils.pixel_snap import make_cosmetic_pen
-from ui.utils.ui_scale import font_px, sp
+from ui.utils.ui_scale import font_px, sp, spf
 from ui.utils.window_effect import is_win10
 
 logger = logging.getLogger(__name__)
@@ -108,12 +108,12 @@ class PopupRendererMixin:
             path.addRoundedRect(shadow_rect, radius + spread, radius + spread)
             shadow_painter.fillPath(path, QColor(0, 0, 0, alpha))
 
-        contact_margin = max(4, int(round(shadow_size * 0.48)))
+        contact_margin = max(sp(4), int(round(shadow_size * 0.48)))
         contact_rect = rect.adjusted(
             contact_margin,
-            rect.height() - max(2, shadow_size * 0.28),
+            rect.height() - max(sp(2), shadow_size * 0.28),
             -contact_margin,
-            shadow_distance + max(2, shadow_size * 0.28),
+            shadow_distance + max(sp(2), shadow_size * 0.28),
         )
         if contact_rect.width() > 0 and contact_rect.height() > 0:
             path = QPainterPath()
@@ -171,7 +171,7 @@ class PopupRendererMixin:
 
         # Cache border path (1px inset)
         if getattr(self, "_cached_border_path", None) is None:
-            inset = 0.5
+            inset = spf(0.5)
             r = max(0.0, float(radius) - inset)
             self._cached_border_path = QPainterPath()
             self._cached_border_path.addRoundedRect(rect.adjusted(inset, inset, -inset, -inset), r, r)
@@ -179,7 +179,7 @@ class PopupRendererMixin:
         def make_border_path(pen_width_f: float) -> QPainterPath:
             if pen_width_f == 1.0:
                 return self._cached_border_path  # type: ignore[unused-ignore, no-any-return]
-            inset = max(0.5, float(pen_width_f) / 2.0)
+            inset = max(spf(0.5), float(pen_width_f) / 2.0)
             r = max(0.0, float(radius) - inset)
             p = QPainterPath()
             p.addRoundedRect(rect.adjusted(inset, inset, -inset, -inset), r, r)
@@ -681,8 +681,10 @@ class PopupRendererMixin:
         if not is_dark:
             for i in range(3, 0, -1):
                 shadow_color = QColor(0, 0, 0, int(7 - i * 1.5))
-                shadow_rect = rect.adjusted(-i * 0.5, -i * 0.2 + 0.5, i * 0.5, i * 0.8 + 0.5)
-                shadow_radius = radius + i * 0.5
+                shadow_rect = rect.adjusted(
+                    -i * spf(0.5), -i * spf(0.2) + spf(0.5), i * spf(0.5), i * spf(0.8) + spf(0.5)
+                )
+                shadow_radius = radius + i * spf(0.5)
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(shadow_color))
                 painter.drawRoundedRect(shadow_rect, shadow_radius, shadow_radius)
@@ -829,8 +831,10 @@ class PopupRendererMixin:
         if not is_dark:
             for i in range(3, 0, -1):
                 shadow_color = QColor(0, 0, 0, int(7 - i * 1.5))
-                shadow_rect = rect.adjusted(-i * 0.5, -i * 0.2 + 0.5, i * 0.5, i * 0.8 + 0.5)
-                shadow_radius = radius + i * 0.5
+                shadow_rect = rect.adjusted(
+                    -i * spf(0.5), -i * spf(0.2) + spf(0.5), i * spf(0.5), i * spf(0.8) + spf(0.5)
+                )
+                shadow_radius = radius + i * spf(0.5)
                 painter.setPen(QtCompat.NoPen)
                 painter.setBrush(QBrush(shadow_color))
                 painter.drawRoundedRect(shadow_rect, shadow_radius, shadow_radius)

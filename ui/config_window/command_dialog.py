@@ -225,7 +225,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
             return
         try:
             # 使用简单的几何图形绘制图标，避免依赖系统字体
-            pixmap = QPixmap(64, 64)
+            pixmap = QPixmap(sp(64), sp(64))
             pixmap.fill(QtCompat.transparent)
 
             painter = QPainter(pixmap)
@@ -1251,7 +1251,7 @@ class CommandDialog(CommandDialogIconMixin, CommandDialogTestRunnerMixin, BaseDi
     def _set_command_profile_toggle_icon(self, expanded: bool):
         if not hasattr(self, "advanced_profile_toggle"):
             return
-        pixmap = QPixmap(18, 8)
+        pixmap = QPixmap(sp(18), sp(8))
         pixmap.fill(QtCompat.transparent)
         painter = QPainter(pixmap)
         try:

@@ -45,7 +45,7 @@ from ui.utils.interruptible_animation import stop_animation
 from ui.utils.pixel_snap import create_pixmap
 from ui.utils.qt_thread_cleanup import stop_qthread_nonblocking
 from ui.utils.smooth_scroll import SmoothScrollArea
-from ui.utils.ui_scale import scale_qss, sp
+from ui.utils.ui_scale import font_px, scale_qss, sp
 
 from .base_dialog import BaseDialog
 from .icon_browse_helper import choose_custom_icon
@@ -108,7 +108,8 @@ def _create_type_icon(shortcut: ShortcutItem, size: int) -> QPixmap:
     painter.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2), radius, radius)
 
     painter.setPen(QColor(DEFAULT_FALLBACK_TEXT))
-    font = QFont("Segoe UI", max(8, int(size * 0.42)))
+    font = QFont("Segoe UI")
+    font.setPixelSize(font_px(max(8, int(size * 0.42))))
     font.setBold(True)
     painter.setFont(font)
     painter.drawText(pixmap.rect(), QtCompat.AlignCenter, text)
