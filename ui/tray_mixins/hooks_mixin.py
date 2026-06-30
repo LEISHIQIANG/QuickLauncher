@@ -49,6 +49,8 @@ class HooksMixin:
 
     mouse_hook: MouseHook | None
     keyboard_hook: Any
+    _sleeping: bool
+    _taskbar_double_click_signal: Any
 
     def _install_hook(self, attempt: int = 0):
         """安装鼠标钩子"""
@@ -564,7 +566,7 @@ class HooksMixin:
                 return
             if not getattr(self, "_taskbar_trigger_enabled", False):
                 return
-            self._on_show_popup(x, y)
-            self._mark_activity("taskbar_double_click")
+            self._on_show_popup(x, y)  # type: ignore[attr-defined]
+            self._mark_activity("taskbar_double_click")  # type: ignore[attr-defined]
         except Exception as e:
             logger.error(f"处理任务栏双击失败: {e}")

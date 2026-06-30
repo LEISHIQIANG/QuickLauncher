@@ -15,7 +15,8 @@ def test_release_gate_dry_run_skips_execution(capsys):
 
     output = capsys.readouterr().out
     assert "ruff: py-test -m ruff check --no-cache core ui hooks services tests" in output
-    assert f"pytest: py-test -m pytest --basetemp {release_gate.PYTEST_BASETEMP}" in output
+    assert f"pytest: py-test scripts/run_ci_tests.py --basetemp {release_gate.PYTEST_BASETEMP}" in output
+    assert f"--cov-fail-under {release_gate.COVERAGE_FAIL_UNDER}" in output
     assert "compileall: py-test -m compileall core ui hooks services bootstrap plugins" in output
     assert "mypy zero errors: py-test scripts/check_mypy_progress.py" in output
     assert "py-test scripts/check_release_artifacts.py --source-only --allow-source-runtime-plugins" in output
@@ -57,15 +58,11 @@ def test_release_gate_uses_isolated_commands_and_env(monkeypatch):
 
     assert commands[1] == [
         "py-test",
-        "-m",
-        "pytest",
+        "scripts/run_ci_tests.py",
         "--basetemp",
         str(release_gate.PYTEST_BASETEMP),
-        "--cov=core",
-        "--cov=services",
-        "--cov=hooks",
-        "--cov-report=term-missing",
-        f"--cov-fail-under={release_gate.COVERAGE_FAIL_UNDER}",
+        "--cov-fail-under",
+        str(release_gate.COVERAGE_FAIL_UNDER),
     ]
     assert envs[1]["PYTHONDONTWRITEBYTECODE"] == "1"
 

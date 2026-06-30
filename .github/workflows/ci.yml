@@ -81,18 +81,7 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run pytest with coverage
-        run: >
-          python -m pytest tests/
-          --tb=short
-          --timeout=120
-          --timeout-method=thread
-          --cov=core
-          --cov=services
-          --cov=hooks
-          --cov=bootstrap
-          --cov-report=xml
-          --cov-report=term-missing
-          -q
+        run: python scripts/run_ci_tests.py
 
       - name: Upload coverage report
         if: always()

@@ -1,6 +1,7 @@
 """Protected keyboard and mouse trigger recorder."""
 
 import logging
+from typing import Any
 
 from core.i18n import tr
 from hooks.hook_pause import mouse_hook_paused
@@ -58,8 +59,8 @@ class InputTriggerRecorderWidget(QWidget):
         self.button = ""
         self.modifiers = []
         self.recording = False
-        self._taskbar_trigger = False
-        self._taskbar_with_ctrl = False
+        self._taskbar_trigger: bool = False
+        self._taskbar_with_ctrl: bool = False
         self.mouse_hook = None
         self._mouse_hook_pause_scope = None
         self._native_capture_active = False
@@ -413,7 +414,8 @@ class InputTriggerRecorderWidget(QWidget):
         while parent:
             if hasattr(parent, "data_manager"):
                 try:
-                    return parent.data_manager.get_settings().theme
+                    settings: Any = parent.data_manager.get_settings()
+                    return str(getattr(settings, "theme", "dark") or "dark")
                 except Exception:
                     break
             parent = parent.parent()

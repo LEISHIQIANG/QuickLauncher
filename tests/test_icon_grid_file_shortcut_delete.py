@@ -60,23 +60,41 @@ def _make_file_shortcut(sid: str, target: str = "C:/dummy.exe") -> ShortcutItem:
     )
 
 
+def _stop_grid_thread(grid, thread_attr: str, worker_attr: str) -> None:
+    worker = getattr(grid, worker_attr, None)
+    thread = getattr(grid, thread_attr, None)
+    if worker is not None and callable(getattr(worker, "cancel", None)):
+        worker.cancel()
+    if thread is not None:
+        thread.quit()
+        thread.wait(1000)
+        try:
+            if worker is not None:
+                worker.deleteLater()
+            thread.deleteLater()
+        except RuntimeError:
+            pass
+    setattr(grid, thread_attr, None)
+    setattr(grid, worker_attr, None)
+
+
 def _new_icon_grid_for_thread_tests() -> grid_mod.IconGrid:
     grid = grid_mod.IconGrid.__new__(grid_mod.IconGrid)
     grid._icon_load_generation = 0
     grid._icon_worker = None
     grid._icon_thread = None
-    grid._stop_icon_thread = lambda: None
+    grid._stop_icon_thread = lambda: _stop_grid_thread(grid, "_icon_thread", "_icon_worker")
     grid._favicon_fetch_generation = 0
     grid._favicon_fetch_worker = None
     grid._favicon_fetch_thread = None
     grid._favicon_fetch_shortcuts = {}
     grid._favicon_fetch_success_count = 0
     grid._favicon_fetch_status_dialog = None
-    grid._stop_favicon_fetch_thread = lambda: None
+    grid._stop_favicon_fetch_thread = lambda: _stop_grid_thread(grid, "_favicon_fetch_thread", "_favicon_fetch_worker")
     return grid
 
 
-def test_start_async_icon_load_connection_count_is_two(qapp):
+def test_start_async_icon_load_connection_count_is_two(qapp, monkeypatch):
     """``_start_async_icon_load`` must connect only 2 slots to
     ``thread.finished`` (the cleanup lambda + worker.deleteLater).
 
@@ -84,6 +102,7 @@ def test_start_async_icon_load_connection_count_is_two(qapp):
     is the regression we are guarding against.
     """
     grid = _new_icon_grid_for_thread_tests()
+    monkeypatch.setattr(grid_mod._IconLoadWorker, "run", lambda self: None)
     grid._start_async_icon_load([("s1", "", "C:/prog.exe", 24, ShortcutType.FILE)])
 
     try:
@@ -95,12 +114,6 @@ def test_start_async_icon_load_connection_count_is_two(qapp):
             f"got {receiver_count}. The dangerous thread.deleteLater self-connection is back."
         )
     finally:
-        try:
-            if grid._icon_thread is not None:
-                grid._icon_thread.quit()
-                grid._icon_thread.wait(50)
-        except Exception:
-            pass
         grid._stop_icon_thread()
 
 
@@ -108,6 +121,7 @@ def test_start_favicon_fetch_worker_connection_count_is_two(qapp, monkeypatch):
     """Same regression guard for the favicon fetch worker."""
     grid = _new_icon_grid_for_thread_tests()
     monkeypatch.setattr(grid_mod, "SimpleStatusDialog", _ScriptedStatusDialog)
+    monkeypatch.setattr(grid_mod._BatchFaviconFetchWorker, "run", lambda self: None)
 
     grid._start_favicon_fetch_worker(
         tasks=[("s1", "S1", "https://example.com")],
@@ -124,19 +138,20 @@ def test_start_favicon_fetch_worker_connection_count_is_two(qapp, monkeypatch):
         try:
             if grid._favicon_fetch_thread is not None:
                 grid._favicon_fetch_thread.quit()
-                grid._favicon_fetch_thread.wait(50)
+                grid._favicon_fetch_thread.wait(1000)
         except Exception:
             pass
         grid._stop_favicon_fetch_thread()
 
 
-def test_rapid_reload_leaves_connection_state_consistent(qapp):
+def test_rapid_reload_leaves_connection_state_consistent(qapp, monkeypatch):
     """Simulate the exact delete -> load_folder -> _start_async_icon_load
     sequence 5 times in a row. The dangerous self-deleteLater connection
     must NEVER appear on any of the created threads, and the live thread
     (if any) must have at most 2 receivers on ``finished``.
     """
     grid = _new_icon_grid_for_thread_tests()
+    monkeypatch.setattr(grid_mod._IconLoadWorker, "run", lambda self: None)
     try:
         for i in range(5):
             grid._start_async_icon_load([(f"s{i}", "", f"C:/prog{i}.exe", 24, ShortcutType.FILE)])
@@ -149,12 +164,6 @@ def test_rapid_reload_leaves_connection_state_consistent(qapp):
                 f"iteration {i}: expected 2 finished-receivers, got " f"{current.receivers(current.finished)}"
             )
     finally:
-        try:
-            if grid._icon_thread is not None:
-                grid._icon_thread.quit()
-                grid._icon_thread.wait(100)
-        except Exception:
-            pass
         grid._stop_icon_thread()
 
 

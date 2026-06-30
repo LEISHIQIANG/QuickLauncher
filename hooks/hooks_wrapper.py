@@ -1590,7 +1590,7 @@ class HooksDLL:
             logger.warning("hooks.dll 尚未就绪，无法设置任务栏触发")
             return False
         try:
-            self.dll.SetTaskbarTriggerEnabled(bool(enabled), bool(require_ctrl))
+            self.dll.SetTaskbarTriggerEnabled(bool(enabled), bool(require_ctrl))  # type: ignore[union-attr]
             logger.info("任务栏触发: %s (ctrl=%s)", "已启用" if enabled else "已禁用", require_ctrl)
             return True
         except Exception as exc:
@@ -1625,7 +1625,7 @@ class HooksDLL:
         if not self._ready():
             return False
         try:
-            return bool(self.dll.IsTaskbarTriggerAvailable())
+            return bool(self.dll.IsTaskbarTriggerAvailable())  # type: ignore[union-attr]
         except Exception as exc:
             logger.debug("检测任务栏触发可用性失败: %s", exc)
             return False

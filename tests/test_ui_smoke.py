@@ -414,9 +414,15 @@ def test_base_dialog_stale_animation_tick_does_not_stop_current_timer():
 
 def test_settings_panel_global_scale_apply_is_explicit_and_uses_five_percent_steps(qapp, tmp_path, monkeypatch):
     import core.auto_start_manager as auto_start_manager
+    from ui.config_window import settings_system_page
     from ui.config_window.settings_panel import SettingsPanel
 
     monkeypatch.setattr(auto_start_manager, "get_auto_start_check_result", lambda: (False, "smoke"))
+    monkeypatch.setattr(
+        settings_system_page.ThemedMessageBox,
+        "question",
+        lambda *args, **kwargs: settings_system_page.ThemedMessageBox.Yes,
+    )
 
     manager = _SmokeManager(tmp_path)
     manager.data.settings.ui_scale_percent = 100
