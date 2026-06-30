@@ -94,6 +94,10 @@ class HooksMixin:
                 logger.debug("设置鼠标钩子暂停状态失败: %s", exc, exc_info=True)
             self.mouse_hook = hook
 
+            # 注册任务栏双击回调
+            if hasattr(hook, "set_taskbar_callback"):
+                hook.set_taskbar_callback(self._on_taskbar_double_click_from_hook)
+
             # 设置全局钩子引用，供文件对话框使用
             try:
                 from ui.utils.safe_file_dialog import set_global_mouse_hook
@@ -442,6 +446,10 @@ class HooksMixin:
                     special_button,
                     special_modifiers,
                 )
+
+                # 延迟检测 RegisterHotKey 是否成功（DLL 通过 PostThreadMessage 异步注册）
+                if normal_mode == "keyboard" or special_mode == "keyboard":
+                    QTimer.singleShot(500, self._check_trigger_hotkey_status)
             elif hasattr(self.mouse_hook, "set_trigger_config"):
                 self.mouse_hook.set_trigger_config(
                     trigger_settings["popup_trigger_button"],
@@ -461,7 +469,70 @@ class HooksMixin:
         except Exception as e:
             logger.error(f"应用触发配置失败: {e}", exc_info=True)
 
-    def _sync_special_apps_to_hook(self):
+        # 应用任务栏触发设置（独立 try，不影响主逻辑）
+        try:
+            settings = self.data_manager.get_settings()
+            taskbar_source = getattr(settings, "popup_trigger_source", "mouse")
+            taskbar_ctrl = getattr(settings, "popup_taskbar_trigger_ctrl", False)
+            special_taskbar_source = getattr(settings, "popup_special_trigger_source", "mouse")
+            special_taskbar_ctrl = getattr(settings, "popup_special_taskbar_trigger_ctrl", False)
+            taskbar_enabled = (taskbar_source == "taskbar") or (special_taskbar_source == "taskbar")
+            taskbar_ctrl_final = taskbar_ctrl or special_taskbar_ctrl
+            if hasattr(self.mouse_hook, "set_taskbar_trigger"):
+                self.mouse_hook.set_taskbar_trigger(taskbar_enabled, taskbar_ctrl_final)
+                self._taskbar_trigger_enabled = taskbar_enabled
+                logger.info(
+                    "任务栏触发: %s (ctrl=%s)",
+                    "已启用" if taskbar_enabled else "已禁用",
+                    taskbar_ctrl_final,
+                )
+        except Exception as e2:
+            logger.debug("应用任务栏触发设置失败: %s", e2, exc_info=True)
+
+    def _check_trigger_hotkey_status(self):
+        """延迟检测 RegisterHotKey 注册状态，失败时记录详细日志供排查。"""
+        try:
+            if not self.mouse_hook:
+                return
+
+            normal_registered = (
+                self.mouse_hook.is_normal_trigger_hotkey_registered()
+                if hasattr(self.mouse_hook, "is_normal_trigger_hotkey_registered")
+                else True  # DLL 不支持查询，假设已注册
+            )
+            special_registered = (
+                self.mouse_hook.is_special_trigger_hotkey_registered()
+                if hasattr(self.mouse_hook, "is_special_trigger_hotkey_registered")
+                else True
+            )
+
+            settings = self.data_manager.get_settings()
+            normal_mode = getattr(settings, "popup_trigger_mode", "mouse")
+            special_mode = getattr(settings, "popup_special_trigger_mode", "mouse")
+
+            if normal_mode == "keyboard" and not normal_registered:
+                normal_keys = getattr(settings, "popup_trigger_keys", [])
+                normal_mods = getattr(settings, "popup_trigger_modifiers", [])
+                hotkey_str = "+".join([*normal_mods, *normal_keys])
+                logger.warning(
+                    "普通触发键盘快捷键 RegisterHotKey 注册失败: %s。"
+                    "该快捷键可能已被系统或其他程序占用（如输入法IME），"
+                    "将使用异步轮询备用通道（延迟约10-80ms）",
+                    hotkey_str,
+                )
+
+            if special_mode == "keyboard" and not special_registered:
+                special_keys = getattr(settings, "popup_special_trigger_keys", [])
+                special_mods = getattr(settings, "popup_special_trigger_modifiers", [])
+                hotkey_str = "+".join([*special_mods, *special_keys])
+                logger.warning(
+                    "特殊触发键盘快捷键 RegisterHotKey 注册失败: %s。"
+                    "该快捷键可能已被系统或其他程序占用，"
+                    "将使用异步轮询备用通道（延迟约10-80ms）",
+                    hotkey_str,
+                )
+        except Exception as exc:
+            logger.debug("检测触发热键注册状态失败: %s", exc, exc_info=True)
         """同步特殊应用设置到鼠标钩子"""
         try:
             if self._sleeping:
@@ -476,3 +547,24 @@ class HooksMixin:
 
         except Exception as e:
             logger.error(f"同步特殊应用设置失败: {e}")
+
+    def _on_taskbar_double_click_from_hook(self, x: int, y: int):
+        """任务栏双击回调 (从 DLL 线程调用，发射信号转到主线程)"""
+        try:
+            self._taskbar_double_click_signal.emit(x, y)
+        except Exception as exc:
+            logger.debug("发射任务栏双击信号失败: %s", exc, exc_info=True)
+
+    def _on_taskbar_double_click(self, x: int, y: int):
+        """处理任务栏双击 (主线程)"""
+        try:
+            if self._sleeping:
+                return
+            if not self.mouse_hook or self.mouse_hook.is_paused():
+                return
+            if not getattr(self, "_taskbar_trigger_enabled", False):
+                return
+            self._on_show_popup(x, y)
+            self._mark_activity("taskbar_double_click")
+        except Exception as e:
+            logger.error(f"处理任务栏双击失败: {e}")

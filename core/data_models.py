@@ -504,6 +504,13 @@ class AppSettings:
     popup_special_trigger_button: str = "middle"  # 特殊鼠标按键
     popup_special_trigger_modifiers: list[str] = field(default_factory=lambda: ["ctrl"])  # 特殊修饰键
 
+    # 任务栏触发设置
+    popup_trigger_source: str = "mouse"  # "mouse"=普通鼠标/键盘触发, "taskbar"=任务栏双击触发
+    popup_taskbar_trigger_ctrl: bool = False  # 任务栏触发是否需要按住 Ctrl
+    # 特殊触发任务栏触发设置
+    popup_special_trigger_source: str = "mouse"
+    popup_special_taskbar_trigger_ctrl: bool = False
+
     # 弹窗背景与视觉
     bg_mode: str = "theme"  # theme, image, acrylic, glass
     bg_solid_color: str = "#2b2b2b"
@@ -606,6 +613,10 @@ class AppSettings:
             "popup_special_trigger_keys": self.popup_special_trigger_keys,
             "popup_special_trigger_button": self.popup_special_trigger_button,
             "popup_special_trigger_modifiers": self.popup_special_trigger_modifiers,
+            "popup_trigger_source": self.popup_trigger_source,
+            "popup_taskbar_trigger_ctrl": self.popup_taskbar_trigger_ctrl,
+            "popup_special_trigger_source": self.popup_special_trigger_source,
+            "popup_special_taskbar_trigger_ctrl": self.popup_special_taskbar_trigger_ctrl,
             "bg_mode": self.bg_mode,
             "bg_solid_color": self.bg_solid_color,
             "bg_blur_radius": self.bg_blur_radius,
@@ -683,6 +694,18 @@ class AppSettings:
             settings.popup_special_trigger_mode = "mouse"
         if not hasattr(settings, "popup_special_trigger_keys"):
             settings.popup_special_trigger_keys = []
+
+        # 任务栏触发设置迁移
+        if not hasattr(settings, "popup_trigger_source"):
+            settings.popup_trigger_source = "mouse"
+        if not hasattr(settings, "popup_taskbar_trigger_ctrl"):
+            settings.popup_taskbar_trigger_ctrl = False
+
+        # 特殊触发任务栏触发设置迁移
+        if not hasattr(settings, "popup_special_trigger_source"):
+            settings.popup_special_trigger_source = "mouse"
+        if not hasattr(settings, "popup_special_taskbar_trigger_ctrl"):
+            settings.popup_special_taskbar_trigger_ctrl = False
 
         for key, value in normalize_trigger_settings(settings).items():
             setattr(settings, key, value)

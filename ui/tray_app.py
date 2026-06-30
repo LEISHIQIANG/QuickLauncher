@@ -80,6 +80,8 @@ class TrayApp(
     show_config_signal = pyqtSignal()  # 用于跨线程安全地请求显示配置窗口
     # Alt 双击信号 (从钩子线程发到主线程)
     _alt_double_tap_signal = pyqtSignal()
+    # 任务栏双击信号 (从钩子线程发到主线程)
+    _taskbar_double_click_signal = pyqtSignal(int, int)
     _update_event_signal = pyqtSignal(str, object)
     _download_event_signal = pyqtSignal(str, object)
     _install_event_signal = pyqtSignal(str, object)
@@ -263,6 +265,7 @@ class TrayApp(
         self.show_popup_signal.connect(self._on_show_popup)
         self.show_config_signal.connect(self._show_config)  # 跨线程安全的配置窗口显示
         self._alt_double_tap_signal.connect(self._on_alt_double_tap)
+        self._taskbar_double_click_signal.connect(self._on_taskbar_double_click)
         self._update_event_signal.connect(self._on_update_event, QtCompat.QueuedConnection)
         self._download_event_signal.connect(self._on_download_event, QtCompat.QueuedConnection)
         self._install_event_signal.connect(self._on_install_event, QtCompat.QueuedConnection)

@@ -1159,9 +1159,11 @@ class PopupEventsMixin:
                 import ctypes
 
                 user32 = ctypes.windll.user32
+                # 检测所有鼠标按键（左键/右键/中键）
                 left_pressed = (user32.GetAsyncKeyState(0x01) & 0x8000) != 0
                 right_pressed = (user32.GetAsyncKeyState(0x02) & 0x8000) != 0
-                if left_pressed or right_pressed:
+                middle_pressed = (user32.GetAsyncKeyState(0x04) & 0x8000) != 0
+                if left_pressed or right_pressed or middle_pressed:
                     if hasattr(self, "_defer_lifecycle_callback"):
                         self._defer_lifecycle_callback(
                             50,
@@ -1186,5 +1188,16 @@ class PopupEventsMixin:
                     )
                 else:
                     QTimer.singleShot(100, self._check_close)
+            else:
+                # 自动关闭=否：失焦时直接隐藏（用户点击了弹窗外的任何地方）
+                if hasattr(self, "_defer_lifecycle_callback"):
+                    self._defer_lifecycle_callback(
+                        100,
+                        self.hide,
+                        generation=int(getattr(self, "_lifecycle_generation", 0) or 0),
+                    )
+                else:
+                    QTimer.singleShot(100, self.hide)
+        super().focusOutEvent(event)
 
     # ===== 搜索与 slash(/) 命令辅助方法 =====

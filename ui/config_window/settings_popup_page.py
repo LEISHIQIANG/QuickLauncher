@@ -140,6 +140,14 @@ class SettingsPopupPageMixin:
         self.special_trigger_recorder.clear_btn.clicked.disconnect()
         self.special_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger("special"))
 
+        # 连接预设按钮的"任务栏触发"信号
+        self.normal_trigger_recorder.taskbar_trigger_requested.connect(
+            lambda with_ctrl: self._on_taskbar_preset_selected("normal", with_ctrl)
+        )
+        self.special_trigger_recorder.taskbar_trigger_requested.connect(
+            lambda with_ctrl: self._on_taskbar_preset_selected("special", with_ctrl)
+        )
+
         apply_btn = QPushButton(tr("应用触发设置"))
         apply_btn.clicked.connect(self._on_trigger_config_changed)
         layout.addWidget(apply_btn)
@@ -220,18 +228,29 @@ class SettingsPopupPageMixin:
         self.double_click_label.setText(f"{double_click_interval}ms")
 
         # 加载触发配置
-        self.normal_trigger_recorder.set_trigger(
-            getattr(settings, "popup_trigger_mode", "mouse"),
-            getattr(settings, "popup_trigger_keys", []),
-            getattr(settings, "popup_trigger_button", "middle"),
-            getattr(settings, "popup_trigger_modifiers", []),
-        )
-        self.special_trigger_recorder.set_trigger(
-            getattr(settings, "popup_special_trigger_mode", "mouse"),
-            getattr(settings, "popup_special_trigger_keys", []),
-            getattr(settings, "popup_special_trigger_button", "middle"),
-            getattr(settings, "popup_special_trigger_modifiers", ["ctrl"]),
-        )
+        normal_source = getattr(settings, "popup_trigger_source", "mouse")
+        if normal_source == "taskbar":
+            with_ctrl = getattr(settings, "popup_taskbar_trigger_ctrl", False)
+            self.normal_trigger_recorder.set_taskbar_trigger(with_ctrl)
+        else:
+            self.normal_trigger_recorder.set_trigger(
+                getattr(settings, "popup_trigger_mode", "mouse"),
+                getattr(settings, "popup_trigger_keys", []),
+                getattr(settings, "popup_trigger_button", "middle"),
+                getattr(settings, "popup_trigger_modifiers", []),
+            )
+
+        special_source = getattr(settings, "popup_special_trigger_source", "mouse")
+        if special_source == "taskbar":
+            with_ctrl = getattr(settings, "popup_special_taskbar_trigger_ctrl", False)
+            self.special_trigger_recorder.set_taskbar_trigger(with_ctrl)
+        else:
+            self.special_trigger_recorder.set_trigger(
+                getattr(settings, "popup_special_trigger_mode", "mouse"),
+                getattr(settings, "popup_special_trigger_keys", []),
+                getattr(settings, "popup_special_trigger_button", "middle"),
+                getattr(settings, "popup_special_trigger_modifiers", ["ctrl"]),
+            )
 
         self.special_apps_list.clear()
         for app in settings.special_apps:
@@ -273,6 +292,10 @@ class SettingsPopupPageMixin:
             return
         self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
 
+    def _on_taskbar_preset_selected(self, trigger_type: str, with_ctrl: bool):
+        """处理任务栏双击预设选择，自动应用配置"""
+        self._try_apply_trigger_config()
+
     def _on_clear_trigger(self, trigger_type: str):
         """清空触发配置并自动应用"""
         # 保存当前配置作为备份
@@ -311,15 +334,27 @@ class SettingsPopupPageMixin:
         special_btn = self.special_trigger_recorder.get_button()
         special_mods = self.special_trigger_recorder.get_modifiers()
 
-        normal = normalize_trigger_config(normal_mode, normal_keys, normal_btn, normal_mods)
-        special = normalize_trigger_config(special_mode, special_keys, special_btn, special_mods)
-        normal_mode, normal_keys, normal_btn, normal_mods = normal.mode, normal.keys, normal.button, normal.modifiers
-        special_mode, special_keys, special_btn, special_mods = (
-            special.mode,
-            special.keys,
-            special.button,
-            special.modifiers,
-        )
+        normal_is_taskbar = self.normal_trigger_recorder.is_taskbar_trigger()
+        special_is_taskbar = self.special_trigger_recorder.is_taskbar_trigger()
+        normal_taskbar_ctrl = self.normal_trigger_recorder.get_taskbar_ctrl() if normal_is_taskbar else False
+        special_taskbar_ctrl = self.special_trigger_recorder.get_taskbar_ctrl() if special_is_taskbar else False
+
+        if not normal_is_taskbar:
+            normal = normalize_trigger_config(normal_mode, normal_keys, normal_btn, normal_mods)
+            normal_mode, normal_keys, normal_btn, normal_mods = (
+                normal.mode,
+                normal.keys,
+                normal.button,
+                normal.modifiers,
+            )
+        if not special_is_taskbar:
+            special = normalize_trigger_config(special_mode, special_keys, special_btn, special_mods)
+            special_mode, special_keys, special_btn, special_mods = (
+                special.mode,
+                special.keys,
+                special.button,
+                special.modifiers,
+            )
         shortcuts = self._shortcut_conflict_candidates()
 
         logger.info(
@@ -335,55 +370,63 @@ class SettingsPopupPageMixin:
         )
 
         # 使用扩展的冲突检测（支持keyboard/hybrid模式）
-        is_conflict, msg = check_trigger_conflict(
-            button=normal_btn,
-            modifiers=normal_mods,
-            mode=normal_mode,
-            keys=normal_keys,
-            shortcuts=shortcuts,
-        )
-        if is_conflict:
-            from ui.styles.themed_messagebox import ThemedMessageBox
+        if not normal_is_taskbar:
+            is_conflict, msg = check_trigger_conflict(
+                button=normal_btn,
+                modifiers=normal_mods,
+                mode=normal_mode,
+                keys=normal_keys,
+                shortcuts=shortcuts,
+            )
+            if is_conflict:
+                from ui.styles.themed_messagebox import ThemedMessageBox
 
-            ThemedMessageBox.warning(self, "配置冲突", msg)
-            return False
-        if msg:
-            from ui.styles.themed_messagebox import ThemedMessageBox
-
-            if not ThemedMessageBox.question(self, "触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                ThemedMessageBox.warning(self, "配置冲突", msg)
                 return False
+            if msg:
+                from ui.styles.themed_messagebox import ThemedMessageBox
 
-        is_conflict, msg = check_trigger_conflict(
-            button=special_btn,
-            modifiers=special_mods,
-            mode=special_mode,
-            keys=special_keys,
-            shortcuts=shortcuts,
-        )
-        if is_conflict:
-            from ui.styles.themed_messagebox import ThemedMessageBox
+                if not ThemedMessageBox.question(self, "触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                    return False
 
-            ThemedMessageBox.warning(self, "配置冲突", f"特殊触发：{msg}")
-            return False
-        if msg:
-            from ui.styles.themed_messagebox import ThemedMessageBox
+        if not special_is_taskbar:
+            is_conflict, msg = check_trigger_conflict(
+                button=special_btn,
+                modifiers=special_mods,
+                mode=special_mode,
+                keys=special_keys,
+                shortcuts=shortcuts,
+            )
+            if is_conflict:
+                from ui.styles.themed_messagebox import ThemedMessageBox
 
-            if not ThemedMessageBox.question(self, "特殊触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                ThemedMessageBox.warning(self, "配置冲突", f"特殊触发：{msg}")
                 return False
+            if msg:
+                from ui.styles.themed_messagebox import ThemedMessageBox
 
-        # 保存配置
+                if not ThemedMessageBox.question(self, "特殊触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                    return False
+
+        # 保存配置 — taskbar 模式时清除旧的鼠标/键盘触发值，避免 DLL 仍响应旧触发
         self.data_manager.update_settings(  # type: ignore[attr-defined]
-            popup_trigger_mode=normal_mode,
-            popup_trigger_keys=normal_keys,
-            popup_trigger_button=normal_btn,
-            popup_trigger_modifiers=normal_mods,
-            popup_special_trigger_mode=special_mode,
-            popup_special_trigger_keys=special_keys,
-            popup_special_trigger_button=special_btn,
-            popup_special_trigger_modifiers=special_mods,
+            popup_trigger_mode="mouse" if normal_is_taskbar else normal_mode,
+            popup_trigger_keys=[] if normal_is_taskbar else normal_keys,
+            popup_trigger_button="" if normal_is_taskbar else normal_btn,
+            popup_trigger_modifiers=[] if normal_is_taskbar else normal_mods,
+            popup_trigger_source="taskbar" if normal_is_taskbar else "mouse",
+            popup_taskbar_trigger_ctrl=normal_taskbar_ctrl if normal_is_taskbar else False,
+            popup_special_trigger_mode="mouse" if special_is_taskbar else special_mode,
+            popup_special_trigger_keys=[] if special_is_taskbar else special_keys,
+            popup_special_trigger_button="" if special_is_taskbar else special_btn,
+            popup_special_trigger_modifiers=[] if special_is_taskbar else special_mods,
+            popup_special_trigger_source="taskbar" if special_is_taskbar else "mouse",
+            popup_special_taskbar_trigger_ctrl=special_taskbar_ctrl if special_is_taskbar else False,
         )
-        self.normal_trigger_recorder.set_trigger(normal_mode, normal_keys, normal_btn, normal_mods)
-        self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)
+        if not normal_is_taskbar:
+            self.normal_trigger_recorder.set_trigger(normal_mode, normal_keys, normal_btn, normal_mods)
+        if not special_is_taskbar:
+            self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)
         logger.info("配置已保存到数据模型，准备发射信号")
         self.trigger_config_changed.emit()  # type: ignore[attr-defined]
         logger.info("trigger_config_changed 信号已发射")

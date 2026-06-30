@@ -131,3 +131,41 @@ class MouseHook:
             special_keys,
             special_modifiers,
         )
+
+    def set_taskbar_trigger(self, enabled: bool, require_ctrl: bool = False):
+        """启用/禁用任务栏双击触发（需要 DLL 支持）"""
+        if hasattr(self._dll, "set_taskbar_trigger_enabled"):
+            result = self._dll.set_taskbar_trigger_enabled(enabled, require_ctrl)
+            if result:
+                logger.info("任务栏触发: %s (ctrl=%s)", "已启用" if enabled else "已禁用", require_ctrl)
+            return bool(result)
+        logger.debug("当前 DLL 版本不支持任务栏触发")
+        return False
+
+    def set_taskbar_callback(self, callback):
+        """设置任务栏双击回调（需要 DLL 支持）"""
+        if hasattr(self._dll, "set_taskbar_double_click_callback"):
+            result = self._dll.set_taskbar_double_click_callback(callback)
+            if result:
+                logger.info("任务栏双击回调已设置")
+            return bool(result)
+        logger.debug("当前 DLL 版本不支持任务栏回调")
+        return False
+
+    def is_taskbar_trigger_available(self) -> bool:
+        """检测当前系统是否支持任务栏触发"""
+        if hasattr(self._dll, "is_taskbar_trigger_available"):
+            return bool(self._dll.is_taskbar_trigger_available())
+        return False
+
+    def is_normal_trigger_hotkey_registered(self) -> bool:
+        """查询普通触发热键是否通过 RegisterHotKey 成功注册."""
+        if hasattr(self._dll, "is_normal_trigger_hotkey_registered"):
+            return bool(self._dll.is_normal_trigger_hotkey_registered())
+        return False
+
+    def is_special_trigger_hotkey_registered(self) -> bool:
+        """查询特殊触发热键是否通过 RegisterHotKey 成功注册."""
+        if hasattr(self._dll, "is_special_trigger_hotkey_registered"):
+            return bool(self._dll.is_special_trigger_hotkey_registered())
+        return False

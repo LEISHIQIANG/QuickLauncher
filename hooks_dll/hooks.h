@@ -127,6 +127,11 @@ extern "C" {
     HOOKS_API bool IsRawInputFallbackActive();
     HOOKS_API void SetAltDoubleClickCallback(MouseCallback callback);
 
+    // 任务栏触发
+    HOOKS_API void SetTaskbarDoubleClickCallback(MouseCallback callback);
+    HOOKS_API void SetTaskbarTriggerEnabled(bool enabled, bool requireCtrl);
+    HOOKS_API bool IsTaskbarTriggerAvailable();
+
     // 键盘钩子
     HOOKS_API bool InstallKeyboardHook(KeyboardCallback altDoubleTapCallback);
     HOOKS_API void UninstallKeyboardHook();
@@ -164,6 +169,8 @@ extern "C" {
     HOOKS_API void SetTriggerConfig(int normalButton, int normalModifiers, int specialButton, int specialModifiers);
     HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* normalKeys, int normalModifiers,
                                        int specialMode, int specialButton, const char* specialKeys, int specialModifiers);
+    HOOKS_API bool IsNormalTriggerHotkeyRegistered();
+    HOOKS_API bool IsSpecialTriggerHotkeyRegistered();
 
     // 工具函数
     HOOKS_API void ReleaseAllModifierKeys();

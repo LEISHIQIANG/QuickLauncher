@@ -49,6 +49,7 @@ static HMODULE GetCurrentDllModule() {
 // 回调
 static std::atomic<MouseCallback> g_mouseCallback(nullptr);
 static std::atomic<MouseCallback> g_altDoubleClickCallback(nullptr);
+static std::atomic<MouseCallback> g_taskbarDoubleClickCallback(nullptr);
 static std::atomic<KeyboardCallback> g_altDoubleTapCallback(nullptr);
 static std::atomic<KeyboardCallback> g_hotkeyCallback(nullptr);
 static std::atomic<HotkeyCaptureCallback> g_hotkeyCaptureCallback(nullptr);
@@ -211,7 +212,8 @@ struct CallbackEvent {
         AltDoubleClick,
         GlobalHotkey,
         HotkeyCapture,
-        ProtectedChordCapture
+        ProtectedChordCapture,
+        TaskbarDoubleClick,   // 任务栏双击触发
     } type;
     int x;
     int y;
@@ -222,6 +224,76 @@ struct CallbackEvent {
     int sideModifiers;
 };
 static std::deque<CallbackEvent> g_pendingCallbacks;
+
+// ========== 任务栏双击检测 ==========
+constexpr double TASKBAR_DCLICK_INTERVAL = 0.40;
+constexpr double TASKBAR_DCLICK_COOLDOWN = 0.50;
+
+static double g_taskbarDClickLastTime = 0.0;
+static double g_taskbarDClickLastTrigger = 0.0;
+static std::atomic<bool> g_taskbarTriggerEnabled{false};
+static std::atomic<bool> g_taskbarTriggerCtrl{false};
+
+static bool IsOnTaskbarEmptyArea(int x, int y) {
+    HWND hTaskbar = FindWindowW(L"Shell_TrayWnd", NULL);
+    if (hTaskbar && IsWindowVisible(hTaskbar)) {
+        RECT rc;
+        if (GetWindowRect(hTaskbar, &rc) &&
+            x >= rc.left && x <= rc.right &&
+            y >= rc.top && y <= rc.bottom) {
+            POINT pt = { x, y };
+            HWND hWndAtPoint = WindowFromPoint(pt);
+            if (!hWndAtPoint) return false;
+            // Win11: empty area often returns the taskbar window itself
+            if (hWndAtPoint == hTaskbar) return true;
+            WCHAR className[64] = {0};
+            GetClassNameW(hWndAtPoint, className, 64);
+            // Win10 known interactive children
+            if (wcsstr(className, L"MSTaskSwWClass")  != NULL) return false;
+            if (wcsstr(className, L"MSTaskListWClass") != NULL) return false;
+            if (wcsstr(className, L"TrayNotifyWnd")   != NULL) return false;
+            if (wcsstr(className, L"TrayClockWClass") != NULL) return false;
+            if (wcsstr(className, L"ToolbarWindow32") != NULL) return false;
+            // If the window's ancestor is the taskbar, it's empty area
+            // (Win11 XAML islands / ReBarWindow32 children that aren't buttons)
+            HWND hParent = GetParent(hWndAtPoint);
+            while (hParent) {
+                if (hParent == hTaskbar) return true;
+                hParent = GetParent(hParent);
+            }
+            return false;
+        }
+    }
+    HWND hSecondary = FindWindowW(L"Shell_SecondaryTrayWnd", NULL);
+    while (hSecondary) {
+        if (IsWindowVisible(hSecondary)) {
+            RECT rc;
+            if (GetWindowRect(hSecondary, &rc) &&
+                x >= rc.left && x <= rc.right &&
+                y >= rc.top && y <= rc.bottom) {
+                POINT pt = { x, y };
+                HWND hWndAtPoint = WindowFromPoint(pt);
+                if (!hWndAtPoint) return false;
+                if (hWndAtPoint == hSecondary) return true;
+                WCHAR className[64] = {0};
+                GetClassNameW(hWndAtPoint, className, 64);
+                if (wcsstr(className, L"MSTaskSwWClass")  != NULL) return false;
+                if (wcsstr(className, L"TrayNotifyWnd")   != NULL) return false;
+                if (wcsstr(className, L"ToolbarWindow32") != NULL) return false;
+                HWND hParent = GetParent(hWndAtPoint);
+                while (hParent) {
+                    if (hParent == hSecondary) return true;
+                    hParent = GetParent(hParent);
+                }
+                return false;
+            }
+        }
+        hSecondary = FindWindowExW(NULL, hSecondary, L"Shell_SecondaryTrayWnd", NULL);
+    }
+    return false;
+}
+
+
 static std::mutex g_callbackMutex;
 static std::mutex g_callbackStartMutex;  // 保护 EnsureCallbackThread 的互斥锁
 static std::atomic<int> g_callbacksInFlight(0);
@@ -1211,6 +1283,9 @@ static void SafeInvokeAny(const CallbackEvent& ev) {
         if (callback) SAFE_INVOKE_CALLBACK(callback(ev.x, ev.y))
     } else if (ev.type == CallbackEvent::AltDoubleClick) {
         MouseCallback callback = g_altDoubleClickCallback.load();
+        if (callback) SAFE_INVOKE_CALLBACK(callback(ev.x, ev.y))
+    } else if (ev.type == CallbackEvent::TaskbarDoubleClick) {
+        MouseCallback callback = g_taskbarDoubleClickCallback.load();
         if (callback) SAFE_INVOKE_CALLBACK(callback(ev.x, ev.y))
     } else if (ev.type == CallbackEvent::GlobalHotkey) {
         KeyboardCallback callback = g_hotkeyCallback.load();
@@ -2700,6 +2775,38 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         LogMiddleMouseEvent("mouse", wParam, pMouse, "auto_reset_blocked_timeout");
         g_blockedDown = false;
         g_blockedButton = 0;
+    }
+
+    // --- 任务栏双击检测 ---
+    // 放在 Alt+左键 之前，确保任务栏双击优先级最高
+    if (g_taskbarTriggerEnabled.load() && wParam == WM_LBUTTONDOWN) {
+        bool ctrlRequired = g_taskbarTriggerCtrl.load();
+        bool ctrlHeldNow = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+        if (!ctrlRequired || ctrlHeldNow) {
+            bool onEmpty = IsOnTaskbarEmptyArea(pMouse->pt.x, pMouse->pt.y);
+            if (onEmpty) {
+                double dclickNow = GetTime();
+                double dclickInterval = dclickNow - g_taskbarDClickLastTime;
+                if (HookDebugLoggingEnabled()) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf),
+                        "[hooks] taskbar click at (%ld,%ld) interval=%.3f last=%.3f enabled=%d empty=%d\n",
+                        pMouse->pt.x, pMouse->pt.y, dclickInterval, g_taskbarDClickLastTime,
+                        (int)g_taskbarTriggerEnabled.load(), (int)onEmpty);
+                    OutputDebugStringA(buf);
+                }
+                if (dclickInterval < TASKBAR_DCLICK_INTERVAL && g_taskbarDClickLastTime > 0) {
+                    if ((dclickNow - g_taskbarDClickLastTrigger) > TASKBAR_DCLICK_COOLDOWN) {
+                        g_taskbarDClickLastTrigger = dclickNow;
+                        InvokeMouseCallbackAsync(CallbackEvent::TaskbarDoubleClick,
+                                                 pMouse->pt.x, pMouse->pt.y);
+                    }
+                    g_taskbarDClickLastTime = 0.0;
+                    return 0;
+                }
+                g_taskbarDClickLastTime = dclickNow;
+            }
+        }
     }
 
     // Alt+左键双击检测
@@ -4264,6 +4371,14 @@ HOOKS_API void SetTriggerConfigEx(int normalMode, int normalButton, const char* 
     }
 }
 
+HOOKS_API bool IsNormalTriggerHotkeyRegistered() {
+    return g_normalTriggerHotkeyRegistered.load();
+}
+
+HOOKS_API bool IsSpecialTriggerHotkeyRegistered() {
+    return g_specialTriggerHotkeyRegistered.load();
+}
+
 HOOKS_API int GetHooksVersion() {
     return HOOKS_VERSION;
 }
@@ -4360,4 +4475,24 @@ HOOKS_API bool AreHooksQuiescent() {
            IsThreadHandleStopped(g_inputCaptureThread) &&
            IsThreadHandleStopped(g_debugLogThread) &&
            IsThreadHandleStopped(g_macroPlaybackThread);
+}
+
+
+// ========== 任务栏触发导出函数 ==========
+
+HOOKS_API void SetTaskbarDoubleClickCallback(MouseCallback callback) {
+    g_taskbarDoubleClickCallback = nullptr;
+    PurgeCallbackEvents(CallbackEvent::TaskbarDoubleClick);
+    WaitForCallbacksToDrain();
+    g_taskbarDoubleClickCallback = callback;
+}
+
+HOOKS_API void SetTaskbarTriggerEnabled(bool enabled, bool requireCtrl) {
+    g_taskbarTriggerEnabled = enabled;
+    g_taskbarTriggerCtrl = requireCtrl;
+}
+
+HOOKS_API bool IsTaskbarTriggerAvailable() {
+    HWND hTaskbar = FindWindowW(L"Shell_TrayWnd", NULL);
+    return hTaskbar != NULL;
 }

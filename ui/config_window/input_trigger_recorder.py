@@ -5,7 +5,7 @@ import logging
 from core.i18n import tr
 from hooks.hook_pause import mouse_hook_paused
 from hooks.key_map import key_display_name
-from qt_compat import QEvent, QHBoxLayout, QLineEdit, QPushButton, Qt, QtCompat, QTimer, QWidget, pyqtSignal
+from qt_compat import QEvent, QHBoxLayout, QLineEdit, QPoint, QPushButton, Qt, QtCompat, QTimer, QWidget, pyqtSignal
 from ui.config_window.hotkey_capture_helpers import (
     CAPTURE_TIMEOUT_MS,
     KeyboardStatePoller,
@@ -13,15 +13,27 @@ from ui.config_window.hotkey_capture_helpers import (
     generic_modifiers_from_capture,
     key_name_from_vk,
 )
-from ui.utils.ui_scale import sp
+from ui.styles.popup_menu import PopupMenu
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
+
+
+def _reapply_item_style(menu, style):
+    """重新应用菜单项的样式（PopupMenu._refresh_styles 会在 popup 时覆盖）"""
+    try:
+        for child in menu.children():
+            if child.property("popup_menu_role") == "action":
+                child.setStyleSheet(style)
+    except RuntimeError:
+        logger.debug("Preset menu item style reapply skipped because the menu was deleted", exc_info=True)
 
 
 class InputTriggerRecorderWidget(QWidget):
     """Record keyboard, five-button mouse, or mixed physical chords."""
 
     _native_capture_result = pyqtSignal(int, int, int, int)
+    taskbar_trigger_requested = pyqtSignal(bool)  # bool = 是否带 Ctrl 修饰
 
     BUTTON_VALUES = {
         QtCompat.LeftButton: "left",
@@ -46,6 +58,8 @@ class InputTriggerRecorderWidget(QWidget):
         self.button = ""
         self.modifiers = []
         self.recording = False
+        self._taskbar_trigger = False
+        self._taskbar_with_ctrl = False
         self.mouse_hook = None
         self._mouse_hook_pause_scope = None
         self._native_capture_active = False
@@ -67,7 +81,7 @@ class InputTriggerRecorderWidget(QWidget):
         self.display = QLineEdit()
         self.display.setReadOnly(True)
         self.display.setPlaceholderText(tr("点击开始录制"))
-        self.display.setMinimumWidth(sp(180))
+        self.display.setMinimumWidth(sp(120))
         self.display.setFixedHeight(sp(24))
         self.display.setContextMenuPolicy(Qt.NoContextMenu)
         apply_recorder_display_style(self.display, False)
@@ -80,9 +94,16 @@ class InputTriggerRecorderWidget(QWidget):
         layout.addWidget(self.record_btn)
 
         self.clear_btn = QPushButton(tr("清空"))
+        self.clear_btn.setFixedWidth(sp(52))
         self.clear_btn.setFixedHeight(sp(24))
         self.clear_btn.clicked.connect(self.clear)
         layout.addWidget(self.clear_btn)
+
+        self.preset_btn = QPushButton(tr("预设"))
+        self.preset_btn.setFixedWidth(sp(96))
+        self.preset_btn.setFixedHeight(sp(24))
+        self.preset_btn.clicked.connect(self._show_preset_menu)
+        layout.addWidget(self.preset_btn)
 
         self.display.installEventFilter(self)
         self._capture_timer = QTimer(self)
@@ -100,6 +121,8 @@ class InputTriggerRecorderWidget(QWidget):
         self.button = ""
         self.modifiers = []
         self.recording = True
+        self._taskbar_trigger = False
+        self._taskbar_with_ctrl = False
         self._capture_session += 1
         if self.mouse_hook:
             self._mouse_hook_pause_scope = mouse_hook_paused(
@@ -361,7 +384,104 @@ class InputTriggerRecorderWidget(QWidget):
         self.keys = []
         self.button = ""
         self.modifiers = []
+        self._taskbar_trigger = False
+        self._taskbar_with_ctrl = False
         self._refresh_display()
+
+    def set_taskbar_trigger(self, with_ctrl: bool):
+        """设置任务栏双击触发显示"""
+        self._end_recording()
+        self._taskbar_trigger = True
+        self._taskbar_with_ctrl = with_ctrl
+        modifier_str = tr("Ctrl+") if with_ctrl else ""
+        self.display.setText(f"{modifier_str}{tr('任务栏双击')}")
+
+    def is_taskbar_trigger(self) -> bool:
+        """查询当前是否是任务栏触发模式"""
+        return self._taskbar_trigger
+
+    def get_taskbar_ctrl(self) -> bool:
+        """查询任务栏触发是否需要 Ctrl 修饰"""
+        return self._taskbar_with_ctrl
 
     def set_mouse_hook(self, mouse_hook):
         self.mouse_hook = mouse_hook
+
+    def _get_theme(self) -> str:
+        """向上查找 ConfigWindow 获取当前主题"""
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, "data_manager"):
+                try:
+                    return parent.data_manager.get_settings().theme
+                except Exception:
+                    break
+            parent = parent.parent()
+        return "dark"
+
+    def _show_preset_menu(self):
+        """显示预设下拉菜单 — 使用项目 PopupMenu，与 command_dialog 风格一致"""
+        theme = self._get_theme()
+        menu = PopupMenu(theme=theme, radius=12, parent=self)
+
+        if theme == "dark":
+            item_style = scale_qss(
+                "QPushButton{background:transparent;border:0px solid transparent;border-radius:4px;"
+                "padding:5px 10px;margin:0px;min-height:18px;"
+                "font-size:10px;text-align:left;"
+                "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI',sans-serif;font-weight:400;"
+                "color:rgba(255,255,255,0.88);}"
+                "QPushButton:hover{background:rgba(255,255,255,0.105);color:rgba(255,255,255,0.98);}"
+                "QPushButton:pressed{background:rgba(255,255,255,0.16);}"
+            )
+        else:
+            item_style = scale_qss(
+                "QPushButton{background:transparent;border:0px solid transparent;border-radius:4px;"
+                "padding:5px 10px;margin:0px;min-height:18px;"
+                "font-size:10px;text-align:left;"
+                "font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI',sans-serif;font-weight:400;"
+                "color:rgba(28,28,30,0.88);}"
+                "QPushButton:hover{background:rgba(0,0,0,0.055);color:rgba(28,28,30,0.96);}"
+                "QPushButton:pressed{background:rgba(0,0,0,0.095);}"
+            )
+
+        presets = [
+            (tr("中键"), "mouse", [], "middle", []),
+            (tr("右键"), "mouse", [], "right", []),
+            (tr("侧键后"), "mouse", [], "x1", []),
+            (tr("侧键前"), "mouse", [], "x2", []),
+            (tr("Ctrl+中键"), "mouse", [], "middle", ["ctrl"]),
+            (tr("Alt+中键"), "mouse", [], "middle", ["alt"]),
+            (tr("Shift+中键"), "mouse", [], "middle", ["shift"]),
+            (tr("Ctrl+Space"), "keyboard", ["space"], "", ["ctrl"]),
+            (tr("Alt+Space"), "keyboard", ["space"], "", ["alt"]),
+        ]
+        for name, mode, keys, button, modifiers in presets:
+            key_tuple = tuple(keys)
+            modifier_tuple = tuple(modifiers)
+
+            def _make_cb(m=mode, k=key_tuple, b=button, mod=modifier_tuple):
+                def cb():
+                    self.set_trigger(m, list(k), b, list(mod))
+
+                return cb
+
+            btn = menu.add_action(name, _make_cb())
+            btn.setStyleSheet(item_style)
+
+        menu.add_separator()
+
+        def _make_taskbar_cb():
+            def cb():
+                self.set_taskbar_trigger(False)
+                self.taskbar_trigger_requested.emit(False)
+
+            return cb
+
+        btn = menu.add_action(tr("任务栏双击"), _make_taskbar_cb())
+        btn.setStyleSheet(item_style)
+
+        pos = self.preset_btn.mapToGlobal(QPoint(0, self.preset_btn.height()))
+        menu.setFixedWidth(self.preset_btn.width())
+        menu.popup(pos)
+        QTimer.singleShot(0, lambda m=menu, s=item_style: _reapply_item_style(m, s))

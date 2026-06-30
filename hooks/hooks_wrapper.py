@@ -287,7 +287,7 @@ def _remap_pointer_context(event: dict) -> dict:
 
 class HooksDLL:
     EXPECTED_VERSION = 15
-    EXPECTED_DLL_SHA256 = "57f2ef1abc8a67975e70959bd469be1c85960927c15a929f83a1f227b7992c6e"
+    EXPECTED_DLL_SHA256 = "2599c0207a66448e98311cb8800509931ed78d0c95870e7d4304c569f05a6577"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -448,6 +448,7 @@ class HooksDLL:
             self._retired_callback_refs = deque(maxlen=64)  # type: ignore[var-annotated]
         self._mouse_callback_ref = None
         self._alt_dclick_callback_ref = None
+        self._taskbar_dclick_callback_ref = None
         self._keyboard_callback_ref = None
         self._hotkey_callback_ref = None
         self._hotkey_capture_callback_ref = None
@@ -715,6 +716,28 @@ class HooksDLL:
         except AttributeError:
             self._has_trigger_config_ex = False
 
+        # 触发热键注册状态查询（可选）
+        try:
+            self.dll.IsNormalTriggerHotkeyRegistered.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsNormalTriggerHotkeyRegistered.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self.dll.IsSpecialTriggerHotkeyRegistered.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsSpecialTriggerHotkeyRegistered.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self._has_trigger_hotkey_status = True
+        except AttributeError:
+            self._has_trigger_hotkey_status = False
+
+        # 任务栏触发支持（可选）
+        try:
+            self.dll.SetTaskbarDoubleClickCallback.argtypes = [MOUSE_CALLBACK]  # type: ignore[union-attr]
+            self.dll.SetTaskbarDoubleClickCallback.restype = None  # type: ignore[union-attr]
+            self.dll.SetTaskbarTriggerEnabled.argtypes = [ctypes.c_bool, ctypes.c_bool]  # type: ignore[union-attr]
+            self.dll.SetTaskbarTriggerEnabled.restype = None  # type: ignore[union-attr]
+            self.dll.IsTaskbarTriggerAvailable.argtypes = []  # type: ignore[union-attr]
+            self.dll.IsTaskbarTriggerAvailable.restype = ctypes.c_bool  # type: ignore[union-attr]
+            self._has_taskbar_trigger = True
+        except AttributeError:
+            self._has_taskbar_trigger = False
+
     def get_last_hook_error(self) -> int:
         if self.dll is None or not getattr(self, "_has_last_error", False):
             return 0
@@ -897,6 +920,7 @@ class HooksDLL:
             for attr_name in (
                 "_mouse_callback_ref",
                 "_alt_dclick_callback_ref",
+                "_taskbar_dclick_callback_ref",
                 "_keyboard_callback_ref",
                 "_hotkey_callback_ref",
                 "_hotkey_capture_callback_ref",
@@ -936,8 +960,10 @@ class HooksDLL:
                 self.dll.UninstallMouseHook()  # type: ignore[union-attr]
             self._retire_callback_ref(self._mouse_callback_ref)
             self._retire_callback_ref(self._alt_dclick_callback_ref)
+            self._retire_callback_ref(self._taskbar_dclick_callback_ref)
             self._mouse_callback_ref = None
             self._alt_dclick_callback_ref = None
+            self._taskbar_dclick_callback_ref = None
 
     def set_mouse_paused(self, paused: bool):
         """设置鼠标钩子暂停状态"""
@@ -1504,13 +1530,13 @@ class HooksDLL:
         mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
 
         normal_mode_int = mode_map.get(normal.mode, 0)
-        normal_btn = btn_map.get(normal.button, 4)
+        normal_btn = btn_map.get(normal.button, 0)
         normal_vks = [self._key_to_vk(k) for k in normal.keys]
         normal_keys_vk = ",".join(str(vk) for vk in normal_vks if vk)
         normal_mod = sum(mod_map.get(m, 0) for m in normal.modifiers)
 
         special_mode_int = mode_map.get(special.mode, 0)
-        special_btn = btn_map.get(special.button, 4)
+        special_btn = btn_map.get(special.button, 0)
         special_vks = [self._key_to_vk(k) for k in special.keys]
         special_keys_vk = ",".join(str(vk) for vk in special_vks if vk)
         special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
@@ -1532,6 +1558,77 @@ class HooksDLL:
         from hooks.key_map import key_to_vk
 
         return key_to_vk(key)
+
+    def is_normal_trigger_hotkey_registered(self) -> bool:
+        """查询普通触发热键是否通过 RegisterHotKey 成功注册."""
+        if not self._ready() or not self._has_trigger_hotkey_status:
+            return False
+        try:
+            return bool(self.dll.IsNormalTriggerHotkeyRegistered())  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.debug("查询普通触发热键状态失败: %s", exc)
+            return False
+
+    def is_special_trigger_hotkey_registered(self) -> bool:
+        """查询特殊触发热键是否通过 RegisterHotKey 成功注册."""
+        if not self._ready() or not self._has_trigger_hotkey_status:
+            return False
+        try:
+            return bool(self.dll.IsSpecialTriggerHotkeyRegistered())  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.debug("查询特殊触发热键状态失败: %s", exc)
+            return False
+
+    # === 任务栏触发相关方法 ===
+
+    def set_taskbar_trigger_enabled(self, enabled: bool, require_ctrl: bool = False):
+        """启用/禁用任务栏双击触发（需要 DLL 支持 SetTaskbarTriggerEnabled 导出函数）"""
+        if not hasattr(self.dll, "SetTaskbarTriggerEnabled"):
+            logger.debug("当前 hooks.dll 不支持任务栏触发")
+            return False
+        if not self._ready():
+            logger.warning("hooks.dll 尚未就绪，无法设置任务栏触发")
+            return False
+        try:
+            self.dll.SetTaskbarTriggerEnabled(bool(enabled), bool(require_ctrl))
+            logger.info("任务栏触发: %s (ctrl=%s)", "已启用" if enabled else "已禁用", require_ctrl)
+            return True
+        except Exception as exc:
+            logger.error("设置任务栏触发失败: %s", exc, exc_info=True)
+            return False
+
+    def set_taskbar_double_click_callback(self, callback):
+        """设置任务栏双击回调（需要 DLL 支持 SetTaskbarDoubleClickCallback 导出函数）"""
+        if not hasattr(self.dll, "SetTaskbarDoubleClickCallback"):
+            logger.debug("当前 hooks.dll 不支持任务栏双击回调")
+            return False
+        with self._lifecycle_lock:
+            if not self._ready():
+                logger.warning("hooks.dll 尚未就绪，无法设置回调")
+                return False
+            previous_ref = self._taskbar_dclick_callback_ref
+            if callback:
+                callback_ref = MOUSE_CALLBACK(callback)
+                self.dll.SetTaskbarDoubleClickCallback(callback_ref)  # type: ignore[union-attr]
+                self._taskbar_dclick_callback_ref = callback_ref
+            else:
+                self.dll.SetTaskbarDoubleClickCallback(None)  # type: ignore[union-attr]
+                self._taskbar_dclick_callback_ref = None
+            self._retire_callback_ref(previous_ref)
+            logger.info("任务栏双击回调已设置")
+            return True
+
+    def is_taskbar_trigger_available(self) -> bool:
+        """检测当前系统是否支持任务栏触发"""
+        if not hasattr(self.dll, "IsTaskbarTriggerAvailable"):
+            return False
+        if not self._ready():
+            return False
+        try:
+            return bool(self.dll.IsTaskbarTriggerAvailable())
+        except Exception as exc:
+            logger.debug("检测任务栏触发可用性失败: %s", exc)
+            return False
 
 
 def _dll_file_info(path: str) -> dict:
