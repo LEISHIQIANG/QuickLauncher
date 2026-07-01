@@ -315,6 +315,28 @@ class SettingsPopupPageMixin:
 
         normal_is_taskbar = self.normal_trigger_recorder.is_taskbar_trigger()
         special_is_taskbar = self.special_trigger_recorder.is_taskbar_trigger()
+
+        # 防御：若 is_taskbar_trigger 为 True 但录制器实际持有非空按键/按钮，
+        # 说明 taskbar 标志是残留的脏数据，强制修正为非 taskbar 模式。
+        if normal_is_taskbar and (normal_keys or normal_btn):
+            logger.warning(
+                "普通触发 taskbar 标志与实际数据不一致 (keys=%s button=%s)，强制修复",
+                normal_keys,
+                normal_btn,
+            )
+            self.normal_trigger_recorder._taskbar_trigger = False
+            self.normal_trigger_recorder._taskbar_with_ctrl = False
+            normal_is_taskbar = False
+        if special_is_taskbar and (special_keys or special_btn):
+            logger.warning(
+                "特殊触发 taskbar 标志与实际数据不一致 (keys=%s button=%s)，强制修复",
+                special_keys,
+                special_btn,
+            )
+            self.special_trigger_recorder._taskbar_trigger = False
+            self.special_trigger_recorder._taskbar_with_ctrl = False
+            special_is_taskbar = False
+
         normal_taskbar_ctrl = self.normal_trigger_recorder.get_taskbar_ctrl() if normal_is_taskbar else False
         special_taskbar_ctrl = self.special_trigger_recorder.get_taskbar_ctrl() if special_is_taskbar else False
 

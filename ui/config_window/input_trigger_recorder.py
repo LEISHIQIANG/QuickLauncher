@@ -365,6 +365,8 @@ class InputTriggerRecorderWidget(QWidget):
         self.keys = list(keys)
         self.button = button
         self.modifiers = list(modifiers)
+        self._taskbar_trigger = False
+        self._taskbar_with_ctrl = False
         self._refresh_display()
 
     def get_mode(self):
