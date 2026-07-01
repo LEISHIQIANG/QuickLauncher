@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from hooks.key_map import key_to_vk
 
@@ -105,7 +106,7 @@ def normalize_trigger_config(
     )
 
 
-def normalize_trigger_settings(settings) -> dict[str, object]:
+def normalize_trigger_settings(settings) -> dict[str, Any]:
     """Return normalized popup trigger fields for an AppSettings-like object."""
     normal_source = str(getattr(settings, "popup_trigger_source", "mouse") or "mouse").strip().lower()
     special_source = str(getattr(settings, "popup_special_trigger_source", "mouse") or "mouse").strip().lower()

@@ -398,7 +398,7 @@ class HooksMixin:
         # 应用触发配置
         trigger_config_applied = False
         try:
-            settings = self.data_manager.get_settings()
+            settings = self.data_manager.get_settings()  # type: ignore[attr-defined]
             from core.trigger_config import normalize_trigger_settings
 
             trigger_settings = normalize_trigger_settings(settings)
@@ -481,7 +481,7 @@ class HooksMixin:
         # 应用任务栏触发设置（独立 try，不影响主逻辑）
         taskbar_config_applied = True
         try:
-            settings = self.data_manager.get_settings()
+            settings = self.data_manager.get_settings()  # type: ignore[attr-defined]
             taskbar_source = getattr(settings, "popup_trigger_source", "mouse")
             taskbar_ctrl = getattr(settings, "popup_taskbar_trigger_ctrl", False)
             special_taskbar_source = getattr(settings, "popup_special_trigger_source", "mouse")
@@ -580,7 +580,7 @@ class HooksMixin:
         """处理任务栏双击 (主线程)"""
         try:
             if self._sleeping:
-                self._wake_from_sleep("taskbar_double_click")
+                self._wake_from_sleep("taskbar_double_click")  # type: ignore[attr-defined]
             if not self.mouse_hook or self.mouse_hook.is_paused():
                 return
             if not getattr(self, "_taskbar_trigger_enabled", False):
