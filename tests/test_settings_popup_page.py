@@ -154,8 +154,8 @@ def test_try_apply_trigger_config_returns_false_when_runtime_hook_apply_fails():
 
     assert panel._try_apply_trigger_config() is False
     assert updates
-    assert updates[0]["popup_trigger_source"] == "taskbar"
-    assert updates[0]["popup_trigger_button"] == ""
+    assert updates[0]["popup_trigger_source"] == "mouse"
+    assert updates[0]["popup_trigger_button"] == "middle"
     assert panel.trigger_config_changed.emitted == 0
 
 
