@@ -91,6 +91,20 @@ def test_context_specific_hotkeys_are_not_registered_globally():
     assert refresher.count("RegisterHotKey(") == 2
 
 
+def test_taskbar_trigger_uses_configured_interval_and_reserved_band_fallback():
+    assert "HOOKS_API void SetTaskbarTriggerConfig" in HEADER
+    assert "static bool IsPointInTaskbarReservedBand" in SOURCE
+    assert "static bool IsOnTaskbarTriggerArea" in SOURCE
+    assert "g_taskbarDClickIntervalMs" in SOURCE
+    assert "ClampTaskbarDoubleClickIntervalMs" in SOURCE
+    assert "if (intervalMs < 400) return 400;" in SOURCE
+    assert "IsKnownInteractiveTaskbarClass" not in SOURCE
+    mouse_hook = SOURCE[SOURCE.index("LRESULT CALLBACK MouseHookProc") : SOURCE.index("DWORD WINAPI MouseHookThread")]
+    assert "IsOnTaskbarTriggerArea" in mouse_hook
+    assert "taskbarDClickInterval" in mouse_hook
+    assert "g_taskbarDClickLastTime = 0.0;" in SOURCE[SOURCE.index("HOOKS_API void SetTaskbarTriggerConfig") :]
+
+
 def test_keyboard_and_mouse_special_app_checks_use_their_own_target_windows():
     assert "static bool IsSpecialAppForMouse()" in SOURCE
     assert "GetCursorTargetWindowForSpecialAppCheck()" in SOURCE

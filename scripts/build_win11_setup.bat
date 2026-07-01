@@ -661,6 +661,9 @@ if "%QL_UPX_EXE%"=="1" (
     ) else (
         echo   [OK] Found UPX: !UPX_EXE!
         "!UPX_EXE!" --best --lzma dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
+        if !ERRORLEVEL! NEQ 0 (
+            echo   [Warning] UPX compression failed for QuickLauncher.exe, continuing...
+        )
         if "%QL_UPX_RUNTIME%"=="1" (
             "!UPX_EXE!" --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
             "!UPX_EXE!" --best --lzma dist\QuickLauncher\qt5*.dll >nul 2>&1
@@ -723,21 +726,25 @@ echo   [OK] Renamed dist\QuickLauncher -^> %PORTABLE_NAME%
 echo   Compressing to %PORTABLE_NAME%.zip (7-Zip LZMA2 if available)...
 set "SEVENZIP="
 for %%p in ("%ProgramFiles%\7-Zip\7z.exe" "%ProgramFiles(x86)%\7-Zip\7z.exe" "%LocalAppData%\7-Zip\7z.exe") do (
-    if not defined SEVENZIP if exist %%~p set "SEVENZIP=%%~p"
+    if not defined SEVENZIP if exist "%%~p" set "SEVENZIP=%%~p"
 )
+set "ZIP_OK="
 if defined SEVENZIP (
     "!SEVENZIP!" a -tzip -mm=LZMA2 -mx=9 -mfb=273 -md=64m -mmt=on "dist\%PORTABLE_NAME%.zip" "dist\%PORTABLE_NAME%\*" -r >nul
-    if !ERRORLEVEL! NEQ 0 (
+    if !ERRORLEVEL! EQU 0 (
+        echo   [OK] 7-Zip LZMA2 zip created.
+        set "ZIP_OK=1"
+    ) else (
         echo   [Warning] 7-Zip LZMA2 failed, falling back to Compress-Archive
         powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
-    ) else (
-        echo   [OK] 7-Zip LZMA2 zip created.
+        if !ERRORLEVEL! EQU 0 set "ZIP_OK=1"
     )
 ) else (
     echo   [Warning] 7-Zip not found, falling back to Compress-Archive (Deflate)
     powershell -NoProfile -Command "Compress-Archive -Path 'dist\%PORTABLE_NAME%' -DestinationPath 'dist\%PORTABLE_NAME%.zip' -Force"
+    if !ERRORLEVEL! EQU 0 set "ZIP_OK=1"
 )
-if !ERRORLEVEL! NEQ 0 (
+if not defined ZIP_OK (
     echo   [!] Failed to create zip package.
     if "%QL_NO_PAUSE%"=="" pause
     exit /b 1

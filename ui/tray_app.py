@@ -86,6 +86,7 @@ class TrayApp(
     _download_event_signal = pyqtSignal(str, object)
     _install_event_signal = pyqtSignal(str, object)
     _process_check_done_signal = pyqtSignal(object)
+    _config_saved_signal = pyqtSignal(object)
 
     def __init__(self, data_manager, command_registry=None, plugin_manager=None, module_registry=None):
         init_start = time.perf_counter()
@@ -269,6 +270,14 @@ class TrayApp(
         self._update_event_signal.connect(self._on_update_event, QtCompat.QueuedConnection)
         self._download_event_signal.connect(self._on_download_event, QtCompat.QueuedConnection)
         self._install_event_signal.connect(self._on_install_event, QtCompat.QueuedConnection)
+        self._config_saved_signal.connect(self._on_config_saved_event, QtCompat.QueuedConnection)
+        self._config_saved_listener = self._emit_config_saved_event
+        try:
+            from application.events import ConfigSaved, event_bus
+
+            event_bus.subscribe(ConfigSaved, self._config_saved_listener)
+        except Exception as exc:
+            logger.debug("注册配置保存事件监听失败: %s", exc, exc_info=True)
 
         # 安装鼠标钩子（延迟到事件循环启动后，让托盘图标先显示）
         self.mouse_hook = None
@@ -398,6 +407,23 @@ class TrayApp(
             logger.info("安全模式：自动更新检查已禁用")
 
         self._mark_activity("startup")
+
+    def _emit_config_saved_event(self, event):
+        try:
+            self._config_saved_signal.emit(event)
+        except RuntimeError as exc:
+            logger.debug("配置保存事件转发失败: %s", exc, exc_info=True)
+
+    def _on_config_saved_event(self, event):
+        if not bool(getattr(event, "trigger_settings_preserved", False)):
+            return
+        if bool(getattr(self, "_runtime_shutdown_started", False)):
+            return
+        try:
+            logger.info("检测到触发设置由磁盘新值恢复，重新应用鼠标钩子配置")
+            self._apply_mouse_hook_settings()
+        except Exception as exc:
+            logger.debug("恢复触发设置后重新应用鼠标钩子失败: %s", exc, exc_info=True)
 
     # ------------------------------------------------------------------
     # DPI change handler (WM_DPICHANGED / PerMonitorV2)

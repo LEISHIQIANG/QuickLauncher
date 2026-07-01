@@ -121,6 +121,7 @@ class ConfigSaved(Event):
 
     revision: int
     file_path: str
+    trigger_settings_preserved: bool = False
 
 
 @dataclass

@@ -209,6 +209,32 @@ def test_start_defers_runtime_components_until_called(monkeypatch):
     assert activity == ["startup"]
 
 
+def test_config_saved_preserved_trigger_settings_reapplies_hook():
+    from application.events import ConfigSaved
+
+    tray = TrayApp.__new__(TrayApp)
+    tray._runtime_shutdown_started = False
+    calls = []
+    tray._apply_mouse_hook_settings = lambda: calls.append("apply") or True
+
+    tray._on_config_saved_event(
+        ConfigSaved(
+            revision=1,
+            file_path="data.json",
+            trigger_settings_preserved=True,
+        )
+    )
+    tray._on_config_saved_event(
+        ConfigSaved(
+            revision=2,
+            file_path="data.json",
+            trigger_settings_preserved=False,
+        )
+    )
+
+    assert calls == ["apply"]
+
+
 def test_startup_plugins_load_one_per_timer_tick(monkeypatch):
     tray = _tray_like(multi_open=True)
     tray._pending_startup_plugin_ids = ["first", "second"]

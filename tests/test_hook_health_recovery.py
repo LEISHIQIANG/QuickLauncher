@@ -159,3 +159,44 @@ def test_apply_keyboard_trigger_installs_missing_keyboard_hook():
     assert ("keyboard_hook", keyboard_hook) in calls
     trigger_call = next(call for call in calls if call[0] == "trigger")
     assert trigger_call[1][:4] == ("keyboard", "", ["q"], ["ctrl"])
+
+
+def test_apply_taskbar_trigger_disables_normal_mouse_trigger_and_uses_interval():
+    calls = []
+
+    class MouseHook:
+        def set_special_apps(self, apps):
+            calls.append(("special_apps", apps))
+
+        def set_trigger_config_ex(self, *args):
+            calls.append(("trigger", args))
+
+        def set_taskbar_trigger(self, *args):
+            calls.append(("taskbar", args))
+
+    settings = SimpleNamespace(
+        popup_trigger_source="taskbar",
+        popup_trigger_mode="mouse",
+        popup_trigger_keys=[],
+        popup_trigger_button="",
+        popup_trigger_modifiers=[],
+        popup_taskbar_trigger_ctrl=False,
+        popup_special_trigger_source="mouse",
+        popup_special_trigger_mode="mouse",
+        popup_special_trigger_keys=[],
+        popup_special_trigger_button="middle",
+        popup_special_trigger_modifiers=["ctrl"],
+        popup_special_taskbar_trigger_ctrl=False,
+        double_click_interval=285,
+    )
+    tray = SimpleNamespace(
+        mouse_hook=MouseHook(),
+        keyboard_hook=None,
+        data_manager=SimpleNamespace(get_settings=lambda: settings),
+        _get_special_apps_for_hook=lambda: [],
+    )
+
+    HooksMixin._apply_mouse_hook_settings(tray)
+
+    assert ("trigger", ("mouse", "", [], [], "mouse", "middle", [], ["ctrl"])) in calls
+    assert ("taskbar", (True, False, 285)) in calls

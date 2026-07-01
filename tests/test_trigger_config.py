@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from core.config_validation import sanitize_settings_dict
 from core.data_models import AppSettings, ShortcutItem, ShortcutType
 from core.trigger_config import normalize_trigger_config, normalize_trigger_settings, trigger_config_to_hotkey
 from core.trigger_conflict_checker import check_trigger_conflict
@@ -63,6 +64,29 @@ def test_normalize_trigger_settings_keeps_modifier_free_keyboard_and_alt_mouse_t
     assert normalized["popup_special_trigger_modifiers"] == ["alt"]
 
 
+def test_normalize_trigger_settings_disables_mouse_trigger_for_taskbar_source():
+    settings = SimpleNamespace(
+        popup_trigger_source="taskbar",
+        popup_trigger_mode="mouse",
+        popup_trigger_keys=[],
+        popup_trigger_button="",
+        popup_trigger_modifiers=[],
+        popup_special_trigger_source="mouse",
+        popup_special_trigger_mode="mouse",
+        popup_special_trigger_keys=[],
+        popup_special_trigger_button="middle",
+        popup_special_trigger_modifiers=["ctrl"],
+    )
+
+    normalized = normalize_trigger_settings(settings)
+
+    assert normalized["popup_trigger_mode"] == "mouse"
+    assert normalized["popup_trigger_button"] == ""
+    assert normalized["popup_trigger_keys"] == []
+    assert normalized["popup_trigger_modifiers"] == []
+    assert normalized["popup_special_trigger_button"] == "middle"
+
+
 def test_app_settings_from_dict_normalizes_trigger_fields():
     settings = AppSettings.from_dict(
         {
@@ -76,6 +100,48 @@ def test_app_settings_from_dict_normalizes_trigger_fields():
     assert settings.popup_trigger_mode == "mouse"
     assert settings.popup_trigger_button == "middle"
     assert settings.popup_trigger_keys == []
+
+
+def test_app_settings_from_dict_preserves_taskbar_trigger_without_middle_button():
+    settings = AppSettings.from_dict(
+        {
+            "popup_trigger_source": "taskbar",
+            "popup_trigger_mode": "mouse",
+            "popup_trigger_keys": [],
+            "popup_trigger_button": "",
+            "popup_trigger_modifiers": [],
+        }
+    )
+
+    assert settings.popup_trigger_source == "taskbar"
+    assert settings.popup_trigger_button == ""
+    assert settings.popup_trigger_modifiers == []
+
+
+def test_sanitize_settings_dict_preserves_taskbar_trigger_source():
+    sanitized = sanitize_settings_dict(
+        {
+            "popup_trigger_source": "taskbar",
+            "popup_trigger_mode": "mouse",
+            "popup_trigger_keys": [],
+            "popup_trigger_button": "",
+            "popup_trigger_modifiers": [],
+            "popup_taskbar_trigger_ctrl": True,
+            "popup_special_trigger_source": "taskbar",
+            "popup_special_trigger_mode": "mouse",
+            "popup_special_trigger_keys": [],
+            "popup_special_trigger_button": "",
+            "popup_special_trigger_modifiers": [],
+            "popup_special_taskbar_trigger_ctrl": True,
+        }
+    )
+
+    assert sanitized["popup_trigger_source"] == "taskbar"
+    assert sanitized["popup_trigger_button"] == ""
+    assert sanitized["popup_taskbar_trigger_ctrl"] is True
+    assert sanitized["popup_special_trigger_source"] == "taskbar"
+    assert sanitized["popup_special_trigger_button"] == ""
+    assert sanitized["popup_special_taskbar_trigger_ctrl"] is True
 
 
 def test_trigger_config_to_hotkey_only_for_keyboard_mode():

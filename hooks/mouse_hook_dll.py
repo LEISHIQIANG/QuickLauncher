@@ -105,9 +105,9 @@ class MouseHook:
 
     def set_trigger_config(
         self, normal_button: str, normal_modifiers: list[str], special_button: str, special_modifiers: list[str]
-    ):
+    ) -> bool:
         """设置触发按键配置"""
-        self._dll.set_trigger_config(normal_button, normal_modifiers, special_button, special_modifiers)
+        return bool(self._dll.set_trigger_config(normal_button, normal_modifiers, special_button, special_modifiers))
 
     def set_trigger_config_ex(
         self,
@@ -119,25 +119,32 @@ class MouseHook:
         special_button: str,
         special_keys: list[str],
         special_modifiers: list[str],
-    ):
+    ) -> bool:
         """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
-        self._dll.set_trigger_config_ex(
-            normal_mode,
-            normal_button,
-            normal_keys,
-            normal_modifiers,
-            special_mode,
-            special_button,
-            special_keys,
-            special_modifiers,
+        return bool(
+            self._dll.set_trigger_config_ex(
+                normal_mode,
+                normal_button,
+                normal_keys,
+                normal_modifiers,
+                special_mode,
+                special_button,
+                special_keys,
+                special_modifiers,
+            )
         )
 
-    def set_taskbar_trigger(self, enabled: bool, require_ctrl: bool = False):
+    def set_taskbar_trigger(self, enabled: bool, require_ctrl: bool = False, interval_ms: int = 400):
         """启用/禁用任务栏双击触发（需要 DLL 支持）"""
         if hasattr(self._dll, "set_taskbar_trigger_enabled"):
-            result = self._dll.set_taskbar_trigger_enabled(enabled, require_ctrl)
+            result = self._dll.set_taskbar_trigger_enabled(enabled, require_ctrl, interval_ms)
             if result:
-                logger.info("任务栏触发: %s (ctrl=%s)", "已启用" if enabled else "已禁用", require_ctrl)
+                logger.info(
+                    "任务栏触发: %s (ctrl=%s interval_ms=%s)",
+                    "已启用" if enabled else "已禁用",
+                    require_ctrl,
+                    interval_ms,
+                )
             return bool(result)
         logger.debug("当前 DLL 版本不支持任务栏触发")
         return False

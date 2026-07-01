@@ -287,7 +287,7 @@ def _remap_pointer_context(event: dict) -> dict:
 
 class HooksDLL:
     EXPECTED_VERSION = 15
-    EXPECTED_DLL_SHA256 = "2599c0207a66448e98311cb8800509931ed78d0c95870e7d4304c569f05a6577"
+    EXPECTED_DLL_SHA256 = "45babb9f58f180a01cfa21e3c8e59d29d887e61bc3c179b5c3fe1ddec240f72c"
     REQUIRED_EXPORTS = (
         "InstallMouseHook",
         "UninstallMouseHook",
@@ -732,11 +732,18 @@ class HooksDLL:
             self.dll.SetTaskbarDoubleClickCallback.restype = None  # type: ignore[union-attr]
             self.dll.SetTaskbarTriggerEnabled.argtypes = [ctypes.c_bool, ctypes.c_bool]  # type: ignore[union-attr]
             self.dll.SetTaskbarTriggerEnabled.restype = None  # type: ignore[union-attr]
+            try:
+                self.dll.SetTaskbarTriggerConfig.argtypes = [ctypes.c_bool, ctypes.c_bool, ctypes.c_int]  # type: ignore[union-attr]
+                self.dll.SetTaskbarTriggerConfig.restype = None  # type: ignore[union-attr]
+                self._has_taskbar_trigger_config = True
+            except AttributeError:
+                self._has_taskbar_trigger_config = False
             self.dll.IsTaskbarTriggerAvailable.argtypes = []  # type: ignore[union-attr]
             self.dll.IsTaskbarTriggerAvailable.restype = ctypes.c_bool  # type: ignore[union-attr]
             self._has_taskbar_trigger = True
         except AttributeError:
             self._has_taskbar_trigger = False
+            self._has_taskbar_trigger_config = False
 
     def get_last_hook_error(self) -> int:
         if self.dll is None or not getattr(self, "_has_last_error", False):
@@ -1476,27 +1483,38 @@ class HooksDLL:
 
     def set_trigger_config(
         self, normal_button: str, normal_modifiers: list[str], special_button: str, special_modifiers: list[str]
-    ):
+    ) -> bool:
         """设置触发按键配置"""
         if not self._ready() or not self._has_trigger_config:
             logger.warning("hooks.dll 不支持基础触发配置或尚未就绪")
-            return
+            return False
 
         from core.trigger_config import normalize_trigger_config
 
-        normal = normalize_trigger_config("mouse", [], normal_button, normal_modifiers, fill_defaults=True)
-        special = normalize_trigger_config(
-            "mouse", [], special_button, special_modifiers, fill_defaults=True, default_modifiers=["ctrl"]
+        normal_disabled = self._is_disabled_mouse_trigger("mouse", [], normal_button, normal_modifiers)
+        special_disabled = self._is_disabled_mouse_trigger("mouse", [], special_button, special_modifiers)
+        normal = (
+            normalize_trigger_config("mouse", [], normal_button, normal_modifiers, fill_defaults=True)
+            if not normal_disabled
+            else None
+        )
+        special = (
+            normalize_trigger_config(
+                "mouse", [], special_button, special_modifiers, fill_defaults=True, default_modifiers=["ctrl"]
+            )
+            if not special_disabled
+            else None
         )
         btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
         mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
 
-        normal_btn = btn_map.get(normal.button, 4)
-        normal_mod = sum(mod_map.get(m, 0) for m in normal.modifiers)
-        special_btn = btn_map.get(special.button, 4)
-        special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
+        normal_btn = 0 if normal is None else btn_map.get(normal.button, 4)
+        normal_mod = 0 if normal is None else sum(mod_map.get(m, 0) for m in normal.modifiers)
+        special_btn = 0 if special is None else btn_map.get(special.button, 4)
+        special_mod = 0 if special is None else sum(mod_map.get(m, 0) for m in special.modifiers)
 
         self.dll.SetTriggerConfig(normal_btn, normal_mod, special_btn, special_mod)  # type: ignore[union-attr]
+        return True
 
     def set_trigger_config_ex(
         self,
@@ -1508,38 +1526,50 @@ class HooksDLL:
         special_button: str,
         special_keys: list[str],
         special_modifiers: list[str],
-    ):
+    ) -> bool:
         """设置扩展触发按键配置（支持keyboard/mouse/hybrid模式）"""
         if not self._ready() or not self._has_trigger_config_ex:
             logger.warning("hooks.dll 不支持扩展触发配置或尚未就绪")
-            return
+            return False
 
         from core.trigger_config import normalize_trigger_config
 
-        normal = normalize_trigger_config(normal_mode, normal_keys, normal_button, normal_modifiers, fill_defaults=True)
-        special = normalize_trigger_config(
-            special_mode,
-            special_keys,
-            special_button,
-            special_modifiers,
-            fill_defaults=True,
-            default_modifiers=["ctrl"],
+        normal_disabled = self._is_disabled_mouse_trigger(normal_mode, normal_keys, normal_button, normal_modifiers)
+        special_disabled = self._is_disabled_mouse_trigger(
+            special_mode, special_keys, special_button, special_modifiers
+        )
+        normal = (
+            normalize_trigger_config(normal_mode, normal_keys, normal_button, normal_modifiers, fill_defaults=True)
+            if not normal_disabled
+            else None
+        )
+        special = (
+            normalize_trigger_config(
+                special_mode,
+                special_keys,
+                special_button,
+                special_modifiers,
+                fill_defaults=True,
+                default_modifiers=["ctrl"],
+            )
+            if not special_disabled
+            else None
         )
         mode_map = {"keyboard": 1, "mouse": 0, "hybrid": 2}
         btn_map = {"left": 1, "right": 2, "middle": 4, "x1": 8, "x2": 16}
         mod_map = {"alt": 1, "ctrl": 2, "shift": 4, "win": 8}
 
-        normal_mode_int = mode_map.get(normal.mode, 0)
-        normal_btn = btn_map.get(normal.button, 0)
-        normal_vks = [self._key_to_vk(k) for k in normal.keys]
+        normal_mode_int = 0 if normal is None else mode_map.get(normal.mode, 0)
+        normal_btn = 0 if normal is None else btn_map.get(normal.button, 0)
+        normal_vks = [] if normal is None else [self._key_to_vk(k) for k in normal.keys]
         normal_keys_vk = ",".join(str(vk) for vk in normal_vks if vk)
-        normal_mod = sum(mod_map.get(m, 0) for m in normal.modifiers)
+        normal_mod = 0 if normal is None else sum(mod_map.get(m, 0) for m in normal.modifiers)
 
-        special_mode_int = mode_map.get(special.mode, 0)
-        special_btn = btn_map.get(special.button, 0)
-        special_vks = [self._key_to_vk(k) for k in special.keys]
+        special_mode_int = 0 if special is None else mode_map.get(special.mode, 0)
+        special_btn = 0 if special is None else btn_map.get(special.button, 0)
+        special_vks = [] if special is None else [self._key_to_vk(k) for k in special.keys]
         special_keys_vk = ",".join(str(vk) for vk in special_vks if vk)
-        special_mod = sum(mod_map.get(m, 0) for m in special.modifiers)
+        special_mod = 0 if special is None else sum(mod_map.get(m, 0) for m in special.modifiers)
 
         self.dll.SetTriggerConfigEx(  # type: ignore[union-attr]
             normal_mode_int,
@@ -1551,6 +1581,7 @@ class HooksDLL:
             special_keys_vk.encode("utf-8"),
             special_mod,
         )
+        return True
 
     @staticmethod
     def _key_to_vk(key: str) -> int:
@@ -1558,6 +1589,15 @@ class HooksDLL:
         from hooks.key_map import key_to_vk
 
         return key_to_vk(key)
+
+    @staticmethod
+    def _is_disabled_mouse_trigger(mode: str, keys: list[str], button: str, modifiers: list[str]) -> bool:
+        return (
+            str(mode or "mouse").strip().lower() == "mouse"
+            and not list(keys or [])
+            and not str(button or "").strip()
+            and not list(modifiers or [])
+        )
 
     def is_normal_trigger_hotkey_registered(self) -> bool:
         """查询普通触发热键是否通过 RegisterHotKey 成功注册."""
@@ -1581,7 +1621,7 @@ class HooksDLL:
 
     # === 任务栏触发相关方法 ===
 
-    def set_taskbar_trigger_enabled(self, enabled: bool, require_ctrl: bool = False):
+    def set_taskbar_trigger_enabled(self, enabled: bool, require_ctrl: bool = False, interval_ms: int = 400):
         """启用/禁用任务栏双击触发（需要 DLL 支持 SetTaskbarTriggerEnabled 导出函数）"""
         if not hasattr(self.dll, "SetTaskbarTriggerEnabled"):
             logger.debug("当前 hooks.dll 不支持任务栏触发")
@@ -1590,8 +1630,16 @@ class HooksDLL:
             logger.warning("hooks.dll 尚未就绪，无法设置任务栏触发")
             return False
         try:
-            self.dll.SetTaskbarTriggerEnabled(bool(enabled), bool(require_ctrl))  # type: ignore[union-attr]
-            logger.info("任务栏触发: %s (ctrl=%s)", "已启用" if enabled else "已禁用", require_ctrl)
+            if getattr(self, "_has_taskbar_trigger_config", False):
+                self.dll.SetTaskbarTriggerConfig(bool(enabled), bool(require_ctrl), int(interval_ms))  # type: ignore[union-attr]
+            else:
+                self.dll.SetTaskbarTriggerEnabled(bool(enabled), bool(require_ctrl))  # type: ignore[union-attr]
+            logger.info(
+                "任务栏触发: %s (ctrl=%s interval_ms=%s)",
+                "已启用" if enabled else "已禁用",
+                require_ctrl,
+                interval_ms,
+            )
             return True
         except Exception as exc:
             logger.error("设置任务栏触发失败: %s", exc, exc_info=True)

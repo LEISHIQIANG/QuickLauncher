@@ -72,6 +72,8 @@ _STRING_CHOICES = {
     "language": {"zh_CN", "en_US"},
     "popup_trigger_mode": {"keyboard", "mouse", "hybrid"},
     "popup_special_trigger_mode": {"keyboard", "mouse", "hybrid"},
+    "popup_trigger_source": {"mouse", "taskbar"},
+    "popup_special_trigger_source": {"mouse", "taskbar"},
 }
 _STRING_FIELDS = {
     "last_version",

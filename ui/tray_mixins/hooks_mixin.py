@@ -385,17 +385,18 @@ class HooksMixin:
             self._process_check_timer.start()  # type: ignore[attr-defined]
             self._special_app_monitors_active = True
 
-    def _apply_mouse_hook_settings(self):
+    def _apply_mouse_hook_settings(self) -> bool:
         """将特殊应用配置同步到 DLL 鼠标钩子"""
         if not self.mouse_hook:
             logger.warning("鼠标钩子未初始化，无法应用配置")
-            return
+            return False
 
         special_apps = self._get_special_apps_for_hook()
         self.mouse_hook.set_special_apps(special_apps)
         logger.info(f"已同步特殊应用列表[dll_hook]，共 {len(special_apps)} 个")
 
         # 应用触发配置
+        trigger_config_applied = False
         try:
             settings = self.data_manager.get_settings()
             from core.trigger_config import normalize_trigger_settings
@@ -427,15 +428,17 @@ class HooksMixin:
                     if keyboard_hook and self.mouse_hook:
                         self.mouse_hook.set_keyboard_hook(keyboard_hook)
 
-                self.mouse_hook.set_trigger_config_ex(
-                    normal_mode,
-                    normal_button,
-                    normal_keys,
-                    normal_modifiers,
-                    special_mode,
-                    special_button,
-                    special_keys,
-                    special_modifiers,
+                trigger_config_applied = bool(
+                    self.mouse_hook.set_trigger_config_ex(
+                        normal_mode,
+                        normal_button,
+                        normal_keys,
+                        normal_modifiers,
+                        special_mode,
+                        special_button,
+                        special_keys,
+                        special_modifiers,
+                    )
                 )
                 logger.info(
                     "已应用扩展触发配置: 普通=%s(%s)+%s+%s, 特殊=%s(%s)+%s+%s",
@@ -453,11 +456,13 @@ class HooksMixin:
                 if normal_mode == "keyboard" or special_mode == "keyboard":
                     QTimer.singleShot(500, self._check_trigger_hotkey_status)
             elif hasattr(self.mouse_hook, "set_trigger_config"):
-                self.mouse_hook.set_trigger_config(
-                    trigger_settings["popup_trigger_button"],
-                    trigger_settings["popup_trigger_modifiers"],
-                    trigger_settings["popup_special_trigger_button"],
-                    trigger_settings["popup_special_trigger_modifiers"],
+                trigger_config_applied = bool(
+                    self.mouse_hook.set_trigger_config(
+                        trigger_settings["popup_trigger_button"],
+                        trigger_settings["popup_trigger_modifiers"],
+                        trigger_settings["popup_special_trigger_button"],
+                        trigger_settings["popup_special_trigger_modifiers"],
+                    )
                 )
                 logger.info(
                     "已应用触发配置: 普通=%s+%s, 特殊=%s+%s",
@@ -468,10 +473,13 @@ class HooksMixin:
                 )
             else:
                 logger.warning("鼠标钩子不支持触发配置方法，可能是旧版DLL")
+                trigger_config_applied = False
         except Exception as e:
             logger.error(f"应用触发配置失败: {e}", exc_info=True)
+            trigger_config_applied = False
 
         # 应用任务栏触发设置（独立 try，不影响主逻辑）
+        taskbar_config_applied = True
         try:
             settings = self.data_manager.get_settings()
             taskbar_source = getattr(settings, "popup_trigger_source", "mouse")
@@ -480,16 +488,27 @@ class HooksMixin:
             special_taskbar_ctrl = getattr(settings, "popup_special_taskbar_trigger_ctrl", False)
             taskbar_enabled = (taskbar_source == "taskbar") or (special_taskbar_source == "taskbar")
             taskbar_ctrl_final = taskbar_ctrl or special_taskbar_ctrl
+            taskbar_interval_ms = int(getattr(settings, "double_click_interval", 400) or 400)
             if hasattr(self.mouse_hook, "set_taskbar_trigger"):
-                self.mouse_hook.set_taskbar_trigger(taskbar_enabled, taskbar_ctrl_final)
-                self._taskbar_trigger_enabled = taskbar_enabled
+                taskbar_config_applied = bool(
+                    self.mouse_hook.set_taskbar_trigger(taskbar_enabled, taskbar_ctrl_final, taskbar_interval_ms)
+                )
+                if taskbar_config_applied:
+                    self._taskbar_trigger_enabled = taskbar_enabled
                 logger.info(
-                    "任务栏触发: %s (ctrl=%s)",
+                    "任务栏触发: %s (ctrl=%s interval_ms=%s)",
                     "已启用" if taskbar_enabled else "已禁用",
                     taskbar_ctrl_final,
+                    taskbar_interval_ms,
                 )
+            elif taskbar_enabled:
+                logger.warning("鼠标钩子不支持任务栏触发方法，无法启用任务栏触发")
+                taskbar_config_applied = False
         except Exception as e2:
             logger.debug("应用任务栏触发设置失败: %s", e2, exc_info=True)
+            taskbar_config_applied = False
+
+        return trigger_config_applied and taskbar_config_applied
 
     def _check_trigger_hotkey_status(self):
         """延迟检测 RegisterHotKey 注册状态，失败时记录详细日志供排查。"""
@@ -561,7 +580,7 @@ class HooksMixin:
         """处理任务栏双击 (主线程)"""
         try:
             if self._sleeping:
-                return
+                self._wake_from_sleep("taskbar_double_click")
             if not self.mouse_hook or self.mouse_hook.is_paused():
                 return
             if not getattr(self, "_taskbar_trigger_enabled", False):

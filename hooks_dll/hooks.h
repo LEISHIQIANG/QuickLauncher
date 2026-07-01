@@ -130,6 +130,7 @@ extern "C" {
     // 任务栏触发
     HOOKS_API void SetTaskbarDoubleClickCallback(MouseCallback callback);
     HOOKS_API void SetTaskbarTriggerEnabled(bool enabled, bool requireCtrl);
+    HOOKS_API void SetTaskbarTriggerConfig(bool enabled, bool requireCtrl, int doubleClickIntervalMs);
     HOOKS_API bool IsTaskbarTriggerAvailable();
 
     // 键盘钩子

@@ -401,6 +401,74 @@ def test_failed_save_does_not_advance_saved_snapshot(monkeypatch, tmp_path):
     assert previous["folders"][0]["id"] == "old"
 
 
+def test_save_preserves_newer_disk_trigger_settings_for_unrelated_stale_save(tmp_path):
+    from application.events import ConfigSaved, event_bus
+
+    old_data = AppData()
+    old_data.settings.popup_trigger_source = "mouse"
+    old_data.settings.popup_trigger_button = "middle"
+    old_dict = old_data.to_dict()
+
+    manager = _file_backed_manager(tmp_path, old_data)
+    manager.data_file.write_text(json.dumps(old_dict, ensure_ascii=False), encoding="utf-8")
+    manager._last_saved_data_dict = old_dict
+
+    disk_data = AppData.from_dict(old_dict)
+    disk_data.settings.popup_trigger_source = "taskbar"
+    disk_data.settings.popup_trigger_button = ""
+    disk_data.settings.popup_trigger_modifiers = []
+    manager.data_file.write_text(json.dumps(disk_data.to_dict(), ensure_ascii=False), encoding="utf-8")
+
+    manager.data.settings.icon_size = 31
+    events = []
+    event_bus.subscribe(ConfigSaved, events.append)
+    try:
+        assert manager.save(immediate=True)
+    finally:
+        event_bus.unsubscribe(ConfigSaved, events.append)
+
+    saved_settings = json.loads(manager.data_file.read_text(encoding="utf-8"))["settings"]
+    assert saved_settings["icon_size"] == 31
+    assert saved_settings["popup_trigger_source"] == "taskbar"
+    assert saved_settings["popup_trigger_button"] == ""
+    assert manager.data.settings.popup_trigger_source == "taskbar"
+    assert manager._last_saved_data_dict["settings"]["popup_trigger_source"] == "taskbar"
+    assert events
+    assert events[-1].trigger_settings_preserved is True
+
+
+def test_save_allows_intentional_trigger_change_to_override_disk(tmp_path):
+    from application.events import ConfigSaved, event_bus
+
+    old_data = AppData()
+    old_data.settings.popup_trigger_source = "mouse"
+    old_data.settings.popup_trigger_button = "middle"
+    old_dict = old_data.to_dict()
+
+    manager = _file_backed_manager(tmp_path, old_data)
+    manager.data_file.write_text(json.dumps(old_dict, ensure_ascii=False), encoding="utf-8")
+    manager._last_saved_data_dict = old_dict
+
+    disk_data = AppData.from_dict(old_dict)
+    disk_data.settings.popup_trigger_source = "taskbar"
+    disk_data.settings.popup_trigger_button = ""
+    manager.data_file.write_text(json.dumps(disk_data.to_dict(), ensure_ascii=False), encoding="utf-8")
+
+    manager.data.settings.popup_trigger_button = "x1"
+    events = []
+    event_bus.subscribe(ConfigSaved, events.append)
+    try:
+        assert manager.save(immediate=True)
+    finally:
+        event_bus.unsubscribe(ConfigSaved, events.append)
+
+    saved_settings = json.loads(manager.data_file.read_text(encoding="utf-8"))["settings"]
+    assert saved_settings["popup_trigger_source"] == "mouse"
+    assert saved_settings["popup_trigger_button"] == "x1"
+    assert events
+    assert events[-1].trigger_settings_preserved is False
+
+
 def test_load_quarantines_bad_config_and_recovers_from_auto_backup(tmp_path):
     manager = _file_backed_manager(tmp_path)
     backup_data = AppData(folders=[Folder(id="backup", name="Backup")])

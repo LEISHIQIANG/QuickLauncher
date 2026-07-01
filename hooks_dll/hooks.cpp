@@ -226,15 +226,50 @@ struct CallbackEvent {
 static std::deque<CallbackEvent> g_pendingCallbacks;
 
 // ========== 任务栏双击检测 ==========
-constexpr double TASKBAR_DCLICK_INTERVAL = 0.40;
 constexpr double TASKBAR_DCLICK_COOLDOWN = 0.50;
 
 static double g_taskbarDClickLastTime = 0.0;
 static double g_taskbarDClickLastTrigger = 0.0;
 static std::atomic<bool> g_taskbarTriggerEnabled{false};
 static std::atomic<bool> g_taskbarTriggerCtrl{false};
+static std::atomic<int> g_taskbarDClickIntervalMs{400};
 
-static bool IsOnTaskbarEmptyArea(int x, int y) {
+static int ClampTaskbarDoubleClickIntervalMs(int intervalMs) {
+    if (intervalMs < 400) return 400;
+    if (intervalMs > 2000) return 2000;
+    return intervalMs;
+}
+
+static bool IsDescendantOfWindow(HWND child, HWND ancestor) {
+    if (!child || !ancestor) return false;
+    if (child == ancestor) return true;
+    HWND parent = GetParent(child);
+    while (parent) {
+        if (parent == ancestor) return true;
+        parent = GetParent(parent);
+    }
+    return IsChild(ancestor, child) != FALSE;
+}
+
+static bool IsPointInTaskbarReservedBand(int x, int y) {
+    POINT pt = { x, y };
+    HMONITOR monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONULL);
+    if (!monitor) return false;
+
+    MONITORINFO info = {};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(monitor, &info)) return false;
+
+    const RECT& rc = info.rcMonitor;
+    const RECT& work = info.rcWork;
+    if (EqualRect(&rc, &work)) return false;
+
+    bool inMonitor = x >= rc.left && x < rc.right && y >= rc.top && y < rc.bottom;
+    bool inWork = x >= work.left && x < work.right && y >= work.top && y < work.bottom;
+    return inMonitor && !inWork;
+}
+
+static bool IsOnTaskbarTriggerArea(int x, int y) {
     HWND hTaskbar = FindWindowW(L"Shell_TrayWnd", NULL);
     if (hTaskbar && IsWindowVisible(hTaskbar)) {
         RECT rc;
@@ -246,22 +281,8 @@ static bool IsOnTaskbarEmptyArea(int x, int y) {
             if (!hWndAtPoint) return false;
             // Win11: empty area often returns the taskbar window itself
             if (hWndAtPoint == hTaskbar) return true;
-            WCHAR className[64] = {0};
-            GetClassNameW(hWndAtPoint, className, 64);
-            // Win10 known interactive children
-            if (wcsstr(className, L"MSTaskSwWClass")  != NULL) return false;
-            if (wcsstr(className, L"MSTaskListWClass") != NULL) return false;
-            if (wcsstr(className, L"TrayNotifyWnd")   != NULL) return false;
-            if (wcsstr(className, L"TrayClockWClass") != NULL) return false;
-            if (wcsstr(className, L"ToolbarWindow32") != NULL) return false;
-            // If the window's ancestor is the taskbar, it's empty area
-            // (Win11 XAML islands / ReBarWindow32 children that aren't buttons)
-            HWND hParent = GetParent(hWndAtPoint);
-            while (hParent) {
-                if (hParent == hTaskbar) return true;
-                hParent = GetParent(hParent);
-            }
-            return false;
+            if (IsDescendantOfWindow(hWndAtPoint, hTaskbar)) return true;
+            return IsPointInTaskbarReservedBand(x, y);
         }
     }
     HWND hSecondary = FindWindowW(L"Shell_SecondaryTrayWnd", NULL);
@@ -275,22 +296,13 @@ static bool IsOnTaskbarEmptyArea(int x, int y) {
                 HWND hWndAtPoint = WindowFromPoint(pt);
                 if (!hWndAtPoint) return false;
                 if (hWndAtPoint == hSecondary) return true;
-                WCHAR className[64] = {0};
-                GetClassNameW(hWndAtPoint, className, 64);
-                if (wcsstr(className, L"MSTaskSwWClass")  != NULL) return false;
-                if (wcsstr(className, L"TrayNotifyWnd")   != NULL) return false;
-                if (wcsstr(className, L"ToolbarWindow32") != NULL) return false;
-                HWND hParent = GetParent(hWndAtPoint);
-                while (hParent) {
-                    if (hParent == hSecondary) return true;
-                    hParent = GetParent(hParent);
-                }
-                return false;
+                if (IsDescendantOfWindow(hWndAtPoint, hSecondary)) return true;
+                return IsPointInTaskbarReservedBand(x, y);
             }
         }
         hSecondary = FindWindowExW(NULL, hSecondary, L"Shell_SecondaryTrayWnd", NULL);
     }
-    return false;
+    return IsPointInTaskbarReservedBand(x, y);
 }
 
 
@@ -2783,19 +2795,21 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         bool ctrlRequired = g_taskbarTriggerCtrl.load();
         bool ctrlHeldNow = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
         if (!ctrlRequired || ctrlHeldNow) {
-            bool onEmpty = IsOnTaskbarEmptyArea(pMouse->pt.x, pMouse->pt.y);
-            if (onEmpty) {
+            bool onTaskbar = IsOnTaskbarTriggerArea(pMouse->pt.x, pMouse->pt.y);
+            if (onTaskbar) {
                 double dclickNow = GetTime();
                 double dclickInterval = dclickNow - g_taskbarDClickLastTime;
+                double taskbarDClickInterval = static_cast<double>(
+                    ClampTaskbarDoubleClickIntervalMs(g_taskbarDClickIntervalMs.load())) / 1000.0;
                 if (HookDebugLoggingEnabled()) {
                     char buf[256];
                     snprintf(buf, sizeof(buf),
-                        "[hooks] taskbar click at (%ld,%ld) interval=%.3f last=%.3f enabled=%d empty=%d\n",
-                        pMouse->pt.x, pMouse->pt.y, dclickInterval, g_taskbarDClickLastTime,
-                        (int)g_taskbarTriggerEnabled.load(), (int)onEmpty);
+                        "[hooks] taskbar click at (%ld,%ld) interval=%.3f limit=%.3f last=%.3f enabled=%d area=%d\n",
+                        pMouse->pt.x, pMouse->pt.y, dclickInterval, taskbarDClickInterval,
+                        g_taskbarDClickLastTime, (int)g_taskbarTriggerEnabled.load(), (int)onTaskbar);
                     OutputDebugStringA(buf);
                 }
-                if (dclickInterval < TASKBAR_DCLICK_INTERVAL && g_taskbarDClickLastTime > 0) {
+                if (dclickInterval < taskbarDClickInterval && g_taskbarDClickLastTime > 0) {
                     if ((dclickNow - g_taskbarDClickLastTrigger) > TASKBAR_DCLICK_COOLDOWN) {
                         g_taskbarDClickLastTrigger = dclickNow;
                         InvokeMouseCallbackAsync(CallbackEvent::TaskbarDoubleClick,
@@ -2805,7 +2819,11 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     return 0;
                 }
                 g_taskbarDClickLastTime = dclickNow;
+            } else {
+                g_taskbarDClickLastTime = 0.0;
             }
+        } else {
+            g_taskbarDClickLastTime = 0.0;
         }
     }
 
@@ -4490,6 +4508,14 @@ HOOKS_API void SetTaskbarDoubleClickCallback(MouseCallback callback) {
 HOOKS_API void SetTaskbarTriggerEnabled(bool enabled, bool requireCtrl) {
     g_taskbarTriggerEnabled = enabled;
     g_taskbarTriggerCtrl = requireCtrl;
+    g_taskbarDClickLastTime = 0.0;
+}
+
+HOOKS_API void SetTaskbarTriggerConfig(bool enabled, bool requireCtrl, int doubleClickIntervalMs) {
+    g_taskbarTriggerEnabled = enabled;
+    g_taskbarTriggerCtrl = requireCtrl;
+    g_taskbarDClickIntervalMs = ClampTaskbarDoubleClickIntervalMs(doubleClickIntervalMs);
+    g_taskbarDClickLastTime = 0.0;
 }
 
 HOOKS_API bool IsTaskbarTriggerAvailable() {

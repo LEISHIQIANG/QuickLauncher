@@ -42,6 +42,20 @@ logger = logging.getLogger(__name__)
 
 _HISTORY_DEFAULT = "\u914d\u7f6e\u53d8\u66f4"
 _MAX_DELAYED_SAVE_RETRIES = 3
+_TRIGGER_SETTING_KEYS = (
+    "popup_trigger_mode",
+    "popup_trigger_keys",
+    "popup_trigger_button",
+    "popup_trigger_modifiers",
+    "popup_special_trigger_mode",
+    "popup_special_trigger_keys",
+    "popup_special_trigger_button",
+    "popup_special_trigger_modifiers",
+    "popup_trigger_source",
+    "popup_taskbar_trigger_ctrl",
+    "popup_special_trigger_source",
+    "popup_special_taskbar_trigger_ctrl",
+)
 
 
 def _sync_directory(path: Path) -> None:
@@ -316,9 +330,13 @@ class SaveCoordinator:
         dm = self._dm
         with dm._save_lock:
             try:
-                payload = self._serialize_data()
-                next_data_dict = json.loads(payload)
                 previous_data_dict = dm._last_saved_data_dict
+                next_data_dict = self._main_data_dict()
+                trigger_settings_preserved = self._preserve_external_trigger_settings(
+                    next_data_dict,
+                    previous_data_dict,
+                )
+                payload = dm._get_config_store().serialize_data(next_data_dict)
                 suppress_history = bool(dm._suppress_next_history)
                 history_action = dm._pending_history_action
                 history_summary = dm._pending_history_summary
@@ -394,6 +412,7 @@ class SaveCoordinator:
                         ConfigSavedEvent(
                             revision=dm._runtime_revision,
                             file_path=str(dm.data_file),
+                            trigger_settings_preserved=trigger_settings_preserved,
                         )
                     )
                 except Exception as exc:
@@ -423,6 +442,62 @@ class SaveCoordinator:
                 if not bool(folder.get("is_icon_repo", False)) and folder.get("id") != "icon_repo"
             ]
         return data_dict
+
+    def _preserve_external_trigger_settings(
+        self,
+        next_data_dict: dict[str, Any],
+        previous_data_dict: dict[str, Any] | None,
+    ) -> bool:
+        """Keep newer on-disk trigger settings when this save did not edit them.
+
+        Trigger settings are user-facing runtime controls. A stale process can
+        still flush an unrelated settings change during shutdown; without this
+        merge, that old in-memory snapshot can overwrite a newer trigger choice
+        that another process has already saved.
+        """
+        if not previous_data_dict:
+            return False
+
+        previous_trigger = self._trigger_settings_from(previous_data_dict)
+        next_trigger = self._trigger_settings_from(next_data_dict)
+        if next_trigger != previous_trigger:
+            return False
+
+        disk_trigger = self._read_disk_trigger_settings()
+        if not disk_trigger or disk_trigger == previous_trigger:
+            return False
+
+        settings = next_data_dict.get("settings")
+        if not isinstance(settings, dict):
+            return False
+
+        for key, value in disk_trigger.items():
+            settings[key] = copy.deepcopy(value)
+            current_settings = getattr(self._dm.data, "settings", None)
+            if current_settings is not None and hasattr(current_settings, key):
+                setattr(current_settings, key, copy.deepcopy(value))
+        logger.info("保留磁盘上较新的触发设置，避免旧内存快照覆盖")
+        return True
+
+    @staticmethod
+    def _trigger_settings_from(data_dict: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(data_dict, dict):
+            return {}
+        settings = data_dict.get("settings")
+        if not isinstance(settings, dict):
+            return {}
+        return {key: copy.deepcopy(settings.get(key)) for key in _TRIGGER_SETTING_KEYS if key in settings}
+
+    def _read_disk_trigger_settings(self) -> dict[str, Any]:
+        data_file = Path(getattr(self._dm, "data_file", ""))
+        if not data_file.exists():
+            return {}
+        try:
+            with open(data_file, encoding="utf-8") as handle:
+                return self._trigger_settings_from(json.load(handle))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            logger.debug("读取磁盘触发设置用于保存合并失败: %s", exc, exc_info=True)
+            return {}
 
 
 __all__ = ["SaveCoordinator"]

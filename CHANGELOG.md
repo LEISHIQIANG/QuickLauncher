@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+
+## [1.6.3.8] - 2026-07-01
+### Fixed
+- 修复双击任务栏配置文件不能持久保存问题
+- 修复轻睡眠模式下，双击任务栏触发不起作用的情况
+
+
+
 ## [1.6.3.7] - 2026-06-25
 
 ### Fixed

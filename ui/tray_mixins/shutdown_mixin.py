@@ -104,6 +104,15 @@ class TrayAppShutdownMixin:
 
         # ══ Phase 0: save data FIRST -- zero Qt dependency ═══════════
         try:
+            listener = getattr(self, "_config_saved_listener", None)
+            if listener is not None:
+                from application.events import ConfigSaved, event_bus
+
+                event_bus.unsubscribe(ConfigSaved, listener)
+        except Exception as exc:
+            logger.debug("注销配置保存事件监听失败: %s", exc, exc_info=True)
+
+        try:
             self.data_manager.shutdown()
         except Exception as exc:
             logger.error("退出时刷新配置失败: %s", exc, exc_info=True)

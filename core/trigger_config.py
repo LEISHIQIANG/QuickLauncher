@@ -107,21 +107,30 @@ def normalize_trigger_config(
 
 def normalize_trigger_settings(settings) -> dict[str, object]:
     """Return normalized popup trigger fields for an AppSettings-like object."""
-    normal = normalize_trigger_config(
-        getattr(settings, "popup_trigger_mode", "mouse"),
-        getattr(settings, "popup_trigger_keys", []),
-        getattr(settings, "popup_trigger_button", "middle"),
-        getattr(settings, "popup_trigger_modifiers", []),
-        fill_defaults=True,
-    )
-    special = normalize_trigger_config(
-        getattr(settings, "popup_special_trigger_mode", "mouse"),
-        getattr(settings, "popup_special_trigger_keys", []),
-        getattr(settings, "popup_special_trigger_button", "middle"),
-        getattr(settings, "popup_special_trigger_modifiers", ["ctrl"]),
-        fill_defaults=True,
-        default_modifiers=["ctrl"],
-    )
+    normal_source = str(getattr(settings, "popup_trigger_source", "mouse") or "mouse").strip().lower()
+    special_source = str(getattr(settings, "popup_special_trigger_source", "mouse") or "mouse").strip().lower()
+
+    if normal_source == "taskbar":
+        normal = TriggerConfig(mode="mouse", keys=[], button="", modifiers=[])
+    else:
+        normal = normalize_trigger_config(
+            getattr(settings, "popup_trigger_mode", "mouse"),
+            getattr(settings, "popup_trigger_keys", []),
+            getattr(settings, "popup_trigger_button", "middle"),
+            getattr(settings, "popup_trigger_modifiers", []),
+            fill_defaults=True,
+        )
+    if special_source == "taskbar":
+        special = TriggerConfig(mode="mouse", keys=[], button="", modifiers=[])
+    else:
+        special = normalize_trigger_config(
+            getattr(settings, "popup_special_trigger_mode", "mouse"),
+            getattr(settings, "popup_special_trigger_keys", []),
+            getattr(settings, "popup_special_trigger_button", "middle"),
+            getattr(settings, "popup_special_trigger_modifiers", ["ctrl"]),
+            fill_defaults=True,
+            default_modifiers=["ctrl"],
+        )
     return {
         "popup_trigger_mode": normal.mode,
         "popup_trigger_keys": normal.keys,

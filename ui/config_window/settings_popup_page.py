@@ -134,13 +134,7 @@ class SettingsPopupPageMixin:
             self.normal_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
             self.special_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
 
-        # 重新连接清空按钮，让其自动应用配置
-        self.normal_trigger_recorder.clear_btn.clicked.disconnect()
-        self.normal_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger("normal"))
-        self.special_trigger_recorder.clear_btn.clicked.disconnect()
-        self.special_trigger_recorder.clear_btn.clicked.connect(lambda: self._on_clear_trigger("special"))
-
-        # 连接预设按钮的"任务栏触发"信号
+        # 任务栏预设和普通预设一样，只更新待应用的录制器 UI。
         self.normal_trigger_recorder.taskbar_trigger_requested.connect(
             lambda with_ctrl: self._on_taskbar_preset_selected("normal", with_ctrl)
         )
@@ -293,31 +287,16 @@ class SettingsPopupPageMixin:
         self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
 
     def _on_taskbar_preset_selected(self, trigger_type: str, with_ctrl: bool):
-        """处理任务栏双击预设选择，自动应用配置"""
-        self._try_apply_trigger_config()
+        """处理任务栏双击预设选择；真正生效需点击“应用触发设置”。"""
+        logger.info("任务栏触发预设已选择: type=%s ctrl=%s，等待应用按钮确认", trigger_type, with_ctrl)
 
     def _on_clear_trigger(self, trigger_type: str):
-        """清空触发配置并自动应用"""
-        # 保存当前配置作为备份
+        """清空触发配置；真正生效需点击“应用触发设置”。"""
         if trigger_type == "normal":
             recorder = self.normal_trigger_recorder
         else:
             recorder = self.special_trigger_recorder
-
-        backup_mode = recorder.get_mode()
-        backup_keys = recorder.get_keys()
-        backup_button = recorder.get_button()
-        backup_mods = recorder.get_modifiers()
-
-        # 清空UI
         recorder.clear()
-
-        # 尝试应用配置
-        result = self._try_apply_trigger_config()
-
-        # 如果验证失败，回退UI到之前的状态
-        if not result:
-            recorder.set_trigger(backup_mode, backup_keys, backup_button, backup_mods)
 
     def _try_apply_trigger_config(self) -> bool:
         """尝试应用触发配置，返回是否成功"""
@@ -428,9 +407,27 @@ class SettingsPopupPageMixin:
         if not special_is_taskbar:
             self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)
         logger.info("配置已保存到数据模型，准备发射信号")
-        self.trigger_config_changed.emit()  # type: ignore[attr-defined]
-        logger.info("trigger_config_changed 信号已发射")
+        runtime_applied = self._apply_trigger_runtime_config()
+        if runtime_applied is False:
+            logger.error("触发配置已保存，但运行时钩子应用失败")
+            return False
+        if runtime_applied is None:
+            self.trigger_config_changed.emit()  # type: ignore[attr-defined]
+            logger.info("trigger_config_changed 信号已发射")
+        else:
+            logger.info("触发配置已直接应用到运行时钩子")
         return True
+
+    def _apply_trigger_runtime_config(self) -> bool | None:
+        tray_app = getattr(self, "tray_app", None)
+        apply_runtime = getattr(tray_app, "_apply_mouse_hook_settings", None)
+        if apply_runtime is None:
+            return None
+        try:
+            return bool(apply_runtime())
+        except Exception as exc:
+            logger.error("运行时应用触发配置失败: %s", exc, exc_info=True)
+            return False
 
     def _shortcut_conflict_candidates(self) -> list:
         try:

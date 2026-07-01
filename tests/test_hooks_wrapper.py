@@ -548,6 +548,45 @@ def test_hooks_wrapper_uses_shared_key_map():
     assert hooks_wrapper.HooksDLL._key_to_vk("PgDn") == 0x22
 
 
+def test_set_trigger_config_ex_preserves_disabled_mouse_trigger():
+    calls = []
+
+    class NativeDLL:
+        def SetTriggerConfigEx(self, *args):
+            calls.append(args)
+
+    dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
+    dll.dll = NativeDLL()
+    dll.loaded = True
+    dll.compatible = True
+    dll._has_trigger_config_ex = True
+
+    dll.set_trigger_config_ex("mouse", "", [], [], "mouse", "middle", [], ["ctrl"])
+
+    assert calls == [(0, 0, b"", 0, 0, 4, b"", 2)]
+
+
+def test_taskbar_trigger_prefers_interval_aware_native_export():
+    calls = []
+
+    class NativeDLL:
+        def SetTaskbarTriggerEnabled(self, *args):
+            calls.append(("legacy", args))
+
+        def SetTaskbarTriggerConfig(self, *args):
+            calls.append(("config", args))
+
+    dll = hooks_wrapper.HooksDLL.__new__(hooks_wrapper.HooksDLL)
+    dll.dll = NativeDLL()
+    dll.loaded = True
+    dll.compatible = True
+    dll._has_taskbar_trigger_config = True
+
+    assert dll.set_taskbar_trigger_enabled(True, False, 285) is True
+
+    assert calls == [("config", (True, False, 285))]
+
+
 def test_dll_global_hotkey_parser_accepts_shared_key_map():
     dll_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "hooks.dll"))
     if not os.path.exists(dll_path):
