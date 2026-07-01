@@ -457,6 +457,7 @@ class FolderPanel(QWidget):
         except Exception:
             logger.debug("设置拖动透明度效果失败", exc_info=True)
 
+        self._folder_drag_handled = False
         try:
             drag.exec_(supported_actions)
         finally:
@@ -465,6 +466,22 @@ class FolderPanel(QWidget):
                 widget.setGraphicsEffect(None)
             except Exception as exc:
                 logger.debug("清除图形效果失败: %s", exc, exc_info=True)
+
+        if not self._folder_drag_handled:
+            folder_id = item.data(QtCompat.UserRole)
+            folder = self.data_manager.data.get_folder_by_id(folder_id)
+            if folder and not folder.is_system:
+                theme = self._get_current_theme()
+                confirmed = ThemedMessageBox.question(
+                    self,
+                    tr("确认删除"),
+                    tr("确定要删除文件夹 '{name}' 吗?\n其中的快捷方式也会被删除。", name=folder.name),
+                    theme,
+                )
+                if confirmed:
+                    QTimer.singleShot(
+                        0, lambda fid=folder_id, name=folder.name: self._delete_folder_after_confirm(fid, name)
+                    )
 
     def _list_drag_enter_event(self, event):
         """处理拖入事件"""
@@ -697,6 +714,7 @@ class FolderPanel(QWidget):
         # 文件夹排序拖动
         if event.mimeData().hasFormat("application/x-folder-reorder"):
             event.ignore()  # 阻止 Qt 默认删除/重建行为
+            self._folder_drag_handled = True
 
             source_item = self.folder_list.currentItem()
             if not source_item:
