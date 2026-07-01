@@ -1038,18 +1038,17 @@ class IconWidget(QFrame):
             if grid_parent:
                 if result == QtCompat.MoveAction:
                     grid_parent._drag_completed = True
-                else:
+                elif drag_ids:
+                    grid_parent.data_manager.delete_shortcuts_batch(drag_ids)
+                    grid_parent._drag_completed = True
                     folder_id = grid_parent.current_folder_id
-                    if folder_id:
-                        grid_parent.data_manager.delete_shortcut(folder_id, self.shortcut.id)
-                        grid_parent._drag_completed = True
-                        QTimer.singleShot(
-                            0,
-                            lambda g=grid_parent, fid=folder_id: (
-                                g.load_folder(fid),
-                                g.shortcut_added.emit(),
-                            ),
-                        )
+                    QTimer.singleShot(
+                        0,
+                        lambda g=grid_parent, fid=folder_id: (
+                            g.load_folder(fid),
+                            g.shortcut_added.emit(),
+                        ),
+                    )
         except Exception as e:
             import logging
 

@@ -24,6 +24,7 @@ from qt_compat import (
     QRectF,
     Qt,
     QtCompat,
+    QTimer,
     QVBoxLayout,
     pyqtSignal,
 )
@@ -520,8 +521,20 @@ class IconWidget(QFrame):
 
             self.drag_started.emit(self.shortcut.id)
             result = drag.exec_(QtCompat.MoveAction)
-            if grid_parent and result == QtCompat.MoveAction:
-                grid_parent._drag_completed = True
+            if grid_parent:
+                if result == QtCompat.MoveAction:
+                    grid_parent._drag_completed = True
+                elif drag_ids:
+                    grid_parent.data_manager.delete_shortcuts_batch(drag_ids)
+                    grid_parent._drag_completed = True
+                    folder_id = grid_parent.current_folder_id
+                    QTimer.singleShot(
+                        0,
+                        lambda g=grid_parent, fid=folder_id: (
+                            g.load_folder(fid),
+                            g.shortcut_added.emit(),
+                        ),
+                    )
         except Exception as e:
             import logging
 
