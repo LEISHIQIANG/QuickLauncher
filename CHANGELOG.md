@@ -1,5 +1,10 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
+
 ## [1.6.3.9] - 2026-07-12
 
 ### Fixed
@@ -8,11 +13,6 @@
    250% 的问题；跨屏 DPI 切换现在只记录，不再覆盖用户设置的全局缩放。
 - 修复打开设置窗口时连接 `special_apps_changed` 信号失败的问题，恢复特殊应用
    配置变更后同步 DLL 鼠标钩子和特殊进程监控的路径。
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 
 ## [1.6.3.8] - 2026-07-01
