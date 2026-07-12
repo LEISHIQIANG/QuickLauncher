@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [1.6.3.9] - 2026-07-12
 
+### Added
+- 配置页面，支持切换横向布局
+
 ### Fixed
 - 修复双屏不同缩放比例下，在副屏中键触发弹窗会误把 `WM_DPICHANGED`
    的窗口矩形指针当作 DPI 值读取，导致全局 UI 缩放被自动写成异常值并夹到
@@ -20,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Added
 - 配置页面图标网格支持多图标批量拖拽出窗口外删除，删除无弹窗提示
 - 配置页面文件夹分类拖拽出窗口外删除新增确认弹窗提示，防止误删
-- 配置页面，支持切换横向布局
 
 ### Fixed
 - 修复双击任务栏配置文件不能持久保存问题
