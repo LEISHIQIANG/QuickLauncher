@@ -31,8 +31,8 @@ from qt_compat import (
     pyqtSignal,
 )
 from runtime_paths import app_root
-from ui.utils.ui_scale import scale_qss, sp
 from ui.tooltip_helper import install_tooltip
+from ui.utils.ui_scale import scale_qss, sp
 
 logger = logging.getLogger(__name__)
 

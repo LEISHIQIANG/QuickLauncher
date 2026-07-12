@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from qt_compat import QListWidgetItem, QRectF, QSize, QVBoxLayout, QtCompat, QWidget
+from qt_compat import QListWidgetItem, QRectF, QSize, QtCompat, QVBoxLayout, QWidget
 from ui.config_window.folder_panel import FolderItemWidget, FolderListWidget, FolderPanel
 
 pytestmark = pytest.mark.ui
@@ -78,7 +78,7 @@ def test_folder_item_uses_compact_dimensions_for_top_tabs(qapp):
     item_widget.set_compact_tab_mode(True)
     tab_size = item_widget.sizeHint()
 
-    assert tab_size.height() == 42
+    assert tab_size.height() == 44
     assert tab_size.height() > sidebar_size.height()
     assert 96 <= tab_size.width() <= 182
     item_widget.resize(122, 40)

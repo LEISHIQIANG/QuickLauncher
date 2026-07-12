@@ -5,8 +5,8 @@ import pytest
 from core.data_models import AppData, Folder, ShortcutItem
 from core.diagnostics import DiagnosticItem
 from qt_compat import QSize, QtCompat
-from ui.utils.ui_scale import sp
 from services.update.config import UpdateInfo
+from ui.utils.ui_scale import sp
 
 pytestmark = pytest.mark.ui
 

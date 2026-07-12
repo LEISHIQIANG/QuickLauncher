@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+from typing import cast
 
 from PyQt5.QtCore import QAbstractNativeEventFilter
 
@@ -123,7 +124,7 @@ def install_dpi_filter(on_dpi_changed) -> DpiChangeEventFilter:
 def _dpi_x_from_wparam(wparam: object) -> int:
     """Extract DPI X from ``WM_DPICHANGED.wParam``."""
     try:
-        return int(wparam) & 0xFFFF
+        return int(cast(int, wparam)) & 0xFFFF
     except (TypeError, ValueError, OverflowError):
         return 0
 
@@ -131,7 +132,7 @@ def _dpi_x_from_wparam(wparam: object) -> int:
 def _scale_percent_from_dpi(dpi_x: object) -> int:
     """Convert Windows effective DPI to a UI-scale percentage."""
     try:
-        dpi = int(dpi_x)
+        dpi = int(cast(int, dpi_x))
     except (TypeError, ValueError, OverflowError):
         return 0
     if dpi <= 0:

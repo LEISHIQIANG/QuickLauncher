@@ -18,8 +18,8 @@ from qt_compat import (
     QFrame,
     QGraphicsDropShadowEffect,
     QIcon,
-    QListWidgetItem,
     QListView,
+    QListWidgetItem,
     QMimeData,
     QPainter,
     QPen,
@@ -163,7 +163,7 @@ class FolderPanel(QWidget):
             root_layout.setSpacing(sp(self.TOP_TAB_LAYOUT_SPACING))
             list_layout.setContentsMargins(*(sp(value) for value in self.TOP_TAB_LIST_MARGINS))
             list_layout.setSpacing(sp(self.TOP_TAB_LIST_SPACING))
-            list_layout.setDirection(QVBoxLayout.LeftToRight)
+            list_layout.setDirection(QVBoxLayout.LeftToRight)  # type: ignore[attr-defined]
             self.folder_list.setViewMode(QListView.IconMode)
             self.folder_list.setSpacing(sp(self.TOP_TAB_ITEM_SPACING))
             self.folder_list.setFlow(QListView.LeftToRight)
@@ -178,7 +178,7 @@ class FolderPanel(QWidget):
             root_layout.setSpacing(sp(self.SIDEBAR_LAYOUT_SPACING))
             list_layout.setContentsMargins(*(sp(value) for value in self.SIDEBAR_LIST_MARGINS))
             list_layout.setSpacing(sp(self.SIDEBAR_LIST_SPACING))
-            list_layout.setDirection(QVBoxLayout.TopToBottom)
+            list_layout.setDirection(QVBoxLayout.TopToBottom)  # type: ignore[attr-defined]
             self.folder_list.setViewMode(QListView.ListMode)
             self.folder_list.setSpacing(0)
             self.folder_list.setFlow(QListView.TopToBottom)

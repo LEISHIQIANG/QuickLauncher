@@ -14,15 +14,15 @@ from core import APP_VERSION, DataManager, ShortcutItem, ShortcutType
 from core.i18n import tr
 from core.windows_uipi import allow_drag_drop_for_widget
 from qt_compat import (
+    QEasingCurve,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QPoint,
     QParallelAnimationGroup,
+    QPoint,
     QPropertyAnimation,
     QRect,
-    QEasingCurve,
     QStackedWidget,
     QStatusBar,
     Qt,
@@ -83,7 +83,7 @@ class ConfigWindow(QMainWindow):
         self._interrupted_show_target_pos = None
         self._pending_show_target_pos = None
         self._config_layout_mode = self._read_config_layout_mode()
-        self._layout_transition_animation = None
+        self._layout_transition_animation: QParallelAnimationGroup | None = None
 
         # 对话框实例引用（防止多实例冲突）
         self._active_file_dialog = None
@@ -376,8 +376,6 @@ class ConfigWindow(QMainWindow):
             # Give ownership back to the layout at the exact final geometry.
             self.launcher_layout.activate()
             self.title_bar.layout_toggle_btn.setEnabled(True)
-            self._layout_transition_animation = None
-
         self._layout_transition_animation = animation_group
         animation_group.finished.connect(finish)
         animation_group.start()
@@ -387,7 +385,7 @@ class ConfigWindow(QMainWindow):
         mode = "top_tabs" if mode == "top_tabs" else "sidebar"
         self._config_layout_mode = mode
         if mode == "top_tabs":
-            self.launcher_layout.setDirection(QVBoxLayout.TopToBottom)
+            self.launcher_layout.setDirection(QVBoxLayout.TopToBottom)  # type: ignore[attr-defined]
             self.folder_panel.setMinimumWidth(0)
             self.folder_panel.setMaximumWidth(16777215)
             self.folder_panel.set_layout_mode(mode)
@@ -397,7 +395,7 @@ class ConfigWindow(QMainWindow):
             self.icon_grid.set_column_count(self.TOP_TAB_ICON_COLS)
             self.launcher_layout.setAlignment(self.icon_grid, Qt.Alignment())
         else:
-            self.launcher_layout.setDirection(QHBoxLayout.LeftToRight)
+            self.launcher_layout.setDirection(QHBoxLayout.LeftToRight)  # type: ignore[attr-defined]
             self.folder_panel.setMinimumHeight(0)
             self.folder_panel.setMaximumHeight(16777215)
             self.folder_panel.setFixedWidth(sp(self.SIDEBAR_FOLDER_PANEL_WIDTH))
