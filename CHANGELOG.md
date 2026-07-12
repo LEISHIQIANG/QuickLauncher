@@ -2,7 +2,12 @@
 
 ## [1.6.3.9] - 2026-07-12
 
-- 版本号升级至 1.6.3.9
+### Fixed
+- 修复双屏不同缩放比例下，在副屏中键触发弹窗会误把 `WM_DPICHANGED`
+   的窗口矩形指针当作 DPI 值读取，导致全局 UI 缩放被自动写成异常值并夹到
+   250% 的问题；跨屏 DPI 切换现在只记录，不再覆盖用户设置的全局缩放。
+- 修复打开设置窗口时连接 `special_apps_changed` 信号失败的问题，恢复特殊应用
+   配置变更后同步 DLL 鼠标钩子和特殊进程监控的路径。
 
 All notable changes to this project will be documented in this file.
 
@@ -20,15 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - 修复双击任务栏配置文件不能持久保存问题
 - 修复轻睡眠模式下，双击任务栏触发不起作用的情况
 - 修复图标拖拽出窗口外删除未处理拖拽到非移动区域时未删除的问题
-- 修复双屏不同缩放比例下，在副屏中键触发弹窗会误把 `WM_DPICHANGED`
-  的窗口矩形指针当作 DPI 值读取，导致全局 UI 缩放被自动写成异常值并夹到
-  250% 的问题；跨屏 DPI 切换现在只记录，不再覆盖用户设置的全局缩放。
-- 修复打开设置窗口时连接 `special_apps_changed` 信号失败的问题，恢复特殊应用
-  配置变更后同步 DLL 鼠标钩子和特殊进程监控的路径。
 
 
 
 ## [1.6.3.7] - 2026-06-25
+
+### Added
+- 配置页面，支持切换横向布局
 
 ### Fixed
 - `core/save_coordinator._do_save` now cleans up the `data.<uuid>.tmp` file on
