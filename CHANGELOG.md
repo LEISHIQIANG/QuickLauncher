@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Added
 - 配置页面图标网格支持多图标批量拖拽出窗口外删除，删除无弹窗提示
 - 配置页面文件夹分类拖拽出窗口外删除新增确认弹窗提示，防止误删
+- 配置页面，支持切换横向布局
 
 ### Fixed
 - 修复双击任务栏配置文件不能持久保存问题
@@ -29,9 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 
 ## [1.6.3.7] - 2026-06-25
-
-### Added
-- 配置页面，支持切换横向布局
 
 ### Fixed
 - `core/save_coordinator._do_save` now cleans up the `data.<uuid>.tmp` file on
