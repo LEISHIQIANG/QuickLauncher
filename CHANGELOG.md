@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## [1.6.3.9] - 2026-07-12
 
-- 配置窗口新增分类栏布局切换按钮：可在原有左侧分类栏与浏览器式顶部标签栏之间即时切换，并记住选择。
+- 版本号升级至 1.6.3.9
 
 All notable changes to this project will be documented in this file.
 
