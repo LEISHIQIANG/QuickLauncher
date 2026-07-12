@@ -1,0 +1,1267 @@
+"""支持页面。"""
+
+# noqa: pixmap_dpi - QPixmap constructed locally; drawn via painter that
+#            honours devicePixelRatio at the paint-time context.
+import logging
+import random
+
+from core.i18n import tr
+from qt_compat import (
+    QBrush,
+    QColor,
+    QEasingCurve,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPoint,
+    QPointF,
+    QPushButton,
+    QRadialGradient,
+    QRect,
+    QRectF,
+    QSize,
+    QSizePolicy,
+    Qt,
+    QtCompat,
+    QTimer,
+    QVBoxLayout,
+    pyqtProperty,
+)
+from ui.config_window.support_dialog import _rounded_pixmap, _support_image_path
+from ui.styles.design_tokens import StatusScale, TextScale
+from ui.styles.themed_messagebox import ThemedMessageBox
+from ui.styles.window_chrome import apply_custom_window_chrome
+from ui.utils.interruptible_animation import stop_animation, stop_named_animations
+from ui.utils.ui_scale import font_px, scale_qss, sp
+
+logger = logging.getLogger(__name__)
+
+_DRINK_CARD_MIN_WIDTH = 72
+_DRINK_CARD_MAX_WIDTH = 100
+_DRINK_CARD_HEIGHT = 114
+
+
+class FloatingEmoji(QLabel):
+    """漂浮的互动表情文字标签，作为独立的透明无边框窗口运行，可以自由飘出配置窗口范围，创造极富视觉张力的无边界感。"""
+
+    _active_instances = []  # type: ignore[var-annotated]  # 用类级强引用管理器管理实例生命周期，防止 PyQt5 中无 Parent 的 Top-Level 窗口被自动 GC 销毁
+
+    def __init__(self, text, start_global_pos, parent=None, is_auto=False):
+        # 传入 None 作为父级，使其成为不受主窗口边界限制的顶级窗口
+        super().__init__(None)
+        FloatingEmoji._active_instances.append(self)
+
+        # 开启统一无边框浮层、透明背景与无激活展示属性
+        apply_custom_window_chrome(
+            self,
+            kind="tool",
+            topmost=True,
+            translucent=True,
+            no_shadow=True,
+            extra_flags=Qt.WindowDoesNotAcceptFocus,
+        )
+        self.setAttribute(QtCompat.WA_ShowWithoutActivating)
+
+        # 区分自动气泡与手动连击的物理参数
+        if is_auto:
+            self.setStyleSheet(scale_qss("font-size: 16px; background: transparent; border: none; border-radius: 0;"))
+            initial_opacity = 0.70
+            duration = 1800  # 升起得更慢、更轻
+            max_dy = -120
+            min_dy = -80
+            max_dx = 20
+        else:
+            self.setStyleSheet(
+                scale_qss("font-size: 26px; background: transparent; border: none; border-radius: 0; font-weight: 400;")
+            )
+            initial_opacity = 1.0
+            duration = 1200  # 点击时爆发力强
+            max_dy = -200
+            min_dy = -130
+            max_dx = 60
+
+        self.setText(text)
+        self.adjustSize()
+
+        # 在物理屏幕坐标系（全局坐标系）下精准定位粒子
+        start_screen_pos = start_global_pos - QPoint(self.width() // 2, self.height() // 2)
+        self.move(start_screen_pos)
+        self.show()
+
+        from qt_compat import QParallelAnimationGroup
+
+        self.group = QParallelAnimationGroup(self)
+
+        # 1. 【先快后慢】全局屏幕坐标位置上升动画
+        self.pos_anim = QtCompat.QPropertyAnimation(self, b"pos")
+        self.pos_anim.setDuration(duration)
+        self.pos_anim.setStartValue(self.pos())
+
+        dx = random.randint(-max_dx, max_dx)
+        dy = random.randint(max_dy, min_dy)
+        self.pos_anim.setEndValue(self.pos() + QPoint(dx, dy))
+        self.pos_anim.setEasingCurve(QEasingCurve.OutExpo)  # 指数级物理减速
+        self.group.addAnimation(self.pos_anim)
+
+        # 2. 【先实后虚】硬件级窗口透明度渐隐动画
+        # 针对顶级窗口直接对 windowOpacity 进行硬件级 DWM 淡出，完全免于离屏缓存造成的 Viewport 裁剪与闪烁
+        self.opacity_anim = QtCompat.QPropertyAnimation(self, b"windowOpacity")
+        self.opacity_anim.setDuration(duration)
+        self.opacity_anim.setStartValue(initial_opacity)
+        self.opacity_anim.setEndValue(0.0)
+        self.opacity_anim.setEasingCurve(QEasingCurve.InQuad)
+        self.group.addAnimation(self.opacity_anim)
+
+        self.group.finished.connect(self._on_anim_finished)
+        self.group.start()
+
+    def _on_anim_finished(self):
+        if self in FloatingEmoji._active_instances:
+            FloatingEmoji._active_instances.remove(self)
+        self.deleteLater()
+
+
+class WobblyCoffeeCup(QLabel):
+    """可点击的咖啡杯标签，背部配有极简高级且高对比度可见的“呼吸氛围光环 (Breathing Aura Halo)”。
+    支持自动低频像香气一样向全局屏幕发射无边界表情粒子，并在用户连击时瞬间爆发。"""
+
+    def __init__(self, text="☕", parent=None):
+        super().__init__(text, parent)
+        self.setCursor(QtCompat.PointingHandCursor)
+        self.setFixedSize(sp(120), sp(120))
+        self.setAlignment(QtCompat.AlignCenter)
+
+        self.theme = "dark"
+        self._offset = QPoint(0, 0)
+        self._angle = 0.0
+        self._halo_opacity = 0.0  # 默认关闭，由 showEvent 激活
+
+        self._wobble_group = None
+        self._flash_generation = 0
+
+        # 1. 初始化呼吸动画，但并不立即启动
+        self._breathing_anim = QtCompat.QPropertyAnimation(self, b"halo_opacity")
+        self._breathing_anim.setDuration(2400)
+        self._breathing_anim.setStartValue(0.15)
+        self._breathing_anim.setKeyValueAt(0.5, 0.38)
+        self._breathing_anim.setEndValue(0.15)
+        self._breathing_anim.setEasingCurve(QtCompat.InOutQuart)
+        self._breathing_anim.finished.connect(self._breathing_anim.start)
+
+        # 2. 自动中低频热气飘出定时器（常态为 0.8s 喷发一次）
+        self.current_interval = 800
+        self.auto_timer = QTimer(self)
+        self.auto_timer.timeout.connect(self.on_auto_spawn)
+
+    @pyqtProperty(QPoint)
+    def offset(self):
+        return self._offset
+
+    @offset.setter  # type: ignore[no-redef]
+    def offset(self, val):
+        self._offset = val
+        self.update()
+
+    @pyqtProperty(float)
+    def angle(self):
+        return self._angle
+
+    @angle.setter  # type: ignore[no-redef]
+    def angle(self, val):
+        self._angle = val
+        self.update()
+
+    @pyqtProperty(float)
+    def halo_opacity(self):
+        return self._halo_opacity
+
+    @halo_opacity.setter  # type: ignore[no-redef]
+    def halo_opacity(self, val):
+        self._halo_opacity = val
+        self.update()
+
+    def pause_effects(self):
+        """停止所有背景呼吸动画和蒸汽喷吐定时器，释放 CPU/GPU 算力。"""
+        if hasattr(self, "auto_timer") and self.auto_timer.isActive():
+            self.auto_timer.stop()
+        if hasattr(self, "_breathing_anim"):
+            self._breathing_anim.stop()
+        self._halo_opacity = 0.0
+        self.update()
+
+    def resume_effects(self):
+        """进入页面时激活或恢复呼吸灯与低频蒸汽飘散。"""
+        self.current_interval = 800
+        self._halo_opacity = 0.15
+
+        if hasattr(self, "auto_timer"):
+            self.auto_timer.setInterval(self.current_interval)
+            self.auto_timer.start()
+
+        if hasattr(self, "_breathing_anim"):
+            self._breathing_anim.start()
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCompat.LeftButton:
+            self.wobble()
+            self.spawn_heart()
+            self.flash_halo()
+
+            # 点击瞬间爆发性地向屏幕发射 3 个大气泡粒子
+            for _ in range(3):
+                self.spawn_heart(is_auto=False)
+
+            # 加速喷吐！间隔瞬间滑落到极速 80ms
+            self.current_interval = 80
+            self.auto_timer.setInterval(self.current_interval)
+            self.auto_timer.start()  # 重启定时器
+        super().mousePressEvent(event)
+
+    def on_auto_spawn(self):
+        """低频定时吐气。如果处于加速状态，间隔时间会按照阻尼物理平滑衰减退回到 0.8s 的慢节奏。"""
+        self.spawn_heart(is_auto=True)
+
+        # 阻尼过渡衰减算法（指数级平滑衰减退回 800ms）
+        if self.current_interval < 800:
+            self.current_interval = min(800, int(self.current_interval * 1.30 + 15))
+            self.auto_timer.setInterval(self.current_interval)
+
+    def wobble(self):
+        stop_animation(getattr(self, "_wobble_group", None), owner="WobblyCoffeeCup.wobble")
+
+        from qt_compat import QParallelAnimationGroup
+
+        self._wobble_group = QParallelAnimationGroup(self)
+
+        anim_angle = QtCompat.QPropertyAnimation(self, b"angle")
+        anim_angle.setDuration(500)
+        anim_angle.setStartValue(self._angle)
+        anim_angle.setKeyValueAt(0.15, -18.0)
+        anim_angle.setKeyValueAt(0.3, 14.0)
+        anim_angle.setKeyValueAt(0.45, -10.0)
+        anim_angle.setKeyValueAt(0.6, 6.0)
+        anim_angle.setKeyValueAt(0.75, -3.0)
+        anim_angle.setEndValue(0.0)
+        anim_angle.setEasingCurve(QtCompat.InOutQuart)
+
+        anim_pos = QtCompat.QPropertyAnimation(self, b"offset")
+        anim_pos.setDuration(500)
+        anim_pos.setStartValue(self._offset)
+        anim_pos.setKeyValueAt(0.25, QPoint(0, -15))
+        anim_pos.setKeyValueAt(0.45, QPoint(0, 4))
+        anim_pos.setKeyValueAt(0.65, QPoint(0, -4))
+        anim_pos.setKeyValueAt(0.8, QPoint(0, 1))
+        anim_pos.setEndValue(QPoint(0, 0))
+        anim_pos.setEasingCurve(QtCompat.OutCubic)
+
+        self._wobble_group.addAnimation(anim_angle)
+        self._wobble_group.addAnimation(anim_pos)
+        self._wobble_group.start()
+
+    def flash_halo(self):
+        """点击时呼吸灯微亮一下，展现轻微点击回馈。"""
+        self._flash_generation = int(getattr(self, "_flash_generation", 0) or 0) + 1
+        generation = self._flash_generation
+        stop_animation(getattr(self, "_flash_anim", None), owner="WobblyCoffeeCup.flash_halo")
+        self._breathing_anim.stop()
+
+        flash = QtCompat.QPropertyAnimation(self, b"halo_opacity")
+        flash.setDuration(350)
+        flash.setStartValue(max(self._halo_opacity, 0.65))  # 闪烁峰值
+        flash.setEndValue(0.15)
+        flash.setEasingCurve(QtCompat.OutCubic)
+
+        def restart_breath():
+            if generation != int(getattr(self, "_flash_generation", -1) or -1):
+                return
+            self._breathing_anim.start()
+            if getattr(self, "_flash_anim", None) is flash:
+                self._flash_anim = None
+
+        flash.finished.connect(restart_breath)
+        flash.start()
+        self._flash_anim = flash
+
+    def update_style(self, theme):
+        self.theme = theme
+        self.update()
+
+    def spawn_heart(self, is_auto=False):
+        """生成气泡粒子。将杯心物理坐标直接 mapToGlobal（转换为屏幕级坐标系），从而能够突破窗口边缘飞舞。"""
+        # 自动浮现模式只喷涂咖啡杯升起的热气/爱心（☕, ❤️, ✨, 💖, 🍃, 💨）
+        if is_auto:
+            emojis = ["☕", "❤️", "✨", "💖", "🍃", "💨"]
+        else:
+            emojis = ["❤️", "💖", "✨", "☕", "🎉", "👍", "Thanks!", "+1"]
+
+        emoji = random.choice(emojis)
+
+        # 精确转换为底层屏幕坐标系，以便粒子独立于窗口自由飞跃
+        cup_local_center = QPoint(self.width() // 2, self.height() // 2)
+        global_screen_pos = self.mapToGlobal(cup_local_center)
+
+        FloatingEmoji(emoji, global_screen_pos, None, is_auto=is_auto)
+
+    def paintEvent(self, event):  # noqa: paint_perf
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = self.rect()
+        cx = rect.center().x() + self._offset.x()
+        cy = rect.center().y() + self._offset.y()
+
+        # 1. 绘制背部纯弥散的柔和呼吸发光 Aura (半径扩大至 50px，直径 100px)
+        halo_radius = 50.0
+        halo_gradient = QRadialGradient(QPointF(cx, cy), halo_radius)
+
+        alpha_val = int(255 * self._halo_opacity)
+
+        # 主题与高对比度可见度设计 — 光晕基色走 StatusScale.qr_glow_* token
+        if self.theme == "dark":
+            glow_color = QColor(StatusScale.qr_glow_outer)
+        else:
+            glow_color = QColor(StatusScale.qr_glow_inner)
+        glow_color.setAlpha(alpha_val)
+
+        halo_gradient.setColorAt(0.0, glow_color)
+        halo_gradient.setColorAt(1.0, QColor(glow_color.red(), glow_color.green(), glow_color.blue(), 0))
+
+        painter.setPen(QtCompat.NoPen)
+        painter.setBrush(QBrush(halo_gradient))
+        painter.drawEllipse(QRectF(cx - halo_radius, cy - halo_radius, halo_radius * 2, halo_radius * 2))
+
+        # 2. 绘制 Emoji 主体 (居中)
+        painter.translate(cx, cy)
+        painter.rotate(self._angle)
+
+        font = painter.font()
+        font.setPixelSize(font_px(48))  # was setPointSize(36) — 36pt≈48px@96DPI
+        painter.setFont(font)
+        painter.drawText(QRect(-30, -30, 60, 60), QtCompat.AlignCenter, self.text())
+        painter.end()
+
+
+class DrinkCard(QFrame):
+    """虚拟饮品卡片，带极简克制的高级聚光灯跟随光效与微弱对角扫光，描边保持精致的单像素宽。"""
+
+    from qt_compat import pyqtSignal
+
+    clicked = pyqtSignal(str, float)
+
+    def __init__(self, icon_key, name, price, color_hex, theme="dark", parent=None):
+        super().__init__(parent)
+        self.icon_key = icon_key
+        self.name = name
+        self.price = price
+        self.color_hex = color_hex
+        self.theme = theme
+        self.accent_color = QColor(color_hex)
+
+        self.setCursor(QtCompat.PointingHandCursor)
+        self.setMouseTracking(True)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumSize(sp(_DRINK_CARD_MIN_WIDTH), sp(_DRINK_CARD_HEIGHT))
+        self.setMaximumSize(sp(_DRINK_CARD_MAX_WIDTH), sp(_DRINK_CARD_HEIGHT))
+        self.resize(self.sizeHint())
+
+        self._hover_progress = 0.0
+        self._scale = 1.0
+        self._sweep_progress = 0.0
+        self._mouse_pos = QPoint(self.width() // 2, self.height() // 2)
+
+        self._hover_anim = None
+        self._click_anim = None
+        self._sweep_anim = None
+
+    def sizeHint(self):  # noqa: N802 - Qt API
+        return QSize(sp(_DRINK_CARD_MAX_WIDTH), sp(_DRINK_CARD_HEIGHT))
+
+    def minimumSizeHint(self):  # noqa: N802 - Qt API
+        return QSize(sp(_DRINK_CARD_MIN_WIDTH), sp(_DRINK_CARD_HEIGHT))
+
+    @pyqtProperty(float)
+    def hover_progress(self):
+        return self._hover_progress
+
+    @hover_progress.setter  # type: ignore[no-redef]
+    def hover_progress(self, val):
+        self._hover_progress = val
+        self.update()
+
+    @pyqtProperty(float)
+    def scale(self):
+        return self._scale
+
+    @scale.setter  # type: ignore[no-redef]
+    def scale(self, val):
+        self._scale = val
+        self.update()
+
+    @pyqtProperty(float)
+    def sweep_progress(self):
+        return self._sweep_progress
+
+    @sweep_progress.setter  # type: ignore[no-redef]
+    def sweep_progress(self, val):
+        self._sweep_progress = val
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        self._mouse_pos = event.pos()
+        self.update()
+        super().mouseMoveEvent(event)
+
+    def enterEvent(self, event):
+        stop_animation(self._hover_anim, owner="DrinkCard.hover")
+        anim = QtCompat.QPropertyAnimation(self, b"hover_progress")
+        anim.setDuration(220)
+        anim.setStartValue(self._hover_progress)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QtCompat.OutCubic)
+        anim.start()
+        self._hover_anim = anim
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        stop_animation(self._hover_anim, owner="DrinkCard.hover")
+        anim = QtCompat.QPropertyAnimation(self, b"hover_progress")
+        anim.setDuration(180)
+        anim.setStartValue(self._hover_progress)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QtCompat.OutCubic)
+        anim.start()
+        self._hover_anim = anim
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCompat.LeftButton:
+            stop_named_animations(self, "_click_anim", "_sweep_anim")
+            anim = QtCompat.QPropertyAnimation(self, b"scale")
+            anim.setDuration(200)
+            anim.setStartValue(self._scale)
+            anim.setKeyValueAt(0.4, 0.9)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QtCompat.InOutQuart)
+            anim.start()
+            self._click_anim = anim
+
+            sweep = QtCompat.QPropertyAnimation(self, b"sweep_progress")
+            sweep.setDuration(650)
+            sweep.setStartValue(0.0)
+            sweep.setEndValue(1.0)
+            sweep.setEasingCurve(QtCompat.InOutQuart)
+            sweep.start()
+            self._sweep_anim = sweep
+
+            self.clicked.emit(self.name, self.price)
+        super().mousePressEvent(event)
+
+    def update_style(self, theme):
+        self.theme = theme
+        self.update()
+
+    def _icon_rect(self, card_rect):
+        return QRectF(sp(24), sp(8), card_rect.width() - sp(48), sp(44))
+
+    def _paint_drink_icon(self, painter, icon_rect):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        def color(hex_value, alpha=255):
+            value = QColor(hex_value)
+            value.setAlpha(alpha)
+            return value
+
+        pen_width = max(1.0, float(sp(1)))
+
+        key = self.icon_key
+        cx = icon_rect.center().x()
+        cy = icon_rect.center().y()
+        w = icon_rect.width()
+        h = icon_rect.height()
+
+        if key == "water":
+            top = icon_rect.top() + h * 0.04
+            bottom = icon_rect.bottom() - h * 0.04
+            drop = QPainterPath()
+            drop.moveTo(cx, top)
+            drop.cubicTo(cx + w * 0.36, cy - h * 0.04, cx + w * 0.28, bottom - h * 0.02, cx, bottom)
+            drop.cubicTo(cx - w * 0.28, bottom - h * 0.02, cx - w * 0.36, cy - h * 0.04, cx, top)
+            fill = QLinearGradient(cx, top, cx, bottom)
+            fill.setColorAt(0.0, color("#6BE6FF"))
+            fill.setColorAt(1.0, color("#168BFF"))
+            painter.fillPath(drop, QBrush(fill))
+            painter.setPen(QPen(color("#0C6DCE"), pen_width))
+            painter.drawPath(drop)
+            highlight = QPainterPath()
+            highlight.moveTo(cx - w * 0.1, cy - h * 0.22)
+            highlight.cubicTo(cx - w * 0.22, cy - h * 0.02, cx - w * 0.16, cy + h * 0.18, cx - w * 0.03, cy + h * 0.28)
+            painter.setPen(QPen(color("#FFFFFF", 150), pen_width))
+            painter.drawPath(highlight)
+
+        elif key == "latte":
+            cup = QRectF(cx - w * 0.3, cy - h * 0.03, w * 0.58, h * 0.36)
+            handle = QRectF(cup.right() - w * 0.03, cup.top() + h * 0.07, w * 0.18, h * 0.19)
+            painter.setBrush(QBrush(color("#FFE1A8")))
+            painter.setPen(QPen(color("#B86A28"), pen_width))
+            painter.drawEllipse(handle)
+            painter.setBrush(QBrush(color("#FFF3DC")))
+            painter.setPen(QPen(color("#8E5426"), pen_width))
+            painter.drawRoundedRect(cup, sp(5), sp(5))
+            painter.setBrush(QBrush(color("#C47A35")))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawRoundedRect(
+                QRectF(cup.left() + w * 0.06, cup.top() + h * 0.1, cup.width() - w * 0.12, h * 0.11), sp(3), sp(3)
+            )
+            painter.setBrush(QBrush(color("#FFB34D")))
+            painter.drawRoundedRect(
+                QRectF(cup.left() + w * 0.07, cup.top() + h * 0.2, cup.width() - w * 0.14, h * 0.1), sp(3), sp(3)
+            )
+            painter.setPen(QPen(color("#8E5426", 190), pen_width))
+            painter.drawLine(
+                QPointF(cx - w * 0.36, cup.bottom() + h * 0.08), QPointF(cx + w * 0.36, cup.bottom() + h * 0.08)
+            )
+            painter.setPen(QPen(color("#D47A2C", 190), pen_width))
+            for offset in (-0.16, 0.0, 0.16):
+                steam = QPainterPath()
+                x = cx + w * offset
+                steam.moveTo(x, icon_rect.top() + h * 0.26)
+                steam.cubicTo(
+                    x - w * 0.08,
+                    icon_rect.top() + h * 0.15,
+                    x + w * 0.08,
+                    icon_rect.top() + h * 0.1,
+                    x,
+                    icon_rect.top() + h * 0.02,
+                )
+                painter.drawPath(steam)
+
+        elif key == "tea":
+            bowl = QPainterPath()
+            bowl.moveTo(cx - w * 0.38, cy - h * 0.01)
+            bowl.cubicTo(cx - w * 0.32, cy + h * 0.32, cx + w * 0.32, cy + h * 0.32, cx + w * 0.38, cy - h * 0.01)
+            bowl.closeSubpath()
+            painter.fillPath(bowl, QBrush(color("#D8FFF2")))
+            painter.setPen(QPen(color("#087F6E"), pen_width))
+            painter.drawPath(bowl)
+            painter.setBrush(QBrush(color("#00BFA5")))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawEllipse(QRectF(cx - w * 0.28, cy - h * 0.05, w * 0.56, h * 0.12))
+            painter.setPen(QPen(color("#087F6E", 180), pen_width))
+            painter.drawLine(QPointF(cx - w * 0.43, cy + h * 0.34), QPointF(cx + w * 0.43, cy + h * 0.34))
+            leaf = QPainterPath()
+            leaf.moveTo(cx, icon_rect.top() + h * 0.08)
+            leaf.cubicTo(
+                cx + w * 0.24,
+                icon_rect.top() + h * 0.04,
+                cx + w * 0.28,
+                icon_rect.top() + h * 0.29,
+                cx + w * 0.04,
+                icon_rect.top() + h * 0.33,
+            )
+            leaf.cubicTo(
+                cx - w * 0.04,
+                icon_rect.top() + h * 0.23,
+                cx - w * 0.03,
+                icon_rect.top() + h * 0.13,
+                cx,
+                icon_rect.top() + h * 0.08,
+            )
+            painter.setBrush(QBrush(color("#68D391")))
+            painter.setPen(QPen(color("#2F9E44"), pen_width))
+            painter.drawPath(leaf)
+
+        else:
+            glass = QPainterPath()
+            glass.moveTo(cx - w * 0.33, cy - h * 0.24)
+            glass.lineTo(cx + w * 0.33, cy - h * 0.24)
+            glass.lineTo(cx + w * 0.22, cy + h * 0.32)
+            glass.lineTo(cx - w * 0.22, cy + h * 0.32)
+            glass.closeSubpath()
+            painter.setBrush(QBrush(color("#FFE1EC")))
+            painter.setPen(QPen(color("#B81B4A"), pen_width))
+            painter.drawPath(glass)
+            liquid = QPainterPath()
+            liquid.moveTo(cx - w * 0.25, cy - h * 0.05)
+            liquid.lineTo(cx + w * 0.25, cy - h * 0.05)
+            liquid.lineTo(cx + w * 0.17, cy + h * 0.22)
+            liquid.lineTo(cx - w * 0.17, cy + h * 0.22)
+            liquid.closeSubpath()
+            painter.setBrush(QBrush(color("#FF3B6B")))
+            painter.setPen(QtCompat.NoPen)
+            painter.drawPath(liquid)
+            painter.setPen(QPen(color("#B81B4A"), pen_width))
+            painter.drawPath(glass)
+            painter.drawLine(QPointF(cx + w * 0.05, cy - h * 0.2), QPointF(cx + w * 0.27, icon_rect.top() + h * 0.0))
+            painter.setBrush(QBrush(color("#FF5C8A")))
+            painter.drawEllipse(QRectF(cx - w * 0.09, icon_rect.top() + h * 0.0, w * 0.18, h * 0.18))
+            painter.setPen(QPen(color("#FFFFFF", 170), pen_width))
+            painter.drawLine(QPointF(cx - w * 0.13, cy - h * 0.02), QPointF(cx + w * 0.09, cy - h * 0.02))
+
+        painter.restore()
+
+    def paintEvent(self, event):  # noqa: paint_perf
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QtCompat.HighQualityAntialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = self.rect()
+        cx = rect.center().x()
+        cy = rect.center().y()
+        painter.translate(cx, cy)
+        painter.scale(self._scale, self._scale)
+        painter.translate(-cx, -cy)
+
+        # 调配深浅色底色与极淡的描边基色 — 走 StatusScale.support_card_* token
+        if self.theme == "dark":
+            base_bg = QColor(StatusScale.support_card_bg_dark)
+            base_border = QColor(StatusScale.support_card_border_dark)
+            text_color = QColor(StatusScale.support_text_primary_dark)
+            sub_color = QColor(StatusScale.support_text_secondary_dark)
+            hover_bg = QColor(StatusScale.support_card_hover_dark)
+        else:
+            base_bg = QColor(StatusScale.support_card_bg_light)
+            base_border = QColor(StatusScale.support_card_border_light)
+            text_color = QColor(StatusScale.support_text_primary_light)
+            sub_color = QColor(StatusScale.support_text_secondary_light)
+            hover_bg = QColor(StatusScale.support_card_hover_light)
+
+        p = self._hover_progress
+
+        # 颜色线性差值
+        r = int(base_bg.red() * (1 - p) + hover_bg.red() * p)
+        g = int(base_bg.green() * (1 - p) + hover_bg.green() * p)
+        b = int(base_bg.blue() * (1 - p) + hover_bg.blue() * p)
+        a = int(base_bg.alpha() * (1 - p) + hover_bg.alpha() * p)
+        bg_color = QColor(r, g, b, a)
+
+        # 描边淡一点 (最大描边 alpha 仅限 110 与 75)
+        max_border_alpha = 110 if self.theme == "dark" else 75
+        br = int(base_border.red() * (1 - p) + self.accent_color.red() * p)
+        bg_val = int(base_border.green() * (1 - p) + self.accent_color.green() * p)
+        bb = int(base_border.blue() * (1 - p) + self.accent_color.blue() * p)
+        ba = int(base_border.alpha() * (1 - p) + max_border_alpha * p)
+        border_color = QColor(br, bg_val, bb, ba)
+
+        # 1. 绘制基本卡片路径与背景
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(1, 1, rect.width() - 2, rect.height() - 2), 14, 14)
+        painter.fillPath(path, QBrush(bg_color))
+
+        # 2. [简约淡光效] 径向鼠标聚光灯跟随光环 (Hover spotlight reveal - Opacity 降低一倍以保证简约)
+        if p > 0.0 and self._mouse_pos:
+            spotlight_rad = 70.0
+            spotlight = QRadialGradient(QPointF(self._mouse_pos), spotlight_rad)
+
+            glow_intensity = int(32 * p) if self.theme == "dark" else int(20 * p)
+            g_color = QColor(self.accent_color)
+            g_color.setAlpha(glow_intensity)
+
+            spotlight.setColorAt(0.0, g_color)
+            spotlight.setColorAt(1.0, QColor(Qt.transparent))
+
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(spotlight))
+            painter.drawPath(path)
+
+        # 3. 绘制精致单像素描边 (描边淡且细，恒定为 1.0 宽度)
+        pen = QPen(border_color, 1.0)
+        pen.setJoinStyle(QtCompat.RoundJoin)
+        pen.setCapStyle(QtCompat.RoundCap)
+        painter.setPen(pen)
+        painter.drawPath(path)
+
+        # 4. [简约淡光效] 金属质感对角扫光 (扫光亮度降低，极为素雅)
+        if 0.0 < self._sweep_progress < 1.0:
+            w = rect.width()
+            h = rect.height()
+
+            x = -w + self._sweep_progress * (3.5 * w)
+
+            shimmer = QLinearGradient(x, 0, x + 40, h)
+            fade_curve = 1.0 - abs(self._sweep_progress - 0.5) * 2.0
+            shimmer_alpha = int(40 * max(0.0, fade_curve))  # 降低亮度
+
+            shimmer.setColorAt(0.0, QColor(Qt.transparent))
+            shimmer.setColorAt(0.5, QColor(255, 255, 255, shimmer_alpha))
+            shimmer.setColorAt(1.0, QColor(Qt.transparent))
+
+            painter.save()
+            painter.setClipPath(path)
+            painter.setPen(QtCompat.NoPen)
+            painter.setBrush(QBrush(shimmer))
+            painter.drawPath(path)
+            painter.restore()
+
+        # 5. 绘制自绘饮品图标，避免依赖系统 Emoji 字体造成视觉偏移。
+        self._paint_drink_icon(painter, self._icon_rect(rect))
+
+        # 6. 绘制标题
+        name_font = painter.font()
+        name_font.setFamily("Microsoft YaHei UI")
+        name_font.setPixelSize(sp(12))
+        name_font.setBold(False)
+        painter.setFont(name_font)
+        painter.setPen(QPen(text_color))
+        painter.drawText(QRect(sp(5), sp(60), rect.width() - sp(8), sp(24)), QtCompat.AlignCenter, self.name)
+
+        # 7. 绘制价格
+        price_font = painter.font()
+        price_font.setFamily("Microsoft YaHei UI")
+        price_font.setPixelSize(sp(12))
+        price_font.setBold(False)
+        painter.setFont(price_font)
+        painter.setPen(QPen(sub_color))
+        painter.drawText(QRect(sp(5), sp(80), rect.width() - sp(8), sp(24)), QtCompat.AlignCenter, f"¥{self.price:.2f}")
+
+        painter.end()
+
+
+class SupportDrinkBar(QFrame):
+    """横向饮品卡容器，按滚动区域的实际可视宽度压缩四个卡片。"""
+
+    def __init__(self, scroll_area=None, parent=None):
+        super().__init__(parent)
+        self._scroll_area = scroll_area
+        self._cards = []
+        self.setStyleSheet("background: transparent; border: none; border-radius: 0;")
+
+        self.drink_layout = QHBoxLayout(self)
+        self.drink_layout.setContentsMargins(0, 0, 0, 0)
+        self.drink_layout.setSpacing(sp(12))
+        self.drink_layout.setAlignment(QtCompat.AlignCenter)
+
+    def add_card(self, card: DrinkCard) -> None:
+        self._cards.append(card)
+        self.drink_layout.addWidget(card)
+        self.sync_card_widths()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.sync_card_widths()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self.sync_card_widths)
+
+    def _scroll_viewport_width(self) -> int:
+        """返回扣掉右侧滚动条和外层边距后的可用宽度。"""
+        scroll_area = self._scroll_area
+        if scroll_area is None or not hasattr(scroll_area, "viewport"):
+            return 0
+
+        viewport = scroll_area.viewport()
+        width = viewport.width() if viewport is not None else 0
+        if width <= 0:
+            return 0
+
+        content_layout = getattr(scroll_area, "layout", None)
+        if content_layout is not None:
+            margins = content_layout.contentsMargins()
+            width -= margins.left() + margins.right()
+
+        content_widget = getattr(scroll_area, "content_widget", None)
+        widget = self.parentWidget()
+        while widget is not None and widget is not content_widget and widget is not scroll_area:
+            layout_accessor = getattr(widget, "layout", None)
+            widget_layout = layout_accessor() if callable(layout_accessor) else layout_accessor
+            if widget_layout is not None:
+                margins = widget_layout.contentsMargins()
+                width -= margins.left() + margins.right()
+            widget = widget.parentWidget()
+
+        return max(0, width)
+
+    def _available_width(self) -> int:
+        own_width = self.contentsRect().width()
+        viewport_width = self._scroll_viewport_width()
+        if own_width > 0 and viewport_width > 0:
+            return min(own_width, viewport_width)
+        return max(own_width, viewport_width)
+
+    def sync_card_widths(self) -> None:
+        count = len(self._cards)
+        if count == 0:
+            return
+
+        margins = self.drink_layout.contentsMargins()
+        available = self._available_width() - margins.left() - margins.right()
+        total_spacing = max(0, self.drink_layout.spacing()) * max(0, count - 1)
+        raw_width = int((available - total_spacing) / count) if available > total_spacing else 0
+
+        card_width = max(sp(_DRINK_CARD_MIN_WIDTH), min(sp(_DRINK_CARD_MAX_WIDTH), raw_width))
+        for card in self._cards:
+            card.setFixedSize(card_width, sp(_DRINK_CARD_HEIGHT))
+
+
+class SettingsSupportPageMixin:
+    def _setup_support_page(self, page):
+        # 1. 页面头部卡片组件
+        layout, group = page.add_group(tr("支持一下"))
+
+        container = QFrame(page)
+        container.setObjectName("SupportPageContainer")
+        container.setStyleSheet("background: transparent; border: none; border-radius: 0;")
+
+        v_layout = QVBoxLayout(container)
+        v_layout.setContentsMargins(0, sp(5), 0, sp(5))
+        v_layout.setSpacing(sp(16))
+
+        # 头部说明区域
+        header_widget = QFrame(container)
+        header_widget.setStyleSheet("background: transparent; border: none; border-radius: 0;")
+        header_layout = QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(sp(8))
+        header_layout.setAlignment(QtCompat.AlignCenter)
+
+        # 咖啡杯互动挂件
+        self._cup_widget = WobblyCoffeeCup("☕", container)
+        header_layout.addWidget(self._cup_widget)
+
+        self._support_title_lbl = QLabel(tr("请开发者喝杯咖啡吧"))
+        self._support_title_lbl.setAlignment(QtCompat.AlignCenter)
+        header_layout.addWidget(self._support_title_lbl)
+
+        self._support_desc_lbl = QLabel(
+            tr(
+                "QuickLauncher 是一款开源且免费的桌面效率工具，由开发者在业余时间独立开发维护。\n"
+                "您的赞助将被全额用于产品的日常维护与服务器开销。非常感谢您的暖心支持！❤️"
+            )
+        )
+        self._support_desc_lbl.setAlignment(QtCompat.AlignCenter)
+        self._support_desc_lbl.setWordWrap(True)
+        header_layout.addWidget(self._support_desc_lbl)
+
+        v_layout.addWidget(header_widget)
+
+        # 2. 虚拟饮品吧 (四个饮品横向并排)
+        drink_bar_widget = SupportDrinkBar(page, container)
+
+        drinks_data = [
+            ("water", tr("纯净矿泉水"), 2.00, "#2DA8FF"),
+            ("latte", tr("香浓拿铁"), 5.19, "#FF9500"),
+            ("tea", tr("沁心绿茶"), 9.90, "#00C7BE"),
+            ("berry", tr("芝芝莓莓"), 15.00, "#FF2D55"),
+        ]
+
+        for icon_key, name, price, color in drinks_data:
+            card = DrinkCard(icon_key, name, price, color, "dark", drink_bar_widget)
+            card.clicked.connect(self._on_drink_clicked)
+            drink_bar_widget.add_card(card)
+
+        v_layout.addWidget(drink_bar_widget)
+
+        # 互动反馈消息标签
+        self._reaction_label = QLabel(tr("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)"))
+        self._reaction_label.setAlignment(QtCompat.AlignCenter)
+        self._reaction_label.setWordWrap(True)
+        v_layout.addWidget(self._reaction_label)
+
+        # 3. 折叠式二维码容器 (默认隐藏，小巧美观)
+        self._qr_container = QFrame(container)
+        self._qr_container.setObjectName("QRContainer")
+        self._qr_container.setFixedWidth(sp(280))
+
+        qr_outer_layout = QHBoxLayout()
+        qr_outer_layout.addStretch()  # 左侧拉伸，使二维码卡片在整个配置页面绝对水平居中
+        qr_outer_layout.addWidget(self._qr_container)
+        qr_outer_layout.addStretch()  # 右侧拉伸，使二维码卡片在整个配置页面绝对水平居中
+
+        qr_layout = QVBoxLayout(self._qr_container)
+        qr_layout.setContentsMargins(sp(12), sp(12), sp(12), sp(12))
+        qr_layout.setSpacing(sp(8))
+        qr_layout.setAlignment(QtCompat.AlignCenter)
+
+        # 二维码图片标签 (130x130)
+        self._qr_image_label = QLabel(self._qr_container)
+        self._qr_image_label.setFixedSize(sp(128), sp(128))
+        self._qr_image_label.setAlignment(QtCompat.AlignCenter)
+        self._qr_image_label.setStyleSheet("background: transparent; border: none; border-radius: 0;")
+
+        support_img_path = _support_image_path()
+        pixmap = QPixmap(support_img_path)
+        if pixmap.isNull():
+            pixmap = QPixmap(sp(128), sp(128))
+            pixmap.fill(QColor(TextScale.tertiary_dark))
+        else:
+            pixmap = pixmap.scaled(sp(120), sp(120), QtCompat.KeepAspectRatio, QtCompat.SmoothTransformation)
+            pixmap = _rounded_pixmap(pixmap, 10)
+
+        self._qr_image_label.setPixmap(pixmap)
+        qr_layout.addWidget(self._qr_image_label, 0, QtCompat.AlignCenter)  # 明确赋予居中对齐标识，防止左偏
+
+        # 二维码操作按钮 (换用极简现代的 unicode 标识符 ⛶ 和 ✕ 代替普通 emoji)
+        qr_btn_layout = QHBoxLayout()
+        qr_btn_layout.setSpacing(sp(8))
+        qr_btn_layout.addStretch()  # 左侧拉伸，使按钮组在容器内完美水平居中
+
+        self._view_fullscreen_btn = QPushButton(tr("⛶ 放大查看"), self._qr_container)
+        self._view_fullscreen_btn.clicked.connect(self._on_support)
+        self._view_fullscreen_btn.setProperty("is_custom_styled_btn", True)
+
+        self._close_qr_btn = QPushButton(tr("✕ 关闭二维码"), self._qr_container)
+        self._close_qr_btn.clicked.connect(self._close_qr)
+        self._close_qr_btn.setProperty("is_custom_styled_btn", True)
+
+        qr_btn_layout.addWidget(self._view_fullscreen_btn)
+        qr_btn_layout.addWidget(self._close_qr_btn)
+        qr_btn_layout.addStretch()  # 右侧拉伸，使按钮组在容器内完美水平居中
+        qr_layout.addLayout(qr_btn_layout)
+
+        v_layout.addLayout(qr_outer_layout)
+        self._qr_container.hide()
+
+        # 4. 底部功能型胶囊按钮
+        footer_widget = QFrame(container)
+        footer_widget.setStyleSheet("background: transparent; border: none; border-radius: 0;")
+        footer_layout = QHBoxLayout(footer_widget)
+        footer_layout.setContentsMargins(0, sp(8), 0, 0)
+        footer_layout.setSpacing(sp(12))
+        footer_layout.setAlignment(QtCompat.AlignCenter)
+
+        self._star_btn = QPushButton(tr("⭐ 点个 Star 鼓励一下"), footer_widget)
+        self._star_btn.clicked.connect(self._on_star_clicked)
+
+        self._feedback_btn = QPushButton(tr("💬 反馈建议 / 进群交流"), footer_widget)
+        self._feedback_btn.clicked.connect(self._on_feedback_clicked)
+
+        footer_layout.addWidget(self._star_btn)
+        footer_layout.addWidget(self._feedback_btn)
+
+        v_layout.addWidget(footer_widget)
+
+        # 加入页面主布局
+        layout.addWidget(container)
+
+        # 属性保存供动态主题更新调用
+        page._support_title_lbl = self._support_title_lbl
+        page._support_desc_lbl = self._support_desc_lbl
+        page._reaction_label = self._reaction_label
+        page._qr_container = self._qr_container
+        page._view_fullscreen_btn = self._view_fullscreen_btn
+        page._close_qr_btn = self._close_qr_btn
+        page._drink_bar_widget = drink_bar_widget
+        page._drink_cards = list(drink_bar_widget._cards)
+        page._cup_widget = self._cup_widget  # 将咖啡杯引用存于 page，以便 apply_theme 时找到它
+
+        # 主题与休眠/唤醒钩子修补，实现动态主题适配及绝对的节电/零占用休眠
+        original_apply_theme = page.apply_theme
+
+        def custom_apply_theme(theme):
+            original_apply_theme(theme)
+            self._update_support_page_theme(page, theme)
+
+        page.apply_theme = custom_apply_theme
+
+        # 重写 QWidget 的 showEvent 与 hideEvent 钩子
+        # 确保只有当用户点击切换到“支持一下”面板时，定时器与动画才开始运转；一旦离开该页面，底层定时器瞬间彻底关闭，实现 0% CPU 占用
+        original_show = page.showEvent
+        original_hide = page.hideEvent
+
+        def custom_show(event):
+            if original_show:
+                original_show(event)
+            if hasattr(self, "_cup_widget") and self._cup_widget:
+                self._cup_widget.resume_effects()
+
+        def custom_hide(event):
+            if original_hide:
+                original_hide(event)
+            if hasattr(self, "_cup_widget") and self._cup_widget:
+                self._cup_widget.pause_effects()
+
+        page.showEvent = custom_show
+        page.hideEvent = custom_hide
+
+    def _update_support_page_theme(self, page, theme):
+        """动态更新子卡片与描述文本颜色以匹配主题。"""
+        for card in page.findChildren(DrinkCard):
+            card.update_style(theme)
+
+        # 联动更新咖啡杯呼吸灯的主题色彩
+        if hasattr(page, "_cup_widget"):
+            page._cup_widget.update_style(theme)
+
+        desc_color = "#b0b0b5" if theme == "dark" else "#666666"
+        title_color = "#ffffff" if theme == "dark" else "#1c1c1e"
+
+        if hasattr(self, "_support_title_lbl"):
+            self._support_title_lbl.setStyleSheet(
+                scale_qss(
+                    f"font-size: 16px; font-weight: 400; color: {title_color}; background: transparent; border: none; border-radius: 0;"
+                )
+            )
+        if hasattr(self, "_support_desc_lbl"):
+            self._support_desc_lbl.setStyleSheet(
+                scale_qss(
+                    f"font-size: 11px; color: {desc_color}; line-height: 1.4; background: transparent; border: none; border-radius: 0;"
+                )
+            )
+        if hasattr(self, "_reaction_label"):
+            self._reaction_label.setStyleSheet(
+                scale_qss(
+                    f"font-size: 11px; color: {desc_color}; background: transparent; border: none; border-radius: 0;"
+                )
+            )
+
+        if hasattr(self, "_qr_container"):
+            card_bg = "rgba(255, 255, 255, 0.05)" if theme == "dark" else "rgba(0, 0, 0, 0.03)"
+            card_border = "rgba(255, 255, 255, 0.08)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
+            self._qr_container.setStyleSheet(
+                scale_qss(
+                    f"""
+                QFrame#QRContainer {{
+                    background-color: {card_bg};
+                    border: 1px solid {card_border};
+                    border-radius: 16px;
+                }}
+            """
+                )
+            )
+
+            # 动态应用精致的、独立于全局 Compact 按钮的高对比度微章按钮样式表
+            if theme == "dark":
+                btn_style_fullscreen = scale_qss(
+                    """
+                    QPushButton {
+                        font-size: 11px;
+                        padding: 6px 12px;
+                        background: rgba(255, 255, 255, 0.08);
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        border-radius: 8px;
+                        color: rgba(255, 255, 255, 0.85);
+                        font-weight: 400;
+                    }
+                    QPushButton:hover {
+                        background: rgba(255, 255, 255, 0.15);
+                        border: 1px solid rgba(255, 255, 255, 0.25);
+                        color: #ffffff;
+                    }
+                    QPushButton:pressed {
+                        background: rgba(255, 255, 255, 0.05);
+                    }
+                """
+                )
+                btn_style_close = scale_qss(
+                    """
+                    QPushButton {
+                        font-size: 11px;
+                        padding: 6px 12px;
+                        background: rgba(255, 82, 82, 0.1);
+                        border: 1px solid rgba(255, 82, 82, 0.18);
+                        border-radius: 8px;
+                        color: #ff5252;
+                        font-weight: 400;
+                    }
+                    QPushButton:hover {
+                        background: rgba(255, 82, 82, 0.18);
+                        border: 1px solid rgba(255, 82, 82, 0.35);
+                        color: #ff7979;
+                    }
+                    QPushButton:pressed {
+                        background: rgba(255, 82, 82, 0.05);
+                    }
+                """
+                )
+            else:
+                btn_style_fullscreen = scale_qss(
+                    """
+                    QPushButton {
+                        font-size: 11px;
+                        padding: 6px 12px;
+                        background: rgba(0, 0, 0, 0.04);
+                        border: 1px solid rgba(0, 0, 0, 0.08);
+                        border-radius: 8px;
+                        color: rgba(28, 28, 30, 0.8);
+                        font-weight: 400;
+                    }
+                    QPushButton:hover {
+                        background: rgba(0, 0, 0, 0.08);
+                        border: 1px solid rgba(0, 0, 0, 0.18);
+                        color: #1c1c1e;
+                    }
+                    QPushButton:pressed {
+                        background: rgba(0, 0, 0, 0.02);
+                    }
+                """
+                )
+                btn_style_close = scale_qss(
+                    """
+                    QPushButton {
+                        font-size: 11px;
+                        padding: 6px 12px;
+                        background: rgba(211, 47, 47, 0.06);
+                        border: 1px solid rgba(211, 47, 47, 0.15);
+                        border-radius: 8px;
+                        color: #d32f2f;
+                        font-weight: 400;
+                    }
+                    QPushButton:hover {
+                        background: rgba(211, 47, 47, 0.12);
+                        border: 1px solid rgba(211, 47, 47, 0.3);
+                        color: #c62828;
+                    }
+                    QPushButton:pressed {
+                        background: rgba(211, 47, 47, 0.03);
+                    }
+                """
+                )
+            self._view_fullscreen_btn.setStyleSheet(btn_style_fullscreen)
+            self._close_qr_btn.setStyleSheet(btn_style_close)
+
+    def _on_drink_clicked(self, name, price):
+        """点击虚拟饮品：爆发式向全局屏幕发射无边界粒子，并平滑渐显二维码。"""
+        # 1. 在被点击的饮品卡片物理中心，向屏幕爆发式喷涌出粒子
+        sender_card = self.sender()
+        if sender_card:
+            card_center = QPoint(sender_card.width() // 2, sender_card.height() // 2)
+            global_pos = sender_card.mapToGlobal(card_center)
+
+            # 根据饮品品类，定制具有专属氛围色彩的微章粒子组合
+            emoji_presets = {
+                tr("纯净矿泉水"): ["💧", "🧊", "✨", "❤️", "👍"],
+                tr("香浓拿铁"): ["☕", "💖", "✨", "🔥", "🎉"],
+                tr("沁心绿茶"): ["🍵", "🍃", "✨", "💚", "🍀"],
+                tr("芝芝莓莓"): ["🍹", "🍓", "🌸", "✨", "🌈"],
+            }
+            emojis = emoji_presets.get(name, ["❤️", "✨", "🎉"])
+            for _ in range(4):
+                FloatingEmoji(random.choice(emojis), global_pos, None, is_auto=False)
+
+        # 2. 定制温馨的反应消息
+        reactions = {
+            tr("纯净矿泉水"): tr("「感谢这瓶清爽的矿泉水！开发者喝完活力满满，瞬间充满干劲～ 💧🧊」"),
+            tr("香浓拿铁"): tr("「哇，是一杯拿铁咖啡！开发者大受鼓舞，今晚又要敲几百行代码了！🚀☕」"),
+            tr("沁心绿茶"): tr("「静心品茗，灵感如潮。感谢您的支持与厚爱，愿您每天工作顺心！🍃🍵」"),
+            tr("芝芝莓莓"): tr("「超棒的芝芝莓莓！开发者开心到起飞，甜度直接拉满啦！🍓✨🌈」"),
+        }
+        msg = reactions.get(name, tr("「感谢您的支持！赞助金额: ¥{price:.2f} ❤️」", price=price))
+        self._reaction_label.setText(msg)
+
+        # 3. 平滑渐显主页面里的折叠式二维码卡片
+        self._qr_anim_generation = int(getattr(self, "_qr_anim_generation", 0) or 0) + 1
+        generation = self._qr_anim_generation
+        from ui.utils.interruptible_animation import stop_named_animations
+        from ui.utils.widget_opacity import animate_opacity
+
+        stop_named_animations(self, "_qr_anim")
+        if hasattr(self, "_qr_anim"):
+            self._qr_anim = None
+
+        if self._qr_container.isHidden():
+            self._qr_container.show()
+
+        # Use the centralized animation helper which handles the
+        # QGraphicsOpacityEffect lifecycle (attach for animation, remove
+        # on finish).  ``curr_opacity`` keeps mid-animation starts smooth.
+        curr_opacity = 1.0
+        effect = self._qr_container.graphicsEffect()
+        if effect is not None and hasattr(effect, "opacity"):
+            try:
+                curr_opacity = float(effect.opacity())
+            except (RuntimeError, TypeError):
+                curr_opacity = 1.0
+
+        def _cleanup() -> None:
+            if generation != int(getattr(self, "_qr_anim_generation", -1) or -1):
+                return
+            self._qr_anim = None
+
+        anim = animate_opacity(
+            self._qr_container,
+            curr_opacity,
+            1.0,
+            duration_ms=350,
+            on_finished=_cleanup,
+            clear_on_finish=True,
+        )
+        self._qr_anim = anim
+
+    def _close_qr(self):
+        """渐隐折叠隐藏二维码，并在淡出前重新挂载 graphicsEffect 以保证渐变顺滑，带状态打断支持。"""
+        from ui.utils.interruptible_animation import stop_named_animations
+        from ui.utils.widget_opacity import animate_opacity
+
+        self._qr_anim_generation = int(getattr(self, "_qr_anim_generation", 0) or 0) + 1
+        generation = self._qr_anim_generation
+        stop_named_animations(self, "_qr_anim")
+        if hasattr(self, "_qr_anim"):
+            self._qr_anim = None
+
+        if not self._qr_container.isHidden():
+            curr_opacity = 1.0
+            effect = self._qr_container.graphicsEffect()
+            if effect is not None and hasattr(effect, "opacity"):
+                try:
+                    curr_opacity = float(effect.opacity())
+                except (RuntimeError, TypeError):
+                    curr_opacity = 1.0
+
+            anim = animate_opacity(
+                self._qr_container,
+                curr_opacity,
+                0.0,
+                duration_ms=250,
+                on_finished=lambda: self._finish_close_qr(generation, anim),
+                clear_on_finish=True,
+            )
+            self._qr_anim = anim
+            self._reaction_label.setText(tr("👇 点击上方任一饮品，获取赞助二维码 (也可点击咖啡杯互动哦)"))
+
+    def _finish_close_qr(self, generation: int, anim) -> None:
+        if generation != int(getattr(self, "_qr_anim_generation", -1) or -1):
+            return
+        if getattr(self, "_qr_anim", None) is not anim:
+            return
+        self._qr_container.hide()
+
+    def _on_support(self):
+        """触发全新全屏玻璃拟态收款弹窗，并智能携带当前点击的饮料数据。"""
+        try:
+            # 尝试通过 reaction_label 的文本内容推测出选中的饮品数据，以提供场景联动的全屏无边界收款体验
+            reaction_text = self._reaction_label.text()
+            drink_name = None
+            price = None
+            color_hex = "#FF9500"
+
+            drinks_data = [
+                (tr("纯净矿泉水"), 2.00, "#34C759"),
+                (tr("香浓拿铁"), 5.19, "#FF9500"),
+                (tr("沁心绿茶"), 9.90, "#00C7BE"),
+                (tr("芝芝莓莓"), 15.00, "#FF2D55"),
+            ]
+            for name, p, col in drinks_data:
+                if name in reaction_text:
+                    drink_name = name
+                    price = p
+                    color_hex = col
+                    break
+
+            from ui.config_window.support_dialog import SupportDialog
+
+            dlg = SupportDialog(drink_name=drink_name, price=price, color_hex=color_hex, parent=self)
+            dlg.exec_()
+        except Exception as e:
+            logger.exception("无法拉起全屏收款窗口")
+            ThemedMessageBox.critical(self, tr("错误"), str(e))
+
+    def _on_star_clicked(self):
+        """前往开源社区点星。"""
+        import webbrowser
+
+        webbrowser.open("https://github.com/LEISHIQIANG/QuickLauncher")
+
+    def _on_feedback_clicked(self):
+        """前往问题反馈页。"""
+        import webbrowser
+
+        webbrowser.open("https://github.com/LEISHIQIANG/QuickLauncher/issues")

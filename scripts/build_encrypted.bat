@@ -1,0 +1,444 @@
+@echo off
+setlocal EnableDelayedExpansion
+chcp 65001 >nul 2>&1
+
+REM Switch to project root directory (assuming script is in scripts/ folder)
+cd /d "%~dp0.."
+
+echo.
+echo ========================================
+echo   QuickLauncher Build Tool
+echo ========================================
+echo.
+echo   Step: Obfuscate - Compile - Package
+echo.
+
+REM === Version Information ===
+set "APP_PUBLISHER=Layton"
+set "DEFAULT_APP_VERSION=1.6.3.3"
+for /f "delims=" %%v in ('python scripts\read_project_version.py version 2^>nul') do set "DEFAULT_APP_VERSION=%%v"
+for /f "delims=" %%p in ('python scripts\read_project_version.py publisher 2^>nul') do set "APP_PUBLISHER=%%p"
+set "APP_VERSION=%~1"
+if "%APP_VERSION%"=="" set /p "APP_VERSION=Version (default %DEFAULT_APP_VERSION%): "
+if "%APP_VERSION%"=="" set "APP_VERSION=%DEFAULT_APP_VERSION%"
+
+echo.
+echo   Version: %APP_VERSION%
+echo   Publisher: %APP_PUBLISHER%
+
+REM Write version back to source so Nuitka embeds the correct value into the compiled binary
+python -c "import re,pathlib; p=pathlib.Path('core/version.py'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"%APP_VERSION%\"', t), encoding='utf-8')" 2>nul
+echo   [OK] core/version.py updated to %APP_VERSION%
+echo.
+echo ----------------------------------------
+
+REM ============================================
+REM [1/5] Check Python
+REM ============================================
+echo.
+echo [1/5] Checking Python...
+set "PYTHON_CMD="
+set "SELECTOR_PY="
+
+python --version >nul 2>&1
+if !ERRORLEVEL! EQU 0 set "SELECTOR_PY=python"
+
+if not defined SELECTOR_PY (
+    py -3 --version >nul 2>&1
+    if !ERRORLEVEL! EQU 0 set "SELECTOR_PY=py -3"
+)
+
+if not defined SELECTOR_PY (
+    echo   [X] No Python found to run the build interpreter selector.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+!SELECTOR_PY! scripts\select_build_python.py --min 3.11 --max 3.12 --prefer "3.12,3.11" --explain
+if !ERRORLEVEL! NEQ 0 (
+    echo.
+    echo   [X] Nuitka build requires 64-bit CPython 3.9-3.12.
+    echo   [!] Python 3.13 is detected but intentionally skipped for this build.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+for /f "delims=" %%p in ('!SELECTOR_PY! scripts\select_build_python.py --min 3.11 --max 3.12 --prefer "3.12,3.11" --executable') do set "PYTHON_CMD=%%p"
+if not defined PYTHON_CMD (
+    echo   [X] Failed to select Python interpreter.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+echo       Build command: !PYTHON_CMD!
+
+REM Clean PATH to avoid conflicting C compilers (e.g. 32-bit TDM-GCC or mismatched MinGW)
+set "PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"
+for /f "delims=" %%i in ("!PYTHON_CMD!") do (
+    set "PY_DIR=%%~dpi"
+    if not "!PY_DIR!"=="" set "PATH=!PATH!;!PY_DIR!;!PY_DIR!\Scripts"
+)
+
+REM ============================================
+REM [2/5] Check Inno Setup
+REM ============================================
+echo.
+echo [2/5] Checking Inno Setup...
+set "ISCC="
+for %%p in (
+    "E:\Inno Setup 6\ISCC.exe"
+    "D:\Inno Setup 6\ISCC.exe"
+    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+    "C:\Program Files\Inno Setup 6\ISCC.exe"
+    "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+    "%ProgramFiles%\Inno Setup 6\ISCC.exe"
+) do (
+    if exist %%~p set "ISCC=%%~p"
+)
+
+if "!ISCC!"=="" (
+    echo   [X] Inno Setup 6 not found!
+    echo   Please install: https://jrsoftware.org/isinfo.php
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+echo   Found: Inno Setup
+
+REM ============================================
+REM [3/5] Install dependencies
+REM ============================================
+echo.
+echo [3/5] Installing dependencies...
+!PYTHON_CMD! -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+!PYTHON_CMD! -m pip install nuitka ordered-set zstandard python-minifier -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+!PYTHON_CMD! -m pip install PyQt5==5.15.11 PyQt5-Qt5==5.15.2 pynput pywin32 psutil pillow qrcode numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+echo   Done
+
+REM ============================================
+REM [4/5] Obfuscate code
+REM ============================================
+echo.
+echo [4/5] Obfuscating code...
+echo.
+
+REM Clean all caches (ensure using latest code)
+echo   Cleaning all caches...
+if exist "obfuscated_src" rmdir /s /q "obfuscated_src" 2>nul
+if exist "dist\QuickLauncher" rmdir /s /q "dist\QuickLauncher" 2>nul
+if exist "dist\main.dist" rmdir /s /q "dist\main.dist" 2>nul
+if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
+for /d /r . %%d in (__pycache__) do @if exist "%%d" rmdir /s /q "%%d" 2>nul
+del /s /q *.pyc >nul 2>&1
+if exist "%LOCALAPPDATA%\Nuitka\Nuitka\Cache" rd /s /q "%LOCALAPPDATA%\Nuitka\Nuitka\Cache" 2>nul
+echo   Cache cleaned
+
+echo   Obfuscating source code...
+
+!PYTHON_CMD! scripts\obfuscate.py
+if !ERRORLEVEL! NEQ 0 (
+    echo.
+    echo   [X] Obfuscation failed!
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+if not exist "obfuscated_src\main.py" (
+    echo   [X] Output verification failed!
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+REM ============================================
+REM [5/5] Nuitka compile
+REM ============================================
+echo.
+echo ========================================
+echo [5/5] Nuitka compiling...
+echo ========================================
+echo.
+echo   [!] First build may take 5-15 minutes
+echo   [!] Please wait...
+echo.
+
+!PYTHON_CMD! scripts\check_glass_background.py
+if !ERRORLEVEL! NEQ 0 (
+    echo   [X] Pure-Python glass renderer validation failed.
+    exit /b 1
+)
+
+if exist "dist\QuickLauncher" rmdir /s /q "dist\QuickLauncher" 2>nul
+if exist "dist\main.dist" rmdir /s /q "dist\main.dist" 2>nul
+if exist "dist\main.build" rmdir /s /q "dist\main.build" 2>nul
+
+!PYTHON_CMD! -m nuitka ^
+    --mingw64 ^
+    --standalone ^
+    --windows-console-mode=disable ^
+    --show-progress ^
+    --lto=yes ^
+    --remove-output ^
+    --no-pyi-file ^
+    --report=dist\nuitka-encrypted-report.xml ^
+    --windows-icon-from-ico="assets\app.ico" ^
+    --enable-plugin=pyqt5 ^
+    --include-qt-plugins=platforms ^
+    --noinclude-qt-translations ^
+    --noinclude-dlls=opengl32.dll,d3dcompiler_*.dll ^
+    --noinclude-dlls=qt5quick.dll,qt5qml*.dll,qt5multimedia.dll,qt5webengine*.dll,qt5webchannel*.dll ^
+    --noinclude-dlls=qt5dbus.dll,qt53d*.dll,qt5designer*.dll,qt5help.dll,qt5bluetooth.dll,qt5nfc.dll ^
+    --noinclude-dlls=qt5location.dll,qt5positioning.dll,qt5sensors.dll,qt5texttospeech.dll,qt5websockets.dll ^
+    --noinclude-dlls=qt5serialport.dll,qt5sql.dll,qt5test.dll,qt5xml*.dll,qt5networkauth.dll,qt5purchasing.dll ^
+    --noinclude-dlls=qt5remoteobjects.dll,qt5script*.dll,qt5scxml.dll,qt5virtualkeyboard.dll,qt5charts.dll,qt5datavisualization.dll ^
+    --noinclude-dlls=qt5printsupport.dll ^
+    --noinclude-dlls=qt5pdf.dll,qt6pdf.dll,libeay32.dll,ssleay32.dll ^
+    --noinclude-dlls=_sqlite3.pyd,_decimal.pyd,_lzma.pyd,_bz2.pyd,atl140.dll ^
+    --noinclude-dlls=mfc140u.dll,mfc140*.dll ^
+    --noinclude-dlls=msvcp140.dll,msvcp140_1.dll,msvcp140_2.dll ^
+    --noinclude-dlls=vcruntime140.dll,vcruntime140_1.dll ^
+    --noinclude-dlls=concrt140.dll,vcomp140.dll ^
+    --noinclude-dlls=api-ms-win-crt-*.dll,ucrtbase.dll ^
+    --company-name="%APP_PUBLISHER%" ^
+    --product-name="QuickLauncher" ^
+    --file-version="%APP_VERSION%" ^
+    --product-version="%APP_VERSION%" ^
+    --copyright="Copyright (C) %APP_PUBLISHER%" ^
+    --output-dir=dist ^
+    --include-data-dir=assets=assets ^
+    --include-data-files=hooks\hooks.dll=hooks\hooks.dll ^
+    --include-data-files=native\QLcrypto\QLcrypto.dll=native\QLcrypto.dll ^
+    --include-data-files=native\QLsearch\QLsearch.dll=native\QLsearch.dll ^
+    --include-data-files=native\QLwindow\QLwindow.dll=native\QLwindow.dll ^
+    --include-data-files=native\QLvalidate\QLvalidate.dll=native\QLvalidate.dll ^
+    --include-data-files=native\QLwatch\QLwatch.dll=native\QLwatch.dll ^
+    --include-data-files=native\QLautostart\QLautostart.dll=native\QLautostart.dll ^
+    --include-data-files=native\QLupdate\QLupdate.dll=native\QLupdate.dll ^
+    --include-data-files=native\QLclipboard\QLclipboard.dll=native\QLclipboard.dll ^
+    --include-data-files=native\QLicon\QLicon.dll=native\QLicon.dll ^
+    --include-data-files=native\QLshell\QLshell.dll=native\QLshell.dll ^
+    --include-data-files=third_party_licenses.json=third_party_licenses.json ^
+    --include-package=application ^
+    --include-package=bootstrap ^
+    --include-package=domain ^
+    --include-package=extensions ^
+    --include-package=infrastructure ^
+    --include-package=modules ^
+    --include-package=services ^
+    --include-package=ui ^
+    --include-package=core ^
+    --include-package=hooks ^
+    --include-package=numpy ^
+    --include-module=pynput.mouse._win32 ^
+    --include-module=pynput.keyboard._win32 ^
+    --include-module=win32gui ^
+    --include-module=win32ui ^
+    --include-module=win32con ^
+    --include-module=win32api ^
+    --include-module=win32process ^
+    --include-module=win32event ^
+    --include-module=pythoncom ^
+    --include-module=win32com.client ^
+    --include-module=win32com.shell.shell ^
+    --include-module=psutil ^
+    --include-module=PIL.Image ^
+    --include-module=PIL.ImageFilter ^
+    --include-module=PIL.ImageDraw ^
+    --include-module=PIL.ImageFont ^
+    --include-module=PIL.BmpImagePlugin ^
+    --include-module=PIL.GifImagePlugin ^
+    --include-module=PIL.IcoImagePlugin ^
+    --include-module=PIL.JpegImagePlugin ^
+    --include-module=PIL.PngImagePlugin ^
+    --include-module=PIL.WebPImagePlugin ^
+    --include-module=PyQt5.QtSvg ^
+    --include-module=qrcode ^
+    --include-module=ctypes.wintypes ^
+    --include-module=ssl ^
+    --include-module=_ssl ^
+    --include-module=_hashlib ^
+    --include-module=encodings.idna ^
+    --include-module=stringprep ^
+    --nofollow-import-to=pytest,unittest,tkinter,test,setuptools,pip,distutils,IPython,notebook,matplotlib,scipy,pandas,sklearn,tensorflow,torch,cv2,urllib3,requests,asyncio,xml,html,csv,pypinyin,difflib ^
+    --jobs=%NUMBER_OF_PROCESSORS% ^
+    --assume-yes-for-downloads ^
+    --output-filename=QuickLauncher.exe ^
+    obfuscated_src\main.py
+
+echo.
+echo   Cleaning temp files...
+rmdir /s /q "obfuscated_src" 2>nul
+
+if not exist "dist\main.dist\QuickLauncher.exe" (
+    echo.
+    echo   [X] Compile failed! Check errors above.
+    echo.
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+REM Embed the project manifest when mt.exe is available. Nuitka generates its
+REM own Windows metadata, but this manifest explicitly requests PerMonitorV2
+REM DPI awareness, which keeps popup geometry and DWM composition stable on
+REM mixed-DPI Windows 11 desktops.
+set "MT_EXE="
+for /f "delims=" %%m in ('where mt.exe 2^>nul') do (
+    if not defined MT_EXE set "MT_EXE=%%m"
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles(x86)%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x64\mt.exe" set "MT_EXE=%%d\x64\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles(x86)%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x86\mt.exe" set "MT_EXE=%%d\x86\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x64\mt.exe" set "MT_EXE=%ProgramFiles(x86)%\Windows Kits\10\bin\x64\mt.exe"
+)
+if not defined MT_EXE (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x86\mt.exe" set "MT_EXE=%ProgramFiles(x86)%\Windows Kits\10\bin\x86\mt.exe"
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x64\mt.exe" set "MT_EXE=%%d\x64\mt.exe"
+    )
+)
+if not defined MT_EXE (
+    for /d %%d in ("%ProgramFiles%\Windows Kits\10\bin\10.*") do (
+        if exist "%%d\x86\mt.exe" set "MT_EXE=%%d\x86\mt.exe"
+    )
+)
+if defined MT_EXE (
+    if exist "QuickLauncher.manifest" (
+        echo   Embedding Windows manifest...
+        "!MT_EXE!" -manifest "QuickLauncher.manifest" -outputresource:"dist\main.dist\QuickLauncher.exe;#1" >nul 2>&1
+        if !ERRORLEVEL! EQU 0 (
+            echo   [OK] Manifest embedded
+        ) else (
+            echo   [Warning] Manifest embedding failed, continuing
+        )
+    )
+) else (
+    echo   [Info] mt.exe not found; skipping manifest embedding
+)
+
+ren "dist\main.dist" "QuickLauncher"
+copy "assets\app.ico" "dist\QuickLauncher\" >nul 2>&1
+
+REM Clean unnecessary files
+echo.
+echo   Cleaning unnecessary files...
+cd dist\QuickLauncher
+del /f /q qt5pdf.dll qt6pdf.dll qt5quick*.dll qt5qml*.dll qt5multimedia.dll qt5dbus.dll qt53d*.dll 2>nul
+del /f /q qt5designer*.dll qt5help.dll qt5location.dll qt5positioning.dll qt5sensors.dll 2>nul
+del /f /q qt5serialport.dll qt5sql.dll qt5test.dll qt5xml.dll qt5xmlpatterns.dll 2>nul
+del /f /q qt5printsupport.dll 2>nul
+del /f /q mfc140*.dll atl140.dll 2>nul
+del /f /q libeay32.dll ssleay32.dll 2>nul
+del /f /q _sqlite3.pyd 2>nul
+REM Python urllib-based URL latency and favicon fetching require OpenSSL.
+if exist "_ssl.pyd" (
+    if not exist "libssl-3.dll" (
+        echo   [X] Missing libssl-3.dll required for HTTPS URL latency.
+        cd ..\..
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+    if not exist "libcrypto-3.dll" (
+        echo   [X] Missing libcrypto-3.dll required for HTTPS URL latency.
+        cd ..\..
+        if "%QL_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
+)
+if exist "PyQt5" (
+    del /f /q PyQt5\QtPdf.pyd PyQt5\QtQuick*.pyd PyQt5\QtQml*.pyd PyQt5\QtMultimedia*.pyd 2>nul
+    del /f /q PyQt5\QtDesigner*.pyd PyQt5\QtHelp.pyd PyQt5\QtSql.pyd PyQt5\QtTest.pyd PyQt5\QtXml*.pyd 2>nul
+    del /f /q PyQt5\QtPrintSupport.pyd 2>nul
+)
+if exist "PyQt5\qt-plugins\platforms" (
+    del /f /q PyQt5\qt-plugins\platforms\qdirect2d.dll 2>nul
+    del /f /q PyQt5\qt-plugins\platforms\qoffscreen.dll 2>nul
+    del /f /q PyQt5\qt-plugins\platforms\qminimal.dll 2>nul
+)
+if exist "PyQt5\qt-plugins\styles" rmdir /s /q PyQt5\qt-plugins\styles 2>nul
+if exist "PyQt5\qt-plugins\tls" rmdir /s /q PyQt5\qt-plugins\tls 2>nul
+if exist "PyQt5\qt-plugins\mediaservice" rmdir /s /q PyQt5\qt-plugins\mediaservice 2>nul
+if exist "PyQt5\qt-plugins\printsupport" rmdir /s /q PyQt5\qt-plugins\printsupport 2>nul
+if exist "PyQt5\qt-plugins\imageformats" (
+    del /f /q PyQt5\qt-plugins\imageformats\qtiff.dll 2>nul
+    del /f /q PyQt5\qt-plugins\imageformats\qicns.dll 2>nul
+    del /f /q PyQt5\qt-plugins\imageformats\qwbmp.dll 2>nul
+    del /f /q PyQt5\qt-plugins\imageformats\qtga.dll 2>nul
+    del /f /q PyQt5\qt-plugins\imageformats\qpdf.dll 2>nul
+)
+if exist "PyQt5\qt-plugins\platformthemes" (
+    del /f /q PyQt5\qt-plugins\platformthemes\qxdgdesktopportal.dll 2>nul
+)
+if exist "PIL" del /f /q PIL\_avif.pyd PIL\_imagingcms.pyd PIL\_imagingtk.pyd 2>nul
+if exist "config" (
+    del /f /q config\*.log config\*.log.* 2>nul
+    del /f /q config\data.json config\data.json.backup 2>nul
+)
+cd ..\..
+echo   Done
+
+REM UPX compression
+echo.
+echo   UPX compressing...
+if exist "upx.exe" (
+    upx.exe --ultra-brute dist\QuickLauncher\QuickLauncher.exe >nul 2>&1
+    upx.exe --best --lzma dist\QuickLauncher\python*.dll >nul 2>&1
+    upx.exe --best --lzma dist\QuickLauncher\qt6*.dll >nul 2>&1
+    upx.exe --best --lzma dist\QuickLauncher\*.pyd >nul 2>&1
+    if exist "dist\QuickLauncher\PIL" upx.exe --best --lzma dist\QuickLauncher\PIL\*.pyd >nul 2>&1
+    if exist "dist\QuickLauncher\psutil" upx.exe --best --lzma dist\QuickLauncher\psutil\*.pyd >nul 2>&1
+    if exist "dist\QuickLauncher\win32com\shell" upx.exe --best --lzma dist\QuickLauncher\win32com\shell\*.pyd >nul 2>&1
+    echo   [OK] UPX compression done!
+) else (
+    echo   [!] upx.exe not found, skipping compression
+)
+
+echo.
+echo   [OK] Nuitka compile done!
+
+REM ============================================
+REM Generate installer
+REM ============================================
+echo.
+echo ----------------------------------------
+echo Generating installer (Inno Setup)...
+echo ----------------------------------------
+echo.
+
+"!ISCC!" /DMyAppName="QuickLauncher" /DMyAppVersion="%APP_VERSION%" /DMyAppFileVersion="%APP_VERSION%" /DMyAppPublisher="%APP_PUBLISHER%" scripts\installer.iss
+
+if !ERRORLEVEL! NEQ 0 (
+    echo.
+    echo   [X] Installer generation failed!
+    if "%QL_NO_PAUSE%"=="" pause
+    exit /b 1
+)
+
+REM ============================================
+REM Done
+REM ============================================
+echo.
+echo ========================================
+echo   BUILD SUCCESS!
+echo ========================================
+echo.
+echo   Output:
+echo   - Portable: dist\QuickLauncher\QuickLauncher.exe
+echo   - Installer: dist\QuickLauncher_Setup_%APP_VERSION%.exe
+echo.
+echo   Protection:
+echo   [Y] Variable obfuscation
+echo   [Y] Docstring removal
+echo   [Y] Code compression
+echo   [Y] Native compilation
+echo.
+echo   Source code: NOT modified
+echo.
+echo ========================================
+if "%QL_NO_PAUSE%"=="" pause

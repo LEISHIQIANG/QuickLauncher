@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "policy": "Itemized migration debt. New entries fail; remove entries as debt is fixed; final debt must be empty.",
+  "debt": {
+    "boundary_violations": [],
+    "cycles": [
+      "core|core.batch_launch_exec|core.builtin_command_catalog|core.builtin_commands|core.command_action_safety|core.command_exec|core.command_exec.capture|core.command_exec.launcher_mixin|core.command_exec.output|core.command_exec.preflight|core.command_param_validation|core.command_registry|core.commands|core.commands_clipboard|core.commands_encoding|core.commands_git|core.commands_maintenance|core.commands_network|core.commands_plugins|core.commands_system|core.commands_text|core.commands_utils|core.commands_windows|core.plugin.host_api|core.plugin.isolated_runtime|core.plugin_manager|core.privilege_launch_channel|core.shortcut_command_exec|core.shortcut_executor|core.shortcut_file_exec|core.slash_commands",
+      "core.backup_service|core.data_loader|core.data_manager|core.folder_service|core.icon_repository|core.save_coordinator|core.settings_service|core.shortcut_service",
+      "core.fuzzy_search|core.native_services",
+      "ui.command_panel_history|ui.command_panel_params|ui.command_panel_renderers|ui.command_panel_window",
+      "ui.config_window.batch_launch_dialog|ui.config_window.icon_grid",
+      "ui.config_window.folder_panel|ui.config_window.main_window",
+      "ui.config_window.settings_data_actions|ui.config_window.settings_panel",
+      "ui.launcher_popup.file_selection|ui.launcher_popup.popup_data_refresh|ui.launcher_popup.popup_window",
+      "ui.styles|ui.styles.popup_menu|ui.styles.style",
+      "ui.tray_app|ui.tray_mixins|ui.tray_mixins.popup_mixin|ui.tray_mixins.shutdown_mixin"
+    ],
+    "import_time_side_effects": [],
+    "plugin_internal_imports": [],
+    "sensitive_calls": [
+      "core/command_exec/cleanup.py:47:process:subprocess.run",
+      "core/command_exec/launcher_mixin.py:127:process:subprocess.run",
+      "core/commands_git.py:32:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:1020:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:1085:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:1122:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:1259:process:os.startfile",
+      "core/shortcut_command_exec.py:1438:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:582:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:673:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:789:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:843:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:909:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:947:process:subprocess.Popen",
+      "core/shortcut_command_exec.py:963:process:subprocess.Popen",
+      "core/shortcut_file_exec.py:730:process:subprocess.Popen",
+      "core/shortcut_file_exec.py:740:process:subprocess.Popen"
+    ],
+    "dynamic_imports": [],
+    "service_locators": []
+  }
+}

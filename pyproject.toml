@@ -1,0 +1,61 @@
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".git",
+    ".pytest_cache",
+    "dist",
+    "build",
+    "temp_icons",
+    "plugins",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "UP"]
+ignore = ["E501", "B905"]
+external = [
+    "BLE001",
+    "D401",
+    "E731",
+    "F811",
+    "F821",
+    "N802",
+    "N814",
+    "PG001",
+    "S102",
+    "S110",
+    "S324",
+    "SIM115",
+    "SLF001",
+    "paint_event",
+    "paint_perf",
+    "pixmap_dpi",
+]
+
+[tool.coverage.run]
+source = ["core", "ui", "hooks", "bootstrap", "services"]
+omit = ["tests/*", "*/plugins/*", "*/dist/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+    "except ImportError",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"core/__init__.py" = ["E402"]
+"core/i18n.py" = ["F601"]
+"core/pinyin_search.py" = ["F601"]
+"tests/test_builtin_commands_suite.py" = ["E402"]
+"tests/test_popup_search_ui.py" = ["E402"]
+"ui/config_window/main_window.py" = ["E402"]
+"ui/config_window/settings_panel.py" = ["E402"]

@@ -1,0 +1,652 @@
+"""Unified command registry and data models for command center 2.0."""
+
+from __future__ import annotations
+
+import concurrent.futures
+import logging
+import threading
+import traceback
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, cast
+
+from .command_metadata import CommandMetadata
+from .command_metadata import builtin_command_metadata as _builtin_command_metadata
+
+logger = logging.getLogger(__name__)
+
+COMMAND_INTERACTION_DIRECT = "direct"
+COMMAND_INTERACTION_PANEL = "panel"
+MAX_COMMAND_RESULT_ACTIONS = 2
+MAX_SEARCH_SOURCE_RESULTS = 50
+SEARCH_SOURCE_RESULT_KEYS = {"id", "title", "name", "command", "folder", "icon_path"}
+SEARCH_SOURCE_TIMEOUT_SECONDS = 1.0
+SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS = 1.5
+
+_active_search_futures: dict[str, dict[concurrent.futures.Future, SearchCancelToken]] = {}
+_active_search_futures_lock = threading.Lock()
+
+
+class SearchCancelToken:
+    """Cooperative cancellation token for plugin search operations.
+
+    Callers create a token and pass it to ``execute_search_sources``.  Setting
+    ``cancelled = True`` signals in-flight handlers to exit early when they
+    next check the token.
+    """
+
+    __slots__ = ("_cancelled",)
+
+    def __init__(self) -> None:
+        self._cancelled = False
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+
+def _get_search_pool():
+    """Return (and lazily create) the shared search thread pool."""
+    from .executor_manager import PLUGIN_SEARCH_EXECUTOR, get_executor
+
+    return get_executor(PLUGIN_SEARCH_EXECUTOR)
+
+
+def shutdown_search_pool(timeout: float = 3.0) -> None:
+    """Shut down the shared search pool.  Safe to call multiple times."""
+    from .executor_manager import PLUGIN_SEARCH_EXECUTOR, shutdown_executor
+
+    futures = _snapshot_active_search_futures()
+    if futures:
+        concurrent.futures.wait(futures, timeout=max(0.0, float(timeout or 0.0)))
+    shutdown_executor(PLUGIN_SEARCH_EXECUTOR, timeout=timeout)
+
+
+def cancel_search_tasks_for_plugin(plugin_id: str) -> int:
+    """Cancel pending search work for a plugin and return active task count."""
+    plugin_id = str(plugin_id or "").strip()
+    if not plugin_id:
+        return 0
+    with _active_search_futures_lock:
+        tasks = dict(_active_search_futures.get(plugin_id, {}))
+    for token in tasks.values():
+        token.cancel()
+    return len(tasks)
+
+
+def _track_search_future(plugin_id: str, future: concurrent.futures.Future, cancel_token: SearchCancelToken) -> None:
+    plugin_id = str(plugin_id or "").strip()
+    if not plugin_id:
+        return
+    with _active_search_futures_lock:
+        _active_search_futures.setdefault(plugin_id, {})[future] = cancel_token
+
+    def _cleanup(_future: concurrent.futures.Future, pid: str = plugin_id) -> None:
+        with _active_search_futures_lock:
+            futures = _active_search_futures.get(pid)
+            if futures is not None:
+                futures.pop(_future, None)
+                if not futures:
+                    _active_search_futures.pop(pid, None)
+
+    future.add_done_callback(_cleanup)
+
+
+def _snapshot_active_search_futures() -> list[concurrent.futures.Future]:
+    with _active_search_futures_lock:
+        return [future for futures in _active_search_futures.values() for future in futures]
+
+
+def _run_search_handler(
+    source_id: str,
+    source_info: dict,
+    query: str,
+    *,
+    cancel_token: SearchCancelToken | None = None,
+) -> list[dict]:
+    handler = source_info.get("handler")
+    if handler is None:
+        return []
+    plugin_id = str(source_info.get("plugin_id") or "")
+    try:
+        if cancel_token is not None and cancel_token.cancelled:
+            return []
+        raw_results = handler(query)
+        if cancel_token is not None and cancel_token.cancelled:
+            return []
+        if not isinstance(raw_results, list):
+            return []
+        results = []
+        for item in raw_results[:MAX_SEARCH_SOURCE_RESULTS]:
+            if not isinstance(item, dict):
+                continue
+            results.append({key: value for key, value in item.items() if key in SEARCH_SOURCE_RESULT_KEYS})
+        return results
+    except Exception as exc:
+        callback = source_info.get("error_callback")
+        if callable(callback):
+            callback(plugin_id, "search", source_id, exc, traceback.format_exc())
+        logger.exception("plugin search source failed: %s", source_id)
+        return []
+
+
+def builtin_command_metadata(command_id: str, category: str = "") -> CommandMetadata:
+    """Compatibility facade for older imports from command_registry."""
+    return _builtin_command_metadata(command_id, category)
+
+
+# ============================================================
+# Data models
+# ============================================================
+
+
+@dataclass
+class CommandParam:
+    name: str
+    type: str = "text"
+    required: bool = False
+    default: str = ""
+    choices: list[str] = field(default_factory=list)
+    sensitive: bool = False
+    label: str = ""
+    placeholder: str = ""
+    help: str = ""
+    multiline: bool = False
+    remember: bool = True
+    source: str = ""
+    validator: str = ""
+    pattern: str = ""
+    min_value: str = ""
+    max_value: str = ""
+    advanced: bool = False
+
+
+@dataclass
+class CommandAction:
+    type: str = "copy"
+    label: str = ""
+    value: str = ""
+    enabled: bool = True
+    danger: bool = False
+    primary: bool = False
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CommandContext:
+    raw_input: str = ""
+    args_text: str = ""
+    args: dict[str, str] = field(default_factory=dict)
+    clipboard_text: str = ""
+    clipboard_kind: str = ""
+    clipboard_files: list[str] = field(default_factory=list)
+    clipboard_html: str = ""
+    selected_text: str = ""
+    selected_text_method: str = ""
+    selected_files: list[str] = field(default_factory=list)
+    context_meta: dict = field(default_factory=dict)
+    update_callback: Callable[[CommandResult], None] | None = None
+
+
+@dataclass
+class CommandResult:
+    success: bool = True
+    message: str = ""
+    display_type: str = "text"
+    payload: dict[str, Any] = field(default_factory=dict)
+    actions: list[CommandAction] = field(default_factory=list)
+    error: str = ""
+    is_async: bool = False
+    progress: float = 0.0
+    cancellable: bool = False
+
+
+def limit_command_result_actions(result: CommandResult) -> CommandResult:
+    """Compatibility hook retained for old callers.
+
+    Compact legacy surfaces decide how many actions to render; the model keeps
+    the full action list for the independent command panel.
+    """
+    return result
+
+
+@dataclass
+class CommandDefinition:
+    id: str
+    title: str
+    aliases: list[str]
+    description: str
+    category: str
+    handler: Callable[[CommandContext], CommandResult]
+    icon_path: str = ""
+    permission_level: str = "user"
+    params: list[CommandParam] = field(default_factory=list)
+    source: str = "builtin"
+    sensitive: bool = False
+    interaction_mode: str = COMMAND_INTERACTION_PANEL
+    search_terms: list[str] = field(default_factory=list)
+    result_window_size: str = ""
+    metadata: CommandMetadata | dict = field(default_factory=CommandMetadata)
+
+    def __post_init__(self):
+        self.metadata = CommandMetadata.from_value(self.metadata, category=self.category)
+        if self.permission_level and self.permission_level != "user":
+            self.metadata.requires_admin = True
+        if self.metadata.requires_confirmation and self.metadata.risk_level == "low":
+            self.metadata.risk_level = "high"
+
+
+# ============================================================
+# Phase 2 result pipe — a thread-safe single-slot for passing
+# CommandResult from _execute_builtin_command back to the popup.
+# ============================================================
+
+_pending_command_result: CommandResult | None = None
+_pending_command_result_lock = threading.Lock()
+
+# Search sources registered by plugins via PluginAPI.register_search_source
+_search_sources: dict[str, dict] = {}
+_search_sources_lock = threading.RLock()
+
+
+def register_search_source(source_id: str, source_info: dict) -> bool:
+    """Register a plugin search source without overwriting another owner."""
+    with _search_sources_lock:
+        if source_id in _search_sources:
+            return False
+        _search_sources[source_id] = dict(source_info)
+        return True
+
+
+def remove_search_source(source_id: str, plugin_id: str | None = None) -> bool:
+    """Remove a search source, optionally only when it still belongs to plugin_id."""
+    with _search_sources_lock:
+        current = _search_sources.get(source_id)
+        if current is None:
+            return False
+        if plugin_id is not None and current.get("plugin_id") != plugin_id:
+            return False
+        _search_sources.pop(source_id, None)
+        return True
+
+
+def snapshot_search_sources() -> list[tuple[str, dict]]:
+    """Return a stable copy for callers that iterate while plugins may change."""
+    with _search_sources_lock:
+        return [(source_id, dict(source_info)) for source_id, source_info in _search_sources.items()]
+
+
+def execute_search_source(source_id: str, query: str, *, cancel_token: SearchCancelToken | None = None) -> list[dict]:
+    """Execute one plugin search source with validation, timeout, and failure reporting.
+
+    Uses the shared search pool instead of creating a per-call executor.
+    """
+    with _search_sources_lock:
+        source_info = dict(_search_sources.get(source_id) or {})
+    plugin_id = str(source_info.get("plugin_id") or "")
+    if source_info.get("handler") is None:
+        return []
+    pool = _get_search_pool()
+    task_token = cancel_token or SearchCancelToken()
+    future = pool.submit(_run_search_handler, source_id, source_info, query, cancel_token=task_token)
+    _track_search_future(plugin_id, future, task_token)
+    done, _pending = concurrent.futures.wait([future], timeout=SEARCH_SOURCE_TIMEOUT_SECONDS)
+    if future not in done:
+        task_token.cancel()
+        logger.warning("plugin search source timed out: %s", source_id)
+        callback = source_info.get("error_callback")
+        if callable(callback):
+            callback(plugin_id, "search", source_id, TimeoutError("search source timed out"), "")
+        return []
+    return cast(list[dict[Any, Any]], future.result())
+
+
+def execute_search_sources(
+    query: str,
+    timeout: float = SEARCH_SOURCE_TOTAL_TIMEOUT_SECONDS,
+    *,
+    cancel_token: SearchCancelToken | None = None,
+) -> list[tuple[str, dict, list[dict]]]:
+    """Execute plugin search sources concurrently within a bounded total timeout.
+
+    The optional *cancel_token* allows callers to signal that results are no
+    longer needed (e.g. the user typed a new query).  Pending futures are
+    cancelled and in-flight handlers see ``cancel_token.cancelled == True``.
+    """
+    sources = snapshot_search_sources()
+    if not sources:
+        return []
+    if cancel_token is not None and cancel_token.cancelled:
+        return []
+    results: list[tuple[str, dict, list[dict]]] = []
+    pool = _get_search_pool()
+    future_map = {}
+    future_tokens = {}
+    for source_id, source_info in sources:
+        task_token = cancel_token or SearchCancelToken()
+        future = pool.submit(_run_search_handler, source_id, source_info, query, cancel_token=task_token)
+        _track_search_future(str(source_info.get("plugin_id") or ""), future, task_token)
+        future_map[future] = (source_id, source_info)
+        future_tokens[future] = task_token
+    done, pending = concurrent.futures.wait(future_map, timeout=max(0.01, float(timeout or 0)))
+    for future in done:
+        source_id, source_info = future_map[future]
+        if cancel_token is not None and cancel_token.cancelled:
+            break
+        try:
+            source_results = future.result()
+        except Exception:
+            logger.exception("plugin search source future failed: %s", source_id)
+            source_results = []
+        if source_results:
+            results.append((source_id, source_info, source_results))
+    for future in pending:
+        source_id, source_info = future_map[future]
+        plugin_id = str(source_info.get("plugin_id") or "")
+        logger.warning("plugin search source skipped by total timeout: %s", source_id)
+        callback = source_info.get("error_callback")
+        if callable(callback):
+            callback(plugin_id, "search", source_id, TimeoutError("search sources total timeout"), "")
+        token = future_tokens.get(future)
+        if token is not None:
+            token.cancel()
+    return results
+
+
+def take_pending_command_result() -> CommandResult | None:
+    global _pending_command_result
+    with _pending_command_result_lock:
+        val = _pending_command_result
+        _pending_command_result = None
+        return val
+
+
+def set_pending_command_result(result: CommandResult) -> None:
+    global _pending_command_result
+    with _pending_command_result_lock:
+        _pending_command_result = result
+
+
+# ============================================================
+# Old callback bridge — wraps a string callback name into a
+# Callable[[CommandContext], CommandResult] so old-style
+# callbacks (registered via register_callback / call_callback)
+# can live inside CommandDefinition during the migration phase.
+# ============================================================
+
+
+class _CallbackHandler:
+    def __init__(self, callback_name: str):
+        self._callback_name = callback_name
+
+    def __call__(self, context: CommandContext) -> CommandResult:
+        from application.ports.ui_actions import UIAction
+        from core.shortcut_executor import ShortcutExecutor
+
+        ui_actions = ShortcutExecutor.resolve_ui_actions()
+        if ui_actions is None:
+            return CommandResult(
+                success=False,
+                message=f"命令执行失败: {self._callback_name}",
+                error="UIActions port 未注入",
+            )
+        action = UIAction.parse(self._callback_name)
+        if action is None:
+            return CommandResult(
+                success=False,
+                message=f"命令执行失败: {self._callback_name}",
+                error="未知的 UI 动作",
+            )
+        try:
+            if not ui_actions.execute(action):
+                return CommandResult(
+                    success=False,
+                    message=f"命令执行失败: {self._callback_name}",
+                    error="UI 动作返回 False",
+                )
+            return CommandResult(success=True, message="执行成功")
+        except Exception as e:
+            logger.error("回调执行异常 (%s): %s", self._callback_name, e)
+            return CommandResult(
+                success=False,
+                message=f"执行异常: {e}",
+                error=str(e),
+            )
+
+
+# ============================================================
+# CommandRegistry
+# ============================================================
+
+
+class CommandRegistry:
+    def __init__(self):
+        self._commands: dict[str, CommandDefinition] = {}
+        self._alias_map: dict[str, str] = {}
+        self._category_index: dict[str, list[str]] = {}
+        self._owner_index: dict[str, list[str]] = {}
+
+    # ---- registration ----
+
+    def register(self, cmd: CommandDefinition) -> bool:
+        if cmd.id in self._commands:
+            logger.warning("重复命令 ID，拒绝注册: %s", cmd.id)
+            return False
+        if cmd.source == "builtin":
+            from core.command_icon_catalog import builtin_command_icon_path
+
+            fixed_icon_path = builtin_command_icon_path(cmd.id)
+            if fixed_icon_path:
+                cmd.icon_path = fixed_icon_path
+        self._commands[cmd.id] = cmd
+        self._category_index.setdefault(cmd.category, []).append(cmd.id)
+        self._merge_aliases(cmd, cmd.aliases)
+        if cmd.source and (cmd.source.startswith("plugin:") or cmd.source.startswith("plugin-builtin:")):
+            owner = cmd.source
+            self._owner_index.setdefault(owner, []).append(cmd.id)
+        logger.debug("命令已注册: %s (类别: %s, 来源: %s)", cmd.id, cmd.category, cmd.source)
+        return True
+
+    def _merge_aliases(self, cmd: CommandDefinition, aliases: list[str]) -> None:
+        """Merge aliases into an existing command without overwriting other commands."""
+        if cmd.aliases is None:
+            cmd.aliases = []
+        for alias in aliases or []:
+            key = alias.lower().strip()
+            if not key:
+                continue
+            if alias not in cmd.aliases:
+                cmd.aliases.append(alias)
+            if key not in self._alias_map:
+                self._alias_map[key] = cmd.id
+
+    # ---- lookup ----
+
+    def get(self, command_id: str) -> CommandDefinition | None:
+        return self._commands.get(command_id)
+
+    def get_canonical(self, alias: str) -> str:
+        return self._alias_map.get(alias.lower().strip(), "")
+
+    def find(self, query: str) -> list[CommandDefinition]:
+        if not query:
+            return list(self._commands.values())
+        q = query.lower().strip()
+
+        exact: list[CommandDefinition] = []
+        prefix: list[CommandDefinition] = []
+        substr: list[CommandDefinition] = []
+
+        for cmd in self._commands.values():
+            searchable = self._searchable_terms(cmd)
+            if any(term == q for term in searchable):
+                exact.append(cmd)
+            elif any(term.startswith(q) for term in searchable):
+                prefix.append(cmd)
+            elif any(q in term for term in searchable):
+                substr.append(cmd)
+
+        seen: set[str] = set()
+        out: list[CommandDefinition] = []
+        for cmd in exact + prefix + substr:
+            if cmd.id not in seen:
+                seen.add(cmd.id)
+                out.append(cmd)
+        return out
+
+    @staticmethod
+    def _searchable_terms(cmd: CommandDefinition) -> list[str]:
+        raw_terms = [
+            cmd.id,
+            cmd.id.replace(".", " "),
+            cmd.id.replace("_", " "),
+            cmd.title,
+            cmd.description,
+            cmd.category,
+            cmd.source,
+            cmd.source.replace("plugin:", ""),
+            cmd.source.replace("plugin:", "").replace("_", " "),
+            *list(cmd.aliases or []),
+            *list(cmd.search_terms or []),
+        ]
+
+        terms: list[str] = []
+        seen: set[str] = set()
+        for term in raw_terms:
+            text = str(term or "").lower().strip()
+            if not text:
+                continue
+            variants = {
+                text,
+                text.replace("_", " "),
+                text.replace("-", " "),
+                text.replace(".", " "),
+            }
+            for variant in variants:
+                compact = " ".join(variant.split())
+                if compact and compact not in seen:
+                    seen.add(compact)
+                    terms.append(compact)
+        return terms
+
+    # ---- enumeration ----
+
+    def list(self) -> list[CommandDefinition]:
+        return list(self._commands.values())
+
+    def list_by_category(self) -> dict[str, list[CommandDefinition]]:  # type: ignore[valid-type]
+        result: dict[str, list[CommandDefinition]] = {}
+        for cat, ids in self._category_index.items():
+            result[cat] = [self._commands[cid] for cid in ids if cid in self._commands]
+        return result
+
+    def count(self) -> int:
+        return len(self._commands)
+
+    # ---- removal ----
+
+    def remove(self, command_id: str) -> bool:
+        cmd = self._commands.pop(command_id, None)
+        if cmd is None:
+            return False
+        cat_list = self._category_index.get(cmd.category, [])
+        if command_id in cat_list:
+            cat_list.remove(command_id)
+        for alias in cmd.aliases or []:
+            key = alias.lower().strip()
+            if self._alias_map.get(key) == command_id:
+                del self._alias_map[key]
+        # Clean up owner_index
+        for owner, cmd_ids in list(self._owner_index.items()):
+            if command_id in cmd_ids:
+                cmd_ids.remove(command_id)
+                if not cmd_ids:
+                    del self._owner_index[owner]
+                break
+        return True
+
+    def remove_by_owner(self, owner_id: str) -> int:
+        """Remove all commands registered by a given owner (e.g. 'plugin:text_tools')."""
+        removed = 0
+        cmd_ids = list(self._owner_index.get(owner_id, []))
+        for cid in cmd_ids:
+            if self.remove(cid):
+                removed += 1
+        self._owner_index.pop(owner_id, None)
+        return removed
+
+    def list_by_owner(self, owner_id: str) -> list[CommandDefinition]:  # type: ignore[valid-type]
+        """List all commands registered by a given owner."""
+        return [self._commands[cid] for cid in self._owner_index.get(owner_id, []) if cid in self._commands]
+
+    # ---- migration helpers (Phase 1) ----
+
+    def migrate_slash_commands(self) -> int:
+        from core.slash_commands import SLASH_COMMANDS
+
+        count = 0
+        for old in SLASH_COMMANDS:
+            existing = self._commands.get(old.canonical)
+            if existing is not None:
+                self._merge_aliases(existing, old.aliases)
+                if not existing.icon_path and old.icon_path:
+                    existing.icon_path = old.icon_path
+                if not existing.description and old.description:
+                    existing.description = old.description
+                continue
+
+            handler = _CallbackHandler(old.handler)
+            cmd = CommandDefinition(
+                id=old.canonical,
+                title=old.display_name or old.canonical,
+                aliases=old.aliases,
+                description=old.description,
+                category=old.category,
+                handler=handler,
+                icon_path=old.icon_path,
+                source="builtin",
+                interaction_mode=getattr(old, "interaction_mode", COMMAND_INTERACTION_DIRECT),
+            )
+            if self.register(cmd):
+                count += 1
+        if count:
+            logger.info("已从 SLASH_COMMANDS 迁移 %d 条命令", count)
+        return count
+
+    def migrate_builtin_aliases(self) -> int:
+        from core.builtin_commands import BUILTIN_COMMAND_ALIASES
+
+        # Reuse commands already covered by SLASH_COMMANDS and merge every alias
+        # instead of keeping only whichever set-derived alias happens to appear first.
+        callback_commands: dict[str, CommandDefinition] = {}
+        for cmd in self._commands.values():
+            if isinstance(cmd.handler, _CallbackHandler):
+                callback_commands.setdefault(cmd.handler._callback_name, cmd)
+
+        count = 0
+        for alias, canonical in BUILTIN_COMMAND_ALIASES.items():
+            existing = self._commands.get(canonical) or callback_commands.get(canonical)
+            if existing is not None:
+                self._merge_aliases(existing, [alias, canonical])
+                continue
+
+            handler = _CallbackHandler(canonical)
+            cmd = CommandDefinition(
+                id=canonical,
+                title=canonical.replace("_", " ").title(),
+                aliases=[alias, canonical],
+                description="",
+                category="system",
+                handler=handler,
+                source="builtin",
+                interaction_mode=COMMAND_INTERACTION_DIRECT,
+            )
+            if self.register(cmd):
+                callback_commands[canonical] = cmd
+                count += 1
+        if count:
+            logger.info("已从 BUILTIN_COMMAND_ALIASES 迁移 %d 个额外命令", count)
+        return count

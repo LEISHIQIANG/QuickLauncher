@@ -1,0 +1,576 @@
+"""Popup settings page builder and event handlers."""
+
+import logging
+
+from core import DEFAULT_SPECIAL_APPS
+from core.i18n import tr
+from core.trigger_config import normalize_trigger_config
+from core.trigger_conflict_checker import check_trigger_conflict
+from qt_compat import (
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QRadioButton,
+    QSlider,
+    QtCompat,
+    QVBoxLayout,
+    QWidget,
+)
+from ui.config_window.input_trigger_recorder import InputTriggerRecorderWidget
+from ui.config_window.settings_helpers import NumberedListDelegate
+from ui.tooltip_helper import install_tooltip
+from ui.utils.ui_scale import sp
+
+logger = logging.getLogger(__name__)
+
+
+class SettingsPopupPageMixin:
+    def _setup_popup_page(self, page):
+        # 弹窗位置
+        layout, group = page.add_group("弹窗位置")
+        self.pos_group = QButtonGroup(self)
+
+        # 选项：鼠标-弹窗中心，鼠标-弹窗左上角
+        self.pos_mouse_center = QRadioButton(tr("鼠标-弹窗中心"))
+        self.pos_mouse_tl = QRadioButton(tr("鼠标-弹窗左上角"))
+
+        self.pos_group.addButton(self.pos_mouse_center, 0)
+        self.pos_group.addButton(self.pos_mouse_tl, 1)
+
+        self.pos_group.buttonClicked.connect(self._on_popup_pos_changed)
+
+        # 第一行
+        row1 = QHBoxLayout()
+        row1.addWidget(self.pos_mouse_center)
+        row1.addWidget(self.pos_mouse_tl)
+        row1.addStretch()
+
+        v_pos = QVBoxLayout()
+        v_pos.addLayout(row1)
+
+        layout.addLayout(v_pos)
+
+        # 自动关闭弹窗选项
+        auto_close_row = QHBoxLayout()
+        auto_close_row.addWidget(self._create_label("自动关闭"))
+        self.auto_close_group = QButtonGroup(self)
+        self.auto_close_yes = QRadioButton(tr("是"))
+        self.auto_close_no = QRadioButton(tr("否"))
+        install_tooltip(self.auto_close_yes, tr("鼠标移出窗口后延迟自动关闭"))
+        install_tooltip(self.auto_close_no, tr("需要点击窗口内图标或窗口外其他地方才会关闭"))
+        self.auto_close_group.addButton(self.auto_close_yes, 0)
+        self.auto_close_group.addButton(self.auto_close_no, 1)
+        self.auto_close_group.buttonClicked.connect(self._on_auto_close_changed)
+        auto_close_row.addWidget(self.auto_close_yes)
+        auto_close_row.addWidget(self.auto_close_no)
+        auto_close_row.addSpacing(sp(24))
+        auto_close_row.addWidget(self._create_label("固定时多开"))
+        self.multi_open_pinned_group = QButtonGroup(self)
+        self.multi_open_pinned_yes = QRadioButton(tr("是"))
+        self.multi_open_pinned_no = QRadioButton(tr("否"))
+        install_tooltip(self.multi_open_pinned_yes, tr("窗口固定时，再次中键保留当前窗口并新开一个弹窗"))
+        install_tooltip(self.multi_open_pinned_no, tr("窗口固定时，再次中键仍隐藏当前弹窗"))
+        self.multi_open_pinned_group.addButton(self.multi_open_pinned_yes, 0)
+        self.multi_open_pinned_group.addButton(self.multi_open_pinned_no, 1)
+        self.multi_open_pinned_group.buttonClicked.connect(self._on_multi_open_pinned_changed)
+        auto_close_row.addWidget(self.multi_open_pinned_yes)
+        auto_close_row.addWidget(self.multi_open_pinned_no)
+        auto_close_row.addStretch()
+        layout.addLayout(auto_close_row)
+
+        # 消失延迟 (仅在自动关闭开启时可用)
+        self.delay_widget = QWidget()
+        delay_row = QHBoxLayout(self.delay_widget)
+        delay_row.setContentsMargins(0, 0, 0, 0)
+        delay_row.addWidget(self._create_label("消失延迟"))
+        self.delay_slider = QSlider(QtCompat.Horizontal)
+        self.delay_slider.setRange(0, 2000)  # 0-2秒
+        self.delay_slider.setSingleStep(50)
+        self.delay_slider.valueChanged.connect(self._on_delay_changed)
+        delay_row.addWidget(self.delay_slider)
+        self.delay_label = QLabel("200ms")
+        delay_row.addWidget(self.delay_label)
+        layout.addWidget(self.delay_widget)
+
+        # 双击间隔
+        double_click_widget = QWidget()
+        double_click_row = QHBoxLayout(double_click_widget)
+        double_click_row.setContentsMargins(0, 0, 0, 0)
+        double_click_row.addWidget(self._create_label("双击间隔"))
+        self.double_click_slider = QSlider(QtCompat.Horizontal)
+        self.double_click_slider.setRange(100, 500)  # 100-500ms
+        self.double_click_slider.setSingleStep(50)
+        self.double_click_slider.valueChanged.connect(self._on_double_click_interval_changed)
+        double_click_row.addWidget(self.double_click_slider)
+        self.double_click_label = QLabel("300ms")
+        double_click_row.addWidget(self.double_click_label)
+        layout.addWidget(double_click_widget)
+
+        # 触发按键配置
+        layout, group = page.add_group("触发按键设置")
+
+        normal_row = QHBoxLayout()
+        normal_row.addWidget(self._create_label("普通触发"))
+        self.normal_trigger_recorder = InputTriggerRecorderWidget()
+        install_tooltip(
+            self.normal_trigger_recorder,
+            tr("录入任意键盘、五键鼠标或混合组合，全部松开后自动完成"),
+        )
+        normal_row.addWidget(self.normal_trigger_recorder, 1)
+        layout.addLayout(normal_row)
+
+        special_row = QHBoxLayout()
+        special_row.addWidget(self._create_label("特殊触发"))
+        self.special_trigger_recorder = InputTriggerRecorderWidget()
+        install_tooltip(self.special_trigger_recorder, tr("特殊应用（如专业软件）使用此触发方式"))
+        special_row.addWidget(self.special_trigger_recorder, 1)
+        layout.addLayout(special_row)
+
+        # 传递钩子引用，录制时暂停钩子
+        if hasattr(self, "tray_app") and self.tray_app and hasattr(self.tray_app, "mouse_hook"):
+            self.normal_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
+            self.special_trigger_recorder.set_mouse_hook(self.tray_app.mouse_hook)
+
+        # 任务栏预设和普通预设一样，只更新待应用的录制器 UI。
+        self.normal_trigger_recorder.taskbar_trigger_requested.connect(
+            lambda with_ctrl: self._on_taskbar_preset_selected("normal", with_ctrl)
+        )
+        self.special_trigger_recorder.taskbar_trigger_requested.connect(
+            lambda with_ctrl: self._on_taskbar_preset_selected("special", with_ctrl)
+        )
+
+        apply_btn = QPushButton(tr("应用触发设置"))
+        apply_btn.clicked.connect(self._on_trigger_config_changed)
+        layout.addWidget(apply_btn)
+
+        # 特殊触发应用
+        layout, group = page.add_group("特殊触发应用列表")
+
+        # 让此分组占据页面剩余空间
+        page.layout.setStretchFactor(group, 1)
+
+        # 按钮控制区 (置于列表上方，始终显示)
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(sp(8))
+
+        self.special_add_btn = QPushButton(tr("新建"))
+        self.special_add_btn.clicked.connect(self._add_special_app)
+        btn_layout.addWidget(self.special_add_btn, 1)
+
+        self.special_del_btn = QPushButton(tr("删除"))
+        self.special_del_btn.clicked.connect(self._remove_special_app)
+        btn_layout.addWidget(self.special_del_btn, 1)
+
+        reset_btn = QPushButton(tr("重置默认"))
+        reset_btn.clicked.connect(self._reset_special_apps)
+        btn_layout.addWidget(reset_btn, 1)
+
+        apply_btn = QPushButton(tr("应用更改"))
+        apply_btn.clicked.connect(self._apply_special_apps)
+        btn_layout.addWidget(apply_btn, 1)
+
+        layout.addLayout(btn_layout)
+
+        # 列表区域
+        self.special_apps_list = QListWidget()
+        self.special_apps_list.setDragDropMode(QListWidget.NoDragDrop)
+        self.special_apps_list.setDragEnabled(False)
+        self.special_apps_list.setAcceptDrops(False)
+        self.special_apps_list.setDropIndicatorShown(False)
+        self.special_apps_list.setSelectionMode(QtCompat.SingleSelection)
+        # 禁用列表自己的滚动条，使用窗口滚动条
+        self.special_apps_list.setVerticalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
+        self.special_apps_list.setHorizontalScrollBarPolicy(QtCompat.ScrollBarAlwaysOff)
+        self.special_apps_list.setItemDelegate(NumberedListDelegate(self.special_apps_list))
+        self.special_apps_list.setStyleSheet(
+            f"QListWidget {{ background: transparent; outline: none; border: none; border-radius: 0; }} QListWidget::item {{ border: none; background: transparent; min-height: {sp(24)}px; margin: {sp(1)}px 0px; padding: {sp(4)}px {sp(6)}px; }}"
+        )
+        self.special_apps_list.itemDoubleClicked.connect(self._edit_special_app_item)
+
+        layout.addWidget(self.special_apps_list, 1)  # stretch=1 让列表填满剩余空间
+
+        layout.addStretch()
+
+    # === Settings Load ===
+
+    def _load_popup_settings(self, settings):
+        if settings.popup_align_mode == "mouse_top_left":
+            self.pos_mouse_tl.setChecked(True)
+        else:
+            self.pos_mouse_center.setChecked(True)
+
+        popup_auto_close = getattr(settings, "popup_auto_close", True)
+        if popup_auto_close:
+            self.auto_close_yes.setChecked(True)
+        else:
+            self.auto_close_no.setChecked(True)
+        self.delay_widget.setVisible(popup_auto_close)
+
+        if getattr(settings, "popup_multi_open_when_pinned", False):
+            self.multi_open_pinned_yes.setChecked(True)
+        else:
+            self.multi_open_pinned_no.setChecked(True)
+
+        self.delay_slider.setValue(settings.hover_leave_delay)
+        self.delay_label.setText(f"{settings.hover_leave_delay}ms")
+
+        double_click_interval = getattr(settings, "double_click_interval", 300)
+        self.double_click_slider.setValue(double_click_interval)
+        self.double_click_label.setText(f"{double_click_interval}ms")
+
+        # 加载触发配置
+        normal_source = getattr(settings, "popup_trigger_source", "mouse")
+        if normal_source == "taskbar":
+            with_ctrl = getattr(settings, "popup_taskbar_trigger_ctrl", False)
+            self.normal_trigger_recorder.set_taskbar_trigger(with_ctrl)
+        else:
+            self.normal_trigger_recorder.set_trigger(
+                getattr(settings, "popup_trigger_mode", "mouse"),
+                getattr(settings, "popup_trigger_keys", []),
+                getattr(settings, "popup_trigger_button", "middle"),
+                getattr(settings, "popup_trigger_modifiers", []),
+            )
+
+        special_source = getattr(settings, "popup_special_trigger_source", "mouse")
+        if special_source == "taskbar":
+            with_ctrl = getattr(settings, "popup_special_taskbar_trigger_ctrl", False)
+            self.special_trigger_recorder.set_taskbar_trigger(with_ctrl)
+        else:
+            self.special_trigger_recorder.set_trigger(
+                getattr(settings, "popup_special_trigger_mode", "mouse"),
+                getattr(settings, "popup_special_trigger_keys", []),
+                getattr(settings, "popup_special_trigger_button", "middle"),
+                getattr(settings, "popup_special_trigger_modifiers", ["ctrl"]),
+            )
+
+        self.special_apps_list.clear()
+        for app in settings.special_apps:
+            item = QListWidgetItem(app)
+            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
+            self.special_apps_list.addItem(item)
+
+    # === Event Handlers ===
+
+    def _on_popup_pos_changed(self, button):
+        if self._updating:
+            return
+        pos = "mouse_center"
+        if button == self.pos_mouse_tl:
+            pos = "mouse_top_left"
+        self.data_manager.update_settings(immediate=False, popup_align_mode=pos)
+
+    def _on_delay_changed(self, value):
+        self.delay_label.setText(f"{value}ms")
+        if self._updating:
+            return
+        self.data_manager.update_settings(immediate=False, hover_leave_delay=value)
+
+    def _on_double_click_interval_changed(self, value):
+        self.double_click_label.setText(f"{value}ms")
+        if self._updating:
+            return
+        self.data_manager.update_settings(immediate=False, double_click_interval=value)
+
+    def _on_auto_close_changed(self, button):
+        if self._updating:
+            return
+        auto_close = button == self.auto_close_yes
+        self.delay_widget.setVisible(auto_close)
+        self.data_manager.update_settings(popup_auto_close=auto_close)
+
+    def _on_multi_open_pinned_changed(self, button):
+        if self._updating:
+            return
+        self.data_manager.update_settings(popup_multi_open_when_pinned=(button == self.multi_open_pinned_yes))
+
+    def _on_taskbar_preset_selected(self, trigger_type: str, with_ctrl: bool):
+        """处理任务栏双击预设选择；真正生效需点击“应用触发设置”。"""
+        logger.info("任务栏触发预设已选择: type=%s ctrl=%s，等待应用按钮确认", trigger_type, with_ctrl)
+
+    def _on_clear_trigger(self, trigger_type: str):
+        """清空触发配置；真正生效需点击“应用触发设置”。"""
+        if trigger_type == "normal":
+            recorder = self.normal_trigger_recorder
+        else:
+            recorder = self.special_trigger_recorder
+        recorder.clear()
+
+    def _try_apply_trigger_config(self) -> bool:
+        """尝试应用触发配置，返回是否成功"""
+        if self._updating:  # type: ignore[attr-defined]
+            logger.warning("当前正在更新中，跳过配置应用")
+            return False
+
+        normal_mode = self.normal_trigger_recorder.get_mode()
+        normal_keys = self.normal_trigger_recorder.get_keys()
+        normal_btn = self.normal_trigger_recorder.get_button()
+        normal_mods = self.normal_trigger_recorder.get_modifiers()
+        special_mode = self.special_trigger_recorder.get_mode()
+        special_keys = self.special_trigger_recorder.get_keys()
+        special_btn = self.special_trigger_recorder.get_button()
+        special_mods = self.special_trigger_recorder.get_modifiers()
+
+        normal_is_taskbar = self.normal_trigger_recorder.is_taskbar_trigger()
+        special_is_taskbar = self.special_trigger_recorder.is_taskbar_trigger()
+
+        # 防御：若 is_taskbar_trigger 为 True 但录制器实际持有非空按键/按钮，
+        # 说明 taskbar 标志是残留的脏数据，强制修正为非 taskbar 模式。
+        if normal_is_taskbar and (normal_keys or normal_btn):
+            logger.warning(
+                "普通触发 taskbar 标志与实际数据不一致 (keys=%s button=%s)，强制修复",
+                normal_keys,
+                normal_btn,
+            )
+            self.normal_trigger_recorder._taskbar_trigger = False
+            self.normal_trigger_recorder._taskbar_with_ctrl = False
+            normal_is_taskbar = False
+        if special_is_taskbar and (special_keys or special_btn):
+            logger.warning(
+                "特殊触发 taskbar 标志与实际数据不一致 (keys=%s button=%s)，强制修复",
+                special_keys,
+                special_btn,
+            )
+            self.special_trigger_recorder._taskbar_trigger = False
+            self.special_trigger_recorder._taskbar_with_ctrl = False
+            special_is_taskbar = False
+
+        normal_taskbar_ctrl = self.normal_trigger_recorder.get_taskbar_ctrl() if normal_is_taskbar else False
+        special_taskbar_ctrl = self.special_trigger_recorder.get_taskbar_ctrl() if special_is_taskbar else False
+
+        if not normal_is_taskbar:
+            normal = normalize_trigger_config(normal_mode, normal_keys, normal_btn, normal_mods)
+            normal_mode, normal_keys, normal_btn, normal_mods = (
+                normal.mode,
+                normal.keys,
+                normal.button,
+                normal.modifiers,
+            )
+        if not special_is_taskbar:
+            special = normalize_trigger_config(special_mode, special_keys, special_btn, special_mods)
+            special_mode, special_keys, special_btn, special_mods = (
+                special.mode,
+                special.keys,
+                special.button,
+                special.modifiers,
+            )
+        shortcuts = self._shortcut_conflict_candidates()
+
+        logger.info(
+            "准备保存配置: 普通=%s(%s)+%s+%s, 特殊=%s(%s)+%s+%s",
+            normal_mode,
+            normal_keys,
+            normal_btn,
+            normal_mods,
+            special_mode,
+            special_keys,
+            special_btn,
+            special_mods,
+        )
+
+        # 使用扩展的冲突检测（支持keyboard/hybrid模式）
+        if not normal_is_taskbar:
+            is_conflict, msg = check_trigger_conflict(
+                button=normal_btn,
+                modifiers=normal_mods,
+                mode=normal_mode,
+                keys=normal_keys,
+                shortcuts=shortcuts,
+            )
+            if is_conflict:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+
+                ThemedMessageBox.warning(self, "配置冲突", msg)
+                return False
+            if msg:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+
+                if not ThemedMessageBox.question(self, "触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                    return False
+
+        if not special_is_taskbar:
+            is_conflict, msg = check_trigger_conflict(
+                button=special_btn,
+                modifiers=special_mods,
+                mode=special_mode,
+                keys=special_keys,
+                shortcuts=shortcuts,
+            )
+            if is_conflict:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+
+                ThemedMessageBox.warning(self, "配置冲突", f"特殊触发：{msg}")
+                return False
+            if msg:
+                from ui.styles.themed_messagebox import ThemedMessageBox
+
+                if not ThemedMessageBox.question(self, "特殊触发组合确认", f"{msg}\n\n仍要使用这个触发组合吗？"):
+                    return False
+
+        # 保存配置 — taskbar 模式时清除旧的鼠标/键盘触发值，避免 DLL 仍响应旧触发
+        self.data_manager.update_settings(  # type: ignore[attr-defined]
+            popup_trigger_mode="mouse" if normal_is_taskbar else normal_mode,
+            popup_trigger_keys=[] if normal_is_taskbar else normal_keys,
+            popup_trigger_button="" if normal_is_taskbar else normal_btn,
+            popup_trigger_modifiers=[] if normal_is_taskbar else normal_mods,
+            popup_trigger_source="taskbar" if normal_is_taskbar else "mouse",
+            popup_taskbar_trigger_ctrl=normal_taskbar_ctrl if normal_is_taskbar else False,
+            popup_special_trigger_mode="mouse" if special_is_taskbar else special_mode,
+            popup_special_trigger_keys=[] if special_is_taskbar else special_keys,
+            popup_special_trigger_button="" if special_is_taskbar else special_btn,
+            popup_special_trigger_modifiers=[] if special_is_taskbar else special_mods,
+            popup_special_trigger_source="taskbar" if special_is_taskbar else "mouse",
+            popup_special_taskbar_trigger_ctrl=special_taskbar_ctrl if special_is_taskbar else False,
+        )
+        if not normal_is_taskbar:
+            self.normal_trigger_recorder.set_trigger(normal_mode, normal_keys, normal_btn, normal_mods)
+        if not special_is_taskbar:
+            self.special_trigger_recorder.set_trigger(special_mode, special_keys, special_btn, special_mods)
+        logger.info("配置已保存到数据模型，准备发射信号")
+        runtime_applied = self._apply_trigger_runtime_config()
+        if runtime_applied is False:
+            logger.error("触发配置已保存，但运行时钩子应用失败")
+            return False
+        if runtime_applied is None:
+            self.trigger_config_changed.emit()  # type: ignore[attr-defined]
+            logger.info("trigger_config_changed 信号已发射")
+        else:
+            logger.info("触发配置已直接应用到运行时钩子")
+        return True
+
+    def _apply_trigger_runtime_config(self) -> bool | None:
+        tray_app = getattr(self, "tray_app", None)
+        apply_runtime = getattr(tray_app, "_apply_mouse_hook_settings", None)
+        if apply_runtime is None:
+            return None
+        try:
+            return bool(apply_runtime())
+        except Exception as exc:
+            logger.error("运行时应用触发配置失败: %s", exc, exc_info=True)
+            return False
+
+    def _shortcut_conflict_candidates(self) -> list:
+        try:
+            data = getattr(self.data_manager, "data", None)  # type: ignore[attr-defined]
+            folders = getattr(data, "folders", []) or []
+            return [item for folder in folders for item in (getattr(folder, "items", []) or [])]
+        except Exception as exc:
+            logger.debug("收集快捷方式热键用于冲突检测失败: %s", exc, exc_info=True)
+            return []
+
+    def _on_trigger_config_changed(self):
+        """应用触发配置变更"""
+        logger.info("触发配置变更按钮被点击")
+        try:
+            applied = self._try_apply_trigger_config()
+        except Exception as exc:
+            logger.error("应用触发配置失败: %s", exc, exc_info=True)
+            applied = False
+        self._show_trigger_apply_toast(applied)
+
+    def _show_trigger_apply_toast(self, applied: bool):
+        """使用 Alt 双击同款 Toast 显示触发配置应用结果。"""
+        try:
+            from ui.toast_notification import ToastNotification
+
+            toast = getattr(self, "_trigger_apply_toast", None)
+            if toast is None:
+                toast = ToastNotification()
+                self._trigger_apply_toast = toast
+            toast.show_toast(
+                tr("应用成功") if applied else tr("应用失败"),
+                theme=getattr(self, "current_theme", "dark"),
+                duration_ms=800,
+                target_widget=self,
+                center_on_target=True,
+            )
+        except Exception as exc:
+            logger.error("显示触发配置应用提示失败: %s", exc, exc_info=True)
+
+    # === Special Apps ===
+
+    def _add_special_app(self):
+        item = QListWidgetItem("new_app")
+        item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
+        self.special_apps_list.addItem(item)
+        self.special_apps_list.setCurrentItem(item)
+        self.special_apps_list.editItem(item)
+
+    def _remove_special_app(self):
+        row = self.special_apps_list.currentRow()
+        if row >= 0:
+            self.special_apps_list.takeItem(row)
+
+    def _edit_special_app_item(self, item):
+        self.special_apps_list.editItem(item)
+
+    def _reset_special_apps(self):
+        self.special_apps_list.clear()
+        for app in DEFAULT_SPECIAL_APPS:
+            item = QListWidgetItem(app)
+            item.setFlags((item.flags() & ~QtCompat.ItemIsDragEnabled) | QtCompat.ItemIsEditable)
+            self.special_apps_list.addItem(item)
+        self._apply_special_apps()
+
+    def _apply_special_apps(self):
+        if self._updating:
+            return
+        apps = []
+        for i in range(self.special_apps_list.count()):
+            item = self.special_apps_list.item(i)
+            text = item.text().strip().lower()
+            if text:
+                apps.append(text)
+        self.data_manager.update_settings(special_apps=apps)
+        self.special_apps_changed.emit()
+
+    def _validate_hotkey(self, hotkey_str: str) -> tuple:
+        """验证快捷键是否有效
+
+        Returns:
+            (is_valid: bool, error_msg: str)
+        """
+        if not hotkey_str or not hotkey_str.strip():
+            return True, ""
+
+        parts = [p.strip() for p in hotkey_str.split("+")]
+        main_keys = []
+
+        for part in parts:
+            part_lower = part.lower().replace("<", "").replace(">", "")
+            if part_lower not in (
+                "ctrl",
+                "control",
+                "alt",
+                "shift",
+                "cmd",
+                "win",
+                "windows",
+                "meta",
+                "super",
+                "lctrl",
+                "rctrl",
+                "lalt",
+                "ralt",
+                "lshift",
+                "rshift",
+                "lwin",
+                "rwin",
+            ):
+                main_keys.append(part)
+
+        if not main_keys:
+            return False, "必须包含一个主键（字母、数字或功能键）"
+
+        try:
+            from core.hotkey_conflict_checker import check_conflict
+
+            is_conflict, conflict_desc = check_conflict(hotkey_str)
+            if is_conflict:
+                return False, f"快捷键冲突：{conflict_desc}"
+        except Exception:
+            logger.debug("检查快捷键冲突失败", exc_info=True)
+
+        return True, ""

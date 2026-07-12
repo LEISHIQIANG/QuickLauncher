@@ -1,0 +1,503 @@
+"""Save coordination service.
+
+Extracted from :class:`core.data_manager.DataManager` in 1.6.3.8 to
+isolate the save-scheduling / debouncing / history-annotation pipeline.
+The class takes a reference to the owning DataManager and reads/writes
+the save-related private attributes:
+
+* ``_save_lock`` / ``_write_lock`` — threading primitives
+* ``_save_timer`` / ``_save_pending`` / ``_save_delay`` — debounce state
+* ``_batch_depth`` / ``_batch_dirty`` / ``_batch_force_immediate`` —
+  batched-write state
+* ``_runtime_revision`` / ``_last_saved_data_dict`` —
+  ``_config_status`` / ``_pending_history_action`` /
+  ``_pending_history_summary`` / ``_suppress_next_history`` — history
+* ``data_file`` / ``data`` — payload source
+
+Public API stays on :class:`DataManager`; this class is internal and may be
+called directly by tests.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import logging
+import os
+import sys
+import uuid
+from contextlib import contextmanager
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from application.ports.persistence import ConfigStatePort
+
+from .config_validation import validate_app_data
+from .import_security import has_report_warnings, new_import_report
+
+if TYPE_CHECKING:
+    from .data_manager import DataManager
+
+logger = logging.getLogger(__name__)
+
+_HISTORY_DEFAULT = "\u914d\u7f6e\u53d8\u66f4"
+_MAX_DELAYED_SAVE_RETRIES = 3
+_TRIGGER_SETTING_KEYS = (
+    "popup_trigger_mode",
+    "popup_trigger_keys",
+    "popup_trigger_button",
+    "popup_trigger_modifiers",
+    "popup_special_trigger_mode",
+    "popup_special_trigger_keys",
+    "popup_special_trigger_button",
+    "popup_special_trigger_modifiers",
+    "popup_trigger_source",
+    "popup_taskbar_trigger_ctrl",
+    "popup_special_trigger_source",
+    "popup_special_taskbar_trigger_ctrl",
+)
+
+
+def _sync_directory(path: Path) -> None:
+    """Flush the directory entry metadata to disk (Windows only)."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.CreateFileW(
+        str(path),
+        0x40000000,  # GENERIC_WRITE
+        0x00000003,  # FILE_SHARE_READ | FILE_SHARE_WRITE
+        None,
+        0x00000004,  # OPEN_ALWAYS
+        0x02000000,  # FILE_FLAG_BACKUP_SEMANTICS
+        None,
+    )
+    if handle and handle != wintypes.HANDLE(-1).value:
+        try:
+            kernel32.FlushFileBuffers(handle)
+        except Exception:
+            logger.debug("FlushFileBuffers on data file handle failed (non-fatal)", exc_info=True)
+        finally:
+            kernel32.CloseHandle(handle)
+
+
+class SaveCoordinator:
+    """Coordinate debounced / batched / atomic writes to ``data.json``."""
+
+    def __init__(self, dm: DataManager, state: ConfigStatePort | None = None) -> None:
+        self._dm = dm
+        self._state = state  # ConfigStatePort — future migration target for coordination fields
+        self._delayed_retry_count = 0
+        self._batch_snapshot: dict[str, Any] | None = None
+        self._batch_failed = False
+
+    # ── public save lifecycle ──────────────────────────────────────
+
+    def save(self, immediate: bool = False) -> bool:
+        """Schedule or perform a save depending on batch state and ``immediate``."""
+        dm = self._dm
+        with dm._save_lock:
+            dm._runtime_revision += 1
+            self._delayed_retry_count = 0
+            if dm._batch_depth > 0:
+                dm._save_pending = True
+                dm._batch_dirty = True
+                if immediate:
+                    dm._batch_force_immediate = True
+                return True
+
+        if immediate:
+            return self._do_save()
+
+        with dm._save_lock:
+            dm._save_pending = True
+            if dm._save_timer is None:
+                scheduler = dm._get_save_scheduler()
+                scheduler.schedule(self._delayed_save)
+                dm._save_timer = scheduler.current_timer  # type: ignore[unused-ignore, assignment]
+        return True
+
+    def shutdown(self, timeout: float = 3.0) -> None:
+        """Flush pending saves and cancel timers before application exit.
+
+        Call this once during application teardown to ensure no data is lost
+        from the delayed-save debounce window.
+        """
+        dm = self._dm
+        should_save = False
+        with dm._save_lock:
+            if dm._save_pending:
+                dm._save_pending = False
+                should_save = True
+            self._cancel_scheduled_save_locked()
+        if should_save:
+            try:
+                self._do_save()
+            except Exception as exc:
+                logger.error("shutdown flush save failed: %s", exc, exc_info=True)
+
+    def flush_pending_save(self) -> None:
+        dm = self._dm
+        should_save = False
+        with dm._save_lock:
+            self._cancel_scheduled_save_locked()
+            if dm._save_pending:
+                dm._save_pending = False
+                should_save = True
+        if should_save:
+            # Forward via dm so test mocks on ``dm._do_save`` still work.
+            dm._do_save()
+
+    @contextmanager
+    def batch_update(self, immediate: bool = False):
+        """Apply multiple in-memory changes atomically and save once.
+
+        Any exception in a nested batch aborts the whole outer transaction.
+        """
+        dm = self._dm
+        with dm._save_lock:
+            if dm._batch_depth == 0:
+                self._batch_snapshot = {
+                    "data": copy.deepcopy(dm.data),
+                    "runtime_revision": dm._runtime_revision,
+                    "save_pending": dm._save_pending,
+                    "batch_dirty": dm._batch_dirty,
+                    "batch_force_immediate": dm._batch_force_immediate,
+                    "pending_history_action": dm._pending_history_action,
+                    "pending_history_summary": dm._pending_history_summary,
+                    "suppress_next_history": dm._suppress_next_history,
+                }
+                self._batch_failed = False
+                # Prevent a pre-existing debounce timer from serializing a
+                # half-applied transaction.  Its pending state is retained.
+                self._cancel_scheduled_save_locked()
+            dm._batch_depth += 1
+            if immediate:
+                dm._batch_force_immediate = True
+
+        try:
+            yield dm
+        except Exception:
+            with dm._save_lock:
+                self._batch_failed = True
+            raise
+        finally:
+            should_flush = False
+            flush_immediately = False
+            with dm._save_lock:
+                if dm._batch_depth > 0:
+                    dm._batch_depth -= 1
+                assert dm._batch_depth >= 0, "batch_update depth underflow"
+
+                if dm._batch_depth == 0:
+                    if self._batch_failed and self._batch_snapshot is not None:
+                        snapshot = self._batch_snapshot
+                        self._cancel_scheduled_save_locked()
+                        dm.data = snapshot["data"]
+                        dm._runtime_revision = snapshot["runtime_revision"]
+                        dm._save_pending = snapshot["save_pending"]
+                        dm._batch_dirty = snapshot["batch_dirty"]
+                        dm._batch_force_immediate = snapshot["batch_force_immediate"]
+                        dm._pending_history_action = snapshot["pending_history_action"]
+                        dm._pending_history_summary = snapshot["pending_history_summary"]
+                        dm._suppress_next_history = snapshot["suppress_next_history"]
+                        if dm._save_pending:
+                            scheduler = dm._get_save_scheduler()
+                            scheduler.schedule(self._delayed_save)
+                            dm._save_timer = scheduler.current_timer  # type: ignore[unused-ignore, assignment]
+                    elif dm._save_pending or dm._batch_dirty:
+                        should_flush = True
+                        flush_immediately = dm._batch_force_immediate
+                        self._cancel_scheduled_save_locked()
+                        dm._save_pending = False
+
+                    if not self._batch_failed:
+                        dm._batch_dirty = False
+                        dm._batch_force_immediate = False
+                    self._batch_snapshot = None
+                    self._batch_failed = False
+
+            if should_flush:
+                if flush_immediately:
+                    # Forward via dm so test mocks on ``dm._do_save`` still work.
+                    dm._do_save()
+                else:
+                    # Forward via dm so test mocks on ``dm.save`` still work.
+                    dm.save(immediate=False)
+
+    # ── history / status helpers ───────────────────────────────────
+
+    def mark_history(self, action: str, summary: str = "") -> None:
+        dm = self._dm
+        dm._pending_history_action = action or _HISTORY_DEFAULT
+        dm._pending_history_summary = summary or ""
+
+    def get_config_status(self) -> dict:
+        """Return latest configuration load/save validation status."""
+        dm = self._dm
+        with dm._save_lock:
+            status: dict[str, Any] = dict(getattr(dm, "_config_status", {}) or {})
+            report = dm.get_recovery_report()
+            if report:
+                status["recovery"] = report
+            try:
+                status["current_issues"] = validate_app_data(dm.data)
+            except Exception as exc:
+                logger.debug("验证应用数据失败: %s", exc, exc_info=True)
+                status["current_issues"] = [str(exc)]
+                status["status"] = "error"
+            return status
+
+    def reset_import_report(self) -> dict:
+        dm = self._dm
+        dm._last_import_report = new_import_report()
+        return dm._last_import_report
+
+    def get_last_import_report(self) -> dict:
+        dm = self._dm
+        report = getattr(dm, "_last_import_report", None) or new_import_report()
+        return {
+            "dry_run": bool(report.get("dry_run", False)),
+            "mode": str(report.get("mode", "") or ""),
+            "skipped_files": list(report.get("skipped_files", [])),
+            "skipped_settings": list(report.get("skipped_settings", [])),
+            "warnings": list(report.get("warnings", [])),
+            "imported_items": int(report.get("imported_items", 0) or 0),
+            "has_warnings": has_report_warnings(report),
+        }
+
+    # ── private helpers ────────────────────────────────────────────
+
+    def _delayed_save(self) -> None:
+        dm = self._dm
+        should_save = False
+        with dm._save_lock:
+            dm._save_timer = None
+            if dm._save_pending:
+                dm._save_pending = False
+                should_save = True
+
+        if should_save:
+            if self._do_save():
+                self._delayed_retry_count = 0
+            else:
+                self._schedule_failed_save_retry()
+
+    def _schedule_failed_save_retry(self) -> None:
+        dm = self._dm
+        with dm._save_lock:
+            dm._save_pending = True
+            if self._delayed_retry_count >= _MAX_DELAYED_SAVE_RETRIES:
+                logger.error("delayed save retry limit reached; pending data will be retried during shutdown")
+                return
+            self._delayed_retry_count += 1
+            if dm._save_timer is None:
+                scheduler = dm._get_save_scheduler()
+                scheduler.schedule(self._delayed_save)
+                dm._save_timer = scheduler.current_timer  # type: ignore[unused-ignore, assignment]
+
+    def _cancel_scheduled_save_locked(self) -> None:
+        dm = self._dm
+        scheduler = getattr(dm, "save_scheduler", None)
+        scheduler_timer = scheduler.current_timer if scheduler is not None else None
+        timer = getattr(dm, "_save_timer", None)
+        dm._save_timer = None
+        if scheduler is not None:
+            scheduler.cancel()
+        if timer is not None and timer is not scheduler_timer:
+            timer.cancel()
+
+    def _do_save(self) -> bool:
+        """Save data to disk atomically.
+
+        Lock ordering: _save_lock → _write_lock, and both are released
+        together.  This guarantees no thread can interleave a data mutation
+        (holding _save_lock) while the write is in progress (holding
+        _write_lock), eliminating the classic AB-BA deadlock where:
+
+        * Thread A holds _write_lock in _do_save and waits for _save_lock
+          at the history-update block.
+        * Thread B holds _save_lock in ShortcutService and calls
+          dm.save(immediate=True) → _do_save() → waits for _write_lock.
+
+        Keeping _save_lock across the entire _do_save scope makes
+        acquisition order deterministic: _save_lock always before
+        _write_lock.
+        """
+        dm = self._dm
+        with dm._save_lock:
+            try:
+                previous_data_dict = dm._last_saved_data_dict
+                next_data_dict = self._main_data_dict()
+                trigger_settings_preserved = self._preserve_external_trigger_settings(
+                    next_data_dict,
+                    previous_data_dict,
+                )
+                payload = dm._get_config_store().serialize_data(next_data_dict)
+                suppress_history = bool(dm._suppress_next_history)
+                history_action = dm._pending_history_action
+                history_summary = dm._pending_history_summary
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                logger.error("serialize data failed: %s", e)
+                dm._config_status = {
+                    "status": "error",
+                    "source": str(dm.data_file),
+                    "issues": [f"serialize data failed: {e}"],
+                }
+                return False
+
+            write_success = False
+            save_error: Exception | None = None
+            with dm._write_lock:
+                temp_file = dm.data_file.with_name(f"{dm.data_file.stem}.{uuid.uuid4().hex}.tmp")
+                try:
+                    self._create_auto_backup()
+
+                    with open(temp_file, "w", encoding="utf-8") as f:
+                        f.write(payload)
+                        f.flush()
+                        os.fsync(f.fileno())
+
+                    dm._replace_data_file(temp_file)
+                    _sync_directory(dm.data_file.parent)
+                    write_success = True
+
+                except OSError as e:
+                    logger.error("save data failed: %s", e)
+                    dm._config_status = {
+                        "status": "error",
+                        "source": str(dm.data_file),
+                        "issues": [f"save data failed: {e}"],
+                    }
+                except Exception as e:
+                    save_error = e
+                    logger.error("save data failed: %s", e)
+                    dm._config_status = {
+                        "status": "error",
+                        "source": str(dm.data_file),
+                        "issues": [f"save data failed: {e}"],
+                    }
+                finally:
+                    if os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except OSError as cleanup_error:
+                            logger.debug("cleanup temp file failed: %s", cleanup_error)
+                    if save_error is not None:
+                        raise save_error
+
+            if write_success:
+                if suppress_history:
+                    dm._suppress_next_history = False
+                elif previous_data_dict and previous_data_dict != next_data_dict:
+                    history = getattr(dm, "history_manager", None)
+                    if history is not None:
+                        history.record_snapshot(
+                            previous_data_dict,
+                            action=history_action,
+                            summary=history_summary,
+                        )
+                    dm._pending_history_action = _HISTORY_DEFAULT
+                    dm._pending_history_summary = ""
+                dm._last_saved_data_dict = next_data_dict
+                dm._config_status = {"status": "ok", "source": str(dm.data_file), "issues": []}
+                try:
+                    from application.events import ConfigSaved as ConfigSavedEvent
+                    from application.events import event_bus
+
+                    event_bus.publish(
+                        ConfigSavedEvent(
+                            revision=dm._runtime_revision,
+                            file_path=str(dm.data_file),
+                            trigger_settings_preserved=trigger_settings_preserved,
+                        )
+                    )
+                except Exception as exc:
+                    logger.debug("ConfigSaved event publish failed: %s", exc, exc_info=True)
+
+            return write_success
+
+    def _replace_data_file(self, temp_file: Path) -> None:
+        # Forward via dm so tests can patch ``dm._replace_data_file``.
+        self._dm._replace_data_file(temp_file)
+
+    def _create_auto_backup(self) -> None:
+        # Forward via dm so tests can patch ``dm._create_auto_backup``.
+        self._dm._create_auto_backup()
+
+    def _serialize_data(self) -> str:
+        return self._dm._get_config_store().serialize_data(self._main_data_dict())
+
+    def _main_data_dict(self) -> dict:
+        dm = self._dm
+        data_dict = dm.data.to_dict()
+        folders = data_dict.get("folders", [])
+        if isinstance(folders, list):
+            data_dict["folders"] = [
+                folder
+                for folder in folders
+                if not bool(folder.get("is_icon_repo", False)) and folder.get("id") != "icon_repo"
+            ]
+        return data_dict
+
+    def _preserve_external_trigger_settings(
+        self,
+        next_data_dict: dict[str, Any],
+        previous_data_dict: dict[str, Any] | None,
+    ) -> bool:
+        """Keep newer on-disk trigger settings when this save did not edit them.
+
+        Trigger settings are user-facing runtime controls. A stale process can
+        still flush an unrelated settings change during shutdown; without this
+        merge, that old in-memory snapshot can overwrite a newer trigger choice
+        that another process has already saved.
+        """
+        if not previous_data_dict:
+            return False
+
+        previous_trigger = self._trigger_settings_from(previous_data_dict)
+        next_trigger = self._trigger_settings_from(next_data_dict)
+        if next_trigger != previous_trigger:
+            return False
+
+        disk_trigger = self._read_disk_trigger_settings()
+        if not disk_trigger or disk_trigger == previous_trigger:
+            return False
+
+        settings = next_data_dict.get("settings")
+        if not isinstance(settings, dict):
+            return False
+
+        for key, value in disk_trigger.items():
+            settings[key] = copy.deepcopy(value)
+            current_settings = getattr(self._dm.data, "settings", None)
+            if current_settings is not None and hasattr(current_settings, key):
+                setattr(current_settings, key, copy.deepcopy(value))
+        logger.info("保留磁盘上较新的触发设置，避免旧内存快照覆盖")
+        return True
+
+    @staticmethod
+    def _trigger_settings_from(data_dict: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(data_dict, dict):
+            return {}
+        settings = data_dict.get("settings")
+        if not isinstance(settings, dict):
+            return {}
+        return {key: copy.deepcopy(settings.get(key)) for key in _TRIGGER_SETTING_KEYS if key in settings}
+
+    def _read_disk_trigger_settings(self) -> dict[str, Any]:
+        data_file = Path(getattr(self._dm, "data_file", ""))
+        if not data_file.exists():
+            return {}
+        try:
+            with open(data_file, encoding="utf-8") as handle:
+                return self._trigger_settings_from(json.load(handle))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            logger.debug("读取磁盘触发设置用于保存合并失败: %s", exc, exc_info=True)
+            return {}
+
+
+__all__ = ["SaveCoordinator"]

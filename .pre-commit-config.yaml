@@ -1,0 +1,110 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+  - repo: local
+    hooks:
+      - id: no-silent-exceptions
+        name: "Reject silent except Exception: pass"
+        entry: python scripts/check_silent_exceptions.py
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        exclude: '^(tests/|plugins/screenshot_ocr/)'
+      - id: i18n-coverage
+        name: "i18n en_US translation coverage (advisory)"
+        entry: python scripts/check_i18n_coverage.py --report-only
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+        # NOTE: release gate enforces --max-untranslated-pct 40; this hook
+        # only reports. Lower the gate manually in scripts/release_gate.py
+        # as the untranslated rate drops.
+
+      # ----------------------------------------------------------------
+      # 1.7.0 UI 优化 lint — 已升级为 blocking（§四.11）
+      # ----------------------------------------------------------------
+      - id: audit-hardcoded-colors
+        name: "UI: hard-coded QColor in theme code (blocking)"
+        entry: python scripts/audit_hardcoded_colors.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-grid
+        name: "UI: non-4-multiple sp() values (blocking)"
+        entry: python scripts/audit_grid_violations.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-paint-snap
+        name: "UI: paintEvent missing snap/cosmetic (blocking)"
+        entry: python scripts/audit_paint_snap.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-qss-radius
+        name: "UI: border:none without border-radius:0 (blocking)"
+        entry: python scripts/audit_qss_radius.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-font-consistency
+        name: "UI: inline font-size: N px (blocking)"
+        entry: python scripts/audit_font_consistency.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-graphics-effect
+        name: "UI: QGraphicsEffect usage (blocking)"
+        entry: python scripts/audit_graphics_effect.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-motion-consistency
+        name: "UI: QTimer.singleShot animation chains (blocking)"
+        entry: python scripts/audit_motion_consistency.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-paint-perf
+        name: "UI: paintEvent perf anti-patterns (blocking)"
+        entry: python scripts/audit_paint_perf.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-animation-lifecycle
+        name: "UI: QPropertyAnimation lifecycle (blocking)"
+        entry: python scripts/audit_animation_lifecycle.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-timer-leak
+        name: "UI: QTimer.singleShot animation leaks (blocking)"
+        entry: python scripts/audit_timer_leak.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+      - id: audit-pixmap-no-dpi
+        name: "UI: QPixmap without setDevicePixelRatio (blocking)"
+        entry: python scripts/audit_pixmap_no_dpi.py --strict
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false

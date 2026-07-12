@@ -1,0 +1,55 @@
+"""
+键盘钩子 - DLL版本兼容封装
+保持与原Python版本相同的接口
+"""
+
+import logging
+from collections.abc import Callable
+
+from .hooks_wrapper import HooksDLL
+
+logger = logging.getLogger(__name__)
+
+
+class KeyboardHook:
+    """键盘钩子 - 使用C++ DLL实现"""
+
+    def __init__(self):
+        self._dll = HooksDLL.get_instance()
+        self._on_alt_double_tap: Callable[[], None] | None = None
+        self._on_hotkey: Callable[[], None] | None = None
+
+    def install(self, on_alt_double_tap: Callable[[], None] | None = None) -> bool:
+        """安装键盘钩子"""
+        self._on_alt_double_tap = on_alt_double_tap
+        success = self._dll.install_keyboard_hook(on_alt_double_tap)
+        if success:
+            logger.info("键盘钩子安装成功 (DLL版本)")
+        return success
+
+    def uninstall(self):
+        """卸载键盘钩子"""
+        self._dll.uninstall_keyboard_hook()
+        logger.info("键盘钩子已卸载")
+
+    def is_installed(self) -> bool:
+        """Return whether the DLL reports the keyboard hook as installed."""
+        return self._dll.is_keyboard_hook_installed()
+
+    def set_hotkey(self, hotkey_str: str, callback: Callable[[], None] | None = None):
+        """设置热键"""
+        self._on_hotkey = callback
+        if not hotkey_str or not callback:
+            self._dll.clear_hotkey()
+            return False
+        return self._dll.set_hotkey(hotkey_str, callback)
+
+    @property
+    def alt_held(self) -> bool:
+        """Alt键是否按住"""
+        return self._dll.is_alt_held()
+
+    @property
+    def ctrl_held(self) -> bool:
+        """Ctrl键是否按住"""
+        return self._dll.is_ctrl_held()
